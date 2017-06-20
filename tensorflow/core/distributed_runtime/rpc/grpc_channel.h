@@ -65,7 +65,7 @@ class GrpcChannelCache {
   // was created to handle.  Worker names are in the format
   //  /job:<job identifier>/task:<task id>
   // e.g. /job:mnist/task:2
-  virtual void ListWorkers(std::vector<string>* workers) = 0;
+  virtual void ListWorkers(std::vector<string>* workers) const = 0;
 
   // If found, returns a gRPC channel that is connected to the remote
   // worker named by 'target'. 'target' is of the following
@@ -84,7 +84,12 @@ GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& channel_spec,
 
 // Below here are internal-only functions.
 
-SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target);
+ChannelCreationFunction ConvertToChannelCreationFunction(
+    const std::function<Status(string, SharedGrpcChannelPtr*)>&
+        new_channel_func_ptr);
+
+Status NewHostPortGrpcChannel(const string& target,
+                              SharedGrpcChannelPtr* channel_pointer);
 
 }  // namespace tensorflow
 

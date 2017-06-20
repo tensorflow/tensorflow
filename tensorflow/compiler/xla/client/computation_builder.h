@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -60,6 +61,23 @@ class ComputationBuilder {
 
   // Returns the computation name.
   const string& name() { return name_; }
+
+  // Sets OpMetadata that will be added to all instructions until cleared.
+  //
+  // OpMetadata is often applied to a series of XLA HLO instructions. As a
+  // result, OpMetadata is set on the Computation Builder. All subsequent
+  // instructions generated via this Computation Builder will have the same
+  // OpMetadata attached until a call to ClearOpMetdata.
+  void SetOpMetadata(const OpMetadata& metadata) {
+    tensorflow::mutex_lock lock(mutex_);
+    metadata_ = metadata;
+  }
+
+  // Clears the HloMetdata state.
+  void ClearOpMetadata() {
+    tensorflow::mutex_lock lock(mutex_);
+    metadata_.Clear();
+  }
 
   // Sets the builder to a mode where it will die immediately when an error is
   // encountered, rather than producing it in a deferred fashion when Build() is
@@ -193,9 +211,11 @@ class ComputationBuilder {
   //
   // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D
   // range notation.
+  // The stride parameter determines the stride over the slice
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
-                              tensorflow::gtl::ArraySlice<int64> limit_indices);
+                              tensorflow::gtl::ArraySlice<int64> limit_indices,
+                              tensorflow::gtl::ArraySlice<int64> stride);
 
   // Enqueues a slice operation onto the computation that slices the 'operand'
   // from dynamic start indices which are passed in 'start_indices'.
@@ -352,13 +372,13 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
-  // Enqueues an infeed instruction onto the computation, which reads data of
-  // the given shape from the infeed buffer of the device.
+  // Enqueues an infeed instruction onto the computation, which writes data of
+  // the given shape to the infeed buffer of the device.
   ComputationDataHandle Infeed(const Shape& shape, const string& config = "");
 
   // Enqueues an outfeed instruction onto the computation. This instruction
   // generates outgoing data transfers for the given data.
-  void Outfeed(const ComputationDataHandle& operand,
+  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
                const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.
@@ -504,8 +524,15 @@ class ComputationBuilder {
   ComputationDataHandle SquareF32(const ComputationDataHandle& operand);
 
   // Enqueues a lhs^rhs computation onto the computation.
-  ComputationDataHandle Pow(const ComputationDataHandle& lhs,
-                            const ComputationDataHandle& rhs);
+  ComputationDataHandle Pow(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
+
+  // Enqueues an operator that tests if the operand's values are finite, i.e.,
+  // not Inf or NaN. Defined only for floating-point types. Returns an array of
+  // booleans with the same shape where entries are true iff the corresponding
+  // entry was NaN.
+  ComputationDataHandle IsFinite(const ComputationDataHandle& operand);
 
   // Enqueues a convert instruction onto the computation that changes the
   // element type of the operand array to primitive_type.
@@ -516,8 +543,8 @@ class ComputationBuilder {
   // (float32 is specified as there is an implicit float32 -1.0f constant
   // exponent).
   //
-  // TODO(leary) axe F32 suffix, can be determined by reflecting on the shape of
-  // the operand.
+  // TODO(b/34468990) axe F32 suffix, can be determined by reflecting on the
+  // shape of the operand.
   ComputationDataHandle ReciprocalF32(const ComputationDataHandle& operand);
 
   // Enqueues a negate instruction onto the computation.
@@ -586,6 +613,48 @@ class ComputationBuilder {
   // computation.
   StatusOr<bool> IsConstant(const ComputationDataHandle& operand);
 
+  // Normalizes operand across spatial and batch dimensions for each feature.
+  //
+  // Returns a tuple (normalized, batch_mean, batch_var) where `normalized`
+  // is the normalized result and batch_mean and batch_var are the mean and
+  // variance, respectively, across batch for the operand.
+  ComputationDataHandle BatchNormTraining(const ComputationDataHandle& operand,
+                                          const ComputationDataHandle& scale,
+                                          const ComputationDataHandle& offset,
+                                          float epsilon, int64 feature_index);
+
+  // Normalizes operand across spatial and batch dimensions for each feature.
+  //
+  // `BatchNormInference` is equivalent to calling `BatchNormTraining` without
+  // computing `mean` and `variance` for each batch inside the operation. It
+  // uses the input `mean` and `variance` instead as estimated values. The
+  // purpose of this op is to reduce latency in inference, hence the name
+  // `BatchNormInference`.
+  //
+  // The output has the same shape as `operand`, and contains the normalized
+  // values for each batch.
+  ComputationDataHandle BatchNormInference(
+      const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+      const ComputationDataHandle& offset, const ComputationDataHandle& mean,
+      const ComputationDataHandle& variance, float epsilon,
+      int64 feature_index);
+
+  // Calculates the gradients of a batch norm op.
+  //
+  // The inputs `batch_mean` and `batch_var` represent the mean and variance
+  // across the batch.
+  //
+  // Returns a tuple of three elements:
+  //   - grad_operand: Gradient with respect to input `operand`
+  //   - grad_offset: Gradient with respect to input `offset`
+  //   - grad_scale: Gradient with respect to input `scale`
+  ComputationDataHandle BatchNormGrad(const ComputationDataHandle& operand,
+                                      const ComputationDataHandle& scale,
+                                      const ComputationDataHandle& batch_mean,
+                                      const ComputationDataHandle& batch_var,
+                                      const ComputationDataHandle& grad_output,
+                                      float epsilon, int64 feature_index);
+
   // Computes the value of a constant indicated by a
   // ComputationDataHandle.
   //
@@ -642,6 +711,14 @@ class ComputationBuilder {
   // to be used by a ComputationBuilder other than the parent ComputationBuilder
   // then Build() should be used instead.
   Computation BuildAndNoteError();
+
+  // Returns the first error that was encountered while building the
+  // computation. When an error is encountered, by default we return a vacuous
+  // ComputationDataHandle and inform the user of the error that occurred while
+  // building the computation when they make a final call to Build().
+  //
+  // See also set_die_immediately_on_error().
+  Status first_error() const { return first_error_; }
 
  private:
   using PopulateLiteral = std::function<void(Literal*)>;
@@ -710,6 +787,8 @@ class ComputationBuilder {
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
+  void AddOpMetadata(OpRequest* request) const;
+
   string name_;  // Name to use for the built computation.
 
   // The first error encountered while building the computation.
@@ -727,6 +806,14 @@ class ComputationBuilder {
 
   // Mode bit that indicates whether to die when a first error is encountered.
   bool die_immediately_on_error_{false};
+
+  // Mutex to guard against concurrent access to metadata_.
+  mutable tensorflow::mutex mutex_;
+
+  // The metadata to attach to each op. This is structured as a "modal"-like
+  // operation, in order to simplify client code (and not sprinkle this metadata
+  // throughout the TensorFlow op kernel implementations).
+  OpMetadata metadata_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationBuilder);
 };
@@ -804,7 +891,7 @@ template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR4FromArray4D(values, layout, literal);
+    LiteralUtil::PopulateR4FromArray4DWithLayout(values, layout, literal);
   });
 }
 

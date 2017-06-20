@@ -30,6 +30,8 @@ const char* GrpcWorkerMethodName(GrpcWorkerMethod id) {
   switch (id) {
     case GrpcWorkerMethod::kGetStatus:
       return "/tensorflow.WorkerService/GetStatus";
+    case GrpcWorkerMethod::kCreateWorkerSession:
+      return "/tensorflow.WorkerService/CreateWorkerSession";
     case GrpcWorkerMethod::kRegisterGraph:
       return "/tensorflow.WorkerService/RegisterGraph";
     case GrpcWorkerMethod::kDeregisterGraph:
@@ -47,6 +49,9 @@ const char* GrpcWorkerMethodName(GrpcWorkerMethod id) {
     case GrpcWorkerMethod::kTracing:
       return "/tensorflow.WorkerService/Tracing";
   }
+  // Shouldn't be reached.
+  LOG(FATAL) << "Invalid id: this line shouldn't be reached.";
+  return "invalid id";
 }
 
 namespace grpc {

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -54,6 +55,8 @@ class DotOperationTest : public ClientLibraryTestBase {
   template <typename Element>
   void TestNonsquareMatrixDot(bool lhs_row_major = false,
                               bool rhs_row_major = false);
+  void TestMatrixDot(int M, int K, int N, bool lhs_row_major = false,
+                     bool rhs_row_major = false);
 };
 
 XLA_TEST_F(DotOperationTest, ZeroElementVectorDotF32) {
@@ -63,6 +66,15 @@ XLA_TEST_F(DotOperationTest, ZeroElementVectorDotF32) {
   auto result = builder.Dot(lhs, rhs);
 
   ComputeAndCompareR0<float>(&builder, 0.0, {}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTest, TrivialMatrixVectorDotF32) {
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR2<float>({{3.0, 4.0}});
+  auto rhs = builder.ConstantR1<float>({3.0, 4.0});
+  auto result = builder.Dot(lhs, rhs);
+
+  ComputeAndCompareR1<float>(&builder, {25.0}, {}, error_spec_);
 }
 
 template <typename Element>
@@ -168,6 +180,84 @@ void DotOperationTest::TestSquareMatrixDot(bool lhs_row_major,
   Array2D<Element> expected({{15.0, -2.0}, {-25.0, 34.0}});
   ComputeAndCompareR2<Element>(
       &builder, expected, {lhs_handle.get(), rhs_handle.get()}, error_spec_);
+}
+
+void DotOperationTest::TestMatrixDot(int M, int K, int N, bool lhs_row_major,
+                                     bool rhs_row_major) {
+  std::unique_ptr<Array2D<float>> lhs_data =
+      MakeLinspaceArray2D(0.0, 1.0, M, K);
+  std::unique_ptr<Literal> lhs_lit = LiteralUtil::CreateR2FromArray2DWithLayout(
+      *lhs_data,
+      LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(lhs_row_major)));
+  auto lhs_handle = client_->TransferToServer(*lhs_lit).ConsumeValueOrDie();
+
+  std::unique_ptr<Array2D<float>> rhs_data =
+      MakeLinspaceArray2D(0.0, 1.0, K, N);
+  std::unique_ptr<Literal> rhs_lit = LiteralUtil::CreateR2FromArray2DWithLayout(
+      *rhs_data,
+      LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(rhs_row_major)));
+  auto rhs_handle = client_->TransferToServer(*rhs_lit).ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto prim_type = primitive_util::NativeToPrimitiveType<float>();
+  auto result = builder.Dot(
+      builder.Parameter(0, ShapeUtil::MakeShape(prim_type, {M, K}), "lhs"),
+      builder.Parameter(1, ShapeUtil::MakeShape(prim_type, {K, N}), "rhs"));
+
+  std::unique_ptr<Array2D<float>> expected =
+      ReferenceUtil::MatmulArray2D(*lhs_data, *rhs_data);
+
+  ComputeAndCompareR2<float>(&builder, *expected,
+                             {lhs_handle.get(), rhs_handle.get()},
+                             ErrorSpec(0.3, 3e-3));
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_12_117_7_MinorToMajorTF) {
+  TestMatrixDot(12, 117, 7, true, false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_12_117_7_MinorToMajorFT) {
+  TestMatrixDot(12, 117, 7, false, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_12_117_7_MinorToMajorTT) {
+  TestMatrixDot(12, 117, 7, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_12_117_7_MinorToMajorFF) {
+  TestMatrixDot(12, 117, 7, false, false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_270_270_520_MinorToMajorTT) {
+  TestMatrixDot(270, 270, 520, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_270_270_520_MinorToMajorTF) {
+  TestMatrixDot(270, 270, 520, true, false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_270_270_520_MinorToMajorFT) {
+  TestMatrixDot(270, 270, 520, false, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_270_270_520_MinorToMajorFF) {
+  TestMatrixDot(270, 270, 520, false, false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_260_3_520_MinorToMajorTT) {
+  TestMatrixDot(269, 3, 520, true, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_260_3_520_MinorToMajorTF) {
+  TestMatrixDot(260, 3, 520, true, false);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_260_3_520_MinorToMajorFT) {
+  TestMatrixDot(260, 3, 520, false, true);
+}
+
+XLA_TEST_F(DotOperationTest, MatrixDotF32_260_3_520_MinorToMajorFF) {
+  TestMatrixDot(260, 3, 520, false, false);
 }
 
 XLA_TEST_F(DotOperationTest, SquareMatrixDotF32MinorToMajorFF) {
@@ -277,9 +367,9 @@ XLA_TEST_F(DotOperationTest, BatchMatMul) {
   std::vector<xla::ComputationDataHandle> out_slices;
   for (int i = 0; i < 4; ++i) {
     // Slice off individual matrices and reshape to 2D tensors.
-    auto x_slice = builder.Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2});
+    auto x_slice = builder.Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
     x_slice = builder.Reshape(x_slice, {0, 1, 2}, {2, 2});
-    auto y_slice = builder.Slice(y_flat, {i, 0, 0}, {i + 1, 2, 2});
+    auto y_slice = builder.Slice(y_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
     y_slice = builder.Reshape(y_slice, {0, 1, 2}, {2, 2});
 
     auto out = builder.Dot(x_slice, y_slice);
@@ -371,6 +461,7 @@ TEST_F(DotOperationTest, TransposeFolding) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendLayoutUtilFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuRuntimeFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);

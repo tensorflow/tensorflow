@@ -19,11 +19,10 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -56,10 +56,13 @@ namespace tensorflow {
           << device_ordinal;
 
   // These are no-ops if they have already been done previously for
-  // this device_name/jit_device_name pair.
-  XlaOpRegistry::RegisterJitKernels();
-  XlaOpRegistry::RegisterJitDevice(device_name, jit_device_name,
-                                   /*requires_jit=*/true);
+  // this device_name/compilation_device_name pair.
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = jit_device_name;
+  registration.requires_compilation = true;
+  registration.enable_jit_by_default = false;
+  registration.compile_resource_ops = true;
+  XlaOpRegistry::RegisterCompilationDevice(device_name, registration);
 
   auto platform = perftools::gputools::MultiPlatformManager::PlatformWithName(
       platform_name);
@@ -106,12 +109,23 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
 
 string XlaDevice::Metadata::DebugString() { return "XLA device metadata"; }
 
+/* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
+                                           Metadata** metadata) {
+  ResourceMgr* rm = ctx->resource_manager();
+  if (rm == nullptr) {
+    return errors::Internal("No resource manager.");
+  }
+  TF_RETURN_IF_ERROR(
+      rm->Lookup<Metadata>(rm->default_container(), "xla_metadata", metadata));
+  return Status::OK();
+}
+
 XlaDevice::XlaDevice(const SessionOptions& options,
                      const DeviceAttributes& attrs, int device_ordinal,
                      const DeviceType& jit_device_name,
                      perftools::gputools::Platform* platform,
                      Allocator* xla_allocator)
-    : LocalDevice(options, attrs, xla_allocator),
+    : LocalDevice(options, attrs),
       device_ordinal_(device_ordinal),
       jit_device_name_(jit_device_name),
       xla_allocator_(xla_allocator),
@@ -161,6 +175,10 @@ Status XlaDevice::FillContextMap(const Graph* graph,
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(1) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
+  // When TraceMe profiling is off (which is the default), the
+  // following TraceMe constructor is simply a conditional test of
+  // false value. Measurements show that its overhead is negligible.
+  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string());
   op_kernel->Compute(context);
 }
 
@@ -168,6 +186,7 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
   VLOG(1) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
+  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string());
   op_kernel->ComputeAsync(context, done);
 }
 
@@ -203,6 +222,7 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device) {
+  XlaOpRegistry::RegisterCompilationKernels();
   XlaDeviceOpRegistrations* registrations = new XlaDeviceOpRegistrations;
   auto dummy_factory = [](OpKernelConstruction* context) -> OpKernel* {
     return new XlaDeviceDummyOp(context);

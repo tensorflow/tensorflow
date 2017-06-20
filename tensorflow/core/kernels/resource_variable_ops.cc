@@ -37,12 +37,18 @@ REGISTER_RESOURCE_HANDLE_KERNEL(Var);
 template <typename Device, typename T>
 class ReadVariableOp : public OpKernel {
  public:
-  ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
 
-  void Compute(OpKernelContext* ctx) {
+  void Compute(OpKernelContext* ctx) override {
     Var* variable = nullptr;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    ResourceHandle handle = HandleFromInput(ctx, 0);
+    OP_REQUIRES(
+        ctx, LookupResource(ctx, handle, &variable).ok(),
+        errors::NotFound("Attempted to read a nonexistent variable. "
+                         "This usually means that the variable was not "
+                         "initialized. Container: ",
+                         handle.container(), ", name: ", handle.name()));
+
     core::ScopedUnref s(variable);
     // TODO(apassos): It's possible to do copy-on-write here instead of always
     // copying by coordinating with the writing code. Do this. This will also
@@ -56,6 +62,65 @@ class ReadVariableOp : public OpKernel {
     copy_functor(ctx->eigen_device<Device>(), out->flat<T>(), t.flat<T>());
   }
 };
+
+// TODO(apassos) register for the GPU as well.
+#define REGISTER_KERNELS(type)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("ReadVariableOp").Device(DEVICE_CPU).TypeConstraint<type>("dtype"), \
+      ReadVariableOp<Eigen::ThreadPoolDevice, type>);
+
+TF_CALL_ALL_TYPES(REGISTER_KERNELS);
+TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#if GOOGLE_CUDA
+
+#define REGISTER_GPU_KERNELS(type)                             \
+  namespace functor {                                          \
+  template <>                                                  \
+  void DenseUpdate<GPUDevice, type, ASSIGN>::operator()(       \
+      const GPUDevice& d, typename TTypes<type>::Flat lhs,     \
+      typename TTypes<type>::ConstFlat rhs);                   \
+  extern template struct DenseUpdate<GPUDevice, type, ASSIGN>; \
+  }                                                            \
+  REGISTER_KERNEL_BUILDER(Name("VarHandleOp")                  \
+                              .Device(DEVICE_GPU)              \
+                              .HostMemory("resource")          \
+                              .TypeConstraint<type>("dtype"),  \
+                          ResourceHandleOp<Var>)               \
+  REGISTER_KERNEL_BUILDER(Name("ReadVariableOp")               \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("resource"),         \
+                          ReadVariableOp<GPUDevice, type>);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+#undef REGISTER_GPU_KERNELS
+#endif  // GOOGLE_CUDA
+
+class UnsafeReadVariableOp : public OpKernel {
+ public:
+  explicit UnsafeReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Var* variable = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    core::ScopedUnref s(variable);
+    ctx->set_output(0, *variable->tensor());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("_UnsafeReadVariable").Device(DEVICE_CPU),
+                        UnsafeReadVariableOp);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(
+    Name("_UnsafeReadVariable").Device(DEVICE_GPU).HostMemory("resource"),
+    UnsafeReadVariableOp);
+
+#endif  // GOOGLE_CUDA
 
 class DestroyResourceOp : public OpKernel {
  public:
@@ -80,41 +145,18 @@ class DestroyResourceOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
                         DestroyResourceOp);
 
-// TODO(apassos) register for the GPU as well.
-#define REGISTER_KERNELS(type)                                                 \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("ReadVariableOp").Device(DEVICE_CPU).TypeConstraint<type>("dtype"), \
-      ReadVariableOp<Eigen::ThreadPoolDevice, type>);
-
-TF_CALL_ALL_TYPES(REGISTER_KERNELS);
-TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
-#undef REGISTER_KERNELS
-
-#if GOOGLE_CUDA
-#define REGISTER_GPU_KERNELS(type)                                             \
-  namespace functor {                                                          \
-  template <>                                                                  \
-  void DenseUpdate<GPUDevice, type, ASSIGN>::operator()(                       \
-      const GPUDevice& d, typename TTypes<type>::Flat lhs,                     \
-      typename TTypes<type>::ConstFlat rhs);                                   \
-  extern template struct DenseUpdate<GPUDevice, type, ASSIGN>;                 \
-  }                                                                            \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("ReadVariableOp").Device(DEVICE_GPU).TypeConstraint<type>("dtype"), \
-      ReadVariableOp<GPUDevice, type>);
-
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
-#undef REGISTER_GPU_KERNELS
-#endif  // GOOGLE_CUDA
-
 template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {
  public:
-  AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
   }
 
   void Compute(OpKernelContext* context) override {
+    OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
+                errors::InvalidArgument(
+                    "Variable and value dtypes don't match; respectively, ",
+                    dtype_, " and ", context->input(1).dtype()));
     Var* variable = nullptr;
     OP_REQUIRES_OK(
         context,
@@ -141,6 +183,18 @@ class AssignVariableOp : public OpKernel {
     // ownership.
     mutex_lock ml(*variable->mu());
     const Tensor& value = context->input(1);
+    // TODO(apassos): should check that the declared shapes are compatible
+    // somewhere, probably.
+    if (!variable->tensor()->shape().IsSameSize(value.shape())) {
+      PersistentTensor unused;
+      Tensor* tmp;
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+      OP_REQUIRES_OK(context, context->allocate_persistent(
+                                  dtype_, value.shape(), &unused, &tmp, attr));
+      *variable->tensor() = *tmp;
+    }
     functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
     copy_functor(context->eigen_device<Device>(), variable->tensor()->flat<T>(),
                  value.flat<T>());
@@ -162,10 +216,18 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
-#define REGISTER_GPU_KERNELS(type)                            \
-  REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")            \
-                              .Device(DEVICE_GPU)             \
-                              .TypeConstraint<type>("dtype"), \
+#define REGISTER_GPU_KERNELS(type)                             \
+  namespace functor {                                          \
+  template <>                                                  \
+  void DenseUpdate<GPUDevice, type, ASSIGN>::operator()(       \
+      const GPUDevice& d, typename TTypes<type>::Flat lhs,     \
+      typename TTypes<type>::ConstFlat rhs);                   \
+  extern template struct DenseUpdate<GPUDevice, type, ASSIGN>; \
+  }                                                            \
+  REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")             \
+                              .Device(DEVICE_GPU)              \
+                              .TypeConstraint<type>("dtype")   \
+                              .HostMemory("resource"),         \
                           AssignVariableOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
@@ -229,10 +291,12 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
   }                                                                      \
   REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
                               .Device(DEVICE_GPU)                        \
+                              .HostMemory("resource")                    \
                               .TypeConstraint<type>("dtype"),            \
                           AssignUpdateVariableOp<GPUDevice, type, ADD>); \
   REGISTER_KERNEL_BUILDER(Name("AssignSubVariableOp")                    \
                               .Device(DEVICE_GPU)                        \
+                              .HostMemory("resource")                    \
                               .TypeConstraint<type>("dtype"),            \
                           AssignUpdateVariableOp<GPUDevice, type, SUB>);
 
@@ -244,10 +308,11 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
                         IsResourceInitialized<Var>);
 
 #if GOOGLE_CUDA
-
-REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .HostMemory("is_initialized"),
                         IsResourceInitialized<Var>);
-
 #endif  // GOOGLE_CUDA
 
 template <typename Device, typename T, typename Index>
@@ -303,6 +368,7 @@ class ResourceGatherOp : public OpKernel {
 #define REGISTER_GATHER_FULL(dev, type, index_type)                    \
   REGISTER_KERNEL_BUILDER(Name("ResourceGather")                       \
                               .Device(DEVICE_##dev)                    \
+                              .HostMemory("resource")                  \
                               .TypeConstraint<type>("dtype")           \
                               .TypeConstraint<index_type>("Tindices"), \
                           ResourceGatherOp<dev##Device, type, index_type>)
@@ -370,6 +436,7 @@ class ResourceScatterUpdateOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                             \
       Name(name)                                                       \
           .Device(DEVICE_##dev)                                        \
+          .HostMemory("resource")                                      \
           .TypeConstraint<type>("dtype")                               \
           .TypeConstraint<index_type>("Tindices"),                     \
       ResourceScatterUpdateOp<dev##Device, type, index_type, op>)

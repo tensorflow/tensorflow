@@ -99,7 +99,7 @@ Status DeviceFactory::AddDevices(const SessionOptions& options,
         "CPU Factory not registered.  Did you link in threadpool_device?");
   }
   size_t init_size = devices->size();
-  cpu_factory->CreateDevices(options, name_prefix, devices);
+  TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(options, name_prefix, devices));
   if (devices->size() == init_size) {
     return errors::NotFound("No CPU devices are available in this process");
   }
@@ -126,7 +126,7 @@ Device* DeviceFactory::NewDevice(const string& type,
   SessionOptions opt = options;
   (*opt.config.mutable_device_count())[type] = 1;
   std::vector<Device*> devices;
-  device_factory->CreateDevices(opt, name_prefix, &devices);
+  TF_CHECK_OK(device_factory->CreateDevices(opt, name_prefix, &devices));
   CHECK_EQ(devices.size(), size_t{1});
   return devices[0];
 }

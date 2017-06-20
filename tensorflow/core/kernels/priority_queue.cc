@@ -272,7 +272,13 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       // an optimized case where the queue 'knows' what attributes to
       // use, and plumbs them through here.
       Tensor element;
-      ctx->allocate_temp(component_dtypes_[i], ManyOutShape(i, 0), &element);
+      Status status = ctx->allocate_temp(component_dtypes_[i],
+                                         ManyOutShape(i, 0), &element);
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+        callback(Tuple());
+        return;
+      }
       tuple.emplace_back(element);
     }
     callback(tuple);
@@ -332,15 +338,16 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
             for (; s > 0; --s) {
               if (attempt->tuple.empty()) {
                 // Only allocate tuple when we have something to dequeue
-                // so we don't use exceessive memory when there are many
+                // so we don't use excessive memory when there are many
                 // blocked dequeue attempts waiting.
                 attempt->tuple.reserve(num_components());
                 for (int i = 0; i < num_components(); ++i) {
                   const TensorShape shape =
                       ManyOutShape(i, attempt->elements_requested);
                   Tensor element;
-                  attempt->context->allocate_temp(component_dtypes_[i], shape,
-                                                  &element);
+                  attempt->context->SetStatus(attempt->context->allocate_temp(
+                      component_dtypes_[i], shape, &element));
+                  if (!attempt->context->status().ok()) return kComplete;
                   attempt->tuple.emplace_back(element);
                 }
               }

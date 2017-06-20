@@ -49,14 +49,36 @@ public final class Session implements AutoCloseable {
 
   /** Construct a new session with the associated {@link Graph}. */
   public Session(Graph g) {
+    this(g, null);
+  }
+
+  /**
+   * Construct a new session with the associated {@link Graph} and configuration options.
+   *
+   * @param g The {@link Graph} the created Session will operate on.
+   * @param config Configuration parameters for the session specified as a serialized <a
+   *     href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">ConfigProto</a>
+   *     protocol buffer.
+   * @throws IllegalArgumentException if the config is not a valid serialization of the ConfigProto
+   *     protocol buffer.
+   */
+  public Session(Graph g, byte[] config) {
     graph = g;
     Graph.Reference r = g.ref();
     try {
-      nativeHandle = allocate(r.nativeHandle());
+      nativeHandle =
+          (config == null) ? allocate(r.nativeHandle()) : allocate2(r.nativeHandle(), null, config);
       graphRef = g.ref();
     } finally {
       r.close();
     }
+  }
+
+  /** Wrap an existing session with the associated {@link Graph}. */
+  Session(Graph g, long nativeHandle) {
+    graph = g;
+    this.nativeHandle = nativeHandle;
+    graphRef = g.ref();
   }
 
   /**
@@ -98,10 +120,15 @@ public final class Session implements AutoCloseable {
     /**
      * Avoid evaluating {@code operation} and substitute {@code t} for the value it produces.
      *
-     * <p>This method is a shorthand for {@code feed(operation, 0, t)}.
+     * @param operation Is either the string name of the operation, in which case this method is a
+     *     shorthand for {@code feed(operation, 0)}, or it is a string of the form
+     *     <tt>operation_name:output_index</tt> , in which case this method acts like {@code
+     *     feed(operation_name, output_index)}. These colon-separated names are commonly used in the
+     *     {@code SignatureDef} protocol buffer messages that are included in {@link
+     *     SavedModelBundle#metaGraphDef()}.
      */
     public Runner feed(String operation, Tensor t) {
-      return feed(operation, 0, t);
+      return feed(parseOutput(operation), t);
     }
 
     /**
@@ -121,12 +148,27 @@ public final class Session implements AutoCloseable {
     }
 
     /**
+     * Use {@code t} instead of the Tensor referred to by executing the operation referred to by
+     * {@code output}.
+     */
+    public Runner feed(Output o, Tensor t) {
+      inputs.add(o);
+      inputTensors.add(t);
+      return this;
+    }
+
+    /**
      * Make {@link #run()} return the output of {@code operation}.
      *
-     * <p>This method is a shorthand for {@code fetch(operation, 0)}
+     * @param operation Is either the string name of the operation, in which case this method is a
+     *     shorthand for {@code fetch(operation, 0)}, or it is a string of the form
+     *     <tt>operation_name:output_index</tt> , in which case this method acts like {@code
+     *     fetch(operation_name, output_index)}. These colon-separated names are commonly used in
+     *     the {@code SignatureDef} protocol buffer messages that are included in {@link
+     *     SavedModelBundle#metaGraphDef()}.
      */
     public Runner fetch(String operation) {
-      return fetch(operation, 0);
+      return fetch(parseOutput(operation));
     }
 
     /**
@@ -143,14 +185,28 @@ public final class Session implements AutoCloseable {
       return this;
     }
 
+    /** Makes {@link #run()} return the Tensor referred to by {@code output}. */
+    public Runner fetch(Output output) {
+      outputs.add(output);
+      return this;
+    }
+
     /**
-     * Make {@link #run()} execute {@code operation}, but not return the evaluated {@link Tensor}.
+     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
      */
     public Runner addTarget(String operation) {
       Operation op = operationByName(operation);
       if (op != null) {
         targets.add(op);
       }
+      return this;
+    }
+
+    /**
+     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
+     */
+    public Runner addTarget(Operation operation) {
+      targets.add(operation);
       return this;
     }
 
@@ -226,6 +282,7 @@ public final class Session implements AutoCloseable {
       for (Output o : outputs) {
         outputOpHandles[idx] = o.op().getUnsafeNativeHandle();
         outputOpIndices[idx] = o.index();
+        idx++;
       }
       idx = 0;
       for (Operation op : targets) {
@@ -298,6 +355,20 @@ public final class Session implements AutoCloseable {
       return op;
     }
 
+    private Output parseOutput(String opName) {
+      int colon = opName.lastIndexOf(':');
+      if (colon == -1 || colon == opName.length() - 1) {
+        return new Output(operationByName(opName), 0);
+      }
+      try {
+        String op = opName.substring(0, colon);
+        int index = Integer.parseInt(opName.substring(colon + 1));
+        return new Output(operationByName(op), index);
+      } catch (NumberFormatException e) {
+        return new Output(operationByName(opName), 0);
+      }
+    }
+
     private ArrayList<Output> inputs = new ArrayList<Output>();
     private ArrayList<Tensor> inputTensors = new ArrayList<Tensor>();
     private ArrayList<Output> outputs = new ArrayList<Output>();
@@ -340,7 +411,10 @@ public final class Session implements AutoCloseable {
   private long nativeHandle;
   private int numActiveRuns;
 
+  // TODO(ashankar): Remove after TensorFlow 1.2 has been released with allocate2().
   private static native long allocate(long graphHandle);
+
+  private static native long allocate2(long graphHandle, String target, byte[] config);
 
   private static native void delete(long handle);
 

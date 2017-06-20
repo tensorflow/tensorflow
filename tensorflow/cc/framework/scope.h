@@ -23,15 +23,18 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/ops.h"
-#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
+class Graph;
 class GraphDef;
 class NodeBuilder;
 struct CompositeOpScopes;
+
+/// @addtogroup core
+/// @{
 
 /// A `Scope` object represents a set of related TensorFlow ops that have the
 /// same properties such as a common name prefix.
@@ -91,6 +94,10 @@ struct CompositeOpScopes;
 /// op-constructor functions on the same `Scope` object.
 class Scope {
  public:
+  Scope(const Scope& other);
+  ~Scope();
+  Scope& operator=(const Scope& other);
+
   // The following functions are for users making graphs. They return brand new
   // scopes, or scopes derived from an existing scope object.
 
@@ -161,20 +168,21 @@ class Scope {
   // START_SKIP_DOXYGEN
 
   /// Update the builder with properties accumulated in this scope.
+  // TODO(skyewm): NodeBuilder is not part of public API
   void UpdateBuilder(NodeBuilder* builder) const;
   // END_SKIP_DOXYGEN
 
   CompositeOpScopes GetCompositeOpScopes(const string& composite_op_name) const;
 
-  bool ok() const { return status_->ok(); }
+  bool ok() const;
 
-  Graph* graph() const { return graph_.get(); }
+  // TODO(skyewm): Graph is not part of public API
+  Graph* graph() const;
 
-  ShapeRefiner* refiner() const { return refiner_.get(); }
+  // TODO(skyewm): Graph is not part of public API
+  std::shared_ptr<Graph> graph_as_shared_ptr() const;
 
-  std::shared_ptr<Graph> graph_as_shared_ptr() const { return graph_; }
-
-  Status status() const { return *status_; }
+  Status status() const;
 
   /// If status() is Status::OK(), convert the Graph object stored in this scope
   /// to a GraphDef proto and return Status::OK(). Otherwise, return the error
@@ -193,74 +201,15 @@ class Scope {
   Status ToGraph(Graph* g) const;
   // END_SKIP_DOXYGEN
 
-  const std::vector<Operation>& control_deps() const { return control_deps_; }
+  const std::vector<Operation>& control_deps() const;
 
  private:
-  // Tag types to choose the constructor to dispatch.
-  struct Tags {
-    enum class ScopeName;
-    enum class OpName;
-    enum class ControlDeps;
-    enum class Device;
-    enum class SingleUseScope;
-    enum class ExitOnError;
-    enum class KernelLabel;
-    enum class Colocate;
-  };
-
-  // A NameMap is used to keep track of suffixes for names used in a scope. A
-  // name that has not been used so far in a scope will get no suffix. Later
-  // uses of the same name will get suffixes _1, _2, _3, etc. Multiple scopes
-  // can share the same NameMap. For instance, a new scope created using
-  // WithControlDependencies() should would share the same NameMap with the
-  // parent.
-  typedef std::unordered_map<string, int> NameMap;
-
-  Scope(Graph* graph, Status* status, NameMap* name_map, ShapeRefiner* refiner);
-  Scope(const Scope& other, Tags::ScopeName, const string& name,
-        bool copy_names);
-  Scope(const Scope& other, Tags::OpName, const string& name,
-        const string& op_name);
-  Scope(const Scope& other, Tags::ControlDeps,
-        std::vector<Operation> control_deps, bool clear_control_deps);
-  Scope(const Scope& other, Tags::Device, const string& device);
-  Scope(const Scope& other, Tags::SingleUseScope, const string& op_name);
-  Scope(const Scope& other, Tags::ExitOnError);
-  Scope(const Scope& other, Tags::KernelLabel, const string& kernel_label);
-  Scope(const Scope& other, Tags::Colocate, const Operation& colocate_with_op,
-        bool clear_colocations);
-
-  std::unordered_set<string> GetColocationConstraints(
-      const Operation& colocate_with_op) const;
-
-  // Helper functions to get a unique names.
-  string GetUniqueName(const string& prefix, bool check_single_use) const;
-  string GetNameForOp(const string& default_name) const;
-
-  bool single_use_scope() const { return scope_used_ != nullptr; }
-
-  // The graph, status, and name maps are shared by all child scopes
-  // created from a single 'root' scope. A root scope is created by calling the
-  // Scope::NewRootScope function, which creates a new graph, a new status and
-  // the name maps.
-  std::shared_ptr<Graph> graph_ = nullptr;
-  std::shared_ptr<Status> status_ = nullptr;
-  std::shared_ptr<NameMap> name_map_ = nullptr;
-  std::shared_ptr<ShapeRefiner> refiner_ = nullptr;
-
-  // If scope_used_ is not nullptr, op_name_ should be empty and
-  // GetUniqueNameForOp can only be called once on this scope. More calls to
-  // GetUniqueNameForOp will cause an error status to be set on this scope.
-  std::shared_ptr<bool> scope_used_ = nullptr;
-
-  const std::vector<Operation> control_deps_;
-
-  const string name_ = "";
-  const string op_name_ = "";
-  const bool exit_on_error_ = false;
-  const string kernel_label_ = "";
-  const string device_ = "";
-  const std::unordered_set<string> colocation_constraints_;
+  friend class InternalScope;
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+  Impl* impl() { return impl_.get(); }
+  const Impl* impl() const { return impl_.get(); }
+  explicit Scope(Impl*);
 };
 
 /// A helper struct to hold the scopes that would be used by a function
@@ -272,6 +221,8 @@ struct CompositeOpScopes {
   /// Scope to be used for creating the last op.
   Scope last;
 };
+
+/// @}
 
 }  // namespace tensorflow
 

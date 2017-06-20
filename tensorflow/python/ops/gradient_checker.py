@@ -218,13 +218,9 @@ def _compute_gradient(x,
         x_shape, i_shape)
     x_data = x_init_value
   else:
-    if t == dtypes.float16:
-      dtype = np.float16
-    elif t == dtypes.float32:
-      dtype = np.float32
-    else:
-      dtype = np.float64
-    x_data = np.asfarray(np.random.random_sample(x_shape), dtype=dtype)
+    x_data = np.random.random_sample(x_shape).astype(t.as_numpy_dtype)
+    if t.is_complex:
+      x_data.imag = np.random.random_sample(x_shape)
 
   jacob_t = _compute_theoretical_jacobian(
       x, x_shape, x_data, dy, y_shape, dx, extra_feed_dict=extra_feed_dict)

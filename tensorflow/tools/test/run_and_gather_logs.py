@@ -68,8 +68,10 @@ def main(unused_args):
   name = FLAGS.name
   test_name = FLAGS.test_name
   test_args = FLAGS.test_args
-  test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(name, test_name,
-                                                                test_args)
+  benchmark_type = FLAGS.benchmark_type
+  test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(
+      name, test_name=test_name, test_args=test_args,
+      benchmark_type=benchmark_type)
 
   # Additional bits we receive from bazel
   test_results.build_configuration.CopyFrom(gather_build_configuration())
@@ -102,6 +104,11 @@ if __name__ == "__main__":
       "--name", type=str, default="", help="Benchmark target identifier.")
   parser.add_argument(
       "--test_name", type=str, default="", help="Test target to run.")
+  parser.add_argument(
+      "--benchmark_type",
+      type=str,
+      default="",
+      help="BenchmarkType enum string (benchmark type).")
   parser.add_argument(
       "--test_args",
       type=str,

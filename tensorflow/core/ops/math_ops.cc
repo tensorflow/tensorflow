@@ -99,10 +99,10 @@ individual slices can optionally be adjointed (to adjoint a matrix
 means to transpose and conjugate it) before multiplication by setting
 the `adj_x` or `adj_y` flag to `True`, which are by default `False`.
 
-The input tensors `x` and `y` are 3-D or higher with shape `[..., r_x, c_x]`
+The input tensors `x` and `y` are 2-D or higher with shape `[..., r_x, c_x]`
 and `[..., r_y, c_y]`.
 
-The output tensor is 3-D or higher with shape `[..., r_o, c_o]`, where:
+The output tensor is 2-D or higher with shape `[..., r_o, c_o]`, where:
 
     r_o = c_x if adj_x else r_x
     c_o = r_y if adj_y else c_y
@@ -111,8 +111,8 @@ It is computed as:
 
     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
 
-x: 3-D or higher with shape `[..., r_x, c_x]`.
-y: 3-D or higher with shape `[..., r_y, c_y]`.
+x: 2-D or higher with shape `[..., r_x, c_x]`.
+y: 2-D or higher with shape `[..., r_y, c_y]`.
 output: 3-D or higher with shape `[..., r_o, c_o]`
 adj_x: If `True`, adjoint the slices of `x`. Defaults to `False`.
 adj_y: If `True`, adjoint the slices of `y`. Defaults to `False`.
@@ -291,6 +291,14 @@ I.e., \\(y = \log_e x\\).
 REGISTER_OP("Log1p").UNARY_COMPLEX().Doc(R"doc(
 Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
+)doc");
+
+REGISTER_OP("Sinh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic sine of x element-wise.
+)doc");
+
+REGISTER_OP("Cosh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic cosine of x element-wise.
 )doc");
 
 REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
@@ -595,7 +603,9 @@ REGISTER_OP("Mod")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. This emulates C semantics in that
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
 
 *NOTE*: `Mod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -623,12 +633,11 @@ REGISTER_OP("TruncateMod")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns element-wise remainder of division. This emulates C semantics where
+Returns element-wise remainder of division. This emulates C semantics in that
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
 
-true, this follows C semantics in that the result here is consistent
-with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
-
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+*NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -662,13 +671,12 @@ Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 
 The upper regularized incomplete Gamma function is defined as:
 
-```
-Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
-```
+\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\)
+
 where
-```
-Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt
-```
+
+\\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+
 is the upper incomplete Gama function.
 
 Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
@@ -686,13 +694,13 @@ Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 
 The lower regularized incomplete Gamma function is defined as:
 
-```
-P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
-```
+
+\\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+
 where
-```
-gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt
-```
+
+\\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+
 is the lower incomplete Gamma function.
 
 Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
@@ -710,9 +718,9 @@ Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 
 The Hurwitz zeta function is defined as:
 
-```
-\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}
-```
+
+\\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
+
 )doc");
 
 REGISTER_OP("Polygamma")
@@ -726,10 +734,25 @@ Compute the polygamma function \\(\psi^{(n)}(x)\\).
 
 The polygamma function is defined as:
 
-```
-\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
-```
+
+\\(\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)\\)
+
 where \\(\psi(x)\\) is the digamma function.
+)doc");
+
+REGISTER_OP("Atan2")
+    .Input("y: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
+This is the angle \( \theta \in [-\pi, \pi] \) such that
+\[ x = r \cos(\theta) \]
+and
+\[ y = r \sin(\theta) \]
+where \(r = \sqrt(x^2 + y^2) \).
 )doc");
 
 REGISTER_OP("Betainc")
@@ -775,14 +798,14 @@ Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 
 The regularized incomplete beta integral is defined as:
 
-```
-I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}
-```
+
+\\(I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}\\)
+
 where
 
-```
-B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt
-```
+
+\\(B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt\\)
+
 
 is the incomplete beta function and \\(B(a, b)\\) is the *complete*
 beta function.
@@ -858,6 +881,18 @@ Returns the truth value of (x != y) element-wise.
 
 #undef EQUALITY_COMPARISON
 
+REGISTER_OP("ApproximateEqual")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: bool")
+    .SetIsCommutative()
+    .Attr("T: numbertype")
+    .Attr("tolerance: float = 0.00001")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Returns the truth value of abs(x-y) < tolerance element-wise.
+)doc");
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("LogicalNot")
@@ -900,18 +935,33 @@ REGISTER_OP("Select")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data_1 = c->input_handle_shapes_and_types(1);
+      auto* handle_data_2 = c->input_handle_shapes_and_types(2);
       // Merge handle shape and dtype if applicable.
-      if (c->input_handle_dtype(1) != c->input_handle_dtype(2)) {
-        // TODO(apassos) resolve this in the manner of b/32476923
-        return errors::InvalidArgument(
-            "Trying to merge handles pointing to different dtypes.");
+      if (handle_data_1 != nullptr && handle_data_2 != nullptr) {
+        const auto size = handle_data_1->size();
+        std::vector<shape_inference::ShapeAndType> merged_handle_data(size);
+        if (size != handle_data_2->size()) {
+          return errors::InvalidArgument(
+              "Trying to merge handles pointing to different numbers of "
+              "tensors.");
+        }
+
+        for (int i = 0; i < size; ++i) {
+          const shape_inference::ShapeAndType& s1 = (*handle_data_1)[i];
+          const shape_inference::ShapeAndType& s2 = (*handle_data_2)[i];
+          if (s1.dtype != s2.dtype) {
+            // TODO(apassos) resolve this in the manner of b/32476923
+            return errors::InvalidArgument(
+                "Trying to merge handles pointing to different dtypes.");
+          }
+          merged_handle_data[i].dtype = s1.dtype;
+          TF_RETURN_IF_ERROR(
+              c->Merge(s1.shape, s2.shape, &merged_handle_data[i].shape));
+        }
+
+        c->set_output_handle_shapes_and_types(0, merged_handle_data);
       }
-      c->set_output_handle_dtype(0, c->input_handle_dtype(1));
-      ShapeHandle output_handle_shape;
-      TF_RETURN_IF_ERROR(c->Merge(c->input_handle_shape(1),
-                                  c->input_handle_shape(2),
-                                  &output_handle_shape));
-      c->set_output_handle_shape(0, output_handle_shape);
 
       // The inputs 'then' and 'else' must have the same shape.
       ShapeHandle data = c->input(1);
@@ -988,15 +1038,14 @@ element to copy from `t` and `e`.
 
 For example:
 
-```prettyprint
+```python
 # 'condition' tensor is [[True,  False]
 #                        [False, True]]
 # 't' is [[1, 2],
 #         [3, 4]]
 # 'e' is [[5, 6],
 #         [7, 8]]
-select(condition, t, e) ==> [[1, 6],
-                             [7, 4]]
+select(condition, t, e)  # => [[1, 6], [7, 4]]
 
 
 # 'condition' tensor is [True, False]
@@ -1059,6 +1108,9 @@ The inputs must be two-dimensional matrices and the inner dimension of "a" must
 match the outer dimension of "b". This op is optimized for the case where at
 least one of "a" or "b" is sparse. The breakeven for using this versus a dense
 matrix multiply on one platform was 30% zero values in the sparse matrix.
+
+The gradient computation of this operation will only take advantage of sparsity
+in the input gradient when that gradient comes from a Relu.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1244,6 +1296,8 @@ REGISTER_OP("ArgMax")
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
+Note that in case of ties the identity of the return value is not guaranteed.
+
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.
 )doc");
@@ -1257,6 +1311,8 @@ REGISTER_OP("ArgMin")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
+
+Note that in case of ties the identity of the return value is not guaranteed.
 
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.
@@ -1384,15 +1440,17 @@ REGISTER_OP("SegmentSum")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 
-Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)
-for an explanation of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \sum_j data_j\\) where sum is over `j` such
 that `segment_ids[j] == i`.
 
+If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentSum.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentSum.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1412,17 +1470,18 @@ REGISTER_OP("SegmentMean")
     .Doc(R"doc(
 Computes the mean along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
 over `j` such that `segment_ids[j] == i` and `N` is the total number of
 values summed.
 
+If the mean is empty for a given segment ID `i`, `output[i] = 0`.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentMean.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMean.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1442,16 +1501,17 @@ REGISTER_OP("SegmentProd")
     .Doc(R"doc(
 Computes the product along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \prod_j data_j\\) where the product is over `j` such
 that `segment_ids[j] == i`.
 
+If the product is empty for a given segment ID `i`, `output[i] = 1`.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentProd.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1471,16 +1531,17 @@ REGISTER_OP("SegmentMin")
     .Doc(R"doc(
 Computes the minimum along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
 that `segment_ids[j] == i`.
 
+If the min is empty for a given segment ID `i`, `output[i] = 0`.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentMin.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMin.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1500,15 +1561,17 @@ REGISTER_OP("SegmentMax")
     .Doc(R"doc(
 Computes the maximum along segments of a tensor.
 
-Read [the section on Segmentation](../../api_docs/python/math_ops.md#segmentation)
-for an explanation of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
 that `segment_ids[j] == i`.
 
+If the max is empty for a given segment ID `i`, `output[i] = 0`.
+
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/SegmentMax.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentMax.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1529,9 +1592,8 @@ REGISTER_OP("UnsortedSegmentSum")
     .Doc(R"doc(
 Computes the sum along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Computes a tensor such that
 `(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
@@ -1544,7 +1606,7 @@ If the sum is empty for a given segment ID `i`, `output[i] = 0`.
 `num_segments` should equal the number of distinct segment IDs.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 </div>
 
 segment_ids: A tensor whose shape is a prefix of `data.shape`.
@@ -1554,7 +1616,6 @@ output: Has same shape as data, except for the first `segment_ids.rank`
   `num_segments`.
 
 )doc");
-
 
 REGISTER_OP("UnsortedSegmentMax")
     .Input("data: T")
@@ -1567,11 +1628,10 @@ REGISTER_OP("UnsortedSegmentMax")
     .Doc(R"doc(
 Computes the Max along segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
-This operator is similar to the [unsorted segment sum operator](../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+This operator is similar to the [unsorted segment sum operator](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
 Instead of computing the sum over segments, it computes the maximum
 such that:
 
@@ -1582,7 +1642,7 @@ If the maximum is empty for a given segment ID `i`, it outputs the smallest poss
  `output[i] = numeric_limits<T>::min()`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../../images/UnsortedSegmentSum.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1603,31 +1663,30 @@ REGISTER_OP("SparseSegmentSum")
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
 dimension, selecting a subset of dimension 0, specified by `indices`.
 
 For example:
 
-```prettyprint
+```python
 c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
 
 # Select two rows, one segment.
 tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
-  ==> [[0 0 0 0]]
+# => [[0 0 0 0]]
 
 # Select two rows, two segment.
 tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
-  ==> [[ 1  2  3  4]
-       [-1 -2 -3 -4]]
+# => [[ 1  2  3  4]
+#     [-1 -2 -3 -4]]
 
 # Select all rows, two segments.
 tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
-  ==> [[0 0 0 0]
-       [5 6 7 8]]
+# => [[0 0 0 0]
+#     [5 6 7 8]]
 
 # Which is equivalent to:
 tf.segment_sum(c, tf.constant([0, 0, 1]))
@@ -1652,9 +1711,8 @@ REGISTER_OP("SparseSegmentMean")
     .Doc(R"doc(
 Computes the mean along sparse segments of a tensor.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
 dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -1702,9 +1760,8 @@ Computes the sum along sparse segments of a tensor divided by the sqrt of N.
 
 N is the size of the segment being reduced.
 
-Read [the section on
-Segmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation
-of segments.
+Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
+segments.
 
 indices: A 1-D tensor. Has same rank as `segment_ids`.
 
@@ -2008,112 +2065,6 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
 ```
 )doc");
 
-REGISTER_OP("FFT")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
-    })
-    .Doc(R"doc(
-Compute the 1-dimensional discrete Fourier Transform over the inner-most
-dimension of `input`.
-
-input: A complex64 tensor.
-output: A complex64 tensor of the same shape as `input`. The inner-most
-  dimension of `input` is replaced with its 1D Fourier Transform.
-)doc");
-
-REGISTER_OP("IFFT")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
-    })
-    .Doc(R"doc(
-Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
-dimension of `input`.
-
-input: A complex64 tensor.
-output: A complex64 tensor of the same shape as `input`. The inner-most
-  dimension of `input` is replaced with its inverse 1D Fourier Transform.
-)doc");
-
-REGISTER_OP("FFT2D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
-    })
-    .Doc(R"doc(
-Compute the 2-dimensional discrete Fourier Transform over the inner-most
-2 dimensions of `input`.
-
-input: A complex64 tensor.
-output: A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their 2D Fourier Transform.
-
-@compatibility(numpy)
-Equivalent to np.fft2
-@end_compatibility
-)doc");
-
-REGISTER_OP("IFFT2D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
-    })
-    .Doc(R"doc(
-Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
-2 dimensions of `input`.
-
-input: A complex64 tensor.
-output: A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their inverse 2D Fourier Transform.
-
-@compatibility(numpy)
-Equivalent to np.ifft2
-@end_compatibility
-)doc");
-
-REGISTER_OP("FFT3D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
-    })
-    .Doc(R"doc(
-Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
-dimensions of `input`.
-
-input: A complex64 tensor.
-output: A complex64 tensor of the same shape as `input`. The inner-most 3
-  dimensions of `input` are replaced with their 3D Fourier Transform.
-
-@compatibility(numpy)
-Equivalent to np.fft3
-@end_compatibility
-)doc");
-
-REGISTER_OP("IFFT3D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
-    })
-    .Doc(R"doc(
-Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
-3 dimensions of `input`.
-
-input: A complex64 tensor.
-output: A complex64 tensor of the same shape as `input`. The inner-most 3
-  dimensions of `input` are replaced with their inverse 3D Fourier Transform.
-
-@compatibility(numpy)
-Equivalent to np.fft3
-@end_compatibility
-)doc");
-
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Cross")
@@ -2140,6 +2091,37 @@ product: Pairwise cross product of the vectors in `a` and `b`.
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("Bincount")
+    .Input("arr: int32")
+    .Input("size: int32")
+    .Input("weights: T")
+    .Attr("T: {int32, int64, float32, float64}")
+    .Output("bins: T")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->UnknownShapeOfRank(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Counts the number of occurrences of each value in an integer array.
+
+Outputs a vector with length `size` and the same dtype as `weights`. If
+`weights` are empty, then index `i` stores the number of times the value `i` is
+counted in `arr`. If `weights` are non-empty, then index `i` stores the sum of
+the value in `weights` at each index where the corresponding value in `arr` is
+`i`.
+
+Values in `arr` outside of the range [0, size) are ignored.
+
+arr: int32 `Tensor`.
+size: non-negative int32 scalar `Tensor`.
+weights: is an int32, int64, float32, or float64 `Tensor` with the same
+    shape as `arr`, or a length-0 `Tensor`, in which case it acts as all weights
+    equal to 1.
+
+bins: 1D `Tensor` with length equal to `size`. The counts or summed weights for
+    each value in the range [0, size).
+)doc");
+
 REGISTER_OP("Cumsum")
     .Input("x: T")
     .Input("axis: Tidx")
@@ -2154,26 +2136,31 @@ Compute the cumulative sum of the tensor `x` along `axis`.
 
 By default, this op performs an inclusive cumsum, which means that the first
 element of the input is identical to the first element of the output:
-```prettyprint
-tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+
+```python
+tf.cumsum([a, b, c])  # => [a, a + b, a + b + c]
 ```
 
 By setting the `exclusive` kwarg to `True`, an exclusive cumsum is
 performed instead:
-```prettyprint
-tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+
+```python
+tf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumsum is performed in the
 opposite direction:
-```prettyprint
-tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+
+```python
+tf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]
 ```
+
 This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
-```prettyprint
-tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
+
+```python
+tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
 ```
 )doc");
 
@@ -2191,26 +2178,31 @@ Compute the cumulative product of the tensor `x` along `axis`.
 
 By default, this op performs an inclusive cumprod, which means that the first
 element of the input is identical to the first element of the output:
-```prettyprint
-tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+
+```python
+tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
 ```
 
 By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
 performed instead:
-```prettyprint
-tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
+
+```python
+tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumprod is performed in the
 opposite direction:
-```prettyprint
-tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
+
+```python
+tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
 ```
+
 This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
-```prettyprint
-tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
+
+```python
+tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
 ```
 )doc");
 
@@ -2291,6 +2283,35 @@ min_z: The float value that the lowest quantized output value represents.
 max_z: The float value that the highest quantized output value represents.
 
 *NOTE*: `QuantizedMul` supports limited forms of broadcasting. More about
+broadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+)doc");
+
+REGISTER_OP("QuantizedAdd")
+    .Input("x: T1")
+    .Input("y: T2")
+    .Input("min_x: float")
+    .Input("max_x: float")
+    .Input("min_y: float")
+    .Input("max_y: float")
+    .Output("z: Toutput")
+    .Output("min_z: float")
+    .Output("max_z: float")
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Toutput: quantizedtype = DT_QINT32")
+    .SetIsCommutative()
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Returns x + y element-wise, working on quantized buffers.
+
+min_x: The float value that the lowest quantized `x` value represents.
+max_x: The float value that the highest quantized `x` value represents.
+min_y: The float value that the lowest quantized `y` value represents.
+max_y: The float value that the highest quantized `y` value represents.
+min_z: The float value that the lowest quantized output value represents.
+max_z: The float value that the highest quantized output value represents.
+
+*NOTE*: `QuantizedAdd` supports limited forms of broadcasting. More about
 broadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -2417,30 +2438,35 @@ output_max: the computed max output.
 
 )doc");
 
-// Deprecated ops:
-REGISTER_OP("BatchFFT")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .Deprecated(15, "Use FFT");
-REGISTER_OP("BatchIFFT")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .Deprecated(15, "Use IFFT");
-REGISTER_OP("BatchFFT2D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .Deprecated(15, "Use FFT2D");
-REGISTER_OP("BatchIFFT2D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .Deprecated(15, "Use IFFT2D");
-REGISTER_OP("BatchFFT3D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .Deprecated(15, "Use FFT3D");
-REGISTER_OP("BatchIFFT3D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .Deprecated(15, "Use IFFT3D");
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Bucketize")
+    .Input("input: T")
+    .Output("output: int32")
+    .Attr("T: {int32, int64, float, double}")
+    .Attr("boundaries: list(float)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Bucketizes 'input' based on 'boundaries'.
+
+For example, if the inputs are
+    boundaries = [0, 10, 100]
+    input = [[-5, 10000]
+             [150,   10]
+             [5,    100]]
+
+then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+
+input: Any shape of Tensor contains with int or float type.
+boundaries: A sorted list of floats gives the boundary of the buckets.
+output: Same shape with 'input', each value of input replaced with bucket index.
+
+@compatibility(numpy)
+Equivalent to np.digitize.
+@end_compatibility
+)doc");
 
 }  // namespace tensorflow

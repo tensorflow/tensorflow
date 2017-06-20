@@ -138,17 +138,17 @@ def piecewise_constant(x, boundaries, values, name=None):
     # comparisons, for example if floats are converted to integers.
     boundaries = ops.convert_n_to_tensor(boundaries)
     for b in boundaries:
-      if b.dtype != x.dtype:
+      if b.dtype.base_dtype != x.dtype.base_dtype:
         raise ValueError(
             "Boundaries (%s) must have the same dtype as x (%s)." % (
-                b.dtype, x.dtype))
+                b.dtype.base_dtype, x.dtype.base_dtype))
     # TODO(rdipietro): Ensure that boundaries' elements are strictly increasing.
     values = ops.convert_n_to_tensor(values)
     for v in values[1:]:
-      if v.dtype != values[0].dtype:
+      if v.dtype.base_dtype != values[0].dtype.base_dtype:
         raise ValueError(
             "Values must have elements all with the same dtype (%s vs %s)." % (
-                values[0].dtype, v.dtype))
+                values[0].dtype.base_dtype, v.dtype.base_dtype))
 
     pred_fn_pairs = {}
     pred_fn_pairs[x <= boundaries[0]] = lambda: values[0]
@@ -226,7 +226,7 @@ def polynomial_decay(learning_rate, global_step, decay_steps,
     end_learning_rate: A scalar `float32` or `float64` `Tensor` or a
       Python number.  The minimal end learning rate.
     power: A scalar `float32` or `float64` `Tensor` or a
-      Python number.  The power of the polynomial. Defaults to sqrt, i.e. 0.5.
+      Python number.  The power of the polynomial. Defaults to linear, 1.0.
     cycle: A boolean, whether or not it should cycle beyond decay_steps.
     name: String.  Optional name of the operation. Defaults to
       'PolynomialDecay'.

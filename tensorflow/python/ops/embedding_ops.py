@@ -26,6 +26,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+# Imports gradient definitions.
+from tensorflow.python.ops import data_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -33,21 +35,21 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 
-def _do_gather(params, ids, validate_indices=True, name=None):
+def _do_gather(params, ids, name=None):
   """Deals with doing gather differently for resource variables."""
   if isinstance(params, resource_variable_ops.ResourceVariable):
     return params.sparse_read(ids, name=name)
-  return array_ops.gather(
-      params, ids, name=name, validate_indices=validate_indices)
+  return array_ops.gather(params, ids, name=name)
 
 
 def embedding_lookup(params, ids, partition_strategy="mod", name=None,
-                     validate_indices=True, max_norm=None):
+                     validate_indices=True,  # pylint: disable=unused-argument
+                     max_norm=None):
   """Looks up `ids` in a list of embedding tensors.
 
   This function is used to perform parallel lookups on the list of
   tensors in `params`.  It is a generalization of
-  [`tf.gather()`](../../api_docs/python/array_ops.md#gather), where `params` is
+  @{tf.gather}, where `params` is
   interpreted as a partitioning of a large embedding tensor.  `params` may be
   a `PartitionedVariable` as returned by using `tf.get_variable()` with a
   partitioner.
@@ -82,7 +84,10 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
     name: A name for the operation (optional).
-    validate_indices: Whether or not to validate gather indices.
+    validate_indices: DEPRECATED. If this operation is assigned to CPU, values
+      in `indices` are always validated to be within range.  If assigned to GPU,
+      out-of-bound indices result in safe but unspecified behavior, which may
+      include raising an error.
     max_norm: If not None, embedding values are l2-normalized to the value of
      max_norm.
 
@@ -92,20 +97,31 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
   Raises:
     ValueError: If `params` is empty.
   """
-  if params is None or params == []:  # pylint: disable=g-explicit-bool-comparison
+  if params is None or params in ((), []):
     raise ValueError("Need at least one param")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
+
   def maybe_normalize(x):
-    if max_norm is not None:
-      if x.get_shape().ndims is not None:
-        ndims = x.get_shape().ndims
-      else:
-        ndims = array_ops.size(array_ops.shape(x))
-      return clip_ops.clip_by_norm(x, max_norm, axes=list(range(1, ndims)))
-    return x
+    """Normalizes the embeddings in x if max_norm is not None."""
+    if max_norm is None:
+      return x
+    static = True
+    ids_rank = ops.convert_to_tensor(ids).get_shape().ndims
+    if ids_rank is None:
+      ids_rank = array_ops.rank(ids)
+      static = False
+    x_rank = x.get_shape().ndims
+    if x_rank is None:
+      x_rank = array_ops.rank(x)
+      static = False
+    return clip_ops.clip_by_norm(
+        x, max_norm,
+        axes=list(range(ids_rank, x_rank)) if static
+        else math_ops.range(ids_rank, x_rank))
+
   with ops.name_scope(name, "embedding_lookup", params + [ids]) as name:
     np = len(params)  # Number of partitions
     # Preserve the resource variable status to avoid accidental dense reads.
@@ -114,9 +130,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
     if np == 1:
       with ops.colocate_with(params[0]):
-        return maybe_normalize(
-            _do_gather(
-                params[0], ids, validate_indices=validate_indices, name=name))
+        return maybe_normalize(_do_gather(params[0], ids, name=name))
     else:
       ids = ops.convert_to_tensor(ids, name="ids")
       flat_ids = array_ops.reshape(ids, [-1])
@@ -176,9 +190,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       partitioned_result = []
       for p in xrange(np):
         with ops.colocate_with(params[p]):
-          partitioned_result.append(
-              _do_gather(params[p], gather_ids[p],
-                         validate_indices=validate_indices))
+          partitioned_result.append(_do_gather(params[p], gather_ids[p]))
       # Stitch these back together
       ret = data_flow_ops.dynamic_stitch(pindices, partitioned_result,
                                          name=name)

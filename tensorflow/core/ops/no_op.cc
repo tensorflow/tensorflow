@@ -18,8 +18,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::InferenceContext;
-
 REGISTER_OP("NoOp")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc("Does nothing. Only useful as a placeholder for control edges.");

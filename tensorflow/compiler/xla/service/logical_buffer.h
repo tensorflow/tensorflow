@@ -16,21 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LOGICAL_BUFFER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LOGICAL_BUFFER_H_
 
+#include <functional>
 #include <iosfwd>
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-
-struct HashLogicalBuffer;
 
 // Class describing a contiguous sequence of elements (ie, C array) which form
 // the components of Shaped values in XLA. XLA arrays are trivially a
@@ -83,6 +84,8 @@ struct HashLogicalBuffer;
 //   LogicalBuffer(%tuple_constant, {1, 1})  // Holds value "43"
 class LogicalBuffer {
  public:
+  TF_LIB_GTL_DEFINE_INT_TYPE(Color, int64);
+
   // Id is a unique identifier for the LogicalBuffer to facilitate efficient
   // collections of LogicalBuffers with stable iteration order.
   // LogicalBuffers are typically created and accessed through
@@ -90,11 +93,13 @@ class LogicalBuffer {
   // unique value.
   using Id = int64;
 
-  // Function which returns the size of a logical buffer in bytes.
+  // Functions which return the size and alignment of a logical buffer in bytes.
   using SizeFunction = std::function<int64(const LogicalBuffer&)>;
+  using AlignmentFunction = std::function<int64(const LogicalBuffer&)>;
 
-  LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id)
-      : instruction_(instruction), index_(index), id_(id) {}
+  LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id,
+                Color color)
+      : instruction_(instruction), index_(index), id_(id), color_(color) {}
 
   Id id() const { return id_; }
 
@@ -104,6 +109,11 @@ class LogicalBuffer {
   // Return the index within the output of the instruction where the buffer is
   // defined. Index used defined as in ShapeUtil::GetSubshape()
   const ShapeIndex& index() const { return index_; }
+
+  // Return the color of the logical buffer. Differently colored buffers can
+  // not be parts of the same allocation.
+  Color color() const { return color_; }
+  void set_color(Color color) { color_ = color; }
 
   // Return the shape of the buffer. This reference points into the shape field
   // of the instruction defining the buffer.  Therefore, the returned shape will
@@ -126,27 +136,22 @@ class LogicalBuffer {
   bool IsArray() const { return ShapeUtil::IsArray(shape()); }
 
   string ToString() const;
+  LogicalBufferProto ToProto(const SizeFunction& size_fn) const;
+
+  // Returns the LogicalBufferProto::Location that serializes the given
+  // instruction and index.
+  static LogicalBufferProto::Location ToLocationProto(
+      const HloInstruction& instruction, const ShapeIndex& index);
 
  private:
-  friend struct HashLogicalBuffer;
   HloInstruction* instruction_;
   ShapeIndex index_;
   Id id_;
+  Color color_;
 
   // Similar to HLO constructs (HloInstruction, etc), pointers are used for
   // comparison to equality, so disable all copying.
   TF_DISALLOW_COPY_AND_ASSIGN(LogicalBuffer);
-};
-
-struct HashLogicalBuffer {
-  size_t operator()(const LogicalBuffer& b) const {
-    std::hash<const HloInstruction*> hasher;
-    size_t h = hasher(b.instruction_);
-    for (int i = 0; i < b.index_.size(); i++) {
-      h += static_cast<size_t>(b.index_[i] << i);
-    }
-    return h;
-  }
 };
 
 std::ostream& operator<<(std::ostream& out, const LogicalBuffer& buffer);

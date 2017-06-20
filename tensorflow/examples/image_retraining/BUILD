@@ -5,6 +5,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_binary(
     name = "retrain",
     srcs = [
@@ -22,12 +24,29 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "label_image",
+    srcs = [
+        "label_image.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_test(
     name = "retrain_test",
     size = "small",
     srcs = [
+        "label_image.py",
         "retrain.py",
         "retrain_test.py",
+    ],
+    data = [
+        ":data/labels.txt",
+        "//tensorflow/examples/label_image:data/grace_hopper.jpg",
     ],
     srcs_version = "PY2AND3",
     deps = [

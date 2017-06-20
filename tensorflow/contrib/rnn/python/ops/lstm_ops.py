@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import abc
 
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell
+from tensorflow.contrib.rnn.ops import gen_lstm_ops
 from tensorflow.contrib.rnn.python.ops import fused_rnn_cell
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 
@@ -70,7 +71,7 @@ def _lstm_block_cell(x,
   cs = ci .* i + cs_prev .* f
   cs = clip(cs, cell_clip)
 
-  o = sigmoid(cs * wco + f)
+  o = sigmoid(cs * wco + o)
   co = tanh(cs)
   h = co .* o
   ```
@@ -119,7 +120,7 @@ def _lstm_block_cell(x,
     wcf = wci
 
   # pylint: disable=protected-access
-  return _lstm_ops_so.lstm_block_cell(
+  return gen_lstm_ops.lstm_block_cell(
       x=x,
       cs_prev=cs_prev,
       h_prev=h_prev,
@@ -204,7 +205,7 @@ def _block_lstm(seq_len_max,
     wcf = wci
 
   # pylint: disable=protected-access
-  i, cs, f, o, ci, co, h = _lstm_ops_so.block_lstm(
+  i, cs, f, o, ci, co, h = gen_lstm_ops.block_lstm(
       seq_len_max=seq_len_max,
       x=array_ops.stack(x),
       cs_prev=cs_prev,
@@ -247,7 +248,7 @@ def _LSTMBlockCellGrad(op, *grad):
     raise ValueError("cell_size from `cs_prev` should not be None.")
 
   (cs_prev_grad, dicfo, wci_grad, wcf_grad,
-   wco_grad) = _lstm_ops_so.lstm_block_cell_grad(
+   wco_grad) = gen_lstm_ops.lstm_block_cell_grad(
        x,
        cs_prev,
        h_prev,
@@ -299,7 +300,7 @@ def _BlockLSTMGrad(op, *grad):
   h_grad = grad[6]
 
   (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wco_grad, wcf_grad,
-   b_grad) = _lstm_ops_so.block_lstm_grad(
+   b_grad) = gen_lstm_ops.block_lstm_grad(
        seq_len_max,
        x,
        cs_prev,
@@ -324,7 +325,7 @@ def _BlockLSTMGrad(op, *grad):
           wcf_grad, b_grad]
 
 
-class LSTMBlockCell(core_rnn_cell.RNNCell):
+class LSTMBlockCell(rnn_cell_impl.RNNCell):
   """Basic LSTM recurrent network cell.
 
   The implementation is based on: http://arxiv.org/abs/1409.2329.
@@ -332,8 +333,8 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
   We add `forget_bias` (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
 
-  Unlike `core_rnn_cell.LSTMCell`, this is a monolithic op and should be much
-  faster.  The weight and bias matrixes should be compatible as long as the
+  Unlike `rnn_cell_impl.LSTMCell`, this is a monolithic op and should be much
+  faster.  The weight and bias matrices should be compatible as long as the
   variable scope matches.
   """
 
@@ -352,8 +353,8 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
     self._names = {
-        "W": "weights",
-        "b": "biases",
+        "W": "kernel",
+        "b": "bias",
         "wci": "w_i_diag",
         "wco": "w_o_diag",
         "wcf": "w_f_diag",
@@ -362,7 +363,7 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return (self._num_units,) * 2
+    return rnn_cell_impl.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
@@ -401,7 +402,8 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
           forget_bias=self._forget_bias,
           use_peephole=self._use_peephole)
 
-      return (h, (cs, h))
+      new_state = rnn_cell_impl.LSTMStateTuple(cs, h)
+      return h, new_state
 
 
 class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
@@ -544,7 +546,8 @@ class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
         # Input was a list, so return a list
         outputs = array_ops.unstack(outputs)
 
-      return outputs, (final_cell_state, final_output)
+      final_state = rnn_cell_impl.LSTMStateTuple(final_cell_state, final_output)
+      return outputs, final_state
 
   def _gather_states(self, data, indices, batch_size):
     """Produce `out`, s.t. out(i, j) = data(indices(i), i, j)."""
@@ -565,7 +568,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
   We add forget_bias (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
 
-  The variable naming is consistent with `core_rnn_cell.LSTMCell`.
+  The variable naming is consistent with `rnn_cell_impl.LSTMCell`.
   """
 
   def __init__(self,
@@ -621,10 +624,10 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       time_len = array_ops.shape(inputs)[0]
     input_size = inputs_shape[2].value
     w = vs.get_variable(
-        "weights",
+        "kernel",
         [input_size + self._num_units, self._num_units * 4], dtype=dtype)
     b = vs.get_variable(
-        "biases", [w.get_shape().with_rank(2)[1]],
+        "bias", [w.get_shape().with_rank(2)[1]],
         initializer=init_ops.constant_initializer(0.0),
         dtype=dtype)
     if self._use_peephole:
@@ -639,7 +642,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     else:
       max_seq_len = math_ops.to_int64(math_ops.reduce_max(sequence_length))
 
-    _, cs, _, _, _, _, h = _lstm_ops_so.block_lstm(
+    _, cs, _, _, _, _, h = gen_lstm_ops.block_lstm(
         seq_len_max=max_seq_len,
         x=inputs,
         cs_prev=initial_cell_state,

@@ -63,8 +63,8 @@ using llvm_ir::SetToFirstInsertPoint;
 namespace cpu {
 
 IrEmitter::IrEmitter(
-    const HloModule& hlo_module, const HloModuleConfig& hlo_module_config,
-    const BufferAssignment& assignment, llvm::Module* llvm_module,
+    const HloModule& hlo_module, const BufferAssignment& assignment,
+    llvm::Module* llvm_module,
     const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx)
     : assignment_(assignment),
       module_(llvm_module),
@@ -72,8 +72,10 @@ IrEmitter::IrEmitter(
       ir_builder_(llvm_module->getContext()),
       hlo_to_profile_idx_(hlo_to_profile_idx),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
-      hlo_module_config_(hlo_module_config) {
-  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(hlo_module_config));
+      hlo_module_config_(hlo_module.config()) {
+  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
+      /*fast_math_enabled=*/hlo_module_config_.debug_options()
+          .xla_enable_fast_math()));
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
@@ -201,7 +203,8 @@ void IrEmitter::InitializeIrFunction(const string& function_name,
     if (&argument == retval) {
       continue;
     }
-    compute_function_->setDoesNotAlias(argument.getArgNo() + 1);
+    compute_function_->addAttribute(argument.getArgNo() + 1,
+                                    llvm::Attribute::NoAlias);
   }
 
   ir_builder_.SetInsertPoint(llvm::BasicBlock::Create(
@@ -506,7 +509,7 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window,
 
         llvm_ir::IrArray::Index input_index(index.size());
         llvm::Value* in_bounds_condition = nullptr;
-        for (int64 i = 0; i < index.size(); ++i) {
+        for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* strided_index = ir_builder_.CreateNSWMul(
               index[i], ir_builder_.getInt64(window.dimensions(i).stride()));
           input_index[i] = ir_builder_.CreateNSWSub(
@@ -1111,7 +1114,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
         llvm_ir::IrArray::Index input_index = reduced_dims_index;
         llvm_ir::IrArray::Index::const_iterator it = index.begin();
 
-        for (int64 i = 0; i < input_index.size(); ++i) {
+        for (size_t i = 0; i < input_index.size(); ++i) {
           if (input_index[i] == nullptr) {
             input_index[i] = *it++;
           }
@@ -1134,6 +1137,41 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
 Status IrEmitter::HandleSend(HloInstruction* send) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Send is not implemented on CPU. See b/33942983.");
+}
+
+Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
+  if (ShapeUtil::IsScalar(slice->shape())) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                        EmitTargetAddressForOp(slice));
+    emitted_value_[slice] = target_address;
+    return EmitMemcpy(*operand, *slice);
+  }
+  return DefaultAction(slice);
+}
+
+Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
+                                     HloInstruction* operand,
+                                     HloInstruction* /*start_indices*/) {
+  if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                        EmitTargetAddressForOp(dynamic_slice));
+    emitted_value_[dynamic_slice] = target_address;
+    return EmitMemcpy(*operand, *dynamic_slice);
+  }
+  return DefaultAction(dynamic_slice);
+}
+
+Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
+                                           HloInstruction* /*operand*/,
+                                           HloInstruction* update,
+                                           HloInstruction* /*start_indices*/) {
+  if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                        EmitTargetAddressForOp(dynamic_update_slice));
+    emitted_value_[dynamic_update_slice] = target_address;
+    return EmitMemcpy(*update, *dynamic_update_slice);
+  }
+  return DefaultAction(dynamic_update_slice);
 }
 
 Status IrEmitter::HandleRecv(HloInstruction* recv) {
@@ -1180,7 +1218,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   // output_index := edge_padding_low + operand_index * (interior_padding + 1)
   const PaddingConfig& padding_config = pad->padding_config();
   llvm_ir::IrArray::Index output_index;
-  for (int64 i = 0; i < operand_index.size(); ++i) {
+  for (size_t i = 0; i < operand_index.size(); ++i) {
     llvm::Value* offset = ir_builder_.CreateMul(
         operand_index[i],
         ir_builder_.getInt64(padding_config.dimensions(i).interior_padding() +
@@ -1265,13 +1303,12 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   }
 }
 
-Status IrEmitter::HandleCall(
-    HloInstruction* call, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* computation) {
+Status IrEmitter::HandleCall(HloInstruction* call) {
+  HloComputation* computation = call->to_apply();
   llvm::Function* call_ir_function = FindOrDie(emitted_functions_, computation);
 
   std::vector<llvm::Value*> parameter_addresses;
-  for (HloInstruction* operand : operands) {
+  for (const HloInstruction* operand : call->operands()) {
     parameter_addresses.push_back(GetEmittedValueFor(operand));
   }
 
@@ -1294,12 +1331,12 @@ Status IrEmitter::HandleCustomCall(
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
           i8_ptr_type, ir_builder_.getInt32(operands.size()),
           "cc_operands_alloca", &ir_builder_);
-  for (int i = 0; i < operands.size(); ++i) {
+  for (size_t i = 0; i < operands.size(); ++i) {
     const HloInstruction* operand = operands[i];
     llvm::Value* operand_as_i8ptr =
         ir_builder_.CreatePointerCast(GetEmittedValueFor(operand), i8_ptr_type);
     llvm::Value* slot_in_operands_alloca = ir_builder_.CreateInBoundsGEP(
-        operands_alloca, {ir_builder_.getInt32(i)});
+        operands_alloca, {ir_builder_.getInt64(i)});
     ir_builder_.CreateStore(operand_as_i8ptr, slot_in_operands_alloca);
   }
   auto* custom_call_ir_function =
@@ -1322,32 +1359,29 @@ Status IrEmitter::HandleCustomCall(
   return Status::OK();
 }
 
-Status IrEmitter::HandleWhile(HloInstruction* xla_while, HloInstruction* init,
-                              HloComputation* condition, HloComputation* body) {
+Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   // Precondition: Condition computation must return a scalar bool.
+  HloComputation* condition = xla_while->while_condition();
   TF_RET_CHECK(ShapeUtil::IsScalar(condition->root_instruction()->shape()) &&
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
-  // Check that all while-related buffers share an allocation.
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshape(
+  // Check that all while-related buffers share an allocation slice.
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [this, &xla_while](const Shape& /*subshape*/,
                          const ShapeIndex& index) -> Status {
         auto check = [this](const HloInstruction* a, const HloInstruction* b,
                             const ShapeIndex& index) {
-          BufferAllocation::Index index_a =
-              assignment_.GetUniqueAllocation(a, index)
-                  .ConsumeValueOrDie()
-                  ->index();
-          BufferAllocation::Index index_b =
-              assignment_.GetUniqueAllocation(b, index)
-                  .ConsumeValueOrDie()
-                  ->index();
-          if (index_a != index_b) {
+          const BufferAllocation::Slice slice_a =
+              assignment_.GetUniqueSlice(a, index).ConsumeValueOrDie();
+          const BufferAllocation::Slice slice_b =
+              assignment_.GetUniqueSlice(b, index).ConsumeValueOrDie();
+          if (slice_a != slice_b) {
             return InternalError(
-                "instruction %s does not share allocation with "
-                "instruction %s ",
-                a->ToString().c_str(), b->ToString().c_str());
+                "instruction %s %s does not share slice with "
+                "instruction %s %s",
+                a->ToString().c_str(), slice_a.ToString().c_str(),
+                b->ToString().c_str(), slice_b.ToString().c_str());
           }
           return Status::OK();
         };
@@ -1364,12 +1398,14 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while, HloInstruction* init,
       }));
 
   // Set emitted value to that of 'init' with which it shares an allocation.
+  const HloInstruction* init = xla_while->operand(0);
   emitted_value_[xla_while] = GetEmittedValueFor(init);
 
   // The called computation should have been emitted previously.
   llvm::Function* condition_ir_function =
       FindOrDie(emitted_functions_, condition);
-  llvm::Function* body_ir_function = FindOrDie(emitted_functions_, body);
+  llvm::Function* body_ir_function =
+      FindOrDie(emitted_functions_, xla_while->while_body());
 
   // Generating:
   //   while (Condition(while_result)) {
@@ -1582,44 +1618,49 @@ llvm::Value* IrEmitter::GetExecutableRunOptionsArgument() {
 }
 
 llvm::Value* IrEmitter::EmitTempBufferPointer(
-    BufferAllocation::Index temp_buf_index, const Shape& target_shape) {
+    const BufferAllocation::Slice& slice, const Shape& target_shape) {
   llvm::Type* element_type = IrShapeType(target_shape);
   // The alignment and number of bytes within the temporary buffer is determined
   // by the maximal shape as determined by buffer assignment.
-  const BufferAllocation& allocation =
-      assignment_.GetAllocation(temp_buf_index);
+  const BufferAllocation& allocation = assignment_.GetAllocation(slice.index());
   if (allocation.is_thread_local()) {
     // Thread-local allocations should only be assigned a single buffer.
-    CHECK_EQ(1, allocation.assigned_buffers().size());
-    const Shape& shape = allocation.assigned_buffers()[0]->shape();
+    const auto& assigned_buffers = allocation.assigned_buffers();
+    CHECK_EQ(1, assigned_buffers.size());
+    const Shape& shape = assigned_buffers.begin()->first->shape();
 
     llvm::AllocaInst*& tempbuf_address = thread_local_buffers_[{
-        ir_builder_.GetInsertBlock()->getParent(), temp_buf_index}];
+        ir_builder_.GetInsertBlock()->getParent(), slice}];
     if (tempbuf_address == nullptr) {
       tempbuf_address = llvm_ir::EmitAllocaAtFunctionEntry(
           IrShapeType(shape),
-          tensorflow::strings::StrCat("thread_local", temp_buf_index),
+          tensorflow::strings::StrCat("thread_local", slice.ToString()),
           &ir_builder_, MinimumAlignmentForShape(target_shape));
     }
     return ir_builder_.CreateBitCast(tempbuf_address,
                                      element_type->getPointerTo());
   }
 
-  llvm::Value* tempbuf_address_offset = llvm_ir::EmitBufferIndexingGEP(
-      GetTempBuffersArgument(), temp_buf_index, &ir_builder_);
-  llvm::LoadInst* tempbuf_address_untyped =
-      ir_builder_.CreateLoad(tempbuf_address_offset);
+  llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(
+      GetTempBuffersArgument(), slice.index(), &ir_builder_);
+  llvm::LoadInst* tempbuf_address_base =
+      ir_builder_.CreateLoad(tempbuf_address_ptr);
   //  Loading the address of a buffer is invariant of the point at which the
   //  load is executed in the program because we never reassign buffers.
-  tempbuf_address_untyped->setMetadata(
+  tempbuf_address_base->setMetadata(
       llvm::LLVMContext::MD_invariant_load,
-      llvm::MDNode::get(tempbuf_address_untyped->getContext(), /*MDs=*/{}));
-  llvm_ir::SetTbaaForInstruction(tempbuf_address_untyped, target_shape,
+      llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
+  llvm_ir::SetTbaaForInstruction(tempbuf_address_base, target_shape,
                                  /*is_pointer_to=*/true);
+  AttachAlignmentMetadataForLoad(tempbuf_address_base, allocation.size());
+  AttachDereferenceableMetadataForLoad(tempbuf_address_base, allocation.size());
 
-  AttachAlignmentMetadataForLoad(tempbuf_address_untyped, allocation.size());
-  AttachDereferenceableMetadataForLoad(tempbuf_address_untyped,
-                                       allocation.size());
+  llvm::Value* tempbuf_address_untyped = tempbuf_address_base;
+  if (slice.offset() > 0) {
+    // Adjust the address to account for the slice offset.
+    tempbuf_address_untyped = ir_builder_.CreateInBoundsGEP(
+        tempbuf_address_base, ir_builder_.getInt64(slice.offset()));
+  }
   return ir_builder_.CreateBitCast(tempbuf_address_untyped,
                                    element_type->getPointerTo());
 }
@@ -1657,13 +1698,13 @@ void IrEmitter::EmitArrayFunctionCallInto(
           ir_builder_.getInt32(parameter_addresses.size()),
           tensorflow::strings::StrCat(name, "_parameter_addresses"),
           &ir_builder_);
-  for (int i = 0; i < parameter_addresses.size(); ++i) {
+  for (size_t i = 0; i < parameter_addresses.size(); ++i) {
     llvm::Value* parameter_as_i8ptr = ir_builder_.CreateBitCast(
         parameter_addresses[i], ir_builder_.getInt8PtrTy(),
         llvm_ir::AsStringRef(tensorflow::strings::StrCat(name, "_parameter_", i,
                                                          "_address_as_i8ptr")));
     llvm::Value* slot_in_param_adresses = ir_builder_.CreateInBoundsGEP(
-        parameter_addresses_buffer, {ir_builder_.getInt32(i)});
+        parameter_addresses_buffer, {ir_builder_.getInt64(i)});
     ir_builder_.CreateStore(parameter_as_i8ptr, slot_in_param_adresses);
   }
 
@@ -1708,8 +1749,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
       llvm::AttrBuilder attr_builder;
       attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
       attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));
-      retval->addAttr(llvm::AttributeSet::get(
-          retval->getContext(), retval->getArgNo() + 1, attr_builder));
+      retval->addAttrs(attr_builder);
     }
     return ir_builder_.CreateBitCast(retval,
                                      IrShapeType(target_shape)->getPointerTo());
@@ -1717,9 +1757,9 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
 
   // For other nodes, we need the temporary buffer allocated for this node to
   // write the result into.
-  TF_ASSIGN_OR_RETURN(const BufferAllocation* allocation,
-                      assignment_.GetUniqueTopLevelAllocation(op));
-  return EmitTempBufferPointer(allocation->index(), target_shape);
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                      assignment_.GetUniqueTopLevelSlice(op));
+  return EmitTempBufferPointer(slice, target_shape);
 }
 
 Status IrEmitter::EmitTargetElementLoop(

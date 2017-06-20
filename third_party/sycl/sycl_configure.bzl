@@ -5,18 +5,20 @@
   * HOST_CXX_COMPILER:  The host C++ compiler
   * HOST_C_COMPILER:    The host C compiler
   * COMPUTECPP_TOOLKIT_PATH: The path to the ComputeCpp toolkit.
+  * PYTHON_LIB_PATH: The path to the python lib
 """
 
 _HOST_CXX_COMPILER = "HOST_CXX_COMPILER"
 _HOST_C_COMPILER= "HOST_C_COMPILER"
 _COMPUTECPP_TOOLKIT_PATH = "COMPUTECPP_TOOLKIT_PATH"
+_PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
 
 def _enable_sycl(repository_ctx):
   if "TF_NEED_OPENCL" in repository_ctx.os.environ:
     enable_sycl = repository_ctx.os.environ["TF_NEED_OPENCL"].strip()
     return enable_sycl == "1"
   return False
-  
+
 def auto_configure_fail(msg):
   """Output failure message when auto configuration fails."""
   red = "\033[0;31m"
@@ -55,7 +57,14 @@ def find_computecpp_root(repository_ctx):
     sycl_name = repository_ctx.os.environ[_COMPUTECPP_TOOLKIT_PATH].strip()
   if sycl_name.startswith("/"):
     return sycl_name
-  fail( "Cannot find SYCL compiler, please correct your path")
+  fail("Cannot find SYCL compiler, please correct your path")
+
+def find_python_lib(repository_ctx):
+  """Returns python path."""
+  if _PYTHON_LIB_PATH in repository_ctx.os.environ:
+    return repository_ctx.os.environ[_PYTHON_LIB_PATH].strip()
+  fail("Environment variable PYTHON_LIB_PATH was not specified re-run ./configure")
+
 
 def _check_lib(repository_ctx, toolkit_path, lib):
   """Checks if lib exists under sycl_toolkit_path or fail if it doesn't.
@@ -168,12 +177,13 @@ def _sycl_autoconf_imp(repository_ctx):
       "%{host_c_compiler}" : find_c(repository_ctx),
     })
 
-    computecpp_root = find_computecpp_root(repository_ctx);
+    computecpp_root = find_computecpp_root(repository_ctx)
     _check_dir(repository_ctx, computecpp_root)
 
     _tpl(repository_ctx, "crosstool:CROSSTOOL",
     {
       "%{computecpp_toolkit_path}" : computecpp_root,
+      "%{python_lib_path}" : find_python_lib(repository_ctx),
     })
 
     # symlink libraries

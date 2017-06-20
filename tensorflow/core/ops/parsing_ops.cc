@@ -20,7 +20,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
@@ -113,7 +112,11 @@ dense_defaults: A list of Ndense Tensors (some may be empty).
   when the example's feature_map lacks dense_key[j].  If an empty Tensor is
   provided for dense_defaults[j], then the Feature dense_keys[j] is required.
   The input type is inferred from dense_defaults[j], even when it's empty.
-  If dense_defaults[j] is not empty, its shape must match dense_shapes[j].
+  If dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,
+  then the shape of dense_defaults[j] must match that of dense_shapes[j].
+  If dense_shapes[j] has an undefined major dimension (variable strides dense
+  feature), dense_defaults[j] must contain a single element:
+  the padding element.
 dense_shapes: A list of Ndense shapes; the shapes of data in each Feature
   given in dense_keys.
   The number of elements in the Feature corresponding to dense_key[j]
@@ -121,6 +124,13 @@ dense_shapes: A list of Ndense shapes; the shapes of data in each Feature
   If dense_shapes[j] == (D0, D1, ..., DN) then the shape of output
   Tensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):
   The dense outputs are just the inputs row-stacked by batch.
+  This works for dense_shapes[j] = (-1, D1, ..., DN).  In this case
+  the shape of the output Tensor dense_values[j] will be
+  (|serialized|, M, D1, .., DN), where M is the maximum number of blocks
+  of elements of length D1 * .... * DN, across all minibatch entries
+  in the input.  Any minibatch entry with less than M blocks of elements of
+  length D1 * ... * DN will be padded with the corresponding default_value
+  scalar element along the second dimension.
 sparse_keys: A list of Nsparse string Tensors (scalars).
   The keys expected in the Examples' features associated with sparse values.
 sparse_types: A list of Nsparse types; the data types of data in each Feature
@@ -310,6 +320,7 @@ REGISTER_OP("DecodeCSV")
     .Output("output: OUT_TYPE")
     .Attr("OUT_TYPE: list({float,int32,int64,string})")
     .Attr("field_delim: string = ','")
+    .Attr("use_quote_delim: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {
@@ -336,14 +347,17 @@ records: Each string is a record/row in the csv and all records should have
   the same format.
 record_defaults: One tensor per column of the input record, with either a
   scalar default value for that column or empty if the column is required.
-field_delim: delimiter to separate fields in a record.
+field_delim: char delimiter to separate fields in a record.
+use_quote_delim: If false, treats double quotation marks as regular
+  characters inside of the string fields (ignoring RFC 4180, Section 2,
+  Bullet 5).
 output: Each tensor will have the same shape as records.
 )doc");
 
 REGISTER_OP("StringToNumber")
     .Input("string_tensor: string")
     .Output("output: out_type")
-    .Attr("out_type: {float, int32} = DT_FLOAT")
+    .Attr("out_type: {float, double, int32, int64} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to the specified numeric type.

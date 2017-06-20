@@ -51,6 +51,7 @@ OPTIMIZER_SUMMARIES = [
     "loss",
     "gradients",
     "gradient_norm",
+    "global_gradient_norm",
 ]
 
 
@@ -66,7 +67,8 @@ def optimize_loss(loss,
                   variables=None,
                   name=None,
                   summaries=None,
-                  colocate_gradients_with_ops=False):
+                  colocate_gradients_with_ops=False,
+                  increment_global_step=True):
   """Given loss and parameters for optimizer, returns a training op.
 
   Various ways of passing optimizers, include:
@@ -87,9 +89,10 @@ def optimize_loss(loss,
 
   Args:
     loss: Scalar `Tensor`.
-    global_step: Scalar int `Tensor`, step counter for each update. If not
-                 supplied, it will be fetched from the default graph (see
-                 `tf.contrib.framework.get_global_step` for details). If it's
+    global_step: Scalar int `Tensor`, step counter to update on each step
+                 unless `increment_global_step` is `False`. If not supplied,
+                 it will be fetched from the default graph (see
+                 `tf.train.get_global_step` for details). If it's
                  not been created, no step will be incremented with each weight
                  update. `learning_rate_decay_fn` requires `global_step`.
     learning_rate: float or `Tensor`, magnitude of update per each training
@@ -129,6 +132,10 @@ def optimize_loss(loss,
                complete list is in OPTIMIZER_SUMMARIES.
     colocate_gradients_with_ops: If True, try colocating gradients with the
                                  corresponding op.
+    increment_global_step: Whether to increment `global_step`. If your model
+      calls `optimize_loss` multiple times per training step (e.g. to optimize
+      different parts of the model), use this arg to avoid incrementing
+      `global_step` more times than necessary.
 
   Returns:
     Training op.
@@ -142,6 +149,7 @@ def optimize_loss(loss,
         * `clip_gradients` is not float or callable.
         * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
           `global_step` is available.
+        * `gradients` is empty
   """
   loss = ops.convert_to_tensor(loss)
   contrib_framework.assert_scalar(loss)
@@ -175,7 +183,7 @@ def optimize_loss(loss,
                          "Got %s of type %s" % (str(learning_rate),
                                                 str(type(learning_rate))))
     if summaries is None:
-      summaries = ["loss", "learning_rate"]
+      summaries = ["loss", "learning_rate", "global_gradient_norm"]
     else:
       for summ in summaries:
         if summ not in OPTIMIZER_SUMMARIES:
@@ -238,8 +246,12 @@ def optimize_loss(loss,
     # Multiply some gradients.
     if gradient_multipliers is not None:
       gradients = _multiply_gradients(gradients, gradient_multipliers)
+      if not gradients:
+        raise ValueError(
+            "Empty list of (gradient, var) pairs encountered. This is most "
+            "likely to be caused by an improper value of gradient_multipliers.")
 
-    if "gradient_norm" in summaries:
+    if "global_gradient_norm" in summaries or "gradient_norm" in summaries:
       summary.scalar("global_norm/gradient_norm",
                      clip_ops.global_norm(list(zip(*gradients))[0]))
 
@@ -249,8 +261,8 @@ def optimize_loss(loss,
     elif callable(clip_gradients):
       gradients = clip_gradients(gradients)
     elif clip_gradients is not None:
-      raise ValueError("Unknown type %s for clip_gradients" %
-                       type(clip_gradients))
+      raise ValueError(
+          "Unknown type %s for clip_gradients" % type(clip_gradients))
 
     # Add scalar summary for loss.
     if "loss" in summaries:
@@ -271,13 +283,16 @@ def optimize_loss(loss,
           summary.scalar("gradient_norm/%s" % var_name,
                          clip_ops.global_norm([grad_values]))
 
-    if clip_gradients is not None and "gradient_norm" in summaries:
+    if clip_gradients is not None and ("global_gradient_norm" in summaries or
+                                       "gradient_norm" in summaries):
       summary.scalar("global_norm/clipped_gradient_norm",
                      clip_ops.global_norm(list(zip(*gradients))[0]))
 
     # Create gradient updates.
     grad_updates = opt.apply_gradients(
-        gradients, global_step=global_step, name="train")
+        gradients,
+        global_step=global_step if increment_global_step else None,
+        name="train")
 
     # Ensure the train_tensor computes grad_updates.
     train_tensor = control_flow_ops.with_dependencies([grad_updates], loss)

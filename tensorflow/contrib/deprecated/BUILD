@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "deprecated_py",
     srcs = [
@@ -18,6 +20,7 @@ py_library(
 
 py_test(
     name = "summaries_test",
+    size = "small",
     srcs = ["summaries_test.py"],
     srcs_version = "PY2AND3",
     deps = [

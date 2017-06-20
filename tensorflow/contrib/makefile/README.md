@@ -32,7 +32,7 @@ application that will let you check your application.
 First, clone this TensorFlow repository.
 
 You will need to download all dependencies as well.  We have provided a script
-that does so, to be run (as with all commands) at the root of the repository:
+that does so, to be run (as with all commands) **at the root of the repository**:
 
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
@@ -75,7 +75,7 @@ To run the executable, use:
 
 ```bash
 tensorflow/contrib/makefile/gen/bin/benchmark \
- --graph=~/graphs/inception/tensorflow_inception_graph.pb
+ --graph=$HOME/graphs/inception/tensorflow_inception_graph.pb
 ```
 
 ## Android
@@ -141,6 +141,8 @@ xcode-select --install
 
 If this is a new install, you will need to run XCode once to agree to the
 license before continuing.
+
+(You will also need to have [Homebrew](http://brew.sh/) installed.)
 
 Then install [automake](https://en.wikipedia.org/wiki/Automake)/[libtool](https://en.wikipedia.org/wiki/GNU_Libtool):
 
@@ -293,7 +295,7 @@ itself, you'll see it's broken up into host and target sections. If you are
 cross-compiling, you should look at customizing the target settings to match
 what you need for your desired system.
 
-## Dependency Managment
+## Dependency Management
 
 The Makefile loads in a list of dependencies stored in text files. These files
 are generated from the main Bazel build by running 

@@ -102,6 +102,7 @@ Status LoadJpegFile(string file_name, std::vector<tensorflow::uint8>* data,
   cinfo.client_data = &jpeg_jmpbuf;
   jerr.error_exit = CatchError;
   if (setjmp(jpeg_jmpbuf)) {
+    fclose(infile);
     return tensorflow::errors::Unknown("JPEG decoding failed");
   }
   

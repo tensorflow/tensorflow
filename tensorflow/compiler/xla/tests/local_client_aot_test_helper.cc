@@ -42,7 +42,7 @@ xla::Computation Doubler(xla::Client* client) {
 int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  auto client = xla::ClientLibrary::LocalClientOrDie();
+  auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().ValueOrDie();
 
   xla::ComputationBuilder builder(client, "aot_test_helper");
   auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
   llvm::Triple triple(xla::llvm_ir::AsStringRef(triple_string));
 
   xla::Computation computation = builder.Build().ConsumeValueOrDie();
-  xla::LocalClient::AheadOfTimeComputationInstance instance{
+  xla::CompileOnlyClient::AotComputationInstance instance{
       &computation, /*argument_layouts=*/{&opaque_shape}, &r0f32};
 
   xla::cpu::CpuAotCompilationOptions options(
@@ -89,11 +89,10 @@ int main(int argc, char** argv) {
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.
   CHECK_EQ(result->result_buffer_index(), 0);
-  CHECK_EQ(result->buffer_sizes().size(), 4);
+  CHECK_EQ(result->buffer_sizes().size(), 3);
   CHECK_EQ(result->buffer_sizes()[0], sizeof(float));  // result buffer
-  CHECK_EQ(result->buffer_sizes()[1], sizeof(float));  // temp buffer
-  CHECK_EQ(result->buffer_sizes()[2], sizeof(float));  // temp buffer
-  CHECK_EQ(result->buffer_sizes()[3], -1);             // param buffer
+  CHECK_EQ(result->buffer_sizes()[1], -1);             // param buffer
+  CHECK_EQ(result->buffer_sizes()[2], 20);             // temp buffer
   if (triple.isOSBinFormatELF()) {
     // Check the ELF magic.
     CHECK_EQ(result->object_file_data()[0], 0x7F);

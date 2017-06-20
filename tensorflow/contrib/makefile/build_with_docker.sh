@@ -23,7 +23,7 @@
 # Make sure we're in the correct directory, at the root of the source tree.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE="${SCRIPT_DIR}/../../../"
-cd ${WORKSPACE}
+cd ${WORKSPACE} || exit 1
 
 DOCKER_IMG_NAME="tf-make-base"
 DOCKER_CONTEXT_PATH="${WORKSPACE}tensorflow/contrib/makefile/"

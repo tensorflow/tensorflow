@@ -22,7 +22,7 @@ import numpy as np
 from tensorflow.contrib import distributions
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
 from tensorflow.contrib.bayesflow.python.ops import stochastic_variables
-from tensorflow.contrib.bayesflow.python.ops import variational_inference
+from tensorflow.contrib.bayesflow.python.ops import variational_inference_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 
 sv = stochastic_variables
 st = stochastic_tensor
-vi = variational_inference
+vi = variational_inference_impl
 dist = distributions
 
 

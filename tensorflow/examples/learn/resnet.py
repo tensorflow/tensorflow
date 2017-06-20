@@ -144,8 +144,8 @@ def res_net(x, y, activation=tf.nn.relu):
 
   target = tf.one_hot(y, depth=10, dtype=tf.float32)
   logits = tf.contrib.layers.fully_connected(net, 10, activation_fn=None)
-  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
-  return tf.softmax(logits), loss
+  loss = tf.losses.softmax_cross_entropy(target, logits)
+  return tf.nn.softmax(logits), loss
 
 
 def res_net_model(x, y):
@@ -181,7 +181,7 @@ result = classifier.evaluate(
     y=mnist.test.labels,
     metrics={
         'accuracy':
-            tf.contrib.learn.metric_spec.MetricSpec(
+            tf.contrib.learn.MetricSpec(
                 metric_fn=tf.contrib.metrics.streaming_accuracy,
                 prediction_key='accuracy'),
     })

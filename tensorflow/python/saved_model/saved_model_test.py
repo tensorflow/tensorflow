@@ -39,6 +39,8 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import saver as tf_saver
+from tensorflow.python.training import saver_test_utils
 from tensorflow.python.util import compat
 
 SAVED_MODEL_PATH = ("cc/saved_model/testdata/half_plus_two/00000123")
@@ -115,6 +117,61 @@ class SavedModelTest(test.TestCase):
     self.assertTrue(loader.maybe_saved_model_directory(base_path))
     base_path = "complete_garbage"
     self.assertFalse(loader.maybe_saved_model_directory(base_path))
+
+  def testBadSavedModelFileFormat(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_bad_saved_model_file_format")
+    # Attempt to load a SavedModel from an export directory that does not exist.
+    with self.test_session(graph=ops.Graph()) as sess:
+      with self.assertRaisesRegexp(IOError,
+                                   "SavedModel file does not exist at: %s" %
+                                   export_dir):
+        loader.load(sess, ["foo"], export_dir)
+
+    os.makedirs(export_dir)
+    # Write an invalid binary proto to saved_model.pb.
+    path_to_pb = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
+    with open(path_to_pb, "w") as f:
+      f.write("invalid content")
+    with self.test_session(graph=ops.Graph()) as sess:
+      with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
+                                   constants.SAVED_MODEL_FILENAME_PB):
+        loader.load(sess, ["foo"], export_dir)
+
+    # Cleanup the directory and start again.
+    file_io.delete_recursively(export_dir)
+
+    os.makedirs(export_dir)
+    # Write an invalid text proto to saved_model.pbtxt
+    path_to_pbtxt = os.path.join(export_dir,
+                                 constants.SAVED_MODEL_FILENAME_PBTXT)
+    with open(path_to_pbtxt, "w") as f:
+      f.write("invalid content")
+    with self.test_session(graph=ops.Graph()) as sess:
+      with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
+                                   constants.SAVED_MODEL_FILENAME_PBTXT):
+        loader.load(sess, ["foo"], export_dir)
+
+  def testVerifySessionGraphUsage(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_verify_session_graph_usage")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+      builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Build a session and supply it to the load operation.
+    sess = session.Session(graph=ops.Graph())
+    loader.load(sess, [tag_constants.TRAINING], export_dir)
+
+    # Check the variable within the scope of the session and its graph.
+    with sess:
+      self.assertEqual(
+          42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
   def testSequence(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_sequence")
@@ -700,6 +757,35 @@ class SavedModelTest(test.TestCase):
       ops.get_collection("init_op")[0].run()
       self.assertEqual(3, ops.get_collection("v")[2].eval())
 
+  def testCustomSaveable(self):
+    export_dir = os.path.join(test.get_temp_dir(), "custom_saveable")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with session.Session(
+        graph=ops.Graph(),
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      # CheckpointedOp is a key-value table that can be saved across sessions.
+      # The table register itself in SAVEABLE_OBJECTS collection.
+      v1 = saver_test_utils.CheckpointedOp(name="v1")
+      variables.global_variables_initializer().run()
+      v1.insert("k1", 3.0).run()
+      # Once the table is restored, we can access it through this reference.
+      ops.add_to_collection("table_ref", v1.table_ref)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with session.Session(
+        graph=ops.Graph(),
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      # Instantiate a wrapper object from the checkpointed reference.
+      v1 = saver_test_utils.CheckpointedOp(
+          name="v1", table_ref=ops.get_collection("table_ref")[0])
+      self.assertEqual(b"k1", v1.keys().eval())
+      self.assertEqual(3.0, v1.values().eval())
+
   def testClearDevices(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_clear_devices")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
@@ -723,6 +809,66 @@ class SavedModelTest(test.TestCase):
       loader.load(sess, [tag_constants.TRAINING], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+  def testClearExtraneousSavers(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_clear_extraneous_savers")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Create a variable and a Saver.
+    with ops.Graph().as_default() as graph:
+      with session.Session(
+          target="",
+          config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+        self._init_and_validate_variable(sess, "v", 42)
+
+        # Add two Savers, which should be removed in
+        # add_meta_graph_and_variables() in favor of the locally added one.
+        saver1 = tf_saver.Saver()
+        graph.add_to_collection(ops.GraphKeys.SAVERS, saver1)
+        saver2 = tf_saver.Saver()
+        graph.add_to_collection(ops.GraphKeys.SAVERS, saver2)
+
+        # Confirm there are two SaverDefs.
+        savers = graph.get_collection(ops.GraphKeys.SAVERS)
+        self.assertEqual(2, len(savers))
+
+        # Confirm there are two Save and two Restore ops.
+        save_op_names = set([x.name for x in graph.get_operations()
+                             if x.type == "SaveV2"])
+        self.assertSetEqual(set(["save/SaveV2", "save_1/SaveV2"]),
+                            save_op_names)
+
+        restore_op_names = set([x.name for x in graph.get_operations()
+                                if x.type == "RestoreV2"])
+        self.assertSetEqual(set(["save/RestoreV2", "save_1/RestoreV2"]),
+                            restore_op_names)
+
+        # The SavedModel builder adds its own Saver' for a total of three.
+        builder.add_meta_graph_and_variables(
+            sess, [tag_constants.TRAINING], clear_devices=True)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Restore the graph.
+    with ops.Graph().as_default() as graph:
+      with self.test_session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.TRAINING], export_dir)
+        self.assertEqual(
+            42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+        # Confirm that the reloaded graph has only one SaverDef.
+        savers = ops.get_collection(ops.GraphKeys.SAVERS)
+        self.assertEqual(1, len(savers))
+
+        # The reloaded graph should have exactly one Save and one Restore op.
+        save_op_names = set([x.name for x in graph.get_operations()
+                             if x.type == "SaveV2"])
+        self.assertSetEqual(set(["save_2/SaveV2"]), save_op_names)
+        restore_op_names = set([x.name for x in graph.get_operations()
+                                if x.type == "RestoreV2"])
+        self.assertSetEqual(set(["save_2/RestoreV2"]), restore_op_names)
 
 
 if __name__ == "__main__":

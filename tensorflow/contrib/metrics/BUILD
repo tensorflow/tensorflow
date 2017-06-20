@@ -8,8 +8,10 @@ exports_files(["LICENSE"])
 
 package(default_visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
-    "//tensorflow:__subpackages__",
+    "//tensorflow:internal",
 ])
+
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "metrics_py",
@@ -48,6 +50,7 @@ py_library(
 
 py_test(
     name = "classification_test",
+    size = "small",
     srcs = ["python/metrics/classification_test.py"],
     srcs_version = "PY2AND3",
     deps = [

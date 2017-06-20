@@ -35,12 +35,14 @@ class AlgebraicSimplifier : public HloPassInterface {
 
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored. If valid_bitcast_callback
-  // returns true, then the pass will replace reshapes and tranposes with
+  // returns true, then the pass will replace reshapes and transposes with
   // bitcasts.
   AlgebraicSimplifier(bool is_layout_sensitive,
-                      ValidBitcastCallback valid_bitcast_callback)
+                      ValidBitcastCallback valid_bitcast_callback,
+                      bool enable_dot_simplification = true)
       : is_layout_sensitive_(is_layout_sensitive),
-        valid_bitcast_callback_(std::move(valid_bitcast_callback)) {}
+        valid_bitcast_callback_(std::move(valid_bitcast_callback)),
+        enable_dot_simplification_(enable_dot_simplification) {}
   ~AlgebraicSimplifier() override {}
   tensorflow::StringPiece name() const override { return "algsimp"; }
 
@@ -51,6 +53,9 @@ class AlgebraicSimplifier : public HloPassInterface {
  private:
   bool is_layout_sensitive_;
   ValidBitcastCallback valid_bitcast_callback_;
+
+  // Enable dot simplication on platforms where it is profitable.
+  bool enable_dot_simplification_;
 };
 
 }  // namespace xla

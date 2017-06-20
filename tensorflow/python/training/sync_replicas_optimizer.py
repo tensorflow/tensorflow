@@ -24,6 +24,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
@@ -124,11 +125,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       mon_sess.run(training_op)
   ```
 
-  @@__init__
-  @@compute_gradients
-  @@apply_gradients
-  @@get_chief_queue_runner
-  @@get_init_tokens_op
+  To use SyncReplicasOptimizer with an `Estimator`, you need to send
+  sync_replicas_hook while calling the fit.
+  ```
+  my_estimator = DNNClassifier(..., optimizer=opt)
+  my_estimator.fit(..., hooks=[sync_replicas_hook])
+  ```
   """
 
   def __init__(self,
@@ -238,12 +240,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     aggregated_grad = []
     var_list = []
 
-    self._local_step = variables.Variable(
-        initial_value=0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=global_step.dtype.base_dtype,
-        name="sync_rep_local_step")
+    # local_anchor op will be placed on this worker task by default.
+    local_anchor = control_flow_ops.no_op()
+    # Colocating local_step variable prevents it being placed on the PS.
+    with ops.colocate_with(local_anchor):
+      self._local_step = variable_scope.variable(
+          initial_value=0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=global_step.dtype.base_dtype,
+          name="sync_rep_local_step")
+
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(
@@ -424,34 +431,42 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
   def make_session_run_hook(self, is_chief, num_tokens=-1):
     """Creates a hook to handle SyncReplicasHook ops such as initialization."""
-    if is_chief:
-      return _SyncReplicasOptimizerHook(self.chief_init_op,
-                                        self.ready_for_local_init_op,
-                                        self.get_chief_queue_runner(),
-                                        self.get_init_tokens_op(num_tokens))
-
-    return _SyncReplicasOptimizerHook(self.local_step_init_op,
-                                      self.ready_for_local_init_op, None, None)
+    return _SyncReplicasOptimizerHook(self, is_chief, num_tokens)
 
 
 class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
   """A SessionRunHook handles ops related to SyncReplicasOptimizer."""
 
-  def __init__(self, local_init_op, ready_for_local_init_op, q_runner,
-               init_tokens_op):
+  def __init__(self, sync_optimizer, is_chief, num_tokens):
     """Creates hook to handle SyncReplicaOptimizer initialization ops.
 
     Args:
-      local_init_op: Either `SyncReplicasOptimizer.chief_init_op` or
-        `SyncReplicasOptimizer.local_step_init_op`.
-      ready_for_local_init_op: `SyncReplicasOptimizer.ready_for_local_init_op`
-      q_runner: Either `SyncReplicasOptimizer.get_chief_queue_runner` or `None`
-      init_tokens_op: `SyncReplicasOptimizer.get_init_tokens_op` or None
+      sync_optimizer: `SyncReplicasOptimizer` which this hook will initialize.
+      is_chief: `Bool`, whether is this a chief replica or not.
+      num_tokens: Number of tokens to add to the queue.
     """
-    self._local_init_op = local_init_op
-    self._ready_for_local_init_op = ready_for_local_init_op
-    self._q_runner = q_runner
-    self._init_tokens_op = init_tokens_op
+    self._sync_optimizer = sync_optimizer
+    self._is_chief = is_chief
+    self._num_tokens = num_tokens
+
+  def begin(self):
+    if self._sync_optimizer._gradients_applied is False:  # pylint: disable=protected-access
+      raise ValueError(
+          "SyncReplicasOptimizer.apply_gradient should be called before using "
+          "the hook.")
+    if self._is_chief:
+      self._local_init_op = self._sync_optimizer.chief_init_op
+      self._ready_for_local_init_op = (
+          self._sync_optimizer.ready_for_local_init_op)
+      self._q_runner = self._sync_optimizer.get_chief_queue_runner()
+      self._init_tokens_op = self._sync_optimizer.get_init_tokens_op(
+          self._num_tokens)
+    else:
+      self._local_init_op = self._sync_optimizer.local_step_init_op
+      self._ready_for_local_init_op = (
+          self._sync_optimizer.ready_for_local_init_op)
+      self._q_runner = None
+      self._init_tokens_op = None
 
   def after_create_session(self, session, coord):
     """Runs SyncReplicasOptimizer initialization ops."""

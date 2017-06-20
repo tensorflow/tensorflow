@@ -26,10 +26,8 @@ import tensorflow as tf
 
 import ctypes
 import importlib
-import inspect
 import sys
 import traceback
-
 
 # TODO(drpng): write up instructions for editing this file in a doc and point to
 # the doc instead.
@@ -46,30 +44,9 @@ import traceback
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
-# python library that dynamically loads _pywrap_tensorflow.so. The
-# default mode for loading keeps all the symbol private and not
-# visible to other libraries that may be loaded. Setting the mode to
-# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
-# imported using `tf.load_op_library()` can access symbols defined in
-# _pywrap_tensorflow.so.
 import numpy as np
-try:
-  if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-    _default_dlopen_flags = sys.getdlopenflags()
-    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
-    from tensorflow.python import pywrap_tensorflow
-    sys.setdlopenflags(_default_dlopen_flags)
-  else:
-    # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
-    # use `dlopen()` for dynamic loading.
-    from tensorflow.python import pywrap_tensorflow
-except ImportError:
-  msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
-See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/g3doc/get_started/os_setup.md#import_error\n
-for some common reasons and solutions.  Include the entire stack trace
-above this error message when asking for help.""" % traceback.format_exc()
-  raise ImportError(msg)
+
+from tensorflow.python import pywrap_tensorflow
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -77,7 +54,9 @@ from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
+from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
+from tensorflow.core.protobuf.tensorflow_server_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
 # Framework
@@ -95,17 +74,18 @@ from tensorflow.python.ops.standard_ops import *
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
+from tensorflow.python.estimator import estimator_lib as estimator
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
+from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import sdca_ops as sdca
-from tensorflow.python.ops import image_ops as image
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops import sets
-from tensorflow.python.saved_model import saved_model
-from tensorflow.python.util import compat
+from tensorflow.python.ops import spectral_ops as spectral
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
+from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
 
 # Import the names from python/training.py as train.Name.
@@ -151,7 +131,9 @@ from tensorflow.python.ops import tensor_array_ops
 # documentation, or remove.
 _allowed_symbols = [
     'AttrValue',
+    'AutoParallelOptions',
     'ConfigProto',
+    'ClusterDef',
     'DeviceSpec',
     'Event',
     'GPUOptions',
@@ -162,9 +144,11 @@ _allowed_symbols = [
     'GraphOptions',
     'HistogramProto',
     'LogMessage',
+    'MetaGraphDef',
     'NameAttrList',
     'NodeDef',
     'OptimizerOptions',
+    'RewriterConfig',
     'RunOptions',
     'RunMetadata',
     'SessionLog',
@@ -181,7 +165,6 @@ _allowed_symbols.extend([
     'neg',  # use tf.negative instead.
     'sub',  # use tf.subtract instead.
     'create_partitioned_variables',
-    'concat_v2',  # use tf.concat instead
     'deserialize_many_sparse',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
@@ -189,7 +172,7 @@ _allowed_symbols.extend([
     'parse_single_sequence_example',
     'serialize_many_sparse',
     'serialize_sparse',
-    'sparse_matmul',   ## use tf.matmul instead.
+    'sparse_matmul',  ## use tf.matmul instead.
 ])
 
 # This is needed temporarily because we import it explicitly.
@@ -230,6 +213,8 @@ _allowed_symbols.extend([
     'app',
     'compat',
     'errors',
+    'estimator',
+    'feature_column',
     'flags',
     'gfile',
     'graph_util',
@@ -242,8 +227,8 @@ _allowed_symbols.extend([
     'python_io',
     'resource_loader',
     'saved_model',
-    'sdca',
     'sets',
+    'spectral',
     'summary',
     'sysconfig',
     'test',

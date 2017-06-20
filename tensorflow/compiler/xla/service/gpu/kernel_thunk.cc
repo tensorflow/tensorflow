@@ -28,11 +28,9 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace gpu {
 
-using Index = BufferAllocation::Index;
-
-KernelThunk::KernelThunk(tensorflow::gtl::ArraySlice<Index> io_buffers,
-                         const string& kernel_name,
-                         const HloInstruction* hlo_instruction)
+KernelThunk::KernelThunk(
+    tensorflow::gtl::ArraySlice<BufferAllocation::Slice> io_buffers,
+    const string& kernel_name, const HloInstruction* hlo_instruction)
     : Thunk(Kind::kKernel, hlo_instruction),
       io_buffers_(io_buffers.begin(), io_buffers.end()),
       kernel_name_(kernel_name) {}
@@ -62,20 +60,25 @@ tensorflow::Status KernelThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // Load the kernel.
   se::StreamExecutor* executor = stream->parent();
-  se::KernelBase kernel(executor);
   LaunchDimensions launch_dimensions;
+  const se::KernelBase* kernel = nullptr;
   {
     tensorflow::mutex_lock lock(mutex_);
-    if (!executor->GetKernel(*loader_spec_, &kernel)) {
-      return InternalError("Unable to load kernel %s", kernel_name_.c_str());
+    auto it = kernel_cache_.find(executor);
+    if (kernel_cache_.end() == it) {
+      it = kernel_cache_.emplace(executor, se::KernelBase(executor)).first;
+      if (!executor->GetKernel(*loader_spec_, &it->second)) {
+        return InternalError("Unable to load kernel %s", kernel_name_.c_str());
+      }
     }
     launch_dimensions = launch_dimensions_;
+    kernel = &it->second;
   }
 
   // Launch the kernel with potentially multiple blocks and threads.
   static constexpr int kKernelArgsLimit = 1024;
   auto kernel_args = MakeUnique<se::KernelArgsArray<kKernelArgsLimit>>();
-  for (BufferAllocation::Index io_buffer : io_buffers_) {
+  for (const BufferAllocation::Slice io_buffer : io_buffers_) {
     kernel_args->add_device_memory_argument(
         buffer_allocations.GetDeviceAddress(io_buffer));
   }
@@ -83,7 +86,7 @@ tensorflow::Status KernelThunk::ExecuteOnStream(
       buffer_allocations.GetTempBufferBase());
   if (!stream->parent()->Launch(
           stream, se::ThreadDim(launch_dimensions.threads_per_block()),
-          se::BlockDim(launch_dimensions.block_count()), kernel,
+          se::BlockDim(launch_dimensions.block_count()), *kernel,
           *kernel_args)) {
     return InternalError("Unable to launch kernel %s", kernel_name_.c_str());
   }

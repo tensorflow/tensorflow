@@ -271,7 +271,6 @@ def _SplitGrad(op, *grads):
 def _SplitVGrad(op, *grads):
   returnval = array_ops.concat(list(grads), op.inputs[2])
   returnval = [returnval] + [None,] * (len(op.inputs) - 1)
-  print(returnval)
   return returnval
 
 ops.NotDifferentiable("Const")
@@ -303,6 +302,7 @@ def _MatrixDiagPartGrad(op, grad):
 
 @ops.RegisterGradient("MatrixSetDiag")
 def _MatrixSetDiagGrad(op, grad):
+  """Gradient for MatrixSetDiag."""
   input_shape = op.inputs[0].get_shape().merge_with(grad.get_shape())
   diag_shape = op.inputs[1].get_shape()
   batch_shape = input_shape[:-2].merge_with(diag_shape[:-1])
@@ -341,15 +341,28 @@ def _FillGrad(_, grad):
 
 
 ops.NotDifferentiable("ZerosLike")
+ops.NotDifferentiable("OnesLike")
+
+
+@ops.RegisterGradient("PreventGradient")
+def _PreventGradientGrad(op, _):
+  raise LookupError(
+      "Gradient explicitly disabled. Reason: %s" % op.get_attr("message"))
 
 
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
   # params can be large, so colocate the shape calculation with it.
+  #
+  # params can be very large for sparse model, array_ops.shape raises
+  # exception on the Windows platform when any dimension is larger than
+  # int32. params_shape is not used in optimizer apply_sparse gradients,
+  # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
   with ops.colocate_with(params):
-    params_shape = array_ops.shape(params)
+    params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
+    params_shape = math_ops.to_int32(params_shape)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
@@ -376,6 +389,7 @@ def _CheckNumericsGrad(_, grad):
       grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
 
 
+@ops.RegisterGradient("PlaceholderWithDefault")
 @ops.RegisterGradient("Identity")
 def _IdGrad(_, grad):
   return grad
@@ -565,6 +579,11 @@ def _MirrorPadGradGrad(op, grad):
 @ops.RegisterGradient("QuantizeAndDequantize")
 def _QuantizeAndDequantizeGrad(_, grad):
   return grad
+
+
+@ops.RegisterGradient("QuantizeAndDequantizeV2")
+def _QuantizeAndDequantizeV2Grad(_, grad):
+  return [grad, None, None]
 
 
 @ops.RegisterGradient("ExtractImagePatches")

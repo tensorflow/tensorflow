@@ -22,6 +22,8 @@ The following is a summary of the features in SavedModel:
       and outputs. This is called a `Signature`.
     * SavedModel uses [SignatureDefs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/meta_graph.proto)
       to allow generic support for signatures that may need to be saved with the graphs.
+    * For commonly used SignatureDefs in the context of TensorFlow Serving,
+      please see documentation [here](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/g3doc/signature_defs.md).
 * Support for `Assets`.
     * For cases where ops depend on external files for initialization, such as
       vocabularies, SavedModel supports this via `assets`.
@@ -100,13 +102,13 @@ The typical usage of `builder` is as follows:
 ~~~python
 export_dir = ...
 ...
-builder = saved_model_builder.SavedModelBuilder(export_dir)
+builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
-...
-builder.add_meta_graph_and_variables(sess,
-                                     [tag_constants.TRAINING],
-                                     signature_def_map=foo_signatures,
-                                     assets_collection=foo_assets)
+  ...
+  builder.add_meta_graph_and_variables(sess,
+                                       [tag_constants.TRAINING],
+                                       signature_def_map=foo_signatures,
+                                       assets_collection=foo_assets)
 ...
 with tf.Session(graph=tf.Graph()) as sess:
   ...
@@ -130,7 +132,7 @@ the specific meta graph def, will be restored into the supplied session.
 export_dir = ...
 ...
 with tf.Session(graph=tf.Graph()) as sess:
-  loader.load(sess, [tag_constants.TRAINING], export_dir)
+  tf.saved_model.loader.load(sess, [tag_constants.TRAINING], export_dir)
   ...
 ~~~
 

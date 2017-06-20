@@ -46,11 +46,13 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual("Variable:0", var0.name)
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.get_shape())
+      self.assertEqual([], var0.shape)
 
       var1 = variables.Variable(1.1)
       self.assertEqual("Variable_1:0", var1.name)
       self.assertEqual([], var1.get_shape())
       self.assertEqual([], var1.get_shape())
+      self.assertEqual([], var1.shape)
 
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         var0.eval()
@@ -69,11 +71,13 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual("rnd:0", rnd.name)
       self.assertEqual([3, 6], rnd.get_shape())
       self.assertEqual([3, 6], rnd.get_shape())
+      self.assertEqual([3, 6], rnd.shape)
 
       dep = variables.Variable(rnd.initialized_value(), name="dep")
       self.assertEqual("dep:0", dep.name)
       self.assertEqual([3, 6], dep.get_shape())
       self.assertEqual([3, 6], dep.get_shape())
+      self.assertEqual([3, 6], dep.shape)
 
       # Currently have to set the shape manually for Add.
       added_val = rnd.initialized_value() + dep.initialized_value() + 2.0
@@ -83,6 +87,7 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual("depdep:0", depdep.name)
       self.assertEqual([3, 6], depdep.get_shape())
       self.assertEqual([3, 6], depdep.get_shape())
+      self.assertEqual([3, 6], depdep.shape)
 
       variables.global_variables_initializer().run()
 
@@ -133,6 +138,18 @@ class VariablesTestCase(test.TestCase):
       four.eval()
       self.assertAllClose(4.0, var.eval())
 
+  def testZeroSizeStringAssign(self):
+    with self.test_session() as sess:
+      array = variables.Variable(
+          initial_value=array_ops.zeros((0,), dtype=dtypes.string),
+          name="foo",
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      sess.run(variables.local_variables_initializer())
+      old_value = array.value()
+      copy_op = array.assign(old_value)
+      self.assertEqual([], list(sess.run(copy_op)))
+
   def _countUpToTest(self, dtype):
     with self.test_session():
       zero = constant_op.constant(0, dtype=dtype)
@@ -173,13 +190,10 @@ class VariablesTestCase(test.TestCase):
         d = constant_op.constant(2.0)
         # variables do not.
         var_x = variables.Variable(2.0)
-        # initialized_value do not either.
-        inited_x = var_x.initialized_value()
       self.assertEqual([c.op], d.op.control_inputs)
       self.assertEqual([], var_x.initializer.control_inputs)
       self.assertEqual([], var_x.value().op.control_inputs)
       self.assertEqual([], var_x._ref().op.control_inputs)  # pylint: disable=protected-access
-      self.assertEqual([var_x.initializer], inited_x.op.control_inputs)
 
   def testControlFlow(self):
     with self.test_session() as sess:
@@ -217,6 +231,19 @@ class VariablesTestCase(test.TestCase):
       sess.run(v0.initializer)
       sess.run(add)
 
+  def testControlFlowInitialization(self):
+    """Expects an error if an initializer is in a control-flow scope."""
+    def cond(i, _):
+      return i < 10
+
+    def body(i, _):
+      zero = array_ops.zeros([], dtype=dtypes.int32)
+      v = variables.Variable(initial_value=zero)
+      return (i + 1, v.read_value())
+
+    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+      control_flow_ops.while_loop(cond, body, [0, 0])
+
   def testUseVariableAsTensor(self):
     with self.test_session():
       var_x = variables.Variable(2.0)
@@ -247,8 +274,6 @@ class VariablesTestCase(test.TestCase):
       var_cached = variables.Variable(2.0, caching_device="/job:foo")
       self.assertFalse(var_cached.device.startswith("/job:foo"))
       self.assertTrue(var_cached.value().device.startswith("/job:foo"))
-      self.assertTrue(var_cached.initialized_value().device.startswith(
-          "/job:foo"))
 
   def testCollections(self):
     with self.test_session():
@@ -301,6 +326,10 @@ class VariablesTestCase(test.TestCase):
       var_t = variables.Variable(rnd)
       slice_v = var_t[2, 0:0]
 
+      var_m = variables.Variable([[2.0, 3.0]])
+      matmul = var_m.__matmul__([[10.0], [20.0]])
+      rmatmul = var_m.__rmatmul__([[10.0], [20.0]])
+
       variables.global_variables_initializer().run()
       self.assertAllClose([2.0], add.eval())
       self.assertAllClose([3.0], radd.eval())
@@ -330,6 +359,9 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose([False, True], invert_v.eval())
 
       self.assertAllClose(rnd[2, 0:0], slice_v.eval())
+
+      self.assertAllClose([[80.0]], matmul.eval())
+      self.assertAllClose([[20.0, 30.0], [40.0, 60.0]], rmatmul.eval())
 
   def testSession(self):
     with self.test_session() as sess:
@@ -363,6 +395,7 @@ class VariablesTestCase(test.TestCase):
 
       v1 = variables.Variable(initializer, dtype=dtypes.float32)
       self.assertEqual(shape, v1.get_shape())
+      self.assertEqual(shape, v1.shape)
       self.assertAllClose(value, v1.initial_value.eval())
       with self.assertRaises(errors_impl.FailedPreconditionError):
         v1.eval()
@@ -370,16 +403,23 @@ class VariablesTestCase(test.TestCase):
       v2 = variables.Variable(
           math_ops.negative(v1.initialized_value()), dtype=dtypes.float32)
       self.assertEqual(v1.get_shape(), v2.get_shape())
+      self.assertEqual(v1.shape, v2.shape)
       self.assertAllClose(np.negative(value), v2.initial_value.eval())
-
-      # Once v2.initial_value.eval() has been called, v1 has effectively been
-      # initialized.
-      self.assertAllClose(value, v1.eval())
 
       with self.assertRaises(errors_impl.FailedPreconditionError):
         v2.eval()
       variables.global_variables_initializer().run()
       self.assertAllClose(np.negative(value), v2.eval())
+
+  def testNoRefDataRace(self):
+    with self.test_session():
+      a = variables.Variable([1, 2, 3], dtype=dtypes.float32)
+      b = variables.Variable(a.initialized_value() + 2)
+      c = variables.Variable(b.initialized_value() + 2)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(a.eval(), [1, 2, 3])
+      self.assertAllEqual(b.eval(), [3, 4, 5])
+      self.assertAllEqual(c.eval(), [5, 6, 7])
 
   def testInitializerFunctionDevicePlacement(self):
     with self.test_session():
@@ -406,6 +446,12 @@ class VariablesTestCase(test.TestCase):
       var.load(np.ones((5, 5), np.float32))
 
       self.assertAllClose(np.ones((5, 5), np.float32), var.eval())
+
+  def testRepr(self):
+    var = variables.Variable(np.zeros((5, 5), np.float32), name='noop')
+    self.assertEqual(
+        "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
+        repr(var))
 
 
 class IsInitializedTest(test.TestCase):
@@ -514,6 +560,7 @@ class PartitionedVariableTest(test.TestCase):
       self.assertEqual(2, num_partitions)
       self.assertEqual([v0, v1], iterated_partitions)
       self.assertEqual([2], concatenated.get_shape())
+      self.assertEqual([2], concatenated.shape)
 
   def testPartitionedVariableFailures(self):
     with ops.Graph().as_default():

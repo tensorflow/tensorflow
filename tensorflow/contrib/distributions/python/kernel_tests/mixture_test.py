@@ -21,17 +21,22 @@ from __future__ import print_function
 import contextlib
 
 import numpy as np
+from scipy import stats
+
 from tensorflow.contrib import distributions
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 distributions_py = distributions
 
@@ -76,27 +81,42 @@ def _test_capture_normal_sample_outputs():
 
 
 def make_univariate_mixture(batch_shape, num_components):
+  batch_shape = ops.convert_to_tensor(batch_shape, dtypes.int32)
   logits = random_ops.random_uniform(
-      list(batch_shape) + [num_components], -1, 1, dtype=dtypes.float32) - 50.
+      array_ops.concat((batch_shape, [num_components]), axis=0),
+      -1, 1, dtype=dtypes.float32) - 50.
   components = [
       distributions_py.Normal(
-          loc=np.float32(np.random.randn(*list(batch_shape))),
-          scale=np.float32(10 * np.random.rand(*list(batch_shape))))
+          loc=random_ops.random_normal(batch_shape),
+          scale=10 * random_ops.random_uniform(batch_shape))
       for _ in range(num_components)
   ]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
   return distributions_py.Mixture(cat, components)
 
 
-def make_multivariate_mixture(batch_shape, num_components, event_shape):
+def make_multivariate_mixture(batch_shape, num_components, event_shape,
+                              batch_shape_tensor=None):
+  if batch_shape_tensor is None:
+    batch_shape_tensor = batch_shape
+  batch_shape_tensor = ops.convert_to_tensor(batch_shape_tensor, dtypes.int32)
   logits = random_ops.random_uniform(
-      list(batch_shape) + [num_components], -1, 1, dtype=dtypes.float32) - 50.
-  components = [
-      distributions_py.MultivariateNormalDiag(
-          mu=np.float32(np.random.randn(*list(batch_shape + event_shape))),
-          diag_stddev=np.float32(10 * np.random.rand(
-              *list(batch_shape + event_shape)))) for _ in range(num_components)
-  ]
+      array_ops.concat((batch_shape_tensor, [num_components]), 0),
+      -1, 1, dtype=dtypes.float32) - 50.
+  logits.set_shape(
+      tensor_shape.TensorShape(batch_shape).concatenate(num_components))
+  static_batch_and_event_shape = (
+      tensor_shape.TensorShape(batch_shape).concatenate(event_shape))
+  event_shape = ops.convert_to_tensor(event_shape, dtypes.int32)
+  batch_and_event_shape = array_ops.concat((batch_shape_tensor, event_shape), 0)
+  def create_component():
+    loc = random_ops.random_normal(batch_and_event_shape)
+    scale_diag = 10 * random_ops.random_uniform(batch_and_event_shape)
+    loc.set_shape(static_batch_and_event_shape)
+    scale_diag.set_shape(static_batch_and_event_shape)
+    return distributions_py.MultivariateNormalDiag(
+        loc=loc, scale_diag=scale_diag)
+  components = [create_component() for _ in range(num_components)]
   cat = distributions_py.Categorical(logits, dtype=dtypes.int32)
   return distributions_py.Mixture(cat, components)
 
@@ -179,13 +199,10 @@ class MixtureTest(test.TestCase):
           ])
     with self.assertRaisesWithPredicateMatch(ValueError, "non-empty list"):
       distributions_py.Mixture(distributions_py.Categorical([0.3, 0.2]), None)
-    with self.assertRaisesWithPredicateMatch(TypeError,
-                                             "either be continuous or not"):
-      distributions_py.Mixture(
-          cat, [
-              distributions_py.Normal(loc=[1.0], scale=[2.0]),
-              distributions_py.Bernoulli(dtype=dtypes.float32, logits=[1.0]),
-          ])
+
+    # TODO(ebrevdo): once distribution Domains have been added, add a
+    # test to ensure that the domains of the distributions in a
+    # mixture are checked for equivalence.
 
   def testMeanUnivariate(self):
     with self.test_session() as sess:
@@ -341,8 +358,9 @@ class MixtureTest(test.TestCase):
   def testSampleScalarBatchUnivariate(self):
     with self.test_session() as sess:
       num_components = 3
+      batch_shape = []
       dist = make_univariate_mixture(
-          batch_shape=[], num_components=num_components)
+          batch_shape=batch_shape, num_components=num_components)
       n = 4
       with _test_capture_normal_sample_outputs() as component_samples:
         samples = dist.sample(n, seed=123)
@@ -436,19 +454,36 @@ class MixtureTest(test.TestCase):
         self.assertAllClose(which_dist_samples,
                             sample_values[which_c_s, which_c_b0, which_c_b1])
 
-  def testSampleBatchMultivariate(self):
+  def _testSampleBatchMultivariate(self, fully_known_batch_shape):
     with self.test_session() as sess:
       num_components = 3
+      if fully_known_batch_shape:
+        batch_shape = [2, 3]
+        batch_shape_tensor = [2, 3]
+      else:
+        batch_shape = [None, 3]
+        batch_shape_tensor = array_ops.placeholder(dtype=dtypes.int32)
+
       dist = make_multivariate_mixture(
-          batch_shape=[2, 3], num_components=num_components, event_shape=[4])
+          batch_shape=batch_shape,
+          num_components=num_components, event_shape=[4],
+          batch_shape_tensor=batch_shape_tensor)
       n = 5
       with _test_capture_mvndiag_sample_outputs() as component_samples:
         samples = dist.sample(n, seed=123)
       self.assertEqual(samples.dtype, dtypes.float32)
-      self.assertEqual((5, 2, 3, 4), samples.get_shape())
+      if fully_known_batch_shape:
+        self.assertEqual((5, 2, 3, 4), samples.get_shape())
+      else:
+        self.assertEqual([5, None, 3, 4], samples.get_shape().as_list())
       cat_samples = dist.cat.sample(n, seed=123)
+      if fully_known_batch_shape:
+        feed_dict = {}
+      else:
+        feed_dict = {batch_shape_tensor: [2, 3]}
       sample_values, cat_sample_values, dist_sample_values = sess.run(
-          [samples, cat_samples, component_samples])
+          [samples, cat_samples, component_samples],
+          feed_dict=feed_dict)
       self.assertEqual((5, 2, 3, 4), sample_values.shape)
 
       for c in range(num_components):
@@ -459,6 +494,12 @@ class MixtureTest(test.TestCase):
                                                    which_c_b1, :]
         self.assertAllClose(which_dist_samples,
                             sample_values[which_c_s, which_c_b0, which_c_b1, :])
+
+  def testSampleBatchMultivariateFullyKnownBatchShape(self):
+    self._testSampleBatchMultivariate(fully_known_batch_shape=True)
+
+  def testSampleBatchMultivariateNotFullyKnownBatchShape(self):
+    self._testSampleBatchMultivariate(fully_known_batch_shape=False)
 
   def testEntropyLowerBoundMultivariate(self):
     with self.test_session() as sess:
@@ -483,6 +524,104 @@ class MixtureTest(test.TestCase):
             [c_p * m for (c_p, m) in zip(cat_probs_value, dist_entropy_value)])
 
         self.assertAllClose(true_entropy_lower_bound, entropy_lower_bound_value)
+
+  def testCdfScalarUnivariate(self):
+    """Tests CDF against scipy for a mixture of seven gaussians."""
+    # Construct a mixture of gaussians with seven components.
+    n_components = 7
+
+    # pre-softmax mixture probabilities.
+    mixture_weight_logits = np.random.uniform(
+        low=-1, high=1, size=(n_components,)).astype(np.float32)
+
+    def _scalar_univariate_softmax(x):
+      e_x = np.exp(x - np.max(x))
+      return e_x / e_x.sum()
+
+    # Construct the distributions_py.Mixture object.
+    mixture_weights = _scalar_univariate_softmax(mixture_weight_logits)
+    means = [np.random.uniform(low=-10, high=10, size=()).astype(np.float32)
+             for _ in range(n_components)]
+    sigmas = [np.ones(shape=(), dtype=np.float32) for _ in range(n_components)]
+    cat_tf = distributions_py.Categorical(probs=mixture_weights)
+    components_tf = [distributions_py.Normal(loc=mu, scale=sigma)
+                     for (mu, sigma) in zip(means, sigmas)]
+    mixture_tf = distributions_py.Mixture(cat=cat_tf, components=components_tf)
+
+    x_tensor = array_ops.placeholder(shape=(), dtype=dtypes.float32)
+
+    # These are two test cases to verify.
+    xs_to_check = [
+        np.array(1.0, dtype=np.float32),
+        np.array(np.random.randn()).astype(np.float32)
+    ]
+
+    # Carry out the test for both d.cdf and exp(d.log_cdf).
+    x_cdf_tf = mixture_tf.cdf(x_tensor)
+    x_log_cdf_tf = mixture_tf.log_cdf(x_tensor)
+
+    with self.test_session() as sess:
+      for x_feed in xs_to_check:
+        x_cdf_tf_result, x_log_cdf_tf_result = sess.run(
+            [x_cdf_tf, x_log_cdf_tf], feed_dict={x_tensor: x_feed})
+
+        # Compute the cdf with scipy.
+        scipy_component_cdfs = [stats.norm.cdf(x=x_feed, loc=mu, scale=sigma)
+                                for (mu, sigma) in zip(means, sigmas)]
+        scipy_cdf_result = np.dot(mixture_weights,
+                                  np.array(scipy_component_cdfs))
+        self.assertAllClose(x_cdf_tf_result, scipy_cdf_result)
+        self.assertAllClose(np.exp(x_log_cdf_tf_result), scipy_cdf_result)
+
+  def testCdfBatchUnivariate(self):
+    """Tests against scipy for a (batch of) mixture(s) of seven gaussians."""
+    n_components = 7
+    batch_size = 5
+    mixture_weight_logits = np.random.uniform(
+        low=-1, high=1, size=(batch_size, n_components)).astype(np.float32)
+
+    def _batch_univariate_softmax(x):
+      e_x = np.exp(x)
+      e_x_sum = np.expand_dims(np.sum(e_x, axis=1), axis=1)
+      return e_x / np.tile(e_x_sum, reps=[1, x.shape[1]])
+
+    psize = (batch_size,)
+    mixture_weights = _batch_univariate_softmax(mixture_weight_logits)
+    means = [np.random.uniform(low=-10, high=10, size=psize).astype(np.float32)
+             for _ in range(n_components)]
+    sigmas = [np.ones(shape=psize, dtype=np.float32)
+              for _ in range(n_components)]
+    cat_tf = distributions_py.Categorical(probs=mixture_weights)
+    components_tf = [distributions_py.Normal(loc=mu, scale=sigma)
+                     for (mu, sigma) in zip(means, sigmas)]
+    mixture_tf = distributions_py.Mixture(cat=cat_tf, components=components_tf)
+
+    x_tensor = array_ops.placeholder(shape=psize, dtype=dtypes.float32)
+    xs_to_check = [
+        np.array([1.0, 5.9, -3, 0.0, 0.0], dtype=np.float32),
+        np.random.randn(batch_size).astype(np.float32)
+    ]
+
+    x_cdf_tf = mixture_tf.cdf(x_tensor)
+    x_log_cdf_tf = mixture_tf.log_cdf(x_tensor)
+
+    with self.test_session() as sess:
+      for x_feed in xs_to_check:
+        x_cdf_tf_result, x_log_cdf_tf_result = sess.run(
+            [x_cdf_tf, x_log_cdf_tf],
+            feed_dict={x_tensor: x_feed})
+
+        # Compute the cdf with scipy.
+        scipy_component_cdfs = [stats.norm.cdf(x=x_feed, loc=mu, scale=sigma)
+                                for (mu, sigma) in zip(means, sigmas)]
+        weights_and_cdfs = zip(np.transpose(mixture_weights, axes=[1, 0]),
+                               scipy_component_cdfs)
+        final_cdf_probs_per_component = [
+            np.multiply(c_p_value, d_cdf_value)
+            for (c_p_value, d_cdf_value) in weights_and_cdfs]
+        scipy_cdf_result = np.sum(final_cdf_probs_per_component, axis=0)
+        self.assertAllClose(x_cdf_tf_result, scipy_cdf_result)
+        self.assertAllClose(np.exp(x_log_cdf_tf_result), scipy_cdf_result)
 
 
 class MixtureBenchmark(test.Benchmark):
@@ -509,12 +648,13 @@ class MixtureBenchmark(test.Benchmark):
             name=("%s_%s_components_%d_batch_%d_features_%d_sample_%d" %
                   (name, use_gpu, num_components, batch_size, num_features,
                    sample_size)))
-        print("\t".join(["%s", "%d", "%d", "%d", "%d", "%g"]) %
-              (use_gpu, num_components, batch_size, num_features, sample_size,
-               reported["wall_time"]))
+        logging.vlog(2, "\t".join(["%s", "%d", "%d", "%d", "%d", "%g"]) % (
+            use_gpu, num_components, batch_size, num_features, sample_size,
+            reported["wall_time"]))
 
   def benchmarkSamplingMVNDiag(self):
-    print("mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+    logging.vlog(
+        2, "mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
 
     def create_distribution(batch_size, num_components, num_features):
       cat = distributions_py.Categorical(
@@ -529,7 +669,7 @@ class MixtureBenchmark(test.Benchmark):
       ]
       components = list(
           distributions_py.MultivariateNormalDiag(
-              mu=mu, diag_stddev=sigma) for (mu, sigma) in zip(mus, sigmas))
+              loc=mu, scale_diag=sigma) for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:
@@ -549,7 +689,8 @@ class MixtureBenchmark(test.Benchmark):
                   sample_size=sample_size)
 
   def benchmarkSamplingMVNFull(self):
-    print("mvn_full\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+    logging.vlog(
+        2, "mvn_full\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
 
     def psd(x):
       """Construct batch-wise PSD matrices."""
@@ -567,8 +708,10 @@ class MixtureBenchmark(test.Benchmark):
               psd(np.random.rand(batch_size, num_features, num_features)))
           for _ in range(num_components)
       ]
-      components = list(distributions_py.MultivariateNormalFull(
-          mu=mu, sigma=sigma) for (mu, sigma) in zip(mus, sigmas))
+      components = list(
+          distributions_py.MultivariateNormalTriL(
+              loc=mu, scale_tril=linalg_ops.cholesky(sigma))
+          for (mu, sigma) in zip(mus, sigmas))
       return distributions_py.Mixture(cat, components)
 
     for use_gpu in False, True:

@@ -19,12 +19,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace graph_transforms {
@@ -438,7 +438,7 @@ class TransformUtilsTest : public ::testing::Test {
            const std::set<string>& output_nodes,
            std::vector<NodeDef>* new_nodes) {
           NodeDef original_copy;
-          original_copy.CopyFrom(match.node);
+          original_copy = match.node;
           const string original_name = match.node.name();
           original_copy.set_name(original_name + "_before_identity");
           new_nodes->push_back(original_copy);

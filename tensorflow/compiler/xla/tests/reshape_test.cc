@@ -26,18 +26,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -68,12 +68,46 @@ XLA_TEST_F(ReshapeTest, SingleElementArrayToScalar) {
   ComputeAndCompareR0<float>(&builder, 1.0f, {}, zero_error_spec_);
 }
 
+XLA_TEST_F(ReshapeTest, ScalarToSingleElementArray) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(1.0f);
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+
+  auto a = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
+  a = builder.Neg(a);
+  auto reshape =
+      builder.Reshape(/*operand=*/a, /*dimensions=*/{}, /*new_sizes=*/{1});
+
+  ComputeAndCompareR1<float>(&builder, {-1.0f}, {param0_data.get()},
+                             zero_error_spec_);
+}
+
 XLA_TEST_F(ReshapeTest, Trivial0x3) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 3));
   auto result = builder.Collapse(/*operand=*/a, /*dimensions=*/{0, 1});
 
   ComputeAndCompareR1<float>(&builder, {}, {}, zero_error_spec_);
+}
+
+// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
+// does not handle zero-sized shapes correctly. Failed last on 2017-05-15
+// with an incorrect result rank.
+XLA_TEST_F(ReshapeTest, DISABLED_ON_GPU(Trivial0x3WithParameter)) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> param0_literal =
+      LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(0, 3));
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+
+  auto a = builder.Parameter(0, ShapeUtil::MakeShape(F32, {0, 3}), "param0");
+  auto result = builder.Collapse(/*operand=*/a, /*dimensions=*/{0, 1});
+
+  ComputeAndCompareR1<float>(&builder, {}, {param0_data.get()},
+                             zero_error_spec_);
 }
 
 XLA_TEST_F(ReshapeTest, Trivial3x0) {
@@ -383,15 +417,15 @@ XLA_TEST_F(ReshapeTest, ToScalar) {
 XLA_TEST_F(ReshapeTest, BadDimensions) {
   ComputationBuilder b(client_, TestName());
   b.Reshape(b.ConstantR1<int32>({1}), {}, {});
-  EXPECT_MATCH(ExecuteToString(&b, {}),
-               testing::HasSubstr("dimensions not a permutation"));
+  EXPECT_THAT(ExecuteToString(&b, {}),
+              ::testing::HasSubstr("dimensions not a permutation"));
 }
 
 XLA_TEST_F(ReshapeTest, BadNewSizes) {
   ComputationBuilder b(client_, TestName());
   b.Reshape(b.ConstantR1<int32>({1, 2}), {1}, {});
-  EXPECT_MATCH(ExecuteToString(&b, {}),
-               testing::HasSubstr("mismatched element counts"));
+  EXPECT_THAT(ExecuteToString(&b, {}),
+              ::testing::HasSubstr("mismatched element counts"));
 }
 
 XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
@@ -796,6 +830,7 @@ XLA_TEST_F(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

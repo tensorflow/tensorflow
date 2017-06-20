@@ -23,6 +23,7 @@ import numpy as np
 import six
 
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
+from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -115,7 +116,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   @abc.abstractmethod
   def _make_x(self, operator, adjoint):
-    """Make an 'x' appropriate for calling operator.apply(x).
+    """Make an 'x' appropriate for calling operator.matmul(x).
 
     Args:
       operator:  A `LinearOperator`
@@ -134,12 +135,22 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     # To skip "test_foo", add "foo" to this list.
     return []
 
-  def _maybe_skip(self, test_name):
+  def _skip_if_tests_to_skip_contains(self, test_name):
+    """If self._tests_to_skip contains test_name, raise SkipTest exception.
+
+    See tests below for usage.
+
+    Args:
+      test_name:  String name corresponding to a test.
+
+    Raises:
+      SkipTest Exception, if test_name is in self._tests_to_skip.
+    """
     if test_name in self._tests_to_skip:
       self.skipTest("%s skipped because it was added to self._tests_to_skip.")
 
   def test_to_dense(self):
-    self._maybe_skip("to_dense")
+    self._skip_if_tests_to_skip_contains("to_dense")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -154,7 +165,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             self.assertAC(op_dense_v, mat_v)
 
   def test_det(self):
-    self._maybe_skip("det")
+    self._skip_if_tests_to_skip_contains("det")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -175,7 +186,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
             self.assertAC(op_det_v, mat_det_v)
 
   def test_log_abs_det(self):
-    self._maybe_skip("log_abs_det")
+    self._skip_if_tests_to_skip_contains("log_abs_det")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -197,46 +208,63 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 feed_dict=feed_dict)
             self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
 
-  def test_apply(self):
-    self._maybe_skip("apply")
+  def test_matmul(self):
+    self._skip_if_tests_to_skip_contains("matmul")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
           for adjoint in False, True:
-            with self.test_session(graph=ops.Graph()) as sess:
-              sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-              operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
-                  shape, dtype, use_placeholder=use_placeholder)
-              x = self._make_x(operator, adjoint=adjoint)
-              op_apply = operator.apply(x, adjoint=adjoint)
-              mat_apply = math_ops.matmul(mat, x, adjoint_a=adjoint)
-              if not use_placeholder:
-                self.assertAllEqual(op_apply.get_shape(), mat_apply.get_shape())
-              op_apply_v, mat_apply_v = sess.run([op_apply, mat_apply],
-                                                 feed_dict=feed_dict)
-              self.assertAC(op_apply_v, mat_apply_v)
+            for adjoint_arg in False, True:
+              with self.test_session(graph=ops.Graph()) as sess:
+                sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+                operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                    shape, dtype, use_placeholder=use_placeholder)
+                x = self._make_x(operator, adjoint=adjoint)
+                # If adjoint_arg, compute A X^H^H = A X.
+                if adjoint_arg:
+                  op_matmul = operator.matmul(
+                      linear_operator_util.matrix_adjoint(x),
+                      adjoint=adjoint, adjoint_arg=adjoint_arg)
+                else:
+                  op_matmul = operator.matmul(x, adjoint=adjoint)
+                mat_matmul = math_ops.matmul(mat, x, adjoint_a=adjoint)
+                if not use_placeholder:
+                  self.assertAllEqual(
+                      op_matmul.get_shape(), mat_matmul.get_shape())
+                op_matmul_v, mat_matmul_v = sess.run(
+                    [op_matmul, mat_matmul], feed_dict=feed_dict)
+                self.assertAC(op_matmul_v, mat_matmul_v)
 
   def test_solve(self):
-    self._maybe_skip("solve")
+    self._skip_if_tests_to_skip_contains("solve")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
           for adjoint in False, True:
-            with self.test_session(graph=ops.Graph()) as sess:
-              sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-              operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
-                  shape, dtype, use_placeholder=use_placeholder)
-              rhs = self._make_rhs(operator, adjoint=adjoint)
-              op_solve = operator.solve(rhs, adjoint=adjoint)
-              mat_solve = linalg_ops.matrix_solve(mat, rhs, adjoint=adjoint)
-              if not use_placeholder:
-                self.assertAllEqual(op_solve.get_shape(), mat_solve.get_shape())
-              op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve],
-                                                 feed_dict=feed_dict)
-              self.assertAC(op_solve_v, mat_solve_v)
+            for adjoint_arg in False, True:
+              with self.test_session(graph=ops.Graph()) as sess:
+                sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+                operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                    shape, dtype, use_placeholder=use_placeholder)
+                rhs = self._make_rhs(operator, adjoint=adjoint)
+                # If adjoint_arg, solve A X = (rhs^H)^H = rhs.
+                if adjoint_arg:
+                  op_solve = operator.solve(
+                      linear_operator_util.matrix_adjoint(rhs),
+                      adjoint=adjoint, adjoint_arg=adjoint_arg)
+                else:
+                  op_solve = operator.solve(
+                      rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
+                mat_solve = linalg_ops.matrix_solve(mat, rhs, adjoint=adjoint)
+                if not use_placeholder:
+                  self.assertAllEqual(
+                      op_solve.get_shape(), mat_solve.get_shape())
+                op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve],
+                                                   feed_dict=feed_dict)
+                self.assertAC(op_solve_v, mat_solve_v)
 
   def test_add_to_tensor(self):
-    self._maybe_skip("add_to_tensor")
+    self._skip_if_tests_to_skip_contains("add_to_tensor")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -253,6 +281,27 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                                              feed_dict=feed_dict)
 
             self.assertAC(op_plus_2mat_v, 3 * mat_v)
+
+  def test_diag_part(self):
+    self._skip_if_tests_to_skip_contains("diag_part")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_diag_part = operator.diag_part()
+            mat_diag_part = array_ops.matrix_diag_part(mat)
+
+            if not use_placeholder:
+              self.assertAllEqual(
+                  mat_diag_part.get_shape(), op_diag_part.get_shape())
+
+            op_diag_part_, mat_diag_part_ = sess.run(
+                [op_diag_part, mat_diag_part], feed_dict=feed_dict)
+
+            self.assertAC(op_diag_part_, mat_diag_part_)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -305,7 +354,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
 
   Square shapes are never tested by this class, so if you want to test your
   operator with a square shape, create two test classes, the other subclassing
-  SquareLinearOperatorMatrixTest.
+  SquareLinearOperatorFullMatrixTest.
 
   Sub-classes must still define all abstractmethods from
   LinearOperatorDerivedClassTest that are not defined here.
@@ -327,7 +376,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         "_make_rhs not implemented because we don't test solve")
 
   def _make_x(self, operator, adjoint):
-    # Return the number of systems for the argument 'x' for .apply(x)
+    # Return the number of systems for the argument 'x' for .matmul(x)
     r = self._get_num_systems(operator)
     # If operator.shape = [B1,...,Bb, M, N] this returns a random matrix of
     # shape [B1,...,Bb, N, R], R = 1 or 2.

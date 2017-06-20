@@ -12,15 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Before calling this test program, download a model as follows.
-// $ curl https://storage.googleapis.com/download.tensorflow.org/models/tensorflow_inception_v3_stripped_optimized_quantized.pb \
-// -o /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb
-// adb push /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb \
-// /data/local/tmp
-// $ curl
-// https://storage.googleapis.com/download.tensorflow.org/models/imagenet_comp_graph_label_strings.txt
-// -o /tmp/imagenet_comp_graph_label_strings.txt
-// adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
+/* Before calling this test program, download a model as follows.
+$ curl
+https://storage.googleapis.com/download.tensorflow.org/models/tensorflow_inception_v3_stripped_optimized_quantized.pb
+\ -o /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb
+$ adb push /tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb \
+/data/local/tmp
+$ curl
+https://storage.googleapis.com/download.tensorflow.org/models/imagenet_comp_graph_label_strings.txt
+-o /tmp/imagenet_comp_graph_label_strings.txt
+adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
+*/
 
 #include <memory>
 
@@ -30,18 +32,32 @@ limitations under the License.
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
 #include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
-#include "tensorflow/core/kernels/hexagon/i_soc_control_wrapper.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/profile_utils/clock_cycle_profiler.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
-using ByteArray = ISocControlWrapper::ByteArray;
+using ByteArray = IRemoteFusedGraphExecutor::ByteArray;
+using ConstByteArray = IRemoteFusedGraphExecutor::ConstByteArray;
+
+constexpr const char* const IMAGE_FILENAME = "/data/local/tmp/img_299x299.bmp";
+constexpr const char* const MODEL_FILENAME =
+    "/data/local/tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb";
+constexpr const char* const FUSED_MODEL_FILENAME =
+    "/data/local/tmp/"
+    "tensorflow_inception_v3_stripped_optimized_quantized_fused_hexagon.pb";
+constexpr const char* const REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME =
+    "remote_fused_graph_execute_node";
+constexpr bool USE_SHAPE_INFERENCE = false;
 
 const bool DBG_DUMP_FLOAT_DATA = false;
 const int WIDTH = 299;
@@ -50,13 +66,16 @@ const int DEPTH = 3;
 const int EXPECTED_FIRST_RESULT_ID = 59;
 const int EXECUTION_REPEAT_COUNT = 3;
 
-static void DumpTop10Results(
-    const std::vector<ISocControlWrapper::ByteArray>& outputs) {
-  CHECK(outputs.size() == 1);
-  const int byte_size = std::get<1>(outputs.at(0));
+static void CheckHexagonControllerVersion() {
+  HexagonControlWrapper hexagon_control_wrapper;
+  const int version = hexagon_control_wrapper.GetVersion();
+  ASSERT_GE(version, 1);
+  LOG(INFO) << "Hexagon controller version is " << version;
+}
+
+static void DumpTop10Results(const int byte_size,
+                             const float* const float_array) {
   const int element_count = byte_size / sizeof(float);
-  const float* float_array =
-      reinterpret_cast<float*>(std::get<0>(outputs.at(0)));
   const string label_filename =
       "/data/local/tmp/imagenet_comp_graph_label_strings.txt";
   string label_str;
@@ -68,8 +87,17 @@ static void DumpTop10Results(
       10 /* show top_n results */);
 }
 
+static void DumpTop10Results(
+    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs) {
+  CHECK(outputs.size() == 1);
+  const int byte_size = std::get<1>(outputs.at(0));
+  const float* float_array =
+      reinterpret_cast<float*>(std::get<0>(outputs.at(0)));
+  DumpTop10Results(byte_size, float_array);
+}
+
 static void CheckFirstResult(
-    const std::vector<ISocControlWrapper::ByteArray>& outputs,
+    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs,
     const int expected_first_id) {
   EXPECT_GE(outputs.size(), 1);
   const int byte_size = std::get<1>(outputs.at(0));
@@ -85,41 +113,14 @@ static void CheckFirstResult(
   EXPECT_EQ(expected_first_id, std::get<1>(entry));
 }
 
-// CAVEAT: This test only runs when you specify hexagon library using
-// makefile.
-// TODO(satok): Make this generic so that this can run without any
-// additionanl steps.
-#ifdef USE_HEXAGON_LIBS
-TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
-  const string image_filename = "/data/local/tmp/img_299x299.bmp";
-  const string model_filename =
-      "/data/local/tmp/tensorflow_inception_v3_stripped_optimized_quantized.pb";
-  const IGraphTransferOpsDefinitions* ops_definitions =
-      &HexagonOpsDefinitions::getInstance();
-  std::vector<GraphTransferer::InputNodeInfo> input_node_info_list = {
-      GraphTransferer::InputNodeInfo{
-          "Mul", Tensor{DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}}}};
-  std::vector<string> output_node_names = {"softmax"};
-  const bool is_text_proto = false;
-
-  GraphTransferer::OutputTensorInfo output_tensor_info;
-  GraphTransferer gt;
-  gt.EnableStrictCheckMode(false);
-  Status status = gt.LoadGraphFromProtoFile(
-      *ops_definitions, model_filename, input_node_info_list, output_node_names,
-      is_text_proto, true /* dry_run_for_unknown_shape */, &output_tensor_info);
-  ASSERT_TRUE(status.ok()) << status;
-
-  HexagonControlWrapper hexagon_control_wrapper;
-  const int version = hexagon_control_wrapper.GetVersion();
-  ASSERT_GE(version, 1);
-  LOG(INFO) << "Hexagon controller version is " << version;
-
+static void LoadImage(std::vector<float>* img_floats_ptr) {
+  CHECK(img_floats_ptr != nullptr);
+  std::vector<float>& img_floats = *img_floats_ptr;
   // Read the data from the bitmap file into memory
   string bmp;
-  TF_CHECK_OK(ReadFileToString(Env::Default(), image_filename, &bmp));
+  TF_CHECK_OK(ReadFileToString(Env::Default(), IMAGE_FILENAME, &bmp));
   const int fsize = bmp.size();
-  LOG(INFO) << "Read " << image_filename << ", size = " << fsize << "bytes";
+  LOG(INFO) << "Read " << IMAGE_FILENAME << ", size = " << fsize << "bytes";
   const int64 pixel_count = WIDTH * HEIGHT * DEPTH;
   CHECK(fsize >= 22 /* pos of height */ + sizeof(int));
   CHECK(bmp.data() != nullptr);
@@ -136,7 +137,7 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
 
   uint8* const bmp_pixels = &img_bytes[header_size];
 
-  std::vector<float> img_floats(pixel_count);
+  img_floats.resize(pixel_count);
   int src_pixel_index = 0;
   CHECK(pixel_count % 3 == 0);
   for (int i = 0; i < pixel_count / 3; ++i) {
@@ -164,18 +165,70 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
       ++src_pixel_index;
     }
   }
-  const ByteArray ba =
-      std::make_tuple(reinterpret_cast<uint8*>(img_floats.data()),
-                      pixel_count * sizeof(float), DT_FLOAT);
+}
 
+static Tensor BuildImageTensor(const std::vector<float>& img_floats) {
+  LOG(INFO) << "Ioading image finished.";
+  Tensor img_tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH});
+  CHECK_EQ(WIDTH * HEIGHT * DEPTH, img_floats.size());
+  CHECK_EQ(img_tensor.TotalBytes(), img_floats.size() * sizeof(float));
+  LOG(INFO) << "Copy data to tensor.";
+  std::memcpy(img_tensor.flat<float>().data(), img_floats.data(),
+              img_tensor.TotalBytes());
+  return img_tensor;
+}
+
+/* static */ RemoteFusedGraphExecuteInfo
+BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(
+    const GraphTransferInfo& graph_transfer_info) {
+  RemoteFusedGraphExecuteInfo execute_info;
+  execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
+  for (const GraphTransferInfo::GraphInputNodeInfo& input :
+       graph_transfer_info.graph_input_node_info()) {
+    execute_info.add_graph_input_node_name(input.name());
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+        *execute_info.add_default_graph_input_tensor_shape();
+    tensor_shape_type.set_dtype(input.dtype());
+    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
+    for (const int64 dim : input.shape()) {
+      tensor_shape_proto.add_dim()->set_size(dim);
+    }
+  }
+
+  for (const GraphTransferInfo::GraphOutputNodeInfo& output :
+       graph_transfer_info.graph_output_node_info()) {
+    execute_info.add_graph_output_node_name(output.name());
+    RemoteFusedGraphExecuteInfo::TensorShapeTypeProto& tensor_shape_type =
+        *execute_info.add_default_graph_output_tensor_shape();
+    tensor_shape_type.set_dtype(output.dtype());
+    TensorShapeProto& tensor_shape_proto = *tensor_shape_type.mutable_shape();
+    for (const int64 dim : output.shape()) {
+      tensor_shape_proto.add_dim()->set_size(dim);
+    }
+  }
+
+  execute_info.set_serialized_executor_parameters(
+      graph_transfer_info.SerializeAsString());
+  return execute_info;
+}
+
+static void RunInferenceByHexagonControlWrapper(
+    const GraphTransferer& gt, const std::vector<float>& img_floats) {
+  const Tensor img_tensor = BuildImageTensor(img_floats);
+
+  const RemoteFusedGraphExecuteInfo execute_info =
+      BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(
+          gt.GetGraphTransferInfo());
+
+  HexagonControlWrapper hexagon_control_wrapper;
   // 1. Initialize hexagon
-  hexagon_control_wrapper.Init();
+  hexagon_control_wrapper.Init(execute_info);
 
   // 2. Setup graph in hexagon
-  hexagon_control_wrapper.SetupGraph(gt);
+  hexagon_control_wrapper.SetupGraph();
 
   // 3. Fill input node's output
-  hexagon_control_wrapper.FillInputNode("Mul", ba);
+  hexagon_control_wrapper.FillInputNode("Mul", img_tensor);
 
   // 4. Execute graph
   profile_utils::CpuUtils::EnableClockCycleProfiling(true);
@@ -187,7 +240,7 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
   }
 
   // 5-1. Read output node's outputs
-  std::vector<ISocControlWrapper::ByteArray> outputs;
+  std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
   hexagon_control_wrapper.ReadOutputNode("softmax", &outputs);
 
   // 5-2. Dump results
@@ -200,6 +253,294 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExample) {
 
   // 7. Finalize hexagon
   hexagon_control_wrapper.Finalize();
+}
+
+static void RunFusedGraph(const GraphDef& fused_graph_def) {
+  // Setup input tensor
+  std::vector<float> img_floats;
+  LoadImage(&img_floats);
+
+  LOG(INFO) << "Ioading image finished.";
+  const Tensor img_tensor = BuildImageTensor(img_floats);
+
+  // Setup session
+  std::vector<Tensor> output_tensors;
+  SessionOptions session_options;
+  session_options.env = Env::Default();
+  std::unique_ptr<Session> session =
+      std::unique_ptr<Session>(NewSession(session_options));
+  TF_ASSERT_OK(session->Create(fused_graph_def));
+
+  // Setup session arguments
+  RunOptions run_options;
+  run_options.set_trace_level(RunOptions::FULL_TRACE);
+  RunMetadata run_metadata;
+
+  std::vector<std::pair<string, tensorflow::Tensor>> input_tensors;
+  input_tensors.emplace_back("Mul", img_tensor);
+  std::vector<string> output_node_names;
+  output_node_names.emplace_back(REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME);
+
+  LOG(INFO) << "Run graph";
+  // Run inference with all node as output
+  TF_ASSERT_OK(session->Run(run_options, input_tensors, output_node_names, {},
+                            &output_tensors, &run_metadata));
+  ASSERT_EQ(1, output_tensors.size());
+  const Tensor& output_tensor = output_tensors.at(0);
+  LOG(INFO) << "Output byte size = " << output_tensor.TotalBytes();
+  LOG(INFO) << "Output shape = " << output_tensor.shape().DebugString();
+  DumpTop10Results(
+      output_tensor.TotalBytes(),
+      reinterpret_cast<const float*>(output_tensor.flat<float>().data()));
+}
+
+static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
+                                     const GraphTransferInfo& gfi1) {
+  LOG(INFO) << "(1) node count: " << gfi1.node_info_size() << ", "
+            << gfi1.const_node_info_size();
+
+  // 1. check node_info
+  ASSERT_EQ(gfi0.node_info_size(), gfi1.node_info_size());
+  for (int i = 0; i < gfi0.node_info_size(); ++i) {
+    const GraphTransferInfo::NodeInfo& ni0 = gfi0.node_info(i);
+    const GraphTransferInfo::NodeInfo& ni1 = gfi1.node_info(i);
+    EXPECT_EQ(ni0.DebugString(), ni1.DebugString());
+    EXPECT_EQ(ni0.ByteSize(), ni1.ByteSize());
+  }
+
+  // 2. check const_node_info
+  ASSERT_EQ(gfi0.const_node_info_size(), gfi1.const_node_info_size());
+  for (int i = 0; i < gfi0.const_node_info_size(); ++i) {
+    const GraphTransferInfo::ConstNodeInfo& cni0 = gfi0.const_node_info(i);
+    const GraphTransferInfo::ConstNodeInfo& cni1 = gfi1.const_node_info(i);
+    ASSERT_EQ(cni0.shape_size(), cni1.shape_size());
+    for (int j = 0; j < cni0.shape_size(); ++j) {
+      EXPECT_EQ(cni0.shape(j), cni1.shape(j));
+    }
+    EXPECT_EQ(cni0.ByteSize(), cni1.ByteSize());
+    EXPECT_EQ(cni0.DebugString(), cni1.DebugString());
+  }
+
+  // 3. check node_input_info
+  ASSERT_EQ(gfi0.node_input_info_size(), gfi1.node_input_info_size());
+  for (int i = 0; i < gfi0.node_input_info_size(); ++i) {
+    const GraphTransferInfo::NodeInputInfo& nii0 = gfi0.node_input_info(i);
+    const GraphTransferInfo::NodeInputInfo& nii1 = gfi1.node_input_info(i);
+    EXPECT_EQ(nii0.ByteSize(), nii1.ByteSize());
+    EXPECT_EQ(nii0.DebugString(), nii1.DebugString());
+  }
+
+  // 4. check node_output_info
+  ASSERT_EQ(gfi0.node_output_info_size(), gfi1.node_output_info_size());
+  for (int i = 0; i < gfi0.node_output_info_size(); ++i) {
+    const GraphTransferInfo::NodeOutputInfo& noi0 = gfi0.node_output_info(i);
+    const GraphTransferInfo::NodeOutputInfo& noi1 = gfi1.node_output_info(i);
+    ASSERT_EQ(noi0.max_byte_size_size(), noi1.max_byte_size_size());
+    for (int j = 0; j < noi0.max_byte_size_size(); ++j) {
+      EXPECT_EQ(noi0.max_byte_size(j), noi1.max_byte_size(j));
+    }
+    EXPECT_EQ(noi0.ByteSize(), noi1.ByteSize());
+    EXPECT_EQ(noi0.DebugString(), noi1.DebugString());
+  }
+
+  // 5. check graph_input_node_info
+  ASSERT_EQ(gfi0.graph_input_node_info_size(),
+            gfi1.graph_input_node_info_size());
+  for (int i = 0; i < gfi0.graph_input_node_info_size(); ++i) {
+    const GraphTransferInfo::GraphInputNodeInfo& gini0 =
+        gfi0.graph_input_node_info(i);
+    const GraphTransferInfo::GraphInputNodeInfo& gini1 =
+        gfi0.graph_input_node_info(i);
+    EXPECT_EQ(gini0.ByteSize(), gini1.ByteSize());
+    EXPECT_EQ(gini0.DebugString(), gini1.DebugString());
+  }
+
+  // 6. check graph_output_node_info
+  ASSERT_EQ(gfi0.graph_output_node_info_size(),
+            gfi1.graph_output_node_info_size());
+  for (int i = 0; i < gfi0.graph_output_node_info_size(); ++i) {
+    const GraphTransferInfo::GraphOutputNodeInfo& goni0 =
+        gfi0.graph_output_node_info(i);
+    const GraphTransferInfo::GraphOutputNodeInfo& goni1 =
+        gfi0.graph_output_node_info(i);
+    EXPECT_EQ(goni0.ByteSize(), goni1.ByteSize());
+    EXPECT_EQ(goni0.DebugString(), goni1.DebugString());
+  }
+
+  // 7. check destination
+  EXPECT_EQ(gfi0.destination(), gfi1.destination());
+}
+
+// CAVEAT: This test only runs when you specify hexagon library using
+// makefile.
+// CAVEAT: This test is disabled by default because hexagon can keep only
+// two inception graphs on memory which are allocated by other two tests.
+// Memory of these graphs are not released until process is killed right now.
+// TODO(satok): Figure out how to release memory on hexagon without process
+// termination.
+#ifdef USE_HEXAGON_LIBS
+TEST(GraphTransferer,
+     DISABLED_RunInceptionV3OnHexagonExampleWithHexagonWrapper) {
+  LOG(INFO) << "Run inception v3 on hexagon with hexagon controller";
+  CheckHexagonControllerVersion();
+
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &HexagonOpsDefinitions::getInstance();
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
+  std::vector<string> output_node_names = {"softmax"};
+
+  GraphTransferer gt;
+  gt.EnableStrictCheckMode(false);
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  ClockCycleProfiler prof;
+  prof.Start();
+  Status status = gt.LoadGraphFromProtoFile(
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
+      false,  // is_text_proto
+      false,  // shape_inference_for_unknown_shape
+      true    // dry_run_for_unknown_shape
+      );
+  ASSERT_TRUE(status.ok()) << status;
+  prof.Stop();
+  prof.DumpStatistics("LoadGraphFromProtoFile");
+
+  std::vector<float> img_floats;
+  LoadImage(&img_floats);
+  RunInferenceByHexagonControlWrapper(gt, img_floats);
+}
+
+TEST(GraphTransferer,
+     DISABLED_RunInceptionV3OnHexagonExampleWithHexagonWrapperShapeInference) {
+  LOG(INFO) << "Run inception v3 on hexagon with hexagon controller";
+  CheckHexagonControllerVersion();
+
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &HexagonOpsDefinitions::getInstance();
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
+  std::vector<string> output_node_names = {"softmax"};
+
+  GraphTransferer gt;
+  gt.EnableStrictCheckMode(false);
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+  ClockCycleProfiler prof;
+  prof.Start();
+  Status status = gt.LoadGraphFromProtoFile(
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
+      false,  // is_text_proto
+      true,   // shape_inference_for_unknown_shape
+      false   // dry_run_for_unknown_shape
+      );
+  ASSERT_TRUE(status.ok()) << status;
+  prof.Stop();
+  prof.DumpStatistics("LoadGraphFromProtoFile");
+
+  std::vector<float> img_floats;
+  LoadImage(&img_floats);
+  RunInferenceByHexagonControlWrapper(gt, img_floats);
+}
+
+TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithTfRuntime) {
+  LOG(INFO) << "Fuse and run inception v3 on hexagon with tf runtime";
+  CheckHexagonControllerVersion();
+
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &HexagonOpsDefinitions::getInstance();
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
+  std::vector<string> outputs = {"softmax"};
+
+  std::vector<float> img_floats;
+  LoadImage(&img_floats);
+
+  LOG(INFO) << "Ioading image finished.";
+
+  GraphDef graph_def;
+  Status status = ReadBinaryProto(Env::Default(), MODEL_FILENAME, &graph_def);
+
+  ASSERT_TRUE(status.ok());
+
+  LOG(INFO) << "Build fused graph";
+  GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
+      HexagonOpsDefinitions::getInstance(),
+      REMOTE_FUSED_GRAPH_EXECUTE_NODE_NAME, inputs, outputs, &graph_def);
+
+  RunFusedGraph(fused_graph_def);
+}
+
+TEST(GraphTransferer, DISABLED_RunInceptionV3OnHexagonExampleWithFusedGraph) {
+  LOG(INFO) << "Run inception v3 with fused graph";
+  CheckHexagonControllerVersion();
+
+  GraphDef fused_graph_def;
+  Status status =
+      ReadBinaryProto(Env::Default(), FUSED_MODEL_FILENAME, &fused_graph_def);
+  RunFusedGraph(fused_graph_def);
+}
+
+TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
+  CheckHexagonControllerVersion();
+  profile_utils::CpuUtils::EnableClockCycleProfiling(true);
+
+  const IGraphTransferOpsDefinitions* ops_definitions =
+      &HexagonOpsDefinitions::getInstance();
+  std::vector<std::pair<string, Tensor>> inputs;
+  inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
+  std::vector<string> output_node_names = {"softmax"};
+
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info0;
+  GraphTransferer gt0;
+  gt0.EnableStrictCheckMode(false);
+  ClockCycleProfiler prof0;
+  prof0.Start();
+  Status status = gt0.LoadGraphFromProtoFile(
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
+      false,  // is_text_proto
+      false,  // shape_inference_for_unknown_shape
+      true    // dry_run_for_unknown_shape
+      );
+  const GraphTransferInfo& gfi0 = gt0.GetGraphTransferInfo();
+
+  ASSERT_TRUE(status.ok());
+  prof0.Stop();
+  prof0.DumpStatistics("Estimate shape by dryrun");
+
+  LOG(INFO) << "(0) node count: " << gfi0.node_info_size() << ", "
+            << gfi0.const_node_info_size();
+
+  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info1;
+  GraphTransferer gt1;
+  gt1.EnableStrictCheckMode(true);
+  ClockCycleProfiler prof1;
+  prof1.Start();
+  status = gt1.LoadGraphFromProtoFile(
+      *ops_definitions, MODEL_FILENAME, inputs, output_node_names,
+      false,  // is_text_proto
+      true,   // shape_inference_for_unknown_shape
+      false   // dry_run_for_unknown_shape
+      );
+  const GraphTransferInfo& gfi1 = gt1.GetGraphTransferInfo();
+
+  ASSERT_TRUE(status.ok());
+  prof1.Stop();
+  prof1.DumpStatistics("Estiame shape by shape inference");
+
+  CompareGraphTransferInfo(gfi0, gfi1);
+
+  const RemoteFusedGraphExecuteInfo ei0 =
+      BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(gfi0);
+  const RemoteFusedGraphExecuteInfo ei1 =
+      BuildRemoteFusedGraphExecuteInfoWithGraphTransferInfo(gfi1);
+
+  GraphTransferInfo rgfi0;
+  rgfi0.ParseFromString(ei0.serialized_executor_parameters());
+  GraphTransferInfo rgfi1;
+  rgfi1.ParseFromString(ei1.serialized_executor_parameters());
+
+  CompareGraphTransferInfo(rgfi0, rgfi1);
+  CompareGraphTransferInfo(gfi0, rgfi0);
+  CompareGraphTransferInfo(gfi1, rgfi1);
 }
 #endif
 

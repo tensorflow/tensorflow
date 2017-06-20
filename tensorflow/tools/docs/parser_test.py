@@ -19,17 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import inspect
 import os
 import sys
 
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import tf_inspect
 from tensorflow.tools.docs import parser
-
-
-def test_function_for_markdown_reference(unused_arg):
-  """Docstring with reference to @{test_function}."""
-  pass
 
 
 def test_function(unused_arg, unused_kwarg='default'):
@@ -40,19 +35,6 @@ def test_function(unused_arg, unused_kwarg='default'):
 def test_function_with_args_kwargs(unused_arg, *unused_args, **unused_kwargs):
   """Docstring for second test function."""
   pass
-
-
-def test_function_with_fancy_docstring(arg):
-  """Function with a fancy docstring.
-
-  Args:
-    arg: An argument.
-
-  Returns:
-    arg: the input, and
-    arg: the input, again.
-  """
-  return arg, arg
 
 
 class TestClass(object):
@@ -74,26 +56,70 @@ class TestClass(object):
   CLASS_MEMBER = 'a class member'
 
 
+class DummyVisitor(object):
+
+  def __init__(self, index, duplicate_of):
+    self.index = index
+    self.duplicate_of = duplicate_of
+
+
 class ParserTest(googletest.TestCase):
 
   def test_documentation_path(self):
     self.assertEqual('test.md', parser.documentation_path('test'))
     self.assertEqual('test/module.md', parser.documentation_path('test.module'))
 
-  def test_documentation_path_empty(self):
-    self.assertEqual('index.md', parser.documentation_path(''))
-
   def test_replace_references(self):
-    string = 'A @{reference}, another @{tf.reference}, and a @{third}.'
-    duplicate_of = {'third': 'fourth'}
-    result = parser.replace_references(string, '../..', duplicate_of)
+    class HasOneMember(object):
+
+      def foo(self):
+        pass
+
+    string = ('A @{tf.reference}, another @{tf.reference}, '
+              'a member @{tf.reference.foo}, and a @{tf.third}.')
+    duplicate_of = {'tf.third': 'tf.fourth'}
+    index = {'tf.reference': HasOneMember,
+             'tf.reference.foo': HasOneMember.foo,
+             'tf.third': HasOneMember,
+             'tf.fourth': HasOneMember}
+
+    visitor = DummyVisitor(index, duplicate_of)
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
+    result = reference_resolver.replace_references(string, '../..')
     self.assertEqual(
-        'A [`reference`](../../reference.md), another '
-        '[`tf.reference`](../../reference.md), '
-        'and a [`third`](../../fourth.md).',
+        'A [`tf.reference`](../../tf/reference.md), another '
+        '[`tf.reference`](../../tf/reference.md), '
+        'a member [`tf.reference.foo`](../../tf/reference.md#foo), '
+        'and a [`tf.third`](../../tf/fourth.md).',
         result)
 
-  def test_generate_markdown_for_class(self):
+  def test_doc_replace_references(self):
+    string = '@{$doc1} @{$doc1#abc} @{$doc1$link} @{$doc1#def$zelda} @{$do/c2}'
+
+    class DocInfo(object):
+      pass
+    doc1 = DocInfo()
+    doc1.title = 'Title1'
+    doc1.url = 'URL1'
+    doc2 = DocInfo()
+    doc2.title = 'Two words'
+    doc2.url = 'somewhere/else'
+    doc_index = {'doc1': doc1, 'do/c2': doc2}
+
+    visitor = DummyVisitor(index={}, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index=doc_index, py_module_names=['tf'])
+    result = reference_resolver.replace_references(string, 'python')
+    self.assertEqual(
+        '[Title1](../URL1) [Title1](../URL1#abc) [link](../URL1) '
+        '[zelda](../URL1#def) [Two words](../somewhere/else)',
+        result)
+
+  def test_docs_for_class(self):
 
     index = {
         'TestClass': TestClass,
@@ -103,32 +129,48 @@ class ParserTest(googletest.TestCase):
         'TestClass.CLASS_MEMBER': TestClass.CLASS_MEMBER
     }
 
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
     tree = {
         'TestClass': ['a_method', 'a_property', 'ChildClass', 'CLASS_MEMBER']
     }
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
 
-    docs = parser.generate_markdown(full_name='TestClass', py_object=TestClass,
-                                    duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, base_dir='/')
+    page_info = parser.docs_for_object(
+        full_name='TestClass', py_object=TestClass, parser_config=parser_config)
 
-    # Make sure all required docstrings are present.
-    self.assertTrue(inspect.getdoc(TestClass) in docs)
-    self.assertTrue(inspect.getdoc(TestClass.a_method) in docs)
-    self.assertTrue(inspect.getdoc(TestClass.a_property) in docs)
+    # Make sure the brief docstring is present
+    self.assertEqual(
+        tf_inspect.getdoc(TestClass).split('\n')[0], page_info.doc.brief)
+
+    # Make sure the method is present
+    self.assertEqual(TestClass.a_method, page_info.methods[0].obj)
 
     # Make sure that the signature is extracted properly and omits self.
-    self.assertTrue('a_method(arg=\'default\')' in docs)
+    self.assertEqual(["arg='default'"], page_info.methods[0].signature)
+
+    # Make sure the property is present
+    self.assertIs(TestClass.a_property, page_info.properties[0].obj)
 
     # Make sure there is a link to the child class and it points the right way.
-    self.assertTrue('[`class ChildClass`](./TestClass/ChildClass.md)' in docs)
-
-    # Make sure CLASS_MEMBER is mentioned.
-    self.assertTrue('CLASS_MEMBER' in docs)
+    self.assertIs(TestClass.ChildClass, page_info.classes[0].obj)
 
     # Make sure this file is contained as the definition location.
-    self.assertTrue(os.path.relpath(__file__, '/') in docs)
+    self.assertEqual(os.path.relpath(__file__, '/'), page_info.defined_in.path)
 
-  def test_generate_markdown_for_module(self):
+  def test_docs_for_module(self):
+    # Get the current module.
     module = sys.modules[__name__]
 
     index = {
@@ -139,127 +181,180 @@ class ParserTest(googletest.TestCase):
         'TestModule.TestClass': TestClass,
     }
 
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
     tree = {
         'TestModule': ['TestClass', 'test_function',
                        'test_function_with_args_kwargs']
     }
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
 
-    docs = parser.generate_markdown(full_name='TestModule', py_object=module,
-                                    duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, base_dir='/')
+    page_info = parser.docs_for_object(
+        full_name='TestModule', py_object=module, parser_config=parser_config)
 
-    # Make sure all required docstrings are present.
-    self.assertTrue(inspect.getdoc(module) in docs)
+    # Make sure the brief docstring is present
+    self.assertEqual(tf_inspect.getdoc(module).split('\n')[0],
+                     page_info.doc.brief)
 
-    # Make sure that links to the members are there (not asserting on exact link
-    # text for functions).
-    self.assertTrue('./TestModule/test_function.md' in docs)
-    self.assertTrue('./TestModule/test_function_with_args_kwargs.md' in docs)
+    # Make sure that the members are there
+    funcs = {f_info.obj for f_info in page_info.functions}
+    self.assertEqual({test_function, test_function_with_args_kwargs}, funcs)
 
-    # Make sure there is a link to the child class and it points the right way.
-    self.assertTrue('[`class TestClass`](./TestModule/TestClass.md)' in docs)
+    classes = {cls_info.obj for cls_info in page_info.classes}
+    self.assertEqual({TestClass}, classes)
 
     # Make sure this file is contained as the definition location.
-    self.assertTrue(os.path.relpath(__file__, '/') in docs)
+    self.assertEqual(os.path.relpath(__file__, '/'), page_info.defined_in.path)
 
-  def test_generate_markdown_for_function(self):
+  def test_docs_for_function(self):
     index = {
         'test_function': test_function
     }
 
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
     tree = {
         '': ['test_function']
     }
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
 
-    docs = parser.generate_markdown(full_name='test_function',
-                                    py_object=test_function,
-                                    duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, base_dir='/')
+    page_info = parser.docs_for_object(
+        full_name='test_function',
+        py_object=test_function,
+        parser_config=parser_config)
 
-    # Make sure docstring shows up.
-    self.assertTrue(inspect.getdoc(test_function) in docs)
+    # Make sure the brief docstring is present
+    self.assertEqual(
+        tf_inspect.getdoc(test_function).split('\n')[0], page_info.doc.brief)
 
     # Make sure the extracted signature is good.
-    self.assertTrue(
-        'test_function(unused_arg, unused_kwarg=\'default\')' in docs)
+    self.assertEqual(['unused_arg', "unused_kwarg='default'"],
+                     page_info.signature)
 
     # Make sure this file is contained as the definition location.
-    self.assertTrue(os.path.relpath(__file__, '/') in docs)
+    self.assertEqual(os.path.relpath(__file__, '/'), page_info.defined_in.path)
 
-  def test_generate_markdown_for_function_with_kwargs(self):
+  def test_docs_for_function_with_kwargs(self):
     index = {
         'test_function_with_args_kwargs': test_function_with_args_kwargs
     }
 
+    visitor = DummyVisitor(index=index, duplicate_of={})
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
     tree = {
         '': ['test_function_with_args_kwargs']
     }
+    parser_config = parser.ParserConfig(
+        reference_resolver=reference_resolver,
+        duplicates={},
+        duplicate_of={},
+        tree=tree,
+        index=index,
+        reverse_index={},
+        guide_index={},
+        base_dir='/')
 
-    docs = parser.generate_markdown(full_name='test_function_with_args_kwargs',
-                                    py_object=test_function_with_args_kwargs,
-                                    duplicate_of={}, duplicates={},
-                                    index=index, tree=tree, base_dir='/')
+    page_info = parser.docs_for_object(
+        full_name='test_function_with_args_kwargs',
+        py_object=test_function_with_args_kwargs,
+        parser_config=parser_config)
 
-    # Make sure docstring shows up.
-    self.assertTrue(inspect.getdoc(test_function_with_args_kwargs) in docs)
+    # Make sure the brief docstring is present
+    self.assertEqual(
+        tf_inspect.getdoc(test_function_with_args_kwargs).split('\n')[0],
+        page_info.doc.brief)
 
     # Make sure the extracted signature is good.
-    self.assertTrue(
-        'test_function_with_args_kwargs(unused_arg,'
-        ' *unused_args, **unused_kwargs)' in docs)
+    self.assertEqual(['unused_arg', '*unused_args', '**unused_kwargs'],
+                     page_info.signature)
 
-  def test_references_replaced_in_generated_markdown(self):
+  def test_parse_md_docstring(self):
+
+    def test_function_with_fancy_docstring(arg):
+      """Function with a fancy docstring.
+
+      And a bunch of references: @{tf.reference}, another @{tf.reference},
+          a member @{tf.reference.foo}, and a @{tf.third}.
+
+      Args:
+        arg: An argument.
+
+      Raises:
+        an exception
+
+      Returns:
+        arg: the input, and
+        arg: the input, again.
+
+      @compatibility(numpy)
+      NumPy has nothing as awesome as this function.
+      @end_compatibility
+
+      @compatibility(theano)
+      Theano has nothing as awesome as this function.
+
+      Check it out.
+      @end_compatibility
+
+      """
+      return arg, arg
+
+    class HasOneMember(object):
+
+      def foo(self):
+        pass
+
+    duplicate_of = {'tf.third': 'tf.fourth'}
     index = {
-        'test_function_for_markdown_reference':
-        test_function_for_markdown_reference
+        'tf.fancy': test_function_with_fancy_docstring,
+        'tf.reference': HasOneMember,
+        'tf.reference.foo': HasOneMember.foo,
+        'tf.third': HasOneMember,
+        'tf.fourth': HasOneMember
     }
 
-    tree = {
-        '': ['test_function_for_markdown_reference']
-    }
+    visitor = DummyVisitor(index=index, duplicate_of=duplicate_of)
 
-    docs = parser.generate_markdown(
-        full_name='test_function_for_markdown_reference',
-        py_object=test_function_for_markdown_reference,
-        duplicate_of={}, duplicates={},
-        index=index, tree=tree, base_dir='/')
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
 
-    # Make sure docstring shows up and is properly processed.
-    expected_docs = parser.replace_references(
-        inspect.getdoc(test_function_for_markdown_reference),
-        relative_path_to_root='.', duplicate_of={})
+    doc_info = parser._parse_md_docstring(test_function_with_fancy_docstring,
+                                          '../..', reference_resolver)
 
-    self.assertTrue(expected_docs in docs)
+    self.assertNotIn('@', doc_info.docstring)
+    self.assertNotIn('compatibility', doc_info.docstring)
+    self.assertNotIn('Raises:', doc_info.docstring)
 
-  def test_docstring_special_section(self):
-    index = {
-        'test_function': test_function_with_fancy_docstring
-    }
+    self.assertEqual(len(doc_info.function_details), 3)
+    self.assertEqual(set(doc_info.compatibility.keys()), {'numpy', 'theano'})
 
-    tree = {
-        '': 'test_function'
-    }
-
-    docs = parser.generate_markdown(
-        full_name='test_function',
-        py_object=test_function_with_fancy_docstring,
-        duplicate_of={}, duplicates={},
-        index=index, tree=tree, base_dir='/')
-
-    expected = '\n'.join([
-        'Function with a fancy docstring.',
-        '',
-        '#### Args:',
-        '',
-        '* <b>`arg`</b>: An argument.',
-        '',
-        '',
-        '#### Returns:',
-        '',
-        '* <b>`arg`</b>: the input, and',
-        '* <b>`arg`</b>: the input, again.',
-        ''])
-    self.assertTrue(expected in docs)
+    self.assertEqual(doc_info.compatibility['numpy'],
+                     'NumPy has nothing as awesome as this function.\n')
 
   def test_generate_index(self):
     module = sys.modules[__name__]
@@ -273,27 +368,30 @@ class ParserTest(googletest.TestCase):
         'TestModule.TestClass.a_property': TestClass.a_property,
         'TestModule.TestClass.ChildClass': TestClass.ChildClass,
     }
-
     duplicate_of = {
         'TestModule.test_function': 'test_function'
     }
 
-    docs = parser.generate_global_index('TestLibrary', 'test',
-                                        index=index,
-                                        duplicate_of=duplicate_of)
+    visitor = DummyVisitor(index=index, duplicate_of=duplicate_of)
+
+    reference_resolver = parser.ReferenceResolver.from_visitor(
+        visitor=visitor, doc_index={}, py_module_names=['tf'])
+
+    docs = parser.generate_global_index('TestLibrary', index=index,
+                                        reference_resolver=reference_resolver)
 
     # Make sure duplicates and non-top-level symbols are in the index, but
     # methods and properties are not.
-    self.assertTrue('a_method' not in docs)
-    self.assertTrue('a_property' not in docs)
-    self.assertTrue('TestModule.TestClass' in docs)
-    self.assertTrue('TestModule.TestClass.ChildClass' in docs)
-    self.assertTrue('TestModule.test_function' in docs)
+    self.assertNotIn('a_method', docs)
+    self.assertNotIn('a_property', docs)
+    self.assertIn('TestModule.TestClass', docs)
+    self.assertIn('TestModule.TestClass.ChildClass', docs)
+    self.assertIn('TestModule.test_function', docs)
     # Leading backtick to make sure it's included top-level.
     # This depends on formatting, but should be stable.
-    self.assertTrue('`test_function' in docs)
+    self.assertIn('`test_function', docs)
 
-  def test_argspec_for_functoos_partial(self):
+  def test_argspec_for_functools_partial(self):
 
     # pylint: disable=unused-argument
     def test_function_for_partial1(arg1, arg2, kwarg1=1, kwarg2=2):
@@ -305,45 +403,117 @@ class ParserTest(googletest.TestCase):
 
     # pylint: disable=protected-access
     # Make sure everything works for regular functions.
-    expected = inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None, None,
-                               (1, 2))
+    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None,
+                                  None, (1, 2))
     self.assertEqual(expected, parser._get_arg_spec(test_function_for_partial1))
 
     # Make sure doing nothing works.
-    expected = inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None, None,
-                               (1, 2))
+    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1', 'kwarg2'], None,
+                                  None, (1, 2))
     partial = functools.partial(test_function_for_partial1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting args from the front works.
-    expected = inspect.ArgSpec(['arg2', 'kwarg1', 'kwarg2'], None, None, (1, 2))
+    expected = tf_inspect.ArgSpec(['arg2', 'kwarg1', 'kwarg2'], None, None,
+                                  (1, 2))
     partial = functools.partial(test_function_for_partial1, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = inspect.ArgSpec(['kwarg2',], None, None, (2,))
+    expected = tf_inspect.ArgSpec(['kwarg2',], None, None, (2,))
     partial = functools.partial(test_function_for_partial1, 1, 2, 3)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure setting kwargs works.
-    expected = inspect.ArgSpec(['arg1', 'arg2', 'kwarg2'], None, None, (2,))
+    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg2'], None, None, (2,))
     partial = functools.partial(test_function_for_partial1, kwarg1=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = inspect.ArgSpec(['arg1', 'arg2', 'kwarg1'], None, None, (1,))
+    expected = tf_inspect.ArgSpec(['arg1', 'arg2', 'kwarg1'], None, None, (1,))
     partial = functools.partial(test_function_for_partial1, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
-    expected = inspect.ArgSpec(['arg1'], None, None, ())
+    expected = tf_inspect.ArgSpec(['arg1'], None, None, ())
     partial = functools.partial(test_function_for_partial1,
                                 arg2=0, kwarg1=0, kwarg2=0)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # Make sure *args, *kwargs is accounted for.
-    expected = inspect.ArgSpec([], 'my_args', 'my_kwargs', ())
+    expected = tf_inspect.ArgSpec([], 'my_args', 'my_kwargs', ())
     partial = functools.partial(test_function_for_partial2, 0, 1)
     self.assertEqual(expected, parser._get_arg_spec(partial))
 
     # pylint: enable=protected-access
+
+  def testSaveReferenceResolver(self):
+    you_cant_serialize_this = object()
+
+    duplicate_of = {'AClass': ['AClass2']}
+    doc_index = {'doc': you_cant_serialize_this}
+    is_class = {
+        'tf': False,
+        'tf.AClass': True,
+        'tf.AClass2': True,
+        'tf.function': False
+    }
+    is_module = {
+        'tf': True,
+        'tf.AClass': False,
+        'tf.AClass2': False,
+        'tf.function': False
+    }
+    py_module_names = ['tf', 'tfdbg']
+
+    resolver = parser.ReferenceResolver(duplicate_of, doc_index, is_class,
+                                        is_module, py_module_names)
+
+    outdir = googletest.GetTempDir()
+
+    filepath = os.path.join(outdir, 'resolver.json')
+
+    resolver.to_json_file(filepath)
+    resolver2 = parser.ReferenceResolver.from_json_file(filepath, doc_index)
+
+    # There are no __slots__, so all fields are visible in __dict__.
+    self.assertEqual(resolver.__dict__, resolver2.__dict__)
+
+RELU_DOC = """Computes rectified linear: `max(features, 0)`
+
+Args:
+  features: A `Tensor`. Must be one of the following types: `float32`,
+    `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`,
+    `half`.
+  name: A name for the operation (optional)
+
+Returns:
+  A `Tensor`. Has the same type as `features`
+"""
+
+
+class TestParseFunctionDetails(googletest.TestCase):
+
+  def testParseFunctionDetails(self):
+    docstring, function_details = parser._parse_function_details(RELU_DOC)
+
+    self.assertEqual(len(function_details), 2)
+    args = function_details[0]
+    self.assertEqual(args.keyword, 'Args')
+    self.assertEmpty(args.header)
+    self.assertEqual(len(args.items), 2)
+    self.assertEqual(args.items[0][0], 'features')
+    self.assertEqual(args.items[1][0], 'name')
+    self.assertEqual(args.items[1][1],
+                     ' A name for the operation (optional)\n\n')
+    returns = function_details[1]
+    self.assertEqual(returns.keyword, 'Returns')
+
+    relu_doc_lines = RELU_DOC.split('\n')
+    self.assertEqual(docstring, relu_doc_lines[0] + '\n\n')
+    self.assertEqual(returns.header, relu_doc_lines[-2] + '\n')
+
+    self.assertEqual(
+        RELU_DOC,
+        docstring + ''.join(str(detail) for detail in function_details))
+
 
 if __name__ == '__main__':
   googletest.main()

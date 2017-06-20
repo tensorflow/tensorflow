@@ -60,7 +60,7 @@ void CostModel::MergeFromLocal(const Graph& g, const CostModel& cm) {
     time_[global_id] += cm.time_[local_id];
     int num_slots = cm.slot_bytes_[local_id].size();
     if (num_slots > 0) {
-      if (slot_bytes_[global_id].size() == 0) {
+      if (slot_bytes_[global_id].empty()) {
         slot_bytes_[global_id].resize(num_slots);
       } else {
         CHECK_EQ(num_slots, slot_bytes_[global_id].size());
@@ -82,7 +82,7 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
     time_[i] += cm.time_[i];
     int num_slots = cm.slot_bytes_[i].size();
     if (num_slots > 0) {
-      if (slot_bytes_[i].size() == 0) {
+      if (slot_bytes_[i].empty()) {
         slot_bytes_[i].resize(num_slots);
       } else {
         CHECK_EQ(num_slots, slot_bytes_[i].size());
@@ -138,16 +138,15 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
   auto perslot = &slot_bytes_[id];
   auto max_mem_usage = &max_mem_usage_[id];
   auto output_port_alloc_ids = &output_port_alloc_ids_[id];
-  if (perslot->size() > 0) {
+  if (!perslot->empty()) {
     CHECK_EQ(num_outputs, perslot->size()) << "Cannot resize slot_bytes, node="
                                            << node->name();
   } else {
     perslot->resize(num_outputs, Bytes(-1));
-    max_mem_usage->output_port_mem.resize(num_outputs, Bytes(-1));
-    max_mem_usage->output_port_shape.resize(num_outputs, TensorShapeProto());
-    max_mem_usage->output_port_type.resize(num_outputs, DT_INVALID);
-    max_mem_usage->temp_memory_size = Bytes(-1);
     output_port_alloc_ids->resize(num_outputs, -1);
+    max_mem_usage->output_port_mem.resize(num_outputs, Bytes(-1));
+    max_mem_usage->output_port_shape.resize(num_outputs, unknown_shape_);
+    max_mem_usage->output_port_type.resize(num_outputs, DT_INVALID);
   }
 }
 
@@ -218,19 +217,17 @@ Microseconds CostModel::TimeEstimate(const Node* node) const {
 }
 
 void CostModel::CheckInitialized(const Graph& graph) const {
-  for (const Node* n : graph.nodes()) {
-    if (n->IsOp()) {
-      CHECK(static_cast<size_t>(n->id()) < time_.size() &&
-            time_[n->id()] >= Microseconds(0))
-          << ": no time estimate for " << n->DebugString();
+  for (const Node* n : graph.op_nodes()) {
+    CHECK(static_cast<size_t>(n->id()) < time_.size() &&
+          time_[n->id()] >= Microseconds(0))
+        << ": no time estimate for " << n->DebugString();
 
-      CHECK(static_cast<size_t>(n->id()) < slot_bytes_.size())
-          << ": no size estimate for " << n->DebugString();
-      const auto& perslot = slot_bytes_[n->id()];
-      for (size_t i = 0; i < perslot.size(); i++) {
-        CHECK_GE(perslot[i], Bytes(0)) << ": no size estimate for output# " << i
-                                       << " of " << n->DebugString();
-      }
+    CHECK(static_cast<size_t>(n->id()) < slot_bytes_.size())
+        << ": no size estimate for " << n->DebugString();
+    const auto& perslot = slot_bytes_[n->id()];
+    for (size_t i = 0; i < perslot.size(); i++) {
+      CHECK_GE(perslot[i], Bytes(0)) << ": no size estimate for output# " << i
+                                     << " of " << n->DebugString();
     }
   }
 }
@@ -257,26 +254,28 @@ void CostModel::RecordMaxMemorySize(const Node* node, int output_slot,
 
 Bytes CostModel::MaxMemorySize(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_mem.size() <= static_cast<size_t>(slot)) {
     return Bytes(0);
   }
   return max_mem_usage_[id].output_port_mem[slot];
 }
 
-TensorShapeProto CostModel::MaxMemoryShape(const Node* node, int slot) const {
+const TensorShapeProto& CostModel::MaxMemoryShape(const Node* node,
+                                                  int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
-    return TensorShapeProto();
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_shape.size() <=
+          static_cast<size_t>(slot)) {
+    return unknown_shape_;
   }
   return max_mem_usage_[id].output_port_shape[slot];
 }
 
 DataType CostModel::MaxMemoryType(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_type.size() <= static_cast<size_t>(slot)) {
     return DT_INVALID;
   }
   return max_mem_usage_[id].output_port_type[slot];
@@ -288,6 +287,63 @@ Bytes CostModel::TempMemorySize(const Node* node) const {
     return Bytes(0);
   }
   return max_mem_usage_[id].temp_memory_size;
+}
+
+Bytes CostModel::HostTempMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].host_temp_memory_size;
+}
+
+Bytes CostModel::DeviceTempMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].device_temp_memory_size;
+}
+
+Bytes CostModel::HostPersistentMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].host_persistent_memory_size;
+}
+
+Bytes CostModel::DevicePersistentMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].device_persistent_memory_size;
+}
+
+void CostModel::RecordMemoryStats(const Node* node,
+                                  const MemoryStats& memory_stats) {
+  const int id = Id(node);
+  if (id < 0) return;
+  max_mem_usage_[id].host_temp_memory_size =
+      memory_stats.host_temp_memory_size();
+  max_mem_usage_[id].device_temp_memory_size =
+      memory_stats.device_temp_memory_size();
+  max_mem_usage_[id].host_persistent_memory_size =
+      memory_stats.host_persistent_memory_size();
+  max_mem_usage_[id].device_persistent_memory_size =
+      memory_stats.device_persistent_memory_size();
+  for (int64 alloc_id : memory_stats.host_persistent_tensor_alloc_ids()) {
+    if (alloc_id > 0) {
+      host_persistent_alloc_ids_.insert(alloc_id);
+    }
+  }
+  for (int64 alloc_id : memory_stats.device_persistent_tensor_alloc_ids()) {
+    if (alloc_id > 0) {
+      persistent_alloc_ids_by_devices_[node->assigned_device_name()].insert(
+          alloc_id);
+    }
+  }
 }
 
 void CostModel::RecordMaxExecutionTime(const Node* node, Microseconds time) {
@@ -315,11 +371,23 @@ void CostModel::RecordAllocationId(const Node* node, int output_slot,
 
 int64 CostModel::AllocationId(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= output_port_alloc_ids_.size() ||
+      output_port_alloc_ids_[id].size() <= static_cast<size_t>(slot)) {
     return -1;
   }
   return output_port_alloc_ids_[id][slot];
+}
+
+bool CostModel::IsPersistentTensor(const Node* node, int64 alloc_id) const {
+  if (host_persistent_alloc_ids_.count(alloc_id) > 0) {
+    return true;
+  }
+  if (persistent_alloc_ids_by_devices_.find(node->assigned_device_name()) ==
+      persistent_alloc_ids_by_devices_.end()) {
+    return false;
+  }
+  return persistent_alloc_ids_by_devices_.at(node->assigned_device_name())
+      .count(alloc_id);
 }
 
 Microseconds CostModel::CopyTimeEstimate(Bytes b, double network_latency_millis,
@@ -408,6 +476,14 @@ static void EstimateComputationCosts(const Graph& g, CostModel* cost_model) {
 }  // namespace
 
 void CostModel::InitFromGraph(const Graph& g) {
+  const int num_node_ids = g.num_node_ids();
+  slot_bytes_.reserve(num_node_ids);
+  count_.reserve(num_node_ids);
+  time_.reserve(num_node_ids);
+  max_mem_usage_.reserve(num_node_ids);
+  max_exec_time_.reserve(num_node_ids);
+  output_port_alloc_ids_.reserve(num_node_ids);
+
   AddNodesToCostModel(g, this);
   AssignSizes(g, this);
   EstimateComputationCosts(g, this);
@@ -447,7 +523,6 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
 
     for (int i = 0; i < n->num_outputs(); i++) {
       CostGraphDef::Node::OutputInfo* output_info = cnode->add_output_info();
-      output_info->set_size(MaxMemorySize(n, i).value());
       int64 alloc_id = AllocationId(n, i);
       int64 alias_to_input = -1;
       for (const Edge* e : inputs) {
@@ -460,13 +535,22 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
       output_info->set_alias_input_port(alias_to_input);
       output_info->set_dtype(MaxMemoryType(n, i));
       *output_info->mutable_shape() = MaxMemoryShape(n, i);
+      if (alias_to_input < 0 && IsPersistentTensor(n, alloc_id)) {
+        output_info->set_size(0);
+      } else {
+        output_info->set_size(MaxMemorySize(n, i).value());
+      }
     }
 
     for (const Edge* e : control_inputs) {
       cnode->add_control_input(Id(e->src()));
     }
 
-    cnode->set_temporary_memory_size(TempMemorySize(n).value());
+    cnode->set_host_temp_memory_size(HostTempMemorySize(n).value());
+    cnode->set_device_temp_memory_size(DeviceTempMemorySize(n).value());
+    cnode->set_host_persistent_memory_size(HostPersistentMemorySize(n).value());
+    cnode->set_device_persistent_memory_size(
+        DevicePersistentMemorySize(n).value());
 
     cnode->set_compute_cost(MaxExecutionTime(n).value());
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -101,7 +102,7 @@ Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
 class TensorArrayCreationOp : public OpKernel {
  public:
   explicit TensorArrayCreationOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context), device_type_(context->device_type()) {}
 
   void Compute(OpKernelContext* ctx) override {
     Tensor tensor_array_output_handle;
@@ -133,6 +134,12 @@ class TensorArrayCreationOp : public OpKernel {
       // Create the flow output.
       Tensor* flow;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &flow));
+      if (device_type_ == DEVICE_CPU) {
+        // Value doesn't matter, but this makes msan not complaint about
+        // copying an uninitialized value. To do this on GPU would require
+        // a kernel launch or a host->device memcpy, so we avoid that.
+        flow->flat<float>()(0) = 0;
+      }
     }
   }
 
@@ -140,6 +147,9 @@ class TensorArrayCreationOp : public OpKernel {
   virtual Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
                                    Tensor* tensor_array_output_handle,
                                    TensorArray** output_tensor_array) = 0;
+
+ private:
+  const DeviceType device_type_;
 };
 
 // A per-run local tensor array. The tensor array uses a "per-step" resource
@@ -156,7 +166,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
                    context->GetAttr("clear_after_read", &clear_after_read_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("tensor_array_name", &tensor_array_name_));
-    if (tensor_array_name_ == "") tensor_array_name_ = name();
+    if (tensor_array_name_.empty()) tensor_array_name_ = name();
   }
 
   Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
@@ -171,6 +181,9 @@ class TensorArrayOp : public TensorArrayCreationOp {
           tensor_size->shape().DebugString());
     }
     const int32 size = tensor_size->scalar<int32>()();
+    if (size < 0) {
+      return errors::InvalidArgument("Size should be >= 0.");
+    }
 
     auto handle = tensor_array_output_handle->flat<string>();
     string unique_tensor_array_name =
@@ -233,6 +246,8 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayV3").Device(DEVICE_CPU),
                           TensorArrayOp);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -285,11 +300,14 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     // may no longer be resized by new Writes.
     tensor_array->DisableDynamicSize();
 
-    int32 array_size;
-    int32 marked_size;
+    int32 array_size = 0;
+    int32 marked_size = 0;
     TF_RETURN_IF_ERROR(tensor_array->Size(&array_size));
     TF_RETURN_IF_ERROR(tensor_array->MarkedSize(&marked_size));
 
+    if (array_size < 0) {
+      return errors::InvalidArgument("ArraySize should be >= 0.");
+    }
     if (!tensor_array->GradientsAllowed()) {
       return errors::InvalidArgument(
           "Unable to create a gradients TensorArray for ", tensor_array_name,
@@ -426,6 +444,8 @@ TF_CALL_ALL_TYPES(REGISTER_WRITE);
                           TensorArrayWriteOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -513,6 +533,8 @@ TF_CALL_ALL_TYPES(REGISTER_READ)
                           TensorArrayReadOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -609,6 +631,12 @@ class TensorArrayPackOrGatherOp : public OpKernel {
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
+
+    // If output_tensor is empty, there is nothing to concatenate so return it.
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
+
     ConstMatrixVector input_tensors_flat;
     input_tensors_flat.reserve(num_indices);
     auto output_flat =
@@ -706,6 +734,8 @@ REGISTER_GATHER_AND_PACK(bfloat16);
       TensorArrayPackOrGatherOp<GPUDevice, type, false /* LEGACY_PACK */>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -926,6 +956,8 @@ REGISTER_CONCAT(bfloat16);
                           TensorArrayConcatOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
@@ -1143,6 +1175,8 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
                                    false /* LEGACY_UNPACK */>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA
@@ -1308,6 +1342,8 @@ TF_CALL_ALL_TYPES(REGISTER_SPLIT);
                           TensorArraySplitOp<GPUDevice, type>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA

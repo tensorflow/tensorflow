@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <stddef.h>
 #include <functional>
+#include <initializer_list>
+#include <iterator>
 #include <utility>
 #include "tensorflow/core/lib/gtl/flatrep.h"
 #include "tensorflow/core/platform/logging.h"
@@ -64,6 +66,10 @@ class FlatSet {
     insert(first, last);
   }
 
+  FlatSet(std::initializer_list<value_type> init, size_t N = 1,
+          const Hash& hf = Hash(), const Eq& eq = Eq())
+      : FlatSet(init.begin(), init.end(), N, hf, eq) {}
+
   FlatSet& operator=(const FlatSet& src) {
     rep_.CopyFrom(src.rep_);
     return *this;
@@ -83,29 +89,41 @@ class FlatSet {
   hasher hash_function() const { return rep_.hash_function(); }
   key_equal key_eq() const { return rep_.key_eq(); }
 
-  class iterator {
+  class const_iterator {
    public:
-    iterator() : b_(nullptr), end_(nullptr), i_(0) {}
+    typedef typename FlatSet::difference_type difference_type;
+    typedef typename FlatSet::value_type value_type;
+    typedef typename FlatSet::const_pointer pointer;
+    typedef typename FlatSet::const_reference reference;
+    typedef ::std::forward_iterator_tag iterator_category;
+
+    const_iterator() : b_(nullptr), end_(nullptr), i_(0) {}
 
     // Make iterator pointing at first element at or after b.
-    explicit iterator(Bucket* b, Bucket* end) : b_(b), end_(end), i_(0) {
+    const_iterator(Bucket* b, Bucket* end) : b_(b), end_(end), i_(0) {
       SkipUnused();
     }
 
     // Make iterator pointing exactly at ith element in b, which must exist.
-    iterator(Bucket* b, Bucket* end, uint32 i) : b_(b), end_(end), i_(i) {}
+    const_iterator(Bucket* b, Bucket* end, uint32 i)
+        : b_(b), end_(end), i_(i) {}
 
-    Key& operator*() { return key(); }
-    Key* operator->() { return &key(); }
-    bool operator==(const iterator& x) const {
+    reference operator*() { return key(); }
+    pointer operator->() { return &key(); }
+    bool operator==(const const_iterator& x) const {
       return b_ == x.b_ && i_ == x.i_;
     }
-    bool operator!=(const iterator& x) const { return !(*this == x); }
-    iterator& operator++() {
+    bool operator!=(const const_iterator& x) const { return !(*this == x); }
+    const_iterator& operator++() {
       DCHECK(b_ != end_);
       i_++;
       SkipUnused();
       return *this;
+    }
+    const_iterator operator++(int /*indicates postfix*/) {
+      const_iterator tmp(*this);
+      ++*this;
+      return tmp;
     }
 
    private:
@@ -114,7 +132,7 @@ class FlatSet {
     Bucket* end_;
     uint32 i_;
 
-    Key& key() const { return b_->key(i_); }
+    reference key() const { return b_->key(i_); }
     void SkipUnused() {
       while (b_ < end_) {
         if (i_ >= Rep::kWidth) {
@@ -129,23 +147,7 @@ class FlatSet {
     }
   };
 
-  class const_iterator {
-   private:
-    mutable iterator rep_;  // Share state and logic with non-const iterator.
-   public:
-    const_iterator() : rep_() {}
-    explicit const_iterator(Bucket* start, Bucket* end) : rep_(start, end) {}
-    const_iterator(Bucket* b, Bucket* end, uint32 i) : rep_(b, end, i) {}
-
-    const Key& operator*() const { return rep_.key(); }
-    const Key* operator->() const { return &rep_.key(); }
-    bool operator==(const const_iterator& x) const { return rep_ == x.rep_; }
-    bool operator!=(const const_iterator& x) const { return rep_ != x.rep_; }
-    const_iterator& operator++() {
-      ++rep_;
-      return *this;
-    }
-  };
+  typedef const_iterator iterator;
 
   iterator begin() { return iterator(rep_.start(), rep_.limit()); }
   iterator end() { return iterator(rep_.limit(), rep_.limit()); }

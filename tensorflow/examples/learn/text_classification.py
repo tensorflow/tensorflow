@@ -24,6 +24,7 @@ import numpy as np
 import pandas
 from sklearn import metrics
 import tensorflow as tf
+from tensorflow.contrib.layers.python.layers import encoders
 
 learn = tf.contrib.learn
 
@@ -37,7 +38,7 @@ n_words = 0
 def bag_of_words_model(features, target):
   """A bag-of-words model. Note it disregards the word order in the text."""
   target = tf.one_hot(target, 15, 1, 0)
-  features = tf.contrib.layers.bow_encoder(
+  features = encoders.bow_encoder(
       features, vocab_size=n_words, embed_dim=EMBEDDING_SIZE)
   logits = tf.contrib.layers.fully_connected(features, 15, activation_fn=None)
   loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
@@ -104,8 +105,13 @@ def main(unused_argv):
 
   # Process vocabulary
   vocab_processor = learn.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
-  x_train = np.array(list(vocab_processor.fit_transform(x_train)))
-  x_test = np.array(list(vocab_processor.transform(x_test)))
+  
+  x_transform_train = vocab_processor.fit_transform(x_train)
+  x_transform_test = vocab_processor.transform(x_test)
+  
+  x_train = np.array(list(x_transform_train))
+  x_test = np.array(list(x_transform_test))
+  
   n_words = len(vocab_processor.vocabulary_)
   print('Total words: %d' % n_words)
 

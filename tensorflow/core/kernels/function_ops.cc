@@ -84,8 +84,8 @@ class RetvalOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
-REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
@@ -185,10 +185,37 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .TypeConstraint<int32>("T"),
                         PassOn);
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("_ListToArray").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      PassOn);                                                            \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("_ArrayToList").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      PassOn);
+
+REGISTER_SYCL_KERNELS(float);
+REGISTER_SYCL_KERNELS(double);
+
+#undef REGISTER_SYCL_KERNELS
+
+REGISTER_KERNEL_BUILDER(Name("_ListToArray")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        PassOn);
+REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("input")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        PassOn);
+#endif  // TENSORFLOW_USE_SYCL
+
 class SymbolicGradientOp : public AsyncOpKernel {
  public:
-  SymbolicGradientOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx), handle_(-1) {}
+  explicit SymbolicGradientOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {}
 
   ~SymbolicGradientOp() override {}
 
@@ -198,8 +225,9 @@ class SymbolicGradientOp : public AsyncOpKernel {
                       errors::Internal("No function library is provided."),
                       done);
 
+    FunctionLibraryRuntime::Handle handle;
     OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
+        ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
@@ -211,7 +239,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
     lib->Run(
-        opts, handle_, args, rets, [ctx, done, rets](const Status& status) {
+        opts, handle, args, rets, [ctx, done, rets](const Status& status) {
           if (!status.ok()) {
             ctx->SetStatus(status);
           } else if (rets->size() != ctx->num_outputs()) {
@@ -229,8 +257,6 @@ class SymbolicGradientOp : public AsyncOpKernel {
   }
 
  private:
-  FunctionLibraryRuntime::Handle handle_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
 };
 

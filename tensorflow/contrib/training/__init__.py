@@ -14,51 +14,28 @@
 # ==============================================================================
 """Training and input utilities.
 
-## Splitting sequence inputs into minibatches with state saving
-
-Use [`SequenceQueueingStateSaver`](#SequenceQueueingStateSaver) or
-its wrapper [`batch_sequences_with_states`](#batch_sequences_with_states) if
-you have input data with a dynamic primary time / frame count axis which
-you'd like to convert into fixed size segments during minibatching, and would
-like to store state in the forward direction across segments of an example.
+See @{$python/contrib.training} guide.
 
 @@batch_sequences_with_states
 @@NextQueuedSequenceBatch
 @@SequenceQueueingStateSaver
-
-
-## Online data resampling
-
-To resample data with replacement on a per-example basis, use
-['rejection_sample'](#rejection_sample) or
-['resample_at_rate'](#resample_at_rate). For `rejection_sample`, provide
-a boolean Tensor describing whether to accept or reject. Resulting batch sizes
-are always the same. For `resample_at_rate`, provide the desired rate for each
-example. Resulting batch sizes may vary. If you wish to specify relative
-rates, rather than absolute ones, use ['weighted_resample'](#weighted_resample)
-(which also returns the actual resampling rate used for each output example).
-
-Use ['stratified_sample'](#stratified_sample) to resample without replacement
-from the data to achieve a desired mix of class proportions that the Tensorflow
-graph sees. For instance, if you have a binary classification dataset that is
-99.9% class 1, a common approach is to resample from the data so that the data
-is more balanced.
-
 @@rejection_sample
 @@resample_at_rate
 @@stratified_sample
 @@weighted_resample
-
-## Bucketing
-
-Use ['bucket'](#bucket) or
-['bucket_by_sequence_length'](#bucket_by_sequence_length) to stratify
-minibatches into groups ("buckets").  Use `bucket_by_sequence_length`
-with the argument `dynamic_pad=True` to receive minibatches of similarly
-sized sequences for efficient training via `dynamic_rnn`.
-
 @@bucket
 @@bucket_by_sequence_length
+@@GreedyLoadBalancingStrategy
+@@byte_size_load_fn
+@@FailureTolerator
+@@rejection_sample
+@@stratified_sample
+@@resample_at_rate
+@@weighted_resample
+@@HParams
+@@HParamDef
+@@parse_values
+@@python_input
 """
 
 from __future__ import absolute_import
@@ -75,8 +52,9 @@ from tensorflow.contrib.training.python.training.evaluation import get_or_create
 from tensorflow.contrib.training.python.training.evaluation import StopAfterNEvalsHook
 from tensorflow.contrib.training.python.training.evaluation import SummaryAtEndHook
 from tensorflow.contrib.training.python.training.evaluation import wait_for_new_checkpoint
-from tensorflow.contrib.training.python.training.failure_tolerator import *
-from tensorflow.contrib.training.python.training.feeder import *
+from tensorflow.contrib.training.python.training.feeding_queue_runner import FeedingQueueRunner
+from tensorflow.contrib.training.python.training.hparam import *
+from tensorflow.contrib.training.python.training.python_input import python_input
 from tensorflow.contrib.training.python.training.resample import *
 from tensorflow.contrib.training.python.training.sampling_ops import *
 from tensorflow.contrib.training.python.training.sequence_queueing_state_saver import *
@@ -85,7 +63,17 @@ from tensorflow.contrib.training.python.training.training import clip_gradient_n
 from tensorflow.contrib.training.python.training.training import create_train_op
 from tensorflow.contrib.training.python.training.training import multiply_gradients
 from tensorflow.contrib.training.python.training.training import train
-from tensorflow.python.util.all_util import make_all
+from tensorflow.contrib.training.python.training.tuner import Tuner
 # pylint: enable=unused-import,wildcard-import
 
-__all__ = make_all(__name__)
+from tensorflow.python.util.all_util import remove_undocumented
+
+# Allow explicitly imported symbols. Symbols imported with * must also be
+# whitelisted here or in the module docstring above.
+_allowed_symbols = [
+    'checkpoints_iterator', 'evaluate_once', 'evaluate_repeatedly',
+    'FeedingQueueRunner', 'get_or_create_eval_step', 'StopAfterNEvalsHook',
+    'SummaryAtEndHook', 'wait_for_new_checkpoint', 'add_gradients_summaries',
+    'clip_gradient_norms', 'create_train_op', 'multiply_gradients', 'train']
+
+remove_undocumented(__name__, _allowed_symbols)

@@ -71,6 +71,7 @@ import math
 import os
 
 from tensorflow.python.platform import gfile
+from tensorflow.python.util import compat
 
 Path = collections.namedtuple('Path', 'path export_version')
 
@@ -199,7 +200,9 @@ def get_paths(base_dir, parser):
   raw_paths = gfile.ListDirectory(base_dir)
   paths = []
   for r in raw_paths:
-    p = parser(Path(os.path.join(base_dir, r), None))
+    p = parser(Path(os.path.join(compat.as_str_any(base_dir),
+                                 compat.as_str_any(r)),
+                    None))
     if p:
       paths.append(p)
   return sorted(paths)

@@ -18,15 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import bijector
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import logistic
-from tensorflow.contrib.distributions.python.ops import transformed_distribution
+# Bijectors must be directly imported because `remove_undocumented` prevents
+# individual file imports.
+from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import Sigmoid
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
@@ -151,43 +152,37 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
       probs: An N-D `Tensor` representing the probability of a positive event.
         Each entry in the `Tensor` parameterizes an independent Bernoulli
         distribution. Only one of `logits` or `probs` should be passed in.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       ValueError: If both `probs` and `logits` are passed, or if neither.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs, temperature]) as ns:
+    with ops.name_scope(name, values=[logits, probs, temperature]):
       with ops.control_dependencies([check_ops.assert_positive(temperature)]
                                     if validate_args else []):
         self._temperature = array_ops.identity(temperature, name="temperature")
-
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits, probs=probs, validate_args=validate_args)
-      dist = logistic.Logistic(self._logits / self._temperature,
-                               1. / self._temperature,
-                               validate_args=validate_args,
-                               allow_nan_stats=allow_nan_stats,
-                               name=ns)
-      self._parameters = parameters
-
-    def inverse_log_det_jacobian_fn(y):
-      return -math_ops.log(y) - math_ops.log1p(-y)
-
-    sigmoid_bijector = bijector.Inline(
-        forward_fn=math_ops.sigmoid,
-        inverse_fn=(lambda y: math_ops.log(y) - math_ops.log1p(-y)),
-        inverse_log_det_jacobian_fn=inverse_log_det_jacobian_fn,
-        name="sigmoid")
-    super(RelaxedBernoulli, self).__init__(dist, sigmoid_bijector, name=name)
+      super(RelaxedBernoulli, self).__init__(
+          distribution=logistic.Logistic(
+              self._logits / self._temperature,
+              1. / self._temperature,
+              validate_args=validate_args,
+              allow_nan_stats=allow_nan_stats,
+              name=name + "/Logistic"),
+          bijector=Sigmoid(validate_args=validate_args),
+          validate_args=validate_args,
+          name=name)
+    self._parameters = parameters
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -207,5 +202,3 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   def probs(self):
     """Probability of `1`."""
     return self._probs
-
-

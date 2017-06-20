@@ -17,13 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -97,6 +103,20 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
       self.assertEqual(read.eval(), [[3]])
 
+  def testGPU(self):
+    with self.test_session(use_gpu=True) as sess:
+      abc = variable_scope.get_variable(
+          "abc",
+          shape=[1],
+          initializer=init_ops.ones_initializer(),
+          use_resource=True)
+
+      sess.run(variables.global_variables_initializer())
+      self.assertEqual(
+          resource_variable_ops.var_is_initialized_op(abc.handle).eval(),
+          True)
+      print(sess.run(abc))
+
   def testInitFn(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
@@ -136,6 +156,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v.assign(2.0).eval()
       self.assertEqual(2.0, v.value().eval())
 
+  def testLoad(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      v.load(2.0)
+      self.assertEqual(2.0, v.value().eval())
+
+  def testToFromProto(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+
+      w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
+      self.assertEquals(2, math_ops.add(w, 1).eval())
+
   def testAssignAddMethod(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -163,6 +198,87 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       # Should raise no exception
       sess.run(resource_variable_ops.destroy_resource_op(
           handle, ignore_lookup_error=True))
+
+  def testAssignDifferentShapes(self):
+    with self.test_session() as sess, variable_scope.variable_scope(
+        "foo", use_resource=True):
+      var = variable_scope.get_variable("x", shape=[1, 1], dtype=dtypes.float32)
+      placeholder = array_ops.placeholder(dtypes.float32)
+      assign = var.assign(placeholder)
+      sess.run([assign],
+               feed_dict={placeholder: np.zeros(shape=[2, 2],
+                                                dtype=np.float32)})
+
+  def testDtypeAfterFromProto(self):
+    v = resource_variable_ops.ResourceVariable(2.0)
+    w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
+    self.assertIsInstance(w.dtype, dtypes.DType)
+    self.assertEqual(v.dtype, w.dtype)
+
+  def testCachingDevice(self):
+    with ops.device("/job:server/task:1"):
+      v = resource_variable_ops.ResourceVariable(
+          2.0, caching_device="/job:localhost")
+      self.assertEqual("/job:localhost", v.value().device)
+      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+        _ = v.value().op.get_attr("_class")
+
+    with ops.colocate_with(v.op):
+      w = resource_variable_ops.ResourceVariable(
+          2.0, caching_device="/job:localhost")
+      self.assertEqual("/job:localhost", w.value().device)
+      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+        _ = w.value().op.get_attr("_class")
+
+  def testSharedName(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(300.0, name="var1")
+      v.initializer.run()
+
+      w = resource_variable_ops.var_handle_op(dtype=v.dtype.base_dtype,
+                                              shape=v.get_shape(),
+                                              shared_name="var1")
+      w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
+      self.assertEqual(300.0, w_read.eval())
+
+      x = resource_variable_ops.var_handle_op(dtype=v.dtype.base_dtype,
+                                              shape=v.get_shape(),
+                                              shared_name="var1/")
+      x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
+      with self.assertRaisesOpError("Resource .*/var1//.* does not exist"):
+        _ = x_read.eval()
+
+  def testShape(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(
+          name="var1", initial_value=array_ops.ones(shape=[10, 20, 35]))
+      self.assertEqual("(10, 20, 35)", str(v.get_shape()))
+      self.assertEqual("(10, 20, 35)", str(v.value().shape))
+      self.assertEqual("(3, 20, 35)", str(v.sparse_read([0, 1, 2]).shape))
+      self.assertEqual(
+          "<unknown>",
+          str(v.sparse_read(array_ops.placeholder(dtypes.int32)).shape))
+
+  def testSetInitialValue(self):
+    with self.test_session():
+      # Initialize variable with a value different from the initial value passed
+      # in the constructor.
+      v = resource_variable_ops.ResourceVariable(2.0)
+      v.initializer.run(feed_dict={v.initial_value: 3.0})
+      self.assertEqual(3.0, v.value().eval())
+
+  def testControlFlowInitialization(self):
+    """Expects an error if an initializer is in a control-flow scope."""
+    def cond(i, _):
+      return i < 10
+
+    def body(i, _):
+      zero = array_ops.zeros([], dtype=dtypes.int32)
+      v = resource_variable_ops.ResourceVariable(initial_value=zero)
+      return (i + 1, v.read_value())
+
+    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+      control_flow_ops.while_loop(cond, body, [0, 0])
 
 
 if __name__ == "__main__":

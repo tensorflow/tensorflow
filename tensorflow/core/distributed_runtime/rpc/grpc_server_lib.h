@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
@@ -34,6 +35,15 @@ namespace tensorflow {
 
 class GrpcWorker;
 class Master;
+
+// function that creates a RendezvousMgr.
+typedef std::function<RendezvousMgrInterface*(const WorkerEnv*)>
+    RendezvousMgrCreationFunction;
+
+// function that registers a service to the server. The service needs to
+// be registered before builder.BuildAndStart().
+typedef std::function<void(const WorkerEnv*, ::grpc::ServerBuilder*)>
+    ServiceInitFunction;
 
 class GrpcServer : public ServerInterface {
  protected:
@@ -54,26 +64,40 @@ class GrpcServer : public ServerInterface {
   const string target() const override;
 
  protected:
+  Status Init(ServiceInitFunction service_func,
+              const RendezvousMgrCreationFunction& rendezvous_mgr_func);
+
   Status Init();
 
   // A subclass can override this method to support secure credentials.
   virtual std::shared_ptr<::grpc::ServerCredentials> GetServerCredentials(
       const ServerDef& server_def) const;
 
-  virtual ChannelCreationFunction GetChannelCreationFunction(
-      const ServerDef& server_def) const;
+  virtual ChannelCreationFunction GetChannelCreationFunction() const;
+
+  virtual std::unique_ptr<Master> CreateMaster(MasterEnv* master_env);
+
+  // Creates a WorkerCacheInterface for a session.
+  Status WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
+                            WorkerCacheInterface** worker_cache);
+
+  // Parses a WorkerCacheFactoryOptions into a GrpcChannelSpec.
+  Status ParseChannelSpec(const WorkerCacheFactoryOptions& options,
+                          GrpcChannelSpec* channel_spec);
 
   // Returns the port to which this server is bound.
   // This method may only be called after `this->Init()` returns successfully.
   int bound_port() const { return bound_port_; }
+
+  WorkerEnv* worker_env() { return &worker_env_; }
+
+  const ServerDef& server_def() const { return server_def_; }
 
  private:
   // The overall server configuration.
   const ServerDef server_def_;
   Env* env_;
 
-  // The port requested for this server.
-  int requested_port_;
   // The port to which this server is bound.
   int bound_port_ = 0;
 

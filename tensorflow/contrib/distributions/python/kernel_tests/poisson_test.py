@@ -21,7 +21,9 @@ import numpy as np
 from scipy import stats
 from tensorflow.contrib.distributions.python.ops import poisson as poisson_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -64,17 +66,18 @@ class PoissonTest(test.TestCase):
     with self.test_session():
       batch_size = 6
       lam = constant_op.constant([3.0] * batch_size)
-      x = [2.5, 3.2, 4.3, 5.1, 6., 7.]
+      x = array_ops.placeholder(dtypes.float32, shape=[6])
+      feed_dict = {x: [2.5, 3.2, 4.3, 5.1, 6., 7.]}
       poisson = poisson_lib.Poisson(rate=lam, validate_args=True)
 
       # Non-integer
-      with self.assertRaisesOpError("x has non-integer components"):
+      with self.assertRaisesOpError("cannot contain fractional components"):
         log_pmf = poisson.log_prob(x)
-        log_pmf.eval()
+        log_pmf.eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x >= 0"):
         log_pmf = poisson.log_prob([-1.])
-        log_pmf.eval()
+        log_pmf.eval(feed_dict=feed_dict)
 
       poisson = poisson_lib.Poisson(rate=lam, validate_args=False)
       log_pmf = poisson.log_prob(x)
@@ -169,6 +172,56 @@ class PoissonTest(test.TestCase):
       # In this case, we get back the larger of the two modes.
       self.assertEqual((6,), poisson.mode().get_shape())
       self.assertAllClose(lam_v, poisson.mode().eval())
+
+  def testPoissonSample(self):
+    with self.test_session():
+      lam_v = 4.0
+      lam = constant_op.constant(lam_v)
+      # Choosing `n >= (k/rtol)**2, roughly ensures our sample mean should be
+      # within `k` std. deviations of actual up to rtol precision.
+      n = int(100e3)
+      poisson = poisson_lib.Poisson(rate=lam)
+      samples = poisson.sample(n, seed=123456)
+      sample_values = samples.eval()
+      self.assertEqual(samples.get_shape(), (n,))
+      self.assertEqual(sample_values.shape, (n,))
+      self.assertAllClose(
+          sample_values.mean(), stats.poisson.mean(lam_v), rtol=.01)
+      self.assertAllClose(
+          sample_values.var(), stats.poisson.var(lam_v), rtol=.01)
+
+  def testPoissonSampleMultidimensionalMean(self):
+    with self.test_session():
+      lam_v = np.array([np.arange(1, 51, dtype=np.float32)])  # 1 x 50
+      poisson = poisson_lib.Poisson(rate=lam_v)
+      # Choosing `n >= (k/rtol)**2, roughly ensures our sample mean should be
+      # within `k` std. deviations of actual up to rtol precision.
+      n = int(100e3)
+      samples = poisson.sample(n, seed=123456)
+      sample_values = samples.eval()
+      self.assertEqual(samples.get_shape(), (n, 1, 50))
+      self.assertEqual(sample_values.shape, (n, 1, 50))
+      self.assertAllClose(
+          sample_values.mean(axis=0),
+          stats.poisson.mean(lam_v),
+          rtol=.01,
+          atol=0)
+
+  def testPoissonSampleMultidimensionalVariance(self):
+    with self.test_session():
+      lam_v = np.array([np.arange(5, 15, dtype=np.float32)])  # 1 x 10
+      poisson = poisson_lib.Poisson(rate=lam_v)
+      # Choosing `n >= 2 * lam * (k/rtol)**2, roughly ensures our sample
+      # variance should be within `k` std. deviations of actual up to rtol
+      # precision.
+      n = int(300e3)
+      samples = poisson.sample(n, seed=123456)
+      sample_values = samples.eval()
+      self.assertEqual(samples.get_shape(), (n, 1, 10))
+      self.assertEqual(sample_values.shape, (n, 1, 10))
+
+      self.assertAllClose(
+          sample_values.var(axis=0), stats.poisson.var(lam_v), rtol=.03, atol=0)
 
 
 if __name__ == "__main__":

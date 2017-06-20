@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""## Resource management.
+"""Resource management library.
 
 @@get_data_files_path
 @@get_path_to_datafile
+@@get_root_dir_with_all_resources
 @@load_resource
 @@readahead_file_path
 """
@@ -24,10 +24,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect as _inspect
 import os as _os
 import sys as _sys
 
+from tensorflow.python.util import tf_inspect as _inspect
 from tensorflow.python.util.all_util import remove_undocumented
 
 
@@ -43,9 +43,8 @@ def load_resource(path):
   Raises:
     IOError: If the path is not found, or the resource can't be opened.
   """
-  tensorflow_root = (
-      _os.path.join(
-          _os.path.dirname(__file__), _os.pardir, _os.pardir))
+  tensorflow_root = (_os.path.join(
+      _os.path.dirname(__file__), _os.pardir, _os.pardir))
   path = _os.path.join(tensorflow_root, path)
   path = _os.path.abspath(path)
   with open(path, 'rb') as f:
@@ -54,13 +53,52 @@ def load_resource(path):
 
 # pylint: disable=protected-access
 def get_data_files_path():
-  """Get the directory where files specified in data attribute are stored.
+  """Get a direct path to the data files colocated with the script.
 
   Returns:
     The directory where files specified in data attribute of py_test
     and py_binary are stored.
   """
   return _os.path.dirname(_inspect.getfile(_sys._getframe(1)))
+
+
+def get_root_dir_with_all_resources():
+  """Get a root directory containing all the data attributes in the build rule.
+
+  Returns:
+    The path to the specified file present in the data attribute of py_test
+    or py_binary. Falls back to returning the same as get_data_files_path if it
+    fails to detect a bazel runfiles directory.
+  """
+  script_dir = get_data_files_path()
+
+  # Create a history of the paths, because the data files are located relative
+  # to the repository root directory, which is directly under runfiles
+  # directory.
+  directories = [script_dir]
+  data_files_dir = ''
+
+  while True:
+    candidate_dir = directories[-1]
+    current_directory = _os.path.basename(candidate_dir)
+    if '.runfiles' in current_directory:
+      # Our file should never be directly under runfiles.
+      # If the history has only one item, it means we are directly inside the
+      # runfiles directory, something is wrong, fall back to the default return
+      # value, script directory.
+      if len(directories) > 1:
+        data_files_dir = directories[-2]
+
+      break
+    else:
+      new_candidate_dir = _os.path.dirname(candidate_dir)
+      # If we are at the root directory these two will be the same.
+      if new_candidate_dir == candidate_dir:
+        break
+      else:
+        directories.append(new_candidate_dir)
+
+  return data_files_dir or script_dir
 
 
 def get_path_to_datafile(path):
@@ -82,9 +120,10 @@ def get_path_to_datafile(path):
   return _os.path.join(data_files_path, path)
 
 
-def readahead_file_path(path, unused_readahead=None):
+def readahead_file_path(path, readahead='128M'):  # pylint: disable=unused-argument
   """Readahead files not implemented; simply returns given path."""
   return path
+
 
 _allowed_symbols = []
 remove_undocumented(__name__, _allowed_symbols)

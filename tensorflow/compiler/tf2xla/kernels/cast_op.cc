@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -65,7 +65,7 @@ class CastOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(CastOp);
 };
 
-REGISTER_XLA_OP("Cast", CastOp);
+REGISTER_XLA_OP(Name("Cast"), CastOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

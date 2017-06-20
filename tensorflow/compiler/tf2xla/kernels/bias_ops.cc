@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <numeric>
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -69,8 +69,8 @@ class BiasOp : public XlaOpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_XLA_OP("BiasAdd", BiasOp);
-REGISTER_XLA_OP("BiasAddV1", BiasOp);
+REGISTER_XLA_OP(Name("BiasAdd"), BiasOp);
+REGISTER_XLA_OP(Name("BiasAddV1"), BiasOp);
 
 class BiasAddGradOp : public XlaOpKernel {
  public:
@@ -113,7 +113,7 @@ class BiasAddGradOp : public XlaOpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_XLA_OP("BiasAddGrad", BiasAddGradOp);
+REGISTER_XLA_OP(Name("BiasAddGrad"), BiasAddGradOp);
 
 }  // namespace
 }  // namespace tensorflow

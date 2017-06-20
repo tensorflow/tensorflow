@@ -29,8 +29,6 @@ class AdadeltaOptimizer(optimizer.Optimizer):
 
   See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
   ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
-
-  @@__init__
   """
 
   def __init__(self, learning_rate=0.001, rho=0.95, epsilon=1e-8,
@@ -39,6 +37,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
 
     Args:
       learning_rate: A `Tensor` or a floating point value. The learning rate.
+        To match the exact form in the original paper use 1.0.
       rho: A `Tensor` or a floating point value. The decay rate.
       epsilon: A `Tensor` or a floating point value.  A constant epsilon used
                to better conditioning the grad update.
@@ -83,7 +82,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
     return training_ops.resource_apply_adadelta(
-        var,
+        var.handle,
         accum.handle,
         accum_update.handle,
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),
@@ -110,7 +109,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
     return training_ops.resource_sparse_apply_adadelta(
-        var,
+        var.handle,
         accum.handle,
         accum_update.handle,
         math_ops.cast(self._lr_t, grad.dtype),

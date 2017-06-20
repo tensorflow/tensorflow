@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/examples/android/jni/object_tracking/time_log.h"
 
-using namespace tensorflow;
-
 #ifdef LOG_TIME
 // Storage for logging functionality.
 int num_time_logs = 0;

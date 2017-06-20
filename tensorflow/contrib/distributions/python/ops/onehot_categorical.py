@@ -18,9 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -29,6 +26,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import kullback_leibler
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class OneHotCategorical(distribution.Distribution):
@@ -43,11 +43,11 @@ class OneHotCategorical(distribution.Distribution):
   K is the number of classes.
 
   This class provides methods to create indexed batches of OneHotCategorical
-  distributions.  If the provided `logits` or `probs` is rank 2 or higher, for
+  distributions. If the provided `logits` or `probs` is rank 2 or higher, for
   every fixed set of leading dimensions, the last dimension represents one
-  single OneHotCategorical distribution.  When calling distribution
+  single OneHotCategorical distribution. When calling distribution
   functions (e.g. `dist.prob(x)`), `logits` and `x` are broadcast to the
-  same shape (if possible).  In all cases, the last dimension of `logits,x`
+  same shape (if possible). In all cases, the last dimension of `logits,x`
   represents single OneHotCategorical distributions.
 
   #### Examples
@@ -105,18 +105,18 @@ class OneHotCategorical(distribution.Distribution):
         vector of probabilities for each class. Only one of `logits` or `probs`
         should be passed in.
       dtype: The type of the event samples (default: int32).
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
-      name: `String` name prefixed to Ops created by this class.
+      name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[logits, probs]) as ns:
+    with ops.name_scope(name, values=[logits, probs]):
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           name=name, logits=logits, probs=probs, validate_args=validate_args,
           multidimensional=True)
@@ -136,14 +136,13 @@ class OneHotCategorical(distribution.Distribution):
 
     super(OneHotCategorical, self).__init__(
         dtype=dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._logits,
                        self._probs],
-        name=ns)
+        name=name)
 
   @property
   def event_size(self):
@@ -173,7 +172,7 @@ class OneHotCategorical(distribution.Distribution):
     return self.logits.get_shape().with_rank_at_least(1)[-1:]
 
   def _sample_n(self, n, seed=None):
-    sample_shape = array_ops.concat(([n], array_ops.shape(self.logits)), 0)
+    sample_shape = array_ops.concat([[n], array_ops.shape(self.logits)], 0)
     logits = self.logits
     if logits.get_shape().ndims == 2:
       logits_2d = logits
@@ -231,8 +230,8 @@ class OneHotCategorical(distribution.Distribution):
     return control_flow_ops.with_dependencies([
         check_ops.assert_non_positive(x),
         distribution_util.assert_close(
-            array_ops.zeros((), dtype=self.dtype),
-            math_ops.reduce_logsumexp(x, reduction_indices=[-1])),
+            array_ops.zeros([], dtype=self.dtype),
+            math_ops.reduce_logsumexp(x, axis=[-1])),
     ], x)
 
 

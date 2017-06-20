@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
@@ -39,46 +40,33 @@ void Worker::GetStatusAsync(const GetStatusRequest* request,
   done(Status::OK());
 }
 
+void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
+                                      CreateWorkerSessionResponse* response,
+                                      StatusCallback done) {
+  Status s = env_->session_mgr->CreateSession(request->session_handle(),
+                                              request->server_def());
+  done(s);
+}
+
 void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
                                 RegisterGraphResponse* response,
                                 StatusCallback done) {
-  Status s = env_->graph_mgr->Register(
+  WorkerSession* session =
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
+  Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
-      response->mutable_graph_handle());
+      request->debug_options(), response->mutable_graph_handle());
   done(s);
 }
 
 void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
                                   DeregisterGraphResponse* response,
                                   StatusCallback done) {
-  Status s = env_->graph_mgr->Deregister(request->graph_handle());
+  WorkerSession* session =
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
+  Status s = session->graph_mgr->Deregister(request->graph_handle());
+
   done(s);
-}
-
-Worker::PartialRunState* Worker::FindPartialRun(const string& graph_handle,
-                                                int step_id) {
-  std::pair<string, int> k(graph_handle, step_id);
-  Worker::PartialRunState* prun_state = nullptr;
-  mutex_lock l(mu_);
-  auto it = partial_runs_.find(k);
-  if (it != partial_runs_.end()) {
-    prun_state = it->second.get();
-  }
-  return prun_state;
-}
-
-void Worker::InsertPartialRunLocked(const string& graph_handle, int step_id,
-                                    Worker::PartialRunState* partial_run_state)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  std::pair<string, int> k(graph_handle, step_id);
-  partial_runs_.emplace(std::make_pair(
-      k, std::unique_ptr<Worker::PartialRunState>(partial_run_state)));
-}
-
-void Worker::RemovePartialRun(const string& graph_handle, int step_id) {
-  std::pair<string, int> k(graph_handle, step_id);
-  mutex_lock l(mu_);
-  partial_runs_.erase(partial_runs_.find(k));
 }
 
 void Worker::AbortStep(int64 step_id) {
@@ -132,6 +120,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                         StatusCallback done) {
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
+  WorkerSession* session =
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
@@ -167,12 +157,13 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     }
   }
   CostGraphDef* cost_graph = response->mutable_cost_graph();
-  env_->graph_mgr->ExecuteAsync(
-      request->graph_handle(), step_id, request->exec_opts(), collector,
-      cost_graph, cm, in, [this, step_id, response, cm, out, token, collector,
-                           opts, done](Status s) {
+  session->graph_mgr->ExecuteAsync(
+      request->graph_handle(), step_id, session, request->exec_opts(),
+      collector, cost_graph, cm, in,
+      [this, step_id, response, session, cm, out, token, collector, opts,
+       done](Status s) {
         if (s.ok()) {
-          env_->graph_mgr->RecvOutputs(step_id, out);
+          s = session->graph_mgr->RecvOutputs(step_id, out);
         }
         opts->ClearCancelCallback();
         {
@@ -202,10 +193,14 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const int64 step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
+  WorkerSession* session =
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
+
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
-  auto finish = [this, done, out](const Status& s) {
+  auto finish = [this, done, out, opts](const Status& s) {
+    opts->ClearCancelCallback();
     delete out;
     done(s);
   };
@@ -214,18 +209,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     return;
   }
 
-  PartialRunState* partial_run_state = FindPartialRun(graph_handle, step_id);
-
   CancellationManager* cm = nullptr;
-  // If this is a new partial run call we need to create a new cancellation
-  // manager.
-  // Otherwise we use the cancellation manager stored in the found partial
-  // run state.
-  if (partial_run_state == nullptr) {
-    cm = new CancellationManager;
-  } else {
-    cm = partial_run_state->cancellation_manager;
-  }
+  bool is_new_partial_run = partial_run_mgr_.FindOrCreate(step_id, &cm);
 
   // Before we start doing anything, we set the RPC cancellation.
   opts->SetCancelCallback([this, cm, step_id]() {
@@ -235,65 +220,49 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
 
   // If this is a new partial run request, the request will need to start the
   // executors.
-  if (partial_run_state == nullptr) {
+  if (is_new_partial_run) {
     CancellationToken token;
     {
       mutex_lock l(mu_);
-      // Insert the new partial run into the partial_runs_ map.
-      partial_run_state = new PartialRunState(cm);
-      InsertPartialRunLocked(graph_handle, step_id, partial_run_state);
       token = cancellation_manager_->get_cancellation_token();
       cancellation_manager_->RegisterCallback(token,
                                               [cm]() { cm->StartCancel(); });
     }
-    env_->graph_mgr->ExecuteAsync(
-        graph_handle, step_id, request->exec_opts(), nullptr /* collector */,
-        nullptr /* cost_graph */, cm, in,
-        [this, step_id, graph_handle, token, partial_run_state](Status s) {
+    session->graph_mgr->ExecuteAsync(
+        graph_handle, step_id, session, request->exec_opts(),
+        nullptr /* collector */, nullptr /* cost_graph */, cm, in,
+        [this, token, step_id, cm](Status s) {
           {
             mutex_lock l(mu_);
             cancellation_manager_->DeregisterCallback(token);
           }
-          partial_run_state->executor_done.Notify();
-          // TODO(suharshs): Propagate the status once we keep state for
-          // each partial run call.
+          partial_run_mgr_.ExecutorDone(step_id, s);
         });
-    } else {
-      // Send the partial run's new inputs.
-      s = env_->graph_mgr->SendInputs(step_id, in);
-      if (!s.ok()) {
-        finish(s);
-        return;
-      }
-    }
-
-    // Receive the partial run's outputs.
-    s = env_->graph_mgr->RecvOutputs(step_id, out);
+  } else {
+    // Send the partial run's new inputs.
+    s = session->graph_mgr->SendInputs(step_id, in);
     if (!s.ok()) {
       finish(s);
       return;
     }
+  }
 
-    // Construct and return the resp.
-    for (const auto& p : *out) {
-      const string& key = p.first;
-      const Tensor& val = p.second;
-      response->AddRecv(key, val);
-    }
-
-    // If this is the last partial run request we must also wait for the entire
-    // graph execution to be completed.
-    if (request->is_last_partial_run()) {
-      partial_run_state->executor_done.WaitForNotification();
-      RemovePartialRun(graph_handle, step_id);
-      // Before deleting the cancellation manager on the final call, ensure
-      // that we clear the RPC cancel callback, which has a reference to the
-      // cancellation manager.
-      opts->ClearCancelCallback();
-      delete cm;
-    }
-
-    finish(s);
+  session->graph_mgr->RecvOutputsAsync(
+      step_id, out, [this, out, request, response, step_id, finish](Status s) {
+        if (s.ok()) {
+          // Construct and return the resp.
+          for (const auto& p : *out) {
+            const string& key = p.first;
+            const Tensor& val = p.second;
+            response->AddRecv(key, val);
+          }
+        }
+        if (request->is_last_partial_run()) {
+          partial_run_mgr_.PartialRunDone(step_id, finish, s);
+        } else {
+          finish(s);
+        }
+      });
 }
 
 void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
@@ -328,8 +297,8 @@ void Worker::TracingAsync(const TracingRequest* request,
 Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
                                  Device** src_dev) {
   // Figures out which device the tensor is hosted on.
-  TF_RETURN_IF_ERROR(
-      env_->device_mgr->LookupDevice(parsed.src_device, src_dev));
+  string local_name = DeviceNameUtils::LocalName(parsed.src_device);
+  TF_RETURN_IF_ERROR(env_->device_mgr->LookupDevice(local_name, src_dev));
 
   // Does the device have the right incarnation number we expect?
   if ((*src_dev)->attributes().incarnation() != parsed.src_incarnation) {

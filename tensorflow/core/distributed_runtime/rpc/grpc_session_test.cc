@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
 
@@ -255,7 +254,7 @@ void FindMaxEigen(const string& target) {
 
 TEST(FindMaxEigenTest, RemoteDevice) {
   std::unique_ptr<test::TestCluster> cluster;
-  test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster);
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
   FindMaxEigen(cluster->targets()[0]);
 }
 
@@ -517,7 +516,7 @@ TEST(GrpcSessionTest, Error) {
     //
     // Subgraph for "b" sleeps at the node "b_delay". When the sleep
     // finishes, the subgraph "b" will continue execution till it
-    // notices that it is cancelled. Meanwhile, subgraph's executor
+    // notices that it is canceled. Meanwhile, subgraph's executor
     // and its related state (registered ops) should still be alive.
     auto b = test::graph::Constant(&g, Tensor());
     b->set_assigned_device_name(dev_b);
@@ -814,7 +813,7 @@ TEST(SessionTest, ExtendValidation) {
 // Tests that Create() with "operation_timeout_in_ms" set times out.
 TEST(SessionTest, CreateTimeoutWithSessionOptions) {
   // Creates a RemoteSession with "operation_timeout_in_ms" set to 100.
-  SessionOptions options = Options("example.org", 1);
+  SessionOptions options = Options("example.org:2222", 1);
   options.config.set_operation_timeout_in_ms(100);
   std::unique_ptr<Session> session(NewRemote(options));
 
@@ -832,7 +831,7 @@ TEST(SessionTest, CreateTimeoutWithSessionOptions) {
 
 // Tests that Create() with "timeout_in_ms" in RunOptions set times out.
 TEST(SessionTest, CreateTimeoutWithRunOptions) {
-  SessionOptions options = Options("example.org", 1);
+  SessionOptions options = Options("example.org:2222", 1);
   std::unique_ptr<Session> session(NewRemote(options));
 
   // Creates a long running op.

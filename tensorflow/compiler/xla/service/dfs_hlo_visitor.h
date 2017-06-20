@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -150,6 +151,10 @@ class DfsHloVisitor {
   virtual Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) {
     return HandleElementwiseUnary(tanh, HloOpcode::kTanh, operand);
   }
+  virtual Status HandleIsFinite(HloInstruction* is_finite,
+                                HloInstruction* operand) {
+    return HandleElementwiseUnary(is_finite, HloOpcode::kIsFinite, operand);
+  }
   virtual Status HandleLogicalAnd(HloInstruction* logical_and,
                                   HloInstruction* lhs, HloInstruction* rhs) {
     return HandleElementwiseBinary(logical_and, HloOpcode::kLogicalAnd, lhs,
@@ -185,19 +190,16 @@ class DfsHloVisitor {
   virtual Status HandleTranspose(HloInstruction* transpose) = 0;
   virtual Status HandleParameter(HloInstruction* parameter) = 0;
   virtual Status HandleFusion(HloInstruction* fusion) = 0;
-  virtual Status HandleCall(
-      HloInstruction* call,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* computation) = 0;
+  virtual Status HandleCall(HloInstruction* call) = 0;
   virtual Status HandleCustomCall(
       HloInstruction* custom_call,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       tensorflow::StringPiece custom_call_target) = 0;
   virtual Status HandleSlice(HloInstruction* slice,
                              HloInstruction* operand) = 0;
-  virtual Status HandleDynamicSlice(
-      HloInstruction* slice,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) = 0;
+  virtual Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                                    HloInstruction* operand,
+                                    HloInstruction* start_indices) = 0;
   virtual Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                           HloInstruction* operand,
                                           HloInstruction* update,
@@ -215,9 +217,7 @@ class DfsHloVisitor {
                                     const Window& window,
                                     HloComputation* function) = 0;
   virtual Status HandleSelectAndScatter(HloInstruction* instruction) = 0;
-  virtual Status HandleWhile(HloInstruction* xla_while, HloInstruction* init,
-                             HloComputation* condition,
-                             HloComputation* body) = 0;
+  virtual Status HandleWhile(HloInstruction* xla_while) = 0;
 
   virtual Status HandlePad(HloInstruction* pad) = 0;
 

@@ -20,13 +20,7 @@ from __future__ import print_function
 
 import functools
 import json
-import sys
 import tempfile
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -44,6 +38,7 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.metrics.python.ops import metric_ops
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -65,7 +60,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'feature_columns': [one_hot_language],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {
@@ -96,7 +91,7 @@ class EmbeddingMultiplierTest(test.TestCase):
 
     params = {
         'feature_columns': [embedding_language, embedding_wire],
-        'head': head_lib._multi_class_head(2),
+        'head': head_lib.multi_class_head(2),
         'hidden_units': [1],
         # Set lr mult to 0. to keep embeddings constant.
         'embedding_lr_multipliers': {
@@ -129,6 +124,94 @@ class EmbeddingMultiplierTest(test.TestCase):
       initial_value = np.full_like(language_value, 0.1)
       self.assertTrue(np.all(np.isclose(language_value, initial_value)))
       self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
+
+
+class ActivationFunctionTest(test.TestCase):
+
+  def _getModelForActivation(self, activation_fn):
+    embedding_language = feature_column.embedding_column(
+        feature_column.sparse_column_with_hash_bucket('language', 10),
+        dimension=1,
+        initializer=init_ops.constant_initializer(0.1))
+    params = {
+        'feature_columns': [embedding_language],
+        'head': head_lib.multi_class_head(2),
+        'hidden_units': [1],
+        'activation_fn': activation_fn,
+    }
+    features = {
+        'language':
+            sparse_tensor.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+    }
+    labels = constant_op.constant([[0], [0], [0]], dtype=dtypes.int32)
+    return dnn._dnn_model_fn(features, labels, model_fn.ModeKeys.TRAIN, params)
+
+  def testValidActivation(self):
+    _ = self._getModelForActivation('relu')
+
+  def testRaisesOnBadActivationName(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Activation name should be one of'):
+      self._getModelForActivation('max_pool')
+
+
+class DNNEstimatorTest(test.TestCase):
+
+  def _assertInRange(self, expected_min, expected_max, actual):
+    self.assertLessEqual(expected_min, actual)
+    self.assertGreaterEqual(expected_max, actual)
+
+  def testExperimentIntegration(self):
+    exp = experiment.Experiment(
+        estimator=dnn.DNNClassifier(
+            n_classes=3,
+            feature_columns=[
+                feature_column.real_valued_column(
+                    'feature', dimension=4)
+            ],
+            hidden_units=[3, 3]),
+        train_input_fn=test_data.iris_input_multiclass_fn,
+        eval_input_fn=test_data.iris_input_multiclass_fn)
+    exp.test()
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(self, dnn.DNNEstimator)
+
+  def testTrainWithWeights(self):
+    """Tests training with given weight column."""
+
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      # First row has more weight than others. Model should fit (y=x) better
+      # than (y=Not(x)) due to the relative higher weight of the first row.
+      labels = constant_op.constant([[1], [0], [0], [0]])
+      features = {
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
+          'w': constant_op.constant([[100.], [3.], [2.], [2.]])
+      }
+      return features, labels
+
+    def _input_fn_eval():
+      # Create 4 rows (y = x)
+      labels = constant_op.constant([[1], [1], [1], [1]])
+      features = {
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
+          'w': constant_op.constant([[1.], [1.], [1.], [1.]])
+      }
+      return features, labels
+
+    dnn_estimator = dnn.DNNEstimator(
+        head=head_lib.multi_class_head(2, weight_column_name='w'),
+        feature_columns=[feature_column.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    dnn_estimator.fit(input_fn=_input_fn_train, steps=5)
+    scores = dnn_estimator.evaluate(input_fn=_input_fn_eval, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
 
 
 class DNNClassifierTest(test.TestCase):
@@ -272,6 +355,49 @@ class DNNClassifierTest(test.TestCase):
       self.assertEqual(expected_n_classes, len(probabilities[b]))
       for i in range(expected_n_classes):
         self._assertInRange(0.0, 1.0, probabilities[b][i])
+
+  def testEstimatorWithCoreFeatureColumns(self):
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'age':
+              input_lib.limit_epochs(
+                  constant_op.constant([[.8], [0.2], [.1]]),
+                  num_epochs=num_epochs),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      return features, constant_op.constant([[1], [0], [0]], dtype=dtypes.int32)
+
+    language_column = fc_core.categorical_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        fc_core.embedding_column(language_column, dimension=1),
+        fc_core.numeric_column('age')
+    ]
+
+    classifier = dnn.DNNClassifier(
+        n_classes=2,
+        feature_columns=feature_columns,
+        hidden_units=[10, 10],
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn, steps=50)
+
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predicted_classes = list(
+        classifier.predict_classes(input_fn=predict_input_fn, as_iterable=True))
+    self._assertBinaryPredictions(3, predicted_classes)
+    predictions = list(
+        classifier.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllEqual(predicted_classes, predictions)
 
   def testLogisticRegression_TensorData(self):
     """Tests binary classification using tensor data as input."""
@@ -422,6 +548,60 @@ class DNNClassifierTest(test.TestCase):
     classifier.fit(x=train_x, y=train_y, steps=200)
     scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
+
+  def testMultiClassLabelKeys(self):
+    """Tests n_classes > 2 with label_keys vocabulary for labels."""
+    # Byte literals needed for python3 test to pass.
+    label_keys = [b'label0', b'label1', b'label2']
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'age':
+              input_lib.limit_epochs(
+                  constant_op.constant([[.8], [0.2], [.1]]),
+                  num_epochs=num_epochs),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      labels = constant_op.constant(
+          [[label_keys[1]], [label_keys[0]], [label_keys[0]]],
+          dtype=dtypes.string)
+      return features, labels
+
+    language_column = feature_column.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        feature_column.embedding_column(
+            language_column, dimension=1),
+        feature_column.real_valued_column('age')
+    ]
+
+    classifier = dnn.DNNClassifier(
+        n_classes=3,
+        feature_columns=feature_columns,
+        hidden_units=[10, 10],
+        label_keys=label_keys,
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn, steps=50)
+
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predicted_classes = list(
+        classifier.predict_classes(
+            input_fn=predict_input_fn, as_iterable=True))
+    self.assertEqual(3, len(predicted_classes))
+    for pred in predicted_classes:
+      self.assertIn(pred, label_keys)
+    predictions = list(
+        classifier.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllEqual(predicted_classes, predictions)
 
   def testLoss(self):
     """Tests loss calculation."""

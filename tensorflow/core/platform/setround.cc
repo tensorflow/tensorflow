@@ -15,21 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/platform/setround.h"
 
-#ifdef __STDC_IEC_559__
-#include <fenv.h> // fesetround, FE_*
-#endif
 
 namespace tensorflow {
 namespace port {
 
-ScopedSetRound::ScopedSetRound() {
-#ifdef __STDC_IEC_559__
-   std::fesetround(FE_TONEAREST);
-#endif
+ScopedSetRound::ScopedSetRound(const int mode) {
+  original_mode_ = std::fegetround();
+  if (original_mode_ < 0) {
+    // Failed to get current mode, assume ROUND TO NEAREST.
+    original_mode_ = FE_TONEAREST;
+  }
+  std::fesetround(mode);
 }
 
-ScopedSetRound::~ScopedSetRound() {
-}
+ScopedSetRound::~ScopedSetRound() { std::fesetround(original_mode_); }
 
 }  // namespace port
 }  // namespace tensorflow

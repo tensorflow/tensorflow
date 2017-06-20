@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H_
 
+#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -28,10 +29,6 @@ class IGraphTransferOpsDefinitions {
  public:
   // op id which is not supported by SOC
   static constexpr int INVALID_OP_ID = -1;
-  // Custom op name for input node
-  static constexpr const char* const INPUT_OP_NAME = "INPUT";
-  // Custom op name for output node
-  static constexpr const char* const OUTPUT_OP_NAME = "OUTPUT";
   // Custom op name for flatten node
   static constexpr const char* const FLATTEN_OP_NAME = "FLATTEN";
 
@@ -39,14 +36,11 @@ class IGraphTransferOpsDefinitions {
   virtual ~IGraphTransferOpsDefinitions() = default;
   // Return total ops count supported by SOC
   virtual int GetTotalOpsCount() const = 0;
-  // Return op id for input node
-  // TODO(satok): Return vector isntead of integer
-  virtual int GetInputNodeOpId() const = 0;
-  // Return op id for output node
-  // TODO(satok): Return vector isntead of integer
-  virtual int GetOutputNodeOpId() const = 0;
   // Return op id for given string op name
-  virtual int GetOpIdFor(const string& op_name) const = 0;
+  virtual int GetOpIdFor(const string& op_name,
+                         const DataTypeVector& dt) const = 0;
+  // Return destination of transfer
+  virtual GraphTransferInfo::Destination GetTransferDestination() const = 0;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(IGraphTransferOpsDefinitions);
@@ -54,4 +48,4 @@ class IGraphTransferOpsDefinitions {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H_

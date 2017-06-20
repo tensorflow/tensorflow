@@ -18,17 +18,36 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 import six
+
+from tensorflow.python.util import tf_inspect
 
 
 class DocGeneratorVisitor(object):
   """A visitor that generates docs for a python object when __call__ed."""
 
-  def __init__(self):
+  def __init__(self, root_name=''):
+    """Make a visitor.
+
+    As this visitor is starting its traversal at a module or class, it will not
+    be told the name of that object during traversal. `root_name` is the name it
+    should use for that object, effectively prefixing all names with
+    "root_name.".
+
+    Args:
+      root_name: The name of the root module/class.
+    """
+    self.set_root_name(root_name)
     self._index = {}
     self._tree = {}
+    self._reverse_index = None
+    self._duplicates = None
+    self._duplicate_of = None
+
+  def set_root_name(self, root_name):
+    """Sets the root name for subsequent __call__s."""
+    self._root_name = root_name or ''
+    self._prefix = (root_name + '.') if root_name else ''
 
   @property
   def index(self):
@@ -53,6 +72,56 @@ class DocGeneratorVisitor(object):
     """
     return self._tree
 
+  @property
+  def reverse_index(self):
+    """A map from `id(object)` to the preferred fully qualified name.
+
+    This map only contains non-primitive objects (no numbers or strings) present
+    in `index` (for primitive objects, `id()` doesn't quite do the right thing).
+
+    It is computed when it, `duplicate_of`, or `duplicates` are first accessed.
+
+    Returns:
+      The `id(object)` to full name map.
+    """
+    self._maybe_find_duplicates()
+    return self._reverse_index
+
+  @property
+  def duplicate_of(self):
+    """A map from duplicate full names to a preferred fully qualified name.
+
+    This map only contains names that are not themself a preferred name.
+
+    It is computed when it, `reverse_index`, or `duplicates` are first accessed.
+
+    Returns:
+      The map from duplicate name to preferred name.
+    """
+    self._maybe_find_duplicates()
+    return self._duplicate_of
+
+  @property
+  def duplicates(self):
+    """A map from preferred full names to a list of all names for this symbol.
+
+    This function returns a map from preferred (master) name for a symbol to a
+    lexicographically sorted list of all aliases for that name (incl. the master
+    name). Symbols without duplicate names do not appear in this map.
+
+    It is computed when it, `reverse_index`, or `duplicate_of` are first
+    accessed.
+
+    Returns:
+      The map from master name to list of all duplicate names.
+    """
+    self._maybe_find_duplicates()
+    return self._duplicates
+
+  def _add_prefix(self, name):
+    """Adds the root name to a name."""
+    return self._prefix + name if name else self._root_name
+
   def __call__(self, parent_name, parent, children):
     """Visitor interface, see `tensorflow/tools/common:traverse` for details.
 
@@ -64,42 +133,48 @@ class DocGeneratorVisitor(object):
       parent_name: The fully qualified name of a symbol found during traversal.
       parent: The Python object referenced by `parent_name`.
       children: A list of `(name, py_object)` pairs enumerating, in alphabetical
-        order, the children (as determined by `inspect.getmembers`) of `parent`.
-        `name` is the local name of `py_object` in `parent`.
+        order, the children (as determined by `tf_inspect.getmembers`) of
+          `parent`. `name` is the local name of `py_object` in `parent`.
 
     Raises:
       RuntimeError: If this visitor is called with a `parent` that is not a
         class or module.
     """
+    parent_name = self._add_prefix(parent_name)
     self._index[parent_name] = parent
     self._tree[parent_name] = []
 
-    if inspect.ismodule(parent):
-      print('module %s: %r' % (parent_name, parent))
-    elif inspect.isclass(parent):
-      print('class %s: %r' % (parent_name, parent))
-    else:
-      raise RuntimeError('Unexpected type in visitor -- %s: %r' %
-                         (parent_name, parent))
+    if not (tf_inspect.ismodule(parent) or tf_inspect.isclass(parent)):
+      raise RuntimeError('Unexpected type in visitor -- %s: %r' % (parent_name,
+                                                                   parent))
 
-    for name, child in children:
+    for i, (name, child) in enumerate(list(children)):
+      # Don't document __metaclass__
+      if name in ['__metaclass__']:
+        del children[i]
+        continue
+
       full_name = '.'.join([parent_name, name]) if parent_name else name
       self._index[full_name] = child
       self._tree[parent_name].append(name)
 
-  def find_duplicates(self):
+  def _maybe_find_duplicates(self):
     """Compute data structures containing information about duplicates.
 
     Find duplicates in `index` and decide on one to be the "master" name.
 
-    Returns a map `duplicate_of` from aliases to their master name (the master
-    name itself has no entry in this map), and a map `duplicates` from master
-    names to a lexicographically sorted list of all aliases for that name (incl.
-    the master name).
+    Computes a reverse_index mapping each object id to its master name.
 
-    Returns:
-      A tuple `(duplicate_of, duplicates)` as described above.
+    Also computes a map `duplicate_of` from aliases to their master name (the
+    master name itself has no entry in this map), and a map `duplicates` from
+    master names to a lexicographically sorted list of all aliases for that name
+    (incl. the master name).
+
+    All these are computed and set as fields if they haven't already.
     """
+    if self._reverse_index is not None:
+      return
+
     # Maps the id of a symbol to its fully qualified name. For symbols that have
     # several aliases, this map contains the first one found.
     # We use id(py_object) to get a hashable value for py_object. Note all
@@ -110,15 +185,13 @@ class DocGeneratorVisitor(object):
     # maps the first name found to a list of all duplicate names.
     raw_duplicates = {}
     for full_name, py_object in six.iteritems(self._index):
-      # We cannot use the duplicate mechanism for constants, since e.g.,
+      # We cannot use the duplicate mechanism for some constants, since e.g.,
       # id(c1) == id(c2) with c1=1, c2=1. This is unproblematic since constants
       # have no usable docstring and won't be documented automatically.
-      if (inspect.ismodule(py_object) or
-          inspect.isclass(py_object) or
-          inspect.isfunction(py_object) or
-          inspect.isroutine(py_object) or
-          inspect.ismethod(py_object) or
-          isinstance(py_object, property)):
+      if (py_object is not None and
+          not isinstance(py_object, six.integer_types + six.string_types +
+                         (six.binary_type, six.text_type, float, complex, bool))
+          and py_object is not ()):
         object_id = id(py_object)
         if object_id in reverse_index:
           master_name = reverse_index[object_id]
@@ -148,4 +221,9 @@ class DocGeneratorVisitor(object):
         if name != master_name:
           duplicate_of[name] = master_name
 
-    return duplicate_of, duplicates
+      # Set the reverse index to the canonical name.
+      reverse_index[id(self._index[master_name])] = master_name
+
+    self._duplicate_of = duplicate_of
+    self._duplicates = duplicates
+    self._reverse_index = reverse_index

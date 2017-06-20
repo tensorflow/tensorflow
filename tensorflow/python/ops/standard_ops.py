@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import sparse_grad
+from tensorflow.python.ops import spectral_grad
 from tensorflow.python.ops import state_grad
 from tensorflow.python.ops import tensor_array_grad
 from tensorflow.python.util.all_util import remove_undocumented
@@ -56,6 +57,8 @@ from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
 from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
+from tensorflow.python.ops.lookup_ops import initialize_all_tables
+from tensorflow.python.ops.lookup_ops import tables_initializer
 from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
@@ -144,6 +147,7 @@ _allowed_symbols_math_ops = [
     # These are documented in nn.
     # We are are not importing nn because it would create a circular dependency.
     "sigmoid",
+    "log_sigmoid",
     "tanh",
 ]
 
@@ -181,7 +185,6 @@ _allowed_symbols_array_ops = [
     "batch_matrix_band_part",
     "batch_matrix_diag_part",
     "batch_matrix_set_diag",
-    "concat_v2",  # Use tf.concat instead.
 ]
 
 _allowed_symbols_partitioned_variables = [

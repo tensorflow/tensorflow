@@ -19,24 +19,41 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
+namespace op = xla::testing::opcode_matchers;
+
 namespace xla {
 namespace {
+
+using ::testing::UnorderedElementsAreArray;
+using ::testing::UnorderedElementsAre;
 
 class TuplePointsToAnalysisTest : public HloTestBase {
  protected:
   // Builds a module with the given entry computation and runs points to
   // analysis.
   void BuildModuleAndRunAnalysis(std::unique_ptr<HloComputation> computation) {
-    module_.reset(new HloModule(TestName()));
+    BuildModule(std::move(computation));
+    RunAnalysis();
+  }
+
+  void BuildModule(std::unique_ptr<HloComputation> computation) {
+    module_ = CreateNewModule();
     module_->AddEntryComputation(std::move(computation));
+  }
+
+  void RunAnalysis() {
+    CHECK_NOTNULL(module_.get());
     points_to_analysis_ =
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
   }
@@ -59,7 +76,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
       const std::vector<const LogicalBuffer*>& points_to_set,
       tensorflow::gtl::ArraySlice<const LogicalBuffer*> buffers) {
     std::vector<const LogicalBuffer*> vec(buffers.begin(), buffers.end());
-    EXPECT_MATCH(points_to_set, testing::UnorderedElementsAre(vec));
+    EXPECT_THAT(points_to_set, UnorderedElementsAreArray(vec));
   }
 
   // Checks that the given points-to set contains exactly (unordered) the
@@ -76,7 +93,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
 
   // Overload which takes a std::set instead of a std::vector.
   void ExpectHasTopLevelBuffers(
-      const std::set<const LogicalBuffer*>& points_to_set,
+      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& points_to_set,
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
     ExpectHasTopLevelBuffers(std::vector<const LogicalBuffer*>(
                                  points_to_set.begin(), points_to_set.end()),
@@ -94,21 +111,15 @@ class TuplePointsToAnalysisTest : public HloTestBase {
             .ValueOrDie();
     std::vector<BufferAlias> expected_aliases;
     for (auto& pair : expected) {
-      expected_aliases.push_back(BufferAlias(*buffer, pair.first, pair.second));
+      expected_aliases.push_back(BufferAlias(pair.first, pair.second));
     }
-    EXPECT_MATCH(points_to_analysis_->GetBufferAliases(*buffer),
-                 testing::UnorderedElementsAre(expected_aliases));
+    EXPECT_THAT(points_to_analysis_->GetBufferAliases(*buffer),
+                UnorderedElementsAreArray(expected_aliases));
   }
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 };
-
-// Expect the given std::set<HloInstruction*> as A contains exactly the given
-// HloInstruction*s as __VA_ARGS__.
-#define EXPECT_ISET(A, ...)                           \
-  EXPECT_MATCH(testing::SetToVec<HloInstruction*>(A), \
-               testing::UnorderedMatcher<HloInstruction*>(__VA_ARGS__))
 
 TEST_F(TuplePointsToAnalysisTest, SimpleTuple) {
   auto builder = HloComputation::Builder(TestName());
@@ -135,8 +146,8 @@ TEST_F(TuplePointsToAnalysisTest, SimpleTuple) {
 
   EXPECT_EQ(3, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
 
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),
@@ -194,9 +205,9 @@ TEST_F(TuplePointsToAnalysisTest, NestedTuple) {
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(inner_tuple).element({}),
       {inner_tuple});
-  EXPECT_ISET(
+  EXPECT_THAT(
       points_to_analysis_->GetPointsToSet(inner_tuple).tuple_sources({}),
-      inner_tuple);
+      UnorderedElementsAre(inner_tuple));
 
   EXPECT_EQ(5, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
@@ -204,10 +215,10 @@ TEST_F(TuplePointsToAnalysisTest, NestedTuple) {
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),
       {constant1, constant2, constant3, inner_tuple, tuple});
 
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({0}),
-              inner_tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({0}),
+              UnorderedElementsAre(inner_tuple));
   EXPECT_TRUE(
       points_to_analysis_->GetPointsToSet(tuple).tuple_sources({1}).empty());
 
@@ -251,7 +262,8 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
                            {constant1, constant2, inner_tuple});
   ExpectHasTopLevelBuffers(points_to_set.element({}), {inner_tuple});
 
-  EXPECT_ISET(points_to_set.tuple_sources({}), inner_tuple);
+  EXPECT_THAT(points_to_set.tuple_sources({}),
+              UnorderedElementsAre(inner_tuple));
 }
 
 TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
@@ -449,8 +461,10 @@ TEST_F(TuplePointsToAnalysisTest, NestedTupleSelect) {
   ExpectHasTopLevelBuffers(points_to_set.element({0, 1}), {constant2});
 
   // Verify tuple sources.
-  EXPECT_ISET(points_to_set.tuple_sources({}), tuple1, tuple2);
-  EXPECT_ISET(points_to_set.tuple_sources({0}), inner_tuple1, inner_tuple2);
+  EXPECT_THAT(points_to_set.tuple_sources({}),
+              UnorderedElementsAre(tuple1, tuple2));
+  EXPECT_THAT(points_to_set.tuple_sources({0}),
+              UnorderedElementsAre(inner_tuple1, inner_tuple2));
   EXPECT_EQ(0, points_to_set.tuple_sources({0, 0}).size());
   EXPECT_EQ(0, points_to_set.tuple_sources({0, 1}).size());
 }
@@ -478,8 +492,8 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
 
   EXPECT_EQ(3, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
 
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),
@@ -540,5 +554,217 @@ TEST_F(TuplePointsToAnalysisTest, BufferAliases) {
   ExpectHasBufferAliases(tuple, /*index=*/{}, {{tuple, {}}});
 }
 
+class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
+ protected:
+  // Builds a computation, runs instruction fusion HloPass, runs points-to
+  // analysis, then checks for expected results (see unit test cases for
+  // example computation graphs).
+  void Run(const bool add_additional_gte0_user) {
+    Shape input_shape = ShapeUtil::MakeShape(F32, {8});
+    Shape update_shape = ShapeUtil::MakeShape(F32, {3});
+    Shape starts_shape = ShapeUtil::MakeShape(S32, {1});
+    Shape tuple_shape =
+        ShapeUtil::MakeTupleShape({input_shape, update_shape, starts_shape});
+
+    auto builder = HloComputation::Builder(TestName());
+    // Create tuple-shaped parameter.
+    auto tuple_param0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape, "param0"));
+    // Create 'tuple_element1' = GetTupleElement(tuple_param0, 1).
+    auto tuple_element1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(update_shape, tuple_param0, 1));
+    auto ones = builder.AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
+    // Create 'update' = Add(GetTupleElement(tuple_param0, 1), ones)
+    auto update = builder.AddInstruction(HloInstruction::CreateBinary(
+        update_shape, HloOpcode::kAdd, tuple_element1, ones));
+    // Create 'input' = GetTupleElement(tuple_param0, 0).
+    auto input = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(input_shape, tuple_param0, 0));
+
+    if (add_additional_gte0_user) {
+      // Create 'slice' as an additional user of 'input'.
+      auto slice = builder.AddInstruction(
+          HloInstruction::CreateSlice(update_shape, input, {0}, {3}, {1}));
+      // Modify 'update' to take 'slice' output.
+      update = builder.AddInstruction(HloInstruction::CreateBinary(
+          update_shape, HloOpcode::kAdd, update, slice));
+    }
+
+    // Create slice 'starts' = GetTupleElement(tuple_param0, 2).
+    auto starts = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(starts_shape, tuple_param0, 2));
+    // Update 'input' with 'update' at dynamic 'starts' indices.
+    builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+        input_shape, input, update, starts));
+
+    // Build computation and add it to module as entry computation.
+    BuildModule(builder.Build());
+    // Run instruction fusion HloPass.
+    EXPECT_TRUE(InstructionFusion(InstructionFusion::IsExpensive)
+                    .Run(module_.get())
+                    .ValueOrDie());
+    // Get computation root instruction (should be a kFusion).
+    auto* fusion = module_->entry_computation()->root_instruction();
+    EXPECT_THAT(fusion, op::Fusion(tuple_param0));
+    // Run points-to analysis (should include fused instructions from 'fusion').
+    RunAnalysis();
+
+    // Check points-to set of fusion parameter associated with 'tuple_param0'.
+    auto* fusion_param = GetFusionParameterForOperand(fusion, tuple_param0);
+    ExpectHasBuffers(
+        points_to_analysis_->GetPointsToSet(fusion_param).element({}),
+        {GetBuffer(fusion_param, {})});
+    ExpectHasBuffers(
+        points_to_analysis_->GetPointsToSet(fusion_param).element({0}),
+        {GetBuffer(fusion_param, {0})});
+    ExpectHasBuffers(
+        points_to_analysis_->GetPointsToSet(fusion_param).element({1}),
+        {GetBuffer(fusion_param, {1})});
+    ExpectHasBuffers(
+        points_to_analysis_->GetPointsToSet(fusion_param).element({2}),
+        {GetBuffer(fusion_param, {2})});
+
+    // Check that Gte at tuple_index = 0 points-to fusion_param({0})
+    auto fused_gte0 = GetUniqueFusionParameterUserAt(fusion_param, 0);
+    ExpectHasBuffers(
+        points_to_analysis_->GetPointsToSet(fused_gte0).element({}),
+        {GetBuffer(fusion_param, {0})});
+    // Check that Gte at tuple_index = 1 points-to fusion_param({1})
+    auto fused_gte1 = GetUniqueFusionParameterUserAt(fusion_param, 1);
+    ExpectHasBuffers(
+        points_to_analysis_->GetPointsToSet(fused_gte1).element({}),
+        {GetBuffer(fusion_param, {1})});
+    // Check that Gte at tuple_index = 2 points-to fusion_param({2})
+    auto fused_gte2 = GetUniqueFusionParameterUserAt(fusion_param, 2);
+    ExpectHasBuffers(
+        points_to_analysis_->GetPointsToSet(fused_gte2).element({}),
+        {GetBuffer(fusion_param, {2})});
+
+    // Check buffer aliases of 'fusion_param' at shape index {0}.
+    ExpectHasBufferAliases(fusion_param, /*index=*/{0},
+                           {{fusion_param, {0}}, {fused_gte0, {}}});
+    // Check buffer aliases of 'fusion_param' at shape index {1}.
+    ExpectHasBufferAliases(fusion_param, /*index=*/{1},
+                           {{fusion_param, {1}}, {fused_gte1, {}}});
+    // Check buffer aliases of 'fusion_param' at shape index {2}.
+    ExpectHasBufferAliases(fusion_param, /*index=*/{2},
+                           {{fusion_param, {2}}, {fused_gte2, {}}});
+
+    // Check number of users of 'fusion_param' aliases at shape index {0}.
+    ExpectNumUsersOfAliases(fusion_param, {0},
+                            add_additional_gte0_user ? 2 : 1);
+  }
+
+  // Returns fusion parameter (from 'fusion.fused_instructions') corresponding
+  // to fusion 'operand'.
+  HloInstruction* GetFusionParameterForOperand(HloInstruction* fusion,
+                                               HloInstruction* operand) {
+    auto it = std::find_if(
+        fusion->fused_instructions().begin(),
+        fusion->fused_instructions().end(),
+        [=](const std::unique_ptr<HloInstruction>& fused) {
+          return fused->opcode() == HloOpcode::kParameter &&
+                 fusion->operand(fused->parameter_number()) == operand;
+        });
+    CHECK(it != fusion->fused_instructions().end());
+    return (*it).get();
+  }
+
+  // Returns all users of 'fusion_paran' at 'tuple_index'.
+  std::vector<HloInstruction*> GetFusionParameterUsersAt(
+      HloInstruction* fusion_param, int64 tuple_index) {
+    CHECK(ShapeUtil::IsTuple(fusion_param->shape()));
+    std::vector<HloInstruction*> users_at_tuple_index;
+    for (auto user : fusion_param->users()) {
+      CHECK_EQ(HloOpcode::kGetTupleElement, user->opcode());
+      if (user->tuple_index() == tuple_index) {
+        users_at_tuple_index.push_back(user);
+      }
+    }
+    return users_at_tuple_index;
+  }
+
+  // Returns the unique user of 'fusion_param' at 'tuple_index'.
+  HloInstruction* GetUniqueFusionParameterUserAt(HloInstruction* fusion_param,
+                                                 int64 tuple_index) {
+    std::vector<HloInstruction*> users =
+        GetFusionParameterUsersAt(fusion_param, tuple_index);
+    CHECK_EQ(1, users.size());
+    return users[0];
+  }
+
+  // Checks that the count of all users of all aliases of 'instruction' at
+  // 'index' match 'expected_num_users'.
+  void ExpectNumUsersOfAliases(const HloInstruction* instruction,
+                               const ShapeIndex& index,
+                               const int64 expected_num_users) {
+    const auto* buffer = GetBuffer(instruction, index);
+    int64 num_users = 0;
+    for (const auto& alias : points_to_analysis_->GetBufferAliases(*buffer)) {
+      for (auto user : alias.instruction()->users()) {
+        if (user->opcode() == HloOpcode::kGetTupleElement && !index.empty()) {
+          // Gte instructions only access the top-level buffer of their operand.
+          continue;
+        }
+        ++num_users;
+      }
+    }
+    EXPECT_EQ(expected_num_users, num_users);
+  }
+};
+
+// Tests the points-to set of tuple-shaped fusion parameter 0 and all GTE users.
+// Tests the alias set of tuple-shaped fusion parameter 0 at all shape indices.
+// Tests that there is a single user of the aliases of tuple-shaped fusion
+// parameter 0 at shape index {0}.
+//
+//             Param0    Const
+//                 \      /
+//                  Fusion
+//                 /      \
+//        FusionParam0   FusionParam1
+//        /     |    \       |
+//     Gte(0) Gte(2) Gte(1)  /
+//        \     |      \    /
+//         \    |       Add
+//          \   |        /
+//           \0 |2      /1
+//          DynamicUpdateSlice  // fused root.
+//
+TEST_F(FusionPointsToAnalysisTest, FusionParam0OneUser) {
+  Run(/*add_additional_gte0_user=*/false);
+}
+
+// Tests the points-to set of tuple-shaped fusion parameter 0 and all GTE users.
+// Tests the alias set of tuple-shaped fusion parameter 0 at all shape indices.
+// Tests that there are two users of the aliases of tuple-shaped fusion
+// parameter 0 at shape index {0}.
+//
+//             Param0    Const
+//                 \      /
+//                  Fusion
+//                 /      \
+//        FusionParam0   FusionParam1
+//        /     |    \       |
+//     Gte(2) Gte(0) Gte(1)  /
+//        \     |      \    /
+//         \    |\      Add
+//          \   | \      /
+//           |  | Slice /
+//           |  |   \  /
+//           |  |   Add
+//           |  |    |
+//           |2 |0   |1
+//          DynamicUpdateSlice  // fused root.
+//
+TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
+  Run(/*add_additional_gte0_user=*/true);
+}
+
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

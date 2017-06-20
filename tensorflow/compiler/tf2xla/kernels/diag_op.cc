@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -64,7 +64,7 @@ class DiagOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Diag", DiagOp);
+REGISTER_XLA_OP(Name("Diag"), DiagOp);
 
 class DiagPartOp : public XlaOpKernel {
  public:
@@ -125,14 +125,14 @@ class DiagPartOp : public XlaOpKernel {
     diag = builder->Reshape(diag, {new_size, new_size + 1});
 
     // Slices out the first column and reshapes to the final shape.
-    diag = builder->Slice(diag, {0, 0}, {new_size, 1});
+    diag = builder->Slice(diag, {0, 0}, {new_size, 1}, {1, 1});
     diag = builder->Reshape(diag, new_dims);
 
     ctx->SetOutput(0, diag);
   }
 };
 
-REGISTER_XLA_OP("DiagPart", DiagPartOp);
+REGISTER_XLA_OP(Name("DiagPart"), DiagPartOp);
 
 class MatrixDiagOp : public XlaOpKernel {
  public:
@@ -167,7 +167,7 @@ class MatrixDiagOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("MatrixDiag", MatrixDiagOp);
+REGISTER_XLA_OP(Name("MatrixDiag"), MatrixDiagOp);
 
 class MatrixDiagPartOp : public XlaOpKernel {
  public:
@@ -224,8 +224,9 @@ class MatrixDiagPartOp : public XlaOpKernel {
     } else if (actual_size > target_size) {
       std::vector<int64> start(flattened_dims.size(), 0);
       std::vector<int64> limits(flattened_dims.begin(), flattened_dims.end());
+      std::vector<int64> strides(flattened_dims.size(), 1);
       limits[flattened_dims.size() - 1] = target_size;
-      diag = builder->Slice(diag, start, limits);
+      diag = builder->Slice(diag, start, limits, strides);
     }
 
     // Reshape so the target values are in the first position of the last
@@ -238,8 +239,9 @@ class MatrixDiagPartOp : public XlaOpKernel {
     // Slices out the first column and reshapes to the final shape.
     std::vector<int64> start(dims.size(), 0);
     std::vector<int64> limits(dims.begin(), dims.end());
+    std::vector<int64> strides(dims.size(), 1);
     limits[last_dim] = 1;
-    diag = builder->Slice(diag, start, limits);
+    diag = builder->Slice(diag, start, limits, strides);
 
     // Collapses away the last dimension.
     dims.pop_back();
@@ -249,7 +251,7 @@ class MatrixDiagPartOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("MatrixDiagPart", MatrixDiagPartOp);
+REGISTER_XLA_OP(Name("MatrixDiagPart"), MatrixDiagPartOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -216,8 +215,9 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
       TensorShape({3, 4}),
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
   Status s = RunOpKernel();
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("Must have updates.shape = indices.shape[:IXDIM]"))
+  EXPECT_TRUE(
+      StringPiece(s.ToString())
+          .contains("Must have updates.shape = indices.shape[:batch_dim]"))
 
       << s;
 }
@@ -241,7 +241,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
 
 class ScatterNdUpdateBM : public ScatterNdUpdateOpTest {
  public:
-  virtual void TestBody() {}
+  void TestBody() override {}
   void MakeBenchmarkOp(const char* op, DataType index_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", op)
                      .Input(FakeInput(DT_FLOAT_REF))

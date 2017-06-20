@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package tensorflow
 
@@ -75,6 +77,11 @@ type Output struct {
 	Index int
 }
 
+// DataType returns the type of elements in the tensor produced by p.
+func (p Output) DataType() DataType {
+	return DataType(C.TF_OperationOutputType(p.c()))
+}
+
 // Shape returns the (possibly incomplete) shape of the tensor produced p.
 func (p Output) Shape() Shape {
 	status := newStatus()
@@ -106,6 +113,11 @@ func (p Output) Shape() Shape {
 }
 
 func (p Output) c() C.TF_Output {
+	if p.Op == nil {
+		// Attempt to provide a more useful panic message than "nil
+		// pointer dereference".
+		panic("nil-Operation. If the Output was created with a Scope object, see Scope.Err() for details.")
+	}
 	return C.TF_Output{oper: p.Op.c, index: C.int(p.Index)}
 }
 

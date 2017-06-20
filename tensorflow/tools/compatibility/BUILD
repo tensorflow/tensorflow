@@ -10,12 +10,16 @@ load(
 
 py_binary(
     name = "tf_upgrade",
-    srcs = ["tf_upgrade.py"],
+    srcs = [
+        "ast_edits.py",
+        "tf_upgrade.py",
+    ],
     srcs_version = "PY2AND3",
 )
 
 py_test(
     name = "tf_upgrade_test",
+    size = "small",
     srcs = ["tf_upgrade_test.py"],
     srcs_version = "PY2AND3",
     deps = [

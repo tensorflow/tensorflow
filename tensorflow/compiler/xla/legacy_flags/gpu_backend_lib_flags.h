@@ -36,7 +36,6 @@ typedef struct {
   string dump_temp_products_to;  // temporary compilation products dir
   bool ftz;                      // flush to zero semantics
   bool fma;                      // use FMA synthesis
-  string gpu_architecture;       // GPU architecture
   bool verbose_ptx_asm;          // emit PTX assembly with extra comments
   string kernel;                 // only emit the IR and PTX for this kernel
   bool llvm_dump_passes;         // dump the passes LLVM runs to stderr

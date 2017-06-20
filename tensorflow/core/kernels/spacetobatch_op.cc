@@ -100,6 +100,10 @@ void SpaceToBatchOpCompute(OpKernelContext* context,
   for (int block_dim = 0; block_dim < block_dims; ++block_dim) {
     block_shape_product *= block_shape[block_dim];
   }
+  OP_REQUIRES(
+      context, block_shape_product > 0,
+      errors::InvalidArgument("Product of block sizes must be positive, got ",
+                              block_shape_product));
 
   const int internal_block_dims =
       block_dims - removed_prefix_block_dims - removed_suffix_block_dims;

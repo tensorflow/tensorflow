@@ -22,7 +22,7 @@ op { name: "Where" input_rename: { from: "input" to: "condition" } }
 op { name: "ThreadUnsafeUnigramCandidateSampler", skip: true }
 
 # control_flow_ops
-# TODO(josh11b): Hide Switch and Merge once we write and migrate users to
+# TODO(joshl): Hide Switch and Merge once we write and migrate users to
 # a Cond() API.
 #op { name: "Switch" hide: true }
 #op { name: "Merge" hide: true }
@@ -150,6 +150,12 @@ op { name: "Neg" rename_to: "Negate" alias: "Neg" }
 op { name: "Prod" alias: "ReduceProd" input_rename: { from: "reduction_indices" to: "axis" } }
 op { name: "Sub" rename_to: "Subtract" alias: "Sub" }
 op { name: "Sum" alias: "ReduceSum" input_rename: { from: "reduction_indices" to: "axis" } }
+op { name: "SigmoidGrad" hide: true }
+op { name: "TanhGrad" hide: true }
+op { name: "InvGrad" hide: true }
+op { name: "ReciprocalGrad" hide: true }
+op { name: "SqrtGrad" hide: true }
+op { name: "RsqrtGrad" hide: true }
 
 # *Grad ops get hidden, only for use by the gradient code.
 op { name: "SigmoidGrad" hide: true }

@@ -31,10 +31,6 @@ import org.tensorflow.demo.env.SplitTimer;
 public class TensorFlowYoloDetector implements Classifier {
   private static final Logger LOGGER = new Logger();
 
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
-
   // Only return this many results with at least this confidence.
   private static final int MAX_RESULTS = 5;
 
@@ -86,6 +82,8 @@ public class TensorFlowYoloDetector implements Classifier {
 
   private int blockSize;
 
+  private boolean logStats = false;
+
   private TensorFlowInferenceInterface inferenceInterface;
 
   /** Initializes a native TensorFlow session for classifying images. */
@@ -106,13 +104,8 @@ public class TensorFlowYoloDetector implements Classifier {
     d.floatValues = new float[inputSize * inputSize * 3];
     d.blockSize = blockSize;
 
-    d.inferenceInterface = new TensorFlowInferenceInterface();
+    d.inferenceInterface = new TensorFlowInferenceInterface(assetManager, modelFilename);
 
-    final int status = d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename);
-    if (status != 0) {
-      LOGGER.e("TF init status: " + status);
-      throw new RuntimeException("TF init status (" + status + ") != 0");
-    }
     return d;
   }
 
@@ -150,37 +143,33 @@ public class TensorFlowYoloDetector implements Classifier {
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 
     for (int i = 0; i < intValues.length; ++i) {
-      floatValues[i * 3 + 0] = (intValues[i] & 0xFF) / 255.0f;
+      floatValues[i * 3 + 0] = ((intValues[i] >> 16) & 0xFF) / 255.0f;
       floatValues[i * 3 + 1] = ((intValues[i] >> 8) & 0xFF) / 255.0f;
-      floatValues[i * 3 + 2] = ((intValues[i] >> 16) & 0xFF) / 255.0f;
+      floatValues[i * 3 + 2] = (intValues[i] & 0xFF) / 255.0f;
     }
     Trace.endSection(); // preprocessBitmap
 
     // Copy the input data into TensorFlow.
-    Trace.beginSection("fillNodeFloat");
-    inferenceInterface.fillNodeFloat(
-        inputName, new int[] {1, inputSize, inputSize, 3}, floatValues);
+    Trace.beginSection("feed");
+    inferenceInterface.feed(inputName, floatValues, 1, inputSize, inputSize, 3);
     Trace.endSection();
 
     timer.endSplit("ready for inference");
 
     // Run the inference call.
-    Trace.beginSection("runInference");
-    final int resultCode = inferenceInterface.runInference(outputNames);
-    if (resultCode != 0) {
-      throw new RuntimeException("Bad result code from inference: " + resultCode);
-    }
+    Trace.beginSection("run");
+    inferenceInterface.run(outputNames, logStats);
     Trace.endSection();
 
     timer.endSplit("ran inference");
 
     // Copy the output Tensor back into the output array.
-    Trace.beginSection("readNodeFloat");
+    Trace.beginSection("fetch");
     final int gridWidth = bitmap.getWidth() / blockSize;
     final int gridHeight = bitmap.getHeight() / blockSize;
     final float[] output =
         new float[gridWidth * gridHeight * (NUM_CLASSES + 5) * NUM_BOXES_PER_BLOCK];
-    inferenceInterface.readNodeFloat(outputNames[0], output);
+    inferenceInterface.fetch(outputNames[0], output);
     Trace.endSection();
 
     // Find the best detections.
@@ -215,7 +204,7 @@ public class TensorFlowYoloDetector implements Classifier {
                   Math.max(0, yPos - h / 2),
                   Math.min(bitmap.getWidth() - 1, xPos + w / 2),
                   Math.min(bitmap.getHeight() - 1, yPos + h / 2));
-          final float confidence = output[offset + 4];
+          final float confidence = expit(output[offset + 4]);
 
           int detectedClass = -1;
           float maxClass = 0;
@@ -256,8 +245,8 @@ public class TensorFlowYoloDetector implements Classifier {
   }
 
   @Override
-  public void enableStatLogging(final boolean debug) {
-    inferenceInterface.enableStatLogging(debug);
+  public void enableStatLogging(final boolean logStats) {
+    this.logStats = logStats;
   }
 
   @Override

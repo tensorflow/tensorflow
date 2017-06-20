@@ -16,6 +16,10 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../paper-spinner/paper-spinner-lite.html">
+<link rel="import" href="../tf-graph-common/tf-graph-common.html">
+<link rel="import" href="../tf-graph-debugger-data-card/tf-graph-debugger-data-card.html">
 <link rel="import" href="tf-node-info.html">
 
 <dom-module id="tf-graph-info">
@@ -26,6 +30,9 @@ limitations under the License.
   margin: 0;
   padding: 0;
   display: block;
+  max-height: 650px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 h2 {
@@ -46,8 +53,23 @@ h2 {
     </tf-node-info>
   </paper-material>
 </template>
+<template is="dom-if" if="[[_healthPillsAvailable(debuggerDataEnabled, nodeNamesToHealthPills)]]">
+  <tf-graph-debugger-data-card render-hierarchy="[[renderHierarchy]]"
+                               debugger-numeric-alerts="[[debuggerNumericAlerts]]"
+                               node-names-to-health-pills="[[nodeNamesToHealthPills]]"
+                               render-hierarchy="[[renderHierarchy]]"
+                               selected-node="{{selectedNode}}"
+                               highlighted-node="{{highlightedNode}}"
+                               are-health-pills-loading="[[areHealthPillsLoading]]"
+                               all-steps-mode-enabled="{{allStepsModeEnabled}}"
+                               specific-health-pill-step="{{specificHealthPillStep}}"
+                               health-pill-step-index="{{healthPillStepIndex}}">
+  </tf-graph-debugger-data-card>
+</template>
 </template>
 <script>
+"use strict";
+
 (function() {
   Polymer({
     is: 'tf-graph-info',
@@ -57,6 +79,11 @@ h2 {
       graphHierarchy: Object,
       graph: Object,
       renderHierarchy: Object,
+      nodeNamesToHealthPills: Object,
+      healthPillStepIndex: {
+        type: Number,
+        notify: true,
+      },
       colorBy: String,
       // Two-ways
       selectedNode: {
@@ -71,7 +98,11 @@ h2 {
       selectedNodeInclude: {
         type: Number,
         notify: true
-      }
+      },
+      // Whether debugger data is enabled for this instance of Tensorboard.
+      debuggerDataEnabled: Boolean,
+      // Whether health pills are currently being loaded, in which case we show a spinner (and the
+      // current health pills shown might be out of date).
     },
     listeners: {
       'node-list-item-click': '_nodeListItemClicked',
@@ -86,7 +117,13 @@ h2 {
     },
     _nodeListItemMouseout: function() {
       this.highlightedNode = null;
-    }
+    },
+    _healthPillsAvailable: function(debuggerDataEnabled, nodeNamesToHealthPills) {
+      // So long as there is a mapping (even if empty) from node name to health pills, show the
+      // legend and slider. We do that because, even if no health pills exist at the current step,
+      // the user may desire to change steps, and the slider must show for the user to do that.
+      return debuggerDataEnabled && nodeNamesToHealthPills;
+    },
   });
 })();
 </script>

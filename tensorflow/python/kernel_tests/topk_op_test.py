@@ -43,10 +43,10 @@ class TopKTest(test.TestCase):
       values_op, indices_op = nn_ops.top_k(inputs, k, sorted=sorted)
       values = values_op.eval()
       indices = indices_op.eval()
-      self.assertAllClose(np_values, values)
-      self.assertAllEqual(np_indices, indices)
       self.assertShapeEqual(np_values, values_op)
       self.assertShapeEqual(np_indices, indices_op)
+      self.assertAllEqual(np_indices, indices)
+      self.assertAllClose(np_values, values)
 
   def testTop1(self):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.3, 0.2]]
@@ -54,7 +54,7 @@ class TopKTest(test.TestCase):
 
   def testTop2(self):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.3, 0.2]]
-    self._validateTopK(inputs, 2, [[0.4, 0.3], [0.3, 0.3]], [[3, 1], [1, 2]])
+    self._validateTopK(inputs, 2, [[0.4, 0.3], [0.3, 0.3]], [[3, 1], [2, 1]])
 
   def testTopAll(self):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.3, 0.2]]
@@ -62,10 +62,10 @@ class TopKTest(test.TestCase):
                        [[3, 1, 2, 0], [1, 2, 3, 0]])
 
   def testTop3Unsorted(self):
-    inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.3, 0.2]]
+    inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.4, 0.3, 0.2]]
     self._validateTopK(
         inputs,
-        3, [[0.2, 0.3, 0.4], [0.2, 0.3, 0.3]], [[2, 1, 3], [3, 1, 2]],
+        3, [[0.2, 0.3, 0.4], [0.2, 0.4, 0.3]], [[2, 1, 3], [3, 1, 2]],
         sorted=False)
 
   def testTop3Vector(self):

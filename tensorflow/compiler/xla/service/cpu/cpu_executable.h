@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -52,30 +51,23 @@ class CpuExecutable : public Executable {
       std::unique_ptr<SimpleOrcJIT> jit,
       std::unique_ptr<BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloModuleConfig> module_config,
       const string& entry_function_name,
       std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx);
   ~CpuExecutable() override {}
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
-  Status ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      ShapedBuffer* result_buffer,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
 
@@ -85,6 +77,8 @@ class CpuExecutable : public Executable {
   void set_ir_module_string(const string& ir_module_string) {
     ir_module_string_ = ir_module_string;
   }
+
+  static int64 ShapeSizeBytes(const Shape& shape);
 
  private:
   // Allocate buffers required for execution and assign them to the elements of

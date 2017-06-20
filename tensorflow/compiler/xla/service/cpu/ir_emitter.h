@@ -60,24 +60,30 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // llvm_module: the LLVM module to emit IR into.
   // hlo_to_profile_idx: the mapping from HLO to its index in the profiling
   //                     array.
-  IrEmitter(const HloModule& hlo_module, const HloModuleConfig& module_config,
-            const BufferAssignment& assignment, llvm::Module* llvm_module,
+  IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
+            llvm::Module* llvm_module,
             const std::unordered_map<const HloInstruction*, size_t>*
                 hlo_to_profile_idx);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
-  // function. function_name_prefix is the desired name of the function. If the
-  // name is not unique among already emitted functions then a suffix is
-  // appended to make the name unique. is_entry_computation indicates that this
-  // is the entry computation of the HLO module. If 'instruction_order' is given
-  // then the HLO instructions are emitted in the given order.  In this case,
-  // 'instruction_order' must be a topological sort of the set of nodes
-  // accessible from the root of the computation.
+  // function.
+  //
+  // function_name_prefix is the desired name of the function. If the name is
+  // not unique among already emitted functions then a suffix is appended to
+  // make the name unique.
+  //
+  // is_entry_computation indicates that this is the entry computation of the
+  // HLO module.
+  //
+  // If 'instruction_order' is not NULL, then the HLO instructions are emitted
+  // in the given order.  In this case, 'instruction_order' must be a
+  // topological sort of the set of nodes accessible from the root of the
+  // computation.
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const string& function_name_prefix,
       bool is_entry_computation,
-      std::vector<const HloInstruction*>* instruction_order = nullptr);
+      std::vector<const HloInstruction*>* instruction_order);
 
  protected:
   //
@@ -114,6 +120,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                             HloComputation* function) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
   Status HandleSend(HloInstruction* send) override;
+  Status HandleSlice(HloInstruction* slice,
+                     HloInstruction* /*operand*/) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* /*operand*/,
+                            HloInstruction* /*start_indices*/) override;
+  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
+                                  HloInstruction* /*operand*/,
+                                  HloInstruction* /*update*/,
+                                  HloInstruction* /*start_indices*/) override;
   Status HandleRecv(HloInstruction* recv) override;
   Status HandlePad(HloInstruction* pad) override;
   Status HandleTuple(
@@ -125,14 +140,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       HloComputation* function,
       tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCall(HloInstruction* call,
-                    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                    HloComputation* computation) override;
+  Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call,
                           tensorflow::gtl::ArraySlice<HloInstruction*> operands,
                           tensorflow::StringPiece custom_call_target) override;
-  Status HandleWhile(HloInstruction* xla_while, HloInstruction* init,
-                     HloComputation* condition, HloComputation* body) override;
+  Status HandleWhile(HloInstruction* xla_while) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -183,7 +195,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Emits code that computes the address of the given temporary buffer to the
   // function. target_shape is the shape of this temporary buffer.
   // The returned Value's type is a pointer to element_type.
-  llvm::Value* EmitTempBufferPointer(BufferAllocation::Index temp_buf_index,
+  llvm::Value* EmitTempBufferPointer(const BufferAllocation::Slice& slice,
                                      const Shape& target_shape);
 
   // Emits a function into the current module. This can be used for
@@ -290,7 +302,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   std::map<HloComputation*, llvm::Function*> emitted_functions_;
 
   // Map containing all previously emitted thread-local temporary buffers.
-  std::map<std::pair<llvm::Function*, BufferAllocation::Index>,
+  std::map<std::pair<llvm::Function*, BufferAllocation::Slice>,
            llvm::AllocaInst*>
       thread_local_buffers_;
 

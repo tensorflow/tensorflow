@@ -21,8 +21,6 @@ from __future__ import print_function
 import math
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,6 +30,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
 
 
 class Logistic(distribution.Distribution):
@@ -108,13 +107,13 @@ class Logistic(distribution.Distribution):
       loc: Floating point tensor, the means of the distribution(s).
       scale: Floating point tensor, the scales of the distribution(s). Must
         contain only positive values.
-      validate_args: Python `Boolean`, default `False`. When `True` distribution
+      validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `Boolean`, default `True`. When `True`, statistics
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
         (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
-        result is undefined.  When `False`, an exception is raised if one or
+        result is undefined. When `False`, an exception is raised if one or
         more of the statistic's batch members are undefined.
       name: The name to give Ops created by the initializer.
 
@@ -122,21 +121,20 @@ class Logistic(distribution.Distribution):
       TypeError: if loc and scale are different dtypes.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]) as ns:
+    with ops.name_scope(name, values=[loc, scale]):
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        contrib_tensor_util.assert_same_float_dtype((self._loc, self._scale))
+        check_ops.assert_same_float_dtype([self._loc, self._scale])
     super(Logistic, self).__init__(
         dtype=self._scale.dtype,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._loc, self._scale],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -169,15 +167,20 @@ class Logistic(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    shape = array_ops.concat(([n], array_ops.shape(self.mean())), 0)
-    np_dtype = self.dtype.as_numpy_dtype
-    minval = np.nextafter(np_dtype(0), np_dtype(1))
-    uniform = random_ops.random_uniform(shape=shape,
-                                        minval=minval,
-                                        maxval=1,
-                                        dtype=self.dtype,
-                                        seed=seed)
-    sampled = math_ops.log(uniform) - math_ops.log(1-uniform)
+    # Uniform variates must be sampled from the open-interval `(0, 1)` rather
+    # than `[0, 1)`. To do so, we use `np.finfo(self.dtype.as_numpy_dtype).tiny`
+    # because it is the smallest, positive, "normal" number. A "normal" number
+    # is such that the mantissa has an implicit leading 1. Normal, positive
+    # numbers x, y have the reasonable property that, `x + y >= max(x, y)`. In
+    # this case, a subnormal number (i.e., np.nextafter) can cause us to sample
+    # 0.
+    uniform = random_ops.random_uniform(
+        shape=array_ops.concat([[n], self.batch_shape_tensor()], 0),
+        minval=np.finfo(self.dtype.as_numpy_dtype).tiny,
+        maxval=1.,
+        dtype=self.dtype,
+        seed=seed)
+    sampled = math_ops.log(uniform) - math_ops.log1p(-1. * uniform)
     return sampled * self.scale + self.loc
 
   def _log_prob(self, x):
@@ -187,13 +190,13 @@ class Logistic(distribution.Distribution):
     return math_ops.exp(self._log_prob(x))
 
   def _log_cdf(self, x):
-    return nn_ops.softplus(-self._z(x))
+    return -nn_ops.softplus(-self._z(x))
 
   def _cdf(self, x):
     return math_ops.sigmoid(self._z(x))
 
   def _log_survival_function(self, x):
-    return nn_ops.softplus(self._z(x))
+    return -nn_ops.softplus(self._z(x))
 
   def _survival_function(self, x):
     return math_ops.sigmoid(-self._z(x))

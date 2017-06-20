@@ -72,6 +72,8 @@ digamma = _core.digamma
 erf = _core.erf
 erfc = _core.erfc
 logical_not = _core.logical_not
+tanh = _core.tanh
+sigmoid = _core.sigmoid
 
 add = _core.add
 sub = _core.sub

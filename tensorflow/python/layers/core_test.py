@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -43,13 +44,14 @@ class DenseTest(test.TestCase):
     self.assertEqual(dense.bias_regularizer, None)
     self.assertEqual(dense.activity_regularizer, None)
     self.assertEqual(dense.use_bias, True)
-    self.assertEqual(dense.name, 'my_dense')
 
     # Test auto-naming
     dense = core_layers.Dense(2, activation=nn_ops.relu)
-    self.assertEqual(dense.name, 'dense')
-    dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_1')
+    dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(random_ops.random_uniform((5, 2)))
+    self.assertEqual(dense.name, 'dense_2')
 
   def testCall(self):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')
@@ -58,8 +60,6 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.variables, [dense.kernel, dense.bias])
     self.assertListEqual(dense.trainable_variables, [dense.kernel, dense.bias])
     self.assertListEqual(dense.non_trainable_variables, [])
-    self.assertListEqual(dense._trainable_variables, [dense.kernel, dense.bias])
-    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
     self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
@@ -85,8 +85,6 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.non_trainable_variables,
                          [dense.kernel, dense.bias])
     self.assertListEqual(dense.trainable_variables, [])
-    self.assertListEqual(dense._trainable_variables, [dense.kernel, dense.bias])
-    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 0)
 
@@ -260,14 +258,36 @@ class DenseTest(test.TestCase):
       var = variables.trainable_variables()[4]
       self.assertEqual(var.name, 'test2/dense/kernel:0')
 
+  def testComputeOutputShape(self):
+    dense = core_layers.Dense(2, activation=nn_ops.relu, name='dense1')
+    ts = tensor_shape.TensorShape
+    # pylint: disable=protected-access
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts(None))
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts([]))
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts([1]))
+    self.assertEqual(
+        [None, 2],
+        dense._compute_output_shape((None, 3)).as_list())
+    self.assertEqual(
+        [None, 2],
+        dense._compute_output_shape(ts([None, 3])).as_list())
+    self.assertEqual(
+        [None, 4, 2],
+        dense._compute_output_shape(ts([None, 4, 3])).as_list())
+    # pylint: enable=protected-access
+
 
 class DropoutTest(test.TestCase):
 
   def testDropoutProperties(self):
-    dp = core_layers.Dropout(0.5)
+    dp = core_layers.Dropout(0.5, name='dropout')
     self.assertEqual(dp.rate, 0.5)
-    self.assertEqual(dp.name, 'dropout')
     self.assertEqual(dp.noise_shape, None)
+    dp.apply(np.ones(()))
+    self.assertEqual(dp.name, 'dropout')
 
   def testBooleanLearningPhase(self):
     with self.test_session() as sess:
@@ -315,6 +335,18 @@ class DropoutTest(test.TestCase):
       np_output = sess.run(dropped, feed_dict={training: True})
       self.assertAlmostEqual(0., np_output.min())
       np_output = sess.run(dropped, feed_dict={training: False})
+      self.assertAllClose(np.ones((5, 5)), np_output)
+
+  def testDynamicRate(self):
+    with self.test_session() as sess:
+      rate = array_ops.placeholder(dtype='float32', name='rate')
+      dp = core_layers.Dropout(rate, name='dropout')
+      inputs = array_ops.ones((5, 5))
+      dropped = dp.apply(inputs, training=True)
+      sess.run(variables.global_variables_initializer())
+      np_output = sess.run(dropped, feed_dict={rate: 0.5})
+      self.assertAlmostEqual(0., np_output.min())
+      np_output = sess.run(dropped, feed_dict={rate: 0.0})
       self.assertAllClose(np.ones((5, 5)), np_output)
 
 

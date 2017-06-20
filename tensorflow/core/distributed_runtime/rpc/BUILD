@@ -167,6 +167,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core/distributed_runtime:worker_session",
         "@grpc//:grpc++_unsecure",
     ],
 )
@@ -273,11 +274,21 @@ cc_library(
         "//tensorflow/core/distributed_runtime:master_env",
         "//tensorflow/core/distributed_runtime:master_session",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",
         "@grpc//:grpc++_unsecure",
         "@grpc//:grpc_unsecure",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "grpc_runtime",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":grpc_server_lib",
+        ":grpc_session",
+    ],
 )
 
 cc_binary(
@@ -287,12 +298,12 @@ cc_binary(
     ],
     deps = [
         ":grpc_server_lib",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/kernels:data_flow",
         "@grpc//:grpc++_unsecure",
     ],
 )
@@ -321,6 +332,7 @@ cc_binary(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:cwise_op",

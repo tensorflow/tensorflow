@@ -1372,7 +1372,8 @@ class FIFOQueueTest(test.TestCase):
       dtypes = [
           dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
           dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8, dtypes_lib.int64,
-          dtypes_lib.bool, dtypes_lib.complex64, dtypes_lib.complex128
+          dtypes_lib.uint16, dtypes_lib.bool, dtypes_lib.complex64,
+          dtypes_lib.complex128
       ]
       shape = (32, 4, 128)
       q = data_flow_ops.FIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))

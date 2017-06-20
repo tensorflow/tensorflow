@@ -43,27 +43,45 @@ class HloExecutionProfile {
   uint64 GetProfileResult(const HloInstruction& hlo) const;
 
   // Return the number of cycles this computation took to execute.
-  uint64 total_cycles_executed() const { return total_cycles_executed_; }
+  uint64 total_cycles_executed(const HloComputation& computation) const {
+    auto it = total_cycles_executed_.find(&computation);
+    if (it != total_cycles_executed_.end()) {
+      return it->second;
+    }
+    return 0;
+  }
 
-  // Record how many cycles the entire computation took to execute.
-  void set_total_cycles_executed(uint64 total_cycles_executed) {
-    total_cycles_executed_ = total_cycles_executed;
+  // Record how many cycles a computation took to execute.
+  void set_total_cycles_executed(const HloComputation& computation,
+                                 uint64 total_cycles_executed) {
+    total_cycles_executed_[&computation] = total_cycles_executed;
   }
 
   // Returns a version of the execution profile suitable for performance
   // debugging; e.g. emits cycle counts, execution time at the nominal device
   // frequency, and the effective throughput given the provided cost_analysis
-  // for the operations.
-  string ToString(const DeviceDescription& device_description,
-                  const HloCostAnalysis& cost_analysis) const;
+  // for the operations in a given computation.
+  // Returns an empty string if it wasn't possible to generate a printable
+  // version.
+  string ToString(const HloComputation& computation,
+                  const DeviceDescription& device_description,
+                  const HloCostAnalysis::ShapeSizeFunction& shape_size) const;
+
+  // Returns the computations we have profiled.
+  std::unordered_set<const HloComputation*> profiled_computations() const {
+    return profiled_computations_;
+  }
 
  private:
   // Contains a mapping from HLO to the number of cycles it took to execute it.
   std::unordered_map<const HloInstruction*, uint64> hlo_to_cycles_taken_;
 
-  // If non-empty, contains the total number of cycles this computation took to
+  // If non-empty, contains the total number of cycles a computation took to
   // execute.
-  uint64 total_cycles_executed_ = 0;
+  std::unordered_map<const HloComputation*, uint64> total_cycles_executed_;
+
+  // The computations we have profiled.
+  std::unordered_set<const HloComputation*> profiled_computations_;
 };
 
 }  // namespace xla

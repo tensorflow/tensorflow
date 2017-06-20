@@ -36,6 +36,10 @@ namespace tensorflow {
 REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), HostConstantOp);
 REGISTER_KERNEL_BUILDER(
     Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), HostConstantOp);
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("HostConst").Device(DEVICE_SYCL).HostMemory("output"), HostConstantOp);
+#endif // TENSORFLOW_USE_SYCL
 
 // Register the HostConst Op
 // Returns a constant tensor on the host.  Useful for writing C++ tests
@@ -214,6 +218,16 @@ Node* RandomGamma(Graph* g, Node* shape, Node* alpha) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomGamma")
                   .Input(shape)
                   .Input(alpha)
+                  .Attr("seed", 0)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomPoisson")
+                  .Input(shape)
+                  .Input(lam)
                   .Attr("seed", 0)
                   .Finalize(g, &ret));
   return ret;
@@ -402,24 +416,6 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cast")
                   .Input(in)
                   .Attr("DstT", dst)
-                  .Finalize(g, &ret));
-  return ret;
-}
-
-Node* BroadcastArgs(Graph* g, Node* s0, Node* s1) {
-  Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastArgs")
-                  .Input(s0)
-                  .Input(s1)
-                  .Finalize(g, &ret));
-  return ret;
-}
-
-Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1) {
-  Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastGradientArgs")
-                  .Input(s0)
-                  .Input(s1)
                   .Finalize(g, &ret));
   return ret;
 }

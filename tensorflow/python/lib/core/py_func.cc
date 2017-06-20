@@ -17,14 +17,16 @@ limitations under the License.
 
 #include <array>
 
-#include <Python.h>
 #include "numpy/arrayobject.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include <Python.h>
 
 namespace tensorflow {
 namespace {
@@ -37,50 +39,6 @@ static PyObject* py_trampoline GUARDED_BY(mu) = nullptr;
 PyObject* GetPyTrampoline() {
   mutex_lock l(mu);
   return py_trampoline;
-}
-
-// Returns the corresponding numpy dtype in 'np' for tf data type
-// 'tf'.  Returns an error if the type is not supported by this
-// module.
-Status TfDTypeToNpDType(const DataType& tf, int* np) {
-  switch (tf) {
-    case DT_FLOAT:
-      *np = NPY_FLOAT32;
-      break;
-    case DT_DOUBLE:
-      *np = NPY_FLOAT64;
-      break;
-    case DT_INT32:
-      *np = NPY_INT32;
-      break;
-    case DT_UINT8:
-      *np = NPY_UINT8;
-      break;
-    case DT_INT8:
-      *np = NPY_INT8;
-      break;
-    case DT_INT16:
-      *np = NPY_INT16;
-      break;
-    case DT_INT64:
-      *np = NPY_INT64;
-      break;
-    case DT_BOOL:
-      *np = NPY_BOOL;
-      break;
-    case DT_COMPLEX64:
-      *np = NPY_COMPLEX64;
-      break;
-    case DT_COMPLEX128:
-      *np = NPY_COMPLEX128;
-      break;
-    case DT_STRING:
-      *np = NPY_OBJECT;
-      break;
-    default:
-      return errors::Unimplemented("Unsupported tf type ", DataTypeString(tf));
-  }
-  return Status::OK();
 }
 
 // A call to the registered python function.
@@ -171,6 +129,48 @@ bool IsSingleNone(PyObject* obj) {
   return item == Py_None;
 }
 
+// py.__class__.__name__
+const char* ClassName(PyObject* py) {
+/* PyPy doesn't have a separate C API for old-style classes. */
+#if PY_MAJOR_VERSION < 3 && !defined(PYPY_VERSION)
+  if (PyClass_Check(py))
+    return PyString_AS_STRING(
+        CHECK_NOTNULL(reinterpret_cast<PyClassObject*>(py)->cl_name));
+  if (PyInstance_Check(py))
+    return PyString_AS_STRING(CHECK_NOTNULL(
+        reinterpret_cast<PyInstanceObject*>(py)->in_class->cl_name));
+#endif
+  if (Py_TYPE(py) == &PyType_Type) {
+    return reinterpret_cast<PyTypeObject*>(py)->tp_name;
+  }
+  return Py_TYPE(py)->tp_name;
+}
+
+string PyExcFetch() {
+  CHECK(PyErr_Occurred()) << "Must only call PyExcFetch after an exception.";
+  PyObject* ptype;
+  PyObject* pvalue;
+  PyObject* ptraceback;
+  PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+  PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
+  string err = ClassName(ptype);
+  if (pvalue) {
+    PyObject* str = PyObject_Str(pvalue);
+    if (str) {
+#if PY_MAJOR_VERSION < 3
+      strings::StrAppend(&err, ": ", PyString_AS_STRING(str));
+#else
+      strings::StrAppend(&err, ": ", PyUnicode_AsUTF8(str));
+#endif
+      Py_DECREF(str);
+    }
+    Py_DECREF(pvalue);
+  }
+  Py_DECREF(ptype);
+  Py_XDECREF(ptraceback);
+  return err;
+}
+
 // Calls the registered py function through the trampoline.
 Status DoCallPyFunc(PyCall* call) {
   PyObject* trampoline = GetPyTrampoline();
@@ -188,11 +188,24 @@ Status DoCallPyFunc(PyCall* call) {
   Py_DECREF(args);
   if (result == nullptr) {
     if (PyErr_Occurred()) {
-      // TODO(zhifengc): Consider pretty-print error using LOG(STDERR).
-      PyErr_Print();
+      if (PyErr_ExceptionMatches(PyExc_ValueError) ||
+          PyErr_ExceptionMatches(PyExc_TypeError)) {
+        return errors::InvalidArgument(PyExcFetch());
+      } else if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
+        return errors::OutOfRange(PyExcFetch());
+      } else if (PyErr_ExceptionMatches(PyExc_MemoryError)) {
+        return errors::ResourceExhausted(PyExcFetch());
+      } else if (PyErr_ExceptionMatches(PyExc_NotImplementedError)) {
+        return errors::Unimplemented(PyExcFetch());
+      } else {
+        // TODO(ebrevdo): Check if exception is an OpError and use the
+        // OpError.error_code property to map it back in the Status.
+        return errors::Unknown(PyExcFetch());
+      }
+    } else {
+      return errors::Internal("Failed to run py callback ", call->token,
+                              ": see error log.");
     }
-    return errors::Internal("Failed to run py callback ", call->token,
-                            ": see error log.");
   }
 
   // Process the return values and converts them to tf Tensors.
@@ -227,9 +240,44 @@ Status DoCallPyFunc(PyCall* call) {
 
 }  // end namespace
 
+// Outside anonymous namespace just to make the friend declaration in
+// tensorflow::Tensor apply.
+class NumpyTensorBuffer : public TensorBuffer {
+ public:
+  NumpyTensorBuffer(PyArrayObject* array, size_t len, void* data)
+      : array_(array), len_(len), data_(data) {}
+
+  ~NumpyTensorBuffer() override {
+    // Note: The session::run wrapper is responsible for freeing this while
+    // holding the GIL.
+    DelayedNumpyDecref(data_, len_, array_);
+  }
+
+  void* data() const override { return data_; }
+  size_t size() const override { return len_; }
+  TensorBuffer* root_buffer() override { return this; }
+  void FillAllocationDescription(AllocationDescription* proto) const override {
+    tensorflow::int64 rb = size();
+    proto->set_requested_bytes(rb);
+    proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
+  }
+  Tensor MakeTensor(DataType dtype, const TensorShape& shape) {
+    CHECK_EQ(len_, shape.num_elements() * DataTypeSize(dtype));
+    return Tensor(dtype, shape, this);
+  }
+
+  // Prevents input forwarding from overwriting this buffer.
+  bool OwnsMemory() const override { return false; }
+
+ private:
+  PyArrayObject* array_;
+  size_t len_;
+  void* data_;
+};
+
 Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
   PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
-  DataType dtype;
+  DataType dtype = DT_INVALID;
   TensorShape shape;
   for (int i = 0; i < PyArray_NDIM(input); ++i) {
     shape.AddDim(PyArray_SHAPE(input)[i]);
@@ -267,27 +315,51 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
     }
     default: {
       TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
-      Tensor t(dtype, shape);
       CHECK(DataTypeCanUseMemcpy(dtype));
-      StringPiece p = t.tensor_data();
-      memcpy(const_cast<char*>(p.data()), PyArray_DATA(input), p.size());
-      *ret = t;
+      if (reinterpret_cast<intptr_t>(PyArray_DATA(input)) %
+              EIGEN_MAX_ALIGN_BYTES !=
+          0) {
+        Tensor t(dtype, shape);
+        StringPiece p = t.tensor_data();
+        memcpy(const_cast<char*>(p.data()), PyArray_DATA(input), p.size());
+        *ret = t;
+      } else {
+        // Incref the array as the calling context will decref it when we
+        // return and we want to keep a handle to this memory.
+        Py_INCREF(input);
+        NumpyTensorBuffer* buf = new NumpyTensorBuffer(
+            input, shape.num_elements() * DataTypeSize(dtype),
+            PyArray_DATA(input));
+        *ret = buf->MakeTensor(dtype, shape);
+        buf->Unref();
+      }
     }
   }
   return Status::OK();
 }
 
-// Creates a numpy array in 'ret' and copies the content of tensor 't'
-// into 'ret'.
+// Creates a numpy array in 'ret' which either aliases the content of 't' or has
+// a copy.
 Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret) {
   int typenum = -1;
-  TF_RETURN_IF_ERROR(TfDTypeToNpDType(t.dtype(), &typenum));
+  TF_RETURN_IF_ERROR(TF_DataType_to_PyArray_TYPE(
+      static_cast<TF_DataType>(t.dtype()), &typenum));
   PyArray_Descr* descr = PyArray_DescrFromType(typenum);
   CHECK(descr);
   std::vector<npy_intp> dims;
+  dims.reserve(t.dims());
   for (int i = 0; i < t.dims(); ++i) {
     dims.push_back(t.dim_size(i));
   }
+  Tensor* copy = new Tensor(t);
+  if (ArrayFromMemory(dims.size(), dims.data(),
+                      const_cast<char*>(copy->tensor_data().data()), t.dtype(),
+                      [copy]() { delete copy; }, ret)
+          .ok()) {
+    return Status::OK();
+  }
+  delete copy;
+
   PyObject* obj = PyArray_Empty(dims.size(), dims.data(), descr, 0);
   if (obj == nullptr) {
     return errors::Internal("Failed to allocate np array: ",

@@ -189,6 +189,31 @@ class MultiplyGradientsTest(test.TestCase):
     np_testing.assert_almost_equal(actual_gradient, self._multiplied_grad_vec,
                                    5)
 
+  def testTensorMultiplierOfGradient(self):
+    gradient = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
+    variable = variables_lib.Variable(array_ops.zeros_like(gradient))
+    multiplier_flag = variables_lib.Variable(True)
+    tensor_multiplier = array_ops.where(multiplier_flag,
+                                        self._multiplier,
+                                        1.0)
+    grad_to_var = (gradient, variable)
+    gradient_multipliers = {variable: tensor_multiplier}
+
+    [grad_to_var] = learning.multiply_gradients([grad_to_var],
+                                                gradient_multipliers)
+
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      gradient_true_flag = sess.run(grad_to_var[0])
+      sess.run(multiplier_flag.assign(False))
+      gradient_false_flag = sess.run(grad_to_var[0])
+    np_testing.assert_almost_equal(gradient_true_flag,
+                                   self._multiplied_grad_vec,
+                                   5)
+    np_testing.assert_almost_equal(gradient_false_flag,
+                                   self._grad_vec,
+                                   5)
+
 
 def LogisticClassifier(inputs):
   return layers.fully_connected(inputs, 1, activation_fn=math_ops.sigmoid)
@@ -815,7 +840,7 @@ class TrainTest(test.TestCase):
         # Initialize the variables.
         sess.run(variables_lib.global_variables_initializer())
 
-        # Get the intial weights and biases values.
+        # Get the initial weights and biases values.
         weights_values, biases_values = sess.run([weights, biases])
         self.assertGreater(np.linalg.norm(weights_values), 0)
         self.assertAlmostEqual(np.linalg.norm(biases_values), 0)
