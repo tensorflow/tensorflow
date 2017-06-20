@@ -22,7 +22,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Operator.h"
 #include "external/llvm/include/llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/llvm_util_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -357,11 +356,6 @@ void EmitLogging(const char* tag, llvm::Value* value,
 
 void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
                            bool is_pointer_to) {
-  legacy_flags::LlvmUtilFlags* flags = legacy_flags::GetLlvmUtilFlags();
-  if (!flags->xla_emit_tbaa) {
-    return;
-  }
-
   llvm::MDBuilder metadata_builder(instruction->getContext());
   llvm::MDNode* root = metadata_builder.createTBAARoot("XLA TBAA");
   string type_name;

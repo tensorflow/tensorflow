@@ -131,7 +131,6 @@ cc_library(
         "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
-        "//tensorflow/compiler/xla/legacy_flags:llvm_util_flags",
         "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/compiler/xla/legacy_flags:util_flags",
         "//tensorflow/compiler/xla/service:compiler",

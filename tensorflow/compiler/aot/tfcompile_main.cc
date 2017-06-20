@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/llvm_util_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/util_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -139,7 +138,6 @@ int main(int argc, char** argv) {
   xla::legacy_flags::AppendCpuRuntimeFlags(&flag_list);
   xla::legacy_flags::AppendHloGraphDumperFlags(&flag_list);
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendLlvmUtilFlags(&flag_list);
   xla::legacy_flags::AppendServiceFlags(&flag_list);
   xla::legacy_flags::AppendUtilFlags(&flag_list);
 

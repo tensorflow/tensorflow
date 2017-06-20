@@ -46,7 +46,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:llvm_util_flags",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
