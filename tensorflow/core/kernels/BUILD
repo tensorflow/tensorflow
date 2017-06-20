@@ -555,7 +555,6 @@ cc_library(
         ":split_v_op",
         ":strided_slice_op",
         ":tile_ops",
-        ":tile_functor",
         ":transpose_op",
         ":unique_op",
         ":unpack_op",
@@ -724,24 +723,15 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tile_ops",
     prefix = "tile_ops",
-    deps = ARRAY_DEPS + [":tile_functor"],
-)
-
-tf_kernel_library(
-    name = "tile_functor",
     srcs = ["tile_functor_cpu.cc"],
     hdrs = ["tile_functor.h"],
     gpu_srcs = [
         "tile_functor_gpu.cu.cc",
         "tile_functor.h",
     ],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 0,
+    deps = ARRAY_DEPS,
 )
+
 
 tf_cc_test(
     name = "tile_op_test",
@@ -750,7 +740,6 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
-        ":tile_functor",
         ":tile_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
