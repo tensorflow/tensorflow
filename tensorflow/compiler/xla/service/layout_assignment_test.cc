@@ -552,6 +552,41 @@ TEST_F(LayoutAssignmentTest, MakeOperandsTheSame) {
               ElementsAre(1, 0));
 }
 
+// Test layout assignment of a transpose into a bitcast based on its operand.
+TEST_F(LayoutAssignmentTest, TransposeToBitcastFromOperand) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape_with_layout =
+      ShapeUtil::MakeShapeWithLayout(F32, {3, 5, 6, 7}, {2, 0, 3, 1});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape_with_layout, "param"));
+  auto transpose = builder.AddInstruction(HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {6, 7, 3, 5}), param, {2, 3, 0, 1}));
+  auto module = CreateNewModule();
+  HloComputation* computation =
+      module->AddEntryComputation(builder.Build(transpose));
+  ComputationLayout computation_layout(computation->ComputeProgramShape());
+  AssignLayouts(module.get(), &computation_layout);
+  EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(transpose->operand(0)->shape(),
+                                            transpose->shape(), {2, 3, 0, 1}));
+}
+// Test layout assignment of a transpose into a bitcast based on its user.
+TEST_F(LayoutAssignmentTest, TransposeToBitcastToUser) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {3, 5, 6, 7});
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(input_shape, constant, {}));
+  auto transpose = builder.AddInstruction(HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {6, 7, 3, 5}), broadcast, {2, 3, 0, 1}));
+  auto module = CreateNewModule();
+  HloComputation* computation =
+      module->AddEntryComputation(builder.Build(transpose));
+  ComputationLayout computation_layout(computation->ComputeProgramShape());
+  AssignLayouts(module.get(), &computation_layout);
+  EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(transpose->operand(0)->shape(),
+                                            transpose->shape(), {2, 3, 0, 1}));
+}
 }  // namespace
 }  // namespace xla
 

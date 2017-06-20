@@ -758,10 +758,14 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
 
   if (instruction->opcode() == HloOpcode::kTranspose) {
     // Pick the operand layout that makes the transpose a bitcast.
-    std::vector<int64> perm =
-        ComposePermutations(instruction->dimensions(),
-                            AsInt64Slice(output_layout.minor_to_major()));
-    Layout operand_layout = LayoutUtil::MakeLayout(perm);
+    int64 rank = ShapeUtil::Rank(instruction->shape());
+    std::vector<int64> new_minor_to_major(rank);
+    for (int64 i = 0; i < rank; ++i) {
+      int64 output_dim = output_layout.minor_to_major(i);
+      int64 operand_dim = instruction->dimensions(output_dim);
+      new_minor_to_major[i] = operand_dim;
+    }
+    Layout operand_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(
         LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
     return MakeUnique<Layout>(operand_layout);
@@ -812,14 +816,16 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   }
 
   if (user->opcode() == HloOpcode::kTranspose) {
-    // Pick the user layout that makes the reshape a bitcast.
-    // To become a bitcast, the layouts need to satisfy
-    //   collapsing_order * output_layout = input_layout
-    // so output_layout = inverse(collapsing_order) * input_layout
-    std::vector<int64> perm =
-        Permute(InversePermutation(user->dimensions()),
-                AsInt64Slice(operand_layout.minor_to_major()));
-    Layout user_layout = LayoutUtil::MakeLayout(perm);
+    // Pick the user layout that makes the transpose a bitcast.
+    int64 rank = ShapeUtil::Rank(user->shape());
+    std::vector<int64> new_minor_to_major(rank);
+    auto inverse_dimensions = InversePermutation(user->dimensions());
+    for (int64 i = 0; i < rank; ++i) {
+      int64 operand_dim = operand_layout.minor_to_major(i);
+      int64 user_dim = inverse_dimensions[operand_dim];
+      new_minor_to_major[i] = user_dim;
+    }
+    Layout user_layout = LayoutUtil::MakeLayout(new_minor_to_major);
     TF_CHECK_OK(LayoutUtil::ValidateLayoutForShape(user_layout, user->shape()));
     return MakeUnique<Layout>(user_layout);
   }
