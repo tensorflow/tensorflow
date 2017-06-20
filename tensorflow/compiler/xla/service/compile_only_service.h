@@ -103,7 +103,8 @@ class CompileOnlyService : public Service {
 
  private:
   explicit CompileOnlyService(
-      Compiler* compiler, std::unique_ptr<Backend> compute_constant_backend);
+      const ServiceOptions& options, Compiler* compiler,
+      std::unique_ptr<Backend> compute_constant_backend);
   CompileOnlyService(const CompileOnlyService&) = delete;
   void operator=(const CompileOnlyService&) = delete;
 

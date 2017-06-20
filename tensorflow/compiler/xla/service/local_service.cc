@@ -63,7 +63,6 @@ namespace xla {
 
   BackendOptions backend_options;
   backend_options.set_platform(platform)
-      .set_number_of_replicas(options.number_of_replicas())
       .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
                       Backend::CreateBackend(backend_options));
@@ -71,13 +70,15 @@ namespace xla {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
   std::unique_ptr<LocalService> service(new LocalService(
-      std::move(backend), std::move(compute_constant_backend)));
+      options, std::move(backend), std::move(compute_constant_backend)));
   return std::move(service);
 }
 
-LocalService::LocalService(std::unique_ptr<Backend> execute_backend,
+LocalService::LocalService(const ServiceOptions& options,
+                           std::unique_ptr<Backend> execute_backend,
                            std::unique_ptr<Backend> compute_constant_backend)
-    : Service(std::move(execute_backend), std::move(compute_constant_backend)) {
+    : Service(options, std::move(execute_backend),
+              std::move(compute_constant_backend)) {
   runs_in_client_process_ = true;
 }
 
@@ -153,7 +154,7 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   // Construct computation layout from the argument layouts.
   auto module_config = MakeUnique<HloModuleConfig>(*program_shape);
   module_config->set_has_hybrid_result(has_hybrid_result);
-  module_config->set_replica_count(execute_backend_->replica_count());
+  module_config->set_replica_count(options_.number_of_replicas());
   module_config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
   if (execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
     module_config->set_intra_op_parallelism_threads(

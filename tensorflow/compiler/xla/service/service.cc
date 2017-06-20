@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/backend_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -141,12 +142,13 @@ int ServiceOptions::intra_op_parallelism_threads() const {
   }
   BackendOptions backend_options;
   backend_options.set_platform(platform);
-  backend_options.set_number_of_replicas(options.number_of_replicas());
   TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
+
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
-  std::unique_ptr<Service> service(new Service(
-      std::move(execute_backend), std::move(compute_constant_backend)));
+  std::unique_ptr<Service> service(
+      new Service(options, std::move(execute_backend),
+                  std::move(compute_constant_backend)));
   return std::move(service);
 }
 
@@ -158,7 +160,6 @@ Service::CreateComputeConstantBackend() {
     if (platform->id() == se::host::kHostPlatformId) {
       BackendOptions backend_options;
       backend_options.set_platform(platform);
-      backend_options.set_number_of_replicas(1);
       return Backend::CreateBackend(backend_options);
     }
   }
@@ -171,11 +172,24 @@ Service::CreateComputeConstantBackend() {
   };
 }
 
-Service::Service(std::unique_ptr<Backend> execute_backend,
+Service::Service(const ServiceOptions& options,
+                 std::unique_ptr<Backend> execute_backend,
                  std::unique_ptr<Backend> compute_constant_backend)
-    : execute_backend_(std::move(execute_backend)),
+    : options_(options),
+      execute_backend_(std::move(execute_backend)),
       compute_constant_backend_(std::move(compute_constant_backend)) {
+  // TODO(b/32648682): this flag / options update dance will go away once we
+  // pass the replica count explicitly to the service.
+  if (options_.number_of_replicas() < 0) {
+    legacy_flags::BackendFlags* flags = legacy_flags::GetBackendFlags();
+    options_.set_number_of_replicas(flags->xla_replicas);
+  }
+
   if (execute_backend_) {
+    if (execute_backend_->device_count() > 0) {
+      CHECK_GE(execute_backend_->device_count(), options_.number_of_replicas())
+          << "Requested more replicas than there are devices.";
+    }
     LOG(INFO) << Printf(
         "XLA service %p executing computations on platform %s. Devices:", this,
         execute_backend_->platform()->Name().c_str());
@@ -325,7 +339,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     module_config->enable_hlo_profiling(true);
   }
 
-  module_config->set_replica_count(backend->replica_count());
+  module_config->set_replica_count(options_.number_of_replicas());
   module_config->set_seed(execution_options.seed());
   module_config->set_debug_options(execution_options.debug_options());
 
@@ -506,7 +520,7 @@ Service::ExecuteParallelAndRegisterResult(
 
   TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                       backend->computation_placer()->AssignDevices(
-                          backend->replica_count(), executables.size()));
+                          options_.number_of_replicas(), executables.size()));
 
   for (int64 i = 0; i < executables.size(); i++) {
     // Stream executors for the replicas of the current computation.
@@ -572,7 +586,8 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                       backend->computation_placer()->AssignDevices(
-                          backend->replica_count(), /*computation_count=*/1));
+                          options_.number_of_replicas(),
+                          /*computation_count=*/1));
 
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
@@ -589,14 +604,14 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   }
 
   perftools::gputools::DeviceMemoryBase result;
-  if (backend->replica_count() == 1) {
+  if (options_.number_of_replicas() == 1) {
     TF_ASSIGN_OR_RETURN(
         result, executable->ExecuteOnStreamWrapper<se::DeviceMemoryBase>(
                     &run_options[0], profile, arguments));
   } else {
     std::vector<
         tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
-        repeated_arguments(backend->replica_count(), arguments);
+        repeated_arguments(options_.number_of_replicas(), arguments);
 
     TF_ASSIGN_OR_RETURN(auto results, executable->ExecuteOnStreams(
                                           run_options, repeated_arguments));
@@ -626,7 +641,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
   std::vector<string> computation_names;
   std::vector<DeviceHandle> device_handles;
 
-  if (arg->requests_size() * execute_backend_->replica_count() >
+  if (arg->requests_size() * options_.number_of_replicas() >
       execute_backend_->device_count()) {
     return FailedPrecondition(
         "there are not enough stream executors to execute %d computations",
@@ -723,7 +738,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
 tensorflow::Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                                              GetDeviceHandlesResponse* result) {
   const int64 available_device_count = execute_backend_->device_count();
-  const int64 replica_count = execute_backend_->replica_count();
+  const int64 replica_count = options_.number_of_replicas();
   if (replica_count <= 0) {
     return FailedPrecondition("Replica count must be a positive integer");
   }
@@ -948,7 +963,7 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
   Literal literal = Literal(arg->literal());
   const Shape& shape = literal.shape();
 
-  if (ShapeUtil::IsTuple(shape) && execute_backend_->replica_count() > 1) {
+  if (ShapeUtil::IsTuple(shape) && options_.number_of_replicas() > 1) {
     // TODO(b/32990684): Tuple transfers to host end up allocating further
     // buffers - implement that correctly.
     return Unimplemented(
@@ -988,7 +1003,7 @@ tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
 
 tensorflow::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
                                              TransferToInfeedResponse* result) {
-  const int64 replica_count = execute_backend_->replica_count();
+  const int64 replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "%s",
@@ -1017,7 +1032,7 @@ tensorflow::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
 tensorflow::Status Service::TransferFromOutfeed(
     const TransferFromOutfeedRequest* arg,
     TransferFromOutfeedResponse* result) {
-  const int64 replica_count = execute_backend_->replica_count();
+  const int64 replica_count = options_.number_of_replicas();
   if (arg->replica_id() < 0 || arg->replica_id() >= replica_count) {
     return FailedPrecondition(
         "The replica_id=%lld on TransferFromOutfeedRequest not in range [0, "
@@ -1428,13 +1443,13 @@ DeviceHandle Service::SingleComputationDeviceHandle() const {
 StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Service::Replicas(
     const Backend& backend, const DeviceHandle& device_handle) const {
   std::vector<perftools::gputools::StreamExecutor*> replicas;
-  for (int replica = 0; replica < backend.replica_count(); ++replica) {
+  for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
     // From the computation placer, find out the device ids of the replicas for
     // the given device handle.
     TF_ASSIGN_OR_RETURN(
         int device_ordinal,
         backend.computation_placer()->DeviceId(replica, device_handle.handle(),
-                                               backend.replica_count(),
+                                               options_.number_of_replicas(),
                                                device_handle.device_count()));
     TF_ASSIGN_OR_RETURN(auto executor, backend.stream_executor(device_ordinal));
     replicas.push_back(executor);

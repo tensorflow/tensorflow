@@ -22,7 +22,6 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/legacy_flags/backend_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -51,13 +50,6 @@ perftools::gputools::Platform* BackendOptions::platform() const {
   return platform_;
 }
 
-BackendOptions& BackendOptions::set_number_of_replicas(int number_of_replicas) {
-  number_of_replicas_ = number_of_replicas;
-  return *this;
-}
-
-int BackendOptions::number_of_replicas() const { return number_of_replicas_; }
-
 BackendOptions& BackendOptions::set_intra_op_parallelism_threads(
     int num_threads) {
   intra_op_parallelism_threads_ = num_threads;
@@ -85,11 +77,6 @@ struct Backend::EigenThreadPoolWrapper {
 
 /* static */ StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
     const BackendOptions& options) {
-  int64 replica_count = options.number_of_replicas();
-  if (replica_count == -1) {
-    legacy_flags::BackendFlags* flags = legacy_flags::GetBackendFlags();
-    replica_count = flags->xla_replicas;
-  }
   perftools::gputools::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto stream_executors,
@@ -98,9 +85,9 @@ struct Backend::EigenThreadPoolWrapper {
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto computation_placer,
                       ComputationPlacer::GetForPlatform(platform));
-  std::unique_ptr<Backend> backend(new Backend(
-      replica_count, platform, compiler, stream_executors, transfer_manager,
-      computation_placer, options.intra_op_parallelism_threads()));
+  std::unique_ptr<Backend> backend(
+      new Backend(platform, compiler, stream_executors, transfer_manager,
+                  computation_placer, options.intra_op_parallelism_threads()));
   return std::move(backend);
 }
 
@@ -134,36 +121,25 @@ StatusOr<Backend::StreamPtr> Backend::BorrowStream(
 }
 
 Backend::Backend(
-    int64 replica_count, perftools::gputools::Platform* platform,
-    Compiler* compiler,
+    perftools::gputools::Platform* platform, Compiler* compiler,
     tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
     TransferManager* transfer_manager, ComputationPlacer* computation_placer,
     int intra_op_parallelism_threads)
     : platform_(platform),
       compiler_(compiler),
       transfer_manager_(transfer_manager),
-      computation_placer_(computation_placer),
-      replica_count_(replica_count) {
+      computation_placer_(computation_placer) {
   // The given set of stream executors set may include invalid executors.
   for (se::StreamExecutor* exec : stream_executors) {
     if (exec != nullptr) {
       stream_executors_.push_back(exec);
     }
   }
-  CHECK_GE(replica_count, 1) << "Must request at least 1 replica.";
-
   // Create a memory allocator for the valid stream executors.
   memory_allocator_ =
       MakeUnique<StreamExecutorMemoryAllocator>(platform, stream_executors);
-
-  // First check that there are some non-null stream executors to avoid issuing
-  // an error mentioning replicas in the common case of requesting just 1
-  // replica, which means no replication.
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';
-  CHECK_GE(stream_executors_.size(), replica_count)
-      << "Requested more replicas than there are devices for backend "
-      << platform_->Name() << '.';
 
   if (platform->id() == se::host::kHostPlatformId) {
     inter_op_thread_pool_.reset(new tensorflow::thread::ThreadPool(

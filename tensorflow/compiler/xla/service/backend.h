@@ -41,19 +41,11 @@ struct ThreadPoolDevice;
 namespace xla {
 
 // Options to configure the backend when it is created.
-//
-// TODO(b/62588571): Remove the notion of replicas from the backend.
 class BackendOptions {
  public:
   // Set the platform backing the backend, or nullptr for the default platform.
   BackendOptions& set_platform(perftools::gputools::Platform* platform);
   perftools::gputools::Platform* platform() const;
-
-  // Set the number of replicas to use when compiling replicated
-  // programs. The default is -1 meaning that the value is read from
-  // the xla_replicas flag.
-  BackendOptions& set_number_of_replicas(int number_of_replicas);
-  int number_of_replicas() const;
 
   // Sets the thread pool size for parallel execution of an individual operator.
   // The default value of -1 will result in initializing the thread pool with
@@ -63,7 +55,6 @@ class BackendOptions {
 
  private:
   perftools::gputools::Platform* platform_ = nullptr;
-  int number_of_replicas_ = -1;
   int intra_op_parallelism_threads_ = -1;
 };
 
@@ -77,8 +68,7 @@ class Backend {
  public:
   using StreamPtr = Pool<perftools::gputools::Stream>::SmartPtr;
 
-  // Creates a new backend for the given platform with the given number of
-  // replicas.
+  // Creates a new backend.
   static StatusOr<std::unique_ptr<Backend>> CreateBackend(
       const BackendOptions& options);
 
@@ -100,9 +90,6 @@ class Backend {
   // Returns the number of devices of the platform type which are visible. Not
   // all of these devices may be usable by XLA.
   int device_count() const { return stream_executors_.size(); }
-
-  // Returns the number of replicas when replication is enabled.
-  int replica_count() const { return replica_count_; }
 
   // Returns the device ordinal number of the default device.
   int default_device_ordinal() const;
@@ -170,8 +157,7 @@ class Backend {
 
  private:
   struct EigenThreadPoolWrapper;
-  Backend(int64 replica_count, perftools::gputools::Platform* platform,
-          Compiler* compiler,
+  Backend(perftools::gputools::Platform* platform, Compiler* compiler,
           tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
               stream_executors,
           TransferManager* transfer_manager,
@@ -184,7 +170,6 @@ class Backend {
   Compiler* compiler_;
   TransferManager* transfer_manager_;
   ComputationPlacer* computation_placer_;
-  int64 replica_count_ = -1;
 
   // Vector of stream executors. stream_executors_[0] is the default executor.
   std::vector<perftools::gputools::StreamExecutor*> stream_executors_;

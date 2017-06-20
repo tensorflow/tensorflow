@@ -248,7 +248,7 @@ class Service : public ServiceInterface {
 
   // The constructor is private. Use the NewService factory to create new
   // service objects.
-  Service(std::unique_ptr<Backend> backend,
+  Service(const ServiceOptions& options, std::unique_ptr<Backend> backend,
           std::unique_ptr<Backend> compute_constant_backend);
 
   static StatusOr<std::unique_ptr<Backend>> CreateComputeConstantBackend();
@@ -354,6 +354,8 @@ class Service : public ServiceInterface {
   // Returns the device handle that represents the replicated device for a
   // single computation that is not model-parallelized.
   DeviceHandle SingleComputationDeviceHandle() const;
+
+  ServiceOptions options_;
 
   // Tracks computations built via the API.
   ComputationTracker computation_tracker_;
