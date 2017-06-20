@@ -362,14 +362,9 @@ class Literal {
   template <typename NativeT>
   std::unique_ptr<Literal> Replicate(int64 times) const;
 
-  // Creates a literal by converting each element in this literal to a new
-  // type.
-  template <typename NativeSrcT, typename NativeDestT>
-  std::unique_ptr<Literal> Convert() const;
-
-  // Converts this literal to another primitive type, but only if the literal
-  // type is convertible into the destination type.
-  StatusOr<std::unique_ptr<Literal>> ConvertIfSrcTypeMatches(
+  // Converts this literal to another primitive type. Returns an error if the
+  // conversion is not possible.
+  StatusOr<std::unique_ptr<Literal>> Convert(
       PrimitiveType primitive_dest_type) const;
 
   // Creates a literal value zero of the given primitive type.
@@ -449,10 +444,21 @@ class Literal {
   template <typename NativeT>
   void Set(tensorflow::gtl::ArraySlice<int64> multi_index, NativeT value);
 
-  // Retrieves the mutable array slice interface which can be used to manipulate
-  // pre-allocated literal values.
+  // Returns a (Mutable)ArraySlice view of the array for this literal for the
+  // given NativeT (e.g., float). These functions map native type to XLA
+  // PrimitiveType via template specialization. The unspecialized forms below
+  // aborts to handle the error case where the given native type does not map to
+  // an XLA primitive type.
   template <typename NativeT>
-  tensorflow::gtl::MutableArraySlice<NativeT> GetMutableArraySlice();
+  tensorflow::gtl::ArraySlice<NativeT> GetArraySlice() const {
+    static_assert(!std::is_same<NativeT, NativeT>::value,
+                  "Cannot map native type to primitive type.");
+  }
+  template <typename NativeT>
+  tensorflow::gtl::MutableArraySlice<NativeT> GetMutableArraySlice() {
+    static_assert(!std::is_same<NativeT, NativeT>::value,
+                  "Cannot map native type to primitive type.");
+  }
 
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
@@ -593,17 +599,6 @@ class Literal {
   bool IsZero(tensorflow::gtl::ArraySlice<int64> indices) const;
 
  private:
-  // Returns an ArraySlice view of the array for this literal for the given
-  // NativeT (e.g., float). These functions map native type to XLA PrimitiveType
-  // via template specialization. The unspecialized forms below aborts to handle
-  // the error case where the given native type does not map to an XLA primitive
-  // type.
-  template <typename NativeT>
-  tensorflow::gtl::ArraySlice<NativeT> GetArraySlice() const {
-    static_assert(!std::is_same<NativeT, NativeT>::value,
-                  "Cannot map native type to primitive type.");
-  }
-
   // Copy from a LiteralProto instance.
   void CopyFromProto(const LiteralProto& literal_proto);
 
@@ -1224,27 +1219,6 @@ void Literal::PopulateWithValue(NativeT value,
   *mutable_shape() = ShapeUtil::MakeShape(
       primitive_util::NativeToPrimitiveType<NativeT>(), dimensions);
   Resize<NativeT>(ShapeUtil::ElementsIn(shape()), value);
-}
-
-template <typename NativeSrcT, typename NativeDestT>
-std::unique_ptr<Literal> Literal::Convert() const {
-  const Shape& this_shape = shape();
-  auto result_literal = MakeUnique<Literal>();
-  Shape* result_shape = result_literal->mutable_shape();
-  *result_shape = this_shape;
-  result_shape->set_element_type(
-      primitive_util::NativeToPrimitiveType<NativeDestT>());
-  result_literal->Reserve(ShapeUtil::ElementsIn(*result_shape));
-  tensorflow::gtl::ArraySlice<NativeSrcT> src_data =
-      GetArraySlice<NativeSrcT>();
-  tensorflow::gtl::MutableArraySlice<NativeDestT> dest_data =
-      result_literal->GetMutableArraySlice<NativeDestT>();
-  int64 num_elements = ShapeUtil::ElementsIn(this_shape);
-
-  for (int64 i = 0; i < num_elements; ++i) {
-    dest_data[i] = static_cast<NativeDestT>(src_data[i]);
-  }
-  return result_literal;
 }
 
 template <typename NativeT>

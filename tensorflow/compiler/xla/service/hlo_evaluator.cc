@@ -200,41 +200,19 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  template <PrimitiveType src_type, PrimitiveType dest_type>
-  std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
-    DCHECK_EQ(src_type, src_literal.shape().element_type());
-    return src_literal.Convert<
-        typename primitive_util::PrimitiveTypeToNative<src_type>::type,
-        typename primitive_util::PrimitiveTypeToNative<dest_type>::type>();
-  }
-
   Status HandleConvert(HloInstruction* convert) override {
     const HloInstruction* operand = convert->operand(0);
-    auto operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> result,
+                        parent_->GetEvaluatedLiteralFor(operand).Convert(
+                            convert->shape().element_type()));
 
-    switch (operand->shape().element_type()) {
-#define CONVERT_IF_TYPES_MATCH(src_type)                                \
-  case (src_type):                                                      \
-    parent_->evaluated_[convert] = operand_literal.Convert<             \
-        typename primitive_util::PrimitiveTypeToNative<src_type>::type, \
-        ReturnT>();                                                     \
-    break;
-      CONVERT_IF_TYPES_MATCH(PRED)
-      CONVERT_IF_TYPES_MATCH(S8)
-      CONVERT_IF_TYPES_MATCH(S32)
-      CONVERT_IF_TYPES_MATCH(S64)
-      CONVERT_IF_TYPES_MATCH(U8)
-      CONVERT_IF_TYPES_MATCH(U32)
-      CONVERT_IF_TYPES_MATCH(U64)
-      CONVERT_IF_TYPES_MATCH(F32)
-      CONVERT_IF_TYPES_MATCH(F64)
-#undef CONVERT_IF_TYPES_MATCH
-      // Other types are not yet supported.
-      default:
-        LOG(FATAL) << "unimplemented operand type for HandleCovert: "
-                   << PrimitiveType_Name(operand->shape().element_type());
+    if (LayoutUtil::LayoutsInShapesEqual(result->shape(), convert->shape())) {
+      parent_->evaluated_[convert] = std::move(result);
+    } else {
+      parent_->evaluated_[convert] =
+          result->Relayout(convert->shape().layout());
     }
-
     return Status::OK();
   }
 

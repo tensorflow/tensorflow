@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,7 +35,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloEvaluatorTest : public ::testing::Test {
+class HloEvaluatorTest : public HloTestBase {
  protected:
   HloEvaluatorTest() { evaluator_ = MakeUnique<HloEvaluator>(); }
 
@@ -181,10 +182,8 @@ TEST_F(HloEvaluatorTest, DoesAbs) {
 
 // Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
 // constant operands.
-TEST_F(HloEvaluatorTest, DoesTraveseInstructions) {
-  HloComputation::Builder builder(
-      ::testing::UnitTest::GetInstance()->current_test_info()->name());
-
+TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
+  HloComputation::Builder builder(TestName());
   auto lhs = Literal::CreateR2<int64>({{1, 0}, {-100, 4}});
   auto rhs = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
   auto rhs2 = Literal::CreateR2<int64>({{1, -20}, {-100, 4}});
@@ -212,9 +211,7 @@ TEST_F(HloEvaluatorTest, DoesTraveseInstructions) {
 
 // Verifies Reshape operation is correctly evaluated.
 TEST_F(HloEvaluatorTest, DoesReshape) {
-  HloComputation::Builder builder(
-      ::testing::UnitTest::GetInstance()->current_test_info()->name());
-
+  HloComputation::Builder builder(TestName());
   const int64 dimensions[] = {11, 8, 7, 5, 9};
   TF_ASSIGN_OR_ASSERT_OK(auto literal,
                          LiteralTestUtil::CreateRandomLiteral<F32>(
@@ -241,9 +238,7 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
 
 // Verifies Broadcast operation is correctly evaluated.
 TEST_F(HloEvaluatorTest, DoesBroadcast) {
-  HloComputation::Builder builder(
-      ::testing::UnitTest::GetInstance()->current_test_info()->name());
-
+  HloComputation::Builder builder(TestName());
   auto input_literal = Literal::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}});
   auto output_literal = Literal::CreateR3<int32>(
       {{{1, 2}, {3, 4}, {5, 6}}, {{1, 2}, {3, 4}, {5, 6}}});
@@ -256,10 +251,50 @@ TEST_F(HloEvaluatorTest, DoesBroadcast) {
   std::unique_ptr<Literal> result =
       evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
 
-  result->EachCell<int32>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, int32 value) {
-        EXPECT_TRUE(value == output_literal->Get<int32>(indices));
-      });
+  LiteralTestUtil::ExpectEqual(*result, *output_literal);
+}
+
+TEST_F(HloEvaluatorTest, ConvertWithSameLayout) {
+  HloComputation::Builder builder(TestName());
+
+  auto input_literal = Literal::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}});
+  auto expected =
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
+  ASSERT_TRUE(LayoutUtil::LayoutsInShapesEqual(input_literal->shape(),
+                                               expected->shape()));
+
+  HloInstruction* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(input_literal)));
+  builder.AddInstruction(
+      HloInstruction::CreateConvert(expected->shape(), constant));
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
+
+  EXPECT_TRUE(ShapeUtil::Equal(result->shape(), expected->shape()));
+  LiteralTestUtil::ExpectEqual(*result, *expected);
+}
+
+TEST_F(HloEvaluatorTest, ConvertWithDifferentLayout) {
+  HloComputation::Builder builder(TestName());
+
+  auto input_literal = Literal::CreateR2WithLayout<int32>(
+      {{1, 2}, {3, 4}, {5, 6}}, LayoutUtil::MakeLayout({0, 1}));
+  auto expected = Literal::CreateR2WithLayout<float>(
+      {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}}, LayoutUtil::MakeLayout({1, 0}));
+  ASSERT_FALSE(LayoutUtil::LayoutsInShapesEqual(input_literal->shape(),
+                                                expected->shape()));
+
+  HloInstruction* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(input_literal)));
+  builder.AddInstruction(
+      HloInstruction::CreateConvert(expected->shape(), constant));
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
+
+  EXPECT_TRUE(ShapeUtil::Equal(result->shape(), expected->shape()));
+  LiteralTestUtil::ExpectEqual(*result, *expected);
 }
 
 }  // namespace

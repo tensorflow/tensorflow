@@ -825,7 +825,8 @@ TEST_F(LiteralUtilTest, ConvertR4) {
      {{26, 27, 28, 29}, {30, 31, 32, 33}},
   }}, layout_r4_dim0major_);
   // clang-format on
-  auto converted = original->Convert<int8, uint32>();
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<Literal> converted,
+                         original->Convert(U32));
 
   EXPECT_TRUE(expected->Equal(*converted));
 }
@@ -880,40 +881,40 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   // clang-format on
   std::unique_ptr<Literal> conv;
 
-  conv = s8->ConvertIfSrcTypeMatches(U32).ConsumeValueOrDie();
+  conv = s8->Convert(U32).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*u32));
 
-  conv = s8->ConvertIfSrcTypeMatches(S32).ConsumeValueOrDie();
+  conv = s8->Convert(S32).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*s32));
 
-  conv = s8->ConvertIfSrcTypeMatches(U64).ConsumeValueOrDie();
+  conv = s8->Convert(U64).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*u64));
 
-  conv = s8->ConvertIfSrcTypeMatches(S64).ConsumeValueOrDie();
+  conv = s8->Convert(S64).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*s64));
 
-  conv = s8->ConvertIfSrcTypeMatches(PRED).ConsumeValueOrDie();
+  conv = s8->Convert(PRED).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*pred));
 
-  conv = pred->ConvertIfSrcTypeMatches(S32).ConsumeValueOrDie();
+  conv = pred->Convert(S32).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*int32_pred));
 
-  conv = f32->ConvertIfSrcTypeMatches(S32).ConsumeValueOrDie();
+  conv = f32->Convert(S32).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*s32));
 
-  conv = f64->ConvertIfSrcTypeMatches(S32).ConsumeValueOrDie();
+  conv = f64->Convert(S32).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*s32));
 
-  conv = s32->ConvertIfSrcTypeMatches(F32).ConsumeValueOrDie();
+  conv = s32->Convert(F32).ConsumeValueOrDie();
   EXPECT_TRUE(conv->Equal(*f32));
 
-  EXPECT_EQ(s32->ConvertIfSrcTypeMatches(TUPLE).status().code(),
+  EXPECT_EQ(s32->Convert(TUPLE).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
-  EXPECT_EQ(s32->ConvertIfSrcTypeMatches(F16).status().code(),
+  EXPECT_EQ(s32->Convert(F16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
-  EXPECT_EQ(s32->ConvertIfSrcTypeMatches(S16).status().code(),
+  EXPECT_EQ(s32->Convert(S16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
-  EXPECT_EQ(s32->ConvertIfSrcTypeMatches(U16).status().code(),
+  EXPECT_EQ(s32->Convert(U16).status().code(),
             tensorflow::error::INVALID_ARGUMENT);
 }
 
