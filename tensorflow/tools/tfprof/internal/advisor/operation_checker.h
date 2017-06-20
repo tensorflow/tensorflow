@@ -47,7 +47,7 @@ class OperationChecker : public Checker {
       if (node->op_attrs().find("data_format") != node->op_attrs().end()) {
         const AttrValue* attr_val = node->op_attrs().at("data_format");
         if (attr_val->s() == "NHWC" &&
-            IsAcceleratorDevice(node->canonical_device())) {
+            IsPlacedOnAccelerator(node->canonical_device())) {
           recommend_nchw = true;
         }
       }

@@ -48,7 +48,7 @@ class HloTestBase : public ::testing::Test {
   // TestName() for its name; it will also automatically populate its debug
   // options from command-line flags. It's recommended to use this method to
   // create all HloModules for tests.
-  std::unique_ptr<HloModule> CreateNewModule();
+  static std::unique_ptr<HloModule> CreateNewModule();
 
   // Executes the given module and returns a global data handle.
   StatusOr<perftools::gputools::DeviceMemoryBase> Execute(

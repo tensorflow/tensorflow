@@ -81,8 +81,6 @@ void TF_Run_wrapper(TF_DeprecatedSession* session, const TF_Buffer* run_options,
 //
 // On failure, out_status contains a tensorflow::Status with an error
 // message.
-//
-// NOTE: This is EXPERIMENTAL and subject to change.
 void TF_PRunSetup_wrapper(TF_DeprecatedSession* session,
                           const NameVector& input_names,
                           const NameVector& output_names,
@@ -101,8 +99,6 @@ void TF_PRunSetup_wrapper(TF_DeprecatedSession* session,
 //
 // On failure,  out_status contains a tensorflow::Status with an error
 // message.
-//
-// NOTE: This is EXPERIMENTAL and subject to change.
 void TF_PRun_wrapper(TF_DeprecatedSession* session, const char* handle,
                      PyObject* feed_dict, const NameVector& output_names,
                      TF_Status* out_status, PyObjectVector* out_values);
@@ -128,6 +124,40 @@ void TF_SessionRun_wrapper(TF_Session* session, const TF_Buffer* run_options,
                            const std::vector<TF_Operation*>& targets,
                            TF_Buffer* run_metadata, TF_Status* out_status,
                            std::vector<PyObject*>* py_outputs);
+
+// Set up the graph with the intended feeds (inputs) and fetches (output) for
+// a sequence of partial run calls.
+//
+// On success, returns a handle that can be used for subsequent PRun calls. The
+// handle is owned by the caller and should be deleted with TF_DeletePRunHandle
+// when it is no longer needed.
+//
+// On failure, out_status contains a tensorflow::Status with an error
+// message.
+void TF_SessionPRunSetup_wrapper(TF_Session* session,
+                                 const std::vector<TF_Output>& inputs,
+                                 const std::vector<TF_Output>& outputs,
+                                 const std::vector<TF_Operation*>& targets,
+                                 const char** out_handle,
+                                 TF_Status* out_status);
+
+// Continue to run the graph with additional feeds and fetches. The
+// execution state is uniquely identified by the handle.
+//
+// On success, `py_outputs` is populated with a numpy ndarray for each output
+// (the caller must decref these ndarrays, although this will likely be handled
+// by the Python gc). `session`, `handle`, `out_status`, and `py_outputs` must
+// be non-null. `py_outputs` should be empty.
+//
+// On failure, out_status contains a tensorflow::Status with an error
+// message.
+void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
+                            const std::vector<TF_Output>& inputs,
+                            const std::vector<PyObject*>& input_ndarrays,
+                            const std::vector<TF_Output>& outputs,
+                            TF_Status* out_status,
+                            std::vector<PyObject*>* py_outputs);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_

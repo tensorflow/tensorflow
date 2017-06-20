@@ -108,7 +108,17 @@ string TFMultiShow::FormatLegend(const Options& opts) {
     legends.push_back("output bytes");
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {
-    legends.push_back("execution time");
+    legends.push_back("total execution time");
+    legends.push_back("accelerator execution time");
+    legends.push_back("cpu execution time");
+  }
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    legends.push_back("accelerator execution time");
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    legends.push_back("cpu execution time");
   }
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     legends.push_back("# parameters");
@@ -177,6 +187,25 @@ string TFMultiShow::FormatInputShapes(const TFMultiGraphNodeProto& proto) {
                         FormatTime(input_time_str[s.first]).c_str()));
   }
   return str_util::Join(input_types, "\n");
+}
+
+std::vector<string> TFMultiShow::FormatTimes(const ShowMultiNode* node,
+                                             const Options& opts) {
+  std::vector<string> attrs;
+  if (opts.select.find(kShown[1]) != opts.select.end()) {
+    attrs.push_back(FormatTotalExecTime(node, opts));
+    attrs.push_back(FormatAcceleratorExecTime(node, opts));
+    attrs.push_back(FormatCPUExecTime(node, opts));
+  }
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    attrs.push_back(FormatAcceleratorExecTime(node, opts));
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    attrs.push_back(FormatCPUExecTime(node, opts));
+  }
+  return attrs;
 }
 
 }  // namespace tfprof

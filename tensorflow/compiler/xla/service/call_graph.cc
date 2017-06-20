@@ -133,6 +133,37 @@ CallGraphNode& CallGraph::GetNode(const HloComputation* computation) {
   return nodes_[it->second];
 }
 
+bool CallGraph::DominatesHelper(
+    const HloComputation* a, const HloComputation* b,
+    tensorflow::gtl::FlatSet<const HloComputation*>* visited) const {
+  if (a == b || ContainsKey(*visited, b)) {
+    // The call graph is guaranteed to be acyclic so any previously visited node
+    // we encounter was already determined to be dominated.
+    return true;
+  }
+
+  const CallGraphNode& b_node = GetNode(b);
+  if (b_node.callers().empty()) {
+    // We reached a root node without hitting 'a'. 'a' does not dominate 'b'.
+    return false;
+  }
+
+  // Walk up the callers of 'b' until we hit 'a' or a root node (no callers).
+  visited->insert(b);
+  for (const HloComputation* b_caller : b_node.callers()) {
+    if (!DominatesHelper(a, b_caller, visited)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CallGraph::Dominates(const HloComputation* a,
+                          const HloComputation* b) const {
+  tensorflow::gtl::FlatSet<const HloComputation*> visited;
+  return DominatesHelper(a, b, &visited);
+}
+
 namespace {
 
 // Returns the call context of a computation which is called from contexts 'a'

@@ -319,8 +319,7 @@ class Service : public ServiceInterface {
           std::vector<perftools::gputools::DeviceMemoryBase>>
           arguments,
       Backend* backend,
-      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-          executors,
+      tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
       tensorflow::gtl::ArraySlice<string> result_tags);
 
   // Returns an HLO dumper for use in the compiler (it refers to flags
@@ -345,6 +344,16 @@ class Service : public ServiceInterface {
   // given computation result shape.
   tensorflow::Status ValidateResultShapeWithLayout(
       const Shape& shape_with_layout, const Shape& result_shape) const;
+
+  // Returns the stream executors assigned to the replicas represented by the
+  // given device handle. Each device_handle is a virtual replicated device that
+  // represents a set of physical devices for the replicas.
+  StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Replicas(
+      const Backend& backend, const DeviceHandle& device_handle) const;
+
+  // Returns the device handle that represents the replicated device for a
+  // single computation that is not model-parallelized.
+  DeviceHandle SingleComputationDeviceHandle() const;
 
   // Tracks computations built via the API.
   ComputationTracker computation_tracker_;

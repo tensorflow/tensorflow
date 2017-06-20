@@ -86,6 +86,14 @@ class SummaryToEventTransformer(object):
           meta_graph.create_meta_graph_def(graph_def=graph_def or
                                            maybe_graph_as_def))
 
+    # This set contains tags of Summary Values that have been encountered
+    # already. The motivation here is that the SummaryWriter only keeps the
+    # metadata property (which is a SummaryMetadata proto) of the first Summary
+    # Value encountered for each tag. The SummaryWriter strips away the
+    # SummaryMetadata for all subsequent Summary Values with tags seen
+    # previously. This saves space.
+    self._seen_summary_tags = set()
+
   def add_summary(self, summary, global_step=None):
     """Adds a `Summary` protocol buffer to the event file.
 
@@ -108,6 +116,24 @@ class SummaryToEventTransformer(object):
       summ = summary_pb2.Summary()
       summ.ParseFromString(summary)
       summary = summ
+
+    # We strip metadata from values with tags that we have seen before in order
+    # to save space - we just store the metadata on the first value with a
+    # specific tag.
+    for value in summary.value:
+      if not value.metadata:
+        continue
+
+      if value.tag in self._seen_summary_tags:
+        # This tag has been encountered before. Strip the metadata.
+        value.ClearField("metadata")
+        continue
+
+      # We encounter a value with a tag we have not encountered previously. And
+      # it has metadata. Remember to strip metadata from future values with this
+      # tag string.
+      self._seen_summary_tags.add(value.tag)
+
     event = event_pb2.Event(summary=summary)
     self._add_event(event, global_step)
 

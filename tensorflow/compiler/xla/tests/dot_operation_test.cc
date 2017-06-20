@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
@@ -186,14 +185,14 @@ void DotOperationTest::TestMatrixDot(int M, int K, int N, bool lhs_row_major,
                                      bool rhs_row_major) {
   std::unique_ptr<Array2D<float>> lhs_data =
       MakeLinspaceArray2D(0.0, 1.0, M, K);
-  std::unique_ptr<Literal> lhs_lit = LiteralUtil::CreateR2FromArray2DWithLayout(
+  std::unique_ptr<Literal> lhs_lit = Literal::CreateR2FromArray2DWithLayout(
       *lhs_data,
       LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(lhs_row_major)));
   auto lhs_handle = client_->TransferToServer(*lhs_lit).ConsumeValueOrDie();
 
   std::unique_ptr<Array2D<float>> rhs_data =
       MakeLinspaceArray2D(0.0, 1.0, K, N);
-  std::unique_ptr<Literal> rhs_lit = LiteralUtil::CreateR2FromArray2DWithLayout(
+  std::unique_ptr<Literal> rhs_lit = Literal::CreateR2FromArray2DWithLayout(
       *rhs_data,
       LayoutUtil::MakeLayout(MinorToMajorForIsRowMajor(rhs_row_major)));
   auto rhs_handle = client_->TransferToServer(*rhs_lit).ConsumeValueOrDie();
@@ -380,12 +379,12 @@ XLA_TEST_F(DotOperationTest, BatchMatMul) {
   builder.Reshape(out_flat, {0, 1, 2}, {2, 2, 2, 2});
 
   auto x_data = client_
-                    ->TransferToServer(*LiteralUtil::CreateR4<float>(
+                    ->TransferToServer(*Literal::CreateR4<float>(
                         {{{{1000, 100}, {10, 1}}, {{2000, 200}, {20, 2}}},
                          {{{3000, 300}, {30, 3}}, {{4000, 400}, {40, 4}}}}))
                     .ConsumeValueOrDie();
   auto y_data = client_
-                    ->TransferToServer(*LiteralUtil::CreateR4<float>(
+                    ->TransferToServer(*Literal::CreateR4<float>(
                         {{{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}},
                          {{{11, 22}, {33, 44}}, {{55, 66}, {77, 88}}}}))
                     .ConsumeValueOrDie();
@@ -416,14 +415,14 @@ TEST_F(DotOperationTest, TransposeFolding) {
         auto lhs_handle =
             client_
                 ->TransferToServer(
-                    *LiteralUtil::CreateR2FromArray2DWithLayout<float>(
+                    *Literal::CreateR2FromArray2DWithLayout<float>(
                         *lhs, LayoutUtil::MakeLayout(
                                   MinorToMajorForIsRowMajor(row_major))))
                 .ConsumeValueOrDie();
         auto rhs_handle =
             client_
                 ->TransferToServer(
-                    *LiteralUtil::CreateR2FromArray2DWithLayout<float>(
+                    *Literal::CreateR2FromArray2DWithLayout<float>(
                         *rhs, LayoutUtil::MakeLayout(
                                   MinorToMajorForIsRowMajor(row_major))))
                 .ConsumeValueOrDie();
@@ -463,7 +462,6 @@ int main(int argc, char** argv) {
   xla::legacy_flags::AppendLayoutUtilFlags(&flag_list);
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuRuntimeFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

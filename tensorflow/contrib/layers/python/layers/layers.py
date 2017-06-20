@@ -560,9 +560,9 @@ def batch_norm(inputs,
           layer.moving_mean, variables_collections, 'moving_mean')
       _add_variable_to_collections(
           layer.moving_variance, variables_collections, 'moving_variance')
-      if layer.beta:
+      if layer.beta is not None:
         _add_variable_to_collections(layer.beta, variables_collections, 'beta')
-      if layer.gamma:
+      if layer.gamma is not None:
         _add_variable_to_collections(
             layer.gamma, variables_collections, 'gamma')
 
@@ -2143,6 +2143,44 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
     multiples = array_ops.concat(multiples, 0)
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
+
+
+def poincare_normalize(x, axis=1, epsilon=1e-5, name=None):
+  """Project into the Poincare ball with norm <= 1.0 - epsilon.
+
+  https://en.wikipedia.org/wiki/Poincare_ball_model
+
+  Used in
+  Poincare Embeddings for Learning Hierarchical Representations
+  Maximilian Nickel, Douwe Kiela
+  https://arxiv.org/pdf/1705.08039.pdf
+
+  For a 1-D tensor with `axis = 0`, computes
+
+                (x * (1 - epsilon)) / ||x||     if ||x|| > 1 - epsilon
+      output =
+                 x                              otherwise
+
+  For `x` with more dimensions, independently normalizes each 1-D slice along
+  dimension `axis`.
+
+  Args:
+    x: A `Tensor`.
+    axis: Axis along which to normalize.  A scalar or a vector of
+      integers.
+    epsilon: A small deviation from the edge of the unit sphere for numerical
+      stability.
+    name: A name for this operation (optional).
+
+  Returns:
+    A `Tensor` with the same shape as `x`.
+  """
+  with ops.name_scope(name, 'poincare_normalize', [x]) as name:
+    x = ops.convert_to_tensor(x, name='x')
+    square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keep_dims=True)
+    x_inv_norm = math_ops.rsqrt(square_sum)
+    x_inv_norm = math_ops.minimum((1. - epsilon) * x_inv_norm, 1.)
+    return math_ops.multiply(x, x_inv_norm, name=name)
 
 
 def legacy_fully_connected(x,

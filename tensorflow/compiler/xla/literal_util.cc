@@ -757,10 +757,10 @@ namespace {
 template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>
 std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
   CHECK_EQ(primitive_src_type, src_literal.shape().element_type());
-  return LiteralUtil::Convert<
+  return src_literal.Convert<
       typename primitive_util::PrimitiveTypeToNative<primitive_src_type>::type,
       typename primitive_util::PrimitiveTypeToNative<
-          primitive_dest_type>::type>(src_literal);
+          primitive_dest_type>::type>();
 }
 
 template <PrimitiveType primitive_src_type>
@@ -787,14 +787,14 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
           PrimitiveType_Name(src_literal.shape().element_type()));
   }
 }
-}
+}  // namespace
 
-StatusOr<std::unique_ptr<Literal>> LiteralUtil::ConvertIfSrcTypeMatches(
-    const Literal& src_literal, PrimitiveType primitive_dest_type) {
-  switch (src_literal.shape().element_type()) {
+StatusOr<std::unique_ptr<Literal>> Literal::ConvertIfSrcTypeMatches(
+    PrimitiveType primitive_dest_type) const {
+  switch (shape().element_type()) {
 #define CONVERT_IF_DEST_TYPE_MATCHES(type) \
   case (type):                             \
-    return ConvertIfDestTypeMatches<(type)>(src_literal, primitive_dest_type);
+    return ConvertIfDestTypeMatches<(type)>(*this, primitive_dest_type);
     CONVERT_IF_DEST_TYPE_MATCHES(PRED)
     CONVERT_IF_DEST_TYPE_MATCHES(S8)
     CONVERT_IF_DEST_TYPE_MATCHES(S32)
@@ -809,7 +809,7 @@ StatusOr<std::unique_ptr<Literal>> LiteralUtil::ConvertIfSrcTypeMatches(
     default:
       return tensorflow::errors::InvalidArgument(
           "Unimplemented: ConvertIfSrcTypeMatches for type " +
-          PrimitiveType_Name(src_literal.shape().element_type()));
+          PrimitiveType_Name(shape().element_type()));
   }
 }
 

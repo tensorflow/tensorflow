@@ -61,6 +61,42 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## Clamp
+
+See also
+[`ComputationBuilder::Clamp`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Clamps an operand to within the range between a minimum and maximum value.
+
+<b> `Clamp(computation, args...)` </b>
+
+| Arguments     | Type                    | Semantics                        |
+| ------------- | ----------------------- | -------------------------------- |
+| `computation` | `Computation`           | computation of type `T_0, T_1,   |
+:               :                         : ..., T_N -> S` with N parameters :
+:               :                         : of arbitrary type                :
+| `operand`     | `ComputationDataHandle` | array of type T                  |
+| `min`         | `ComputationDataHandle` | array of type T                  |
+| `max`         | `ComputationDataHandle` | array of type T                  |
+
+Given an operand and minimum and maximum values, returns the operand if it is in
+the range between the minimum and maximum, else returns the minimum value if the
+operand is below this range or the maximum value if the operand is above this
+range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+
+All three arrays must be the same shape. Alternately, as a restricted form of
+[broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
+
+Example with scalar `min` and `max`:
+
+```
+let operand: s32[3] = {-1, 5, 9};
+let min: s32 = 0;
+let max: s32 = 6;
+==>
+Clamp(operand, min, max) = s32[3]{0, 5, 6};
+```
+
 ## Collapse
 
 See also
@@ -546,6 +582,8 @@ ComputationBuilder supports these element-wise unary functions:
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
 
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
+
+<b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
 
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
 

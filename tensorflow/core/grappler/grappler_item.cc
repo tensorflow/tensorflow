@@ -55,7 +55,7 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
   std::vector<const NodeDef*> queue;
   for (const string& root : terminal_nodes) {
     const NodeDef* node = name_to_node[NodeName(root)];
-    CHECK(node);
+    CHECK(node) << "Unknown root " << root;
     queue.push_back(node);
   }
 

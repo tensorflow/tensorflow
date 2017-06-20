@@ -96,6 +96,14 @@ std::once_flag g_cpu_feature_guard_warn_once_flag;
 
 void WarnAboutUnusedCPUFeatures() {
   std::call_once(g_cpu_feature_guard_warn_once_flag, [] {
+#ifdef PLATFORM_WINDOWS
+#ifndef __AVX__
+    WarnIfFeatureUnused(CPUFeature::AVX, "AVX");
+#endif  // __AVX__
+#ifndef __AVX2__
+    WarnIfFeatureUnused(CPUFeature::AVX2, "AVX2");
+#endif  // __AVX2__
+#else   // ifdef platform windows
 #ifndef __SSE__
     WarnIfFeatureUnused(CPUFeature::SSE, "SSE");
 #endif  // __SSE__
@@ -123,6 +131,7 @@ void WarnAboutUnusedCPUFeatures() {
 #ifndef __FMA__
     WarnIfFeatureUnused(CPUFeature::FMA, "FMA");
 #endif  // __FMA__
+#endif  // else of ifdef platform windows
   });
 }
 

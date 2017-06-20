@@ -98,11 +98,11 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool use_fake_data) {
     std::unique_ptr<Literal> result = result_status.ConsumeValueOrDie();
     fprintf(stdout, "%s: %s :: %s:%s\n", arg, module.entry().name().c_str(),
             ShapeUtil::HumanString(result->shape()).c_str(),
-            LiteralUtil::ToString(*result).c_str());
+            result->ToString().c_str());
     if (module.has_result()) {
       fprintf(stdout, "was %s:%s\n",
               ShapeUtil::HumanString(module.result().shape()).c_str(),
-              LiteralUtil::ToString(Literal(module.result())).c_str());
+              Literal(module.result()).ToString().c_str());
     }
   }
 }

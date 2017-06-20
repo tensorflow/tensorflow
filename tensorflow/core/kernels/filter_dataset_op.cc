@@ -124,6 +124,10 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
                 "Filter predicate `f` must return a scalar bool.");
           }
           matched = result[0].scalar<bool>()();
+          if (!matched) {
+            // Clear the output tensor list since it didn't match.
+            out_tensors->clear();
+          }
         } while (!matched);
         *end_of_sequence = false;
         return Status::OK();

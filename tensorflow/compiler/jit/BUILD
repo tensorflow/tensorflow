@@ -283,3 +283,15 @@ filegroup(
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
+cc_header_only_library(
+    name = "xla_jit_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
+    ],
+)

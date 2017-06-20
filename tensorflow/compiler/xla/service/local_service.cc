@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -152,7 +153,12 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   // Construct computation layout from the argument layouts.
   auto module_config = MakeUnique<HloModuleConfig>(*program_shape);
   module_config->set_has_hybrid_result(has_hybrid_result);
-  module_config->set_replica_count(execute_backend_->Replicas().size());
+  module_config->set_replica_count(execute_backend_->replica_count());
+  module_config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  if (execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
+    module_config->set_intra_op_parallelism_threads(
+        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+  }
   legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
   if (flags->xla_hlo_profile) {
     module_config->enable_hlo_profiling(true);
