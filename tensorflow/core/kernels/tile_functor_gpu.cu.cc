@@ -51,13 +51,12 @@ void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
   CHECK_LT(out_nelem, kint32max) << "Tensor too large to transpose on GPU";
   // Pack strides and input dimension sizes into one buffer.
   const int32 ndims = in.dims();
-  gtl::InlinedVector<int32, 16> host_buf(ndims * 3);
-  // Input strides.
-  ComputeStride(in.shape(), &host_buf[0]);
-  // Output strides.
-  ComputeStride(out->shape(), &host_buf[ndims]);
-  // Input dimension sizes.
+  gtl::InlinedVector<int32, 24> host_buf(ndims * 3);
+  gtl::InlinedVector<int32, 8> in_strides = ComputeStride<int32>(in.shape());
+  gtl::InlinedVector<int32, 8> out_strides = ComputeStride<int32>(out->shape());
   for (int i = 0; i < ndims; ++i) {
+    host_buf[i] = in_strides[i];
+    host_buf[ndims + i] = out_strides[i];
     host_buf[ndims * 2 + i] = in.dim_size(i);
   }
   // Copies the input strides, output strides and input dimension sizes to the device.

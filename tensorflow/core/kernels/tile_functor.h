@@ -23,23 +23,22 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
+namespace internal {
 
 // Helper to compute 'strides' given a tensor 'shape'. I.e.,
 // strides[i] = prod(shape.dim_size[(i+1):])
 template <typename Index>
-void ComputeStride(const TensorShape& shape, Index* strides) {
+gtl::InlinedVector<Index, 8> ComputeStride(const TensorShape& shape) {
   const int ndims = shape.dims();
+  gtl::InlinedVector<Index, 8> strides(ndims);
   Index stride = 1;
   for (int i = ndims - 1; i >= 0; --i) {
     strides[i] = stride;
     stride *= static_cast<Index>(shape.dim_size(i));
   }
+  return strides;
 }
 
-}  // end namespace
-
-namespace internal {
 
 // Device-specific naive implementation for tile.
 template <typename Device, typename T>
@@ -48,12 +47,9 @@ void TileSimple(const Device& d, Tensor* out, const Tensor& in);
 template <typename Device, typename T, int NDIM>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                     const gtl::ArraySlice<int32>& broadcast_array) {
-  auto x = typename TTypes<T, NDIM>::ConstTensor(
-      reinterpret_cast<const T*>(in.tensor_data().data()),
-      in.shape().AsEigenDSizes<NDIM>());
-  auto y = typename TTypes<T, NDIM>::Tensor(
-      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
-      out->shape().AsEigenDSizes<NDIM>());
+  typename TTypes<T, NDIM>::ConstTensor x = in.tensor<T, NDIM>();
+  typename TTypes<T, NDIM>::Tensor y = out->tensor<T, NDIM>();
+
   Eigen::array<int32, NDIM> b;
   for (int i = 0; i < NDIM; ++i) b[i] = broadcast_array[i];
   if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
@@ -67,12 +63,8 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
 template <typename Device, typename T>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                     const gtl::ArraySlice<int32>&) {
-  auto x = typename TTypes<T, 0>::ConstTensor(
-      reinterpret_cast<const T*>(in.tensor_data().data()),
-      in.shape().AsEigenDSizes<0>());
-  auto y = typename TTypes<T, 0>::Tensor(
-      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
-      out->shape().AsEigenDSizes<0>());
+  typename TTypes<T, 0>::ConstTensor x = in.tensor<T, 0>();
+  typename TTypes<T, 0>::Tensor y = out->tensor<T, 0>();
   // In the scalar case we simply copy the input.
   y.device(d) = x;
 }
