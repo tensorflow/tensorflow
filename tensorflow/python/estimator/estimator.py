@@ -357,7 +357,7 @@ class Estimator(object):
               }
 
   def _assert_members_are_not_overridden(self):
-    allowed_overrides = set(['_create_global_step'])
+    allowed_overrides = set(['_call_input_fn', '_create_global_step'])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
     subclass_members = set(self.__class__.__dict__.keys())
@@ -485,7 +485,7 @@ class Estimator(object):
       return export_dir
 
   def _get_features_from_input_fn(self, input_fn):
-    result = input_fn()
+    result = self._call_input_fn(input_fn)
     if not ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
       logging.warning('Input graph does not contain a QueueRunner. '
                       'That means predict yields forever. '
@@ -549,6 +549,32 @@ class Estimator(object):
     assert step.dtype.is_integer
     return step
 
+  def _call_input_fn(self, input_fn):
+    """Calls the input function.
+
+    Args:
+      input_fn: The input function.
+
+    Returns:
+      Either features or (features, labels) where features and labels are:
+        features - `Tensor` or dictionary of string feature name to `Tensor`.
+        labels - `Tensor` or dictionary of `Tensor` with labels.
+
+    Raises:
+      ValueError: if input_fn takes invalid arguments.
+    """
+    input_fn_args = _fn_args(input_fn)
+    for arg in input_fn_args:
+      if arg not in ('config', 'params'):
+        raise ValueError('input_fn should not include argument {}.'.format(arg))
+    kwargs = {}
+    if 'params' in input_fn_args:
+      kwargs['params'] = self.params
+    if 'config' in input_fn_args:
+      kwargs['config'] = self.config
+    with ops.device('/cpu:0'):
+      return input_fn(**kwargs)
+
   def _call_model_fn(self, features, labels, mode):
     """Calls model function.
 
@@ -563,7 +589,7 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = _model_fn_args(self._model_fn)
+    model_fn_args = _fn_args(self._model_fn)
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
@@ -584,8 +610,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      with ops.device('/cpu:0'):
-        features, labels = input_fn()
+      features, labels = self._call_input_fn(input_fn)
       estimator_spec = self._call_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
@@ -666,7 +691,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = input_fn()
+      features, labels = self._call_input_fn(input_fn)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
 
@@ -749,7 +774,7 @@ def _get_replica_device_setter(config):
     return None
 
 
-def _model_fn_args(fn):
+def _fn_args(fn):
   """Get argument names for function-like object.
 
   Args:
@@ -774,7 +799,7 @@ def _model_fn_args(fn):
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  args = set(_model_fn_args(model_fn))
+  args = set(_fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
   if 'labels' not in args:
