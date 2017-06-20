@@ -183,6 +183,22 @@ public final class Vulcanize {
     }
   }
 
+  private static boolean isExternalCssNode(Node node) {
+    if (node.nodeName().equals("link")
+        && node.attr("rel").equals("stylesheet")
+        && !node.attr("href").isEmpty()) {
+      return true;
+    }
+    if (node.nodeName().equals("link")
+        && node.attr("rel").equals("import")
+        && (node.attr("type").equals("css")
+            || node.attr("type").equals("text/css"))
+        && !node.attr("href").isEmpty()) {
+      return true;
+    }
+    return false;
+  }
+
   private static Node enterNode(Node node) throws IOException {
     if (node.nodeName().equals("demo-snippet")) {
       insideDemoSnippet++;
@@ -192,18 +208,16 @@ public final class Vulcanize {
     }
     if (node instanceof Element) {
       if (!getAttrTransitive(node, "vulcanize-noinline").isPresent()) {
-        if (node.nodeName().equals("link") && node.attr("rel").equals("import")) {
+        if (isExternalCssNode(node)
+            && !shouldIgnoreUri(node.attr("href"))) {
+          node = visitStylesheet(node);
+        } else if (node.nodeName().equals("link") && node.attr("rel").equals("import")) {
           // Inline HTML.
           node = visitHtmlImport(node);
         } else if (node.nodeName().equals("script")
             && !shouldIgnoreUri(node.attr("src"))
             && !node.hasAttr("jscomp-ignore")) {
           node = visitScript(node);
-        } else if (node.nodeName().equals("link")
-            && node.attr("rel").equals("stylesheet")
-            && !node.attr("href").isEmpty()
-            && !shouldIgnoreUri(node.attr("href"))) {
-          node = visitStylesheet(node);
         }
       }
       rootifyAttribute(node, "href");
