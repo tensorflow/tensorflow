@@ -382,7 +382,17 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // instruction.
       // TODO(b/31425034): Change infeeds to be more like parameters, with
       // shapes in the ComputationLayout.
-      shape_with_layout = &instruction->shape();
+      Shape infeed_shape = instruction->shape();
+      // TODO(b/62477016): When the infeed does not set padding anymore, this
+      // can be removed.
+      ShapeUtil::ForEachMutableSubshape(
+          &infeed_shape, [](Shape* subshape, const ShapeIndex& index) {
+            auto layout = subshape->mutable_layout();
+            layout->clear_padding_value();
+            layout->clear_padded_dimensions();
+          });
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(infeed_shape, instruction.get()));
     } else if (instruction->opcode() == HloOpcode::kOutfeed) {
       // Constrain the input to the Outfeed instruction to be the expected
       // layout of the Outfeed.
@@ -729,23 +739,18 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   if (instruction->opcode() == HloOpcode::kReshape) {
     // Prefer the operand layout that makes the reshape an bitcast. If any
     // dimension bound is 1 in the operand shape, there may be several such
-    // layouts. So if 'output_layout' is a MajorToMinor layout, try if the
+    // layouts. So if 'output_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations.
     const Shape& output_shape = instruction->shape();
     Shape output_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
         output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
         AsInt64Slice(output_layout.minor_to_major()));
-    const Shape& operand_shape = operand->shape();
-    if (LayoutUtil::IsMonotonicWithDim0Major(output_layout)) {
-      Shape operand_shape_with_layout =
-          ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-              operand_shape.element_type(),
-              AsInt64Slice(operand_shape.dimensions()));
-      if (ShapeUtil::ReshapeIsBitcast(operand_shape_with_layout,
-                                      output_shape_with_layout)) {
-        return MakeUnique<Layout>(operand_shape_with_layout.layout());
-      }
+    Shape operand_shape = operand->shape();
+    *operand_shape.mutable_layout() =
+        LayoutUtil::GetDefaultLayoutForShape(operand_shape);
+    if (ShapeUtil::ReshapeIsBitcast(operand_shape, output_shape_with_layout)) {
+      return MakeUnique<Layout>(operand_shape.layout());
     }
     auto aligned_operand_shape =
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
@@ -789,23 +794,18 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   if (user->opcode() == HloOpcode::kReshape) {
     // Prefer the user layout that makes the reshape an bitcast. If any
     // dimension bound is 1 in the user shape, there may be several such
-    // layouts. So if 'operand_layout' is a MajorToMinor layout, try if the
+    // layouts. So if 'operand_layout' is the default layout, try if the
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations.
     Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
         operand->shape().element_type(),
         AsInt64Slice(operand->shape().dimensions()),
         AsInt64Slice(operand_layout.minor_to_major()));
-    const Shape& output_shape = user->shape();
-    if (LayoutUtil::IsMonotonicWithDim0Major(operand_layout)) {
-      Shape output_shape_with_layout =
-          ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-              output_shape.element_type(),
-              AsInt64Slice(output_shape.dimensions()));
-      if (ShapeUtil::ReshapeIsBitcast(output_shape_with_layout,
-                                      operand_shape_with_layout)) {
-        return MakeUnique<Layout>(output_shape_with_layout.layout());
-      }
+    Shape output_shape = user->shape();
+    *output_shape.mutable_layout() =
+        LayoutUtil::GetDefaultLayoutForShape(output_shape);
+    if (ShapeUtil::ReshapeIsBitcast(output_shape, operand_shape_with_layout)) {
+      return MakeUnique<Layout>(output_shape.layout());
     }
     auto aligned_user_shape =
         ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);
@@ -926,7 +926,7 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
                 ShapeUtil::IsArray(buffer->shape())) {
               TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
                   ShapeUtil::GetSubshape(shape_layout.shape(), index).layout(),
-                  *buffer));
+                  *buffer, /*mandatory=*/true));
             }
           }
         }
