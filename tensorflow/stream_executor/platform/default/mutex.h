@@ -35,6 +35,23 @@ using tensorflow::tf_shared_lock;
 #define tf_shared_lock(x) \
   static_assert(0, "tf_shared_lock_decl_missing_var_name");
 
+/*
+#ifdef STREAM_EXECUTOR_USE_SHARED_MUTEX
+// TODO(vrv): Annotate these with ACQUIRE_SHARED after implementing
+// as classes.
+typedef std::shared_lock<BaseMutex> shared_lock;
+//typedef std::condition_variable_any condition_variable;
+#else
+typedef mutex_lock shared_lock;
+//typedef std::condition_variable condition_variable;
+#endif
+
+ inline ConditionResult WaitForMilliseconds(shared_lock* mu,
+                                            ConditionVariableForMutex* cv, int64 ms) {
+  std::cv_status s = cv->wait_for(*mu, std::chrono::milliseconds(ms));
+  return (s == std::cv_status::timeout) ? kCond_Timeout : kCond_MaybeNotified;
+}
+*/
 }  // namespace gputools
 }  // namespace perftools
 
