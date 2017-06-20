@@ -192,7 +192,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override {
+  Status HandleCopy(HloInstruction* copy) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[copy],
                         ElementWiseUnaryOp(copy, [](ReturnT elem_operand) {
                           return elem_operand;
@@ -208,8 +208,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         typename primitive_util::PrimitiveTypeToNative<dest_type>::type>();
   }
 
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* operand) override {
+  Status HandleConvert(HloInstruction* convert) override {
+    const HloInstruction* operand = convert->operand(0);
     auto operand_literal = parent_->GetEvaluatedLiteralFor(operand);
 
     switch (operand->shape().element_type()) {
@@ -337,8 +337,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status HandleMaximum(HloInstruction* maximum, HloInstruction* lhs,
-                       HloInstruction* rhs) override {
+  Status HandleMaximum(HloInstruction* maximum) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[maximum],
         ElementWiseBinaryOp(maximum, [](ReturnT lhs, ReturnT rhs) {
@@ -347,8 +346,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status HandleMinimum(HloInstruction* minimum, HloInstruction* lhs,
-                       HloInstruction* rhs) override {
+  Status HandleMinimum(HloInstruction* minimum) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[minimum],
         ElementWiseBinaryOp(minimum, [](ReturnT lhs_el, ReturnT rhs_el) {

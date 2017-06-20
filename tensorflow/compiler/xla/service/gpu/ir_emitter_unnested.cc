@@ -722,8 +722,7 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
 
 }  // namespace
 
-Status IrEmitterUnnested::HandleCopy(HloInstruction* copy,
-                                     HloInstruction* operand) {
+Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
   if (ImplementedAsMemcpy(*copy)) {
     thunk_sequence_->emplace_back(BuildCopyThunk(copy));
     return Status::OK();
@@ -731,7 +730,7 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy,
   bool is_transpose_021;
   Shape reduced_input_shape, reduced_output_shape;
   std::tie(is_transpose_021, reduced_input_shape, reduced_output_shape) =
-      IsTranspose021(operand->shape(), copy->shape());
+      IsTranspose021(copy->operand(0)->shape(), copy->shape());
   if (is_transpose_021 &&
       reduced_input_shape.dimensions(1) >= kMinDimensionToTransposeTiled &&
       reduced_input_shape.dimensions(2) >= kMinDimensionToTransposeTiled) {
@@ -739,7 +738,8 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy,
     VLOG(3) << "Emitting tiled 0-2-1 transposition";
     constexpr int64 tile_size = 32;
     int64 num_tiles = EmitTranspose021Tiled(
-        GetIrArray(*operand).CastToShape(reduced_input_shape, &ir_builder_),
+        GetIrArray(*(copy->operand(0)))
+            .CastToShape(reduced_input_shape, &ir_builder_),
         GetIrArray(*copy).CastToShape(reduced_output_shape, &ir_builder_),
         tile_size, &ir_builder_);
     UpdateLaunchDimensions(LaunchDimensions(num_tiles, tile_size), LastThunk(),
@@ -747,7 +747,7 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy,
     return Status::OK();
   }
 
-  return IrEmitter::HandleCopy(copy, operand);
+  return IrEmitter::HandleCopy(copy);
 }
 
 Status IrEmitterUnnested::EmitColumnReduction(

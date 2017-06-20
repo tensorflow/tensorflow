@@ -126,10 +126,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* concatenate,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
 
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleCopy(HloInstruction* copy) override;
 
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* operand) override;
+  Status HandleConvert(HloInstruction* convert) override;
 
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
@@ -179,11 +178,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleSubtract(HloInstruction* sub, HloInstruction* lhs,
                         HloInstruction* rhs) override;
 
-  Status HandleMaximum(HloInstruction* maximum, HloInstruction* lhs,
-                       HloInstruction* rhs) override;
-
-  Status HandleMinimum(HloInstruction* minimum, HloInstruction* lhs,
-                       HloInstruction* rhs) override;
+  Status HandleMaximum(HloInstruction* maximum) override;
+  Status HandleMinimum(HloInstruction* minimum) override;
 
   // Returns whether algebraic simplification has occurred.
   const bool changed() const { return changed_; }
@@ -334,16 +330,16 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add,
   return Status::OK();
 }
 
-Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy,
-                                              HloInstruction* operand) {
+Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   // If a copy feeds a copy, make it a single copy.
-  if (operand->opcode() == HloOpcode::kCopy) {
+  if (copy->operand(0)->opcode() == HloOpcode::kCopy) {
     return ReplaceWithNewInstruction(
-        copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy,
-                                          operand->operands()[0]));
+        copy, HloInstruction::CreateUnary(
+                  copy->shape(), HloOpcode::kCopy,
+                  copy->mutable_operand(0)->mutable_operand(0)));
   }
   // All copies can be eliminated (assuming layout constraints are satisified).
-  ReplaceInstructionIfSameShape(copy, operand);
+  ReplaceInstructionIfSameShape(copy, copy->mutable_operand(0));
   return Status::OK();
 }
 
@@ -792,12 +788,11 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
 // A conversion to the same element type as the operand is a nop and can be
 // removed.  A conversion of a constant can be simplified by making a new
 // constant.
-Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert,
-                                                 HloInstruction* operand) {
-  PrimitiveType src_type = operand->shape().element_type();
+Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
+  PrimitiveType src_type = convert->operand(0)->shape().element_type();
   PrimitiveType dest_type = convert->shape().element_type();
   if (src_type == dest_type) {
-    return ReplaceInstruction(convert, operand);
+    return ReplaceInstruction(convert, convert->mutable_operand(0));
   }
   return Status::OK();
 }
@@ -1391,9 +1386,7 @@ bool AlgebraicSimplifierVisitor::TransformToClampIfSameShape(
   return true;
 }
 
-Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum,
-                                                 HloInstruction* lhs,
-                                                 HloInstruction* rhs) {
+Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
   // Match the following tree:
   //          min_operand     operand
   //                     \   /
@@ -1424,9 +1417,7 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum,
   return Status::OK();
 }
 
-Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum,
-                                                 HloInstruction* lhs,
-                                                 HloInstruction* rhs) {
+Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
   // Match the following tree:
   //          max_operand     operand
   //                     \   /

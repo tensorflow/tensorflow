@@ -72,22 +72,19 @@ class DfsHloVisitor {
   virtual Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                               HloInstruction* on_true,
                               HloInstruction* on_false) = 0;
-  virtual Status HandleMaximum(HloInstruction* maximum, HloInstruction* lhs,
-                               HloInstruction* rhs) {
+  virtual Status HandleMaximum(HloInstruction* maximum) {
     return HandleElementwiseBinary(maximum, HloOpcode::kMaximum);
   }
-  virtual Status HandleMinimum(HloInstruction* minimum, HloInstruction* lhs,
-                               HloInstruction* rhs) {
+  virtual Status HandleMinimum(HloInstruction* minimum) {
     return HandleElementwiseBinary(minimum, HloOpcode::kMinimum);
   }
   virtual Status HandleConcatenate(
       HloInstruction* concatenate,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) = 0;
-  virtual Status HandleConvert(HloInstruction* convert,
-                               HloInstruction* operand) {
+  virtual Status HandleConvert(HloInstruction* convert) {
     return HandleElementwiseUnary(convert, HloOpcode::kConvert);
   }
-  virtual Status HandleCopy(HloInstruction* copy, HloInstruction* operand) {
+  virtual Status HandleCopy(HloInstruction* copy) {
     return HandleElementwiseUnary(copy, HloOpcode::kCopy);
   }
   virtual Status HandleMultiply(HloInstruction* multiply, HloInstruction* lhs,

@@ -1803,9 +1803,9 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kSubtract:
       return visitor->HandleSubtract(this, operands_[0], operands_[1]);
     case HloOpcode::kMaximum:
-      return visitor->HandleMaximum(this, operands_[0], operands_[1]);
+      return visitor->HandleMaximum(this);
     case HloOpcode::kMinimum:
-      return visitor->HandleMinimum(this, operands_[0], operands_[1]);
+      return visitor->HandleMinimum(this);
     case HloOpcode::kLogicalAnd:
       return visitor->HandleLogicalAnd(this, operands_[0], operands_[1]);
     case HloOpcode::kLogicalOr:
@@ -1813,9 +1813,9 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kConcatenate:
       return visitor->HandleConcatenate(this, operands_);
     case HloOpcode::kConvert:
-      return visitor->HandleConvert(this, operands_[0]);
+      return visitor->HandleConvert(this);
     case HloOpcode::kCopy:
-      return visitor->HandleCopy(this, operands_[0]);
+      return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:
       return visitor->HandleMultiply(this, operands_[0], operands_[1]);
     case HloOpcode::kDot:

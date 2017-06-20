@@ -259,12 +259,12 @@ Status IrEmitter::HandleConstant(HloInstruction* constant,
   return Status::OK();
 }
 
-Status IrEmitter::HandleCopy(HloInstruction* copy, HloInstruction* operand) {
+Status IrEmitter::HandleCopy(HloInstruction* copy) {
   if (ShapeUtil::IsTuple(copy->shape())) {
     // kCopy shallow copies a tuple so just memcpy the top-level buffer.
     TF_ASSIGN_OR_RETURN(llvm::Value * copy_value, EmitTargetAddressForOp(copy));
     emitted_value_[copy] = copy_value;
-    return EmitMemcpy(*operand, *copy);
+    return EmitMemcpy(*(copy->operand(0)), *copy);
   } else {
     // Use the elemental emitter for non-tuple shapes.
     return DefaultAction(copy);

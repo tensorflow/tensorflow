@@ -64,12 +64,10 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
       tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
     return DefaultAction(concatenate);
   }
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* /*operand*/) override {
+  Status HandleConvert(HloInstruction* convert) override {
     return DefaultAction(convert);
   }
-  Status HandleCopy(HloInstruction* copy,
-                    HloInstruction* /*operand*/) override {
+  Status HandleCopy(HloInstruction* copy) override {
     return DefaultAction(copy);
   }
   Status HandleSelect(HloInstruction* select, HloInstruction* /*pred*/,

@@ -63,9 +63,8 @@ class HloCostAnalysis : public DfsHloVisitor {
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleRecv(HloInstruction* recv) override;
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* operand) override;
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleConvert(HloInstruction* convert) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
                    HloInstruction* rhs) override;
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,

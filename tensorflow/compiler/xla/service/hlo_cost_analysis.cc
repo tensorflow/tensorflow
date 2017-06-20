@@ -166,13 +166,11 @@ Status HloCostAnalysis::HandleConcatenate(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConvert(HloInstruction* convert,
-                                      HloInstruction* operand) {
+Status HloCostAnalysis::HandleConvert(HloInstruction* convert) {
   return HandleElementwiseOp(convert);
 }
 
-Status HloCostAnalysis::HandleCopy(HloInstruction* copy,
-                                   HloInstruction* operand) {
+Status HloCostAnalysis::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
