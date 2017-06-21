@@ -1,3 +1,10 @@
+tensorflow/contrib/boosted_trees/ops/ensemble_optimizer_ops.cc
+tensorflow/contrib/boosted_trees/ops/model_ops.cc
+tensorflow/contrib/boosted_trees/ops/prediction_ops.cc
+tensorflow/contrib/boosted_trees/ops/quantile_ops.cc
+tensorflow/contrib/boosted_trees/ops/split_handler_ops.cc
+tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc
+tensorflow/contrib/boosted_trees/ops/training_ops.cc
 tensorflow/core/kernels/xent_op.cc
 tensorflow/core/kernels/where_op.cc
 tensorflow/core/kernels/variable_ops.cc

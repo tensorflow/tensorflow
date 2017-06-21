@@ -15,6 +15,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
+        "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/compiler:compiler_py",
@@ -84,6 +85,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/batching:batch_ops_kernels",
+        "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/framework:generate_vocab_remapping_kernel",
         "//tensorflow/contrib/framework:load_and_remap_matrix_kernel",
@@ -101,6 +103,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/batching:batch_ops_op_lib",
+        "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",

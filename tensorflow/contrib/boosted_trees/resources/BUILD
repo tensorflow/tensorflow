@@ -49,5 +49,4 @@ cc_library(
         "//tensorflow/contrib/boosted_trees/lib:trees",
         "//tensorflow/core:framework_headers_lib",
     ],
-    alwayslink = 1,
 )
