@@ -661,7 +661,8 @@ class Estimator(object):
               tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=self._session_config) as mon_sess:
+          config=self._session_config,
+          log_step_count_steps=self._config.log_step_count_steps) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
