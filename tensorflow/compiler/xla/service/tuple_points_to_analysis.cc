@@ -243,12 +243,11 @@ Status TuplePointsToAnalysis::HandleGetTupleElement(
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy,
-                                         HloInstruction* operand) {
+Status TuplePointsToAnalysis::HandleCopy(HloInstruction* copy) {
   // A kCopy instruction performs a shallow copy of the operand. The top-level
   // buffer (index={}) is newly created, but all other buffers (in the case of a
   // tuple shape) come from the operand
-  PointsToSet& points_to_set = CreateCopiedPointsToSet(copy, operand);
+  PointsToSet& points_to_set = CreateCopiedPointsToSet(copy, copy->operand(0));
   points_to_set.mutable_element(/*index=*/{})->clear();
   points_to_set.AddPointedToBuffer(NewLogicalBuffer(copy, /*index=*/{}),
                                    /*index=*/{});

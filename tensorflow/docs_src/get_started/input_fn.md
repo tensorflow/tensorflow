@@ -1,6 +1,6 @@
 # Building Input Functions with tf.contrib.learn
 
-This tutorial introduces you to creating input functions in tf.contrib.learn.
+This tutorial introduces you to creating input functions in tf.estimator.
 You'll get an overview of how to construct an `input_fn` to preprocess and feed
 data into your models. Then, you'll implement an `input_fn` that feeds training,
 evaluation, and prediction data into a neural network regressor for predicting
@@ -8,26 +8,25 @@ median house values.
 
 ## Custom Input Pipelines with input_fn
 
-When training a neural network using tf.contrib.learn, it's possible to pass
-your feature and target data directly into your `fit`, `evaluate`, or `predict`
-operations. Here's an example taken from the @{$tflearn$tf.contrib.learn quickstart tutorial}:
+The `input_fn` is used to pass feature and target data to the `train`,
+`evaluate`, and `predict` methods of the `Estimator`.
+The user can do feature engineering or pre-processing inside the `input_fn`.
+Here's an example taken from the @{$estimator$tf.estimator Quickstart tutorial}:
 
 ```python
+import numpy as np
+
 training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
     filename=IRIS_TRAINING, target_dtype=np.int, features_dtype=np.float32)
-test_set = tf.contrib.learn.datasets.base.load_csv_with_header(
-    filename=IRIS_TEST, target_dtype=np.int, features_dtype=np.float32)
-...
 
-classifier.fit(x=training_set.data,
-               y=training_set.target,
-               steps=2000)
+train_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": np.array(training_set.data)},
+    y=np.array(training_set.target),
+    num_epochs=None,
+    shuffle=True)
+
+classifier.train(input_fn=train_input_fn, steps=2000)
 ```
-
-This approach works well when little to no manipulation of source data is
-required. But in cases where more feature engineering is needed,
-`tf.contrib.learn` supports using a custom input function (`input_fn`) to
-encapsulate the logic for preprocessing and piping data into your models.
 
 ### Anatomy of an input_fn
 
@@ -43,8 +42,9 @@ def my_input_fn():
     return feature_cols, labels
 ```
 
-The body of the input function contains the specific logic for preprocessing your
-input data, such as scrubbing out bad examples or [feature scaling](https://en.wikipedia.org/wiki/Feature_scaling).
+The body of the input function contains the specific logic for preprocessing
+your input data, such as scrubbing out bad examples or
+[feature scaling](https://en.wikipedia.org/wiki/Feature_scaling).
 
 Input functions must return the following two values containing the final
 feature and label data to be fed into your model (as shown in the above code
@@ -61,15 +61,27 @@ data.</dd>
 
 ### Converting Feature Data to Tensors
 
-If your feature/label data is stored in [_pandas_](http://pandas.pydata.org/)
-dataframes or [numpy](http://www.numpy.org/) arrays, you'll need to convert it
-to `Tensor`s before returning it from your `input_fn`.
-
-For continuous data, you can create and populate a `Tensor` using `tf.constant`:
+If your feature/label data is a python array or stored in
+[_pandas_](http://pandas.pydata.org/) dataframes or
+[numpy](http://www.numpy.org/) arrays, you can use the following methods to
+construct `input_fn`:
 
 ```python
-feature_column_data = [1, 2.4, 0, 9.9, 3, 120]
-feature_tensor = tf.constant(feature_column_data)
+import numpy as np
+# numpy input_fn.
+my_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": np.array(x_data)},
+    y=np.array(y_data),
+    ...)
+```
+
+```python
+import pandas as pd
+# pandas input_fn.
+my_input_fn = tf.estimator.inputs.pandas_input_fn(
+    x=pd.DataFrame({"x": x_data}),
+    y=pd.Series(y_data),
+    ...)
 ```
 
 For [sparse, categorical data](https://en.wikipedia.org/wiki/Sparse_matrix)
@@ -103,33 +115,26 @@ This corresponds to the following dense tensor:
  [0, 0, 0, 0, 0.5]]
 ```
 
-For more on `SparseTensor`, see the
-@{tf.SparseTensor}.
+For more on `SparseTensor`, see @{tf.SparseTensor}.
 
 ### Passing input_fn Data to Your Model
 
 To feed data to your model for training, you simply pass the input function
-you've created to your `fit` operation as the value of the `input_fn` parameter,
-e.g.:
+you've created to your `train` operation as the value of the `input_fn`
+parameter, e.g.:
 
 ```python
-classifier.fit(input_fn=my_input_fn, steps=2000)
+classifier.train(input_fn=my_input_fn, steps=2000)
 ```
 
-Note that the `input_fn` is responsible for supplying both feature and label
-data to the model, and replaces both the `x` and `y` parameters in `fit`. If you
-supply an `input_fn` value to `fit` that is not `None` in conjunction with
-either an `x` or `y` parameter that is not `None`, it will result in a
-`ValueError`.
-
-Also note that the `input_fn` parameter must receive a function object (i.e.,
+Note that the `input_fn` parameter must receive a function object (i.e.,
 `input_fn=my_input_fn`), not the return value of a function call
-(`input_fn=my_input_fn()`). This means that if you try to pass parameters to the input
-function in your `fit` call, as in the following code, it will result in a
+(`input_fn=my_input_fn()`). This means that if you try to pass parameters to the
+`input_fn` in your `train` call, as in the following code, it will result in a
 `TypeError`:
 
 ```python
-classifier.fit(input_fn=my_input_fn(training_set), steps=2000)
+classifier.train(input_fn=my_input_fn(training_set), steps=2000)
 ```
 
 However, if you'd like to be able to parameterize your input function, there are
@@ -138,29 +143,33 @@ arguments as your `input_fn` and use it to invoke your input function
 with the desired parameters. For example:
 
 ```python
-def my_input_function_training_set():
-  return my_input_function(training_set)
+def my_input_fn(data_set):
+  ...
 
-classifier.fit(input_fn=my_input_fn_training_set, steps=2000)
+def my_input_fn_training_set():
+  return my_input_fn(training_set)
+
+classifier.train(input_fn=my_input_fn_training_set, steps=2000)
 ```
 
 Alternatively, you can use Python's [`functools.partial`](https://docs.python.org/2/library/functools.html#functools.partial)
 function to construct a new function object with all parameter values fixed:
 
 ```python
-classifier.fit(input_fn=functools.partial(my_input_function,
-                                          data_set=training_set), steps=2000)
+classifier.train(
+    input_fn=functools.partial(my_input_fn, data_set=training_set),
+    steps=2000)
 ```
 
-A third option is to wrap your input_fn invocation in a
+A third option is to wrap your `input_fn` invocation in a
 [`lambda`](https://docs.python.org/3/tutorial/controlflow.html#lambda-expressions)
 and pass it to the `input_fn` parameter:
 
 ```python
-classifier.fit(input_fn=lambda: my_input_fn(training_set), steps=2000)
+classifier.train(input_fn=lambda: my_input_fn(training_set), steps=2000)
 ```
 
-One big advantage of architecting your input pipeline as shown above—to accept a
+One big advantage of designing your input pipeline as shown above—to accept a
 parameter for data set—is that you can pass the same `input_fn` to `evaluate`
 and `predict` operations by just changing the data set argument, e.g.:
 
@@ -168,9 +177,36 @@ and `predict` operations by just changing the data set argument, e.g.:
 classifier.evaluate(input_fn=lambda: my_input_fn(test_set), steps=2000)
 ```
 
-This approach enhances code maintainability: no need to capture `x` and `y`
-values in separate variables (e.g., `x_train`, `x_test`, `y_train`, `y_test`)
-for each type of operation.
+This approach enhances code maintainability: no need to define multiple
+`input_fn` (e.g. `input_fn_train`, `input_fn_test`, `input_fn_predict`) for each
+type of operation.
+
+Finally, you can use the methods in `tf.estimator.inputs` to create `input_fn`
+from numpy or pandas data sets. The additional benefit is that you can use
+more arguments, such as `num_epochs` and `shuffle` to control how the `input_fn`
+iterates over the data:
+
+```python
+import pandas as pd
+
+def get_input_fn_from_pandas(data_set, num_epochs=None, shuffle=True):
+  return tf.estimator.inputs.pandas_input_fn(
+      x=pdDataFrame(...),
+      y=pd.Series(...),
+      num_epochs=num_epochs,
+      shuffle=shuffle)
+```
+
+```python
+import numpy as np
+
+def get_input_fn_from_numpy(data_set, num_epochs=None, shuffle=True):
+  return tf.estimator.inputs.numpy_input_fn(
+      x={...},
+      y=np.array(...),
+      num_epochs=num_epochs,
+      shuffle=shuffle)
+```
 
 ### A Neural Network Model for Boston House Values
 
@@ -259,8 +295,7 @@ housing data set contain continuous values, you can create their
 `FeatureColumn`s using the `tf.contrib.layers.real_valued_column()` function:
 
 ```python
-feature_cols = [tf.contrib.layers.real_valued_column(k)
-                  for k in FEATURES]
+feature_cols = [tf.feature_column.numeric_column(k) for k in FEATURES]
 ```
 
 NOTE: For a more in-depth overview of feature columns, see
@@ -275,36 +310,47 @@ with 10 nodes each), and `feature_columns`, containing the list of
 `FeatureColumns` you just defined:
 
 ```python
-regressor = tf.contrib.learn.DNNRegressor(feature_columns=feature_cols,
-                                          hidden_units=[10, 10],
-                                          model_dir="/tmp/boston_model")
+regressor = tf.estimator.DNNRegressor(feature_columns=feature_cols,
+                                      hidden_units=[10, 10],
+                                      model_dir="/tmp/boston_model")
 ```
 
 ### Building the input_fn
 
-To pass input data into the `regressor`, create an input function, which will
-accept a _pandas_ `Dataframe` and return feature column and label values as
-`Tensor`s:
+To pass input data into the `regressor`, write a factory method that accepts a
+_pandas_ `Dataframe` and returns an `input_fn`:
 
 ```python
-def input_fn(data_set):
-  feature_cols = {k: tf.constant(data_set[k].values)
-                  for k in FEATURES}
-  labels = tf.constant(data_set[LABEL].values)
-  return feature_cols, labels
+def get_input_fn(data_set, num_epochs=None, shuffle=True):
+  return tf.estimator.inputs.pandas_input_fn(
+      x=pd.DataFrame({k: data_set[k].values for k in FEATURES}),
+      y = pd.Series(data_set[LABEL].values),
+      num_epochs=num_epochs,
+      shuffle=shuffle)
 ```
 
 Note that the input data is passed into `input_fn` in the `data_set` argument,
 which means the function can process any of the `DataFrame`s you've imported:
 `training_set`, `test_set`, and `prediction_set`.
 
+Two additional arguments are provided:
+* `num_epochs`: controls the number of
+  epochs to iterate over data. For training, set this to `None`, so the
+  `input_fn` keeps returning data until the required number of train steps is
+  reached. For evaluate and predict, set this to 1, so the `input_fn` will
+  iterate over the data once and then raise `OutOfRangeError`. That error will
+  signal the `Estimator` to stop evaluate or predict.
+* `shuffle`: Whether to shuffle the data. For evaluate and predict, set this to
+  `False`, so the `input_fn` iterates over the data sequentially. For train,
+  set this to `True`.
+
 ### Training the Regressor
 
-To train the neural network regressor, run `fit` with the `training_set` passed
-to the `input_fn` as follows:
+To train the neural network regressor, run `train` with the `training_set`
+passed to the `input_fn` as follows:
 
 ```python
-regressor.fit(input_fn=lambda: input_fn(training_set), steps=5000)
+regressor.train(input_fn=get_input_fn(training_set), steps=5000)
 ```
 
 You should see log output similar to the following, which reports training loss
@@ -330,7 +376,8 @@ Next, see how the trained model performs against the test data set. Run
 `evaluate`, and this time pass the `test_set` to the `input_fn`:
 
 ```python
-ev = regressor.evaluate(input_fn=lambda: input_fn(test_set), steps=1)
+ev = regressor.evaluate(
+    input_fn=get_input_fn(test_set, num_epochs=1, shuffle=False))
 ```
 
 Retrieve the loss from the `ev` results and print it to output:
@@ -354,10 +401,12 @@ Finally, you can use the model to predict median house values for the
 `prediction_set`, which contains feature data but no labels for six examples:
 
 ```python
-y = regressor.predict(input_fn=lambda: input_fn(prediction_set))
-# .predict() returns an iterator; convert to a list and print predictions
-predictions = list(itertools.islice(y, 6))
-print ("Predictions: {}".format(str(predictions)))
+y = regressor.predict(
+    input_fn=get_input_fn(prediction_set, num_epochs=1, shuffle=False))
+# .predict() returns an iterator of dicts; convert to a list and print
+# predictions
+predictions = list(p["predictions"] for p in itertools.islice(y, 6))
+print("Predictions: {}".format(str(predictions)))
 ```
 
 Your results should contain six house-value predictions in thousands of dollars,

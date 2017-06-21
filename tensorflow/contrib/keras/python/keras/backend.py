@@ -269,9 +269,10 @@ def get_uid(prefix=''):
 
 
 def reset_uids():
-  layer_name_uids_collection = ops.get_collection_ref('LAYER_NAME_UIDS')
-  if layer_name_uids_collection:
-    layer_name_uids_collection.pop()
+  per_graph_layer_name_uids = tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS
+  keys = list(per_graph_layer_name_uids.keys())
+  for key in keys:
+    del per_graph_layer_name_uids[key]
 
 
 def clear_session():

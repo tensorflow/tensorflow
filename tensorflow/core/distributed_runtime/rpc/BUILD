@@ -119,6 +119,7 @@ cc_library(
     hdrs = ["grpc_call.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "@grpc//:grpc++_unsecure",
     ],
 )
@@ -381,6 +382,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:local_master",
         "//tensorflow/core/distributed_runtime:master_interface",
+        "//tensorflow/core/distributed_runtime:message_wrappers",
     ],
     alwayslink = 1,
 )

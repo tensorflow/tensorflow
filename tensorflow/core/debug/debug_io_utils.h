@@ -143,6 +143,7 @@ class DebugIO {
   static const char* const kCoreMetadataTag;
   static const char* const kDeviceTag;
   static const char* const kGraphTag;
+  static const char* const kHashTag;
 
   static const char* const kFileURLScheme;
   static const char* const kGrpcURLScheme;

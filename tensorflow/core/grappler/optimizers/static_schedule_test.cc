@@ -29,7 +29,7 @@ namespace {
 
 class StaticScheduleTest : public ::testing::Test {
  public:
-  VirtualCluster CreateVirtualCluster() const {
+  std::unique_ptr<VirtualCluster> CreateVirtualCluster() const {
     // Invent a CPU so that predictions remain the same from machine to machine.
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
@@ -41,7 +41,7 @@ class StaticScheduleTest : public ::testing::Test {
     cpu_device.set_l3_cache_size(4 * 1024 * 1024);
     std::unordered_map<string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
-    return VirtualCluster(devices);
+    return std::unique_ptr<VirtualCluster>(new VirtualCluster(devices));
   }
 };
 
@@ -51,11 +51,11 @@ TEST_F(StaticScheduleTest, BasicGraph) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  VirtualCluster cluster(CreateVirtualCluster());
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
 
   std::unordered_map<const NodeDef*, Costs::NanoSeconds> completion_times;
   Status status =
-      EstimateEarliestExecutionTimes(item, &cluster, &completion_times);
+      EstimateEarliestExecutionTimes(item, cluster.get(), &completion_times);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(item.graph.node_size(), completion_times.size());
@@ -97,11 +97,11 @@ TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
   EXPECT_EQ("e", item.graph.node(4).name());
   *item.graph.mutable_node(4)->add_input() = "^c";
 
-  VirtualCluster cluster(CreateVirtualCluster());
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
 
   std::unordered_map<const NodeDef*, Costs::NanoSeconds> completion_times;
   Status status =
-      EstimateEarliestExecutionTimes(item, &cluster, &completion_times);
+      EstimateEarliestExecutionTimes(item, cluster.get(), &completion_times);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(item.graph.node_size(), completion_times.size());

@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -170,7 +169,7 @@ class MapTest : public ClientLibraryTestBase {
 TEST_F(MapTest, MapEachElemPlusOneR0) {
   // Applies lambda (x) (+ x 1)) to an input scalar.
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(42.0);
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR0<float>(42.0);
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -184,7 +183,7 @@ TEST_F(MapTest, MapEachElemPlusOneR0) {
 XLA_TEST_F(MapTest, MapEachElemPlusOneR1S0) {
   // Maps (lambda (x) (+ x 1)) onto an input R1F32 vector of length 0.
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR1<float>({});
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR1<float>({});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -199,7 +198,7 @@ TEST_F(MapTest, MapEachElemPlusOneR1S4) {
   // Maps (lambda (x) (+ x 1)) onto an input R1F32 vector of length 4.
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
+      Literal::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -213,7 +212,7 @@ TEST_F(MapTest, MapEachElemPlusOneR1S4) {
 TEST_F(MapTest, MapEachF32ElementToS32Constant) {
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
+      Literal::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -226,7 +225,7 @@ TEST_F(MapTest, MapEachF32ElementToS32Constant) {
 TEST_F(MapTest, MapEachF32ElementToU32Constant) {
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
+      Literal::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -240,7 +239,7 @@ TEST_F(MapTest, MapEachElemLongerChainR1) {
   // Maps (lambda (x) (* (+ x 1) x)) onto an input R1F32 vector.
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.6f, -5.1f, 0.1f, 0.2f, 999.0f, 255.5f});
+      Literal::CreateR1<float>({2.6f, -5.1f, 0.1f, 0.2f, 999.0f, 255.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -256,7 +255,7 @@ XLA_TEST_F(MapTest, MapMultipleMapsR1S0) {
   // Maps (lambda (x) (+ x 1)) onto an input R1F32 vector of length 0, and then
   // maps (lambda (x) (* x 2)) on the result.
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR1<float>({});
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR1<float>({});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -273,7 +272,7 @@ TEST_F(MapTest, MapMultipleMapsR1S4) {
   // maps (lambda (x) (* x 2)) on the result.
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
+      Literal::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -288,7 +287,7 @@ TEST_F(MapTest, MapMultipleMapsR1S4) {
 TEST_F(MapTest, MapEachElemPlusOneR2) {
   // Maps (lambda (x) (+ x 1)) onto an input R2F32 vector.
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR2<float>(
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR2<float>(
       {{13.25f, 14.0f}, {-7.1f, -7.2f}, {-8.8f, 8.8f}});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
@@ -385,11 +384,11 @@ TEST_F(MapTest, MapBinaryAdder) {
   // Maps (lambda (x y) (+ x y)) onto two R1F32 vectors.
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
+      Literal::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<Literal> param1_literal =
-      LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
+      Literal::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -434,12 +433,12 @@ XLA_TEST_F(MapTest, AddWithMixedLayouts) {
 XLA_TEST_F(MapTest, AddR3_3x0x2) {
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR3FromArray3D<int32>(Array3D<int32>(3, 0, 2));
+      Literal::CreateR3FromArray3D<int32>(Array3D<int32>(3, 0, 2));
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   std::unique_ptr<Literal> param1_literal =
-      LiteralUtil::CreateR3FromArray3D<int32>(Array3D<int32>(3, 0, 2));
+      Literal::CreateR3FromArray3D<int32>(Array3D<int32>(3, 0, 2));
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -456,15 +455,15 @@ TEST_F(MapTest, MapTernaryAdder) {
   // Maps (lambda (x y z) (+ x y z)) onto three R1F32 vectors.
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
+      Literal::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<Literal> param1_literal =
-      LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
+      Literal::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
   std::unique_ptr<Literal> param2_literal =
-      LiteralUtil::CreateR1<float>({-10.0f, -100.0f, -900.0f, -400.0f});
+      Literal::CreateR1<float>({-10.0f, -100.0f, -900.0f, -400.0f});
   std::unique_ptr<GlobalData> param2_data =
       client_->TransferToServer(*param2_literal).ConsumeValueOrDie();
 
@@ -517,11 +516,11 @@ TEST_F(MapTest, MapOperantionWithBuildError) {
   auto error_add = sub_builder->BuildAndNoteError();
 
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
+      Literal::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<Literal> param1_literal =
-      LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
+      Literal::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -554,8 +553,8 @@ TEST_F(MapTestWithFullOpt, MapScalarPower) {
   sub_builder->Pow(x, y);
   auto power = sub_builder->BuildAndNoteError();
 
-  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(2.0f);
-  std::unique_ptr<Literal> param1_literal = LiteralUtil::CreateR0<float>(5.0f);
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR0<float>(2.0f);
+  std::unique_ptr<Literal> param1_literal = Literal::CreateR0<float>(5.0f);
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> param1_data =
@@ -581,8 +580,8 @@ TEST_F(MapTestWithFullOpt, MapSubtractOppositeOrder) {
   sub_builder->Sub(y, x);  // note that this is y - x, not x - y
   auto sub_opposite = sub_builder->BuildAndNoteError();
 
-  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(2.0f);
-  std::unique_ptr<Literal> param1_literal = LiteralUtil::CreateR0<float>(5.0f);
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR0<float>(2.0f);
+  std::unique_ptr<Literal> param1_literal = Literal::CreateR0<float>(5.0f);
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> param1_data =
@@ -606,7 +605,7 @@ TEST_F(MapTestWithFullOpt, MapSquare) {
   sub_builder->Mul(x, x);
   auto square = sub_builder->BuildAndNoteError();
 
-  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(10.0f);
+  std::unique_ptr<Literal> param0_literal = Literal::CreateR0<float>(10.0f);
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -622,7 +621,6 @@ TEST_F(MapTestWithFullOpt, MapSquare) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

@@ -34,7 +34,8 @@ class TFProfTensorTest : public ::testing::Test {
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "tools/tfprof/internal/testdata/graph.pbtxt");
     std::unique_ptr<tensorflow::GraphDef> graph_pb(new tensorflow::GraphDef());
-    TF_CHECK_OK(ReadGraphDef(Env::Default(), graph_path, graph_pb.get()));
+    TF_CHECK_OK(
+        ReadProtoFile(Env::Default(), graph_path, graph_pb.get(), false));
 
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb;
     std::unique_ptr<OpLog> op_log_pb;
@@ -72,7 +73,9 @@ TEST_F(TFProfTensorTest, Basics) {
       "total_parameters: 5\n    float_ops: 0\n    total_float_ops: 0\n    "
       "tensor_value {\n      dtype: DT_FLOAT\n      value_double: 0\n      "
       "value_double: 0\n      value_double: 0\n      value_double: 0\n      "
-      "value_double: 0\n    }\n  }\n  children {\n    name: "
+      "value_double: 0\n    }\n    accelerator_exec_micros: 0\n    "
+      "cpu_exec_micros: 0\n    total_accelerator_exec_micros: 0\n    "
+      "total_cpu_exec_micros: 0\n  }\n  children {\n    name: "
       "\"conv2d/kernel\"\n    exec_micros: 0\n    requested_bytes: 0\n    "
       "parameters: 135\n    total_exec_micros: 0\n    total_requested_bytes: "
       "0\n    total_parameters: 135\n    float_ops: 0\n    total_float_ops: "
@@ -143,7 +146,11 @@ TEST_F(TFProfTensorTest, Basics) {
       "value_double: 0.19068\n      value_double: 0.220352\n      "
       "value_double: -0.255741\n      value_double: 0.110853\n      "
       "value_double: 0.146625\n      value_double: 0.167754\n      "
-      "value_double: 0.249554\n    }\n  }\n  float_ops: 0\n  total_float_ops: "
+      "value_double: 0.249554\n    }\n    accelerator_exec_micros: 0\n    "
+      "cpu_exec_micros: 0\n    total_accelerator_exec_micros: 0\n    "
+      "total_cpu_exec_micros: 0\n  }\n  float_ops: 0\n  total_float_ops: 0\n  "
+      "accelerator_exec_micros: 0\n  cpu_exec_micros: 0\n  "
+      "total_accelerator_exec_micros: 0\n  total_cpu_exec_micros: "
       "0\n}\nchildren {\n  name: \"conv2d_1\"\n  exec_micros: 0\n  "
       "requested_bytes: 0\n  total_exec_micros: 0\n  total_requested_bytes: "
       "0\n  total_parameters: 230\n  children {\n    name: \"conv2d_1/bias\"\n "
@@ -152,7 +159,9 @@ TEST_F(TFProfTensorTest, Basics) {
       "total_parameters: 5\n    float_ops: 0\n    total_float_ops: 0\n    "
       "tensor_value {\n      dtype: DT_FLOAT\n      value_double: 0\n      "
       "value_double: 0\n      value_double: 0\n      value_double: 0\n      "
-      "value_double: 0\n    }\n  }\n  children {\n    name: "
+      "value_double: 0\n    }\n    accelerator_exec_micros: 0\n    "
+      "cpu_exec_micros: 0\n    total_accelerator_exec_micros: 0\n    "
+      "total_cpu_exec_micros: 0\n  }\n  children {\n    name: "
       "\"conv2d_1/kernel\"\n    exec_micros: 0\n    requested_bytes: 0\n    "
       "parameters: 225\n    total_exec_micros: 0\n    total_requested_bytes: "
       "0\n    total_parameters: 225\n    float_ops: 0\n    total_float_ops: "
@@ -268,9 +277,14 @@ TEST_F(TFProfTensorTest, Basics) {
       "value_double: 0.237298\n      value_double: -0.0896481\n      "
       "value_double: -0.0605349\n      value_double: 0.231679\n      "
       "value_double: -0.123842\n      value_double: 0.0858642\n      "
-      "value_double: 0.23111\n      value_double: 0.0491742\n    }\n  }\n  "
-      "float_ops: 0\n  total_float_ops: 0\n}\nfloat_ops: 0\ntotal_float_ops: "
-      "0\n",
+      "value_double: 0.23111\n      value_double: 0.0491742\n    }\n    "
+      "accelerator_exec_micros: 0\n    cpu_exec_micros: 0\n    "
+      "total_accelerator_exec_micros: 0\n    total_cpu_exec_micros: 0\n  }\n  "
+      "float_ops: 0\n  total_float_ops: 0\n  accelerator_exec_micros: 0\n  "
+      "cpu_exec_micros: 0\n  total_accelerator_exec_micros: 0\n  "
+      "total_cpu_exec_micros: 0\n}\nfloat_ops: 0\ntotal_float_ops: "
+      "0\naccelerator_exec_micros: 0\ncpu_exec_micros: "
+      "0\ntotal_accelerator_exec_micros: 0\ntotal_cpu_exec_micros: 0\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
 }

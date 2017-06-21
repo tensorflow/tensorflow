@@ -295,6 +295,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     - if `column` is a `_DenseColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
 
+  Loss is calculated by using softmax cross entropy.
   """
 
   def __init__(self,
@@ -453,6 +454,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     - if `column` is a `_DenseColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
 
+  Loss is calculated by using mean squared error.
   """
 
   def __init__(self,

@@ -42,11 +42,9 @@ class HloCostAnalysis : public DfsHloVisitor {
   explicit HloCostAnalysis(const ShapeSizeFunction& shape_size)
       : shape_size_(shape_size) {}
 
-  Status HandleElementwiseUnary(HloInstruction* hlo, HloOpcode opcode,
-                                HloInstruction* operand) override;
-  Status HandleElementwiseBinary(HloInstruction* hlo, HloOpcode opcode,
-                                 HloInstruction* lhs,
-                                 HloInstruction* rhs) override;
+  Status HandleElementwiseUnary(HloInstruction* hlo, HloOpcode opcode) override;
+  Status HandleElementwiseBinary(HloInstruction* hlo,
+                                 HloOpcode opcode) override;
   Status HandleConstant(HloInstruction* constant,
                         const Literal& literal) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element,
@@ -58,14 +56,15 @@ class HloCostAnalysis : public DfsHloVisitor {
                        HloInstruction* lhs, HloInstruction* rhs) override;
   Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
                      HloInstruction* arg, HloInstruction* max) override;
+  Status HandleReducePrecision(HloInstruction* hlo,
+                               HloInstruction* operand) override;
   Status HandleConcatenate(
       HloInstruction* concatenate,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
   Status HandleSend(HloInstruction* send) override;
   Status HandleRecv(HloInstruction* recv) override;
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* operand) override;
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleConvert(HloInstruction* convert) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
                    HloInstruction* rhs) override;
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
@@ -83,6 +82,7 @@ class HloCostAnalysis : public DfsHloVisitor {
                       HloInstruction* init_value,
                       tensorflow::gtl::ArraySlice<int64> dimensions,
                       HloComputation* function_handle) override;
+  Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call,
