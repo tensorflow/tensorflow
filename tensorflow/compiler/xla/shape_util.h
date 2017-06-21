@@ -93,6 +93,7 @@ class ShapeUtil {
  public:
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
+  // Precondition: !IsTuple(shape)
   static int64 ElementsIn(const Shape& shape);
 
   // Returns true if 'shape' has zero elements.
