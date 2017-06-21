@@ -267,9 +267,10 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     return false;
   }
   // Only fold ops with a CPU implementation available.
-  if (device_types[0] != DeviceType(DEVICE_CPU)) {
+  if (device_types.empty()) {
     return false;
   }
+  DCHECK_EQ(DeviceType(DEVICE_CPU), device_types[0]);
 
   // Folding not applicable to ops with no inputs.
   if (node.input().empty()) {
