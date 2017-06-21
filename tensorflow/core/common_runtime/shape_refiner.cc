@@ -666,10 +666,10 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
 
 bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
                                     ShapeHandle s1) {
-  if (c->Rank(s0) != c->Rank(s1)) {
+  if (!c->RankKnown(s0)) {
+    return !c->RankKnown(s1);
+  } else if (!c->RankKnown(s1) || c->Rank(s0) != c->Rank(s1)) {
     return false;
-  } else if (!c->RankKnown(s0)) {
-    return true;
   }
 
   for (int i = 0; i < c->Rank(s0); ++i) {
