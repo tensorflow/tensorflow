@@ -70,13 +70,13 @@ Status ExecutorTransferManager::TransferLiteralFromDevice(
   }
 
   *literal->mutable_shape() = device_shape;
-  LiteralUtil::Reserve(ShapeUtil::ElementsIn(device_shape), literal);
+  Literal::Reserve(ShapeUtil::ElementsIn(device_shape), literal);
   TF_RETURN_IF_ERROR(TransferBufferFromDevice(
       executor, source, ShapeUtil::ByteSizeOf(device_shape),
-      LiteralUtil::MutableInternalData(literal)));
+      Literal::MutableInternalData(literal)));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
     literal->Swap(
-        LiteralUtil::Relayout(*literal, literal_shape.layout()).get());
+        Literal::Relayout(*literal, literal_shape.layout()).get());
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -134,7 +134,7 @@ Status ExecutorTransferManager::TransferLiteralToDevice(
   }
 
   return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
-                                LiteralUtil::InternalData(literal),
+                                Literal::InternalData(literal),
                                 destination);
 }
 
