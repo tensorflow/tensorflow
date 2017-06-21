@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -371,6 +372,12 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                                             std::vector<NodeDef>* outputs) {
   TensorVector inputs;
+  auto inputs_cleanup = gtl::MakeCleanup([&inputs] {
+    for (const auto& input : inputs) {
+      delete input.tensor;
+    }
+  });
+
   for (const auto& input : node.input()) {
     if (IsControlInput(input)) {
       break;
@@ -383,9 +390,6 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 
   TensorVector output_tensors;
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
-  for (const auto& input : inputs) {
-    delete input.tensor;
-  }
   if (output_tensors.empty()) {
     Status(error::INVALID_ARGUMENT, "Expected at least one output.");
   }
