@@ -115,6 +115,36 @@ TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
   ComputeAndCompareR0<int32>(&builder, 5, {});
 }
 
+TEST_F(WhileTest, WhileWithPredicateResult) {
+  auto result_shape = ShapeUtil::MakeShape(PRED, {});
+
+  // Create a computation for the condition: run until condition is true.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    builder.Ne(builder.ConstantR0<bool>(true), prev);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body: or condition with true.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto result = builder.LogicalOr(prev, builder.ConstantR0<bool>(true));
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, TestName());
+  auto init = builder.Ne(builder.ConstantR0<bool>(false),
+                         builder.ConstantR0<bool>(true));
+  auto result = builder.While(condition, body, init);
+
+  ComputeAndCompareR0<bool>(&builder, true, {});
+}
+
 // Tests a while node when the result type T is a vector.
 //
 // All constants are chosen to produce exact results.
@@ -280,6 +310,53 @@ TEST_F(WhileTest, WhileWithTupleResult) {
       Literal::MakeTuple({expected_counter.get(), expected_data.get()});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+}
+
+TEST_F(WhileTest, WhileWithPredicateTupleResult) {
+  std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
+                                       ShapeUtil::MakeShape(PRED, {})};
+  Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
+
+  // Create a computation for the condition.
+  // Repeat for 5 iterations.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    builder.Gt(builder.ConstantR0<int32>(5), iteration);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add 1 to the iteration variable and or the predicate with true
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    auto pred = builder.GetTupleElement(prev, 1);
+    auto new_pred = builder.LogicalOr(pred, builder.ConstantR0<bool>(true));
+    auto result = builder.Tuple(
+        {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_pred});
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, "while");
+  auto init = builder.Tuple({builder.ConstantR0<int32>(0),
+                             builder.Ne(builder.ConstantR0<bool>(false),
+                                        builder.ConstantR0<bool>(true))});
+  auto result = builder.While(condition, body, init);
+  VLOG(2) << "while = "
+          << ShapeUtil::HumanString(
+                 *builder.GetShape(result).ConsumeValueOrDie());
+
+  auto expected_counter = Literal::CreateR0<int32>(5);
+  auto expected_predicate = Literal::CreateR0<bool>(true);
+  auto expected =
+      Literal::MakeTuple({expected_counter.get(), expected_predicate.get()});
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0));
 }
 
 // Tests two while nodes when the result type T is a Tuple and the second

@@ -151,6 +151,31 @@ XLA_TEST_F(TupleTest, TupleGTEToTuple) {
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
+XLA_TEST_F(TupleTest, SelectBetweenPredTuples) {
+  ComputationBuilder b(client_, TestName());
+  ComputationDataHandle v1, v2;
+
+  for (bool direction : {false, true}) {
+    std::unique_ptr<GlobalData> v1_data =
+        CreateR0Parameter<float>(0.0f, /*parameter_number=*/0, /*name=*/"v1",
+                                 /*builder=*/&b, /*data_handle=*/&v1);
+    std::unique_ptr<GlobalData> v2_data =
+        CreateR0Parameter<float>(1.0f, /*parameter_number=*/1, /*name=*/"v2",
+                                 /*builder=*/&b, /*data_handle=*/&v2);
+    auto v1_gt = b.Gt(v1, v2);             // false
+    auto v2_gt = b.Gt(v2, v1);             // true
+    auto v1_v2 = b.Tuple({v1_gt, v2_gt});  // {false, true}
+    auto v2_v1 = b.Tuple({v2_gt, v1_gt});  // {true, false}
+    auto select = b.Select(direction ? v1_gt : v2_gt, v1_v2, v2_v1);
+    auto expected =
+        Literal::MakeTuple({Literal::CreateR0<bool>(direction).get(),
+                            Literal::CreateR0<bool>(!direction).get()});
+
+    ComputeAndCompareTuple(&b, *expected, {v1_data.get(), v2_data.get()},
+                           error_spec_);
+  }
+}
+
 // Builds two new tuples from an existing tuple (by means of GetTupleElement),
 // then adds up the components of the new tuples.
 XLA_TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
