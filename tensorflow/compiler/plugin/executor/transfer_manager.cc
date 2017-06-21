@@ -147,6 +147,11 @@ Status ExecutorTransferManager::TransferLiteralToInfeed(
   return Status::OK();
 }
 
+Status ExecutorTransferManager::TransferBufferToInfeed(
+    se::StreamExecutor* executor, int64 size, const void* source) {
+  return Unimplemented("Transfer to Infeed");
+}
+
 Status ExecutorTransferManager::TransferLiteralFromOutfeed(
     perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
     Literal* literal) {
