@@ -1372,7 +1372,13 @@ class Operation(object):
       assigned, or an empty string if it has not been assigned to a
       device.
     """
-    return self._node_def.device
+    if _USE_C_API:
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._node_def.device == c_api.TF_OperationDevice(self._c_op)
+      return c_api.TF_OperationDevice(self._c_op)
+    else:
+      return self._node_def.device
 
   def _set_device(self, device):
     """Set the device of this operation.
