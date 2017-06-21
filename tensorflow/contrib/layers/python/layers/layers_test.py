@@ -1703,13 +1703,6 @@ class BatchNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'Weighted mean and variance'):
         _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
 
-  def testParamRegularizersFused(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
-      with self.assertRaisesRegexp(ValueError,
-                                   'Regularizers are not currently'):
-        _layers.batch_norm(inputs, param_regularizers={}, fused=True)
-
   def _testCreateOp(self, fused):
     height, width = 3, 3
     with self.test_session():
@@ -1780,7 +1773,8 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session():
       images = random_ops.random_uniform((5, height, width, 3), seed=1)
-      _layers.batch_norm(images, scale=True, zero_debias_moving_mean=True)
+      _layers.batch_norm(
+          images, scale=True, zero_debias_moving_mean=True, fused=False)
       self.assertEqual(len(variables.get_model_variables()), 6)
       moving_mean = variables.get_variables_by_name('moving_mean')[0]
       moving_variance = variables.get_variables_by_name('moving_variance')[0]
@@ -1874,7 +1868,8 @@ class BatchNormTest(test.TestCase):
         images,
         decay=0.1,
         updates_collections=None,
-        zero_debias_moving_mean=True)
+        zero_debias_moving_mean=True,
+        fused=False)
     moving_mean = variables.get_variables_by_name('BatchNorm/moving_mean')[0]
     moving_variance = variables.get_variables_by_name('moving_variance')[0]
     biased = variables.get_variables_by_name('biased')[0]
@@ -2523,7 +2518,7 @@ class BatchNormTest(test.TestCase):
 
   def _runBatchNormalizationWithFormat(self, shape, data_format, is_training):
     channels = shape[-1]
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       images = np.arange(np.product(shape), dtype=np.float32).reshape(shape)
       beta = init_ops.constant_initializer(
           np.arange(
@@ -2561,20 +2556,22 @@ class BatchNormTest(test.TestCase):
       return sess.run(output)
 
   def testNHWCAndNCHWInferenceProduceSameOutput(self):
-    for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
-      nhwc = self._runBatchNormalizationWithFormat(
-          data_format='NHWC', shape=shape, is_training=False)
-      nchw = self._runBatchNormalizationWithFormat(
-          data_format='NCHW', shape=shape, is_training=False)
-      self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
+    if test.is_gpu_available(cuda_only=True):
+      for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
+        nhwc = self._runBatchNormalizationWithFormat(
+            data_format='NHWC', shape=shape, is_training=False)
+        nchw = self._runBatchNormalizationWithFormat(
+            data_format='NCHW', shape=shape, is_training=False)
+        self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
   def testNHWCAndNCHWTrainingProduceSameOutput(self):
-    for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
-      nhwc = self._runBatchNormalizationWithFormat(
-          data_format='NHWC', shape=shape, is_training=True)
-      nchw = self._runBatchNormalizationWithFormat(
-          data_format='NCHW', shape=shape, is_training=True)
-      self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
+    if test.is_gpu_available(cuda_only=True):
+      for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
+        nhwc = self._runBatchNormalizationWithFormat(
+            data_format='NHWC', shape=shape, is_training=True)
+        nchw = self._runBatchNormalizationWithFormat(
+            data_format='NCHW', shape=shape, is_training=True)
+        self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
 
 class LayerNormTest(test.TestCase):

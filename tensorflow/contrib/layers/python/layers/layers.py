@@ -257,27 +257,33 @@ def _fused_batch_norm(
                                                       'beta')
     if not param_initializers:
       param_initializers = {}
-    beta_initializer = param_initializers.get('beta',
-                                              init_ops.zeros_initializer())
-    beta = variables.model_variable(
-        'beta',
-        shape=params_shape,
-        dtype=dtype,
-        initializer=beta_initializer,
-        collections=beta_collections,
-        trainable=trainable_beta)
-    trainable_gamma = trainable and scale
-    gamma_collections = utils.get_variable_collections(variables_collections,
-                                                       'gamma')
-    gamma_initializer = param_initializers.get('gamma',
-                                               init_ops.ones_initializer())
-    gamma = variables.model_variable(
-        'gamma',
-        shape=params_shape,
-        dtype=dtype,
-        initializer=gamma_initializer,
-        collections=gamma_collections,
-        trainable=trainable_gamma)
+    if center:
+      beta_initializer = param_initializers.get('beta',
+                                                init_ops.zeros_initializer())
+      beta = variables.model_variable(
+          'beta',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=beta_initializer,
+          collections=beta_collections,
+          trainable=trainable_beta)
+    else:
+      beta = array_ops.constant(0.0, shape=params_shape)
+
+    if scale:
+      gamma_collections = utils.get_variable_collections(
+          variables_collections, 'gamma')
+      gamma_initializer = param_initializers.get('gamma',
+                                                 init_ops.ones_initializer())
+      gamma = variables.model_variable(
+          'gamma',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=gamma_initializer,
+          collections=gamma_collections,
+          trainable=trainable)
+    else:
+      gamma = array_ops.constant(1.0, shape=params_shape)
 
     # Create moving_mean and moving_variance variables and add them to the
     # appropriate collections.
@@ -449,7 +455,8 @@ def batch_norm(inputs,
       then the batch normalization uses weighted mean and
       variance. (This can be used to correct for bias in training
       example selection.)
-    fused:  Use nn.fused_batch_norm if True, nn.batch_normalization otherwise.
+    fused: if `True`, use a faster, fused implementation based on
+      nn.fused_batch_norm. If `None`, use the fused implementation if possible.
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
     zero_debias_moving_mean: Use zero_debias for moving_mean. It creates a new
       pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
@@ -473,7 +480,6 @@ def batch_norm(inputs,
 
   Raises:
     ValueError: If `batch_weights` is not None and `fused` is True.
-    ValueError: If `param_regularizers` is not None and `fused` is True.
     ValueError: If `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: If the rank of `inputs` is undefined.
     ValueError: If rank or channels dimension of `inputs` is undefined.
@@ -487,6 +493,21 @@ def batch_norm(inputs,
                        'supported for fused batch norm.')
     if renorm:
       raise ValueError('Renorm is not supported for fused batch norm.')
+
+  # Only use _fused_batch_norm (1) if fused is set True or if it is
+  # possible to use (currently it doesn't support batch weights,
+  # renorm, and the case when rank is neither 2 nor 4),
+  # and (2) if used with zero_debias_moving_mean, or an input shape of rank 2,
+  # or non-default updates_collections (not implemented in
+  # normalization_layers.BatchNormalization yet); otherwise use the fused
+  # implementation in normalization_layers.BatchNormalization.
+  inputs = ops.convert_to_tensor(inputs)
+  rank = inputs.get_shape().ndims
+  feature_supported = batch_weights is None and not renorm and rank in [2, 4]
+  possible_to_fuse = fused is None and feature_supported
+  if (fused or possible_to_fuse) and (
+      zero_debias_moving_mean or rank == 2 or
+      updates_collections is not ops.GraphKeys.UPDATE_OPS):
     return _fused_batch_norm(
         inputs,
         decay=decay,
@@ -552,7 +573,8 @@ def batch_norm(inputs,
           renorm_momentum=renorm_decay,
           name=sc.name,
           _scope=sc,
-          _reuse=reuse)
+          _reuse=reuse,
+          fused=fused)
       outputs = layer.apply(inputs, training=is_training)
 
       # Add variables to collections.
