@@ -1230,6 +1230,23 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_value",
+    srcs = ["hlo_value.cc"],
+    hdrs = ["hlo_value.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "hlo_dataflow_analysis",
     srcs = [
         "hlo_dataflow_analysis.cc",
@@ -1241,8 +1258,8 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_ordering",
+        ":hlo_value",
         ":liveness_util",
-        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -1250,7 +1267,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -1277,20 +1293,34 @@ cc_test(
 )
 
 cc_library(
+    name = "hlo_buffer",
+    srcs = ["hlo_buffer.cc"],
+    hdrs = ["hlo_buffer.h"],
+    deps = [
+        ":hlo",
+        ":hlo_value",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "hlo_alias_analysis",
-    srcs = [
-        "hlo_alias_analysis.cc",
-    ],
-    hdrs = [
-        "hlo_alias_analysis.h",
-    ],
+    srcs = ["hlo_alias_analysis.cc"],
+    hdrs = ["hlo_alias_analysis.h"],
     deps = [
         ":call_graph",
         ":hlo",
+        ":hlo_buffer",
         ":hlo_dataflow_analysis",
-        ":logical_buffer",
-        "//tensorflow/compiler/xla:shape_tree",
+        ":hlo_value",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
