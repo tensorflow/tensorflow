@@ -71,6 +71,9 @@ py_library(
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/text:text_py",
         "//tensorflow/contrib/tfprof",
+        "//tensorflow/contrib/tpu:tpu_estimator",
+        "//tensorflow/contrib/tpu:tpu_helper_library",
+        "//tensorflow/contrib/tpu:tpu_py",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
     ],
@@ -106,6 +109,7 @@ cc_library(
         "//tensorflow/contrib/seq2seq:beam_search_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
+        "//tensorflow/contrib/tpu:all_ops",
     ],
 )
 
