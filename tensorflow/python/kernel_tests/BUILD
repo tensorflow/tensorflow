@@ -1958,6 +1958,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "tile_op_test",
+    size = "small",
+    srcs = ["tile_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+cuda_py_test(
     name = "trace_op_test",
     size = "small",
     srcs = ["trace_op_test.py"],

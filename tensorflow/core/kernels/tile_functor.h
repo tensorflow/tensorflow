@@ -47,8 +47,8 @@ void TileSimple(const Device& d, Tensor* out, const Tensor& in);
 template <typename Device, typename T, int NDIM>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                     const gtl::ArraySlice<int32>& broadcast_array) {
-  typename TTypes<T, NDIM>::ConstTensor x = in.tensor<T, NDIM>();
-  typename TTypes<T, NDIM>::Tensor y = out->tensor<T, NDIM>();
+  auto x = in.tensor<T, NDIM>();
+  auto y = out->tensor<T, NDIM>();
 
   Eigen::array<int32, NDIM> b;
   for (int i = 0; i < NDIM; ++i) b[i] = broadcast_array[i];
@@ -63,8 +63,8 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
 template <typename Device, typename T>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                     const gtl::ArraySlice<int32>&) {
-  typename TTypes<T, 0>::ConstTensor x = in.tensor<T, 0>();
-  typename TTypes<T, 0>::Tensor y = out->tensor<T, 0>();
+  auto x = in.tensor<T, 0>();
+  auto y = out->tensor<T, 0>();
   // In the scalar case we simply copy the input.
   y.device(d) = x;
 }
