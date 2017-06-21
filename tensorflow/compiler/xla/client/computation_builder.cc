@@ -1438,6 +1438,26 @@ ComputationDataHandle ComputationBuilder::BatchNormTraining(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::BatchNormInference(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& offset, const ComputationDataHandle& mean,
+    const ComputationDataHandle& variance, float epsilon, int64 feature_index) {
+  // TODO(b/62843645): Implement BatchNormInference.
+  NoteError(Unimplemented("BatchNormInference is not implemented yet."));
+  return ComputationDataHandle();
+}
+
+ComputationDataHandle ComputationBuilder::BatchNormGrad(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& batch_mean,
+    const ComputationDataHandle& batch_var,
+    const ComputationDataHandle& grad_output, float epsilon,
+    int64 feature_index) {
+  // TODO(b/62843645): Implement BatchNormGrad.
+  NoteError(Unimplemented("BatchNormGrad is not implemented yet."));
+  return ComputationDataHandle();
+}
+
 ComputationDataHandle ComputationBuilder::CrossReplicaSum(
     const ComputationDataHandle& operand) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
