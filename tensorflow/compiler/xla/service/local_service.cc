@@ -48,13 +48,6 @@ namespace se = ::perftools::gputools;
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
-    perftools::gputools::Platform* platform) {
-  ServiceOptions default_options;
-  default_options.set_platform(platform);
-  return NewService(default_options);
-}
-
-/* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
     const ServiceOptions& options) {
   perftools::gputools::Platform* platform = options.platform();
   if (platform == nullptr) {

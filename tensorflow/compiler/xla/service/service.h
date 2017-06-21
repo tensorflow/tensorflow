@@ -126,7 +126,7 @@ class Service : public ServiceInterface {
   // least N * R devices must be available. The devices are assigned based on
   // the device ordinals such that the first R available devices are assigned to
   // the first set of replicas, and the next R devices to the second set of
-  // replicas, etc. Each returned device handles represent the device with the
+  // replicas, etc. Each returned device handle represents the device with the
   // replica id 0.
   tensorflow::Status GetDeviceHandles(
       const GetDeviceHandlesRequest* arg,
