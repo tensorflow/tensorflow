@@ -53,13 +53,6 @@ CreateConv2D(poplar::Graph &graph,
             port::StrCat("Invalid window dimension count on ", inst->name()));
   }
 
-  if (window.dimensions(0).window_dilation() != 1 ||
-      window.dimensions(1).window_dilation() != 1) {
-    return port::Status(
-            port::error::FAILED_PRECONDITION,
-            port::StrCat("Window dilation not supported on ", inst->name()));
-  }
-
   const std::string& dtype(in.elementType());
 
   const std::vector<size_t> &input_dims = in.shape();
@@ -86,13 +79,19 @@ CreateConv2D(poplar::Graph &graph,
   unsigned int di_y = window.dimensions(0).base_dilation();
   unsigned int di_x = window.dimensions(1).base_dilation();
 
+  unsigned int dw_y = window.dimensions(0).window_dilation();
+  unsigned int dw_x = window.dimensions(1).window_dilation();
+
   popconv::ConvParams params(dtype,
                              {n_b, n_y, n_x, n_i},
                              {f_y, f_x, n_o, n_i},
                              {s_y, s_x},
                              {pl_y, pl_x},
                              {pu_y, pu_x},
-                             {di_y, di_x});
+                             {di_y, di_x},
+                             {0, 0},
+                             {0, 0},
+                             {dw_y, dw_x});
 
   poplar::program::Sequence prog;
 
