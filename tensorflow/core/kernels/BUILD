@@ -732,26 +732,6 @@ tf_kernel_library(
     deps = ARRAY_DEPS,
 )
 
-
-tf_cc_test(
-    name = "tile_op_test",
-    size = "small",
-    srcs = ["tile_op_test.cc"],
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        ":tile_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
 tf_kernel_library(
     name = "transpose_op",
     srcs = [
