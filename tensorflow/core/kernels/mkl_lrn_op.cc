@@ -22,9 +22,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -33,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "third_party/mkl/include/mkl_dnn.h"
+#include "third_party/mkl/include/mkl_dnn_types.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
@@ -66,11 +66,10 @@ class MklLRNOp : public OpKernel {
   explicit MklLRNOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                " larger than int max"));
+    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                        " larger than int max"));
     depth_radius_ = static_cast<size_t>(depth_radius64);
 
     OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
@@ -93,10 +92,9 @@ class MklLRNOp : public OpKernel {
                               : input.dims();
     OP_REQUIRES(context, mkl_context.in_dims == 4,
                 errors::InvalidArgument("input must be 4-dimensional"));
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input.NumElements(), std::numeric_limits<int>::max()),
-        errors::InvalidArgument("argument to LRN too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input.NumElements(),
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("argument to LRN too large"));
 
     if (!input_in_mkl_format) {
       mkl_context.MklDefaultToEigen(context, depth_radius_, bias_, alpha_,
@@ -112,8 +110,10 @@ class MklLRNOp : public OpKernel {
             static_cast<dnnLayout_t>(mkl_context.input_shape.GetCurLayout());
         workspace_enabled_ = true;
       } else {
+        Tensor converted_tensor =
+            ConvertMklToTF<T>(context, input, mkl_context.input_shape);
         mkl_context.MklDefaultToEigen(context, depth_radius_, bias_, alpha_,
-                                      beta_, input);
+                                      beta_, converted_tensor);
         return;
       }
     }
@@ -160,9 +160,7 @@ class MklLRNOp : public OpKernel {
     MklShape input_shape;
     dnnPrimitive_t lrn_fwd = nullptr;
     dnnPrimitive_t convert_input = nullptr;
-    /* dnnPrimitive_t convert_output; */
     dnnLayout_t lt_input = nullptr;
-    /* dnnLayout_t lt_output; */
     dnnLayout_t lt_internal_input = nullptr;
     dnnLayout_t lt_internal_workspace = nullptr;
     dnnLayout_t lt_internal_output = nullptr;
@@ -267,7 +265,7 @@ class MklLRNOp : public OpKernel {
     }
 
     // Fallback implementation - Taken from lrn_op.cc
-    // TODO(intelft) Check if we can use EigenLRNOp directly instead of making a
+    // TODO(inteltf) Check if we can use EigenLRNOp directly instead of making a
     // copy.
     void MklDefaultToEigen(OpKernelContext* context, int depth_radius_,
                            float bias_, float alpha_, float beta_,
@@ -336,11 +334,10 @@ class MklLRNGradOp : public OpKernel {
   explicit MklLRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                " larger than int max"));
+    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                        " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
@@ -378,6 +375,7 @@ class MklLRNGradOp : public OpKernel {
       mkl_context.MklDefaultToEigen(context);
       return;
     }
+
     if (ingrad_in_mkl_format || inimage_in_mkl_format) {
       const MklShape* tmp_mkl_shape = (ingrad_in_mkl_format)
                                           ? &mkl_context.ingrad_shape
@@ -459,11 +457,11 @@ class MklLRNGradOp : public OpKernel {
         const_cast<void*>(static_cast<const void*>(output->flat<T>().data()));
 
     Tensor mkl_tmp_input_buf_tensor, mkl_tmp_image_buf_tensor,
-        mkl_tmp_outimage_buf_tensor, mkl_tmp_workspace_buf_tensor;
+        mkl_tmp_outimage_buf_tensor;
     // Convert Inputs if needed
-    mkl_context.MklPrepareLRNGradInput(
-        context, &mkl_tmp_input_buf_tensor, &mkl_tmp_image_buf_tensor,
-        &mkl_tmp_outimage_buf_tensor, &mkl_tmp_workspace_buf_tensor);
+    mkl_context.MklPrepareLRNGradInput(context, &mkl_tmp_input_buf_tensor,
+                                       &mkl_tmp_image_buf_tensor,
+                                       &mkl_tmp_outimage_buf_tensor);
 
     // We do not do any conversion for output. But we simply emit it
     // in MKL format.
@@ -489,14 +487,11 @@ class MklLRNGradOp : public OpKernel {
     MklShape ingrad_shape, inimage_shape, outimage_shape;
     dnnPrimitive_t lrn_bwd = nullptr;
     dnnPrimitive_t convert_input = nullptr;
-    /* dnnPrimitive_t convert_output; */
     dnnLayout_t lt_input = nullptr;
     dnnLayout_t lt_output = nullptr;
     dnnLayout_t lt_bdw_input = nullptr;
     dnnLayout_t lt_workspace = nullptr;
     dnnLayout_t lt_internal_input = nullptr;
-    /* dnnLayout_t lt_internal_workspace;
-    dnnLayout_t lt_internal_output; */
     void* res_lrn_bwd[dnnResourceNumber];
 
     // prepare mkl input
@@ -523,11 +518,13 @@ class MklLRNGradOp : public OpKernel {
     void MklPrepareLRNGradInput(OpKernelContext* context,
                                 Tensor* mkl_tmp_input_buf_tensor,
                                 Tensor* mkl_tmp_image_buf_tensor,
-                                Tensor* mkl_tmp_outimage_buf_tensor,
-                                Tensor* mkl_tmp_workspace_buf_tensor) {
+                                Tensor* mkl_tmp_outimage_buf_tensor) {
       const Tensor& in_grads = MklGetInput(context, 0);
       const Tensor& in_image = MklGetInput(context, 1);
       const Tensor& out_image = MklGetInput(context, 2);
+      const Tensor& workspace = MklGetInput(
+          context,
+          3); /*Worskpsace is enabled, get the buffer to the workspace */
 
       void* user_input = const_cast<void*>(
           static_cast<const void*>(in_grads.flat<T>().data()));
@@ -535,11 +532,17 @@ class MklLRNGradOp : public OpKernel {
           static_cast<const void*>(in_image.flat<T>().data()));
       void* user_fwd_output = const_cast<void*>(
           static_cast<const void*>(out_image.flat<T>().data()));
+      void* workspace_buffer = const_cast<void*>(
+          static_cast<const void*>(workspace.flat<T>().data()));
+
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&lt_workspace, lrn_bwd,
                                                 dnnResourceWorkspace),
                E_SUCCESS);
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&lt_bdw_input, lrn_bwd,
                                                 dnnResourceDiffDst),
+               E_SUCCESS);
+      CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&lt_internal_input, lrn_bwd,
+                                                dnnResourceSrc),
                E_SUCCESS);
 
       bool ingrad_in_mkl_format = ingrad_shape.IsMklTensor();
@@ -569,63 +572,74 @@ class MklLRNGradOp : public OpKernel {
         }
       }
 
-// Although MKL documentation for LRN does not specify setting/getting
-// of dnnResourceSrc and dnnResourceDst, Caffe code sets dnnResourceSrc.
-// So we set dnnResourceSrc here. But we do not know why we are setting
-// dnnResourceDst.
-#if 0
-    // NOTE: The code below is kept just so that we know how we should handle
-    // dnnResourceSrc if the primitive layout for dnnResourceSrc was supported.
-
-    if (!dnnLayoutCompare_F32(lt_internal_input,
-         static_cast<dnnLayout_t>inimage_shape.GetCurLayout())) {
-      AllocTmpBuffer(context, mkl_tmp_image_buf_tensor, lt_internal_input,
-                     &res_lrn_bwd[dnnResourceSrc]);
-      inimage_shape.GetConvertedFlatData(lt_internal_input,
-                                           user_fwd_input,
-                                           res_lrn_bwd[dnnResourceSrc]);
-    } else {
-      res_lrn_bwd[dnnResourceSrc] = user_fwd_input;
-    }
-#endif
-
-      // Since we cannot get expected layout for dnnResourceSrc, we construct
-      // buffer using
-      // MKL format if input is in MKL format.
-      if (inimage_shape.IsMklTensor()) {
-        AllocTmpBuffer(context, mkl_tmp_image_buf_tensor,
-                       (dnnLayout_t)inimage_shape.GetCurLayout(),
-                       &res_lrn_bwd[dnnResourceSrc]);
+      bool inimage_in_mkl_format = inimage_shape.IsMklTensor();
+      if (inimage_in_mkl_format) {
+        if (!dnnLayoutCompare_F32(
+                lt_internal_input,
+                static_cast<dnnLayout_t>(inimage_shape.GetCurLayout()))) {
+          AllocTmpBuffer(context, mkl_tmp_image_buf_tensor, lt_internal_input,
+                         &res_lrn_bwd[dnnResourceSrc]);
+          ingrad_shape.GetConvertedFlatData(lt_internal_input, user_fwd_input,
+                                            res_lrn_bwd[dnnResourceSrc]);
+        } else {
+          res_lrn_bwd[dnnResourceSrc] = user_fwd_input;
+        }
       } else {
-        res_lrn_bwd[dnnResourceSrc] = user_fwd_input;
+        if (!dnnLayoutCompare_F32(
+                lt_internal_input,
+                static_cast<dnnLayout_t>(inimage_shape.GetCurLayout()))) {
+          CHECK_EQ(dnnConversionCreate_F32(
+                       &convert_input,
+                       static_cast<dnnLayout_t>(inimage_shape.GetCurLayout()),
+                       lt_internal_input),
+                   E_SUCCESS);
+
+          AllocTmpBuffer(context, mkl_tmp_image_buf_tensor, lt_internal_input,
+                         &res_lrn_bwd[dnnResourceSrc]);
+          CHECK_EQ(dnnConversionExecute_F32(convert_input, user_fwd_input,
+                                            res_lrn_bwd[dnnResourceSrc]),
+                   E_SUCCESS);
+          dnnDelete_F32(convert_input);
+        } else {
+          res_lrn_bwd[dnnResourceSrc] = user_fwd_input;
+        }
       }
 
-      // Same comment as above.
-      if (outimage_shape.IsMklTensor()) {
-        AllocTmpBuffer(context, mkl_tmp_outimage_buf_tensor,
-                       (dnnLayout_t)outimage_shape.GetCurLayout(),
-                       &res_lrn_bwd[dnnResourceDst]);
-      } else {
-        res_lrn_bwd[dnnResourceDst] = user_fwd_output;
-      }
-
-      // Allocate buffer for workspace.
-      AllocTmpBuffer(context, mkl_tmp_workspace_buf_tensor, lt_workspace,
-                     &res_lrn_bwd[dnnResourceWorkspace]);
+      res_lrn_bwd[dnnResourceWorkspace] = workspace_buffer;
     }
 
     // Fallback implementation - Taken from lrn_op.cc
     // TODO(intelft) Check if we can use EigenLRNOp directly instead of making a
     // copy.
     void MklDefaultToEigen(OpKernelContext* context) {
-      // CHECK(false);
-      Tensor in_grads = MklGetInput(context, 0);
-      Tensor in_image = MklGetInput(context, 1);
-      Tensor out_image = MklGetInput(context, 2);
+      Tensor in_grads;
+      Tensor in_image;
+      Tensor out_image;
 
       GetMklShape(context, 0, &ingrad_shape);
       GetMklShape(context, 1, &inimage_shape);
       GetMklShape(context, 2, &outimage_shape);
+
+      if (ingrad_shape.IsMklTensor()) {
+        in_grads =
+            ConvertMklToTF<T>(context, MklGetInput(context, 0), ingrad_shape);
+      } else {
+        in_grads = MklGetInput(context, 0);
+      }
+
+      if (inimage_shape.IsMklTensor()) {
+        in_image =
+            ConvertMklToTF<T>(context, MklGetInput(context, 1), inimage_shape);
+      } else {
+        in_image = MklGetInput(context, 1);
+      }
+
+      if (outimage_shape.IsMklTensor()) {
+        out_image =
+            ConvertMklToTF<T>(context, MklGetInput(context, 2), outimage_shape);
+      } else {
+        out_image = MklGetInput(context, 2);
+      }
 
       const int64 batch = static_cast<int64>(in_grads.dim_size(0));
       const int64 rows = static_cast<int64>(in_grads.dim_size(1));
@@ -704,12 +718,12 @@ class MklLRNGradOp : public OpKernel {
 };
 
 #define REGISTER_MKL_LRN_CPU(T)                                     \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRN")                            \
+  REGISTER_KERNEL_BUILDER(Name("_MklLRN")                           \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklLRNOp<T>);                             \
-  REGISTER_KERNEL_BUILDER(Name("_MklLRNGrad")                        \
+  REGISTER_KERNEL_BUILDER(Name("_MklLRNGrad")                       \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \

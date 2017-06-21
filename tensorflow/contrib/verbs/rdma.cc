@@ -271,6 +271,11 @@ RdmaChannel::RdmaChannel(const RdmaAdapter* adapter, const string local_name,
     self_.lid = attr.lid;
     self_.qpn = qp_->qp_num;
     self_.psn = static_cast<uint32_t>(random::New64()) & 0xffffff;
+    union ibv_gid gid;
+    CHECK(!ibv_query_gid(adapter_->context_, (uint8_t)1, 0, &gid))
+        << "Query gid";
+    self_.snp = gid.global.subnet_prefix;
+    self_.iid = gid.global.interface_id;
   }
 
   // create message and ack buffers, then initialize the tables.
@@ -320,11 +325,15 @@ void RdmaChannel::SetRemoteAddress(const RdmaAddress& ra, bool override) {
     remote_.lid = ra.lid;
     remote_.qpn = ra.qpn;
     remote_.psn = ra.psn;
+    remote_.snp = ra.snp;
+    remote_.iid = ra.iid;
     remote_set_ = true;
   } else {
     CHECK(remote_.lid == ra.lid);
     CHECK(remote_.qpn == ra.qpn);
     CHECK(remote_.psn == ra.psn);
+    CHECK(remote_.snp == ra.snp);
+    CHECK(remote_.iid == ra.iid);
   }
 }
 
@@ -467,12 +476,20 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     struct ibv_qp_attr attr;
     memset(&attr, 0, sizeof(ibv_qp_attr));
     attr.qp_state = IBV_QPS_RTR;
-    attr.path_mtu = IBV_MTU_4096;
+    struct ibv_port_attr port_attr;
+    CHECK(!ibv_query_port(adapter_->context_, (uint8_t)1, &port_attr))
+        << "Query port failed";
+    // This assumes both QP's ports are configured with the same MTU
+    attr.path_mtu = port_attr.active_mtu;
     attr.dest_qp_num = remoteAddr.qpn;
     attr.rq_psn = remoteAddr.psn;
     attr.max_dest_rd_atomic = 1;
     attr.min_rnr_timer = 12;
-    attr.ah_attr.is_global = 0;
+    attr.ah_attr.is_global = 1;
+    attr.ah_attr.grh.dgid.global.subnet_prefix = remoteAddr.snp;
+    attr.ah_attr.grh.dgid.global.interface_id = remoteAddr.iid;
+    attr.ah_attr.grh.flow_label = 0;
+    attr.ah_attr.grh.hop_limit = 255;
     attr.ah_attr.dlid = remoteAddr.lid;
     attr.ah_attr.sl = 0;
     attr.ah_attr.src_path_bits = 0;
@@ -765,11 +782,8 @@ void RdmaTensorBuffer::SendNextItem() {
         EnqueueItem(key_with_step_id);
       }
     };
-    // Use default session (legacy_session_)
-    // TODO use WorkerSessionForSession
-    // need to pass in session handle
-    channel_->adapter_->worker_env_->session_mgr->LegacySession()
-        ->rendezvous_mgr->RecvLocalAsync(step_id, parsed, cb);
+    channel_->adapter_->worker_env_->rendezvous_mgr->RecvLocalAsync(step_id,
+                                                                    parsed, cb);
   }
 }
 

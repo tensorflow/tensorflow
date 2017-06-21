@@ -68,6 +68,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:inputs",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -477,6 +478,7 @@ py_test(
 
 py_test(
     name = "tensor_signature_test",
+    size = "small",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -1031,10 +1033,12 @@ py_test(
 py_test(
     name = "export_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["python/learn/utils/export_test.py"],
     srcs_version = "PY2AND3",
     tags = [
         "manual",  # http://b/31032996
+        "notap",  # TODO(b/37950026): Test is flaky
     ],
     deps = [
         ":learn",

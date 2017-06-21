@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.contrib.training.python.training import hparam as hparam_lib
@@ -68,7 +67,8 @@ def _wrapped_experiment_fn_with_uid_check(experiment_fn, require_hparams=False):
     if not isinstance(run_config, run_config_lib.RunConfig):
       raise ValueError('`run_config` must be `RunConfig` instance')
     if not run_config.model_dir:
-      raise ValueError('Must specify a model directory in `run_config`.')
+      raise ValueError(
+          'Must specify a model directory `model_dir` in `run_config`.')
     if hparams is not None and not isinstance(hparams, hparam_lib.HParams):
       raise ValueError('`hparams` must be `HParams` instance')
     if require_hparams and hparams is None:
@@ -110,6 +110,10 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
   Example with `run_config` (Recommended):
   ```
     def _create_my_experiment(run_config, hparams):
+
+        # You can change a subset of the run_config properties as
+        #   run_config = run_config.replace(save_checkpoints_steps=500)
+
         return tf.contrib.learn.Experiment(
           estimator=my_estimator(config=run_config, hparams=hparams),
           train_input_fn=my_train_input,
@@ -118,8 +122,17 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
     learn_runner.run(
       experiment_fn=_create_my_experiment,
       run_config=run_config_lib.RunConfig(model_dir="some/output/dir"),
-      schedule="train",
+      schedule="train_and_evaluate",
       hparams=_create_default_hparams())
+  ```
+  or simply as
+  ```
+    learn_runner.run(
+      experiment_fn=_create_my_experiment,
+      run_config=run_config_lib.RunConfig(model_dir="some/output/dir"))
+  ```
+  if `hparams` is not used by the `Estimator`. On a single machine, `schedule`
+  defaults to `train_and_evaluate`.
 
   Example with `output_dir` (deprecated):
   ```
@@ -141,13 +154,14 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
       to create the `Estimator` (passed as `model_dir` to its constructor). It
       must return an `Experiment`. For this case, `run_config` and `hparams`
       must be None.
-      2) It accpets two arguments `run_config` and `hparams`, which should be
+      2) It accepts two arguments `run_config` and `hparams`, which should be
       used to create the `Estimator` (`run_config` passed as `config` to its
       constructor; `hparams` used as the hyper-paremeters of the model).
       It must return an `Experiment`. For this case, `output_dir` must be None.
     output_dir: Base output directory [Deprecated].
     schedule: The name of the  method in the `Experiment` to run.
-    run_config: `RunConfig` instance. If set, `output_dir` must be None.
+    run_config: `RunConfig` instance. The `run_config.model_dir` must be
+      non-empty. If `run_config` is set, `output_dir` must be None.
     hparams: `HParams` instance. The default hyper-parameters, which will be
       passed to the `experiment_fn` if `run_config` is not None.
 
@@ -157,8 +171,8 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
   Raises:
     ValueError: If both `output_dir` and `run_config` are empty or set,
       `schedule` is None but no task type is set in the built experiment's
-      config, the task type has no default, or `schedule` doesn't reference a
-      member of `Experiment`.
+      config, the task type has no default, `run_config.model_dir` is empty or
+      `schedule` doesn't reference a member of `Experiment`.
     TypeError: `schedule` references non-callable member.
   """
 
@@ -195,7 +209,6 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
   return _execute_schedule(experiment, schedule)
 
 
-@experimental
 def tune(experiment_fn, tuner):
   """Tune an experiment with hyper-parameters.
 

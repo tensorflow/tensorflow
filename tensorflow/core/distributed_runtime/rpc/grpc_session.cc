@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -30,8 +32,7 @@ limitations under the License.
 namespace tensorflow {
 
 GrpcSession::GrpcSession(const SessionOptions& options)
-    : options_(options),
-      current_graph_version_(-1) {}
+    : options_(options), current_graph_version_(-1) {}
 
 GrpcSession::~GrpcSession() {}
 
@@ -43,7 +44,7 @@ const size_t kSchemePrefixLength = strlen(kSchemePrefix);
 /* static */
 Status GrpcSession::Create(const SessionOptions& options,
                            std::unique_ptr<GrpcSession>* out_session) {
-  std::unique_ptr<GrpcSession> ret(new GrpcSession(options));
+  std::unique_ptr<GrpcSession> session(new GrpcSession(options));
   std::unique_ptr<MasterInterface> master;
   // For testing, we enable the client to disable the use of the local
   // master registry, so that the RPC stack is exercised.
@@ -56,8 +57,8 @@ Status GrpcSession::Create(const SessionOptions& options,
         options.target.substr(kSchemePrefixLength), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
   }
-  ret->SetRemoteMaster(std::move(master));
-  *out_session = std::move(ret);
+  session->SetRemoteMaster(std::move(master));
+  *out_session = std::move(session);
   return Status::OK();
 }
 
@@ -102,6 +103,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   CreateSessionRequest req;
   *req.mutable_config() = options_.config;
   *req.mutable_graph_def() = graph;
+  req.set_target(options_.target);
   ReEncodeConsts(req.mutable_graph_def());
   CreateSessionResponse resp;
   Status s = master_->CreateSession(call_options, &req, &resp);
@@ -320,27 +322,41 @@ Status GrpcSession::Close() {
   return master_->CloseSession(&call_options, &req, &resp);
 }
 
-std::vector<DeviceAttributes> GrpcSession::ListDevices() {
-  std::vector<DeviceAttributes> devices;
-
+Status GrpcSession::ListDevices(std::vector<DeviceAttributes>* response) {
   ListDevicesRequest req;
+  {
+    mutex_lock l(mu_);
+    req.set_session_handle(handle_);
+  }
+  if (req.session_handle().empty()) {
+    LOG(WARNING) << "GrpcSession::ListDevices will initialize the session with "
+                    "an empty graph and other defaults because the session has "
+                    "not yet been created.";
+    GraphDef graph_def;
+    TF_RETURN_IF_ERROR(Create(graph_def));
+    {
+      mutex_lock l(mu_);
+      req.set_session_handle(handle_);
+    }
+  }
   ListDevicesResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   Status s = master_->ListDevices(&call_options, &req, &resp);
   if (!s.ok()) {
     LOG(ERROR) << "Could not list devices: " << s;
-    return devices;
+    return s;
   }
 
+  response->clear();
+  response->reserve(resp.local_device_size() + resp.remote_device_size());
   for (const auto& device_attr : resp.local_device()) {
-    devices.push_back(device_attr);
+    response->emplace_back(device_attr);
   }
   for (const auto& device_attr : resp.remote_device()) {
-    devices.push_back(device_attr);
+    response->emplace_back(device_attr);
   }
-
-  return devices;
+  return Status::OK();
 }
 
 void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {

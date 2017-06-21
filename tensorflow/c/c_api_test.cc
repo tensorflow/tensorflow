@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -278,6 +279,19 @@ static void Int32Deallocator(void* data, size_t, void* arg) {
   delete[] static_cast<int32*>(data);
 }
 
+// Create a tensor with values of type TF_INT8 provided by `values`.
+static TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims,
+                             const char* values) {
+  int64_t num_values = 1;
+  for (int i = 0; i < num_dims; ++i) {
+    num_values *= dims[i];
+  }
+  TF_Tensor* t =
+      TF_AllocateTensor(TF_INT8, dims, num_dims, sizeof(char) * num_values);
+  memcpy(TF_TensorData(t), values, sizeof(char) * num_values);
+  return t;
+}
+
 static TF_Tensor* Int32Tensor(int32 v) {
   const int num_bytes = sizeof(int32);
   int32* values = new int32[1];
@@ -293,14 +307,19 @@ TF_Operation* Placeholder(TF_Graph* graph, TF_Status* s,
   return TF_FinishOperation(desc, s);
 }
 
+TF_Operation* Const(TF_Tensor* t, TF_Graph* graph, TF_Status* s,
+                    const char* name = "const") {
+  TF_OperationDescription* desc = TF_NewOperation(graph, "Const", name);
+  TF_SetAttrTensor(desc, "value", t, s);
+  if (TF_GetCode(s) != TF_OK) return nullptr;
+  TF_SetAttrType(desc, "dtype", TF_TensorType(t));
+  return TF_FinishOperation(desc, s);
+}
+
 TF_Operation* ScalarConst(int32 v, TF_Graph* graph, TF_Status* s,
                           const char* name = "scalar") {
   unique_tensor_ptr tensor(Int32Tensor(v), TF_DeleteTensor);
-  TF_OperationDescription* desc = TF_NewOperation(graph, "Const", name);
-  TF_SetAttrTensor(desc, "value", tensor.get(), s);
-  if (TF_GetCode(s) != TF_OK) return nullptr;
-  TF_SetAttrType(desc, "dtype", TF_INT32);
-  return TF_FinishOperation(desc, s);
+  return Const(tensor.get(), graph, s, name);
 }
 
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
@@ -868,7 +887,7 @@ class CSession {
     TF_DeleteSessionOptions(opts);
   }
 
-  CSession(TF_Session* session) { session_ = session; }
+  explicit CSession(TF_Session* session) : session_(session) {}
 
   ~CSession() {
     TF_Status* s = TF_NewStatus();
@@ -1093,6 +1112,35 @@ TEST(CAPI, SessionPRun) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, ShapeInferenceError) {
+  // TF_FinishOperation should fail if the shape of the added operation cannot
+  // be inferred.
+  TF_Status* status = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Create this failure by trying to add two nodes with incompatible shapes
+  // (A tensor with shape [2] and a tensor with shape [3] cannot be added).
+  const char data[] = {1, 2, 3};
+  const int64_t vec2_dims[] = {2};
+  unique_tensor_ptr vec2_tensor(
+      Int8Tensor(vec2_dims, TF_ARRAYSIZE(vec2_dims), data), TF_DeleteTensor);
+  TF_Operation* vec2 = Const(vec2_tensor.get(), graph, status, "vec2");
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  const int64_t vec3_dims[] = {3};
+  unique_tensor_ptr vec3_tensor(
+      Int8Tensor(vec3_dims, TF_ARRAYSIZE(vec3_dims), data), TF_DeleteTensor);
+  TF_Operation* vec3 = Const(vec3_tensor.get(), graph, status, "vec3");
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TF_Operation* add = Add(vec2, vec3, graph, status);
+  ASSERT_NE(TF_OK, TF_GetCode(status));
+  ASSERT_TRUE(add == nullptr);
+
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(status);
+}
+
 TEST(CAPI, ColocateWith) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -1297,7 +1345,7 @@ class CApiWhileLoopTest : public ::testing::Test {
     EXPECT_EQ(expected_value, *data);
   }
 
-  // Create a valid conditonal graph. Useful for testing unrelated errors.
+  // Create a valid conditional graph. Useful for testing unrelated errors.
   void CreateCondGraph() {
     TF_Operation* one = ScalarConst(1, params_->cond_graph, s_);
     TF_Operation* less_than =
@@ -1535,7 +1583,8 @@ Test op with no grad registered.
 
 x: input
 y: output
-)doc");
+)doc")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape);
 
 class CApiGradientsTest : public ::testing::Test {
  protected:
@@ -1801,18 +1850,6 @@ TEST_F(CApiGradientsTest, OpWithNoGradientRegistered_NoGradInputs) {
   TestGradientsError(false);
 }
 
-// Create a tensor with values of type TF_INT8 provided by `values`.
-TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
-  int64_t num_values = 1;
-  for (int i = 0; i < num_dims; ++i) {
-    num_values *= dims[i];
-  }
-  TF_Tensor* t =
-      TF_AllocateTensor(TF_INT8, dims, num_dims, sizeof(char) * num_values);
-  memcpy(TF_TensorData(t), values, sizeof(char) * num_values);
-  return t;
-}
-
 void StringVectorToArrays(const std::vector<string>& v,
                           std::unique_ptr<const void* []>* ptrs,
                           std::unique_ptr<size_t[]>* lens) {
@@ -1828,9 +1865,13 @@ void StringVectorToArrays(const std::vector<string>& v,
 // Registers two ops, each with a single attribute called 'v'.
 // The attribute in one op will have a type 'type', the other
 // will have list(type).
-#define ATTR_TEST_REGISTER_OP(type)                            \
-  REGISTER_OP("CApiAttributesTestOp" #type).Attr("v: " #type); \
-  REGISTER_OP("CApiAttributesTestOpList" #type).Attr("v: list(" #type ")")
+#define ATTR_TEST_REGISTER_OP(type)                           \
+  REGISTER_OP("CApiAttributesTestOp" #type)                   \
+      .Attr("v: " #type)                                      \
+      .SetShapeFn(tensorflow::shape_inference::UnknownShape); \
+  REGISTER_OP("CApiAttributesTestOpList" #type)               \
+      .Attr("v: list(" #type ")")                             \
+      .SetShapeFn(tensorflow::shape_inference::UnknownShape)
 ATTR_TEST_REGISTER_OP(string);
 ATTR_TEST_REGISTER_OP(int);
 ATTR_TEST_REGISTER_OP(float);

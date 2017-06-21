@@ -40,3 +40,6 @@ limitations under the License.
 %include "tensorflow/python/util/kernel_registry.i"
 
 %include "tensorflow/python/util/transform_graph.i"
+
+%include "tensorflow/python/grappler/tf_optimizer.i"
+%include "tensorflow/python/grappler/cost_analyzer.i"

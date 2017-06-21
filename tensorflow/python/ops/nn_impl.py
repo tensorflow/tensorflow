@@ -301,9 +301,8 @@ def zero_fraction(value, name=None):
   This is useful in summaries to measure and report sparsity.  For example,
 
   ```python
-      z = tf.Relu(...)
-      summ = tf.contrib.deprecated.scalar_summary('sparsity',
-      tf.nn.zero_fraction(z))
+      z = tf.nn.relu(...)
+      summ = tf.summary.scalar('sparsity', tf.nn.zero_fraction(z))
   ```
 
   Args:
@@ -449,10 +448,6 @@ def separable_conv2d(input,
     A 4-D `Tensor` with shape according to 'data_format'. For
       example, with data_format="NHWC", shape is [batch, out_height,
       out_width, out_channels].
-
-  Raises:
-    ValueError: If channel_multiplier * in_channels > out_channels,
-      which means that the separable convolution is overparameterized.
   """
   with ops.name_scope(name, "separable_conv2d",
                       [input, depthwise_filter, pointwise_filter]) as name:
@@ -466,25 +461,8 @@ def separable_conv2d(input,
     pointwise_filter_shape[0].assert_is_compatible_with(1)
     pointwise_filter_shape[1].assert_is_compatible_with(1)
 
-    channel_multiplier = depthwise_filter.get_shape().with_rank(4)[3]
-    if data_format and data_format == "NCHW":
-      in_channels = input.get_shape().with_rank(4)[1]
-    else:
-      in_channels = input.get_shape().with_rank(4)[3]
-
-    out_channels = pointwise_filter_shape[3]
-
     if rate is None:
       rate = [1, 1]
-
-    # If any of channel numbers is unknown, then the comparison below returns
-    # None. See TensorShape.__gt__().
-    if channel_multiplier * in_channels > out_channels:
-      raise ValueError("Refusing to perform an overparameterized separable "
-                       "convolution: channel_multiplier * in_channels = "
-                       "%d * %d = %d > %d = out_channels" %
-                       (channel_multiplier, in_channels,
-                        channel_multiplier * in_channels, out_channels))
 
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.

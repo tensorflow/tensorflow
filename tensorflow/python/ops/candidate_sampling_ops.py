@@ -53,7 +53,9 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of classes to randomly sample. The
+      `sampled_candidates` return value will have shape `[num_sampled]`. If
+      `unique=True`, `num_sampled` must be less than or equal to `range_max`.
     unique: A `bool`. Determines whether all sampled classes in a batch are
       unique.
     range_max: An `int`. The number of possible classes.
@@ -61,8 +63,10 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
     name: A name for the operation (optional).
 
   Returns:
-    sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.
-      The sampled classes.
+    sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.  The
+      sampled classes, either with possible duplicates (`unique=False`) or all
+      unique (`unique=True`). In either case, `sampled_candidates` is
+      independent of the true classes.
     true_expected_count: A tensor of type `float`.  Same shape as
       `true_classes`. The expected counts under the sampling distribution
       of each of `true_classes`.
@@ -111,7 +115,7 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of classes to randomly sample.
     unique: A `bool`. Determines whether all sampled classes in a batch are
       unique.
     range_max: An `int`. The number of possible classes.
@@ -166,7 +170,7 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of classes to randomly sample.
     unique: A `bool`. Determines whether all sampled classes in a batch are
       unique.
     range_max: An `int`. The number of possible classes.
@@ -230,7 +234,7 @@ def fixed_unigram_candidate_sampler(true_classes,
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of classes to randomly sample.
     unique: A `bool`. Determines whether all sampled classes in a batch are
       unique.
     range_max: An `int`. The number of possible classes.
@@ -245,7 +249,7 @@ def fixed_unigram_candidate_sampler(true_classes,
       `distortion = 1.0` gives regular unigram sampling (as defined by the vocab
       file), and `distortion = 0.0` gives a uniform distribution.
     num_reserved_ids: Optionally some reserved IDs can be added in the range
-      `[0, num_reserved_ids]` by the users. One use case is that a special
+      `[0, num_reserved_ids)` by the users. One use case is that a special
       unknown word token is used as ID 0. These IDs will have a sampling
       probability of 0.
     num_shards: A sampler can be used to sample from a subset of the original

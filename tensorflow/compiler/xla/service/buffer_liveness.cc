@@ -37,17 +37,17 @@ namespace xla {
 
 /* static */
 StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
-    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering) {
+    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
+    TuplePointsToAnalysis::Colorer colorer) {
   std::unique_ptr<BufferLiveness> liveness(
-      new BufferLiveness(module, std::move(hlo_ordering)));
+      new BufferLiveness(module, std::move(hlo_ordering), std::move(colorer)));
   TF_RETURN_IF_ERROR(liveness->Analyze());
   return std::move(liveness);
 }
 
 tensorflow::Status BufferLiveness::Analyze() {
   TF_ASSIGN_OR_RETURN(points_to_analysis_,
-                      TuplePointsToAnalysis::Run(
-                          module_, /*include_loop_fusion_instructions=*/true));
+                      TuplePointsToAnalysis::Run(module_, colorer_));
   for (auto& computation : module_->computations()) {
     // Gather all instructions whose buffers might alias other instructions into
     // the set aliased_buffers_.  This includes those contained as a tuple
@@ -117,11 +117,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
 
   // If 'b' is a user of 'a' then the buffers interfere unless 'a.instruction'
   // and 'b.instruction' emit the same shape/layout, and 'b.instruction' meets
-  // one of following qualifications:
-  // *) Is element-wise.
-  // *) Is a loop fusion instruction (with DynamicUpdateSlice fused root) where
-  //    the singleton use of 'a' at 'a.index' is the fused root at operand 0.
-  // *) Use of 'operand' is DynamicUpdateSlice at operand index 0.
+  // the qualifications specified in CanShareOperandBufferWithUser.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
     if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
@@ -133,25 +129,30 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
   return true;
 }
 
+namespace {
+bool IsEntryParameter(const HloInstruction* instruction) {
+  const HloComputation* computation = instruction->parent();
+  return instruction->opcode() == HloOpcode::kParameter &&
+         computation == computation->parent()->entry_computation();
+}
+}  // namespace
+
 bool BufferLiveness::MayInterfere(const LogicalBuffer& a,
                                   const LogicalBuffer& b) const {
-  // Entry parameters live for the entire execution, thus always interfere with
-  // all other instructions.
+  // Entry parameters live at the entry of the execution, thus always interfere
+  // with all other instructions executing before them in the ordering.
   const HloInstruction* a_instruction = a.instruction();
-  const HloComputation* a_computation = a_instruction->parent();
-  if (a_instruction->opcode() == HloOpcode::kParameter &&
-      a_computation == a_computation->parent()->entry_computation()) {
+  const HloInstruction* b_instruction = b.instruction();
+  if (IsEntryParameter(a_instruction) &&
+      hlo_ordering_->ExecutesBefore(b_instruction, a_instruction)) {
     return true;
   }
-  const HloInstruction* b_instruction = b.instruction();
-  const HloComputation* b_computation = b_instruction->parent();
-  if (b_instruction->opcode() == HloOpcode::kParameter &&
-      b_computation == b_computation->parent()->entry_computation()) {
+  if (IsEntryParameter(b_instruction) &&
+      hlo_ordering_->ExecutesBefore(a_instruction, b_instruction)) {
     return true;
   }
   // Buffers without disjoint liveness may interfere.
-  return (!live_range_strictly_before(a, b) &&
-          !live_range_strictly_before(b, a));
+  return !live_range_strictly_before(a, b) && !live_range_strictly_before(b, a);
 }
 
 bool BufferLiveness::MaybeLiveOut(const LogicalBuffer& buffer) const {

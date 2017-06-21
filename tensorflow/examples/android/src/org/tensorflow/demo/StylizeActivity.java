@@ -65,10 +65,6 @@ import org.tensorflow.demo.env.Logger;
  * Artistic Style" (https://arxiv.org/abs/1610.07629)
  */
 public class StylizeActivity extends CameraActivity implements OnImageAvailableListener {
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
-
   private static final Logger LOGGER = new Logger();
 
   private static final String MODEL_FILE = "file:///android_asset/stylize_quantized.pb";
@@ -491,7 +487,8 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
       intValues = new int[desiredSize * desiredSize];
       floatValues = new float[desiredSize * desiredSize * 3];
-      initializedSize = desiredSize;
+S      initializedSize = desiredSize;
+
     }
     rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
     final Canvas canvas = new Canvas(croppedBitmap);

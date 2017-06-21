@@ -177,7 +177,7 @@ def _logspace_mean(log_values):
       `Log[Mean[values]]`.
   """
   # center = Max[Log[values]],  with stop-gradient
-  # The center hopefully keep the exponentiated term small.  It is cancelled
+  # The center hopefully keep the exponentiated term small.  It is canceled
   # from the final result, so putting stop gradient on it will not change the
   # final result.  We put stop gradient on to eliminate unnecessary computation.
   center = array_ops.stop_gradient(_sample_max(log_values))

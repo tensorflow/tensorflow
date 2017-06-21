@@ -53,11 +53,11 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   operator.shape
   ==> [2, 2]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
@@ -68,7 +68,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   #### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
@@ -80,7 +80,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   Suppose `operator` is a `LinearOperatorTriL` of shape `[N, N]`,
   and `x.shape = [N, R]`.  Then
 
-  * `operator.apply(x)` involves `N^2 * R` multiplications.
+  * `operator.matmul(x)` involves `N^2 * R` multiplications.
   * `operator.solve(x)` involves `N * R` size `N` back-substitutions.
   * `operator.determinant()` involves a size `N` `reduce_prod`.
 
@@ -90,7 +90,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint, positive_definite`.
+  for `X = non_singular, self_adjoint, positive_definite, square`.
   These have the following meaning
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -106,6 +106,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
+               is_square=None,
                name="LinearOperatorTriL"):
     r"""Initialize a `LinearOperatorTriL`.
 
@@ -126,11 +127,18 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
         self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
+      is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
     Raises:
       TypeError:  If `diag.dtype` is not an allowed type.
+      ValueError:  If `is_square` is `False`.
     """
+
+    if is_square is False:
+      raise ValueError(
+          "Only square lower triangular operators supported at this time.")
+    is_square = True
 
     with ops.name_scope(name, values=[tril]):
       self._tril = ops.convert_to_tensor(tril, name="tril")
@@ -144,6 +152,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
+          is_square=is_square,
           name=name)
 
   def _check_tril(self, tril):
@@ -173,7 +182,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
         self._diag,
         message="Singular operator:  Diagonal contained zero values.")
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     return math_ops.matmul(
         self._tril, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 

@@ -611,10 +611,8 @@ def softmax_cross_entropy(
   Args:
     onehot_labels: `[batch_size, num_classes]` target one-hot-encoded labels.
     logits: [batch_size, num_classes] logits outputs of the network .
-    weights: Optional `Tensor` whose rank is either 0, or the same rank as
-      `onehot_labels`, and must be broadcastable to `onehot_labels` (i.e., all
-      dimensions must be either `1`, or the same as the corresponding `losses`
-      dimension).
+    weights: Optional `Tensor` whose rank is either 0, or rank 1 and is
+      broadcastable to the loss which is a `Tensor` of shape `[batch_size]`.
     label_smoothing: If greater than 0 then smooth the labels.
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
@@ -690,7 +688,7 @@ def _remove_squeezable_dimensions(
     # Use dynamic rank.
     rank_diff = array_ops.rank(weights) - array_ops.rank(labels)
     if (weights_rank is None) or (
-        weights_shape.dims[-1].is_compatible_with(1)):
+        weights_rank > 0 and weights_shape.dims[-1].is_compatible_with(1)):
       weights = control_flow_ops.cond(
           math_ops.equal(1, rank_diff),
           lambda: array_ops.squeeze(weights, [-1]),

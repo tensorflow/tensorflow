@@ -276,6 +276,12 @@ limitations under the License.
   display: none;
 }
 
+/* Reference Edge */
+::content .edge > path.edgeline.referenceedge {
+  stroke: #FFB74D;
+  opacity: 1;
+}
+
 /* --- Series Nodes --- */
 
 /* Hide the rect for a series' annotation. */
@@ -322,7 +328,7 @@ limitations under the License.
 /* --- Annotation --- */
 
 /* only applied for annotations that are not summary or constant.
-(.summary, .constant gets overriden below) */
+(.summary, .constant gets overridden below) */
 ::content .annotation > .annotation-node > * {
   stroke-width: 0.5;
   stroke-dasharray: 1, 1;
@@ -436,8 +442,12 @@ limitations under the License.
   fill: #666;
 }
 
-::content .ref-arrowhead {
+::content .dataflow-arrowhead {
   fill: #bbb;
+}
+
+::content .reference-arrowhead {
+  fill: #FFB74D;
 }
 
 ::content .edge .control-dep {
@@ -516,23 +526,42 @@ limitations under the License.
 <svg id="svg">
   <defs>
 
-    <!-- Arrow heads for edge paths of different predefined sizes. -->
-    <path id="ref-arrowhead-path" d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
-    <marker class="ref-arrowhead" id="ref-arrowhead-small" viewBox="0 0 10 10" markerWidth="10" markerHeight="10"
-      refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <use xlink:href="#ref-arrowhead-path" />
+    <!-- Arrow heads for reference edge paths of different predefined sizes per color. -->
+    <path id="reference-arrowhead-path" d="M 0,0 L 10,5 L 0,10 C 3,7 3,3 0,0"/>
+    <marker class="reference-arrowhead" id="reference-arrowhead-small" viewBox="0 0 10 10" markerWidth="5" markerHeight="5"
+      refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#reference-arrowhead-path" />
     </marker>
-    <marker class="ref-arrowhead" id="ref-arrowhead-medium" viewBox="0 0 10 10" markerWidth="13" markerHeight="13"
-        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <use xlink:href="#ref-arrowhead-path" />
+    <marker class="reference-arrowhead" id="reference-arrowhead-medium" viewBox="0 0 10 10" markerWidth="13" markerHeight="13"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#reference-arrowhead-path" />
     </marker>
-    <marker class="ref-arrowhead" id="ref-arrowhead-large" viewBox="0 0 10 10" markerWidth="16" markerHeight="16"
-        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <use xlink:href="#ref-arrowhead-path" />
+    <marker class="reference-arrowhead" id="reference-arrowhead-large" viewBox="0 0 10 10" markerWidth="16" markerHeight="16"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#reference-arrowhead-path" />
     </marker>
-    <marker class="ref-arrowhead" id="ref-arrowhead-xlarge" viewBox="0 0 10 10" markerWidth="20" markerHeight="20"
-        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <use xlink:href="#ref-arrowhead-path" />
+    <marker class="reference-arrowhead" id="reference-arrowhead-xlarge" viewBox="0 0 10 10" markerWidth="20" markerHeight="20"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#reference-arrowhead-path" />
+    </marker>
+
+    <!-- Arrow heads for dataflow edge paths of different predefined sizes per color. -->
+    <path id="dataflow-arrowhead-path" d="M 0,0 L 10,5 L 0,10 C 3,7 3,3 0,0"/>
+    <marker class="dataflow-arrowhead" id="dataflow-arrowhead-small" viewBox="0 0 10 10" markerWidth="5" markerHeight="5"
+      refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#dataflow-arrowhead-path" />
+    </marker>
+    <marker class="dataflow-arrowhead" id="dataflow-arrowhead-medium" viewBox="0 0 10 10" markerWidth="13" markerHeight="13"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#dataflow-arrowhead-path" />
+    </marker>
+    <marker class="dataflow-arrowhead" id="dataflow-arrowhead-large" viewBox="0 0 10 10" markerWidth="16" markerHeight="16"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#dataflow-arrowhead-path" />
+    </marker>
+    <marker class="dataflow-arrowhead" id="dataflow-arrowhead-xlarge" viewBox="0 0 10 10" markerWidth="20" markerHeight="20"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#dataflow-arrowhead-path" />
     </marker>
 
     <!-- Arrow head for annotation edge paths. -->
@@ -649,12 +678,12 @@ Polymer({
     },
     /** Keeps track of the starting coordinates of a graph zoom/pan */
     _zoomStartCoords: {
-      type: Array,
+      type: Object,
       value: null
     },
     /** Keeps track of the current coordinates of a graph zoom/pan */
-    _zoomCoords: {
-      type: Array,
+    _zoomTransform: {
+      type: Object,
       value: null
     },
     /** Maximum distance of a zoom event for it to be interpreted as a click */
@@ -787,8 +816,8 @@ Polymer({
     }.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
   ready: function() {
-    this._zoom = d3.behavior.zoom()
-      .on('zoomend', function() {
+    this._zoom = d3.zoom()
+      .on('end', function() {
         if (this._zoomStartCoords) {
           // Calculate the total distance dragged during the zoom event.
           // If it is sufficiently small, then fire an event indicating
@@ -797,8 +826,8 @@ Polymer({
           // is ignored (as this mouse click was part of a zooming, and should
           // not be used to indicate an actual click on the graph).
           var dragDistance = Math.sqrt(
-            Math.pow(this._zoomStartCoords[0] - this._zoomCoords[0], 2) +
-            Math.pow(this._zoomStartCoords[1] - this._zoomCoords[1], 2));
+            Math.pow(this._zoomStartCoords.x - this._zoomTransform.x, 2) +
+            Math.pow(this._zoomStartCoords.y - this._zoomTransform.y, 2));
           if (dragDistance < this._maxZoomDistanceForClick) {
             this._fireEnableClick();
           } else {
@@ -808,8 +837,8 @@ Polymer({
         this._zoomStartCoords = null;
       }.bind(this))
       .on('zoom', function() {
-        // Store the coordinates of the zoom event
-        this._zoomCoords = d3.event.translate;
+        // Store the coordinates of the zoom event.
+        this._zoomTransform = d3.event.transform;
 
         // If this is the first zoom event after a zoom-end, then
         // store the coordinates as the start coordinates as well,
@@ -818,15 +847,13 @@ Polymer({
         // event on mouse-down, even if there has been no dragging
         // done to translate the graph around.
         if (!this._zoomStartCoords) {
-          this._zoomStartCoords = this._zoomCoords.slice();
+          this._zoomStartCoords = this._zoomTransform;
           this.fire('disable-click');
         }
         this._zoomed = true;
-        d3.select(this.$.root).attr('transform',
-                    'translate(' + d3.event.translate + ')' +
-                    'scale(' + d3.event.scale + ')');
+        d3.select(this.$.root).attr('transform', d3.event.transform);
         // Notify the minimap.
-        this.minimap.zoom(d3.event.translate, d3.event.scale);
+        this.minimap.zoom(d3.event.transform);
       }.bind(this));
     d3.select(this.$.svg).call(this._zoom)
       .on('dblclick.zoom', null);
@@ -867,14 +894,14 @@ Polymer({
     var titleStyle = mainGraphTitleElement.style;
     var auxTitleStyle = this.getElementsByClassName('auxTitle')[0].style;
     var core = d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-      tf.graph.scene.Class.Scene.CORE)[0][0];
+      tf.graph.scene.Class.Scene.CORE).node();
     // Only show labels if the graph is fully loaded.
     if (showLabels && core && this.progress && this.progress.value === 100) {
       var aux =
         d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-          tf.graph.scene.Class.Scene.INEXTRACT)[0][0] ||
+          tf.graph.scene.Class.Scene.INEXTRACT).node() ||
         d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-          tf.graph.scene.Class.Scene.OUTEXTRACT)[0][0];
+          tf.graph.scene.Class.Scene.OUTEXTRACT).node();
       var coreX = core.getCTM().e;
       var auxX = aux ? aux.getCTM().e : null;
       titleStyle.display = 'inline';
@@ -943,7 +970,7 @@ Polymer({
     delete this._nodeGroupIndex[n];
   },
   addEdgeGroup: function(n, selection) {
-    this._edgeGroupIndex[e] = selection;
+    this._edgeGroupIndex[n] = selection;
   },
   getEdgeGroup: function(e) {
     return this._edgeGroupIndex[e];

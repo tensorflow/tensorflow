@@ -369,6 +369,24 @@ def _Log1pGrad(op, grad):
     return grad * math_ops.reciprocal(1 + x)
 
 
+@ops.RegisterGradient("Sinh")
+def _SinhGrad(op, grad):
+  """Returns grad * cosh(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    return grad * math_ops.cosh(x)
+
+
+@ops.RegisterGradient("Cosh")
+def _CoshGrad(op, grad):
+  """Returns grad * sinh(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    return grad * math_ops.sinh(x)
+
+
 @ops.RegisterGradient("Tanh")
 def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
@@ -611,6 +629,16 @@ def _AtanGrad(op, grad):
     one = constant_op.constant(1, dtype=grad.dtype)
     inv = math_ops.reciprocal(math_ops.add(one, x2))
     return grad * inv
+
+
+@ops.RegisterGradient("Atan2")
+def _Atan2Grad(op, grad):
+  """Returns grad * x / (x^2 + y^2), grad * -y / (x^2 + y^2)."""
+  y = op.inputs[0]
+  x = op.inputs[1]
+  with ops.control_dependencies([grad.op]):
+    grad_inv = grad / (math_ops.square(x) + math_ops.square(y))
+    return x * grad_inv, -y * grad_inv
 
 
 @ops.RegisterGradient("AddN")

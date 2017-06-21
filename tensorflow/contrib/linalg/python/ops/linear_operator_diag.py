@@ -52,11 +52,11 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   operator.shape
   ==> [2, 2]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
@@ -68,13 +68,13 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   # operator.batch_shape = [2, 3].
   y = tf.random_normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)
-  ==> operator.apply(x) = y
+  ==> operator.matmul(x) = y
   ```
 
   #### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
@@ -87,7 +87,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   Suppose `operator` is a `LinearOperatorDiag` of shape `[N, N]`,
   and `x.shape = [N, R]`.  Then
 
-  * `operator.apply(x)` involves `N * R` multiplications.
+  * `operator.matmul(x)` involves `N * R` multiplications.
   * `operator.solve(x)` involves `N` divisions and `N * R` multiplications.
   * `operator.determinant()` involves a size `N` `reduce_prod`.
 
@@ -97,7 +97,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint, positive_definite`.
+  for `X = non_singular, self_adjoint, positive_definite, square`.
   These have the following meaning
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -113,6 +113,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
+               is_square=None,
                name="LinearOperatorDiag"):
     r"""Initialize a `LinearOperatorDiag`.
 
@@ -129,6 +130,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
+      is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
     Raises:
@@ -147,12 +149,17 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
         else:
           is_self_adjoint = True
 
+      if is_square is False:
+        raise ValueError("Only square diagonal operators currently supported.")
+      is_square = True
+
       super(LinearOperatorDiag, self).__init__(
           dtype=self._diag.dtype,
           graph_parents=[self._diag],
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
+          is_square=is_square,
           name=name)
 
   def _check_diag(self, diag):
@@ -206,7 +213,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
             "This diagonal operator contained non-zero imaginary values.  "
             " Thus it was not self-adjoint."))
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
     x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     diag_mat = array_ops.expand_dims(diag_term, -1)

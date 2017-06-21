@@ -15,28 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 
-#include <list>
-#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 
 StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
+  auto evaluator = MakeUnique<HloEvaluator>();
+
+  XLA_VLOG_LINES(2,
+                 "HloConstantFolding::Run(), before:\n" + module->ToString());
   bool changed = false;
+
   for (auto& computation : module->computations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
@@ -44,41 +48,31 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
           computation->root_instruction() != instruction) {
         continue;
       }
-      // Depending on the opcode, choose how to handle constant operands.
-      //
-      // TODO(b/35975797): Fold constant computations for more than reshapes and
-      // transposes.
-      switch (instruction->opcode()) {
-        case HloOpcode::kReshape: {
-          if (instruction->operand(0)->opcode() == HloOpcode::kConstant) {
-            TF_ASSIGN_OR_RETURN(
-                auto reshaped_literal,
-                LiteralUtil::Reshape(
-                    instruction->operand(0)->literal(),
-                    AsInt64Slice(instruction->shape().dimensions())));
-            TF_CHECK_OK(computation->ReplaceWithNewInstruction(
-                instruction,
-                HloInstruction::CreateConstant(std::move(reshaped_literal))));
-            changed = true;
-          }
-          break;
-        }
-        case HloOpcode::kTranspose: {
-          if (instruction->operand(0)->opcode() == HloOpcode::kConstant) {
-            auto transposed_literal = LiteralUtil::Transpose(
-                instruction->operand(0)->literal(), instruction->dimensions());
-            TF_CHECK_OK(computation->ReplaceWithNewInstruction(
-                instruction,
-                HloInstruction::CreateConstant(std::move(transposed_literal))));
-            changed = true;
-          }
-          break;
-        }
-        default:
-          break;
+      // Skip Constant and Parameter operation.
+      if (instruction->opcode() == HloOpcode::kParameter ||
+          instruction->opcode() == HloOpcode::kConstant) {
+        continue;
       }
+      // Skip instructions with non-constant operands.
+      if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+        continue;
+      }
+
+      std::unique_ptr<Literal> result = evaluator->TryEvaluate(instruction);
+      // Currently we skip unimplemented operations.
+      // TODO(b/35975797): Fold constant computations for more operations.
+      if (result == nullptr) {
+        VLOG(2) << "Constant folding failed for instruction: "
+                << instruction->ToString();
+        continue;
+      }
+
+      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+          instruction, HloInstruction::CreateConstant(std::move(result))));
+      changed = true;
     }
   }
+  XLA_VLOG_LINES(2, "HloConstantFolding::Run(), after:\n" + module->ToString());
   return changed;
 }
 

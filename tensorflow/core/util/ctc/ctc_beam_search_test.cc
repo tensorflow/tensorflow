@@ -145,11 +145,12 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
       {{3}, {1, 3}, {3, 1}},
   };
 
-  // Convert data containers to the formatat accepted by the decoder, simply
+  // Convert data containers to the format accepted by the decoder, simply
   // mapping the memory from the container to an Eigen::ArrayXi,::MatrixXf,
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
   std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
   }
@@ -176,6 +177,47 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
       dictionary_decoder.Decode(seq_len, inputs, &dict_outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
     EXPECT_EQ(dict_outputs[path][0], expected_dict_output[0][path]);
+  }
+}
+
+TEST(CtcBeamSearch, AllBeamElementsHaveFiniteScores) {
+  const int batch_size = 1;
+  const int timesteps = 1;
+  const int top_paths = 3;
+  const int num_classes = 6;
+
+  // Plain decoder using hibernating beam search algorithm.
+  CTCBeamSearchDecoder<>::DefaultBeamScorer default_scorer;
+  CTCBeamSearchDecoder<> decoder(num_classes, top_paths, &default_scorer);
+
+  // Raw data containers (arrays of floats, ints, etc.).
+  int sequence_lengths[batch_size] = {timesteps};
+  float input_data_mat[timesteps][batch_size][num_classes] = {
+      {{0.4, 0.3, 0, 0, 0, 0.5}}};
+
+  // Convert data containers to the format accepted by the decoder, simply
+  // mapping the memory from the container to an Eigen::ArrayXi,::MatrixXf,
+  // using Eigen::Map.
+  Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
+  std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  inputs.reserve(timesteps);
+  for (int t = 0; t < timesteps; ++t) {
+    inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
+  }
+
+  // Prepare containers for output and scores.
+  std::vector<CTCDecoder::Output> outputs(top_paths);
+  for (CTCDecoder::Output& output : outputs) {
+    output.resize(batch_size);
+  }
+  float score[batch_size][top_paths] = {{0.0}};
+  Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
+
+  EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
+  // Make sure all scores are finite.
+  for (int path = 0; path < top_paths; ++path) {
+    LOG(INFO) << "path " << path;
+    EXPECT_FALSE(std::isinf(score[0][path]));
   }
 }
 
@@ -253,6 +295,7 @@ TEST(CtcBeamSearch, LabelSelection) {
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
   std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
   }

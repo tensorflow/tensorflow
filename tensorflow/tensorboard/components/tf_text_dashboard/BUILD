@@ -1,12 +1,10 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+ts_web_library(
     name = "tf_text_dashboard",
     srcs = [
         "tf-text-dashboard.html",
@@ -19,7 +17,7 @@ webfiles(
         "//tensorflow/tensorboard/components/tf_dashboard_common",
         "//tensorflow/tensorboard/components/tf_imports:d3",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
-        "@org_polymer",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
         "@org_polymer_paper_dialog",
         "@org_polymer_paper_icon_button",
         "@org_polymer_paper_material",
@@ -28,31 +26,20 @@ webfiles(
     ],
 )
 
+ts_web_library(
+    name = "demo",
+    srcs = ["index.html"] + glob(["data/**"]),
+    path = "/tf-text-dashboard",
+    deps = [
+        ":tf_text_dashboard",
+        "//tensorflow/tensorboard/components/tf_imports:webcomponentsjs",
+        "@org_polymer_iron_demo_helpers",
+        "@org_polymer_paper_styles",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),
     tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
-
-tensorboard_webcomponent_library(
-    name = "legacy",
-    srcs = [
-        "tf-text-dashboard.html",
-        "tf-text-loader.html",
-    ],
-    destdir = "tf-text-dashboard",
-    deps = [
-        "//tensorflow/tensorboard/components/tf_backend:legacy",
-        "//tensorflow/tensorboard/components/tf_dashboard_common:legacy",
-        "//third_party/javascript/polymer/v1/paper-material:lib",
-    ],
-)
-
-# This is needed: components/BUILD seeks a legacy_ts rule in this package.
-tensorboard_ts_library(
-    name = "legacy_ts",
-    srcs = [],
 )

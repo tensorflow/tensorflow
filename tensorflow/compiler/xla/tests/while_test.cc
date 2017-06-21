@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -555,7 +556,8 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   auto build_condition = [this, v6s32](int count) {
     ComputationBuilder builder(client_, TestName());
     auto prev = builder.Reshape(
-        builder.Slice(builder.Parameter(0, v6s32, "prev"), {0}, {1}), {0}, {});
+        builder.Slice(builder.Parameter(0, v6s32, "prev"), {0}, {1}, {1}), {0},
+          {});
     builder.Gt(builder.ConstantR0<int32>(count), prev);
     return builder.Build().ConsumeValueOrDie();
   };
@@ -740,6 +742,7 @@ BENCHMARK(BM_WhileLoop);
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

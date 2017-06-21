@@ -276,11 +276,6 @@ class MklMaxPoolingGradOp : public OpKernel {
     mkl_context.pooling_res[dnnResourceDiffSrc] = const_cast<void*>(
         static_cast<const void*>(output_tensor->flat<T>().data()));
 
-    int64 output_size = output_tensor->NumElements();
-    for (int64 i = 0; i < output_size; ++i) {
-      (static_cast<float*>(mkl_context.pooling_res[dnnResourceDiffSrc]))[i] = 0;
-    }
-
     CHECK_EQ(
         dnnExecute_F32(mkl_context.prim_pooling_bwd, mkl_context.pooling_res),
         E_SUCCESS);
@@ -316,7 +311,7 @@ class MklMaxPoolingGradOp : public OpKernel {
         lt_input_user = (dnnLayout_t)input_shape.GetCurLayout();
       }
 
-      // We dont care about the output layout for now as we can create it from
+      // We don't care about the output layout for now as we can create it from
       // primitives for the max pooling fwd prop
       if (outbackprop_in_mkl_format == false) {
         CHECK_EQ(dnnLayoutCreate_F32(&lt_outbackprop_user, params.in_dim,

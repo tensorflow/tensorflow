@@ -95,7 +95,7 @@ TF_CAPI_EXPORT extern const char* TF_Version();
 // --------------------------------------------------------------------------
 // TF_DataType holds the type for a scalar value.  E.g., one slot in a tensor.
 // The enum values here are identical to corresponding values in types.proto.
-typedef enum {
+typedef enum TF_DataType {
   TF_FLOAT = 1,
   TF_DOUBLE = 2,
   TF_INT32 = 3,  // Int32 tensors are always in 'host' memory.
@@ -127,7 +127,7 @@ TF_CAPI_EXPORT extern size_t TF_DataTypeSize(TF_DataType dt);
 // --------------------------------------------------------------------------
 // TF_Code holds an error code.  The enum values here are identical to
 // corresponding values in error_codes.proto.
-typedef enum {
+typedef enum TF_Code {
   TF_OK = 0,
   TF_CANCELLED = 1,
   TF_UNKNOWN = 2,
@@ -629,7 +629,7 @@ TF_CAPI_EXPORT extern int TF_OperationGetControlOutputs(
     int max_control_outputs);
 
 // TF_AttrType describes the type of the value of an attribute on an operation.
-typedef enum {
+typedef enum TF_AttrType {
   TF_ATTR_STRING = 0,
   TF_ATTR_INT = 1,
   TF_ATTR_FLOAT = 2,
@@ -961,8 +961,9 @@ typedef struct TF_WhileParams {
 // - Reference-type inputs
 // - Directly referencing external tensors from the cond/body graphs (this is
 //   possible in the Python API)
-TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
-                           TF_Status* status);
+TF_CAPI_EXPORT extern TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs,
+                                                 int ninputs,
+                                                 TF_Status* status);
 
 // Builds the while loop specified by `params` and returns the output tensors of
 // the while loop in `outputs`. `outputs` should be allocated to size
@@ -972,13 +973,14 @@ TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
 //
 // Either this or TF_AbortWhile() must be called after a successful
 // TF_NewWhile() call.
-void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
-                    TF_Output* outputs);
+TF_CAPI_EXPORT extern void TF_FinishWhile(const TF_WhileParams* params,
+                                          TF_Status* status,
+                                          TF_Output* outputs);
 
 // Frees `params`s resources without building a while loop. `params` is no
 // longer valid after this returns. Either this or TF_FinishWhile() must be
 // called after a successful TF_NewWhile() call.
-void TF_AbortWhile(const TF_WhileParams* params);
+TF_CAPI_EXPORT extern void TF_AbortWhile(const TF_WhileParams* params);
 
 // Adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
 // i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
@@ -994,8 +996,9 @@ void TF_AbortWhile(const TF_WhileParams* params);
 // supports. See
 // https://www.tensorflow.org/code/tensorflow/cc/gradients/README.md
 // for instructions on how to add C++ more gradients.
-void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
-                     TF_Output* dx, TF_Status* status, TF_Output* dy);
+TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
+                                    TF_Output* x, int nx, TF_Output* dx,
+                                    TF_Status* status, TF_Output* dy);
 
 // TODO(josh11b): Register OpDef, available to all operations added
 // to this graph.
@@ -1032,7 +1035,7 @@ TF_CAPI_EXPORT extern TF_Session* TF_NewSession(TF_Graph* graph,
 //
 // If successful, populates `graph` with the contents of the Graph and
 // `meta_graph_def` with the MetaGraphDef of the loaded model.
-TF_Session* TF_LoadSessionFromSavedModel(
+TF_CAPI_EXPORT extern TF_Session* TF_LoadSessionFromSavedModel(
     const TF_SessionOptions* session_options, const TF_Buffer* run_options,
     const char* export_dir, const char* const* tags, int tags_len,
     TF_Graph* graph, TF_Buffer* meta_graph_def, TF_Status* status);
@@ -1179,6 +1182,55 @@ TF_CAPI_EXPORT extern void TF_PRun(TF_DeprecatedSession*, const char* handle,
                                    TF_Tensor** outputs, int noutputs,
                                    const char** target_oper_names, int ntargets,
                                    TF_Status*);
+
+typedef struct TF_DeviceList TF_DeviceList;
+
+// Lists all devices in a TF_Session.
+//
+// Caller takes ownership of the returned TF_DeviceList* which must eventually
+// be freed with a call to TF_DeleteDeviceList.
+TF_CAPI_EXPORT extern TF_DeviceList* TF_SessionListDevices(TF_Session* session,
+                                                           TF_Status* status);
+
+// Lists all devices in a TF_Session.
+//
+// Caller takes ownership of the returned TF_DeviceList* which must eventually
+// be freed with a call to TF_DeleteDeviceList.
+TF_CAPI_EXPORT extern TF_DeviceList* TF_DeprecatedSessionListDevices(
+    TF_DeprecatedSession* session, TF_Status* status);
+
+// Deallocates the device list.
+TF_CAPI_EXPORT extern void TF_DeleteDeviceList(TF_DeviceList* list);
+
+// Counts the number of elements in the device list.
+TF_CAPI_EXPORT extern int TF_DeviceListCount(const TF_DeviceList* list);
+
+// Retrieves the full name of the device (e.g. /job:worker/replica:0/...)
+// The return value will be a pointer to a null terminated string. The caller
+// must not modify or delete the string. It will be deallocated upon a call to
+// TF_DeleteDeviceList.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and a null pointer will be returned.
+TF_CAPI_EXPORT extern const char* TF_DeviceListName(const TF_DeviceList* list,
+                                                    int index, TF_Status*);
+
+// Retrieves the type of the device at the given index.
+//
+// The caller must not modify or delete the string. It will be deallocated upon
+// a call to TF_DeleteDeviceList.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and a null pointer will be returned.
+TF_CAPI_EXPORT extern const char* TF_DeviceListType(const TF_DeviceList* list,
+                                                    int index, TF_Status*);
+
+// Retrieve the amount of memory associated with a given device.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and -1 will be returned.
+TF_CAPI_EXPORT extern int64_t TF_DeviceListMemoryBytes(
+    const TF_DeviceList* list, int index, TF_Status*);
 
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels

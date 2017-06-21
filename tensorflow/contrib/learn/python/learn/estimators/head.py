@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
@@ -162,10 +163,10 @@ class Head(object):
           ModeFnOps.loss to compute and apply gradients.
       logits: logits `Tensor` to be used by the head.
       logits_input: `Tensor` from which to build logits, often needed when you
-        don't want to compute the logits. Typicaly this is the activation of the
-        last hidden layer in a DNN. Some heads (like the ones responsible for
-        candidate sampling) intrinsically avoid computing full logits and only
-        accepts logits_input.
+        don't want to compute the logits. Typically this is the activation of
+        the last hidden layer in a DNN. Some heads (like the ones responsible
+        for candidate sampling) intrinsically avoid computing full logits and
+        only accepts logits_input.
       scope: Optional scope for `variable_scope`.
 
     Returns:
@@ -378,7 +379,12 @@ def multi_label_head(n_classes,
                      loss_fn=None):
   """Creates a Head for multi label classification.
 
-  The Head uses sigmoid cross entropy loss.
+  Multi-label classification handles the case where each example may have zero
+  or more associated labels, from a discrete set.  This is distinct from
+  `multi_class_head` which has exactly one label from a discrete set.
+
+  This head by default uses sigmoid cross entropy loss, which expects as input
+  a multi-hot tensor of shape `(batch_size, num_classes)`.
 
   Args:
     n_classes: Integer, number of classes, must be >= 2
@@ -421,6 +427,23 @@ def multi_label_head(n_classes,
       thresholds=thresholds,
       metric_class_ids=metric_class_ids,
       loss_fn=_wrap_custom_loss_fn(loss_fn) if loss_fn else None)
+
+
+def loss_only_head(loss_fn, head_name=None):
+  """Creates a Head that contains only loss terms.
+
+  Loss only head holds additional loss terms to be added to other heads and
+  usually represents additional regularization terms in the objective function.
+
+  Args:
+    loss_fn: a function that takes no argument and returns a list of
+        scalar tensors.
+    head_name: a name for for the head.
+
+  Returns:
+    An instance of `Head` to hold the additional losses.
+  """
+  return _LossOnlyHead(loss_fn, head_name=head_name)
 
 
 def multi_head(heads, loss_weights=None):
@@ -613,7 +636,9 @@ def _create_model_fn_ops(features,
   if (mode != model_fn.ModeKeys.INFER) and (labels is not None):
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
-    summary.scalar(
+    # Uses the deprecated API to set the tag explicitly.
+    # Without it, training and eval losses will show up in different graphs.
+    logging_ops.scalar_summary(
         _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
     if mode == model_fn.ModeKeys.TRAIN:
@@ -918,12 +943,21 @@ def _softmax_cross_entropy_loss(labels, logits, weights=None):
     if not labels.dtype.is_integer:
       raise ValueError("Labels dtype should be integer "
                        "Instead got %s." % labels.dtype)
-    # TODO(ptucker): This will break for dynamic shapes.
+
     # sparse_softmax_cross_entropy_with_logits requires [batch_size] labels.
+    is_squeezed_labels = False
+    # TODO(ptucker): This will break for dynamic shapes.
     if len(labels.get_shape()) == 2:
       labels = array_ops.squeeze(labels, squeeze_dims=(1,))
+      is_squeezed_labels = True
+
     loss = nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits, name=name)
+
+    # Restore squeezed dimension, if necessary, so loss matches weights shape.
+    if is_squeezed_labels:
+      loss = array_ops.expand_dims(loss, axis=(1,))
+
     return _compute_weighted_loss(loss, weights)
 
 
@@ -1124,7 +1158,7 @@ def _to_labels_tensor(labels, label_name):
   """Returns label as a tensor.
 
   Args:
-    labels: Label `Tensor` or `SparseTensor` or a dict containig labels.
+    labels: Label `Tensor` or `SparseTensor` or a dict containing labels.
     label_name: Label name if labels is a dict.
 
   Returns:
@@ -1389,6 +1423,80 @@ class _MultiLabelHead(_SingleHead):
     return metrics
 
 
+class _LossOnlyHead(Head):
+  """`Head` implementation for additional loss terms.
+
+  This class only holds loss terms unrelated to any other heads (labels),
+  e.g. regularization.
+
+  Common usage:
+  This is oftem combine with other heads in a multi head setup.
+    ```python
+    head = multi_head([
+        head1, head2, loss_only_head('regularizer', regularizer)])
+    ```
+  """
+
+  def __init__(self, loss_fn, head_name=None):
+    self._loss_fn = loss_fn
+    self.head_name = head_name or "loss_only_head"
+
+  @property
+  def logits_dimension(self):
+    return 0
+
+  def create_model_fn_ops(self,
+                          features,
+                          mode,
+                          labels=None,
+                          train_op_fn=None,
+                          logits=None,
+                          logits_input=None,
+                          scope=None):
+    """See `_Head.create_model_fn_ops`.
+
+    Args:
+      features: Not been used.
+      mode: Estimator's `ModeKeys`.
+      labels: Labels `Tensor`, or `dict` of same.
+      train_op_fn: Function that takes a scalar loss and returns an op to
+          optimize with the loss.
+      logits: Not been used.
+      logits_input: Not been used.
+      scope: Optional scope for variable_scope. If provided, will be passed to
+          all heads. Most users will want to set this to `None`, so each head
+          constructs a separate variable_scope according to its `head_name`.
+
+    Returns:
+      A `ModelFnOps` object.
+
+    Raises:
+      ValueError: if `mode` is not recognition.
+    """
+    _check_mode_valid(mode)
+    loss = None
+    train_op = None
+    if mode != model_fn.ModeKeys.INFER:
+      with variable_scope.variable_scope(scope, default_name=self.head_name):
+        loss = self._loss_fn()
+        if isinstance(loss, list):
+          loss = math_ops.add_n(loss)
+        logging_ops.scalar_summary(
+            _summary_key(self.head_name, mkey.LOSS), loss)
+        if mode == model_fn.ModeKeys.TRAIN:
+          if train_op_fn is None:
+            raise ValueError("train_op_fn can not be None in TRAIN mode")
+          with ops.name_scope(None, "train_op", (loss,)):
+            train_op = train_op_fn(loss)
+
+    return model_fn.ModelFnOps(
+        mode=mode,
+        loss=loss,
+        train_op=train_op,
+        predictions={},
+        eval_metric_ops={})
+
+
 class _MultiHead(Head):
   """`Head` implementation for multi objective learning.
 
@@ -1508,7 +1616,10 @@ class _MultiHead(Head):
       if isinstance(logits, dict):
         head_logits_pairs = []
         for head in self._heads:
-          head_logits_pairs.append((head, logits[head.head_name]))
+          if isinstance(head, _LossOnlyHead):
+            head_logits_pairs.append((head, None))
+          else:
+            head_logits_pairs.append((head, logits[head.head_name]))
       else:
         # Split logits for each head.
         head_logits_pairs = zip(self._heads, self._split_logits(logits))
@@ -1558,7 +1669,7 @@ class _MultiHead(Head):
     Args:
       all_model_fn_ops: list of ModelFnOps for the individual heads.
       train_op_fn: Function to create train op. See `create_model_fn_ops`
-          documentaion for more details.
+          documentation for more details.
 
     Returns:
       ModelFnOps that merges all heads for TRAIN.
@@ -1589,6 +1700,8 @@ class _MultiHead(Head):
     predictions = {}
     output_alternatives = {}
     for head, m in zip(self._heads, all_model_fn_ops):
+      if isinstance(head, _LossOnlyHead):
+        continue
       head_name = head.head_name
       output_alternatives[head_name] = m.output_alternatives[head_name]
       for k, v in m.predictions.items():
@@ -1629,12 +1742,27 @@ class _MultiHead(Head):
 
 
 def _weight_tensor(features, weight_column_name):
-  """Returns weights as 1d `Tensor`."""
+  """Returns weights as `Tensor` of rank 0, or at least 2."""
   if not weight_column_name:
     return None
-  with ops.name_scope(None, "weight_tensor",
-                      tuple(six.itervalues(features))):
-    return math_ops.to_float(features[weight_column_name])
+  if weight_column_name not in features:
+    raise ValueError("Weights {} missing from features.".format(
+        weight_column_name))
+  with ops.name_scope(None, "weight_tensor", tuple(six.itervalues(features))):
+    weight_tensor = math_ops.to_float(features[weight_column_name])
+    shape = weight_tensor.get_shape()
+    rank = shape.ndims
+    # We don't bother with expanding dims of non-staticly shaped tensors or
+    # scalars, and >1d is already in a good format.
+    if rank == 1:
+      logging.warning(
+          "Weights {} has shape {}, expanding to make it 2d.",
+          weight_column_name, shape)
+      return (
+          sparse_ops.sparse_reshape(weight_tensor, (-1, 1))
+          if isinstance(weight_tensor, sparse_tensor.SparseTensor) else
+          array_ops.reshape(weight_tensor, (-1, 1)))
+    return weight_tensor
 
 
 # TODO(zakaria): This function is needed for backward compatibility and should

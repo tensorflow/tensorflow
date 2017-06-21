@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -27,6 +25,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 _binomial_sample_note = """
@@ -269,7 +269,7 @@ class Binomial(distribution.Distribution):
             message="total_count must be non-negative."),
         distribution_util.assert_integer_form(
             total_count,
-            message="total_count cannot contain fractional componentes."),
+            message="total_count cannot contain fractional components."),
     ], total_count)
 
   def _maybe_assert_valid_sample(self, counts, check_integer=True):

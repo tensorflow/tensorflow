@@ -30,10 +30,13 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -53,7 +56,10 @@ class HloInstruction {
  public:
   enum class FusionKind {
     kLoop,                // Fused into a loop.
-    kInput,               // Fused into a reduction kernel.
+    kInput,               // Op's input is fused into the op itself.
+    kOutput,              // Op's output is fused into the op itself.
+                          // REQUIRES: At least one operand buffer must be able
+                          // to alias the output buffer.
     kTransposeDot,        // Fused into a dot with transposed operands.
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.
@@ -161,7 +167,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateSlice(
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> start_indices,
-      tensorflow::gtl::ArraySlice<int64> limit_indices);
+      tensorflow::gtl::ArraySlice<int64> limit_indices,
+      tensorflow::gtl::ArraySlice<int64> strides);
 
   // Creates a slice instruction, where the first operand is sliced by
   // start indices specified in the second operand, and by size specfied in
@@ -374,8 +381,12 @@ class HloInstruction {
 
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
-  // complete.
-  Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true);
+  // complete. If ignore_control_predecessors is true, instructions only
+  // reachable via control dependencies will not be visited, and the postorder
+  // will not take control dependencies into account. It is as if the control
+  // dependencies didn't exist in the graph at all.
+  Status Accept(DfsHloVisitor* visitor, bool call_finish_visit = true,
+                bool ignore_control_predecessors = false);
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -484,16 +495,24 @@ class HloInstruction {
   string SignatureString() const;
 
   // Returns a debugging string that represents this instruction.
-  string ToString(bool compact_operands = false) const;
+  string ToString(bool compact_operands = false,
+                  bool include_metadata = true) const;
+
+  string ToStringNoMetadata() const { return ToString(false, false); }
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const;
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   string ToCategory() const;
 
-  // Returns the string concatenation of parent name and this instructions name.
+  // Returns the string concatenation of parent name and this instructions
+  // name. This name is guaranteed to be unique among all instructions in the
+  // HloModule.
   string FullyQualifiedName() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
@@ -518,7 +537,7 @@ class HloInstruction {
   // Returns a tag to be used in tracing.
   //
   // Precondition: opcode() == HloOpcode::kTrace
-  const string& tracing_tag() const;
+  string TracingTag() const;
 
   // Returns whether the instruction is a constant.
   bool IsConstant() const;
@@ -568,6 +587,13 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kFusion
   const std::vector<HloInstruction*>& fused_parameters() const;
 
+  // Returns true if this instruction is a fusion instruction that generates
+  // multiple outputs.
+  const bool IsMultiOutputFusion() const {
+    return (opcode() == HloOpcode::kFusion &&
+            fused_expression_root()->opcode() == HloOpcode::kTuple);
+  }
+
   FusionKind fusion_kind() const {
     CHECK_EQ(HloOpcode::kFusion, opcode_);
     return fusion_kind_;
@@ -612,6 +638,15 @@ class HloInstruction {
     CHECK_EQ(HloOpcode::kSlice, opcode_);
     return slice_limits_;
   }
+
+  // Returns the stride in the given dimension for a slice node.
+  //
+  // Precondition: opcode() == HloOpcode::kSlice
+  int64 slice_stride(int64 dimension) const {
+    CHECK_EQ(HloOpcode::kSlice, opcode_);
+    return slice_strides_[dimension];
+  }
+  const std::vector<int64>& slice_strides() const { return slice_strides_; }
 
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
@@ -717,8 +752,9 @@ class HloInstruction {
   // this instruction.
   const string& name() const { return name_; }
 
-  // Sets the string identifier for this instruction.
-  void set_name(const string& name) { name_ = name; }
+  // Use the given NameUniquer to select a unique name for the instruction based
+  // on the instruction's existing name.
+  void UniquifyName(NameUniquer* name_uniquer);
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -748,6 +784,9 @@ class HloInstruction {
 
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+
+  // Helper class for computing OperandElementUse for kFusion.
+  class FusionReusesParamElements;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(
@@ -782,7 +821,8 @@ class HloInstruction {
   // Inner DFS traversal function -- this function being called (rather than
   // Accept above) allows us to distinguish the root of the traversal.
   Status AcceptInternal(DfsHloVisitor* visitor,
-                        const CompareFunction* operand_order);
+                        const CompareFunction* operand_order,
+                        bool ignore_control_predecessors);
 
   // CHECKs various invariants of a fusion instruction.
   void CheckFusionInstruction() const;
@@ -822,6 +862,7 @@ class HloInstruction {
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
+  std::vector<int64> slice_strides_;
 
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).

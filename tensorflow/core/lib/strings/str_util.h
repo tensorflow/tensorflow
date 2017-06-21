@@ -30,7 +30,7 @@ namespace str_util {
 
 // Returns a version of 'src' where unprintable characters have been
 // escaped using C-style escape sequences.
-string CEscape(const string& src);
+string CEscape(StringPiece src);
 
 // Copies "source" to "dest", rewriting C-style escape sequences --
 // '\n', '\r', '\\', '\ooo', etc -- to their ASCII equivalents.
@@ -84,6 +84,11 @@ string Uppercase(StringPiece s);
 // Capitalize first character of each word in "*s".  "delimiters" is a
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
+
+// Replaces the first occurrence (if replace_all is false) or all occurrences
+// (if replace_all is true) of oldsub in s with newsub.
+string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
+                     bool replace_all);
 
 // Join functionality
 template <typename T>

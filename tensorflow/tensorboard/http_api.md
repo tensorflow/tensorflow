@@ -45,40 +45,34 @@ requests to an inactive plugin - the routes of an inactive plugin do not work.
 
 ## `data/runs`
 
-Returns a dictionary mapping from `run name` (quoted string) to dictionaries
-mapping from all available tagTypes to a list of tags of that type available for
-the run. Think of this as a comprehensive index of all of the data available
-from the TensorBoard server. Here is an example:
+Returns an array containing the names of all the runs known to the
+TensorBoard backend at this time. Each entry is a string corresponding
+to a single run.
+
+We guarantee that as new runs are created in the log directory, they
+will always appear at the end of the list returned by this route. That
+is, the order of runs is persistent, and the result of this route is an
+&ldquo;append-only&rdquo; list.
+
+Example response:
+
+    ["train_run", "eval"]
+
+## `/data/plugin/scalars/tags`
+
+Returns a dictionary mapping from `run_name` (quoted string) to arrays of
+`tag_name` (quoted string), where each array contains the names of all
+scalar tags present in the corresponding run. Here is an example:
 
     {
-      "train_run": {
-        "histograms": ["foo_histogram", "bar_histogram"],
-        "compressedHistograms": ["foo_histogram", "bar_histogram"],
-        "scalars": ["xent", "loss", "learning_rate"],
-        "images": ["input"],
-        "audio": ["input_audio"],
-        "graph": true,
-        "firstEventTimestamp": 123456.789
-        "run_metadata": ["forward prop", "inference"]
-      },
-      "eval": {
-        "histograms": ["foo_histogram", "bar_histogram"],
-        "compressedHistograms": ["foo_histogram", "bar_histogram"],
-        "scalars": ["precision", "recall"],
-        "images": ["input"],
-        "audio": ["input_audio"],
-        "graph": false,
-        "run_metadata": []
-      }
-      }
+      "train_run": ["xent", "loss", "learning_rate"],
+      "eval": ["precision", "recall"]
+    }
 
-The `firstEventTimestamp` value is in seconds since the epoch.
+Note that runs without any scalar tags are included as keys with value the
+empty array.
 
-Note that the same tag may be present for many runs. It is not guaranteed that
-they will have the same meaning across runs. It is also not guaranteed that they
-will have the same tag type across different runs.
-
-## '/data/scalars?run=foo&tag=bar'
+## `/data/plugin/scalars/scalars?run=foo&tag=bar`
 
 Returns an array of event_accumulator.SimpleValueEvents ([wall_time, step,
 value]) for the given run and tag. wall_time is seconds since epoch.
@@ -100,28 +94,21 @@ format:
     1443857105.704628,3438,0.5427092909812927
     1443857225.705133,5417,0.5457325577735901
 
-## '/data/scalars?[sample_count=10]'
+## `/data/plugin/histograms/tags`
 
-Without any parameters, returns a dictionary mapping from run name to a
-dictionary mapping from tag name to a sampled list of scalars from that run and
-tag. The values are given in the same format as when the run and tag are
-specified. For example:
+Returns a dictionary mapping from `run_name` (quoted string) to arrays of
+`tag_name` (quoted string), where each array contains the names of all
+histogram tags present in the corresponding run. Here is an example:
 
     {
-      "train_run": {
-        "my_tag": [
-          [1443856985.705543, 1448, 0.7461960315704346],
-          [1443857105.704628, 3438, 0.5427092909812927],
-          [1443857225.705133, 5417, 0.5457325577735901]
-        ]
-      }
+      "train_run": ["foo_histogram", "bar_histogram"],
+      "eval": ["foo_histogram", "bar_histogram"]
     }
 
-The samples are distributed uniformly over the list of values. The sample_count
-parameter is optional and defaults to 10; it must be at least 2. The first and
-the last value will always be sampled.
+Note that runs without any histogram tags are included as keys with
+value the empty array.
 
-## '/data/histograms?run=foo&tag=bar'
+## `/data/plugin/histograms/histograms?run=foo&tag=bar`
 
 Returns an array of event_accumulator.HistogramEvents ([wall_time, step,
 HistogramValue]) for the given run and tag. A HistogramValue is [min, max, num,
@@ -148,7 +135,21 @@ Annotated Example: (note - real data is higher precision)
       ]
     ]
 
-## '/data/compressedHistograms?run=foo&tag=bar'
+## `/data/plugin/distributions/tags`
+
+Returns a dictionary mapping from `run_name` (quoted string) to arrays of
+`tag_name` (quoted string), where each array contains the names of all
+distribution tags present in the corresponding run. Here is an example:
+
+    {
+      "train_run": ["foo_histogram", "bar_histogram"],
+      "eval": ["foo_histogram", "bar_histogram"]
+    }
+
+Note that runs without any distribution tags are included as keys with
+value the empty array.
+
+## `/data/plugin/distributions/distributions?run=foo&tag=bar`
 
 Returns an array of event_accumulator.CompressedHistogramEvents ([wall_time,
 step, CompressedHistogramValues]) for the given run and tag.
@@ -168,8 +169,8 @@ Annotated Example: (note - real data is higher precision)
       [
         1441154832.580509,   # wall_time
         5,                   # step
-        [  [0, -3.67],       # CompressedHistogramValue for 0th percentile
-          [2500, -4.19],    # CompressedHistogramValue for 25th percentile
+        [ [0, -3.67],        # CompressedHistogramValue for 0th percentile
+          [2500, -4.19],     # CompressedHistogramValue for 25th percentile
           [5000, 6.29],
           [7500, 1.64],
           [10000, 3.67]
@@ -178,13 +179,13 @@ Annotated Example: (note - real data is higher precision)
       ...
     ]
 
-## `/data/images?run=foo&tag=bar`
+## `/data/plugin/images/images?run=foo&tag=bar`
 
 Gets a sample of ImageMetadatas for the given run and tag.
 
 Returns an array of objects containing information about available images,
 crucially including the query parameter that may be used to retrieve that image.
-(See /individualImage for details.)
+(See /data/plugin/images/individualImage for details.)
 
 For example:
 
@@ -197,7 +198,7 @@ For example:
                                      # param for /individualImage
       }
 
-## `/data/individualImage?{{query}}`
+## `/data/plugin/images/individualImage?{{query}}`
 
 Retrieves an individual image. The image query should not be generated by the
 frontend, but instead acquired from calling the /images route (the image
@@ -209,15 +210,29 @@ within a single run, as images may be removed from the sampling reservoir and
 replaced with other images. (See Notes for details on the reservoir sampling.)
 
 An example call to this route would look like this:
-/individualImage?index=0&tagname=input%2Fimage%2F2&run=train
+/data/plugin/images/individualImage?index=0&tagname=input%2Fimage%2F2&run=train
 
-## `/audio?run=foo&tag=bar`
+## `/data/plugin/images/tags`
+
+Returns a dictionary mapping from `run_name` (quoted string) to arrays of
+`tag_name` (quoted string), where each array contains the names of all image
+tags present in the corresponding run. Here is an example:
+
+    {
+      "train": ["foo_image", "bar_image"],
+      "eval": ["foo_image", "bar_image"]
+    }
+
+Note that runs without any image tags are included as keys with value the empty
+array.
+
+## `/data/plugin/audio/audio?run=foo&tag=bar`
 
 Gets a sample of AudioMetadatas for the given run and tag.
 
 Returns an array of objects containing information about available audio,
 crucially including the query parameter that may be used to retrieve that audio.
-(See /individualAudio for details.)
+(See /data/plugin/audio/individualAudio for details.)
 
 For example:
 
@@ -229,7 +244,7 @@ For example:
                                      # param for /individualAudio
       }
 
-## `/individualAudio?{{query}}`
+## `/data/plugin/audio/individualAudio?{{query}}`
 
 Retrieves an individual audio clip. The audio query should not be generated by
 the frontend, but instead acquired from calling the /audio route (the audio
@@ -243,11 +258,33 @@ replaced with other clips. (See Notes for details on the reservoir sampling.)
 An example call to this route would look like this:
 /individualAudio?index=0&tagname=input%2Faudio%2F2&run=train
 
-## `/data/graph?run=foo&limit_attr_size=1024&large_attrs_key=key`
+## `/data/plugin/audio/tags`
 
-Returns the graph definition for the given run in gzipped pbtxt format. The
-graph is composed of a list of nodes, where each node is a specific TensorFlow
-operation which takes as inputs other nodes (operations).
+Returns a dictionary mapping from `run_name` (quoted string) to arrays of
+`tag_name` (quoted string), where each array contains the names of all audio
+tags present in the corresponding run. Here is an example:
+
+    {
+      "train": ["foo_audio", "bar_audio"],
+      "eval": ["foo_audio", "bar_audio"],
+    }
+
+Note that runs without any audio tags are included as keys with value the empty
+array.
+
+## `/data/plugin/graphs/runs`
+
+Returns a list of runs that have associated graphs.
+
+For example:
+
+    ["train"]
+
+## `/data/plugin/graphs/graph?run=foo&limit_attr_size=1024&large_attrs_key=key`
+
+Returns the graph definition for the given run in pbtxt format. The
+graph is composed of a list of nodes, where each node is a specific
+TensorFlow operation which takes as inputs other nodes (operations).
 
 The query parameters `limit_attr_size` and `large_attrs_key` are optional.
 
@@ -260,7 +297,10 @@ attributes that are too large. The value of this key (list of strings)
 should be used by the client in order to determine which attributes
 have been filtered. Must be specified if `limit_attr_size` is specified.
 
-For the query `/graph?run=foo&limit_attr_size=1024&large_attrs_key=_too_large`,
+For the query
+
+    /data/plugin/graphs/graph?run=foo&limit_attr_size=1024&large_attrs_key=_too_large,
+
 here is an example pbtxt response of a graph with 3 nodes, where the second
 node had two large attributes "a" and "b" that were filtered out (size > 1024):
 

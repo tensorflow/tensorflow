@@ -83,6 +83,7 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["notsan"],  # http://b/62135981
     xla_enabled = True,
 )
 
@@ -304,6 +305,7 @@ filegroup(
         exclude = [
             "**/METADATA",
             "**/OWNERS",
+            "tools/**",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
@@ -349,5 +351,29 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
+    ],
+)
+
+py_binary(
+    name = "checkpoint_convert",
+    srcs = ["python/tools/checkpoint_convert.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "checkpoint_convert_test",
+    size = "small",
+    srcs = ["python/tools/checkpoint_convert_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":checkpoint_convert",
+        "//tensorflow/python:client_testlib",
     ],
 )

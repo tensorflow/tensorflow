@@ -361,6 +361,7 @@ class DeserializeManySparseOp : public OpKernel {
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors_to_concat;
+    tensors_to_concat.reserve(num_sparse_tensors);
     for (int i = 0; i < num_sparse_tensors; ++i) {
       tensors_to_concat.emplace_back(indices_to_concat[i], values_to_concat[i],
                                      preconcat_shape, std_order);
@@ -370,7 +371,7 @@ class DeserializeManySparseOp : public OpKernel {
 
     Tensor final_output_shape(DT_INT64, TensorShape({output.dims()}));
 
-    std::copy_n(output.shape().dim_sizes().data(), output.dims(),
+    std::copy_n(output.shape().data(), output.dims(),
                 final_output_shape.vec<int64>().data());
 
     context->set_output(0, output.indices());

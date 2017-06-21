@@ -19,13 +19,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace {
@@ -69,6 +72,7 @@ class HeapCallRecorder : public HeapAlgorithm {
 // sequence against an expected sequence.
 class HeapSimulatorTracker {
  public:
+  // Constructor for testing a single entry computation.
   HeapSimulatorTracker(
       const string& name, std::unique_ptr<HloComputation> computation,
       const std::vector<const HloInstruction*>& instruction_sequence) {
@@ -83,11 +87,47 @@ class HeapSimulatorTracker {
     auto zero_size = [](const LogicalBuffer& buffer) { return 0; };
     auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
         MakeUnique<HeapCallRecorder>(&actual_calls_));
-    result_ = HeapSimulator::Run(std::move(algorithm), instruction_sequence,
-                                 *module_->entry_computation(),
-                                 *points_to_analysis_, zero_size)
+    result_ = HeapSimulator::Run(
+                  std::move(algorithm), *module_->entry_computation(),
+                  instruction_sequence, *points_to_analysis_, zero_size)
                   .ConsumeValueOrDie();
   }
+
+  explicit HeapSimulatorTracker(const string& name) {
+    module_ = MakeUnique<HloModule>(name);
+  }
+
+  // Similar to the single entry computation constructor above, but runs the
+  // simulation over the entire module.
+  void RunWholeModule(
+      const std::vector<const HloInstruction*>& full_module_sequence) {
+    points_to_analysis_ =
+        TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
+
+    // Construct the module sequence grouped by computation.
+    SequentialHloOrdering::HloModuleSequence module_sequence;
+    tensorflow::gtl::FlatMap<const HloInstruction*, int> reverse_position;
+    for (int i = 0; i < full_module_sequence.size(); ++i) {
+      const HloInstruction* instruction = full_module_sequence[i];
+      module_sequence[instruction->parent()].push_back(instruction);
+      reverse_position[instruction] = full_module_sequence.size() - i;
+    }
+
+    // Hack the size_fn so that it returns a decreasing value as we step through
+    // the sequence. This lets us ensure the Alloc calls are in the sequence
+    // order. The Free calls are sorted by LogicalBuffer.id, which is at least
+    // deterministic.
+    auto size_fn = [&reverse_position](const LogicalBuffer& buffer) {
+      return reverse_position[buffer.instruction()];
+    };
+    auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
+        MakeUnique<HeapCallRecorder>(&actual_calls_));
+    result_ = HeapSimulator::Run(std::move(algorithm), *module_,
+                                 module_sequence, *points_to_analysis_, size_fn)
+                  .ConsumeValueOrDie();
+  }
+
+  HloModule* module() { return module_.get(); }
 
   // Returns the buffer defined at the given instruction and index.
   const LogicalBuffer* BufferAt(const HloInstruction* instruction,
@@ -358,6 +398,86 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
   });
 }
 
+TEST_F(HeapSimulatorTest, WholeModule) {
+  HeapSimulatorTracker tracker(TestName());
+
+  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
+  HloInstruction* cond_iter = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 0));
+  HloInstruction* cond_data = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
+                                   HloOpcode::kLt, cond_iter, cond_data));
+  HloComputation* cond_computation =
+      tracker.module()->AddEmbeddedComputation(cond_builder.Build());
+
+  auto body_builder = HloComputation::Builder("WhileBody");
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
+  HloComputation* body_computation =
+      tracker.module()->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "param"));
+  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
+      tuple_shape, cond_computation, body_computation, param));
+  tracker.module()->AddEntryComputation(builder.Build());
+
+  tracker.RunWholeModule(
+      {param, while_op, body_param, cond_param, cond_iter, cond_data, cond_lt});
+  tracker.ExpectCallSequence({
+      // The entry computation param and while_op are allocated first.
+      {kAlloc, tracker.BufferAt(param, {})},
+      {kAlloc, tracker.BufferAt(param, {0})},
+      {kAlloc, tracker.BufferAt(param, {1})},
+      {kAlloc, tracker.BufferAt(while_op, {})},
+      {kAlloc, tracker.BufferAt(while_op, {0})},
+      {kAlloc, tracker.BufferAt(while_op, {1})},
+
+      // Now the while body param is allocated and freed.
+      {kAlloc, tracker.BufferAt(body_param, {})},
+      {kAlloc, tracker.BufferAt(body_param, {0})},
+      {kAlloc, tracker.BufferAt(body_param, {1})},
+      {kFree, tracker.BufferAt(body_param, {})},
+      {kFree, tracker.BufferAt(body_param, {0})},
+      {kFree, tracker.BufferAt(body_param, {1})},
+
+      // Now the while cond param is allocated. The GTE instructions just alias
+      // the param elements, so the param tuple can immediately be freed.
+      {kAlloc, tracker.BufferAt(cond_param, {})},
+      {kAlloc, tracker.BufferAt(cond_param, {0})},
+      {kAlloc, tracker.BufferAt(cond_param, {1})},
+      {kFree, tracker.BufferAt(cond_param, {})},
+
+      // Now the final cond less-than buffer is allocated.
+      {kAlloc, tracker.BufferAt(cond_lt, {})},
+
+      // The order of the remaining Free calls is based on the LogicalBuffer.id,
+      // which is deterministic, but not obvious.
+      {kFree, tracker.BufferAt(param, {})},
+      {kFree, tracker.BufferAt(param, {0})},
+      {kFree, tracker.BufferAt(param, {1})},
+
+      {kFree, tracker.BufferAt(while_op, {})},
+      {kFree, tracker.BufferAt(while_op, {0})},
+      {kFree, tracker.BufferAt(while_op, {1})},
+
+      {kFree, tracker.BufferAt(cond_param, {0})},
+      {kFree, tracker.BufferAt(cond_param, {1})},
+      {kFree, tracker.BufferAt(cond_lt, {})},
+
+      {kFinish, nullptr},
+  });
+}
+
 // Base class for heap algorithm tests.
 class HeapAlgorithmTestBase : public ::testing::Test {
  protected:
@@ -387,10 +507,11 @@ class HeapAlgorithmTestBase : public ::testing::Test {
  private:
   // Create a dummy LogicalBuffer to pass to the heap algorithm.  Since the
   // algorithms only use the buffer as a handle, we don't need to fill in much
-  // other than the id.
+  // other than the id and color.
   const LogicalBuffer* DummyLogicalBuffer() {
     const LogicalBuffer::Id id = buffers_.size();
-    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id));
+    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id,
+                                                    LogicalBuffer::Color(0)));
     return buffers_.back().get();
   }
 

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,21 +22,15 @@ from __future__ import print_function
 import os
 import textwrap
 import numpy as np
+import tensorflow as tf
 
-from tensorflow.python.client import session
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import test
-from tensorflow.python.summary import summary
-from tensorflow.python.summary import text_summary
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins.text import text_plugin
 
 GEMS = ['garnet', 'amethyst', 'pearl', 'steven']
 
 
-class TextPluginTest(test.TestCase):
+class TextPluginTest(tf.test.TestCase):
 
   def setUp(self):
     self.logdir = self.get_temp_dir()
@@ -51,17 +46,17 @@ class TextPluginTest(test.TestCase):
     self.assertEqual(actual, expected_html)
 
   def generate_testdata(self):
-    ops.reset_default_graph()
-    sess = session.Session()
-    placeholder = array_ops.placeholder(dtypes.string)
-    summary_tensor = text_summary.text_summary('message', placeholder)
+    tf.reset_default_graph()
+    sess = tf.Session()
+    placeholder = tf.placeholder(tf.string)
+    summary_tensor = tf.summary.text('message', placeholder)
 
-    vector_summary = text_summary.text_summary('vector', placeholder)
+    vector_summary = tf.summary.text('vector', placeholder)
 
     run_names = ['fry', 'leela']
     for run_name in run_names:
       subdir = os.path.join(self.logdir, run_name)
-      writer = summary.FileWriter(subdir)
+      writer = tf.summary.FileWriter(subdir)
       writer.add_graph(sess.graph)
 
       step = 0
@@ -404,6 +399,10 @@ class TextPluginTest(test.TestCase):
     # The plugin is active because text summaries are available.
     self.assertTrue(self.plugin.is_active())
 
+  def testUnicode(self):
+    self.assertConverted(u'<p>Iñtërnâtiônàlizætiøn⚡💩</p>',
+                         'Iñtërnâtiônàlizætiøn⚡💩')
+
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

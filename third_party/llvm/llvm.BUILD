@@ -24,23 +24,20 @@ llvm_host_triple = "x86_64-unknown-linux_gnu"
 
 llvm_targets = [
     "AArch64",
+    # Uncomment to enable the AMDGPU backend.
+    # TODO(phawkins): use a configure-time test.
+    # "AMDGPU",
     "ARM",
     "NVPTX",
     "PowerPC",
     "X86",
 ]
 
-llvm_target_asm_parsers = [
-    "AArch64",
-    "ARM",
-    "NVPTX",
-    "PowerPC",
-    "X86",
-]
+llvm_target_asm_parsers = llvm_targets
 
-llvm_target_asm_printers = llvm_target_asm_parsers
+llvm_target_asm_printers = llvm_targets
 
-llvm_target_disassemblers = llvm_target_asm_parsers
+llvm_target_disassemblers = llvm_targets
 
 # TODO(phawkins): the set of CMake variables was hardcoded for expediency.
 # However, we should really detect many of these via configure-time tests.
@@ -353,6 +350,26 @@ llvm_target_list = [
         ],
     },
     {
+        "name": "AMDGPU",
+        "lower_name": "amdgpu",
+        "short_name": "AMDGPU",
+        "tbl_outs": [
+            ("-gen-register-bank", "lib/Target/AMDGPU/AMDGPUGenRegisterBank.inc"),
+            ("-gen-register-info", "lib/Target/AMDGPU/AMDGPUGenRegisterInfo.inc"),
+            ("-gen-instr-info", "lib/Target/AMDGPU/AMDGPUGenInstrInfo.inc"),
+            ("-gen-dag-isel", "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc"),
+            ("-gen-callingconv", "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc"),
+            ("-gen-subtarget", "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc"),
+            ("-gen-tgt-intrinsic", "lib/Target/AMDGPU/AMDGPUGenIntrinsics.inc"),
+            ("-gen-emitter", "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc"),
+            ("-gen-dfa-packetizer", "lib/Target/AMDGPU/AMDGPUGenDFAPacketizer.inc"),
+            ("-gen-asm-writer", "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc"),
+            ("-gen-asm-matcher", "lib/Target/AMDGPU/AMDGPUGenAsmMatcher.inc"),
+            ("-gen-disassembler", "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc"),
+            ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
+        ],
+    },
+    {
         "name": "ARM",
         "lower_name": "arm",
         "short_name": "ARM",
@@ -366,6 +383,7 @@ llvm_target_list = [
             ("-gen-asm-matcher", "lib/Target/ARM/ARMGenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/ARM/ARMGenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/ARM/ARMGenFastISel.inc"),
+            ("-gen-global-isel", "lib/Target/ARM/ARMGenGlobalISel.inc"),
             ("-gen-callingconv", "lib/Target/ARM/ARMGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/ARM/ARMGenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/ARM/ARMGenDisassemblerTables.inc"),
@@ -439,6 +457,16 @@ llvm_target_list = [
     )
     for target in llvm_target_list
 ]
+
+# This target is used to provide *.def files to x86_code_gen.
+# Files with '.def' extension are not allowed in 'srcs' of 'cc_library' rule.
+cc_library(
+    name = "x86_defs",
+    hdrs = glob([
+        "lib/Target/X86/*.def",
+    ]),
+    visibility = ["//visibility:private"],
+)
 
 cc_library(
     name = "aarch64_asm_parser",
@@ -627,6 +655,7 @@ cc_library(
         "lib/Analysis/*.cpp",
         "lib/Analysis/*.inc",
         "include/llvm/Transforms/Utils/Local.h",
+        "include/llvm/Transforms/Scalar.h",
         "lib/Analysis/*.h",
     ]),
     hdrs = glob([
@@ -635,11 +664,190 @@ cc_library(
         "include/llvm/Analysis/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":config",
         ":core",
         ":object",
         ":profile_data",
         ":support",
+    ],
+)
+
+cc_library(
+    name = "amdgpu_desc",
+    srcs = glob([
+        "lib/Target/AMDGPU/MCTargetDesc/*.c",
+        "lib/Target/AMDGPU/MCTargetDesc/*.cpp",
+        "lib/Target/AMDGPU/MCTargetDesc/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AMDGPU/MCTargetDesc/*.h",
+        "include/llvm/Target/AMDGPU/MCTargetDesc/*.def",
+        "include/llvm/Target/AMDGPU/MCTargetDesc/*.inc",
+        "lib/Target/AMDGPU/MCTargetDesc/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    deps = [
+        ":amdgpu_asm_printer",
+        ":amdgpu_info",
+        ":amdgpu_utils",
+        ":config",
+        ":core",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "amdgpu_disassembler",
+    srcs = glob([
+        "lib/Target/AMDGPU/Disassembler/*.c",
+        "lib/Target/AMDGPU/Disassembler/*.cpp",
+        "lib/Target/AMDGPU/Disassembler/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AMDGPU/Disassembler/*.h",
+        "include/llvm/Target/AMDGPU/Disassembler/*.def",
+        "include/llvm/Target/AMDGPU/Disassembler/*.inc",
+        "lib/Target/AMDGPU/Disassembler/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    deps = [
+        ":amdgpu_desc",
+        ":amdgpu_info",
+        ":amdgpu_utils",
+        ":config",
+        ":mc",
+        ":mc_disassembler",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "amdgpu_info",
+    srcs = glob([
+        "lib/Target/AMDGPU/TargetInfo/*.c",
+        "lib/Target/AMDGPU/TargetInfo/*.cpp",
+        "lib/Target/AMDGPU/TargetInfo/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AMDGPU/TargetInfo/*.h",
+        "include/llvm/Target/AMDGPU/TargetInfo/*.def",
+        "include/llvm/Target/AMDGPU/TargetInfo/*.inc",
+        "lib/Target/AMDGPU/TargetInfo/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    deps = [
+        ":amdgpu_target_gen",
+        ":config",
+        ":core",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "amdgpu_utils",
+    srcs = glob([
+        "lib/Target/AMDGPU/Utils/*.c",
+        "lib/Target/AMDGPU/Utils/*.cpp",
+        "lib/Target/AMDGPU/Utils/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AMDGPU/Utils/*.h",
+        "include/llvm/Target/AMDGPU/Utils/*.def",
+        "include/llvm/Target/AMDGPU/Utils/*.inc",
+        "lib/Target/AMDGPU/Utils/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    deps = [
+        ":amdgpu_target_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "amdgpu_asm_parser",
+    srcs = glob([
+        "lib/Target/AMDGPU/AsmParser/*.c",
+        "lib/Target/AMDGPU/AsmParser/*.cpp",
+        "lib/Target/AMDGPU/AsmParser/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AMDGPU/AsmParser/*.h",
+        "include/llvm/Target/AMDGPU/AsmParser/*.def",
+        "include/llvm/Target/AMDGPU/AsmParser/*.inc",
+        "lib/Target/AMDGPU/AsmParser/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    deps = [
+        ":amdgpu_desc",
+        ":amdgpu_info",
+        ":amdgpu_utils",
+        ":config",
+        ":mc",
+        ":mc_parser",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "amdgpu_asm_printer",
+    srcs = glob([
+        "lib/Target/AMDGPU/InstPrinter/*.c",
+        "lib/Target/AMDGPU/InstPrinter/*.cpp",
+        "lib/Target/AMDGPU/InstPrinter/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AMDGPU/InstPrinter/*.h",
+        "include/llvm/Target/AMDGPU/InstPrinter/*.def",
+        "include/llvm/Target/AMDGPU/InstPrinter/*.inc",
+        "lib/Target/AMDGPU/InstPrinter/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    deps = [
+        ":amdgpu_utils",
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "amdgpu_code_gen",
+    srcs = glob([
+        "lib/Target/AMDGPU/*.c",
+        "lib/Target/AMDGPU/*.cpp",
+        "lib/Target/AMDGPU/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/AMDGPU/*.h",
+        "include/llvm/Target/AMDGPU/*.def",
+        "include/llvm/Target/AMDGPU/*.inc",
+        "lib/Target/AMDGPU/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    deps = [
+        ":amdgpu_asm_printer",
+        ":amdgpu_desc",
+        ":amdgpu_info",
+        ":amdgpu_utils",
+        ":analysis",
+        ":asm_printer",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":global_i_sel",
+        ":ipo",
+        ":mc",
+        ":scalar",
+        ":selection_dag",
+        ":support",
+        ":target",
+        ":transform_utils",
+        ":vectorize",
     ],
 )
 
@@ -729,6 +937,7 @@ cc_library(
         "lib/Target/ARM/MCTargetDesc/*.cpp",
         "lib/Target/ARM/MCTargetDesc/*.inc",
         "lib/Target/ARM/*.h",
+        "include/llvm/CodeGen/GlobalISel/GISelAccessor.h",
     ]),
     hdrs = glob([
         "include/llvm/Target/ARM/MCTargetDesc/*.h",
@@ -810,6 +1019,7 @@ cc_library(
         "include/llvm/AsmParser/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":config",
         ":core",
         ":support",
@@ -828,9 +1038,11 @@ cc_library(
         "include/llvm/CodeGen/AsmPrinter/*.h",
         "include/llvm/CodeGen/AsmPrinter/*.def",
         "include/llvm/CodeGen/AsmPrinter/*.inc",
+        "lib/CodeGen/AsmPrinter/*.def",
     ]),
     deps = [
         ":analysis",
+        ":binary_format",
         ":code_gen",
         ":config",
         ":core",
@@ -840,6 +1052,25 @@ cc_library(
         ":mc_parser",
         ":support",
         ":target",
+    ],
+)
+
+cc_library(
+    name = "binary_format",
+    srcs = glob([
+        "lib/BinaryFormat/*.c",
+        "lib/BinaryFormat/*.cpp",
+        "lib/BinaryFormat/*.inc",
+        "lib/BinaryFormat/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/BinaryFormat/*.h",
+        "include/llvm/BinaryFormat/*.def",
+        "include/llvm/BinaryFormat/*.inc",
+    ]),
+    deps = [
+        ":config",
+        ":support",
     ],
 )
 
@@ -909,6 +1140,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
+        ":instrumentation",
         ":mc",
         ":profile_data",
         ":scalar",
@@ -941,6 +1173,7 @@ cc_library(
     deps = [
         ":attributes_compat_gen",
         ":attributes_gen",
+        ":binary_format",
         ":config",
         ":intrinsics_gen",
         ":support",
@@ -1107,6 +1340,9 @@ cc_library(
         "lib/Transforms/IPO/*.c",
         "lib/Transforms/IPO/*.cpp",
         "lib/Transforms/IPO/*.inc",
+        "include/llvm/Transforms/SampleProfile.h",
+        "include/llvm-c/Transforms/IPO.h",
+        "include/llvm-c/Transforms/PassManagerBuilder.h",
         "lib/Transforms/IPO/*.h",
     ]),
     hdrs = glob([
@@ -1116,6 +1352,7 @@ cc_library(
     ]),
     deps = [
         ":analysis",
+        ":bit_reader",
         ":bit_writer",
         ":config",
         ":core",
@@ -1357,6 +1594,7 @@ cc_library(
         "include/llvm/Object/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":bit_reader",
         ":config",
         ":core",
@@ -1372,6 +1610,7 @@ cc_library(
         "lib/Transforms/ObjCARC/*.c",
         "lib/Transforms/ObjCARC/*.cpp",
         "lib/Transforms/ObjCARC/*.inc",
+        "include/llvm/Transforms/ObjCARC.h",
         "lib/Transforms/ObjCARC/*.h",
     ]),
     hdrs = glob([
@@ -1681,6 +1920,7 @@ cc_library(
         "lib/Support/Unix/*.inc",
         "lib/Support/Unix/*.h",
         "include/llvm-c/*.h",
+        "include/llvm/CodeGen/MachineValueType.h",
         "lib/Support/*.h",
     ]),
     hdrs = glob([
@@ -1689,7 +1929,11 @@ cc_library(
         "include/llvm/Support/*.inc",
         "include/llvm/ADT/*.h",
         "include/llvm/Support/ELFRelocs/*.def",
-    ]) + ["include/llvm/Support/DataTypes.h"],
+        "include/llvm/Support/WasmRelocs/*.def",
+    ]) + [
+        "include/llvm/Support/DataTypes.h",
+        "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
+    ],
     deps = [
         ":config",
         ":demangle",
@@ -1786,6 +2030,7 @@ cc_library(
         ":analysis",
         ":config",
         ":core",
+        ":scalar",
         ":support",
         ":transform_utils",
     ],
@@ -1865,6 +2110,7 @@ cc_library(
         ":support",
         ":target",
         ":x86_asm_printer",
+        ":x86_defs",
         ":x86_desc",
         ":x86_info",
         ":x86_utils",

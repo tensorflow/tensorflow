@@ -24,6 +24,34 @@ limitations under the License.
 #include "tensorflow/core/platform/demangle.h"
 
 namespace tensorflow {
+ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
+                                  const string& name,
+                                  const TypeIndex& type_index) {
+  ResourceHandle result;
+  result.set_device(ctx->device()->attributes().name());
+  string actual_container;
+  if (!container.empty()) {
+    actual_container = container;
+  } else {
+    actual_container = ctx->resource_manager()->default_container();
+  }
+  result.set_container(actual_container);
+  result.set_name(name);
+  result.set_hash_code(type_index.hash_code());
+  result.set_maybe_type_name(type_index.name());
+  return result;
+}
+
+Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
+                                  const string& container, const string& name,
+                                  const TypeIndex& type_index) {
+  Tensor* handle;
+  TF_RETURN_IF_ERROR(
+      context->allocate_output(output_index, TensorShape({}), &handle));
+  handle->scalar<ResourceHandle>()() =
+      MakeResourceHandle(context, container, name, type_index);
+  return Status::OK();
+}
 
 namespace internal {
 
@@ -96,6 +124,7 @@ string ResourceMgr::DebugString() const {
     }
   }
   std::vector<string> text;
+  text.reserve(lines.size());
   for (const Line& line : lines) {
     text.push_back(strings::Printf(
         "%-20s | %-40s | %-40s | %-s", line.container->c_str(),
@@ -244,6 +273,14 @@ string ContainerInfo::DebugString() const {
 
 ResourceHandle HandleFromInput(OpKernelContext* ctx, int input) {
   return ctx->input(input).flat<ResourceHandle>()(0);
+}
+
+Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
+                       ResourceHandle* handle) {
+  const Tensor* tensor;
+  TF_RETURN_IF_ERROR(ctx->input(input, &tensor));
+  *handle = tensor->flat<ResourceHandle>()(0);
+  return Status::OK();
 }
 
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {

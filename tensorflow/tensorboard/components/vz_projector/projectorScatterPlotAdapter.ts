@@ -65,7 +65,7 @@ const SCATTER_PLOT_CUBE_LENGTH = 2;
 
 /** Color scale for nearest neighbors. */
 const NN_COLOR_SCALE =
-    d3.scale.linear<string>()
+    d3.scaleLinear<string, string>()
         .domain([1, 0.7, 0.4])
         .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
         .clamp(true);
@@ -245,9 +245,9 @@ export class ProjectorScatterPlotAdapter {
       return null;
     }
 
-    const xScaler: d3.scale.Linear<number, number> = d3.scale.linear();
-    const yScaler: d3.scale.Linear<number, number> = d3.scale.linear();
-    let zScaler: d3.scale.Linear<number, number> = null;
+    const xScaler = d3.scaleLinear();
+    const yScaler = d3.scaleLinear();
+    let zScaler = null;
     {
       // Determine max and min of each axis of our data.
       const xExtent = d3.extent(
@@ -267,7 +267,7 @@ export class ProjectorScatterPlotAdapter {
         const zExtent = d3.extent(
             ds.points,
             (p, i) => ds.points[i].projections[projectionComponents[2]]);
-        zScaler = d3.scale.linear();
+        zScaler = d3.scaleLinear();
         zScaler.domain(zExtent).range(range);
       }
     }
@@ -376,8 +376,8 @@ export class ProjectorScatterPlotAdapter {
     }
 
     return new LabelRenderParams(
-        visibleLabels, labelStrings, scale, opacityFlags, LABEL_FONT_SIZE,
-        fillColors, strokeColors);
+        new Float32Array(visibleLabels), labelStrings, scale, opacityFlags,
+        LABEL_FONT_SIZE, fillColors, strokeColors);
   }
 
   generatePointScaleFactorArray(

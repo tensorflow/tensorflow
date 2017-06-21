@@ -19,12 +19,14 @@ limitations under the License.
 #include <atomic>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -48,13 +50,15 @@ class MasterSession : public core::RefCounted {
   MasterSession(
       const SessionOptions& options, const MasterEnv* env,
       std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+      std::unique_ptr<WorkerCacheInterface> worker_cache,
+      std::unique_ptr<DeviceSet> device_set,
       StatsPublisherFactory stats_publisher_factory);
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
   // Run(), or Close().
   //
   // After this method returns, `def` will no longer be valid.
-  Status Create(GraphDef* def);
+  Status Create(GraphDef* def, const WorkerCacheFactoryOptions& options);
 
   // Returns the session handle.
   const string& handle() const { return handle_; }
@@ -83,6 +87,8 @@ class MasterSession : public core::RefCounted {
   Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
              MutableRunStepResponseWrapper* resp);
 
+  Status ListDevices(ListDevicesResponse* resp) const;
+
   // Close this session and delete "*this". Returns OK if all known
   // states are cleanup successfully.
   //
@@ -106,8 +112,14 @@ class MasterSession : public core::RefCounted {
 
   std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs_;
 
+  // The optional session-specific worker cluster.
+  // TODO(saeta): Convert to std::optional when available.
+  const std::unique_ptr<WorkerCacheInterface> worker_cache_;
+  // Retrieves either worker_cache_ or the env_->worker_cache as appropriate.
+  WorkerCacheInterface* get_worker_cache() const;
+
   // The device set used by this session.
-  DeviceSet devices_;
+  std::unique_ptr<DeviceSet> devices_;
 
   StatsPublisherFactory stats_publisher_factory_;
 
@@ -141,8 +153,8 @@ class MasterSession : public core::RefCounted {
   };
 
   struct RunState {
-    std::unordered_set<string> pending_inputs;
-    std::unordered_set<string> pending_outputs;
+    std::unordered_map<string, bool> pending_inputs;   // true if fed
+    std::unordered_map<string, bool> pending_outputs;  // true if fetched
     ReffedClientGraph* rcg = nullptr;
     uint64 step_id;
     int64 count = 0;
@@ -153,6 +165,8 @@ class MasterSession : public core::RefCounted {
     RunState(const std::vector<string>& input_names,
              const std::vector<string>& output_names, ReffedClientGraph* rcg,
              const uint64 step_id, const int64 count);
+
+    bool PendingDone() const;
 
     ~RunState();
   };
@@ -178,6 +192,13 @@ class MasterSession : public core::RefCounted {
   // Private dtor. The client must call Close().
   virtual ~MasterSession();
 
+  // Creates sessions on all workers.
+  //
+  // If this session is operating using the new ClusterSpec propagation behavior
+  // call this method in order to propagate the cluster membership to all
+  // workers.
+  Status CreateWorkerSessions(const WorkerCacheFactoryOptions& server_def);
+
   Status StartStep(const BuildGraphOptions& opts, int64* count,
                    ReffedClientGraph** graph, bool is_partial);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
@@ -187,9 +208,15 @@ class MasterSession : public core::RefCounted {
                                  MutableRunStepResponseWrapper* resp);
   Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
                       MutableRunStepResponseWrapper* resp);
+  void MarkRunCompletion();
   void UpdateLastAccessTime();
 
   Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);
+
+  Status CreateDebuggerState(
+      const DebugOptions& debug_options, const RunStepRequestWrapper& req,
+      int64 rcg_execution_count,
+      std::unique_ptr<DebuggerStateInterface>* debugger_state);
 
   TF_DISALLOW_COPY_AND_ASSIGN(MasterSession);
 };

@@ -1,35 +1,37 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_testonly = True,
+    default_visibility = ["//tensorflow/tensorboard:internal"],
+)
 
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_wct_test_suite")
+load("//tensorflow/tensorboard/defs:vulcanize.bzl", "tensorboard_html_binary")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
+ts_web_library(
+    name = "test",
+    srcs = [
+        "sortingTests.ts",
+        "tests.html",
+    ],
+    path = "/vz-sorting/test",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_imports:web_component_tester",
+        "//tensorflow/tensorboard/components/vz_sorting",
+    ],
+)
+
+tensorboard_html_binary(
+    name = "devserver",
+    compilation_level = "WHITESPACE_ONLY",
+    input_path = "/vz-sorting/test/tests.html",
+    output_path = "/vz-sorting/test/tests.html",
+    deps = [":test"],
+)
+
 filegroup(
     name = "all_files",
+    testonly = 0,
     srcs = glob(["**"]),
     tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
-
-tensorboard_wct_test_suite(
-    name = "legacy_test",
-    size = "medium",
-    srcs = ["index.html"],
-    deps = [
-        "//tensorflow/tensorboard/components/vz_sorting:legacy",
-        "//third_party/javascript/polymer/v1/webcomponentsjs:lib",
-    ],
-)
-
-tensorboard_ts_library(
-    name = "legacy_ts",
-    testonly = 1,
-    srcs = ["sortingTests.ts"],
-    deps = [
-        "//tensorflow/tensorboard/components:common_deps",
-        "//tensorflow/tensorboard/components/vz_sorting:legacy_ts",
-    ],
 )

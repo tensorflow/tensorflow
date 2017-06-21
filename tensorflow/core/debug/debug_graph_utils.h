@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_DEBUG_NODE_INSERTER_H_
 
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
@@ -28,35 +27,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
-
-class DebuggerState : public DebuggerStateInterface {
- public:
-  DebuggerState(const DebugOptions& debug_options);
-  virtual ~DebuggerState();
-
-  // Returns a summary string for RepeatedPtrFields of DebugTensorWatches.
-  const string SummarizeDebugTensorWatches() override;
-
-  // Insert special-purpose debug nodes to graph. See the documentation of
-  // DebugNodeInserter::InsertNodes() for details.
-  Status DecorateGraphForDebug(Graph* graph, Device* device) override;
-
-  const protobuf::RepeatedPtrField<DebugTensorWatch>& watches;
-
-  // Publish metadata about the debugged Session::Run() call.
-  //
-  // See the doc string of DebuggerStateInterface::PublishDebugMetadata() for
-  // details.
-  Status PublishDebugMetadata(const int64 global_step,
-                              const int64 session_run_count,
-                              const int64 executor_step_count,
-                              const std::vector<string>& input_names,
-                              const std::vector<string>& output_names,
-                              const std::vector<string>& target_names) override;
-
- private:
-  std::unordered_set<string> debug_urls_;
-};
 
 class DebugNodeInserter {
  public:
@@ -140,13 +110,14 @@ class DebugNodeInserter {
   static Status SetDebugNodeAttributes(
       Node* debug_node, const std::unordered_map<string, string>& attributes);
 
-  static Status CreateDebugNode(Graph* graph, const DeviceType device_type,
+  static Status CreateDebugNode(Graph* graph, const Device& device,
                                 const string& src_copy_node_name,
                                 const DataType src_dt,
                                 const string& tensor_name,
                                 const std::vector<string>& debug_urls,
                                 const int debug_op_num,
                                 const string& debug_op_name, Node** debug_node);
+  // TODO(cais): Cut down the number of args to this method.
 
   friend class DebugGraphUtilsTest;
 };

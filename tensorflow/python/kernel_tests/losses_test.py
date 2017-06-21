@@ -319,6 +319,21 @@ class SparseSoftmaxCrossEntropyLossTest(test.TestCase):
                           feed_dict={weights: ((1.2,), (3.4,), (5.6,))})
       self.assertAlmostEqual((1.2 + 3.4 + 5.6) * 10.0 / 3.0, loss_val, 3)
 
+  def testUnknownShapePlaceholderForLogitsLabelsButScalarWeights(self):
+    logits = array_ops.placeholder(dtypes.float32)
+    labels = array_ops.placeholder(dtypes.int32)
+    weights = 1.0
+    with self.test_session() as sess:
+      loss = losses.sparse_softmax_cross_entropy(labels, logits, weights)
+      loss_val = sess.run(loss,
+                          feed_dict={
+                              logits: [[10.0, 0.0, 0.0],
+                                       [0.0, 10.0, 0.0],
+                                       [0.0, 0.0, 10.0]],
+                              labels: [[2], [0], [1]],
+                          })
+      self.assertAlmostEqual((1.0 + 1.0 + 1.0) * 10.0 / 3.0, loss_val, 3)
+
   def testNonZeroLossWithPlaceholderForLogitsLabelsAndWeights(self):
     logits = array_ops.placeholder(dtypes.float32, shape=(None, 3))
     labels = array_ops.placeholder(dtypes.int32, shape=(None, 1))
@@ -829,6 +844,25 @@ class HuberLossTest(test.TestCase):
       linear = (1.5 + 2.4 + 1.0 + 1.5) / 4. - 0.5
       expected_loss = (quadratic + linear) / 2.
       self.assertAllClose(loss.eval(), expected_loss, atol=1e-5)
+
+  def testAllQuadraticDelta(self):
+    with self.test_session():
+      delta = 0.5
+      predictions = constant_op.constant([1.5, -1.4, -0.5, 0.0])
+      labels = constant_op.constant([1.0, -1.0, 0.0, 0.5])
+      expected = 0.5 * np.array([0.5**2, 0.4**2, 0.5**2, 0.5**2]).mean()
+      loss = losses.huber_loss(labels, predictions, delta=delta)
+      self.assertAllClose(expected, loss.eval(), atol=1e-5)
+
+  def testAllLinearDelta(self):
+    delta = 0.5
+    predictions = constant_op.constant([1.5, -1.4, -1.0, 0.0])
+    labels = constant_op.constant([0.0, 1.0, 0.0, 1.5])
+    expected = delta * np.array([1.5, 2.4, 1.0, 1.5]).mean()
+    expected -= 0.5 * delta**2
+    loss = losses.huber_loss(labels, predictions, delta=delta)
+    with self.test_session():
+      self.assertAllClose(expected, loss.eval(), atol=1e-5)
 
 
 class MeanSquaredErrorTest(test.TestCase):

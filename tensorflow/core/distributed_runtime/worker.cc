@@ -55,11 +55,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
-      response->mutable_graph_handle());
-  if (s.ok()) {
-    env_->session_mgr->AssociateGraphWithSession(request->session_handle(),
-                                                 response->graph_handle());
-  }
+      request->debug_options(), response->mutable_graph_handle());
   done(s);
 }
 
@@ -67,82 +63,14 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
                                   DeregisterGraphResponse* response,
                                   StatusCallback done) {
   WorkerSession* session =
-      env_->session_mgr->WorkerSessionForGraphHandle(request->graph_handle());
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Deregister(request->graph_handle());
-  env_->session_mgr->DisassociateGraphFromSession(request->graph_handle());
 
-  done(s);
-}
-
-Worker::PartialRunState* Worker::FindPartialRun(const string& graph_handle,
-                                                int step_id) {
-  const std::pair<string, int> k(graph_handle, step_id);
-  Worker::PartialRunState* prun_state = nullptr;
-  mutex_lock l(mu_);
-  auto it = partial_runs_.find(k);
-  if (it != partial_runs_.end()) {
-    prun_state = it->second.get();
-  }
-  return prun_state;
-}
-
-void Worker::InsertPartialRunLocked(const string& graph_handle, int step_id,
-                                    Worker::PartialRunState* partial_run_state)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  const std::pair<string, int> k(graph_handle, step_id);
-  partial_runs_.emplace(std::make_pair(
-      k, std::unique_ptr<Worker::PartialRunState>(partial_run_state)));
-}
-
-void Worker::RemovePartialRun(const string& graph_handle, int step_id) {
-  const std::pair<string, int> k(graph_handle, step_id);
-  mutex_lock l(mu_);
-  partial_runs_.erase(partial_runs_.find(k));
-}
-
-void Worker::MaybeCallFinalCallback(const string& graph_handle, int step_id,
-                                    const Status& executor_status) {
-  const std::pair<string, int> k(graph_handle, step_id);
-  StatusCallback done;
-  Status s;
-  {
-    mutex_lock l(mu_);
-    auto it = partial_runs_.find(k);
-    if (it != partial_runs_.end()) {
-      // If we found the partial_run, we call the final callback, if it
-      // exists.
-      std::swap(done, it->second->final_callback);
-      s = it->second->final_status;
-      it->second->executor_done = true;
-    }
-  }
-  if (done != nullptr) {
-    s.Update(executor_status);
-    done(s);
-  }
-}
-
-void Worker::SetOrCallFinalCallback(const string& graph_handle, int step_id,
-                                    StatusCallback done, const Status& s) {
-  const std::pair<string, int> k(graph_handle, step_id);
-  {
-    mutex_lock l(mu_);
-    auto it = partial_runs_.find(k);
-    if (!it->second->executor_done) {
-      // If we found the partial_run, we set the final callback to call only
-      // when the executor is completely done.
-      it->second->final_callback = std::move(done);
-      it->second->final_status = s;
-      return;
-    }
-  }
-  // Otherwise we call the callback immediately.
   done(s);
 }
 
 void Worker::AbortStep(int64 step_id) {
-  WorkerSession* session = env_->session_mgr->WorkerSessionForStepId(step_id);
-  Rendezvous* rendez = session->rendezvous_mgr->Find(step_id);
+  Rendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
   SchedNonBlockingClosureAfter(1000000, [rendez, step_id]() {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
@@ -193,8 +121,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
   WorkerSession* session =
-      env_->session_mgr->WorkerSessionForGraphHandle(request->graph_handle());
-  env_->session_mgr->AssociateStepIdWithGraph(request->graph_handle(), step_id);
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
@@ -231,8 +158,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   }
   CostGraphDef* cost_graph = response->mutable_cost_graph();
   session->graph_mgr->ExecuteAsync(
-      request->graph_handle(), step_id, request->exec_opts(), collector,
-      cost_graph, cm, in,
+      request->graph_handle(), step_id, session, request->exec_opts(),
+      collector, cost_graph, cm, in,
       [this, step_id, response, session, cm, out, token, collector, opts,
        done](Status s) {
         if (s.ok()) {
@@ -267,8 +194,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
   WorkerSession* session =
-      env_->session_mgr->WorkerSessionForGraphHandle(graph_handle);
-  env_->session_mgr->AssociateStepIdWithGraph(graph_handle, step_id);
+      env_->session_mgr->WorkerSessionForSession(request->session_handle());
+
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   Status s = PrepareRunGraph(request, &in, out);
@@ -282,18 +209,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     return;
   }
 
-  PartialRunState* partial_run_state = FindPartialRun(graph_handle, step_id);
-
   CancellationManager* cm = nullptr;
-  // If this is a new partial run call we need to create a new cancellation
-  // manager.
-  // Otherwise we use the cancellation manager stored in the found partial
-  // run state.
-  if (partial_run_state == nullptr) {
-    cm = new CancellationManager;
-  } else {
-    cm = partial_run_state->cancellation_manager;
-  }
+  bool is_new_partial_run = partial_run_mgr_.FindOrCreate(step_id, &cm);
 
   // Before we start doing anything, we set the RPC cancellation.
   opts->SetCancelCallback([this, cm, step_id]() {
@@ -303,27 +220,23 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
 
   // If this is a new partial run request, the request will need to start the
   // executors.
-  if (partial_run_state == nullptr) {
+  if (is_new_partial_run) {
     CancellationToken token;
     {
       mutex_lock l(mu_);
-      // Insert the new partial run into the partial_runs_ map.
-      partial_run_state = new PartialRunState(cm);
-      InsertPartialRunLocked(graph_handle, step_id, partial_run_state);
       token = cancellation_manager_->get_cancellation_token();
       cancellation_manager_->RegisterCallback(token,
                                               [cm]() { cm->StartCancel(); });
     }
     session->graph_mgr->ExecuteAsync(
-        graph_handle, step_id, request->exec_opts(), nullptr /* collector */,
-        nullptr /* cost_graph */, cm, in,
-        [this, token, graph_handle, step_id, cm](Status s) {
+        graph_handle, step_id, session, request->exec_opts(),
+        nullptr /* collector */, nullptr /* cost_graph */, cm, in,
+        [this, token, step_id, cm](Status s) {
           {
             mutex_lock l(mu_);
             cancellation_manager_->DeregisterCallback(token);
           }
-          MaybeCallFinalCallback(graph_handle, step_id, s);
-          delete cm;
+          partial_run_mgr_.ExecutorDone(step_id, s);
         });
   } else {
     // Send the partial run's new inputs.
@@ -335,8 +248,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   }
 
   session->graph_mgr->RecvOutputsAsync(
-      step_id, out,
-      [this, out, request, response, graph_handle, step_id, finish](Status s) {
+      step_id, out, [this, out, request, response, step_id, finish](Status s) {
         if (s.ok()) {
           // Construct and return the resp.
           for (const auto& p : *out) {
@@ -346,15 +258,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
           }
         }
         if (request->is_last_partial_run()) {
-          SetOrCallFinalCallback(
-              graph_handle, step_id,
-              [this, graph_handle, step_id, finish](const Status& s) {
-                finish(s);
-                // We must wait to remove the partial_run_state until both the
-                // executor and the RecvAsync are complete.
-                RemovePartialRun(graph_handle, step_id);
-              },
-              s);
+          partial_run_mgr_.PartialRunDone(step_id, finish, s);
         } else {
           finish(s);
         }
@@ -365,8 +269,7 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
                                CleanupGraphResponse* response,
                                StatusCallback done) {
   const int64 step_id = request->step_id();
-  WorkerSession* session = env_->session_mgr->WorkerSessionForStepId(step_id);
-  session->rendezvous_mgr->Cleanup(step_id);
+  env_->rendezvous_mgr->Cleanup(step_id);
   done(Status::OK());
 }
 
@@ -394,8 +297,8 @@ void Worker::TracingAsync(const TracingRequest* request,
 Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
                                  Device** src_dev) {
   // Figures out which device the tensor is hosted on.
-  TF_RETURN_IF_ERROR(
-      env_->device_mgr->LookupDevice(parsed.src_device, src_dev));
+  string local_name = DeviceNameUtils::LocalName(parsed.src_device);
+  TF_RETURN_IF_ERROR(env_->device_mgr->LookupDevice(local_name, src_dev));
 
   // Does the device have the right incarnation number we expect?
   if ((*src_dev)->attributes().incarnation() != parsed.src_incarnation) {

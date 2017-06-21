@@ -22,8 +22,7 @@ import itertools
 
 import numpy as np
 
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
-from tensorflow.contrib.rnn.python.ops import rnn_cell
+from tensorflow.contrib.rnn.python.ops import rnn_cell as contrib_rnn_cell
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -37,6 +36,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -65,7 +65,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
-        output, state = rnn_cell.CoupledInputForgetGateLSTMCell(
+        output, state = contrib_rnn_cell.CoupledInputForgetGateLSTMCell(
             num_units=num_units, forget_bias=1.0, state_is_tuple=False)(x, m)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
@@ -94,7 +94,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size * num_shifts])
-        output, state = rnn_cell.TimeFreqLSTMCell(
+        output, state = contrib_rnn_cell.TimeFreqLSTMCell(
             num_units=num_units,
             feature_size=feature_size,
             frequency_skip=frequency_skip,
@@ -130,7 +130,7 @@ class RNNCellTest(test.TestCase):
       num_shifts = int((input_size - feature_size) / frequency_skip + 1)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
-        cell = rnn_cell.GridLSTMCell(
+        cell = contrib_rnn_cell.GridLSTMCell(
             num_units=num_units,
             feature_size=feature_size,
             frequency_skip=frequency_skip,
@@ -181,7 +181,7 @@ class RNNCellTest(test.TestCase):
       end_freqindex_list = [2, 4]
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
-        cell = rnn_cell.GridLSTMCell(
+        cell = contrib_rnn_cell.GridLSTMCell(
             num_units=num_units,
             feature_size=feature_size,
             frequency_skip=frequency_skip,
@@ -249,7 +249,7 @@ class RNNCellTest(test.TestCase):
         with variable_scope.variable_scope(
             "state_is_tuple" + str(state_is_tuple),
             initializer=init_ops.constant_initializer(0.5)):
-          cell = rnn_cell.GridLSTMCell(
+          cell = contrib_rnn_cell.GridLSTMCell(
               num_units=num_units,
               feature_size=feature_size,
               frequency_skip=frequency_skip,
@@ -330,7 +330,7 @@ class RNNCellTest(test.TestCase):
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
-        cell = rnn_cell.BidirectionalGridLSTMCell(
+        cell = contrib_rnn_cell.BidirectionalGridLSTMCell(
             num_units=num_units,
             feature_size=feature_size,
             share_time_frequency_weights=True,
@@ -403,7 +403,7 @@ class RNNCellTest(test.TestCase):
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
-        cell = rnn_cell.BidirectionalGridLSTMCell(
+        cell = contrib_rnn_cell.BidirectionalGridLSTMCell(
             num_units=num_units,
             feature_size=feature_size,
             share_time_frequency_weights=True,
@@ -442,28 +442,28 @@ class RNNCellTest(test.TestCase):
   def testAttentionCellWrapperFailures(self):
     with self.assertRaisesRegexp(TypeError,
                                  "The parameter cell is not RNNCell."):
-      rnn_cell.AttentionCellWrapper(None, 0)
+      contrib_rnn_cell.AttentionCellWrapper(None, 0)
 
     num_units = 8
     for state_is_tuple in [False, True]:
       with ops.Graph().as_default():
-        lstm_cell = core_rnn_cell_impl.BasicLSTMCell(
+        lstm_cell = rnn_cell.BasicLSTMCell(
             num_units, state_is_tuple=state_is_tuple)
         with self.assertRaisesRegexp(
             ValueError, "attn_length should be greater than zero, got 0"):
-          rnn_cell.AttentionCellWrapper(
+          contrib_rnn_cell.AttentionCellWrapper(
               lstm_cell, 0, state_is_tuple=state_is_tuple)
         with self.assertRaisesRegexp(
             ValueError, "attn_length should be greater than zero, got -1"):
-          rnn_cell.AttentionCellWrapper(
+          contrib_rnn_cell.AttentionCellWrapper(
               lstm_cell, -1, state_is_tuple=state_is_tuple)
       with ops.Graph().as_default():
-        lstm_cell = core_rnn_cell_impl.BasicLSTMCell(
-            num_units, state_is_tuple=True)
+        lstm_cell = rnn_cell.BasicLSTMCell(num_units, state_is_tuple=True)
         with self.assertRaisesRegexp(
             ValueError, "Cell returns tuple of states, but the flag "
             "state_is_tuple is not set. State size is: *"):
-          rnn_cell.AttentionCellWrapper(lstm_cell, 4, state_is_tuple=False)
+          contrib_rnn_cell.AttentionCellWrapper(
+              lstm_cell, 4, state_is_tuple=False)
 
   def testAttentionCellWrapperZeros(self):
     num_units = 8
@@ -475,9 +475,9 @@ class RNNCellTest(test.TestCase):
         with self.test_session() as sess:
           with variable_scope.variable_scope("state_is_tuple_" + str(
               state_is_tuple)):
-            lstm_cell = core_rnn_cell_impl.BasicLSTMCell(
+            lstm_cell = rnn_cell.BasicLSTMCell(
                 num_units, state_is_tuple=state_is_tuple)
-            cell = rnn_cell.AttentionCellWrapper(
+            cell = contrib_rnn_cell.AttentionCellWrapper(
                 lstm_cell, attn_length, state_is_tuple=state_is_tuple)
             if state_is_tuple:
               zeros = array_ops.zeros([batch_size, num_units], dtype=np.float32)
@@ -526,9 +526,9 @@ class RNNCellTest(test.TestCase):
         with self.test_session() as sess:
           with variable_scope.variable_scope("state_is_tuple_" + str(
               state_is_tuple)):
-            lstm_cell = core_rnn_cell_impl.BasicLSTMCell(
+            lstm_cell = rnn_cell.BasicLSTMCell(
                 num_units, state_is_tuple=state_is_tuple)
-            cell = rnn_cell.AttentionCellWrapper(
+            cell = contrib_rnn_cell.AttentionCellWrapper(
                 lstm_cell, attn_length, state_is_tuple=state_is_tuple)
             if state_is_tuple:
               zeros = constant_op.constant(
@@ -603,9 +603,9 @@ class RNNCellTest(test.TestCase):
         with variable_scope.variable_scope(
             "state_is_tuple", reuse=state_is_tuple,
             initializer=init_ops.glorot_uniform_initializer()):
-          lstm_cell = core_rnn_cell_impl.BasicLSTMCell(
+          lstm_cell = rnn_cell.BasicLSTMCell(
               num_units, state_is_tuple=state_is_tuple)
-          cell = rnn_cell.AttentionCellWrapper(
+          cell = contrib_rnn_cell.AttentionCellWrapper(
               lstm_cell, attn_length, state_is_tuple=state_is_tuple)
           # This is legacy behavior to preserve the test.  Weight
           # sharing no longer works by creating a new RNNCell in the
@@ -665,8 +665,7 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "nas_test",
           initializer=init_ops.constant_initializer(0.5)):
-        cell = rnn_cell.NASCell(
-            num_units=num_units)
+        cell = contrib_rnn_cell.NASCell(num_units=num_units)
         inputs = constant_op.constant(
             np.array([[1., 1., 1., 1.],
                       [2., 2., 2., 2.],
@@ -677,8 +676,7 @@ class RNNCellTest(test.TestCase):
             0.1 * np.ones(
                 (batch_size, num_units), dtype=np.float32),
             dtype=dtypes.float32)
-        init_state = core_rnn_cell_impl.LSTMStateTuple(state_value,
-                                                       state_value)
+        init_state = rnn_cell.LSTMStateTuple(state_value, state_value)
         output, state = cell(inputs, init_state)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state])
@@ -719,9 +717,7 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "nas_proj_test",
           initializer=init_ops.constant_initializer(0.5)):
-        cell = rnn_cell.NASCell(
-            num_units=num_units,
-            num_proj=num_proj)
+        cell = contrib_rnn_cell.NASCell(num_units=num_units, num_proj=num_proj)
         inputs = constant_op.constant(
             np.array([[1., 1., 1., 1.],
                       [2., 2., 2., 2.],
@@ -736,8 +732,7 @@ class RNNCellTest(test.TestCase):
             0.1 * np.ones(
                 (batch_size, num_proj), dtype=np.float32),
             dtype=dtypes.float32)
-        init_state = core_rnn_cell_impl.LSTMStateTuple(state_value_c,
-                                                       state_value_h)
+        init_state = rnn_cell.LSTMStateTuple(state_value_c, state_value_h)
         output, state = cell(inputs, init_state)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state])
@@ -767,7 +762,7 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "ugrnn_cell_test",
           initializer=init_ops.constant_initializer(0.5)):
-        cell = rnn_cell.UGRNNCell(num_units=num_units)
+        cell = contrib_rnn_cell.UGRNNCell(num_units=num_units)
         inputs = constant_op.constant(
             np.array([[1., 1., 1., 1.],
                       [2., 2., 2., 2.],
@@ -803,8 +798,8 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "intersection_rnn_cell_test",
           initializer=init_ops.constant_initializer(0.5)):
-        cell = rnn_cell.IntersectionRNNCell(num_units=num_units,
-                                            num_in_proj=num_units)
+        cell = contrib_rnn_cell.IntersectionRNNCell(
+            num_units=num_units, num_in_proj=num_units)
         inputs = constant_op.constant(
             np.array([[1., 1., 1., 1.],
                       [2., 2., 2., 2.],
@@ -826,7 +821,7 @@ class RNNCellTest(test.TestCase):
   def testIntersectionRNNCellFailure(self):
     num_units = 2
     batch_size = 3
-    cell = rnn_cell.IntersectionRNNCell(num_units=num_units)
+    cell = contrib_rnn_cell.IntersectionRNNCell(num_units=num_units)
     inputs = constant_op.constant(
         np.array([[1., 1., 1., 1.],
                   [2., 2., 2., 2.],
@@ -849,14 +844,12 @@ class RNNCellTest(test.TestCase):
       batch_size = 3
       input_size = 4
       expected_state_c = np.array(
-          [[2.954548e-01, 8.354891e-04],
-           [2.834632e-01, 8.158963e-01],
-           [2.291694e-01, 1.325745e-04]],
+          [[0.00072015, 0.00036633], [0.00083481, 0.00047266],
+           [0.00085111, 0.00053054]],
           dtype=np.float32)
       expected_state_h = np.array(
-          [[2.116566e-01, 5.985238e-04],
-           [2.137760e-01, 6.153145e-01],
-           [1.742966e-01, 1.008306e-04]],
+          [[0.0005159, 0.00026243], [0.00062958, 0.00035646],
+           [0.00064732, 0.00040351]],
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
@@ -864,9 +857,9 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([batch_size, input_size])
         c0 = array_ops.zeros([batch_size, 2])
         h0 = array_ops.zeros([batch_size, 2])
-        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
-        output, state = rnn_cell.PhasedLSTMCell(num_units=num_units)((t, x),
-                                                                     state0)
+        state0 = rnn_cell.LSTMStateTuple(c0, h0)
+        output, state = contrib_rnn_cell.PhasedLSTMCell(num_units=num_units)(
+            (t, x), state0)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             t.name:
@@ -882,6 +875,87 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[1].c, expected_state_c)
         self.assertAllClose(res[1].h, expected_state_h)
 
+  def testHighwayWrapper(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "base_cell", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 3])
+        base_cell = rnn_cell.GRUCell(3)
+        g, m_new = base_cell(x, m)
+      with variable_scope.variable_scope(
+          "hw_cell", initializer=init_ops.constant_initializer(0.5)):
+        hw_cell = contrib_rnn_cell.HighwayWrapper(
+            rnn_cell.GRUCell(3), carry_bias_init=-100.0)
+        g_res, m_new_res = hw_cell(x, m)
+        sess.run([variables.global_variables_initializer()])
+      res = sess.run([g, g_res, m_new, m_new_res], {
+          x: np.array([[1., 1., 1.]]),
+          m: np.array([[0.1, 0.1, 0.1]])
+      })
+      # As carry_bias_init is very negative, the carry gate is 'open' and the
+      # transform gate is 'closed'. This means the output equals the input.
+      self.assertAllClose(res[1], res[0])
+      # States are left untouched
+      self.assertAllClose(res[2], res[3])
+
+  def testGLSTMCell(self):
+    # Ensure that G-LSTM matches LSTM when number_of_groups = 1
+    batch_size = 2
+    num_units = 4
+    number_of_groups = 1
+
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root1", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.ones([batch_size, num_units])
+        # When number_of_groups = 1, G-LSTM is equivalent to regular LSTM
+        gcell = contrib_rnn_cell.GLSTMCell(
+            num_units=num_units, number_of_groups=number_of_groups)
+        cell = rnn_cell.LSTMCell(num_units=num_units)
+        self.assertTrue(isinstance(gcell.state_size, tuple))
+        zero_state = gcell.zero_state(batch_size=batch_size,
+                                      dtype=dtypes.float32)
+        gh, gs = gcell(x, zero_state)
+        h, g = cell(x, zero_state)
+
+        sess.run([variables.global_variables_initializer()])
+        glstm_result = sess.run([gh, gs])
+        lstm_result = sess.run([h, g])
+
+        self.assertAllClose(glstm_result[0], lstm_result[0], 1e-5)
+        self.assertAllClose(glstm_result[1], lstm_result[1], 1e-5)
+
+    # Test that G-LSTM subgroup act like corresponding sub-LSTMs
+    batch_size = 2
+    num_units = 4
+    number_of_groups = 2
+
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root2", initializer=init_ops.constant_initializer(0.5)):
+        # input for G-LSTM with 2 groups
+        glstm_input = array_ops.ones([batch_size, num_units])
+        gcell = contrib_rnn_cell.GLSTMCell(
+            num_units=num_units, number_of_groups=number_of_groups)
+        gcell_zero_state = gcell.zero_state(batch_size=batch_size,
+                                            dtype=dtypes.float32)
+        gh, gs = gcell(glstm_input, gcell_zero_state)
+
+        # input for LSTM cell simulating single G-LSTM group
+        lstm_input = array_ops.ones([batch_size, num_units / number_of_groups])
+        # note division by number_of_groups. This cell one simulates G-LSTM group
+        cell = rnn_cell.LSTMCell(num_units=int(num_units / number_of_groups))
+        cell_zero_state = cell.zero_state(batch_size=batch_size,
+                                          dtype=dtypes.float32)
+        h, g = cell(lstm_input, cell_zero_state)
+
+        sess.run([variables.global_variables_initializer()])
+        [gh_res, h_res] = sess.run([gh, h])
+        self.assertAllClose(gh_res[:, 0:int(num_units / number_of_groups)],
+                            h_res, 1e-5)
+        self.assertAllClose(gh_res[:, int(num_units / number_of_groups):],
+                            h_res, 1e-5)
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
 
@@ -894,13 +968,13 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         x = array_ops.zeros([1, 2])
         c0 = array_ops.zeros([1, 2])
         h0 = array_ops.zeros([1, 2])
-        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
+        state0 = rnn_cell.LSTMStateTuple(c0, h0)
         c1 = array_ops.zeros([1, 2])
         h1 = array_ops.zeros([1, 2])
-        state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
+        state1 = rnn_cell.LSTMStateTuple(c1, h1)
         state = (state0, state1)
-        single_cell = lambda: rnn_cell.LayerNormBasicLSTMCell(2)
-        cell = core_rnn_cell_impl.MultiRNNCell([single_cell() for _ in range(2)])
+        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2)
+        cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)])
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m], {
@@ -935,8 +1009,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
             [1, 3])  # Test BasicLSTMCell with input_size != num_units.
         c = array_ops.zeros([1, 2])
         h = array_ops.zeros([1, 2])
-        state = core_rnn_cell_impl.LSTMStateTuple(c, h)
-        cell = rnn_cell.LayerNormBasicLSTMCell(2)
+        state = rnn_cell.LSTMStateTuple(c, h)
+        cell = contrib_rnn_cell.LayerNormBasicLSTMCell(2)
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m], {
@@ -952,6 +1026,73 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         self.assertAllClose(res[1].c, expected_c, 1e-5)
         self.assertAllClose(res[1].h, expected_h, 1e-5)
 
+
+  def testBasicLSTMCellWithoutNorm(self):
+    """Tests that BasicLSTMCell with layer_norm=False."""
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        c0 = array_ops.zeros([1, 2])
+        h0 = array_ops.zeros([1, 2])
+        state0 = rnn_cell.LSTMStateTuple(c0, h0)
+        c1 = array_ops.zeros([1, 2])
+        h1 = array_ops.zeros([1, 2])
+        state1 = rnn_cell.LSTMStateTuple(c1, h1)
+        state = (state0, state1)
+        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
+        cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)])
+        g, out_m = cell(x, state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+          x.name: np.array([[1., 1.]]),
+          c0.name: 0.1 * np.asarray([[0, 1]]),
+          h0.name: 0.1 * np.asarray([[2, 3]]),
+          c1.name: 0.1 * np.asarray([[4, 5]]),
+          h1.name: 0.1 * np.asarray([[6, 7]]),
+        })
+
+        expected_h = np.array([[ 0.70230919, 0.72581059]])
+        expected_state0_c = np.array([[ 0.8020075,  0.89599884]])
+        expected_state0_h = np.array([[ 0.56668288,  0.60858738]])
+        expected_state1_c = np.array([[ 1.17500675,  1.26892781]])
+        expected_state1_h = np.array([[ 0.70230919,  0.72581059]])
+
+        actual_h = res[0]
+        actual_state0_c = res[1][0].c
+        actual_state0_h = res[1][0].h
+        actual_state1_c = res[1][1].c
+        actual_state1_h = res[1][1].h
+
+        self.assertAllClose(actual_h, expected_h, 1e-5)
+        self.assertAllClose(expected_state0_c, actual_state0_c, 1e-5)
+        self.assertAllClose(expected_state0_h, actual_state0_h, 1e-5)
+        self.assertAllClose(expected_state1_c, actual_state1_c, 1e-5)
+        self.assertAllClose(expected_state1_h, actual_state1_h, 1e-5)
+
+      with variable_scope.variable_scope(
+          "other", initializer=init_ops.constant_initializer(0.5)) as vs:
+        x = array_ops.zeros(
+          [1, 3])  # Test BasicLSTMCell with input_size != num_units.
+        c = array_ops.zeros([1, 2])
+        h = array_ops.zeros([1, 2])
+        state = rnn_cell.LSTMStateTuple(c, h)
+        cell = contrib_rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
+        g, out_m = cell(x, state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, out_m], {
+          x.name: np.array([[1., 1., 1.]]),
+          c.name: 0.1 * np.asarray([[0, 1]]),
+          h.name: 0.1 * np.asarray([[2, 3]]),
+        })
+
+        expected_h = np.array([[ 0.64121795, 0.68166804]])
+        expected_c = np.array([[ 0.88477188, 0.98103917]])
+        self.assertEqual(len(res), 2)
+        self.assertAllClose(res[0], expected_h, 1e-5)
+        self.assertAllClose(res[1].c, expected_c, 1e-5)
+        self.assertAllClose(res[1].h, expected_h, 1e-5)
+
   def testBasicLSTMCellWithStateTuple(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope(
@@ -959,12 +1100,12 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         x = array_ops.zeros([1, 2])
         c0 = array_ops.zeros([1, 2])
         h0 = array_ops.zeros([1, 2])
-        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
+        state0 = rnn_cell.LSTMStateTuple(c0, h0)
         c1 = array_ops.zeros([1, 2])
         h1 = array_ops.zeros([1, 2])
-        state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
-        cell = core_rnn_cell_impl.MultiRNNCell(
-            [rnn_cell.LayerNormBasicLSTMCell(2) for _ in range(2)])
+        state1 = rnn_cell.LSTMStateTuple(c1, h1)
+        cell = rnn_cell.MultiRNNCell(
+            [contrib_rnn_cell.LayerNormBasicLSTMCell(2) for _ in range(2)])
         h, (s0, s1) = cell(x, (state0, state1))
         sess.run([variables.global_variables_initializer()])
         res = sess.run([h, s0, s1], {
@@ -1014,8 +1155,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         x = array_ops.zeros([1, 5])
         c = array_ops.zeros([1, 5])
         h = array_ops.zeros([1, 5])
-        state = core_rnn_cell_impl.LSTMStateTuple(c, h)
-        cell = rnn_cell.LayerNormBasicLSTMCell(
+        state = rnn_cell.LSTMStateTuple(c, h)
+        cell = contrib_rnn_cell.LayerNormBasicLSTMCell(
             num_units, layer_norm=False, dropout_keep_prob=keep_prob)
 
         g, s = cell(x, state)
@@ -1058,10 +1199,9 @@ def _create_multi_lstm_cell_ops(batch_size, num_units, input_depth,
     inputs = variable_scope.get_variable(
         "inputs", initializer=random_ops.random_uniform(
             (max_time, batch_size, input_depth), seed=1))
-    maybe_xla = lambda c: rnn_cell.CompiledWrapper(c) if compiled else c
-    cell = core_rnn_cell_impl.MultiRNNCell(
-        [maybe_xla(core_rnn_cell_impl.LSTMCell(num_units))
-         for _ in range(num_layers)])
+    maybe_xla = lambda c: contrib_rnn_cell.CompiledWrapper(c) if compiled else c
+    cell = rnn_cell.MultiRNNCell(
+        [maybe_xla(rnn_cell.LSTMCell(num_units)) for _ in range(num_layers)])
     initial_state = cell.zero_state(
         batch_size=batch_size, dtype=dtypes.float32)
     outputs, final_state = rnn.dynamic_rnn(
@@ -1139,13 +1279,13 @@ class CompiledWrapperTest(test.TestCase):
 
         # Test incorrectness of state
         with self.assertRaisesRegexp(ValueError, "Expected state .* a tuple"):
-          core_rnn_cell_impl.MultiRNNCell(
-              [core_rnn_cell_impl.GRUCell(2) for _ in range(2)],
-              state_is_tuple=True)(x, m_bad)
+          rnn_cell.MultiRNNCell(
+              [rnn_cell.GRUCell(2)
+               for _ in range(2)], state_is_tuple=True)(x, m_bad)
 
-        _, ml = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.GRUCell(2) for _ in range(2)],
-            state_is_tuple=True)(x, m_good)
+        _, ml = rnn_cell.MultiRNNCell(
+            [rnn_cell.GRUCell(2)
+             for _ in range(2)], state_is_tuple=True)(x, m_good)
 
         sess.run([variables.global_variables_initializer()])
         res = sess.run(ml, {

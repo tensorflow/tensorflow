@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
@@ -36,7 +37,7 @@ auto* load_attempt_count = monitoring::Counter<2>::New(
     "status");
 auto* load_latency = monitoring::Counter<1>::New(
     "/tensorflow/cc/saved_model/load_latency",
-    "Latency in microseconds for SavedModels that were succesfully loaded.",
+    "Latency in microseconds for SavedModels that were successfully loaded.",
     "model_path");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";

@@ -21,7 +21,10 @@ limitations under the License.
 
 namespace xla {
 
-// Defines the interface for an XLA service.
+// Defines the interface for an XLA service on the client side. This service
+// helps abstract around the actual implementation of a service - the service
+// can be local (running in the same process), or remote - in which case an RPC
+// stub is used as the implementation.
 class ServiceInterface {
  public:
   ServiceInterface() {}
@@ -30,10 +33,6 @@ class ServiceInterface {
   // TODO(b/31824348): Convert to use StatusOr.
   virtual tensorflow::Status TransferToClient(
       const TransferToClientRequest* arg, TransferToClientResponse* result) = 0;
-
-  virtual tensorflow::Status TransferToClientInProcess(
-      const TransferToClientInProcessRequest* arg,
-      TransferToClientInProcessResponse* result) = 0;
 
   virtual tensorflow::Status TransferToServer(
       const TransferToServerRequest* arg, TransferToServerResponse* result) = 0;
@@ -47,10 +46,6 @@ class ServiceInterface {
 
   virtual tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
                                          ResetDeviceResponse* result) = 0;
-
-  virtual tensorflow::Status TransferToServerInProcess(
-      const TransferToServerInProcessRequest* arg,
-      TransferToServerInProcessResponse* result) = 0;
 
   virtual tensorflow::Status LoadComputationSnapshot(
       const LoadComputationSnapshotRequest* request,

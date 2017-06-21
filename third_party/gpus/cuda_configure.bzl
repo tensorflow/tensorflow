@@ -5,7 +5,7 @@
 
   * `TF_NEED_CUDA`: Whether to enable building with CUDA.
   * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path
-  * `TF_CUDA_CLANG`: Wheter to use clang as a cuda compiler.
+  * `TF_CUDA_CLANG`: Whether to use clang as a cuda compiler.
   * `CLANG_CUDA_COMPILER_PATH`: The clang compiler path that will be used for
     both host and device code compilation if TF_CUDA_CLANG is 1.
   * `CUDA_TOOLKIT_PATH`: The path to the CUDA toolkit. Default is
@@ -41,8 +41,8 @@ def find_cc(repository_ctx):
   """Find the C++ compiler."""
   # On Windows, we use Bazel's MSVC CROSSTOOL for GPU build
   # Return a dummy value for GCC detection here to avoid error
-  if _cpu_value(repository_ctx) == "Windows":
-    return "/use/--config x64_windows_msvc/instead"
+  if _is_windows(repository_ctx):
+    return "/use/--config=win-cuda --cpu=x64_windows_msvc/instead"
 
   if _use_cuda_clang(repository_ctx):
     target_cc_name = "clang"
@@ -57,7 +57,7 @@ def find_cc(repository_ctx):
     if cc_name_from_env:
       cc_name = cc_name_from_env
   if cc_name.startswith("/"):
-    # Absolute path, maybe we should make this suported by our which function.
+    # Absolute path, maybe we should make this supported by our which function.
     return cc_name
   cc = repository_ctx.which(cc_name)
   if cc == None:
@@ -122,10 +122,10 @@ def get_cxx_inc_directories(repository_ctx, cc):
 
 
 def auto_configure_fail(msg):
-  """Output failure message when auto configuration fails."""
+  """Output failure message when cuda configuration fails."""
   red = "\033[0;31m"
   no_color = "\033[0m"
-  fail("\n%sAuto-Configuration Error:%s %s\n" % (red, no_color, msg))
+  fail("\n%sCuda Configuration Error:%s %s\n" % (red, no_color, msg))
 # END cc_configure common functions (see TODO above).
 
 
@@ -145,6 +145,36 @@ def _host_compiler_includes(repository_ctx, cc):
   inc_entries = []
   for inc_dir in inc_dirs:
     inc_entries.append("  cxx_builtin_include_directory: \"%s\"" % inc_dir)
+  return "\n".join(inc_entries)
+
+def _cuda_include_path(repository_ctx, cuda_config):
+  """Generates the cxx_builtin_include_directory entries for cuda inc dirs.
+
+  Args:
+    repository_ctx: The repository context.
+    cc: The path to the gcc host compiler.
+
+  Returns:
+    A string containing the cxx_builtin_include_directory for each of the gcc
+    host compiler include directories, which can be added to the CROSSTOOL
+    file.
+  """
+  nvcc_path = repository_ctx.path("%s/bin/nvcc%s" %
+                                  (cuda_config.cuda_toolkit_path,
+                                   ".exe" if cuda_config.cpu_value == "Windows" else ""))
+  result = repository_ctx.execute([nvcc_path, '-v',
+                                  '/dev/null', '-o', '/dev/null'])
+  target_dir = ""
+  for one_line in result.stderr.splitlines():
+    if one_line.startswith('#$ _TARGET_DIR_='):
+      target_dir = (cuda_config.cuda_toolkit_path + '/' +
+                    one_line.replace('#$ _TARGET_DIR_=', '') + "/include")
+  inc_entries = []
+  if target_dir != "":
+    inc_entries.append("  cxx_builtin_include_directory: \"%s\"" % target_dir)
+  default_include = cuda_config.cuda_toolkit_path + '/include'
+  inc_entries.append("  cxx_builtin_include_directory: \"%s\"" %
+                     default_include)
   return "\n".join(inc_entries)
 
 
@@ -390,6 +420,10 @@ def _cpu_value(repository_ctx):
   result = repository_ctx.execute(["uname", "-s"])
   return result.stdout.strip()
 
+
+def _is_windows(repository_ctx):
+  """Returns true if the host operating system is windows."""
+  return _cpu_value(repository_ctx) == "Windows"
 
 def _lib_name(lib, cpu_value, version="", static=False):
   """Constructs the platform-specific name of a library.
@@ -699,12 +733,8 @@ def _create_dummy_repository(repository_ctx):
            "%{cufft_lib}": _lib_name("cufft", cpu_value),
            "%{curand_lib}": _lib_name("curand", cpu_value),
            "%{cupti_lib}": _lib_name("cupti", cpu_value),
-       })
-  _tpl(repository_ctx, "cuda:platform.bzl",
-       {
-           "%{cuda_version}": _DEFAULT_CUDA_VERSION,
-           "%{cudnn_version}": _DEFAULT_CUDNN_VERSION,
-           "%{platform}": cpu_value,
+           "%{cuda_include_genrules}": '',
+           "%{cuda_headers}": '',
        })
 
   # Create dummy files for the CUDA toolkit since they are still required by
@@ -742,17 +772,110 @@ def _create_dummy_repository(repository_ctx):
                       _DUMMY_CROSSTOOL_BZL_FILE)
   repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
 
-def _symlink_dir(repository_ctx, src_dir, dest_dir):
-  """Symlinks all the files in a directory.
+
+def _execute(repository_ctx, cmdline, error_msg=None, error_details=None,
+             empty_stdout_fine=False):
+  """Executes an arbitrary shell command.
 
   Args:
-    repository_ctx: The repository context.
-    src_dir: The source directory.
-    dest_dir: The destination directory to create the symlinks in.
+    repository_ctx: the repository_ctx object
+    cmdline: list of strings, the command to execute
+    error_msg: string, a summary of the error if the command fails
+    error_details: string, details about the error or steps to fix it
+    empty_stdout_fine: bool, if True, an empty stdout result is fine, otherwise
+      it's an error
+  Return:
+    the result of repository_ctx.execute(cmdline)
   """
-  files = repository_ctx.path(src_dir).readdir()
-  for src_file in files:
-    repository_ctx.symlink(src_file, dest_dir + "/" + src_file.basename)
+  result = repository_ctx.execute(cmdline)
+  if result.stderr or not (empty_stdout_fine or result.stdout):
+    auto_configure_fail(
+        "\n".join([
+            error_msg.strip() if error_msg else "Repository command failed",
+            result.stderr.strip(),
+            error_details if error_details else ""]))
+  return result
+
+
+def _norm_path(path):
+  """Returns a path with '/' and remove the trailing slash."""
+  path = path.replace("\\", "/")
+  if path[-1] == "/":
+    path = path[:-1]
+  return path
+
+
+def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
+    src_files = [], dest_files = []):
+  """Returns a genrule to symlink(or copy if on Windows) a set of files.
+
+  If src_dir is passed, files will be read from the given directory; otherwise
+  we assume files are in src_files and dest_files
+  """
+  if src_dir != None:
+    src_dir = _norm_path(src_dir)
+    dest_dir = _norm_path(dest_dir)
+    files = _read_dir(repository_ctx, src_dir)
+    # Create a list with the src_dir stripped to use for outputs.
+    dest_files = files.replace(src_dir, '').splitlines()
+    src_files = files.splitlines()
+  command = []
+  outs = []
+  for i in range(len(dest_files)):
+    if dest_files[i] != "":
+      # If we have only one file to link we do not want to use the dest_dir, as
+      # $(@D) will include the full path to the file.
+      dest = '$(@D)/' + dest_dir + dest_files[i] if len(dest_files) != 1 else '$(@D)/' + dest_files[i]
+      # On Windows, symlink is not supported, so we just copy all the files.
+      cmd = 'cp -f' if _is_windows(repository_ctx) else 'ln -s'
+      command.append(cmd + ' "%s" "%s"' % (src_files[i] , dest))
+      outs.append('      "' + dest_dir + dest_files[i] + '",')
+  genrule = _genrule(src_dir, genrule_name, " && ".join(command),
+                     "\n".join(outs))
+  return genrule
+
+
+def _genrule(src_dir, genrule_name, command, outs):
+  """Returns a string with a genrule.
+
+  Genrule executes the given command and produces the given outputs.
+  """
+  return (
+      'genrule(\n' +
+      '    name = "' +
+      genrule_name + '",\n' +
+      '    outs = [\n' +
+      outs +
+      '    ],\n' +
+      '    cmd = """\n' +
+      command +
+      '    """,\n' +
+      ')\n\n'
+  )
+
+
+def _read_dir(repository_ctx, src_dir):
+  """Returns a string with all files in a directory.
+
+  Finds all files inside a directory, traversing subfolders and following
+  symlinks. The returned string contains the full path of all files
+  separated by line breaks.
+  """
+  if _is_windows(repository_ctx):
+    src_dir = src_dir.replace("/", "\\")
+    find_result = _execute(
+        repository_ctx, ["cmd.exe", "/c", "dir", src_dir, "/b", "/s", "/a-d"],
+        empty_stdout_fine=True)
+    # src_files will be used in genrule.outs where the paths must
+    # use forward slashes.
+    result = find_result.stdout.replace("\\", "/")
+  else:
+    find_result = _execute(
+        repository_ctx, ["find", src_dir, "-follow", "-type", "f"],
+        empty_stdout_fine=True)
+    result = find_result.stdout
+  return result
+
 
 def _use_cuda_clang(repository_ctx):
   if "TF_CUDA_CLANG" in repository_ctx.os.environ:
@@ -775,25 +898,42 @@ def _create_cuda_repository(repository_ctx):
   cudnn_header_dir = _find_cudnn_header_dir(repository_ctx,
                                             cuda_config.cudnn_install_basedir)
 
-  # Set up symbolic links for the cuda toolkit. We link at the individual file
-  # level not at the directory level. This is because the external library may
-  # have a different file layout from our desired structure.
+  # Set up symbolic links for the cuda toolkit by creating genrules to do
+  # symlinking. We create one genrule for each directory we want to track under
+  # cuda_toolkit_path
   cuda_toolkit_path = cuda_config.cuda_toolkit_path
-  _symlink_dir(repository_ctx, cuda_toolkit_path + "/include", "cuda/include")
-  _symlink_dir(repository_ctx, cuda_toolkit_path + "/bin", "cuda/bin")
-  _symlink_dir(repository_ctx, cuda_toolkit_path + "/nvvm", "cuda/nvvm")
-  _symlink_dir(repository_ctx, cuda_toolkit_path + "/extras/CUPTI/include",
-               "cuda/extras/CUPTI/include")
+  cuda_include_path = cuda_toolkit_path + "/include"
+  genrules = [_symlink_genrule_for_dir(repository_ctx,
+      cuda_include_path, "include", "cuda-include")]
+  genrules.append(_symlink_genrule_for_dir(repository_ctx,
+      cuda_toolkit_path + "/nvvm", "nvvm", "cuda-nvvm"))
+  genrules.append(_symlink_genrule_for_dir(repository_ctx,
+      cuda_toolkit_path + "/extras/CUPTI/include",
+      "extras/CUPTI/include", "cuda-extras"))
 
   cuda_libs = _find_libs(repository_ctx, cuda_config)
+  cuda_lib_src = []
+  cuda_lib_dest = []
   for lib in cuda_libs.values():
-    repository_ctx.symlink(lib.path, "cuda/lib/" + lib.file_name)
+    cuda_lib_src.append(lib.path)
+    cuda_lib_dest.append("lib/" + lib.file_name)
+  genrules.append(_symlink_genrule_for_dir(repository_ctx, None, "", "cuda-lib",
+                                       cuda_lib_src, cuda_lib_dest))
 
   # Set up the symbolic links for cudnn if cudnn was was not installed to
   # CUDA_TOOLKIT_PATH.
-  if not repository_ctx.path("cuda/include/cudnn.h").exists:
-    repository_ctx.symlink(cudnn_header_dir + "/cudnn.h",
-                           "cuda/include/cudnn.h")
+  included_files = _read_dir(repository_ctx, cuda_include_path).replace(
+      cuda_include_path, '').splitlines()
+  if '/cudnn.h' not in included_files:
+    genrules.append(_symlink_genrule_for_dir(repository_ctx, None, "include/",
+        "cudnn-include", [cudnn_header_dir + "/cudnn.h"], ["cudnn.h"]))
+  else:
+    genrules.append(
+            'filegroup(\n' +
+            '    name = "cudnn-include",\n' +
+            '    srcs = [],\n' +
+            ')\n'
+        )
 
   # Set up BUILD file for cuda/
   _tpl(repository_ctx, "cuda:build_defs.bzl",
@@ -815,33 +955,33 @@ def _create_cuda_repository(repository_ctx):
            "%{cufft_lib}": cuda_libs["cufft"].file_name,
            "%{curand_lib}": cuda_libs["curand"].file_name,
            "%{cupti_lib}": cuda_libs["cupti"].file_name,
+           "%{cuda_include_genrules}": "\n".join(genrules),
+           "%{cuda_headers}": ('":cuda-include",\n' +
+                               '        ":cudnn-include",')
        })
-
-  _tpl(repository_ctx, "cuda:platform.bzl",
-       {
-           "%{cuda_version}": cuda_config.cuda_version,
-           "%{cudnn_version}": cuda_config.cudnn_version,
-           "%{platform}": cuda_config.cpu_value,
-       })
-
   # Set up crosstool/
   _file(repository_ctx, "crosstool:BUILD")
   cc = find_cc(repository_ctx)
   host_compiler_includes = _host_compiler_includes(repository_ctx, cc)
   cuda_defines = {
-           "%{cuda_include_path}": cuda_config.cuda_toolkit_path + '/include',
+           "%{cuda_include_path}": _cuda_include_path(repository_ctx,
+                                                      cuda_config),
            "%{host_compiler_includes}": host_compiler_includes,
        }
   if _use_cuda_clang(repository_ctx):
     cuda_defines["%{clang_path}"] = cc
     _tpl(repository_ctx, "crosstool:CROSSTOOL_clang", cuda_defines, out="crosstool/CROSSTOOL")
   else:
+    nvcc_path = str(repository_ctx.path("%s/bin/nvcc%s" %
+        (cuda_config.cuda_toolkit_path,
+        ".exe" if cuda_config.cpu_value == "Windows" else "")))
     _tpl(repository_ctx, "crosstool:CROSSTOOL_nvcc", cuda_defines, out="crosstool/CROSSTOOL")
     _tpl(repository_ctx,
          "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",
          {
              "%{cpu_compiler}": str(cc),
              "%{cuda_version}": cuda_config.cuda_version,
+             "%{nvcc_path}": nvcc_path,
              "%{gcc_host_compiler_path}": str(cc),
              "%{cuda_compute_capabilities}": ", ".join(
                  ["\"%s\"" % c for c in cuda_config.compute_capabilities]),

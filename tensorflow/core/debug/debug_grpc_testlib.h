@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 
 #include "grpc++/grpc++.h"
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -42,11 +43,12 @@ class TestEventListenerImpl final : public EventListener::Service {
   // Clear debug data (e.g., Tensors) received so far.
   void ClearReceivedDebugData();
 
-  void RequestDebugOpStateChangeAtNextStream(bool to_enable,
-                                             const string& node_name,
-                                             const int32 output_slot,
-                                             const string& debug_op);
+  void RequestDebugOpStateChangeAtNextStream(
+      bool to_enable, const DebugNodeKey& debug_node_key);
 
+  std::vector<string> debug_metadata_strings;
+  std::vector<string> encoded_graph_defs;
+  std::vector<string> device_names;
   std::vector<string> node_names;
   std::vector<int32> output_slots;
   std::vector<string> debug_ops;

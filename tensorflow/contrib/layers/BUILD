@@ -20,35 +20,6 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 tf_custom_op_library(
     # TODO(sibyl-Mooth6ku,ptucker): Understand why 'python/ops/_' is needed and fix it.
-    name = "python/ops/_bucketization_op.so",
-    srcs = [
-        "ops/bucketization_op.cc",
-    ],
-    deps = [
-        "//tensorflow/contrib/layers/kernels:bucketization_kernel",
-    ],
-)
-
-tf_gen_op_libs(
-    op_lib_names = ["bucketization_op"],
-)
-
-tf_gen_op_wrapper_py(
-    name = "bucketization_op",
-    deps = [":bucketization_op_op_lib"],
-)
-
-tf_kernel_library(
-    name = "bucketization_op_kernel",
-    deps = [
-        "//tensorflow/contrib/layers/kernels:bucketization_kernel",
-        "//tensorflow/core:framework",
-    ],
-    alwayslink = 1,
-)
-
-tf_custom_op_library(
-    # TODO(sibyl-Mooth6ku,ptucker): Understand why 'python/ops/_' is needed and fix it.
     name = "python/ops/_sparse_feature_cross_op.so",
     srcs = [
         "ops/sparse_feature_cross_op.cc",
@@ -97,18 +68,14 @@ tf_custom_op_py_library(
         "python/ops/sparse_ops.py",
     ],
     dso = [
-        ":python/ops/_bucketization_op.so",
         ":python/ops/_sparse_feature_cross_op.so",
     ],
     kernels = [
-        ":bucketization_op_kernel",
         ":sparse_feature_cross_op_kernel",
-        ":bucketization_op_op_lib",
         ":sparse_feature_cross_op_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":bucketization_op",
         ":sparse_feature_cross_op",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/lookup:lookup_py",
@@ -141,6 +108,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
         "@six_archive//:six",
     ],
 )
@@ -214,6 +182,7 @@ py_test(
 
 py_test(
     name = "optimizers_test",
+    size = "small",
     srcs = ["python/layers/optimizers_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -269,6 +238,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
     ],
 )
@@ -316,22 +286,6 @@ py_test(
 )
 
 py_test(
-    name = "bucketization_op_test",
-    size = "small",
-    srcs = ["python/kernel_tests/bucketization_op_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":layers_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "sparse_feature_cross_op_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparse_feature_cross_op_test.py"],
@@ -352,6 +306,7 @@ py_test(
 py_test(
     name = "embedding_ops_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["python/layers/embedding_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [

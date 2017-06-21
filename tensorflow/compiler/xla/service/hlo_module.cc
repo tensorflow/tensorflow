@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -32,8 +33,10 @@ limitations under the License.
 namespace xla {
 
 HloModule::HloModule(const string& name,
-                     const VersionedComputationHandle& entry_computation_handle)
+                     const VersionedComputationHandle& entry_computation_handle,
+                     const HloModuleConfig& config)
     : name_(name),
+      config_(config),
       entry_computation_(nullptr),
       has_entry_computation_handle_(true),
       entry_computation_handle_(entry_computation_handle),
@@ -46,8 +49,7 @@ HloModule::HloModule(const string& name)
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
-  computation->set_name(
-      computation_name_uniquer_.GetUniqueName(computation->name()));
+  computation->UniquifyName(&computation_name_uniquer_);
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
   return computations_.back().get();
@@ -57,6 +59,13 @@ HloComputation* HloModule::AddEntryComputation(
     std::unique_ptr<HloComputation> computation) {
   CHECK_EQ(nullptr, entry_computation_);
   entry_computation_ = computation.get();
+
+  // If the module configuration has no entry layout computation set, create a
+  // default one based on the program shape.
+  if (!config_.has_entry_computation_layout()) {
+    config_.SetDefaultComputationLayout(
+        entry_computation_->ComputeProgramShape());
+  }
   return AddComputationInternal(std::move(computation));
 }
 
@@ -139,6 +148,17 @@ string HloModule::ToString() const {
     }
   }
   return s.str();
+}
+
+HloModuleProto HloModule::ToProto() const {
+  HloModuleProto proto;
+  proto.set_name(name_);
+  proto.set_entry_computation_name(entry_computation_->name());
+  for (const HloComputation* computation : MakeComputationPostOrder()) {
+    HloComputationProto computation_proto = computation->ToProto();
+    proto.add_computations()->Swap(&computation_proto);
+  }
+  return proto;
 }
 
 namespace {

@@ -23,7 +23,6 @@ from __future__ import print_function
 import copy
 import json
 import os
-import warnings
 
 import numpy as np
 
@@ -35,6 +34,8 @@ from tensorflow.contrib.keras.python.keras.engine.topology import Input
 from tensorflow.contrib.keras.python.keras.engine.topology import Layer
 from tensorflow.contrib.keras.python.keras.engine.training import Model
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.framework import ops
+from tensorflow.python.platform import tf_logging as logging
 
 
 # pylint: disable=g-import-not-at-top
@@ -132,7 +133,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
 
   if include_optimizer and hasattr(model, 'optimizer'):
     if isinstance(model.optimizer, optimizers.TFOptimizer):
-      warnings.warn(
+      logging.warning(
           'TensorFlow optimizers do not '
           'make it possible to access '
           'optimizer attributes or optimizer state '
@@ -188,7 +189,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
   f.close()
 
 
-def load_model(filepath, custom_objects=None):
+def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model`.
 
   Arguments:
@@ -196,12 +197,16 @@ def load_model(filepath, custom_objects=None):
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
           considered during deserialization.
+      compile: Boolean, whether to compile the model
+          after loading.
 
   Returns:
       A Keras model instance. If an optimizer was found
       as part of the saved model, the model is already
       compiled. Otherwise, the model is uncompiled and
-      a warning will be displayed.
+      a warning will be displayed. When `compile` is set
+      to False, the compilation is omitted without any
+      warning.
 
   Raises:
       ImportError: if h5py is not available.
@@ -220,7 +225,7 @@ def load_model(filepath, custom_objects=None):
         obj: object, dict, or list.
 
     Returns:
-        The same structure, where occurences
+        The same structure, where occurrences
             of a custom object name have been replaced
             with the custom object.
     """
@@ -263,11 +268,16 @@ def load_model(filepath, custom_objects=None):
   # set weights
   topology.load_weights_from_hdf5_group(f['model_weights'], model.layers)
 
+  # Early return if compilation is not required.
+  if not compile:
+    f.close()
+    return model
+
   # instantiate optimizer
   training_config = f.attrs.get('training_config')
   if training_config is None:
-    warnings.warn('No training configuration found in save file: '
-                  'the model was *not* compiled. Compile it manually.')
+    logging.warning('No training configuration found in save file: '
+                    'the model was *not* compiled. Compile it manually.')
     f.close()
     return model
   training_config = json.loads(training_config.decode('utf-8'))
@@ -319,9 +329,12 @@ def model_from_config(config, custom_objects=None):
 
   Returns:
       A Keras model instance (uncompiled).
+
+  Raises:
+      TypeError if `config` is not a dictionary
   """
   if isinstance(config, list):
-    raise TypeError('`model_fom_config` expects a dictionary, not a list. '
+    raise TypeError('`model_from_config` expects a dictionary, not a list. '
                     'Maybe you meant to use '
                     '`Sequential.from_config(config)`?')
   return layer_module.deserialize(config, custom_objects=custom_objects)
@@ -419,6 +432,14 @@ class Sequential(Model):
       prefix = 'sequential_'
       name = prefix + str(K.get_uid(prefix))
     self.name = name
+
+    # The following properties are not actually used by Keras;
+    # they exist for compatibility with TF's variable scoping mechanism.
+    self._updates = []
+    self._scope = None
+    self._reuse = None
+    self._base_name = name
+    self._graph = ops.get_default_graph()
 
     # Add to the model any layers passed to the constructor.
     if layers:
@@ -721,7 +742,7 @@ class Sequential(Model):
         optimizer: str (name of optimizer) or optimizer object.
             See [optimizers](/optimizers).
         loss: str (name of objective function) or objective function.
-            See [objectives](/objectives).
+            See [losses](/losses).
         metrics: list of metrics to be evaluated by the model
             during training and testing.
             Typically you will use `metrics=['accuracy']`.
@@ -730,7 +751,8 @@ class Sequential(Model):
             sample weighting (2D weights), set this to "temporal".
             "None" defaults to sample-wise weights (1D).
         **kwargs: for Theano backend, these are passed into K.function.
-            Ignored for Tensorflow backend.
+            When using the Tensorflow backend, these are passed into
+            `tf.Session.run`.
 
     Example:
         ```python
@@ -753,11 +775,14 @@ class Sequential(Model):
         **kwargs)
     self.optimizer = self.model.optimizer
     self.loss = self.model.loss
+    self.total_loss = self.model.total_loss
     self.loss_weights = self.model.loss_weights
     self.metrics = self.model.metrics
     self.metrics_tensors = self.model.metrics_tensors
     self.metrics_names = self.model.metrics_names
     self.sample_weight_mode = self.model.sample_weight_mode
+    self.sample_weights = self.model.sample_weights
+    self.targets = self.model.targets
 
   def fit(self,
           x,
@@ -957,10 +982,10 @@ class Sequential(Model):
     """
     preds = self.predict(x, batch_size, verbose)
     if preds.min() < 0. or preds.max() > 1.:
-      warnings.warn('Network returning invalid probability values. '
-                    'The last layer might not normalize predictions '
-                    'into probabilities '
-                    '(like softmax or sigmoid would).')
+      logging.warning('Network returning invalid probability values. '
+                      'The last layer might not normalize predictions '
+                      'into probabilities '
+                      '(like softmax or sigmoid would).')
     return preds
 
   def predict_classes(self, x, batch_size=32, verbose=1):
@@ -1009,8 +1034,8 @@ class Sequential(Model):
             - a tuple (inputs, targets, sample_weights).
             All arrays should contain the same number of samples.
             The generator is expected to loop over its data
-            indefinitely. An epoch finishes when `samples_per_epoch`
-            samples have been seen by the model.
+            indefinitely. An epoch finishes when `steps_per_epoch`
+            batches have been seen by the model.
         steps_per_epoch: Total number of steps (batches of samples)
             to yield from `generator` before declaring one epoch
             finished and starting the next epoch. It should typically
@@ -1063,7 +1088,7 @@ class Sequential(Model):
                     f.close()
 
         model.fit_generator(generate_arrays_from_file('/my_file.txt'),
-                            samples_per_epoch=10000, epochs=10)
+                            steps_per_epoch=1000, epochs=10)
     ```
     """
     if self.model is None:

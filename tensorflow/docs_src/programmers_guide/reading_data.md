@@ -133,7 +133,7 @@ uses a file format where each record is represented using a fixed number of
 bytes: 1 byte for the label followed by 3072 bytes of image data. Once you have
 a uint8 tensor, standard operations can slice out each piece and reformat as
 needed. For CIFAR-10, you can see how to do the reading and decoding in
-[`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_input.py)
+[`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_input.py)
 and described in
 @{$deep_cnn#prepare-the-data$this tutorial}.
 
@@ -170,7 +170,7 @@ You can then do any preprocessing of these examples you want. This would be any
 processing that doesn't depend on trainable parameters. Examples include
 normalization of your data, picking a random slice, adding noise or distortions,
 etc.  See
-[`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_input.py)
+[`tensorflow_models/tutorials/image/cifar10/cifar10_input.py`](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_input.py)
 for an example.
 
 ### Batching
@@ -309,7 +309,7 @@ operations, so that our training loop can dequeue examples from the example
 queue.
 
 <div style="width:70%; margin-left:12%; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/AnimatedFileQueues.gif">
+<img style="width:100%" src="https://www.tensorflow.org/images/AnimatedFileQueues.gif">
 </div>
 
 The helpers in `tf.train` that create these queues and enqueuing operations add
@@ -332,7 +332,7 @@ limit has been reached and no more examples are available.
 
 The last ingredient is the
 @{tf.train.Coordinator}. This is responsible
-for letting all the threads know if anything has signalled a shut down. Most
+for letting all the threads know if anything has signaled a shut down. Most
 commonly this would be because an exception was raised, for example one of the
 threads got an error when running some operation (or an ordinary Python
 exception).

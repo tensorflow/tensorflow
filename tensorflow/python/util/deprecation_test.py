@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""tensor_util tests."""
+"""Deprecation tests."""
 
 # pylint: disable=unused-import
 from __future__ import absolute_import
@@ -25,6 +25,25 @@ from tensorflow.python.util import deprecation
 
 
 class DeprecationTest(test.TestCase):
+
+  @test.mock.patch.object(logging, "warning", autospec=True)
+  def test_silence(self, mock_warning):
+    date = "2016-07-04"
+    instructions = "This is how you update..."
+
+    @deprecation.deprecated(date, instructions)
+    def _fn():
+      pass
+
+    _fn()
+    self.assertEqual(1, mock_warning.call_count)
+
+    with deprecation.silence():
+      _fn()
+    self.assertEqual(1, mock_warning.call_count)
+
+    _fn()
+    self.assertEqual(2, mock_warning.call_count)
 
   def _assert_subset(self, expected_subset, actual_set):
     self.assertTrue(

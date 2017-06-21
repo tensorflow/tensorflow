@@ -197,7 +197,10 @@ def string_input_producer(string_tensor,
     seed: An integer (optional). Seed used if shuffle == True.
     capacity: An integer. Sets the queue capacity.
     shared_name: (optional). If set, this queue will be shared under the given
-      name across multiple sessions.
+      name across multiple sessions. All sessions open to the device which has
+      this queue will be able to access it via the shared_name. Using this in
+      a distributed setting means each name will only be seen by one of the
+      sessions which has access to this operation.
     name: A name for the operations (optional).
     cancel_op: Cancel op for the queue (optional).
 
@@ -759,6 +762,9 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "shuffle_batch",
                       list(tensor_list) + [keep_input]) as name:
+    if capacity <= min_after_dequeue:
+      raise ValueError("capacity %d must be bigger than min_after_dequeue %d."
+                       % (capacity, min_after_dequeue))
     tensor_list = _validate(tensor_list)
     keep_input = _validate_keep_input(keep_input, enqueue_many)
     tensor_list, sparse_info = _store_sparse_tensors(
@@ -876,13 +882,11 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   `get_shape` method will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
-  Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variables_initializer()` to initialize local variables.
-
   Args:
     tensors: The list or dictionary of tensors to enqueue.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensors`.
+    num_threads: The number of threads enqueuing `tensors`.  The batching will
+      be nondeterministic if `num_threads > 1`.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
@@ -934,7 +938,8 @@ def maybe_batch(tensors, keep_input, batch_size, num_threads=1, capacity=32,
       corresponding value in `keep_input` is `True`. This tensor essentially
       acts as a filtering mechanism.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensors`.
+    num_threads: The number of threads enqueuing `tensors`.  The batching will
+      be nondeterministic if `num_threads > 1`.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
@@ -977,6 +982,9 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   The `tensors_list` argument is a list of tuples of tensors, or a list of
   dictionaries of tensors.  Each element in the list is treated similarly
   to the `tensors` argument of `tf.train.batch()`.
+
+  WARNING: This function is nondeterministic, since it starts a separate thread
+  for each tensor.
 
   Enqueues a different list of tensors in different threads.
   Implemented using a queue -- a `QueueRunner` for the queue
@@ -1080,7 +1088,7 @@ def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      corresponding value in `keep_input` is `True`. This tensor essentially acts
       as a filtering mechanism.
     batch_size: An integer. The new batch size pulled from the queue.
     capacity: An integer. The maximum number of elements in the queue.
@@ -1173,9 +1181,6 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   `get_shape` method will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
-  Note: if `num_epochs` is not `None`, this function creates local counter
-  `epochs`. Use `local_variables_initializer()` to initialize local variables.
-
   Args:
     tensors: The list or dictionary of tensors to enqueue.
     batch_size: The new batch size pulled from the queue.
@@ -1234,7 +1239,7 @@ def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      corresponding value in `keep_input` is `True`. This tensor essentially acts
       as a filtering mechanism.
     num_threads: The number of threads enqueuing `tensor_list`.
     seed: Seed for the random shuffling within the queue.
@@ -1376,7 +1381,7 @@ def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      corresponding value in `keep_input` is `True`. This tensor essentially acts
       as a filtering mechanism.
     seed: Seed for the random shuffling within the queue.
     enqueue_many: Whether each tensor in `tensor_list_list` is a single

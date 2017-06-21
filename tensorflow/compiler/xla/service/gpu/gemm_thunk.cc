@@ -245,7 +245,7 @@ tensorflow::Status GemmThunk::ExecuteOnStream(
   // Therefore, we need to convert dot between row-major matrices to that
   // between column-major matrices. The key insight for the conversion is that,
   // in linear storage, matrix M in column-major order is identical to the
-  // tranpose of M in row-major order. In other words,
+  // transpose of M in row-major order. In other words,
   //
   //   column-major(M) = row-major(M^T).
   //

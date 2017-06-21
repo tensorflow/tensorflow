@@ -26,8 +26,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 
-namespace gpu = ::perftools::gputools;
-
 bool FLAGS_stream_executor_cpu_real_clock_rate = false;
 
 namespace perftools {

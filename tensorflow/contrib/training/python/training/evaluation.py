@@ -254,7 +254,7 @@ def checkpoints_iterator(checkpoint_dir,
         logging.info('Timed-out waiting for a checkpoint.')
         return
       if timeout_fn():
-        # The timeout_fn indicated that we are truely done.
+        # The timeout_fn indicated that we are truly done.
         return
       else:
         # The timeout_fn indicated that more checkpoints may come.
@@ -290,17 +290,17 @@ class SummaryAtEndHook(session_run_hook.SessionRunHook):
       ValueError: If both `log_dir` and `summary_writer` are `None`.
     """
     self._summary_op = summary_op
+    self._replace_summary_op = summary_op is None
     self._feed_dict = feed_dict
     self._summary_writer = summary_writer
     self._log_dir = log_dir
-    self._summary_writer = summary_writer
     if self._log_dir is None and self._summary_writer is None:
       raise ValueError('One of log_dir or summary_writer should be used.')
-    self._global_step = variables.get_or_create_global_step()
 
   def begin(self):
-    if self._summary_op is None:
+    if self._replace_summary_op:
       self._summary_op = summary.merge_all()
+    self._global_step = variables.get_or_create_global_step()
 
   def after_create_session(self, session, coord):
     if self._summary_writer is None and self._log_dir:
@@ -370,7 +370,7 @@ def evaluate_repeatedly(checkpoint_dir,
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
   summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
-  summaries run immedietly after the model checkpoint has been restored.
+  summaries run immediately after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.

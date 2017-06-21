@@ -18,9 +18,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -55,7 +57,7 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
 
   SetSeed(42);
   auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
-  EXPECT_TRUE(ContainersEqual(dims, actual->shape().dimensions()));
+  EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
   LiteralUtil::EachCell<T>(*actual,
                            [=](tensorflow::gtl::ArraySlice<int64>, T value) {
                              EXPECT_LE(a, value);
@@ -75,7 +77,7 @@ void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
       auto actual,
       client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                   &execution_options));
-  EXPECT_TRUE(ContainersEqual(dims, actual->shape().dimensions()));
+  EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
   int32 sum = 0;
   LiteralUtil::EachCell<uint32>(
       *actual, [&sum](tensorflow::gtl::ArraySlice<int64>, uint32 value) {
@@ -193,7 +195,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
   }
 }
 
-// This tests demonstrates the global seeding behaviour.
+// This tests demonstrates the global seeding behavior.
 // * If a seed is passed in via Execute (ExecuteAndTransfer) then the output is
 //   fixed (i.e., there is a single output for a given seed);
 // * If no seed is passed in then the output of every call can be different;
@@ -276,6 +278,7 @@ XLA_TEST_F(PrngTest, TenValuesN01) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

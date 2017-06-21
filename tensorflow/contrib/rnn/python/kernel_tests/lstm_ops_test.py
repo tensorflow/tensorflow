@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.rnn.python.ops import core_rnn
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -30,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -38,10 +37,9 @@ block_lstm = lstm_ops._block_lstm  # pylint: disable=protected-access
 
 
 class LSTMBlockCellTest(test.TestCase):
-  _use_gpu = False
 
   def testNoneDimsWithDynamicRNN(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       batch_size = 4
       num_steps = 5
       input_dim = 6
@@ -58,7 +56,7 @@ class LSTMBlockCellTest(test.TestCase):
       sess.run(output, feed)
 
   def testLSTMBlockCell(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
@@ -66,10 +64,9 @@ class LSTMBlockCellTest(test.TestCase):
         m1 = array_ops.zeros([1, 2])
         m2 = array_ops.zeros([1, 2])
         m3 = array_ops.zeros([1, 2])
-        g, ((out_m0, out_m1),
-            (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [lstm_ops.LSTMBlockCell(2) for _ in range(2)],
-                state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
+        g, ((out_m0, out_m1), (out_m2, out_m3)) = rnn_cell.MultiRNNCell(
+            [lstm_ops.LSTMBlockCell(2)
+             for _ in range(2)], state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
             x.name: np.array([[1., 1.]]),
@@ -87,29 +84,29 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(res[4], [[0.24024698, 0.24024698]])
 
   def testCompatibleNames(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()):
-      cell = core_rnn_cell_impl.LSTMCell(10)
-      pcell = core_rnn_cell_impl.LSTMCell(10, use_peepholes=True)
+    with self.test_session(use_gpu=True, graph=ops.Graph()):
+      cell = rnn_cell.LSTMCell(10)
+      pcell = rnn_cell.LSTMCell(10, use_peepholes=True)
       inputs = [array_ops.zeros([4, 5])] * 6
-      core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32, scope="basic")
-      core_rnn.static_rnn(pcell, inputs, dtype=dtypes.float32, scope="peephole")
+      rnn.static_rnn(cell, inputs, dtype=dtypes.float32, scope="basic")
+      rnn.static_rnn(pcell, inputs, dtype=dtypes.float32, scope="peephole")
       basic_names = {
           v.name: v.get_shape()
           for v in variables.trainable_variables()
       }
 
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()):
+    with self.test_session(use_gpu=True, graph=ops.Graph()):
       cell = lstm_ops.LSTMBlockCell(10)
       pcell = lstm_ops.LSTMBlockCell(10, use_peephole=True)
       inputs = [array_ops.zeros([4, 5])] * 6
-      core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32, scope="basic")
-      core_rnn.static_rnn(pcell, inputs, dtype=dtypes.float32, scope="peephole")
+      rnn.static_rnn(cell, inputs, dtype=dtypes.float32, scope="basic")
+      rnn.static_rnn(pcell, inputs, dtype=dtypes.float32, scope="peephole")
       block_names = {
           v.name: v.get_shape()
           for v in variables.trainable_variables()
       }
 
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()):
+    with self.test_session(use_gpu=True, graph=ops.Graph()):
       cell = lstm_ops.LSTMBlockFusedCell(10)
       pcell = lstm_ops.LSTMBlockFusedCell(10, use_peephole=True)
       inputs = [array_ops.zeros([4, 5])] * 6
@@ -124,7 +121,7 @@ class LSTMBlockCellTest(test.TestCase):
     self.assertEqual(basic_names, fused_names)
 
   def testLSTMBasicToBlockCell(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       x = array_ops.zeros([1, 2])
       x_values = np.random.randn(1, 2)
 
@@ -140,11 +137,9 @@ class LSTMBlockCellTest(test.TestCase):
         m1 = array_ops.zeros([1, 2])
         m2 = array_ops.zeros([1, 2])
         m3 = array_ops.zeros([1, 2])
-        g, ((out_m0, out_m1),
-            (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [core_rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=True)
-                 for _ in range(2)],
-                state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
+        g, ((out_m0, out_m1), (out_m2, out_m3)) = rnn_cell.MultiRNNCell(
+            [rnn_cell.BasicLSTMCell(2, state_is_tuple=True) for _ in range(2)],
+            state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         basic_res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
             x.name: x_values,
@@ -159,10 +154,9 @@ class LSTMBlockCellTest(test.TestCase):
         m1 = array_ops.zeros([1, 2])
         m2 = array_ops.zeros([1, 2])
         m3 = array_ops.zeros([1, 2])
-        g, ((out_m0, out_m1),
-            (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [lstm_ops.LSTMBlockCell(2) for _ in range(2)],
-                state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
+        g, ((out_m0, out_m1), (out_m2, out_m3)) = rnn_cell.MultiRNNCell(
+            [lstm_ops.LSTMBlockCell(2)
+             for _ in range(2)], state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         block_res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
             x.name: x_values,
@@ -177,7 +171,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, block)
 
   def testLSTMBasicToBlockCellPeeping(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       x = array_ops.zeros([1, 2])
       x_values = np.random.randn(1, 2)
 
@@ -193,12 +187,12 @@ class LSTMBlockCellTest(test.TestCase):
         m1 = array_ops.zeros([1, 2])
         m2 = array_ops.zeros([1, 2])
         m3 = array_ops.zeros([1, 2])
-        g, ((out_m0, out_m1),
-            (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [core_rnn_cell_impl.LSTMCell(
-                    2, use_peepholes=True, state_is_tuple=True)
-                 for _ in range(2)],
-                state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
+        g, ((out_m0, out_m1), (out_m2, out_m3)) = rnn_cell.MultiRNNCell(
+            [
+                rnn_cell.LSTMCell(2, use_peepholes=True, state_is_tuple=True)
+                for _ in range(2)
+            ],
+            state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         basic_res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
             x.name: x_values,
@@ -213,11 +207,9 @@ class LSTMBlockCellTest(test.TestCase):
         m1 = array_ops.zeros([1, 2])
         m2 = array_ops.zeros([1, 2])
         m3 = array_ops.zeros([1, 2])
-        g, ((out_m0, out_m1),
-            (out_m2, out_m3)) = core_rnn_cell_impl.MultiRNNCell(
-                [lstm_ops.LSTMBlockCell(2, use_peephole=True)
-                 for _ in range(2)],
-                state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
+        g, ((out_m0, out_m1), (out_m2, out_m3)) = rnn_cell.MultiRNNCell(
+            [lstm_ops.LSTMBlockCell(2, use_peephole=True) for _ in range(2)],
+            state_is_tuple=True)(x, ((m0, m1), (m2, m3)))
         sess.run([variables.global_variables_initializer()])
         block_res = sess.run([g, out_m0, out_m1, out_m2, out_m3], {
             x.name: x_values,
@@ -232,7 +224,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, block)
 
   def testLSTMBasicToBlock(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       batch_size = 2
       input_size = 3
       cell_size = 4
@@ -247,8 +239,8 @@ class LSTMBlockCellTest(test.TestCase):
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890212)
       with variable_scope.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.BasicLSTMCell(cell_size, state_is_tuple=True)
-        outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+        cell = rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
+        outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
         sess.run([variables.global_variables_initializer()])
         basic_outputs, basic_state = sess.run([outputs, state[0]])
@@ -306,7 +298,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, fused, rtol=1e-2, atol=1e-2)
 
   def testLSTMBasicToBlockPeeping(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       batch_size = 2
       input_size = 3
       cell_size = 4
@@ -321,9 +313,9 @@ class LSTMBlockCellTest(test.TestCase):
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890212)
       with variable_scope.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.LSTMCell(
+        cell = rnn_cell.LSTMCell(
             cell_size, use_peepholes=True, state_is_tuple=True)
-        outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+        outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
         sess.run([variables.global_variables_initializer()])
         basic_outputs, basic_state = sess.run([outputs, state[0]])
@@ -394,7 +386,7 @@ class LSTMBlockCellTest(test.TestCase):
 
   def testLSTMFusedSequenceLengths(self):
     """Verify proper support for sequence lengths in LSTMBlockFusedCell."""
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       batch_size = 3
       input_size = 4
       cell_size = 5
@@ -410,8 +402,8 @@ class LSTMBlockCellTest(test.TestCase):
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=19890213)
       with variable_scope.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.BasicLSTMCell(cell_size, state_is_tuple=True)
-        outputs, state = core_rnn.static_rnn(
+        cell = rnn_cell.BasicLSTMCell(cell_size, state_is_tuple=True)
+        outputs, state = rnn.static_rnn(
             cell, inputs, dtype=dtypes.float32, sequence_length=seq_lengths)
         sess.run([variables.global_variables_initializer()])
         basic_outputs, basic_state = sess.run([outputs, state[0]])
@@ -474,10 +466,6 @@ class LSTMBlockCellTest(test.TestCase):
       self.assertAllClose(basic_grads, unfused_grads)
       for basic, unfused in zip(basic_wgrads, unfused_wgrads):
         self.assertAllClose(basic, unfused, rtol=1e-2, atol=1e-2)
-
-
-class LSTMBlockCellGpuTest(LSTMBlockCellTest):
-  _use_gpu = True
 
 
 if __name__ == "__main__":

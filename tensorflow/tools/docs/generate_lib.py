@@ -64,8 +64,16 @@ def write_docs(output_dir, parser_config, yaml_toc):
     parser_config: A `parser.ParserConfig` object, containing all the necessary
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
+
+  Raises:
+    ValueError: if `output_dir` is not an absolute path
   """
   # Make output_dir.
+  if not os.path.isabs(output_dir):
+    raise ValueError(
+        "'output_dir' must be an absolute path.\n"
+        "    output_dir='%s'" % output_dir)
+
   try:
     if not os.path.exists(output_dir):
       os.makedirs(output_dir)
@@ -148,7 +156,8 @@ def write_docs(output_dir, parser_config, yaml_toc):
                 + '\n')
 
         symbols_in_module = module_children.get(module, [])
-        symbols_in_module.sort(key=lambda a: a.upper())
+        # Sort case-insensitive, if equal sort case sensitive (upper first)
+        symbols_in_module.sort(key=lambda a: (a.upper(), a))
 
         for full_name in symbols_in_module:
           f.write('    - title: ' + full_name[len(module) + 1:] + '\n'
@@ -171,11 +180,16 @@ def add_dict_to_dict(add_from, add_to):
 
 
 # Exclude some libaries in contrib from the documentation altogether.
+def _get_default_private_map():
+  return {}
+
+
+# Exclude members of some libaries.
 def _get_default_do_not_descend_map():
-  # TODO(wicke): Shrink this list.
+  # TODO(wicke): Shrink this list once the modules get sealed.
   return {
-      '': ['cli', 'lib', 'wrappers'],
-      'contrib': [
+      'tf': ['cli', 'lib', 'wrappers'],
+      'tf.contrib': [
           'compiler',
           'factorization',
           'grid_rnn',
@@ -189,20 +203,19 @@ def _get_default_do_not_descend_map():
           'tensor_forest',
           'tensorboard',
           'testing',
-          'training',
           'tfprof',
       ],
-      'contrib.bayesflow': [
+      'tf.contrib.bayesflow': [
           'special_math', 'stochastic_gradient_estimators',
           'stochastic_variables'
       ],
-      'contrib.ffmpeg': ['ffmpeg_ops'],
-      'contrib.graph_editor': [
+      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
+      'tf.contrib.graph_editor': [
           'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
       ],
-      'contrib.keras': ['api', 'python'],
-      'contrib.layers': ['feature_column', 'summaries'],
-      'contrib.learn': [
+      'tf.contrib.keras': ['api', 'python'],
+      'tf.contrib.layers': ['feature_column', 'summaries'],
+      'tf.contrib.learn': [
           'datasets',
           'head',
           'graph_actions',
@@ -213,15 +226,17 @@ def _get_default_do_not_descend_map():
           'preprocessing',
           'utils',
       ],
-      'contrib.util': ['loader'],
+      'tf.contrib.util': ['loader'],
   }
 
 
-def extract(py_modules, do_not_descend_map):
+def extract(py_modules, private_map, do_not_descend_map):
   """Extract docs from tf namespace and write them to disk."""
   # Traverse the first module.
   visitor = doc_generator_visitor.DocGeneratorVisitor(py_modules[0][0])
   api_visitor = public_api.PublicAPIVisitor(visitor)
+  api_visitor.set_root_name(py_modules[0][0])
+  add_dict_to_dict(private_map, api_visitor.private_map)
   add_dict_to_dict(do_not_descend_map, api_visitor.do_not_descend_map)
 
   traverse.traverse(py_modules[0][1], api_visitor)
@@ -229,6 +244,7 @@ def extract(py_modules, do_not_descend_map):
   # Traverse all py_modules after the first:
   for module_name, module in py_modules[1:]:
     visitor.set_root_name(module_name)
+    api_visitor.set_root_name(module_name)
     traverse.traverse(module, api_visitor)
 
   return visitor
@@ -257,6 +273,14 @@ class _DocInfo(object):
 def build_doc_index(src_dir):
   """Build an index from a keyword designating a doc to _DocInfo objects."""
   doc_index = {}
+  if not os.path.isabs(src_dir):
+    raise ValueError("'src_dir' must be an absolute path.\n"
+                     "    src_dir='%s'" % src_dir)
+
+  if not os.path.exists(src_dir):
+    raise ValueError("'src_dir' path must exist.\n"
+                     "    src_dir='%s'" % src_dir)
+
   for dirpath, _, filenames in os.walk(src_dir):
     suffix = os.path.relpath(path=dirpath, start=src_dir)
     for base_name in filenames:
@@ -393,6 +417,7 @@ class DocGenerator(object):
   def __init__(self):
     self.argument_parser = argparse.ArgumentParser()
     self._py_modules = None
+    self._private_map = _get_default_private_map()
     self._do_not_descend_map = _get_default_do_not_descend_map()
     self.yaml_toc = True
 
@@ -423,8 +448,14 @@ class DocGenerator(object):
     flags, _ = self.argument_parser.parse_known_args()
     return flags
 
+  def add_to_private_map(self, d):
+    add_dict_to_dict(d, self._private_map)
+
   def add_to_do_not_descend_map(self, d):
     add_dict_to_dict(d, self._do_not_descend_map)
+
+  def set_private_map(self, d):
+    self._private_map = d
 
   def set_do_not_descend_map(self, d):
     self._do_not_descend_map = d
@@ -455,7 +486,8 @@ class DocGenerator(object):
         base_dir=base_dir)
 
   def run_extraction(self):
-    return extract(self._py_modules, self._do_not_descend_map)
+    return extract(
+        self._py_modules, self._private_map, self._do_not_descend_map)
 
   def build(self, flags):
     """Actually build the docs."""

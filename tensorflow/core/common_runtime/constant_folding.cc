@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -44,6 +45,9 @@ namespace {
 
 bool IsConstantFoldable(const Node* n,
                         const std::function<bool(const Node*)>& consider) {
+  if (n->IsConstant()) {
+    return true;
+  }
   if (n->op_def().is_stateful()) {
     return false;
   }
@@ -78,49 +82,64 @@ bool IsConstantFoldable(const Node* n,
   return true;
 }
 
-// Returns the constant foldable nodes in `nodes_result` in data flow order.
-void FindConstantFoldableNodes(const Graph* graph,
-                               const FunctionLibraryDefinition* flib_def,
-                               ConstantFoldingOptions opts,
-                               std::vector<Node*>* nodes_result) {
-  std::set<const Node*> node_set;
-  std::vector<Node*>& nodes = *nodes_result;
+// Returns the constant foldable nodes in `nodes` in topological order.
+// Populates `constant_control_deps` with the non-constant control dependencies
+// of each constant node.
+void FindConstantFoldableNodes(
+    const Graph* graph, ConstantFoldingOptions opts, std::vector<Node*>* nodes,
+    std::unordered_map<const Node*, gtl::FlatSet<Node*>>*
+        constant_control_deps) {
   bool internal_node_inserted = false;
   // Walk the nodes in data flow order
-  ReverseDFS(*graph, nullptr, [&nodes, &node_set, &internal_node_inserted, opts,
-                               flib_def](Node* n) {
-    if (n->IsConstant()) {
-      // Constants with no control inputs (except from _SOURCE node)
-      // are definitely constant foldable.
-      if (n->in_edges().size() == 0 ||
-          (n->in_edges().size() == 1 &&
-           (*n->in_edges().begin())->src()->IsSource())) {
-        node_set.insert(n);
-        nodes.push_back(n);
-      }
-    } else if (IsConstantFoldable(n, opts.consider)) {
-      // Check whether the set of this node's in_nodes is completely
-      // included in the set of constant foldable nodes. If true,
-      // then this node is also constant foldable.
-      bool all_parents_constant = true;
-      for (const Node* parent : n->in_nodes()) {
-        if (node_set.count(parent) == 0 && !parent->IsSource()) {
-          all_parents_constant = false;
-          break;
+  ReverseDFS(
+      *graph, nullptr,
+      [nodes, constant_control_deps, &internal_node_inserted, opts](Node* n) {
+        if (IsConstantFoldable(n, opts.consider)) {
+          // A node is constant provided all of its non-control
+          // incoming Tensors come from constant nodes.
+          //
+          // We allow control dependencies from non-constant nodes to constant
+          // nodes, but to preserve the graph structure we must transfer the
+          // control dependency onto any constant replacement.
+          bool all_parents_constant = true;
+          for (const Edge* in : n->in_edges()) {
+            // Allows non-constant -> constant control edges.
+            if (!in->IsControlEdge() &&
+                constant_control_deps->count(in->src()) == 0) {
+              all_parents_constant = false;
+              break;
+            }
+          }
+          if (all_parents_constant) {
+            gtl::FlatSet<Node*>& control_deps = (*constant_control_deps)[n];
+            for (const Edge* e : n->in_edges()) {
+              if (constant_control_deps->count(e->src()) == 0) {
+                if (!e->src()->IsSource()) {
+                  control_deps.insert(e->src());
+                }
+              } else {
+                // If the parent is constant, add all of its transitive control
+                // deps.
+                const gtl::FlatSet<Node*>& parent_deps =
+                    (*constant_control_deps)[e->src()];
+                control_deps.insert(parent_deps.begin(), parent_deps.end());
+              }
+            }
+            nodes->push_back(n);
+            if (!n->IsConstant()) {
+              internal_node_inserted = true;
+            }
+          }
         }
-      }
-      if (all_parents_constant) {
-        node_set.insert(n);
-        nodes.push_back(n);
-        internal_node_inserted = true;
-      }
-    }
-  });
+      });
   // If we have inserted just leaf level nodes, then there is nothing to fold.
   if (!internal_node_inserted) {
-    nodes.clear();
+    nodes->clear();
+    constant_control_deps->clear();
   }
 }
+
+typedef std::pair<Node*, int> NodeAndOutput;
 
 // Given the constant foldable nodes in 'nodes', returns a new graph 'g'. 'g'
 // will contain copies of the nodes in 'nodes'. In addition, if there is an edge
@@ -132,23 +151,21 @@ Graph* GetConstantGraph(const Graph* orig_graph,
                         std::map<NodeAndOutput, Node*>* tensors_to_fetch) {
   Graph* constant_graph = new Graph(orig_graph->op_registry());
   std::unordered_map<Node*, Node*> node_map;
-  std::set<Node*> already_added;
-  already_added.insert(constant_graph->source_node());
-  already_added.insert(constant_graph->sink_node());
   node_map[orig_graph->source_node()] = constant_graph->source_node();
   node_map[orig_graph->sink_node()] = constant_graph->sink_node();
   for (Node* n : nodes) {
     Node* added = constant_graph->CopyNode(n);
     node_map[n] = added;
-    already_added.insert(added);
     for (const Edge* in_edge : n->in_edges()) {
-      Node* in = in_edge->src();
-      CHECK_GT(node_map.count(in), size_t{0}) << n->DebugString() << " <-"
-                                              << in->DebugString();
-      CHECK_GT(already_added.count(node_map[in]), size_t{0})
-          << in->DebugString();
-      constant_graph->AddEdge(node_map[in], in_edge->src_output(), added,
-                              in_edge->dst_input());
+      // Don't copy control edges to the constant graph.
+      if (!in_edge->IsControlEdge()) {
+        Node* in = in_edge->src();
+        auto it = node_map.find(in);
+        CHECK(it != node_map.end())
+            << n->DebugString() << " <-" << in->DebugString();
+        constant_graph->AddEdge(it->second, in_edge->src_output(), added,
+                                in_edge->dst_input());
+      }
     }
   }
 
@@ -170,10 +187,15 @@ int64 UniqueConstantId() {
   return id.fetch_add(1);
 }
 
-}  // namespace
-
+// Replaces the identified Tensor in 'graph' by a 'Const' node with
+// the value supplied in 'constant'. 'partition_device', if non-null
+// is the device where the graph executes. Returns true if the
+// replacement was successful, false otherwise.
+// 'control_deps' is the set of nodes that should be control predecessors of the
+// new constant node.
 bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
-                               NodeAndOutput tensor, const Tensor& constant) {
+                               NodeAndOutput tensor, const Tensor& constant,
+                               const gtl::FlatSet<Node*>& control_deps) {
   // Be conservative when replacing a tensor with a constant, when not
   // running on CPU.
   // 1) If the destination tensor is not an int32 tensor, and has HOST_MEMORY
@@ -237,8 +259,8 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
     return false;
   }
 
-  VLOG(1) << "Replacing " << tensor.first->DebugString()
-          << " :: " << tensor.second << " with a constant";
+  VLOG(1) << "Replacing " << tensor.first->name() << " :: " << tensor.second
+          << " with a constant";
 
   if (!NodeBuilder(builder).Finalize(graph, &constant_node).ok()) {
     return false;
@@ -247,35 +269,30 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
     graph->AddEdge(constant_node, 0, edge->dst(), edge->dst_input());
     graph->RemoveEdge(edge);
   }
-  graph->AddEdge(graph->source_node(), -1, constant_node, -1);
+  if (control_deps.empty()) {
+    graph->AddControlEdge(graph->source_node(), constant_node);
+  } else {
+    for (Node* node : control_deps) {
+      graph->AddControlEdge(node, constant_node);
+    }
+  }
   if (partition_device) {
     constant_node->set_assigned_device_name(partition_device->name());
   }
   return true;
 }
 
-bool DoConstantFolding(const ConstantFoldingOptions& opts,
-                       FunctionLibraryRuntime* function_library, Env* env,
-                       Device* partition_device, Graph* graph) {
-  bool was_mutated;
-  Status unused_status = DoConstantFoldingWithStatus(
-      opts, function_library, env, partition_device, graph, &was_mutated);
-  return was_mutated;
-}
+}  // namespace
 
-Status DoConstantFoldingWithStatus(const ConstantFoldingOptions& opts,
-                                   FunctionLibraryRuntime* function_library,
-                                   Env* env, Device* partition_device,
-                                   Graph* graph, bool* was_mutated) {
+Status ConstantFold(const ConstantFoldingOptions& opts,
+                    FunctionLibraryRuntime* function_library, Env* env,
+                    Device* partition_device, Graph* graph, bool* was_mutated) {
   DumpGraph("Before", graph);
 
-  const FunctionLibraryDefinition* flib_def = nullptr;
-  if (function_library) {
-    flib_def = function_library->GetFunctionLibraryDefinition();
-  }
-
   std::vector<Node*> constant_foldable_nodes;
-  FindConstantFoldableNodes(graph, flib_def, opts, &constant_foldable_nodes);
+  std::unordered_map<const Node*, gtl::FlatSet<Node*>> constant_control_deps;
+  FindConstantFoldableNodes(graph, opts, &constant_foldable_nodes,
+                            &constant_control_deps);
   if (constant_foldable_nodes.empty()) {
     VLOG(1) << "No constant foldable nodes found";
     *was_mutated = false;
@@ -328,8 +345,11 @@ Status DoConstantFoldingWithStatus(const ConstantFoldingOptions& opts,
   // original graph with those constants.
   int32 num_nodes_replaced = 0;
   for (size_t c = 0; c < outputs.size(); ++c) {
+    const gtl::FlatSet<Node*>& control_deps =
+        constant_control_deps[tensors_to_replace[c].first];
     if (ReplaceTensorWithConstant(graph, partition_device,
-                                  tensors_to_replace[c], outputs[c])) {
+                                  tensors_to_replace[c], outputs[c],
+                                  control_deps)) {
       ++num_nodes_replaced;
     }
   }

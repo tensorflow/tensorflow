@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector
+from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [

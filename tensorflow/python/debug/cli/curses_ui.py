@@ -710,7 +710,8 @@ class CursesUI(base_ui.BaseUI):
       # Empty command: take no action. Should not exit.
       return
 
-    screen_info = {"cols": self._max_x}
+    # Take into account scroll bar width.
+    screen_info = {"cols": self._max_x - 2}
     exit_token = None
     if self._command_handler_registry.is_registered(prefix):
       try:
@@ -1077,6 +1078,9 @@ class CursesUI(base_ui.BaseUI):
         self._toast("Pattern not found", color=self._ERROR_TOAST_COLOR_PAIR)
     elif is_refresh:
       self._scroll_output(_SCROLL_REFRESH)
+    elif debugger_cli_common.INIT_SCROLL_POS_KEY in output.annotations:
+      line_index = output.annotations[debugger_cli_common.INIT_SCROLL_POS_KEY]
+      self._scroll_output(_SCROLL_TO_LINE_INDEX, line_index=line_index)
     else:
       self._output_pad_row = 0
       self._scroll_output(_SCROLL_HOME)

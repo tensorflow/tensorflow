@@ -23,6 +23,7 @@ limitations under the License.
 <link rel="import" href="../tf-dashboard-common/tf-option-selector.html">
 <link rel="import" href="../tf-dashboard-common/tf-panes-helper.html">
 <link rel="import" href="../tf-dashboard-common/tf-sidebar-helper.html">
+<link rel="import" href="../tf-runs-selector/tf-runs-selector.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../vz-line-chart/vz-line-chart.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
@@ -58,62 +59,64 @@ contains vz-line-charts embedded inside tf-panes-helper's.
 
     <tf-dashboard-layout>
       <div class="sidebar">
-        <tf-sidebar-helper
-          backend="[[backend]]"
-          categories="{{_categories}}"
-          color-scale="[[_colorScale]]"
-          run2tag="[[run2tag]]"
-          runs="[[runs]]"
-          selected-runs="{{_selectedRuns}}"
-          >
-          <div class="extend-first-section">
-            <div class="line-item">
-              <paper-checkbox
-              id="download-option"
-              checked="{{_showDownloadLinks}}"
-              >Show data download links</paper-checkbox>
-            </div>
-              <div class="line-item">
-                <paper-checkbox
-                id="outliersCheckbox"
-                checked="{{_ignoreYOutliers}}"
-                >Ignore outliers in chart scaling</paper-checkbox>
-              </div>
-            <div id="tooltip-sorting">
-              <div id="tooltip-sorting-label">Tooltip sorting method:</div>
-              <paper-dropdown-menu
-                no-label-float
-                selected-item-label="{{_tooltipSortingMethod}}"
-                >
-                <paper-menu class="dropdown-content" selected="0">
-                  <paper-item>default</paper-item>
-                  <paper-item>descending</paper-item>
-                  <paper-item>ascending</paper-item>
-                  <paper-item>nearest</paper-item>
-                </paper-menu>
-              </paper-dropdown-menu>
-            </div>
+        <div class="sidebar-section">
+          <tf-categorizer
+            id="categorizer"
+            tags="[[tags]]"
+            categories="{{_categories}}"
+          ></tf-categorizer>
+          <div class="line-item">
+            <paper-checkbox
+            id="download-option"
+            checked="{{_showDownloadLinks}}"
+            >Show data download links</paper-checkbox>
           </div>
-          <div class="sidebar-section">
-            <tf-smoothing-input
-              weight="{{_smoothingWeight}}"
-              step="0.001"
-              min="0"
-              max="1"
-              ></tf-smoothing-input>
+          <div class="line-item">
+            <paper-checkbox
+            id="outliersCheckbox"
+            checked="{{_ignoreYOutliers}}"
+            >Ignore outliers in chart scaling</paper-checkbox>
           </div>
-          <div class="sidebar-section">
-            <tf-option-selector
-              id="xTypeSelector"
-              name="Horizontal Axis"
-              selected-id="{{_xType}}"
+          <div id="tooltip-sorting">
+            <div id="tooltip-sorting-label">Tooltip sorting method:</div>
+            <paper-dropdown-menu
+              no-label-float
+              selected-item-label="{{_tooltipSortingMethod}}"
               >
-              <paper-button id="step">step</paper-button>
-              <paper-button id="relative">relative</paper-button>
-              <paper-button id="wall_time">wall</paper-button>
-            </tf-option-selector>
+              <paper-menu class="dropdown-content" selected="0">
+                <paper-item>default</paper-item>
+                <paper-item>descending</paper-item>
+                <paper-item>ascending</paper-item>
+                <paper-item>nearest</paper-item>
+              </paper-menu>
+            </paper-dropdown-menu>
           </div>
-        </tf-sidebar-helper>
+        </div>
+        <div class="sidebar-section">
+          <tf-smoothing-input
+            weight="{{_smoothingWeight}}"
+            step="0.001"
+            min="0"
+            max="1"
+            ></tf-smoothing-input>
+        </div>
+        <div class="sidebar-section">
+          <tf-option-selector
+            id="xTypeSelector"
+            name="Horizontal Axis"
+            selected-id="{{_xType}}"
+            >
+            <paper-button id="step">step</paper-button>
+            <paper-button id="relative">relative</paper-button>
+            <paper-button id="wall_time">wall</paper-button>
+          </tf-option-selector>
+        </div>
+        <div class="sidebar-section">
+          <tf-runs-selector
+            id="runs-selector"
+            selected-runs="{{_selectedRuns}}"
+          ></tf-runs-selector>
+        </div>
       </div>
       <div class="center">
         <tf-panes-helper
@@ -126,7 +129,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           selected-runs="[[_selectedRuns]]"
           show-download-links="[[_showDownloadLinks]]"
           download-link-url-function="[[scalarUrl]]"
-          >
+        >
           <template>
             <vz-line-chart
               x-type="[[_xType]]"
@@ -165,6 +168,15 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         background: var(--tb-ui-light-accent);
       }
 
+      #categorizer {
+        flex-shrink: 0;
+      }
+
+      #runs-selector {
+        flex-shrink: 1;
+        flex-grow: 1;
+      }
+
       #tooltip-sorting {
         display: flex;
         font-size: 14px;
@@ -185,21 +197,35 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         display: block;
         padding-top: 5px;
       }
-    </style>
 
+      .sidebar-section {
+        border-top: solid 1px rgba(0, 0, 0, 0.12);
+        padding: 20px 0px 20px 30px;
+      }
+
+      /* TODO(wchargin): These styles also exist in dashboard-style, */
+      /* but don't apply due to the namespacing. :-( */
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+    </style>
   </template>
 
   <script>
-    TF.Dashboard.TfScalarDashboard = Polymer({
+    import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+    import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
+    import {BackendBehavior} from "../tf-backend/behavior";
+    import {getRouter} from "../tf-backend/router";
+    import * as storage from "../tf-storage/storage";
+
+    Polymer({
       is: "tf-scalar-dashboard",
-      factoryImpl: function(backend, router) {
-        this.backend = backend;
-        this.router = router;
-      },
       behaviors: [
-        TF.Dashboard.DashboardBehavior("scalars"),
-        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-        TF.Backend.Behavior,
+        DashboardBehavior("scalars"),
+        ReloadBehavior("tf-chart-scaffold"),
+        BackendBehavior,
       ],
       properties: {
         backend: Object,
@@ -207,22 +233,22 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           type: String,
           value: "scalar"
         },
-        router: Object,
         scalarUrl: {
           type: Function,
-          computed: "_getScalarUrl(router)"
+          value: function() {
+            return getRouter().pluginRunTagRoute('scalars', '/scalars');
+          },
         },
         _showDownloadLinks: {
           type: Boolean,
           notify: true,
-          value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
-              false, true),
+          value: storage.getBooleanInitializer('_showDownloadLinks', false, true),
           observer: '_showDownloadLinksObserver'
         },
         _smoothingWeight: {
           type: Number,
           notify: true,
-          value: TF.URIStorage.getNumberInitializer('_smoothingWeight', 0.6),
+          value: storage.getNumberInitializer('_smoothingWeight', 0.6),
           observer: '_smoothingWeightObserver'
         },
         _smoothingEnabled: {
@@ -231,27 +257,24 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         },
         _ignoreYOutliers: {
           type: Boolean,
-          value: TF.URIStorage.getBooleanInitializer('_ignoreYOutliers', true, true),
+          value: storage.getBooleanInitializer('_ignoreYOutliers', true, true),
           observer: '_ignoreYOutliersObserver',
         },
         _xType: {
           type: String,
           value: "step"
-        }
+        },
       },
       attached: function() {
         this.async(function() {
           this.fire("rendered");
         });
       },
-      _getScalarUrl: function() {
-        return this.router.scalars;
-      },
-      _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
+      _showDownloadLinksObserver: storage.getBooleanObserver(
           '_showDownloadLinks', /*default=*/ false, /*useLocalStorage=*/ true),
-      _smoothingWeightObserver: TF.URIStorage.getNumberObserver(
+      _smoothingWeightObserver: storage.getNumberObserver(
           '_smoothingWeight', 0.6),
-      _ignoreYOutliersObserver: TF.URIStorage.getBooleanObserver(
+      _ignoreYOutliersObserver: storage.getBooleanObserver(
           '_ignoreYOutliers', /*default=*/ true, /*useLocalStorage=*/true),
       _computeSmoothingEnabled: function(_smoothingWeight) {
         return _smoothingWeight > 0;

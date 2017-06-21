@@ -293,6 +293,14 @@ Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
 )doc");
 
+REGISTER_OP("Sinh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic sine of x element-wise.
+)doc");
+
+REGISTER_OP("Cosh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic cosine of x element-wise.
+)doc");
+
 REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
@@ -595,7 +603,9 @@ REGISTER_OP("Mod")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. This emulates C semantics in that
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
 
 *NOTE*: `Mod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -623,12 +633,11 @@ REGISTER_OP("TruncateMod")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns element-wise remainder of division. This emulates C semantics where
+Returns element-wise remainder of division. This emulates C semantics in that
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
 
-true, this follows C semantics in that the result here is consistent
-with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
-
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+*NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -662,13 +671,12 @@ Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 
 The upper regularized incomplete Gamma function is defined as:
 
-```
-Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
-```
+\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\)
+
 where
-```
-Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt
-```
+
+\\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+
 is the upper incomplete Gama function.
 
 Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
@@ -686,13 +694,13 @@ Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 
 The lower regularized incomplete Gamma function is defined as:
 
-```
-P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
-```
+
+\\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+
 where
-```
-gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt
-```
+
+\\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+
 is the lower incomplete Gamma function.
 
 Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
@@ -710,9 +718,9 @@ Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 
 The Hurwitz zeta function is defined as:
 
-```
-\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}
-```
+
+\\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
+
 )doc");
 
 REGISTER_OP("Polygamma")
@@ -726,10 +734,25 @@ Compute the polygamma function \\(\psi^{(n)}(x)\\).
 
 The polygamma function is defined as:
 
-```
-\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
-```
+
+\\(\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)\\)
+
 where \\(\psi(x)\\) is the digamma function.
+)doc");
+
+REGISTER_OP("Atan2")
+    .Input("y: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
+This is the angle \( \theta \in [-\pi, \pi] \) such that
+\[ x = r \cos(\theta) \]
+and
+\[ y = r \sin(\theta) \]
+where \(r = \sqrt(x^2 + y^2) \).
 )doc");
 
 REGISTER_OP("Betainc")
@@ -775,14 +798,14 @@ Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 
 The regularized incomplete beta integral is defined as:
 
-```
-I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}
-```
+
+\\(I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}\\)
+
 where
 
-```
-B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt
-```
+
+\\(B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt\\)
+
 
 is the incomplete beta function and \\(B(a, b)\\) is the *complete*
 beta function.
@@ -912,18 +935,33 @@ REGISTER_OP("Select")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data_1 = c->input_handle_shapes_and_types(1);
+      auto* handle_data_2 = c->input_handle_shapes_and_types(2);
       // Merge handle shape and dtype if applicable.
-      if (c->input_handle_dtype(1) != c->input_handle_dtype(2)) {
-        // TODO(apassos) resolve this in the manner of b/32476923
-        return errors::InvalidArgument(
-            "Trying to merge handles pointing to different dtypes.");
+      if (handle_data_1 != nullptr && handle_data_2 != nullptr) {
+        const auto size = handle_data_1->size();
+        std::vector<shape_inference::ShapeAndType> merged_handle_data(size);
+        if (size != handle_data_2->size()) {
+          return errors::InvalidArgument(
+              "Trying to merge handles pointing to different numbers of "
+              "tensors.");
+        }
+
+        for (int i = 0; i < size; ++i) {
+          const shape_inference::ShapeAndType& s1 = (*handle_data_1)[i];
+          const shape_inference::ShapeAndType& s2 = (*handle_data_2)[i];
+          if (s1.dtype != s2.dtype) {
+            // TODO(apassos) resolve this in the manner of b/32476923
+            return errors::InvalidArgument(
+                "Trying to merge handles pointing to different dtypes.");
+          }
+          merged_handle_data[i].dtype = s1.dtype;
+          TF_RETURN_IF_ERROR(
+              c->Merge(s1.shape, s2.shape, &merged_handle_data[i].shape));
+        }
+
+        c->set_output_handle_shapes_and_types(0, merged_handle_data);
       }
-      c->set_output_handle_dtype(0, c->input_handle_dtype(1));
-      ShapeHandle output_handle_shape;
-      TF_RETURN_IF_ERROR(c->Merge(c->input_handle_shape(1),
-                                  c->input_handle_shape(2),
-                                  &output_handle_shape));
-      c->set_output_handle_shape(0, output_handle_shape);
 
       // The inputs 'then' and 'else' must have the same shape.
       ShapeHandle data = c->input(1);
@@ -1000,15 +1038,14 @@ element to copy from `t` and `e`.
 
 For example:
 
-```prettyprint
+```python
 # 'condition' tensor is [[True,  False]
 #                        [False, True]]
 # 't' is [[1, 2],
 #         [3, 4]]
 # 'e' is [[5, 6],
 #         [7, 8]]
-select(condition, t, e) ==> [[1, 6],
-                             [7, 4]]
+select(condition, t, e)  # => [[1, 6], [7, 4]]
 
 
 # 'condition' tensor is [True, False]
@@ -1071,6 +1108,9 @@ The inputs must be two-dimensional matrices and the inner dimension of "a" must
 match the outer dimension of "b". This op is optimized for the case where at
 least one of "a" or "b" is sparse. The breakeven for using this versus a dense
 matrix multiply on one platform was 30% zero values in the sparse matrix.
+
+The gradient computation of this operation will only take advantage of sparsity
+in the input gradient when that gradient comes from a Relu.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1256,6 +1296,8 @@ REGISTER_OP("ArgMax")
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
+Note that in case of ties the identity of the return value is not guaranteed.
+
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.
 )doc");
@@ -1269,6 +1311,8 @@ REGISTER_OP("ArgMin")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
+
+Note that in case of ties the identity of the return value is not guaranteed.
 
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.
@@ -1627,22 +1671,22 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
 
 For example:
 
-```prettyprint
+```python
 c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
 
 # Select two rows, one segment.
 tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
-  ==> [[0 0 0 0]]
+# => [[0 0 0 0]]
 
 # Select two rows, two segment.
 tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
-  ==> [[ 1  2  3  4]
-       [-1 -2 -3 -4]]
+# => [[ 1  2  3  4]
+#     [-1 -2 -3 -4]]
 
 # Select all rows, two segments.
 tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
-  ==> [[0 0 0 0]
-       [5 6 7 8]]
+# => [[0 0 0 0]
+#     [5 6 7 8]]
 
 # Which is equivalent to:
 tf.segment_sum(c, tf.constant([0, 0, 1]))
@@ -2055,7 +2099,6 @@ REGISTER_OP("Bincount")
     .Output("bins: T")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(1));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(2));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -2093,26 +2136,31 @@ Compute the cumulative sum of the tensor `x` along `axis`.
 
 By default, this op performs an inclusive cumsum, which means that the first
 element of the input is identical to the first element of the output:
-```prettyprint
-tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+
+```python
+tf.cumsum([a, b, c])  # => [a, a + b, a + b + c]
 ```
 
 By setting the `exclusive` kwarg to `True`, an exclusive cumsum is
 performed instead:
-```prettyprint
-tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+
+```python
+tf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumsum is performed in the
 opposite direction:
-```prettyprint
-tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+
+```python
+tf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]
 ```
+
 This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
-```prettyprint
-tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
+
+```python
+tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
 ```
 )doc");
 
@@ -2130,26 +2178,31 @@ Compute the cumulative product of the tensor `x` along `axis`.
 
 By default, this op performs an inclusive cumprod, which means that the first
 element of the input is identical to the first element of the output:
-```prettyprint
-tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+
+```python
+tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
 ```
 
 By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
 performed instead:
-```prettyprint
-tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
+
+```python
+tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumprod is performed in the
 opposite direction:
-```prettyprint
-tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
+
+```python
+tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
 ```
+
 This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
-```prettyprint
-tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
+
+```python
+tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
 ```
 )doc");
 
@@ -2230,6 +2283,35 @@ min_z: The float value that the lowest quantized output value represents.
 max_z: The float value that the highest quantized output value represents.
 
 *NOTE*: `QuantizedMul` supports limited forms of broadcasting. More about
+broadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+)doc");
+
+REGISTER_OP("QuantizedAdd")
+    .Input("x: T1")
+    .Input("y: T2")
+    .Input("min_x: float")
+    .Input("max_x: float")
+    .Input("min_y: float")
+    .Input("max_y: float")
+    .Output("z: Toutput")
+    .Output("min_z: float")
+    .Output("max_z: float")
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Toutput: quantizedtype = DT_QINT32")
+    .SetIsCommutative()
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
+Returns x + y element-wise, working on quantized buffers.
+
+min_x: The float value that the lowest quantized `x` value represents.
+max_x: The float value that the highest quantized `x` value represents.
+min_y: The float value that the lowest quantized `y` value represents.
+max_y: The float value that the highest quantized `y` value represents.
+min_z: The float value that the lowest quantized output value represents.
+max_z: The float value that the highest quantized output value represents.
+
+*NOTE*: `QuantizedAdd` supports limited forms of broadcasting. More about
 broadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -2354,6 +2436,37 @@ Tinput: The type of the input.
 output_min: The computed min output.
 output_max: the computed max output.
 
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Bucketize")
+    .Input("input: T")
+    .Output("output: int32")
+    .Attr("T: {int32, int64, float, double}")
+    .Attr("boundaries: list(float)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Bucketizes 'input' based on 'boundaries'.
+
+For example, if the inputs are
+    boundaries = [0, 10, 100]
+    input = [[-5, 10000]
+             [150,   10]
+             [5,    100]]
+
+then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+
+input: Any shape of Tensor contains with int or float type.
+boundaries: A sorted list of floats gives the boundary of the buckets.
+output: Same shape with 'input', each value of input replaced with bucket index.
+
+@compatibility(numpy)
+Equivalent to np.digitize.
+@end_compatibility
 )doc");
 
 }  // namespace tensorflow

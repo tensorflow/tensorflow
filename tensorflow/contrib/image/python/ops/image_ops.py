@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
@@ -36,7 +37,7 @@ _IMAGE_DTYPES = set(
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
 
 
-def rotate(images, angles):
+def rotate(images, angles, interpolation="NEAREST"):
   """Rotate image(s) by the passed angle(s) in radians.
 
   Args:
@@ -45,6 +46,7 @@ def rotate(images, angles):
        (num_rows, num_columns) (HW).
     angles: A scalar angle to rotate all images by, or (if images has rank 4)
        a vector of length num_images, with an angle for each image in the batch.
+    interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
 
   Returns:
     Image(s) with the same type and shape as `images`, rotated by the given
@@ -69,7 +71,8 @@ def rotate(images, angles):
   image_width = math_ops.cast(array_ops.shape(images)[2], dtypes.float32)[None]
   output = transform(
       images,
-      angles_to_projective_transforms(angles, image_width, image_height))
+      angles_to_projective_transforms(angles, image_height, image_width),
+      interpolation=interpolation)
   if len(image_or_images.get_shape()) == 2:
     return output[0, :, :, 0]
   elif len(image_or_images.get_shape()) == 3:
@@ -119,7 +122,7 @@ def angles_to_projective_transforms(angles, image_height, image_width):
       axis=1)
 
 
-def transform(images, transforms):
+def transform(images, transforms, interpolation="NEAREST"):
   """Applies the given transform(s) to the image(s).
 
   Args:
@@ -133,6 +136,7 @@ def transform(images, transforms):
        `(x', y') = ((a0 x + a1 y + a2) / k, (b0 x + b1 y + b2) / k)`,
        where `k = c0 x + c1 y + 1`. The transforms are *inverted* compared to
        the transform mapping input points to output points.
+     interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
 
   Returns:
     Image(s) with the same type and shape as `images`, with the given
@@ -162,8 +166,8 @@ def transform(images, transforms):
     transforms = transform_or_transforms
   else:
     raise TypeError("Transforms should have rank 1 or 2.")
-  # pylint: disable=protected-access
-  output = gen_image_ops.image_projective_transform(images, transforms)
+  output = gen_image_ops.image_projective_transform(
+      images, transforms, interpolation=interpolation.upper())
   if len(image_or_images.get_shape()) == 2:
     return output[0, :, :, 0]
   elif len(image_or_images.get_shape()) == 3:
@@ -214,4 +218,82 @@ def _transform_matrices_to_flat(transform_matrices):
   return transforms[:, :8]
 
 
-ops.NotDifferentiable("ImageProjectiveTransform")
+@ops.RegisterGradient("ImageProjectiveTransform")
+def _image_projective_transform_grad(op, grad):
+  """Computes the gradient for ImageProjectiveTransform."""
+  images = op.inputs[0]
+  transforms = op.inputs[1]
+  interpolation = op.get_attr("interpolation")
+
+  image_or_images = ops.convert_to_tensor(images, name="images")
+  transform_or_transforms = ops.convert_to_tensor(
+      transforms, name="transforms", dtype=dtypes.float32)
+
+  if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
+    raise TypeError("Invalid dtype %s." % image_or_images.dtype)
+  if len(image_or_images.get_shape()) == 2:
+    images = image_or_images[None, :, :, None]
+  elif len(image_or_images.get_shape()) == 3:
+    images = image_or_images[None, :, :, :]
+  elif len(image_or_images.get_shape()) == 4:
+    images = image_or_images
+  else:
+    raise TypeError("Images should have rank between 2 and 4")
+  if len(transform_or_transforms.get_shape()) == 1:
+    transforms = transform_or_transforms[None]
+  elif len(transform_or_transforms.get_shape()) == 2:
+    transforms = transform_or_transforms
+  else:
+    raise TypeError("Transforms should have rank 1 or 2.")
+
+  # Invert transformations
+  transforms = _flat_transforms_to_matrices(transforms=transforms)
+  inverse = linalg_ops.matrix_inverse(transforms)
+  transforms = _transform_matrices_to_flat(inverse)
+  output = gen_image_ops.image_projective_transform(
+      grad, transforms, interpolation=interpolation)
+  if len(image_or_images.get_shape()) == 2:
+    return [output[0, :, :, 0], None]
+  elif len(image_or_images.get_shape()) == 3:
+    return [output[0, :, :, :], None]
+  else:
+    return [output, None]
+
+
+def bipartite_match(
+    distance_mat,
+    num_valid_rows,
+    top_k=-1):
+  """Find bipartite matching based on a given distance matrix.
+
+  A greedy bi-partite matching algorithm is used to obtain the matching with
+  the (greedy) minimum distance.
+
+  Args:
+    distance_mat: A 2-D float tensor of shape `[num_rows, num_columns]`. It is a
+      pair-wise distance matrix between the entities represented by each row and
+      each column. It is an asymmetric matrix. The smaller the distance is, the
+      more similar the pairs are. The bipartite matching is to minimize the
+      distances.
+    num_valid_rows: A scalar or a 1-D tensor with one element describing the
+      number of valid rows of distance_mat to consider for the bipartite
+      matching. If set to be negative, then all rows from `distance_mat` are
+      used.
+    top_k: A scalar that specifies the number of top-k matches to retrieve.
+      If set to be negative, then is set according to the maximum number of
+      matches from `distance_mat`.
+
+  Returns:
+    row_to_col_match_indices: A vector of length num_rows, which is the number
+      of rows of the input `distance_matrix`. If `row_to_col_match_indices[i]`
+      is not -1, row i is matched to column `row_to_col_match_indices[i]`.
+    col_to_row_match_indices: A vector of length num_columns, which is the
+      number of columns of the input ditance matrix.
+      If `col_to_row_match_indices[j]` is not -1, column j is matched to row
+      `col_to_row_match_indices[j]`.
+  """
+  result = gen_image_ops.bipartite_match(distance_mat, num_valid_rows, top_k)
+  return result
+
+
+ops.NotDifferentiable("BipartiteMatch")

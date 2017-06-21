@@ -24,6 +24,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <algorithm>
+#include <map>
+#include <tuple>
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -57,8 +59,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
 
 // Eigen Ops directly allocate memory only for temporary buffers used
@@ -79,7 +79,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
       : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
     Eigen::initializeDeviceProp();
   }
-  ~EigenCudaStreamDevice() {}
+  ~EigenCudaStreamDevice() override {}
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
                     int gpu_id, ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
@@ -132,13 +132,13 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
 
   // Return a pointer to a per stream scratchpad of 1024 bytes residing
   // in global memory.
-  void* scratchpad() const { return scratch_; }
+  void* scratchpad() const override { return scratch_; }
 
   // Return a semaphore. The semaphore is initially initialized to 0, and
   // each kernel using it is responsible for resetting to 0 upon completion
   // to maintain the invariant that the semaphore is always equal to 0 upon
   // each kernel start.
-  unsigned int* semaphore() const { return semaphore_; }
+  unsigned int* semaphore() const override { return semaphore_; }
 
  private:
   struct AsyncFreeData {
@@ -174,15 +174,71 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
 };
 
+// This factory helps to ensure that different GPU device objects that refer to
+// the same physical device and stream group id use the same stream group
+// object (and therefore the same CUDA streams). This is necessary since there
+// is a single memory allocator per device (see ProcessState::GetGPUAllocator)
+// and allocators must not be shared across streams.
+class BaseGPUDevice::StreamGroupFactory {
+ public:
+  // Returns the unique stream group for use with the stream defined by
+  // {gpu_id, stream_group_within_gpu}, creating it if it does not yet exist.
+  // This function is thread safe.
+  BaseGPUDevice::StreamGroup* GetOrCreate(int gpu_id,
+                                          int stream_group_within_gpu,
+                                          gpu::StreamExecutor* executor) {
+    mutex_lock guard(lock_);
+    StreamGroup* group = &streams_[key_type(gpu_id, stream_group_within_gpu)];
+    if (!group->compute) {
+      group->compute = new gpu::Stream(executor);
+      group->compute->Init();
+      VLOG(2) << "Created stream[" << stream_group_within_gpu
+              << "] = " << group->compute;
+
+      group->host_to_device = new gpu::Stream(executor);
+      group->host_to_device->Init();
+      VLOG(2) << "Created host_to_device_stream[" << stream_group_within_gpu
+              << "] = " << group->host_to_device;
+
+      group->device_to_host = new gpu::Stream(executor);
+      group->device_to_host->Init();
+      VLOG(2) << "Created device_to_host_stream[" << stream_group_within_gpu
+              << "] = " << group->device_to_host;
+
+      group->device_to_device = new gpu::Stream(executor);
+      group->device_to_device->Init();
+      VLOG(2) << "Created device_to_device_stream[" << stream_group_within_gpu
+              << "] = " << group->device_to_host;
+    }
+    return group;
+  }
+
+  // Returns a reference to the StreamGroupFactory singleton. Note that this is
+  // never destroyed, so the objects it owns are never deleted.
+  static StreamGroupFactory& Global() {
+    static StreamGroupFactory* instance = new StreamGroupFactory();
+    return *instance;
+  }
+
+ private:
+  mutex lock_;
+  using key_type = std::tuple<int, int>;
+  std::map<key_type, StreamGroup> streams_;
+
+  // StreamGroupFactory cannot be created directly; Call
+  // StreamGroupFactory::Global() to get the global instance.
+  StreamGroupFactory() = default;
+  TF_DISALLOW_COPY_AND_ASSIGN(StreamGroupFactory);
+};
+
 BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
                              Bytes memory_limit, const DeviceLocality& locality,
                              int gpu_id, const string& physical_device_desc,
                              Allocator* gpu_allocator, Allocator* cpu_allocator,
                              bool sync_every_op, int32 max_streams)
-    : LocalDevice(options,
-                  Device::BuildDeviceAttributes(name, DEVICE_GPU, memory_limit,
-                                                locality, physical_device_desc),
-                  gpu_allocator),
+    : LocalDevice(options, Device::BuildDeviceAttributes(name, DEVICE_GPU,
+                                                         memory_limit, locality,
+                                                         physical_device_desc)),
       gpu_allocator_(gpu_allocator),
       cpu_allocator_(cpu_allocator),
       gpu_id_(gpu_id),
@@ -194,12 +250,6 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
 BaseGPUDevice::~BaseGPUDevice() {
   delete gpu_device_info_;
   for (auto ctx : device_contexts_) ctx->Unref();
-  for (auto& stream_group : streams_) {
-    delete stream_group.compute;
-    delete stream_group.host_to_device;
-    delete stream_group.device_to_host;
-    delete stream_group.device_to_device;
-  }
 }
 
 Status BaseGPUDevice::Init(const SessionOptions& options) {
@@ -218,27 +268,8 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 
   // Create the specified number of GPU streams
   for (int i = 0; i < max_streams_; i++) {
-    auto stream = new gpu::Stream(executor_);
-    stream->Init();
-    VLOG(2) << "Created stream[" << i << "] = " << stream;
-
-    auto host_to_device_stream = new gpu::Stream(executor_);
-    host_to_device_stream->Init();
-    VLOG(2) << "Created host_to_device_stream[" << i
-            << "] = " << host_to_device_stream;
-
-    auto device_to_host_stream = new gpu::Stream(executor_);
-    device_to_host_stream->Init();
-    VLOG(2) << "Created device_to_host_stream[" << i
-            << "] = " << device_to_host_stream;
-
-    auto device_to_device_stream = new gpu::Stream(executor_);
-    device_to_device_stream->Init();
-    VLOG(2) << "Created device_to_device_stream[" << i
-            << "] = " << device_to_device_stream;
-
-    streams_.push_back({stream, host_to_device_stream, device_to_host_stream,
-                        device_to_device_stream});
+    streams_.push_back(
+        StreamGroupFactory::Global().GetOrCreate(gpu_id_, i, executor_));
 
     size_t scratch_buffer_size = Eigen::kCudaScratchSize + sizeof(unsigned int);
     void* scratch_buffer = gpu_allocator_->AllocateRaw(
@@ -260,12 +291,12 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
           "Failed to memcopy into scratch buffer for device ", gpu_id_);
     }
 
-    device_contexts_.push_back(
-        new GPUDeviceContext(i, stream, host_to_device_stream,
-                             device_to_host_stream, device_to_device_stream));
+    device_contexts_.push_back(new GPUDeviceContext(
+        i, streams_.back()->compute, streams_.back()->host_to_device,
+        streams_.back()->device_to_host, streams_.back()->device_to_device));
   }
   gpu_device_info_ = new GpuDeviceInfo;
-  gpu_device_info_->stream = streams_[0].compute;
+  gpu_device_info_->stream = streams_[0]->compute;
   gpu_device_info_->default_context = device_contexts_[0];
   gpu_device_info_->event_mgr = em_.get();
   gpu_device_info_->gpu_id = gpu_id_;
@@ -465,6 +496,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                               DataTypeString(parsed.dtype()), " tensor");
     }
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
+
+    // If the tensor is not initialized, we likely ran out of memory.
+    if (!copy.IsInitialized()) {
+      return errors::ResourceExhausted(
+          "OOM when allocating tensor of shape ", parsed.shape().DebugString(),
+          " and type ", DataTypeString(parsed.dtype()));
+    }
+
     port::Tracing::ScopedAnnotation annotation("MakeTensorFromProto");
     Notification n;
     device_contexts_[0]->CopyCPUTensorToDevice(&parsed, this, &copy,
@@ -504,7 +543,7 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
   const cudaStream_t* cuda_stream = reinterpret_cast<const cudaStream_t*>(
-      streams_[stream_id].compute->implementation()->CudaStreamMemberHack());
+      streams_[stream_id]->compute->implementation()->CudaStreamMemberHack());
   concrete_device->Reinitialize(context, cuda_stream, gpu_id_, allocator,
                                 scratch_[stream_id]);
 }
@@ -559,16 +598,15 @@ namespace {
 int64 MinSystemMemory(int64 available_memory) {
   // We use the following heuristic for now:
   //
-  // If the available_memory is < 2GiB, we allocate 200MiB to system memory.
-  // Otherwise, allocate 300MiB to system memory.
+  // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
+  // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
   //
-  // In the future we could be more sophisticated by using a table of
-  // devices.
+  // In the future we could be more sophisticated by using a table of devices.
   if (available_memory < (1LL << 31)) {
-    // 200MiB
-    return 209715200LL;
+    // 225MiB
+    return 225 * 1024 * 1024;
   } else {
-    // max(300 MiB, 0.95 * available_memory)
+    // max(300 MiB, 0.05 * available_memory)
     return std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
   }
 }

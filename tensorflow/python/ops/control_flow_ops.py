@@ -50,6 +50,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -71,7 +73,9 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_should_use
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -84,6 +88,7 @@ _basetuple = tuple
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
+@tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
 
@@ -273,7 +278,7 @@ def exit(data, name=None):
 def switch(data, pred, dtype=None, name=None):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is false, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwarded to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -321,7 +326,7 @@ def switch(data, pred, dtype=None, name=None):
 def _SwitchRefOrTensor(data, pred, name="Switch"):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is false, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwarded to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -332,7 +337,7 @@ def _SwitchRefOrTensor(data, pred, name="Switch"):
     name: A name for this operation (optional).
 
   Returns:
-    `(output_false, output_false)`: If `pred` is true, data will be forwarded to
+    `(output_false, output_true)`: If `pred` is true, data will be forwarded to
     `output_true`, otherwise it goes to `output_false`.
 
   Raises:
@@ -432,10 +437,14 @@ def _convert_tensorarray_to_flow(tensor_or_tensor_array):
 
 
 def _make_tensor_array(ta, t_or_flow):
+  # pylint: disable=protected-access
   new_ta = tensor_array_ops.TensorArray(
       dtype=ta.dtype, handle=ta.handle, flow=t_or_flow,
-      infer_shape=ta._infer_shape)
-  new_ta._element_shape = ta._element_shape  # pylint: disable=protected-access
+      infer_shape=ta._infer_shape,
+      colocate_with_first_write_call=ta._colocate_with_first_write_call)
+  new_ta._colocate_with = ta._colocate_with
+  new_ta._element_shape = ta._element_shape
+  # pylint: enable=protected-access
   return new_ta
 
 
@@ -1046,15 +1055,19 @@ class ControlFlowState(object):
     """
     loop_exits = []
     for _, grad_state in self._map.items():
+      # pylint: disable=protected-access
       for y in grad_state.forward_loop_exits:
-        # pylint: disable=protected-access
         if pending_count[y.op._id] == 0:
           grad_state.pending_exits_count -= 1
           if y.op._id not in to_ops_set:
             grad_state.unused_exits.append(y)
           if grad_state.pending_exits_count == 0:
             loop_exits.extend(grad_state.unused_exits)
-        # pylint: enable=protected-access
+      # Need to include Enters in backprop for higher-order gradients.
+      for y in grad_state.forward_context.loop_enters:
+        if pending_count[y.op._id] == 0:
+          pending_count[y.op._id] = 1
+      # pylint: enable=protected-access
     return loop_exits
 
   def EnterGradWhileContext(self, op, before):
@@ -1301,11 +1314,15 @@ def ZerosLikeOutsideLoop(op, index):
     return array_ops.zeros_like(val, optimize=False)
   else:
     op_ctxt = op._get_control_flow_context()
-    pred = op_ctxt.pred
-    branch = op_ctxt.branch
-    switch_val = switch(op.inputs[0], pred)[1 - branch]
-    zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
-    return array_ops.zeros(zeros_shape, dtype=val.dtype)
+    if op_ctxt:
+      # We are in a cond context. Use a switch to create zeros only when needed.
+      pred = op_ctxt.pred
+      branch = op_ctxt.branch
+      switch_val = switch(op.inputs[0], pred)[1 - branch]
+      zeros_shape = array_ops.shape_internal(switch_val, optimize=False)
+      return array_ops.zeros(zeros_shape, dtype=val.dtype)
+    else:
+      return array_ops.zeros_like(val, optimize=False)
 
 
 class ControlFlowContext(object):
@@ -1451,6 +1468,14 @@ class ControlFlowContext(object):
       op._add_control_inputs(internal_control_inputs)
     return internal_control_inputs
   # pylint: enable=protected-access
+
+  def AddInnerOp(self, op):
+    """Notifies a scope about an operator added to an inner scope."""
+    pass
+
+  def GetControlPivot(self):
+    """Returns the pivot node for this context, or None."""
+    return None
 
 
 class CondContext(ControlFlowContext):
@@ -1613,8 +1638,15 @@ class CondContext(ControlFlowContext):
           # pylint: disable=protected-access
           op._update_input(index, real_x)
           # pylint: enable=protected-access
+      # Remove any external control dependency on this op.
+      self._RemoveExternalControlEdges(op)
       for x in op.outputs:
         self._values.add(x.name)
+      # pylint: disable=protected-access
+      if op.graph._is_function(op.type) or op.type == "SymbolicGradient":
+        op._add_control_input(self._pivot.op)
+      # pylint: enable=protected-access
+
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
 
@@ -1673,14 +1705,20 @@ def _UnpackIfSingleton(res):
     return res
 
 
-def cond(pred, fn1, fn2, strict=False, name=None):
-  """Return either `fn1()` or `fn2()` based on the boolean predicate `pred`.
+# pylint: disable=g-doc-args
+@deprecation.deprecated_args(
+    None,
+    "fn1/fn2 are deprecated in favor of the true_fn/false_fn arguments.",
+    "fn1", "fn2")
+def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
+         fn1=None, fn2=None):
+  """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
 
-  `fn1` and `fn2` both return lists of output tensors. `fn1` and `fn2` must have
-  the same non-zero number and type of outputs.
+  `true_fn` and `false_fn` both return lists of output tensors. `true_fn` and
+  `false_fn` must have the same non-zero number and type of outputs.
 
   Note that the conditional execution applies only to the operations defined in
-  `fn1` and `fn2`. Consider the following simple program:
+  `true_fn` and `false_fn`. Consider the following simple program:
 
   ```python
   z = tf.multiply(a, b)
@@ -1694,28 +1732,35 @@ def cond(pred, fn1, fn2, strict=False, name=None):
   Although this behavior is consistent with the dataflow model of TensorFlow,
   it has occasionally surprised some users who expected a lazier semantics.
 
+  Note that `cond` calls `true_fn` and `false_fn` *exactly once* (inside the
+  call to `cond`, and not at all during `Session.run()`). `cond`
+  stitches together the graph fragments created during the `true_fn` and
+  `false_fn` calls with some additional graph nodes to ensure that the right
+  branch gets executed depending on the value of `pred`.
+
   `tf.cond` supports nested structures as implemented in
-  `tensorflow.python.util.nest`. Both `fn1` and `fn2` must return the same
-  (possibly nested) value structure of lists, tuples, and/or named tuples.
+  `tensorflow.python.util.nest`. Both `true_fn` and `false_fn` must return the
+  same (possibly nested) value structure of lists, tuples, and/or named tuples.
   Singleton lists and tuples form the only exceptions to this: when returned by
-  `fn1` and/or `fn2`, they are implicitly unpacked to single values. This
-  behavior is disabled by passing `strict=True`.
+  `true_fn` and/or `false_fn`, they are implicitly unpacked to single values.
+  This behavior is disabled by passing `strict=True`.
 
   Args:
-    pred: A scalar determining whether to return the result of `fn1` or `fn2`.
-    fn1: The callable to be performed if pred is true.
-    fn2: The callable to be performed if pred is false.
+    pred: A scalar determining whether to return the result of `true_fn` or
+      `false_fn`.
+    true_fn: The callable to be performed if pred is true.
+    false_fn: The callable to be performed if pred is false.
     strict: A boolean that enables/disables 'strict' mode; see above.
     name: Optional name prefix for the returned tensors.
 
   Returns:
-    Tensors returned by the call to either `fn1` or `fn2`. If the callables
-    return a singleton list, the element is extracted from the list.
+    Tensors returned by the call to either `true_fn` or `false_fn`. If the
+    callables return a singleton list, the element is extracted from the list.
 
   Raises:
-    TypeError: if `fn1` or `fn2` is not callable.
-    ValueError: if `fn1` and `fn2` do not return the same number of tensors, or
-                return tensors of different types.
+    TypeError: if `true_fn` or `false_fn` is not callable.
+    ValueError: if `true_fn` and `false_fn` do not return the same number of
+      tensors, or return tensors of different types.
 
   Example:
 
@@ -1730,12 +1775,30 @@ def cond(pred, fn1, fn2, strict=False, name=None):
   ```
 
   """
-  with ops.name_scope(name, "cond", [pred]) as name:
-    if not callable(fn1):
-      raise TypeError("fn1 must be callable.")
-    if not callable(fn2):
-      raise TypeError("fn2 must be callable.")
+  # We needed to make true_fn/false_fn keyword arguments for
+  # backwards-compatibility. This check exists so that we can convert back to
+  # having them be positional arguments.
+  # TODO(josh11b): Make `true_fn` and `false_fn` positional arguments after
+  # `fn1` and `fn2` are deleted.
+  if fn1 is not None:
+    if true_fn is not None:
+      raise TypeError("cond(): true_fn and fn1 may not be set simultaneously.")
+    true_fn = fn1
+  elif true_fn is None:
+    raise TypeError("cond(): true_fn argument required")
+  if fn2 is not None:
+    if false_fn is not None:
+      raise TypeError("cond(): false_fn and fn2 may not be set simultaneously.")
+    false_fn = fn2
+  elif false_fn is None:
+    raise TypeError("cond(): false_fn argument required")
 
+  if not callable(true_fn):
+    raise TypeError("true_fn must be callable.")
+  if not callable(false_fn):
+    raise TypeError("false_fn must be callable.")
+
+  with ops.name_scope(name, "cond", [pred]) as name:
     # Add the Switch to the graph.
     if isinstance(pred, bool):
       raise TypeError("pred must not be a Python bool")
@@ -1750,18 +1813,18 @@ def cond(pred, fn1, fn2, strict=False, name=None):
     # Build the graph for the true branch in a new context.
     context_t = CondContext(pred, pivot_1, branch=1)
     context_t.Enter()
-    orig_res_t, res_t = context_t.BuildCondBranch(fn1)
+    orig_res_t, res_t = context_t.BuildCondBranch(true_fn)
     if orig_res_t is None:
-      raise ValueError("fn1 must have a return value.")
+      raise ValueError("true_fn must have a return value.")
     context_t.ExitResult(res_t)
     context_t.Exit()
 
     # Build the graph for the false branch in a new context.
     context_f = CondContext(pred, pivot_2, branch=0)
     context_f.Enter()
-    orig_res_f, res_f = context_f.BuildCondBranch(fn2)
+    orig_res_f, res_f = context_f.BuildCondBranch(false_fn)
     if orig_res_f is None:
-      raise ValueError("fn2 must have a return value.")
+      raise ValueError("false_fn must have a return value.")
     context_f.ExitResult(res_f)
     context_f.Exit()
 
@@ -1774,14 +1837,14 @@ def cond(pred, fn1, fn2, strict=False, name=None):
       nest.assert_same_structure(orig_res_t, orig_res_f)
     except TypeError as e:
       raise TypeError(
-          "Incompatible return types of fn1 and fn2: {}".format(e))
+          "Incompatible return types of true_fn and false_fn: {}".format(e))
     except ValueError as e:
       raise ValueError(
-          "Incompatible return values of fn1 and fn2: {}".format(e))
+          "Incompatible return values of true_fn and false_fn: {}".format(e))
 
     # Add the final merge to the graph.
     if not res_t:
-      raise ValueError("fn1 and fn2 must return at least one result.")
+      raise ValueError("true_fn and false_fn must return at least one result.")
 
     res_t_flat = nest.flatten(res_t)
     res_f_flat = nest.flatten(res_f)
@@ -1795,8 +1858,9 @@ def cond(pred, fn1, fn2, strict=False, name=None):
       val_x = x if isinstance(x, ops.Tensor) else x.values
       val_y = y if isinstance(y, ops.Tensor) else y.values
       if val_x.dtype.base_dtype != val_y.dtype.base_dtype:
-        raise ValueError("Outputs of fn1 and fn2 must have the same type: "
-                         "%s, %s" % (val_x.dtype.name, val_y.dtype.name))
+        raise ValueError(
+            "Outputs of true_fn and false_fn must have the same type: %s, %s" %
+            (val_x.dtype.name, val_y.dtype.name))
 
     merges = [merge(pair)[0] for pair in zip(res_f_flat, res_t_flat)]
     merges = _convert_flows_to_tensorarrays(nest.flatten(orig_res_t), merges)
@@ -1811,6 +1875,7 @@ def cond(pred, fn1, fn2, strict=False, name=None):
     if not strict:
       merges = _UnpackIfSingleton(merges)
     return merges
+# pylint: enable=g-doc-args
 
 
 def _resource_safe_shape(t):
@@ -1882,6 +1947,8 @@ class WhileContext(ControlFlowContext):
     self._pivot = None
     # The list of exit tensors for loop variables.
     self._loop_exits = []
+    # The list of enter tensors for loop variables.
+    self._loop_enters = []
 
   def _init_from_proto(self, context_def, import_scope=None):
     """Creates a new `WhileContext` from protocol buffer.
@@ -1911,6 +1978,10 @@ class WhileContext(ControlFlowContext):
     self._loop_exits = [g.as_graph_element(
         ops.prepend_name_scope(exit_name, import_scope))
                         for exit_name in context_def.loop_exit_names]
+    # The list of enter tensors for loop variables.
+    self._loop_enters = [g.as_graph_element(
+        ops.prepend_name_scope(enter_name, import_scope))
+                         for enter_name in context_def.loop_enter_names]
     super(WhileContext, self).__init__(values_def=context_def.values_def,
                                        import_scope=import_scope)
 
@@ -1937,6 +2008,11 @@ class WhileContext(ControlFlowContext):
   def pivot(self):
     """The boolean tensor representing the loop termination condition."""
     return self._pivot
+
+  @property
+  def loop_enters(self):
+    """The list of enter tensors for loop variables."""
+    return self._loop_enters
 
   @property
   def loop_exits(self):
@@ -1971,10 +2047,12 @@ class WhileContext(ControlFlowContext):
           self._pivot_for_body.name, export_scope)
       context_def.pivot_name = ops.strip_name_scope(
           self._pivot.name, export_scope)
-      if self._loop_exits:
-        context_def.loop_exit_names.extend(
-            [ops.strip_name_scope(l.name, export_scope)
-             for l in self._loop_exits])
+      context_def.loop_exit_names.extend(
+          [ops.strip_name_scope(l.name, export_scope)
+           for l in self._loop_exits])
+      context_def.loop_enter_names.extend(
+          [ops.strip_name_scope(l.name, export_scope)
+           for l in self._loop_enters])
       context_def.values_def.MergeFrom(
           super(WhileContext, self)._to_proto(
               export_scope=export_scope))
@@ -2035,6 +2113,8 @@ class WhileContext(ControlFlowContext):
         enter = _Enter(result, self._name, is_constant=True,
                        parallel_iterations=self._parallel_iterations)
         enter.graph.prevent_feeding(enter)
+        if self._outer_context:
+          self._outer_context.AddInnerOp(enter.op)
       # Fix the control inputs and control flow context of these enter ops.
       self._FixControlInputsAndContext([enter])
 
@@ -2104,11 +2184,19 @@ class WhileContext(ControlFlowContext):
       for x in op.outputs:
         op.graph.prevent_feeding(x)
 
+    if self._outer_context:
+      self._outer_context.AddInnerOp(op)
+
   def _MaybeAddControlDependency(self, op):
     """Add a control input to the op if it only depends on loop invariants."""
     def _IsOpFree(op):
+      """Determines if `op` needs a control dependency."""
       if op.control_inputs:
         return False
+      # pylint: disable=protected-access
+      if op.graph._is_function(op.type) or op.type == "SymbolicGradient":
+        return True
+      # pylint: enable=protected-access
       for x in op.inputs:
         if not _IsLoopConstantEnter(x.op):
           return False
@@ -2149,6 +2237,8 @@ class WhileContext(ControlFlowContext):
     enter_n = _Enter(n, self._name, is_constant=False,
                      parallel_iterations=self._parallel_iterations,
                      name="f_count")
+    self.loop_enters.append(enter_n)
+
     merge_n = merge([enter_n, enter_n])[0]
     switch_n = switch(merge_n, self._pivot)
 
@@ -2189,6 +2279,8 @@ class WhileContext(ControlFlowContext):
     enter_count = _Enter(count, self._name, is_constant=False,
                          parallel_iterations=self._parallel_iterations,
                          name="b_count")
+    self.loop_enters.append(enter_count)
+
     merge_count = merge([enter_count, enter_count])[0]
     self._pivot_for_pred = merge_count
 
@@ -2276,6 +2368,8 @@ class WhileContext(ControlFlowContext):
     enter_acc = _Enter(acc, self._name, is_constant=False,
                        parallel_iterations=self._parallel_iterations,
                        name="b_acc")
+    self.loop_enters.append(enter_acc)
+
     merge_acc = merge([enter_acc, enter_acc], name="b_acc")[0]
     switch_acc_false, switch_acc_true = switch(merge_acc, self._pivot)
 
@@ -2283,10 +2377,10 @@ class WhileContext(ControlFlowContext):
     next_acc = _NextIteration(add_acc)
     merge_acc.op._update_input(1, next_acc)  # pylint: disable=protected-access
 
-    acc_result = exit(switch_acc_false, name="b_acc")
-    self.loop_exits.append(acc_result)
-    self.ExitResult([acc_result])
-    return acc_result
+    result_acc = exit(switch_acc_false, name="b_acc")
+    self.loop_exits.append(result_acc)
+    self.ExitResult([result_acc])
+    return result_acc
 
   def AddBackPropIndexedSlicesAccumulator(self, op, grad):
     """This is used for accumulating gradients that are IndexedSlices.
@@ -2343,6 +2437,8 @@ class WhileContext(ControlFlowContext):
     enter_acc = [_Enter(x, self._name, is_constant=False,
                         parallel_iterations=self._parallel_iterations,
                         name="b_acc") for x in init_acc]
+    self.loop_enters.extend(enter_acc)
+
     merge_acc = [merge([x, x], name="b_acc")[0] for x in enter_acc]
     switch_acc = [switch(x, self._pivot) for x in merge_acc]
 
@@ -2360,13 +2456,13 @@ class WhileContext(ControlFlowContext):
     for xm, xn in zip(merge_acc, next_acc):
       xm.op._update_input(1, xn)  # pylint: disable=protected-access
 
-    acc_exits = [exit(x[0], name="b_acc") for x in switch_acc]
-    self.loop_exits.extend(acc_exits)
+    exit_acc = [exit(x[0], name="b_acc") for x in switch_acc]
+    self.loop_exits.extend(exit_acc)
 
-    self.ExitResult(acc_exits)
+    self.ExitResult(exit_acc)
     return ops.IndexedSlices(
-        indices=acc_exits[0], values=acc_exits[1],
-        dense_shape=acc_exits[2] if shape_acc is not None else None)
+        indices=exit_acc[0], values=exit_acc[1],
+        dense_shape=exit_acc[2] if shape_acc is not None else None)
 
   def _InitializeValues(self, values):
     """Makes the values known to this context."""
@@ -2404,19 +2500,30 @@ class WhileContext(ControlFlowContext):
                     for x in real_vars]
       for x in enter_vars:
         x.graph.prevent_feeding(x)
+        if self._outer_context:
+          self._outer_context.AddInnerOp(x.op)
 
-    if self._outer_context:
-      control_pivot = self._outer_context.GetControlPivot().op
+    # Finds the closest enclosing non-None control pivot.
+    outer_context = self._outer_context
+    control_pivot = None
+    while outer_context is not None and control_pivot is None:
+      control_pivot = outer_context.GetControlPivot()
+      # pylint: disable=protected-access
+      outer_context = outer_context._outer_context
+      # pylint: enable=protected-access
+
+    if control_pivot is not None:
       for var in enter_vars:
         if _IsLoopConstantEnter(var.op.inputs[0].op):
           # pylint: disable=protected-access
-          var.op._add_control_input(control_pivot)
+          var.op._add_control_input(control_pivot.op)
           # pylint: enable=protected-access
     _SetShapeInvariants(real_vars, enter_vars, shape_invariants)
 
     # Fix the control inputs and control flow context of these enter ops.
     self._FixControlInputsAndContext(enter_vars)
     self._InitializeValues(enter_vars)
+    self._loop_enters = enter_vars
 
     merge_vars = [merge([x, x])[0] for x in enter_vars]
     self._pivot_for_pred = merge_vars[0]
@@ -2542,11 +2649,15 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   `cond` and `body`. `cond` and `body` both take as many arguments as there are
   `loop_vars`.
 
-  While `cond` evaluates to true, `body` is executed.
-
   In addition to regular Tensors or IndexedSlices, the body may accept and
   return TensorArray objects.  The flows of the TensorArray objects will
   be appropriately forwarded between loops and during gradient calculations.
+
+  Note that `while_loop` calls `cond` and `body` *exactly once* (inside the
+  call to `while_loop`, and not at all during `Session.run()`). `while_loop`
+  stitches together the graph fragments created during the `cond` and `body`
+  calls with some additional graph nodes to make something the repeats
+  `body` until `cond` returns false.
 
   For correctness, `tf.while_loop()` strictly enforces shape invariants for
   the loop variables. A shape invariant is a (possibly partial) shape that
@@ -2876,11 +2987,16 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
   operation returns the tensors generated by `default`.
 
   `tf.case` supports nested structures as implemented in
-  `tensorflow.python.util.nest`. Both `fn1` and `fn2` must return the same
+  `tensorflow.python.util.nest`. All of the callables must return the same
   (possibly nested) value structure of lists, tuples, and/or named tuples.
   Singleton lists and tuples form the only exceptions to this: when returned by
-  `fn1` and/or `fn2`, they are implicitly unpacked to single values. This
+  a callable, they are implicitly unpacked to single values. This
   behavior is disabled by passing `strict=True`.
+
+  If an unordered dictionary is used for `pred_fn_pairs`, the order of the
+  conditional tests is not guaranteed. However, the order is guaranteed to be
+  deterministic, so that variables created in conditional branches are created
+  in fixed order across runs.
 
   Example 1:
     Pseudocode:
@@ -2907,9 +3023,6 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
 
     Expressions:
     ```
-      x = tf.constant(0)
-      y = tf.constant(1)
-      z = tf.constant(2)
       def f1(): return tf.constant(17)
       def f2(): return tf.constant(23)
       def f3(): return tf.constant(-1)
@@ -2940,11 +3053,14 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
           or isinstance(pfp, dict)):
     raise TypeError("fns must be a list, tuple, or dict")
   if isinstance(pfp, dict):
-    pfp = pfp.items()
-    if not exclusive:
-      logging.warn("%s: Provided dictionary of predicate/fn pairs, but "
-                   "exclusive=False.  Order of conditional tests is "
-                   "not guaranteed.", name)
+    if isinstance(pfp, collections.OrderedDict):
+      pfp = pfp.items()
+    else:
+      pfp = sorted(pfp.items(), key=lambda item: item[0].name)
+      if not exclusive:
+        logging.warn("%s: An unordered dictionary of predicate/fn pairs was "
+                     "provided, but exclusive=False. The order of conditional "
+                     "tests is deterministic but not guaranteed.", name)
   for tup in pfp:
     if not isinstance(tup, _basetuple) or len(tup) != 2:
       raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")

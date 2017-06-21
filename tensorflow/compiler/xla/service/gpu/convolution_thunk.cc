@@ -125,7 +125,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   CHECK_LE(num_dimensions, 3);
   // cuDNN does not support 1D convolutions. We therefore express 1D
   // convolutions as 2D convolutions where the first spatial dimension is 1.
-  // This matches the behaviour of TF (see definition of conv1d in
+  // This matches the behavior of TF (see definition of conv1d in
   // tensorflow/python/ops/nn_ops.py).
   const int effective_num_dimensions = std::max(2, num_dimensions);
 
@@ -258,15 +258,21 @@ tensorflow::Status ConvolutionThunk::Convolve(
 std::vector<se::dnn::AlgorithmType> ConvolutionThunk::GetAlgorithms(
     se::StreamExecutor* stream_exec) const {
   std::vector<se::dnn::AlgorithmType> algorithms;
+  // TODO(yangzihao): Currently disable the use of winograd nonfused in XLA
+  // by default. Should send in conv parameters and enable it when
+  // ShouldIncludeWinogradNonfusedAlgo() returns true.
   switch (convolution_kind_) {
     case ConvolutionKind::kBackwardFilter:
-      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(
+          /*with_winograd_nonfused=*/false, &algorithms));
       break;
     case ConvolutionKind::kBackwardInput:
-      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(
+          /*with_winograd_nonfused=*/false, &algorithms));
       break;
     case ConvolutionKind::kForward:
-      CHECK(stream_exec->GetConvolveAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveAlgorithms(/*with_winograd_nonfused=*/false,
+                                               &algorithms));
       break;
   }
   return algorithms;

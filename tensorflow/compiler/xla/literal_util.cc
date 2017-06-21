@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 
 #include <algorithm>
+#include <cstring>
+#include <functional>
 #include <limits>
 #include <numeric>
 #include <vector>
 
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -33,31 +36,151 @@ limitations under the License.
 
 namespace xla {
 
-/* static */ Literal LiteralUtil::Zero(PrimitiveType primitive_type) {
+Literal::StrideConfig::StrideConfig(
+    const Shape& source_shape, const Shape& dest_shape,
+    tensorflow::gtl::ArraySlice<int64> dimensions)
+    : dimensions(dimensions),
+      base(dimensions.size(), 0),
+      step(dimensions.size(), 1) {
+  if (!dimensions.empty()) {
+    // Selects the shape with the highest minor dimension as the one upon
+    // where to run the tight stride loop.
+    if (source_shape.layout().minor_to_major()[0] >=
+        dest_shape.layout().minor_to_major()[0]) {
+      minor_dimension = source_shape.layout().minor_to_major()[0];
+      dest_stride = IndexUtil::GetDimensionStride(dest_shape, minor_dimension);
+    } else {
+      minor_dimension = dest_shape.layout().minor_to_major()[0];
+      source_stride =
+          IndexUtil::GetDimensionStride(source_shape, minor_dimension);
+    }
+    minor_loop_size = dimensions[minor_dimension];
+    step[minor_dimension] = minor_loop_size;
+  }
+}
+
+std::unique_ptr<Literal> Literal::CreateFromShape(const Shape& shape) {
+  auto literal = MakeUnique<Literal>();
+  *literal->mutable_shape() = shape;
+  literal->Reserve(ShapeUtil::ElementsIn(literal->shape()));
+  return literal;
+}
+
+/* static */ std::unique_ptr<Literal> Literal::CreateFromDimensions(
+    PrimitiveType primitive_type,
+    tensorflow::gtl::ArraySlice<int64> dimensions) {
+  return CreateFromShape(ShapeUtil::MakeShape(primitive_type, dimensions));
+}
+
+template <typename T>
+Status Literal::CopyRange(const Literal& src_literal,
+                          tensorflow::gtl::ArraySlice<int64> src_base,
+                          tensorflow::gtl::ArraySlice<int64> dest_base,
+                          tensorflow::gtl::ArraySlice<int64> copy_size) {
+  const Shape& src_shape = src_literal.shape();
+  const Shape& dest_shape = shape();
+  tensorflow::gtl::ArraySlice<T> src_data = src_literal.GetArraySlice<T>();
+  tensorflow::gtl::MutableArraySlice<T> dest_data = GetMutableArraySlice<T>();
+
+  TF_RET_CHECK(ShapeUtil::Rank(src_shape) == src_base.size());
+  TF_RET_CHECK(ShapeUtil::Rank(dest_shape) == dest_base.size());
+  if (ShapeUtil::Rank(src_shape) == 0 || ShapeUtil::Rank(dest_shape) == 0) {
+    // If any of the two shapes are scalars, we can just call the StridedCopy()
+    // directly, and we know we will be copying only one value.
+    TF_RET_CHECK(copy_size.empty());
+    StridedCopy(dest_data, LinearIndex(dest_base), 0, src_data,
+                src_literal.LinearIndex(src_base), 0, 1);
+  } else if (!ShapeUtil::HasZeroElements(dest_shape)) {
+    TF_RET_CHECK(!ShapeUtil::HasZeroElements(src_shape));
+    TF_RET_CHECK(src_base.size() == dest_base.size());
+    TF_RET_CHECK(src_base.size() == copy_size.size());
+
+    // Scan the source from minor, stepping in copy size blocks, then within
+    // the index enumaration functor, do a strided copy advancing source index
+    // by one (walking through the minor dimension), and destination index by
+    // proper stride size at the matching dimension.
+    DimensionVector src_indexes(src_base.size(), 0);
+    DimensionVector dest_indexes(dest_base.size(), 0);
+    StrideConfig stride_config(src_shape, dest_shape, copy_size);
+
+    auto copy_proc = [&](const std::vector<int64>& indexes) {
+      // Map from multi-dimensional index, to source index.
+      std::transform(indexes.begin(), indexes.end(), src_base.begin(),
+                     src_indexes.begin(), std::plus<int64>());
+      // Map from multi-dimensional index, to destination index.
+      std::transform(indexes.begin(), indexes.end(), dest_base.begin(),
+                     dest_indexes.begin(), std::plus<int64>());
+
+      int64 src_index = src_literal.LinearIndex(src_indexes);
+      int64 dest_index = LinearIndex(dest_indexes);
+
+      StridedCopy(dest_data, dest_index, stride_config.dest_stride, src_data,
+                  src_index, stride_config.source_stride,
+                  stride_config.minor_loop_size);
+      return true;
+    };
+
+    ShapeUtil::ForEachIndex(src_shape, stride_config.base,
+                            stride_config.dimensions, stride_config.step,
+                            copy_proc);
+  }
+  return Status::OK();
+}
+
+Status Literal::Copy(const Literal& src_literal,
+                     tensorflow::gtl::ArraySlice<int64> src_base,
+                     tensorflow::gtl::ArraySlice<int64> dest_base,
+                     tensorflow::gtl::ArraySlice<int64> copy_size) {
+  TF_RET_CHECK(ShapeUtil::SameElementType(src_literal.shape(), shape()));
+  switch (src_literal.shape().element_type()) {
+    case U32:
+      return CopyRange<uint32>(src_literal, src_base, dest_base, copy_size);
+    case U64:
+      return CopyRange<uint64>(src_literal, src_base, dest_base, copy_size);
+    case S32:
+      return CopyRange<int32>(src_literal, src_base, dest_base, copy_size);
+    case S64:
+      return CopyRange<int64>(src_literal, src_base, dest_base, copy_size);
+    case F16:
+      return CopyRange<half>(src_literal, src_base, dest_base, copy_size);
+    case F32:
+      return CopyRange<float>(src_literal, src_base, dest_base, copy_size);
+    case F64:
+      return CopyRange<double>(src_literal, src_base, dest_base, copy_size);
+    case PRED:
+      return CopyRange<bool>(src_literal, src_base, dest_base, copy_size);
+    default:
+      break;
+  }
+  return Unimplemented("Unhandled primitive type %d",
+                       src_literal.shape().element_type());
+}
+
+/* static */ Literal Literal::Zero(PrimitiveType primitive_type) {
   switch (primitive_type) {
     case U8:
-      return *LiteralUtil::CreateR0<uint8>(0);
+      return *Literal::CreateR0<uint8>(0);
     case U32:
-      return *LiteralUtil::CreateR0<uint32>(0);
+      return *Literal::CreateR0<uint32>(0);
     case U64:
-      return *LiteralUtil::CreateR0<uint64>(0);
+      return *Literal::CreateR0<uint64>(0);
     case S8:
-      return *LiteralUtil::CreateR0<int8>(0);
+      return *Literal::CreateR0<int8>(0);
     case S32:
-      return *LiteralUtil::CreateR0<int32>(0);
+      return *Literal::CreateR0<int32>(0);
     case S64:
-      return *LiteralUtil::CreateR0<int64>(0);
+      return *Literal::CreateR0<int64>(0);
+    case F16:
+      return *Literal::CreateR0<half>(static_cast<half>(0.0f));
     case F32:
-      return *LiteralUtil::CreateR0<float>(0);
+      return *Literal::CreateR0<float>(0);
     case F64:
-      return *LiteralUtil::CreateR0<double>(0);
+      return *Literal::CreateR0<double>(0);
     case PRED:
-      return *LiteralUtil::CreateR0<bool>(false);
+      return *Literal::CreateR0<bool>(false);
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 0";
     case OPAQUE:
@@ -67,31 +190,31 @@ namespace xla {
   }
 }
 
-/* static */ Literal LiteralUtil::One(PrimitiveType primitive_type) {
+/* static */ Literal Literal::One(PrimitiveType primitive_type) {
   switch (primitive_type) {
     case U8:
-      return *LiteralUtil::CreateR0<uint8>(1);
+      return *Literal::CreateR0<uint8>(1);
     case U32:
-      return *LiteralUtil::CreateR0<uint32>(1);
+      return *Literal::CreateR0<uint32>(1);
     case U64:
-      return *LiteralUtil::CreateR0<uint64>(1);
+      return *Literal::CreateR0<uint64>(1);
     case S8:
-      return *LiteralUtil::CreateR0<int8>(1);
+      return *Literal::CreateR0<int8>(1);
     case S32:
-      return *LiteralUtil::CreateR0<int32>(1);
+      return *Literal::CreateR0<int32>(1);
     case S64:
-      return *LiteralUtil::CreateR0<int64>(1);
+      return *Literal::CreateR0<int64>(1);
     case F32:
-      return *LiteralUtil::CreateR0<float>(1);
+      return *Literal::CreateR0<float>(1);
     case F64:
-      return *LiteralUtil::CreateR0<double>(1);
+      return *Literal::CreateR0<double>(1);
     case PRED:
-      return *LiteralUtil::CreateR0<bool>(true);
+      return *Literal::CreateR0<bool>(true);
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      return *Literal::CreateR0<half>(static_cast<half>(1.0f));
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
     case OPAQUE:
@@ -101,33 +224,33 @@ namespace xla {
   }
 }
 
-/* static */ Literal LiteralUtil::MinValue(PrimitiveType primitive_type) {
+/* static */ Literal Literal::MinValue(PrimitiveType primitive_type) {
   switch (primitive_type) {
     case U8:
-      return *LiteralUtil::CreateR0<uint8>(std::numeric_limits<uint8>::min());
+      return *Literal::CreateR0<uint8>(std::numeric_limits<uint8>::min());
     case U32:
-      return *LiteralUtil::CreateR0<uint32>(std::numeric_limits<uint32>::min());
+      return *Literal::CreateR0<uint32>(std::numeric_limits<uint32>::min());
     case U64:
-      return *LiteralUtil::CreateR0<uint64>(std::numeric_limits<uint64>::min());
+      return *Literal::CreateR0<uint64>(std::numeric_limits<uint64>::min());
     case S8:
-      return *LiteralUtil::CreateR0<int8>(std::numeric_limits<int8>::min());
+      return *Literal::CreateR0<int8>(std::numeric_limits<int8>::min());
     case S32:
-      return *LiteralUtil::CreateR0<int32>(std::numeric_limits<int32>::min());
+      return *Literal::CreateR0<int32>(std::numeric_limits<int32>::min());
     case S64:
-      return *LiteralUtil::CreateR0<int64>(std::numeric_limits<int64>::min());
+      return *Literal::CreateR0<int64>(std::numeric_limits<int64>::min());
     case F32:
-      return *LiteralUtil::CreateR0<float>(
-          -std::numeric_limits<float>::infinity());
+      return *Literal::CreateR0<float>(-std::numeric_limits<float>::infinity());
     case F64:
-      return *LiteralUtil::CreateR0<double>(
+      return *Literal::CreateR0<double>(
           -std::numeric_limits<double>::infinity());
     case PRED:
-      return *LiteralUtil::CreateR0<bool>(false);
+      return *Literal::CreateR0<bool>(false);
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      return *Literal::CreateR0<half>(
+          static_cast<half>(-std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no minimum value";
     case OPAQUE:
@@ -137,33 +260,33 @@ namespace xla {
   }
 }
 
-/* static */ Literal LiteralUtil::MaxValue(PrimitiveType primitive_type) {
+/* static */ Literal Literal::MaxValue(PrimitiveType primitive_type) {
   switch (primitive_type) {
     case U8:
-      return *LiteralUtil::CreateR0<uint8>(std::numeric_limits<uint8>::max());
+      return *Literal::CreateR0<uint8>(std::numeric_limits<uint8>::max());
     case U32:
-      return *LiteralUtil::CreateR0<uint32>(std::numeric_limits<uint32>::max());
+      return *Literal::CreateR0<uint32>(std::numeric_limits<uint32>::max());
     case U64:
-      return *LiteralUtil::CreateR0<uint64>(std::numeric_limits<uint64>::max());
+      return *Literal::CreateR0<uint64>(std::numeric_limits<uint64>::max());
     case S8:
-      return *LiteralUtil::CreateR0<int8>(std::numeric_limits<int8>::max());
+      return *Literal::CreateR0<int8>(std::numeric_limits<int8>::max());
     case S32:
-      return *LiteralUtil::CreateR0<int32>(std::numeric_limits<int32>::max());
+      return *Literal::CreateR0<int32>(std::numeric_limits<int32>::max());
     case S64:
-      return *LiteralUtil::CreateR0<int64>(std::numeric_limits<int64>::max());
+      return *Literal::CreateR0<int64>(std::numeric_limits<int64>::max());
     case F32:
-      return *LiteralUtil::CreateR0<float>(
-          std::numeric_limits<float>::infinity());
+      return *Literal::CreateR0<float>(std::numeric_limits<float>::infinity());
     case F64:
-      return *LiteralUtil::CreateR0<double>(
+      return *Literal::CreateR0<double>(
           std::numeric_limits<double>::infinity());
     case PRED:
-      return *LiteralUtil::CreateR0<bool>(true);
+      return *Literal::CreateR0<bool>(true);
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      return *Literal::CreateR0<half>(
+          static_cast<half>(std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
     case OPAQUE:
@@ -173,224 +296,161 @@ namespace xla {
   }
 }
 
-/* static */ std::unique_ptr<Literal> LiteralUtil::CreateR1(
+/* static */ std::unique_ptr<Literal> Literal::CreateR1(
     const tensorflow::core::Bitmap& values) {
   auto literal = MakeUnique<Literal>();
-  PopulateR1(values, literal.get());
+  literal->PopulateR1(values);
   return literal;
 }
 
-/* static */ std::unique_ptr<Literal> LiteralUtil::CreateR1U8(
+/* static */ std::unique_ptr<Literal> Literal::CreateR1U8(
     tensorflow::StringPiece value) {
   auto literal = MakeUnique<Literal>();
   *literal->mutable_shape() =
       ShapeUtil::MakeShape(U8, {static_cast<int64>(value.size())});
-  literal->set_u8s(value.ToString());
+  literal->set_u8s(tensorflow::StringPiece(value.ToString()));
   return literal;
 }
 
-/* static */ std::unique_ptr<Literal> LiteralUtil::CreateR2F32Linspace(
-    float from, float to, int64 rows, int64 cols) {
+/* static */ std::unique_ptr<Literal> Literal::CreateR2F32Linspace(float from,
+                                                                   float to,
+                                                                   int64 rows,
+                                                                   int64 cols) {
   auto value = MakeLinspaceArray2D(from, to, rows, cols);
   return CreateR2FromArray2D(*value);
 }
 
-/* static */ std::unique_ptr<Literal> LiteralUtil::Relayout(
-    const Literal& original, const Layout& layout) {
-  // Note: if this were a performance bottleneck, we avoid cloning and just make
-  // an uninitialized array instead, since all values are clobbered below.
-  std::unique_ptr<Literal> result = CloneToUnique(original);
+std::unique_ptr<Literal> Literal::Relayout(const Layout& layout) const {
+  std::unique_ptr<Literal> result = CloneToUnique();
   *result->mutable_shape()->mutable_layout() = layout;
-  const PrimitiveType primitive_type = original.shape().element_type();
-  switch (primitive_type) {
-    case F32:
-      LiteralUtil::EachCell<float>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, float value) {
-            LiteralUtil::Set<float>(result.get(), indices, value);
-          });
-      return result;
-    case S32:
-      LiteralUtil::EachCell<int32>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, int32 value) {
-            LiteralUtil::Set<int32>(result.get(), indices, value);
-          });
-      return result;
-    case U32:
-      LiteralUtil::EachCell<uint32>(
-          original,
-          [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 value) {
-            LiteralUtil::Set<uint32>(result.get(), indices, value);
-          });
-      return result;
-    default:
-      LOG(FATAL) << "not yet implemented: "
-                 << PrimitiveType_Name(primitive_type);
-  }
+
+  DimensionVector base(ShapeUtil::Rank(shape()), 0);
+  DimensionVector copy_size(shape().dimensions().begin(),
+                            shape().dimensions().end());
+
+  TF_CHECK_OK(result->Copy(*this, base, base, copy_size));
+  return result;
 }
 
-/* static */ StatusOr<std::unique_ptr<Literal>> LiteralUtil::Reshape(
-    const xla::Literal& input, tensorflow::gtl::ArraySlice<int64> dimensions) {
-  if (ShapeUtil::IsTuple(input.shape())) {
+StatusOr<std::unique_ptr<Literal>> Literal::Reshape(
+    tensorflow::gtl::ArraySlice<int64> dimensions) const {
+  if (ShapeUtil::IsTuple(shape())) {
     return InvalidArgument("Reshape does not support tuples.");
   }
-
-  if (!LayoutUtil::IsMonotonicWithDim0Major(input.shape().layout())) {
-    return Unimplemented(
-        "Input shape must have a monotonic layout where dimension 0 is major, "
-        "was: %s",
-        LayoutUtil::HumanString(input.shape().layout()).c_str());
+  std::unique_ptr<Literal> output;
+  if (!LayoutUtil::IsMonotonicWithDim0Major(shape().layout())) {
+    std::vector<int64> minor_to_major(ShapeUtil::Rank(shape()));
+    std::iota(minor_to_major.rbegin(), minor_to_major.rend(),
+              static_cast<int64>(0));
+    output = Relayout(LayoutUtil::MakeLayout(minor_to_major));
+  } else {
+    output = CloneToUnique();
   }
-  std::vector<int64> layout(dimensions.size());
-  std::iota(layout.rbegin(), layout.rend(), 0);
-
   // Because the layout is monotonic, we can simply reuse the same sequence of
   // values without changing their order.
-  std::unique_ptr<Literal> output = CloneToUnique(input);
-  output->clear_shape();
-  output->mutable_shape()->set_element_type(input.shape().element_type());
-  for (int64 dimension : dimensions) {
-    output->mutable_shape()->add_dimensions(dimension);
-  }
-  *output->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout(layout);
+  *output->mutable_shape() =
+      ShapeUtil::MakeShape(shape().element_type(), dimensions);
 
-  int64 elements_before = ShapeUtil::ElementsIn(input.shape());
+  int64 elements_before = ShapeUtil::ElementsIn(shape());
   int64 elements_after = ShapeUtil::ElementsIn(output->shape());
   if (elements_before != elements_after) {
     return InvalidArgument(
-        "Shapes before and after LiteralUtil::Reshape have different numbers "
+        "Shapes before and after Literal::Reshape have different numbers "
         "of elements: %s vs %s.",
-        ShapeUtil::HumanString(input.shape()).c_str(),
+        ShapeUtil::HumanString(shape()).c_str(),
         ShapeUtil::HumanString(output->shape()).c_str());
   }
   return std::move(output);
 }
 
-namespace {
-
-template <class T>
-void TransposeLiteralInternal(const Literal& original,
-                              tensorflow::gtl::ArraySlice<int64> permutation,
-                              Literal* result) {
-  std::vector<int64> new_indices(ShapeUtil::Rank(original.shape()));
-  LiteralUtil::EachCell<T>(
-      original, [&](tensorflow::gtl::ArraySlice<int64> indices, T value) {
-        for (int64 i = 0; i < indices.size(); ++i) {
-          new_indices[i] = indices[permutation[i]];
-        }
-        LiteralUtil::Set<T>(result, new_indices, value);
-      });
-}
-}  // namespace
-
-/* static */ std::unique_ptr<Literal> LiteralUtil::Transpose(
-    const Literal& original, tensorflow::gtl::ArraySlice<int64> permutation) {
-  CHECK(!ShapeUtil::IsTuple(original.shape()))
-      << "tuple is not supported for transpose";
-  std::vector<int64> dimension_numbers(ShapeUtil::Rank(original.shape()));
-  std::iota(dimension_numbers.begin(), dimension_numbers.end(), 0);
-  CHECK(std::is_permutation(permutation.begin(), permutation.end(),
-                            dimension_numbers.begin()))
-      << "given permutation is not a permutation of dimension numbers";
-  std::vector<int64> new_dimension_sizes;
-  for (const int64 dim : permutation) {
-    new_dimension_sizes.push_back(original.shape().dimensions(dim));
+std::unique_ptr<Literal> Literal::Transpose(
+    tensorflow::gtl::ArraySlice<int64> permutation) const {
+  CHECK(!ShapeUtil::IsTuple(shape())) << "Tuple is not supported for transpose";
+  CHECK(IsPermutation(permutation, ShapeUtil::Rank(shape())))
+      << "Given permutation is not a permutation of dimension numbers";
+  // To transpose the array, we just permute the dimensions and layout, and
+  // do a straight memory copy of the raw data set.
+  // This is considerably faster than iterating over every array element using
+  // the EachCell<>() and Set<>() APIs.
+  std::vector<int64> inverse_permutation = InversePermutation(permutation);
+  Shape permuted_shape =
+      ShapeUtil::PermuteDimensions(inverse_permutation, shape());
+  // Replace the layout with one affine to this shape, such that a
+  // transpose operation can be performed by leaving the flat values
+  // representation intact.
+  // For example, consider the shape F32[11,8]{1,0} under a {1,0} permutation.
+  // The shape with affine layout resulting from that operation will be
+  // F32[8,11]{0,1}, since it leaves the original most minor (the 8 sized), the
+  // most minor.
+  // Essentially, given MinMaj(Di) the position of the Di dimension within the
+  // minor to major vector, and given T(Di) the index that the original Di
+  // dimension has within the transposed array, a layout is affine if
+  // MinMaj(Di) == TMinMaj(T(Di)), with TMinMaj() being the minor to major
+  // vector of the affine layout.
+  Layout* layout = permuted_shape.mutable_layout();
+  layout->clear_minor_to_major();
+  for (auto index : shape().layout().minor_to_major()) {
+    layout->add_minor_to_major(inverse_permutation[index]);
   }
-  const auto result_shape = ShapeUtil::MakeShape(
-      original.shape().element_type(), new_dimension_sizes);
-  std::unique_ptr<Literal> result = CloneToUnique(original);
-  *result->mutable_shape() = result_shape;
-  const PrimitiveType primitive_type = original.shape().element_type();
-  switch (primitive_type) {
-    case F32:
-      TransposeLiteralInternal<float>(original, permutation, result.get());
-      return result;
-    case F64:
-      TransposeLiteralInternal<double>(original, permutation, result.get());
-      return result;
-    case PRED:
-      TransposeLiteralInternal<bool>(original, permutation, result.get());
-      return result;
-    case S8:
-      TransposeLiteralInternal<int8>(original, permutation, result.get());
-      return result;
-    case U8:
-      TransposeLiteralInternal<uint8>(original, permutation, result.get());
-      return result;
-    case S32:
-      TransposeLiteralInternal<int32>(original, permutation, result.get());
-      return result;
-    case U32:
-      TransposeLiteralInternal<uint32>(original, permutation, result.get());
-      return result;
-    case S64:
-      TransposeLiteralInternal<int64>(original, permutation, result.get());
-      return result;
-    case U64:
-      TransposeLiteralInternal<uint64>(original, permutation, result.get());
-      return result;
-    default:
-      LOG(FATAL) << "not yet implemented: "
-                 << PrimitiveType_Name(primitive_type);
-  }
+  std::unique_ptr<Literal> new_literal = CreateFromShape(permuted_shape);
+  DCHECK_GE(ShapeUtil::ByteSizeOf(new_literal->shape()),
+            ShapeUtil::ByteSizeOf(shape()));
+  std::memcpy(new_literal->MutableInternalData(), InternalData(),
+              ShapeUtil::ByteSizeOf(shape()));
+  return new_literal;
 }
 
-/* static */ std::unique_ptr<Literal> LiteralUtil::Slice(
-    const Literal& literal, tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices) {
-  CHECK(!ShapeUtil::IsTuple(literal.shape()))
-      << "tuple is not supported for reshape";
+std::unique_ptr<Literal> Literal::Slice(
+    tensorflow::gtl::ArraySlice<int64> start_indices,
+    tensorflow::gtl::ArraySlice<int64> limit_indices) const {
+  CHECK(!ShapeUtil::IsTuple(shape())) << "tuple is not supported for reshape";
 
-  std::vector<int64> result_dimensions;
-  for (int64 dnum = 0; dnum < ShapeUtil::Rank(literal.shape()); ++dnum) {
+  DimensionVector result_dimensions;
+  for (int64 dnum = 0; dnum < ShapeUtil::Rank(shape()); ++dnum) {
     CHECK_GE(start_indices[dnum], 0);
-    CHECK_LE(limit_indices[dnum], literal.shape().dimensions(dnum));
+    CHECK_LE(limit_indices[dnum], shape().dimensions(dnum));
     int64 dimension = limit_indices[dnum] - start_indices[dnum];
     CHECK_GT(dimension, 0);
     result_dimensions.push_back(dimension);
   }
   const auto result_shape = ShapeUtil::MakeShapeWithLayout(
-      literal.shape().element_type(), result_dimensions,
-      AsInt64Slice(literal.shape().layout().minor_to_major()));
+      shape().element_type(), result_dimensions,
+      AsInt64Slice(shape().layout().minor_to_major()));
 
   auto result_literal = MakeUnique<Literal>();
   *result_literal->mutable_shape() = result_shape;
-  Reserve(ShapeUtil::ElementsIn(result_shape), result_literal.get());
+  result_literal->Reserve(ShapeUtil::ElementsIn(result_shape));
 
-  std::vector<int64> new_indices(ShapeUtil::Rank(result_shape));
+  DimensionVector new_indices(ShapeUtil::Rank(result_shape));
   switch (result_shape.element_type()) {
     case F32:
-      LiteralUtil::EachCell<float>(
-          *result_literal,
+      result_literal->EachCell<float>(
           [&](tensorflow::gtl::ArraySlice<int64> indices, float /*value*/) {
             for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
               new_indices[i] = indices[i] + start_indices[i];
             }
-            float value = LiteralUtil::Get<float>(literal, new_indices);
-            LiteralUtil::Set<float>(result_literal.get(), indices, value);
+            float value = Get<float>(new_indices);
+            result_literal->Set<float>(indices, value);
           });
       return result_literal;
     case S32:
-      LiteralUtil::EachCell<int32>(
-          *result_literal,
+      result_literal->EachCell<int32>(
           [&](tensorflow::gtl::ArraySlice<int64> indices, int32 /*value*/) {
             for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
               new_indices[i] = indices[i] + start_indices[i];
             }
-            int32 value = LiteralUtil::Get<int32>(literal, new_indices);
-            LiteralUtil::Set<int32>(result_literal.get(), indices, value);
+            int32 value = Get<int32>(new_indices);
+            result_literal->Set<int32>(indices, value);
           });
       return result_literal;
     case U32:
-      LiteralUtil::EachCell<uint32>(
-          *result_literal,
+      result_literal->EachCell<uint32>(
           [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 /*value*/) {
             for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
               new_indices[i] = indices[i] + start_indices[i];
             }
-            uint32 value = LiteralUtil::Get<uint32>(literal, new_indices);
-            LiteralUtil::Set<uint32>(result_literal.get(), indices, value);
+            uint32 value = Get<uint32>(new_indices);
+            result_literal->Set<uint32>(indices, value);
           });
       return result_literal;
     default:
@@ -399,96 +459,95 @@ void TransposeLiteralInternal(const Literal& original,
   }
 }
 
-/* static */ std::unique_ptr<Literal> LiteralUtil::CloneToUnique(
-    const Literal& literal) {
+std::unique_ptr<Literal> Literal::CloneToUnique() const {
   auto unique = MakeUnique<Literal>();
-  *unique = literal;
+  *unique = *this;
   return unique;
 }
 
-/* static */ string LiteralUtil::GetAsString(
-    const Literal& literal, tensorflow::gtl::ArraySlice<int64> multi_index) {
-  switch (literal.shape().element_type()) {
+string Literal::GetAsString(
+    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  switch (shape().element_type()) {
     case PRED:
-      return Get<bool>(literal, multi_index) ? "true" : "false";
+      return Get<bool>(multi_index) ? "true" : "false";
     case U8:
-      return tensorflow::strings::StrCat(Get<uint8>(literal, multi_index));
+      return tensorflow::strings::StrCat(Get<uint8>(multi_index));
     case S32:
-      return tensorflow::strings::StrCat(Get<int32>(literal, multi_index));
+      return tensorflow::strings::StrCat(Get<int32>(multi_index));
     case S64:
-      return tensorflow::strings::StrCat(Get<int64>(literal, multi_index));
+      return tensorflow::strings::StrCat(Get<int64>(multi_index));
     case U32:
-      return tensorflow::strings::StrCat(Get<uint32>(literal, multi_index));
+      return tensorflow::strings::StrCat(Get<uint32>(multi_index));
     case U64:
-      return tensorflow::strings::StrCat(Get<uint64>(literal, multi_index));
+      return tensorflow::strings::StrCat(Get<uint64>(multi_index));
     case F32:
-      return tensorflow::strings::StrCat(Get<float>(literal, multi_index));
+      return tensorflow::strings::StrCat(Get<float>(multi_index));
     case F64:
-      return tensorflow::strings::StrCat(Get<double>(literal, multi_index));
+      return tensorflow::strings::StrCat(Get<double>(multi_index));
+    case F16:
+      return tensorflow::strings::StrCat(Get<half>(multi_index));
     default:
       return tensorflow::strings::StrCat(
-          "[", PrimitiveType_Name(literal.shape().element_type()), "]");
+          "[", PrimitiveType_Name(shape().element_type()), "]");
   }
 }
 
-/* static */ int64 LiteralUtil::LinearIndex(
-    const Literal& literal, tensorflow::gtl::ArraySlice<int64> multi_index) {
-  return IndexUtil::MultidimensionalIndexToLinearIndex(literal.shape(),
-                                                       multi_index);
+int64 Literal::LinearIndex(
+    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  return IndexUtil::MultidimensionalIndexToLinearIndex(shape(), multi_index);
 }
 
-/* static */ string LiteralUtil::ToString(const Literal& literal) {
-  const Shape& shape = literal.shape();
+string Literal::ToString() const {
   std::vector<string> pieces;
 
   auto element_to_string =
-      [&literal](tensorflow::gtl::ArraySlice<int64> indices) -> string {
-    PrimitiveType element_type = literal.shape().element_type();
+      [this](tensorflow::gtl::ArraySlice<int64> indices) -> string {
+    PrimitiveType element_type = shape().element_type();
     if (element_type == PRED) {
       // We display predicates in a densely packed form.
-      return Get<bool>(literal, indices) ? "1" : "0";
+      return Get<bool>(indices) ? "1" : "0";
     }
     return ((!indices.empty() && indices.back() > 0) ? ", " : "") +
-           GetAsString(literal, indices);
+           GetAsString(indices);
   };
 
   // TODO(b/32894291): refactor this code to reduce code duplication.
-  if (ShapeUtil::IsTuple(shape)) {
-    pieces.push_back(ShapeUtil::HumanString(shape));
+  if (ShapeUtil::IsTuple(shape())) {
+    pieces.push_back(ShapeUtil::HumanString(shape()));
     pieces.push_back(" (\n");
-    for (const auto& element_literal : literal.tuple_literals()) {
-      pieces.push_back(ToString(element_literal));
+    for (const auto& element_literal : tuple_literals()) {
+      pieces.push_back(element_literal.ToString());
       pieces.push_back(",\n");
     }
     pieces.push_back(")");
-  } else if (ShapeUtil::Rank(shape) == 0) {
-    pieces.push_back(GetAsString(literal, {}));
-  } else if (ShapeUtil::Rank(shape) == 1) {
+  } else if (ShapeUtil::Rank(shape()) == 0) {
+    pieces.push_back(GetAsString({}));
+  } else if (ShapeUtil::Rank(shape()) == 1) {
     pieces.push_back("{");
-    for (int64 i0 = 0; i0 < shape.dimensions(0); ++i0) {
+    for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back(element_to_string({i0}));
     }
     pieces.push_back("}");
-  } else if (ShapeUtil::Rank(shape) == 2) {
-    pieces.push_back(ShapeUtil::HumanString(shape));
+  } else if (ShapeUtil::Rank(shape()) == 2) {
+    pieces.push_back(ShapeUtil::HumanString(shape()));
     pieces.push_back(" {\n");
-    for (int64 i0 = 0; i0 < shape.dimensions(0); ++i0) {
+    for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back("  { ");
-      for (int64 i1 = 0; i1 < shape.dimensions(1); ++i1) {
+      for (int64 i1 = 0; i1 < shape().dimensions(1); ++i1) {
         pieces.push_back(element_to_string({i0, i1}));
       }
       pieces.push_back(" ");
       pieces.push_back("},\n");
     }
     pieces.push_back("}");
-  } else if (ShapeUtil::Rank(shape) == 3) {
-    pieces.push_back(ShapeUtil::HumanString(shape));
+  } else if (ShapeUtil::Rank(shape()) == 3) {
+    pieces.push_back(ShapeUtil::HumanString(shape()));
     pieces.push_back(" {\n");
-    for (int64 i0 = 0; i0 < shape.dimensions(0); ++i0) {
+    for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back(i0 > 0 ? ",\n{" : "{");
-      for (int64 i1 = 0; i1 < shape.dimensions(1); ++i1) {
+      for (int64 i1 = 0; i1 < shape().dimensions(1); ++i1) {
         pieces.push_back(i1 > 0 ? ",\n  { " : " { ");
-        for (int64 i2 = 0; i2 < shape.dimensions(2); ++i2) {
+        for (int64 i2 = 0; i2 < shape().dimensions(2); ++i2) {
           pieces.push_back(element_to_string({i0, i1, i2}));
         }
         pieces.push_back(" }");
@@ -496,17 +555,17 @@ void TransposeLiteralInternal(const Literal& original,
       pieces.push_back(" }");
     }
     pieces.push_back("\n}");
-  } else if (ShapeUtil::Rank(shape) == 4) {
-    pieces.push_back(ShapeUtil::HumanString(shape));
+  } else if (ShapeUtil::Rank(shape()) == 4) {
+    pieces.push_back(ShapeUtil::HumanString(shape()));
     pieces.push_back(" {\n");
-    for (int64 i0 = 0; i0 < shape.dimensions(0); ++i0) {
+    for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back(tensorflow::strings::Printf("  {  // i0=%lld\n", i0));
-      for (int64 i1 = 0; i1 < shape.dimensions(1); ++i1) {
+      for (int64 i1 = 0; i1 < shape().dimensions(1); ++i1) {
         pieces.push_back(
             tensorflow::strings::Printf("    {  // i1=%lld\n", i1));
-        for (int64 i2 = 0; i2 < shape.dimensions(2); ++i2) {
+        for (int64 i2 = 0; i2 < shape().dimensions(2); ++i2) {
           pieces.push_back("      {");
-          for (int64 i3 = 0; i3 < shape.dimensions(3); ++i3) {
+          for (int64 i3 = 0; i3 < shape().dimensions(3); ++i3) {
             pieces.push_back(element_to_string({i0, i1, i2, i3}));
           }
           pieces.push_back("},\n");
@@ -516,20 +575,20 @@ void TransposeLiteralInternal(const Literal& original,
       pieces.push_back("  },\n");
     }
     pieces.push_back("}");
-  } else if (ShapeUtil::Rank(shape) == 5) {
-    pieces.push_back(ShapeUtil::HumanString(shape));
+  } else if (ShapeUtil::Rank(shape()) == 5) {
+    pieces.push_back(ShapeUtil::HumanString(shape()));
     pieces.push_back(" {\n");
-    for (int64 i0 = 0; i0 < shape.dimensions(0); ++i0) {
+    for (int64 i0 = 0; i0 < shape().dimensions(0); ++i0) {
       pieces.push_back(tensorflow::strings::Printf("  {  // i0=%lld\n", i0));
-      for (int64 i1 = 0; i1 < shape.dimensions(1); ++i1) {
+      for (int64 i1 = 0; i1 < shape().dimensions(1); ++i1) {
         pieces.push_back(
             tensorflow::strings::Printf("    {  // i1=%lld\n", i1));
-        for (int64 i2 = 0; i2 < shape.dimensions(2); ++i2) {
+        for (int64 i2 = 0; i2 < shape().dimensions(2); ++i2) {
           pieces.push_back(
               tensorflow::strings::Printf("      {  // i2=%lld\n", i2));
-          for (int64 i3 = 0; i3 < shape.dimensions(3); ++i3) {
+          for (int64 i3 = 0; i3 < shape().dimensions(3); ++i3) {
             pieces.push_back("        {");
-            for (int64 i4 = 0; i4 < shape.dimensions(4); ++i4) {
+            for (int64 i4 = 0; i4 < shape().dimensions(4); ++i4) {
               pieces.push_back(element_to_string({i0, i1, i2, i3, i4}));
             }
             pieces.push_back("},\n");
@@ -542,14 +601,14 @@ void TransposeLiteralInternal(const Literal& original,
     }
     pieces.push_back("}");
   } else {
-    pieces.push_back(ShapeUtil::HumanString(shape));
+    pieces.push_back(ShapeUtil::HumanString(shape()));
     pieces.push_back(" {...}");
   }
 
   return tensorflow::str_util::Join(pieces, "");
 }
 
-/* static */ std::unique_ptr<Literal> LiteralUtil::MakeTuple(
+/* static */ std::unique_ptr<Literal> Literal::MakeTuple(
     tensorflow::gtl::ArraySlice<const Literal*> elements) {
   auto literal = MakeUnique<Literal>();
   std::vector<Shape> shape;
@@ -561,169 +620,197 @@ void TransposeLiteralInternal(const Literal& original,
   return literal;
 }
 
-/* static */ const void* LiteralUtil::InternalData(const Literal& literal) {
-  switch (literal.shape().element_type()) {
+const void* Literal::InternalData() const {
+  return const_cast<const void*>(
+      const_cast<Literal*>(this)->MutableInternalData());
+}
+
+void* Literal::MutableInternalData() {
+  // NOTE: We access the vectors directly to avoid the const reference
+  // created by the accessor functions.
+  switch (shape().element_type()) {
     case PRED:
-      return reinterpret_cast<const void*>(literal.preds().data());
+      return reinterpret_cast<void*>(preds_.data());
     case U8:
-      return reinterpret_cast<const void*>(literal.u8s().data());
+      return reinterpret_cast<void*>(u8s_.data());
     case S32:
-      return reinterpret_cast<const void*>(literal.s32s().data());
+      return reinterpret_cast<void*>(s32s_.data());
     case S64:
-      return reinterpret_cast<const void*>(literal.s64s().data());
+      return reinterpret_cast<void*>(s64s_.data());
     case U32:
-      return reinterpret_cast<const void*>(literal.u32s().data());
+      return reinterpret_cast<void*>(u32s_.data());
     case U64:
-      return reinterpret_cast<const void*>(literal.u64s().data());
+      return reinterpret_cast<void*>(u64s_.data());
     case F32:
-      return reinterpret_cast<const void*>(literal.f32s().data());
+      return reinterpret_cast<void*>(f32s_.data());
     case F64:
-      return reinterpret_cast<const void*>(literal.f64s().data());
+      return reinterpret_cast<void*>(f64s_.data());
+    case F16:
+      return reinterpret_cast<void*>(f16s_.data());
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
-                 << PrimitiveType_Name(literal.shape().element_type());
+                 << PrimitiveType_Name(shape().element_type());
   }
 }
 
-/* static */ void* LiteralUtil::MutableInternalData(Literal* literal) {
-  return const_cast<void*>(LiteralUtil::InternalData(*literal));
-}
-
-/* static */ void LiteralUtil::Reserve(int64 num_elements, Literal* literal) {
-  CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
-  switch (literal->shape().element_type()) {
+void Literal::Reserve(int64 num_elements) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  switch (shape().element_type()) {
     case PRED:
-      GetMutableRepeatedField<bool>(literal)->Resize(num_elements, false);
+      Resize<bool>(num_elements, false);
+      break;
+    case S8:
+      Resize<int8>(num_elements, 0);
       break;
     case U8:
-      // u8s is an optional "bytes", rather than a repeated field. Therefore its
-      // access methods are somewhat different from the others.
-      literal->mutable_u8s()->resize(num_elements, 0);
+      Resize<uint8>(num_elements, 0);
       break;
     case S32:
-      GetMutableRepeatedField<int32>(literal)->Resize(num_elements,
-                                                      /*value=*/0);
+      Resize<int32>(num_elements, 0);
       break;
     case S64:
-      GetMutableRepeatedField<tensorflow::protobuf_int64>(literal)->Resize(
-          num_elements,
-          /*value=*/0);
+      Resize<int64>(num_elements, 0);
       break;
     case U32:
-      GetMutableRepeatedField<uint32>(literal)->Resize(num_elements,
-                                                       /*value=*/0);
+      Resize<uint32>(num_elements, 0);
       break;
     case U64:
-      GetMutableRepeatedField<tensorflow::protobuf_uint64>(literal)->Resize(
-          num_elements,
-          /*value=*/0);
+      Resize<uint64>(num_elements, 0);
       break;
     case F32:
-      GetMutableRepeatedField<float>(literal)->Resize(num_elements,
-                                                      /*value=*/0.0f);
+      Resize<float>(num_elements, 0);
       break;
     case F64:
-      GetMutableRepeatedField<double>(literal)->Resize(num_elements,
-                                                       /*value=*/0.0);
+      Resize<double>(num_elements, 0);
+      break;
+    case F16:
+      Resize<half>(num_elements, static_cast<half>(0.0f));
       break;
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
-                 << PrimitiveType_Name(literal->shape().element_type());
+                 << PrimitiveType_Name(shape().element_type());
   }
 }
 
-/* static */ tensorflow::Status LiteralUtil::ValidateLiteral(
-    const Literal& literal) {
-  TF_CHECK_OK(ShapeUtil::ValidateShape(literal.shape()));
-  int64 expected = ShapeUtil::ElementsIn(literal.shape());
+tensorflow::Status Literal::ValidateLiteral() const {
+  TF_CHECK_OK(ShapeUtil::ValidateShape(shape()));
+  int64 expected = ShapeUtil::ElementsIn(shape());
   int64 actual = -1;
-  switch (literal.shape().element_type()) {
+  switch (shape().element_type()) {
     case PRED:
-      actual = literal.preds().size();
+      actual = preds_size();
       break;
     case U8:
-      actual = literal.u8s().size();
+      actual = u8s_size();
       break;
     case S32:
-      actual = literal.s32s_size();
+      actual = s32s_size();
       break;
     case U32:
-      actual = literal.u32s_size();
+      actual = u32s_size();
       break;
     case S64:
-      actual = literal.s64s_size();
+      actual = s64s_size();
       break;
     case U64:
-      actual = literal.u64s_size();
+      actual = u64s_size();
       break;
     case F32:
-      actual = literal.f32s_size();
+      actual = f32s_size();
       break;
     case F64:
-      actual = literal.f64s_size();
+      actual = f64s_size();
+      break;
+    case F16:
+      actual = f16s().size() / sizeof(half);
       break;
     default:
       return tensorflow::errors::Unimplemented(
           "unhandled element type for literal validation: " +
-          PrimitiveType_Name(literal.shape().element_type()));
+          PrimitiveType_Name(shape().element_type()));
   }
 
   if (expected != actual) {
     return tensorflow::errors::InvalidArgument(tensorflow::strings::Printf(
         "literal has bad number of elements for its shape %s: want %lld "
         "got %lld",
-        ShapeUtil::HumanString(literal.shape()).c_str(), expected, actual));
+        ShapeUtil::HumanString(shape()).c_str(), expected, actual));
   }
 
   return tensorflow::Status::OK();
 }
 
-/* static */ void LiteralUtil::EachCellAsString(
-    const Literal& literal,
-    std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                       const string& value)>
-        per_cell) {
-  if (ShapeUtil::Rank(literal.shape()) == 1) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      per_cell({i0}, GetAsString(literal, {i0}));
-    }
+void Literal::EachCellAsString(
+    const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
+                             const string& value)>& per_cell) const {
+  if (ShapeUtil::HasZeroElements(shape())) {
     return;
   }
+  std::vector<int64> indices = IndexUtil::LinearIndexToMultidimensionalIndex(
+      shape(), /*linear_index=*/0);
+  do {
+    per_cell(indices, GetAsString(indices));
+  } while (IndexUtil::BumpIndices(shape(), &indices));
+}
 
-  if (ShapeUtil::Rank(literal.shape()) == 2) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        per_cell({i0, i1}, GetAsString(literal, {i0, i1}));
-      }
-    }
-    return;
+namespace {
+template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>
+std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
+  CHECK_EQ(primitive_src_type, src_literal.shape().element_type());
+  return LiteralUtil::Convert<
+      typename primitive_util::PrimitiveTypeToNative<primitive_src_type>::type,
+      typename primitive_util::PrimitiveTypeToNative<
+          primitive_dest_type>::type>(src_literal);
+}
+
+template <PrimitiveType primitive_src_type>
+StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
+    const Literal& src_literal, PrimitiveType primitive_dest_type) {
+  switch (primitive_dest_type) {
+#define CONVERT_IF_TYPES_MATCH(type) \
+  case (type):                       \
+    return ConvertIfTypesMatch<primitive_src_type, (type)>(src_literal);
+    CONVERT_IF_TYPES_MATCH(PRED)
+    CONVERT_IF_TYPES_MATCH(S8)
+    CONVERT_IF_TYPES_MATCH(S32)
+    CONVERT_IF_TYPES_MATCH(S64)
+    CONVERT_IF_TYPES_MATCH(U8)
+    CONVERT_IF_TYPES_MATCH(U32)
+    CONVERT_IF_TYPES_MATCH(U64)
+    CONVERT_IF_TYPES_MATCH(F32)
+    CONVERT_IF_TYPES_MATCH(F64)
+#undef CONVERT_IF_TYPES_MATCH
+    // Other types are not yet supported.
+    default:
+      return tensorflow::errors::InvalidArgument(
+          "Unimplemented: ConvertIfDestTypeMatches for type " +
+          PrimitiveType_Name(src_literal.shape().element_type()));
   }
+}
+}
 
-  if (ShapeUtil::Rank(literal.shape()) == 3) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        for (int64 i2 = 0; i2 < literal.shape().dimensions(2); ++i2) {
-          per_cell({i0, i1, i2}, GetAsString(literal, {i0, i1, i2}));
-        }
-      }
-    }
-    return;
+StatusOr<std::unique_ptr<Literal>> LiteralUtil::ConvertIfSrcTypeMatches(
+    const Literal& src_literal, PrimitiveType primitive_dest_type) {
+  switch (src_literal.shape().element_type()) {
+#define CONVERT_IF_DEST_TYPE_MATCHES(type) \
+  case (type):                             \
+    return ConvertIfDestTypeMatches<(type)>(src_literal, primitive_dest_type);
+    CONVERT_IF_DEST_TYPE_MATCHES(PRED)
+    CONVERT_IF_DEST_TYPE_MATCHES(S8)
+    CONVERT_IF_DEST_TYPE_MATCHES(S32)
+    CONVERT_IF_DEST_TYPE_MATCHES(S64)
+    CONVERT_IF_DEST_TYPE_MATCHES(U8)
+    CONVERT_IF_DEST_TYPE_MATCHES(U32)
+    CONVERT_IF_DEST_TYPE_MATCHES(U64)
+    CONVERT_IF_DEST_TYPE_MATCHES(F32)
+    CONVERT_IF_DEST_TYPE_MATCHES(F64)
+#undef CONVERT_IF_DEST_TYPE_MATCHES
+    // Other types are not yet supported.
+    default:
+      return tensorflow::errors::InvalidArgument(
+          "Unimplemented: ConvertIfSrcTypeMatches for type " +
+          PrimitiveType_Name(src_literal.shape().element_type()));
   }
-
-  if (ShapeUtil::Rank(literal.shape()) == 4) {
-    for (int64 i0 = 0; i0 < literal.shape().dimensions(0); ++i0) {
-      for (int64 i1 = 0; i1 < literal.shape().dimensions(1); ++i1) {
-        for (int64 i2 = 0; i2 < literal.shape().dimensions(2); ++i2) {
-          for (int64 i3 = 0; i3 < literal.shape().dimensions(3); ++i3) {
-            per_cell({i0, i1, i2, i3}, GetAsString(literal, {i0, i1, i2, i3}));
-          }
-        }
-      }
-    }
-    return;
-  }
-
-  LOG(FATAL) << "unhandled rank: " << ShapeUtil::Rank(literal.shape());
 }
 
 namespace {
@@ -737,8 +824,8 @@ template <typename NativeT>
 bool EqualElements(const Literal& literal1, const Literal& literal2,
                    int dimension, std::vector<int64>* multi_index) {
   if (dimension == ShapeUtil::Rank(literal1.shape())) {
-    return (LiteralUtil::Get<NativeT>(literal1, *multi_index) ==
-            LiteralUtil::Get<NativeT>(literal2, *multi_index));
+    return (literal1.Get<NativeT>(*multi_index) ==
+            literal2.Get<NativeT>(*multi_index));
   }
   for (int64 i = 0; i < literal1.shape().dimensions(dimension); ++i) {
     (*multi_index)[dimension] = i;
@@ -752,138 +839,197 @@ bool EqualElements(const Literal& literal1, const Literal& literal2,
 
 }  // namespace
 
-/* static */ bool LiteralUtil::Equal(const Literal& literal1,
-                                     const Literal& literal2) {
-  if (!ShapeUtil::Compatible(literal1.shape(), literal2.shape())) {
+bool Literal::Equal(const Literal& literal2) const {
+  if (!ShapeUtil::Compatible(shape(), literal2.shape())) {
     return false;
   }
-  if (ShapeUtil::IsTuple(literal1.shape())) {
+  if (ShapeUtil::IsTuple(shape())) {
     // Because the shapes are compatible, they must have the same number of
     // tuple elements.
-    CHECK_EQ(literal1.tuple_literals_size(), literal2.tuple_literals_size());
-    for (int i = 0; i < literal1.tuple_literals_size(); ++i) {
-      if (!Equal(literal1.tuple_literals(i), literal2.tuple_literals(i))) {
+    CHECK_EQ(tuple_literals_size(), literal2.tuple_literals_size());
+    for (int i = 0; i < tuple_literals_size(); ++i) {
+      if (!tuple_literals(i).Equal(literal2.tuple_literals(i))) {
         return false;
       }
     }
     return true;
   } else {
-    std::vector<int64> multi_index(ShapeUtil::Rank(literal1.shape()), 0);
-    switch (literal1.shape().element_type()) {
+    std::vector<int64> multi_index(ShapeUtil::Rank(shape()), 0);
+    switch (shape().element_type()) {
       case PRED:
-        return EqualElements<bool>(literal1, literal2, 0, &multi_index);
+        return EqualElements<bool>(*this, literal2, 0, &multi_index);
       case U8:
-        return EqualElements<uint8>(literal1, literal2, 0, &multi_index);
+        return EqualElements<uint8>(*this, literal2, 0, &multi_index);
       case S32:
-        return EqualElements<int32>(literal1, literal2, 0, &multi_index);
+        return EqualElements<int32>(*this, literal2, 0, &multi_index);
       case S64:
-        return EqualElements<int64>(literal1, literal2, 0, &multi_index);
+        return EqualElements<int64>(*this, literal2, 0, &multi_index);
       case U32:
-        return EqualElements<uint32>(literal1, literal2, 0, &multi_index);
+        return EqualElements<uint32>(*this, literal2, 0, &multi_index);
       case U64:
-        return EqualElements<uint64>(literal1, literal2, 0, &multi_index);
+        return EqualElements<uint64>(*this, literal2, 0, &multi_index);
       case F32:
-        return EqualElements<float>(literal1, literal2, 0, &multi_index);
+        return EqualElements<float>(*this, literal2, 0, &multi_index);
       case F64:
-        return EqualElements<double>(literal1, literal2, 0, &multi_index);
+        return EqualElements<double>(*this, literal2, 0, &multi_index);
+      case F16:
+        return EqualElements<half>(*this, literal2, 0, &multi_index);
       default:
-        LOG(FATAL) << "Unimplemented: LiteralUtil::Equal for type "
-                   << PrimitiveType_Name(literal1.shape().element_type());
+        LOG(FATAL) << "Unimplemented: Literal::Equal for type "
+                   << PrimitiveType_Name(shape().element_type());
     }
   }
 }
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<bool> LiteralUtil::GetArraySlice<bool>(
-    const Literal& literal) {
-  CHECK(literal.shape().element_type() == PRED);
-  return literal.preds();
+tensorflow::gtl::MutableArraySlice<bool> Literal::GetMutableArraySlice() {
+  auto values = mutable_preds();
+  return tensorflow::gtl::MutableArraySlice<bool>(values->data(),
+                                                  values->size());
 }
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<bool>*
-LiteralUtil::GetMutableRepeatedField<bool>(Literal* literal) {
-  CHECK(literal->shape().element_type() == PRED);
-  return literal->mutable_preds();
+tensorflow::gtl::MutableArraySlice<int8> Literal::GetMutableArraySlice() {
+  // C++11 standard, basic_string 21.4.1.5, values should be stored
+  // contiguously. From C++17 a mutable data() member will be provided.
+  auto values = mutable_u8s();
+  return tensorflow::gtl::MutableArraySlice<int8>(
+      reinterpret_cast<int8*>(&(*values)[0]), values->size());
 }
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<uint32>
-LiteralUtil::GetArraySlice<uint32>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == U32);
-  return literal.u32s();
+tensorflow::gtl::MutableArraySlice<uint8> Literal::GetMutableArraySlice() {
+  // C++11 standard, basic_string 21.4.1.5, values should be stored
+  // contiguously. From C++17 a mutable data() member will be provided.
+  auto values = mutable_u8s();
+  return tensorflow::gtl::MutableArraySlice<uint8>(
+      reinterpret_cast<uint8*>(&(*values)[0]), values->size());
 }
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<uint32>*
-LiteralUtil::GetMutableRepeatedField<uint32>(Literal* literal) {
-  CHECK(literal->shape().element_type() == U32);
-  return literal->mutable_u32s();
+tensorflow::gtl::MutableArraySlice<int32> Literal::GetMutableArraySlice() {
+  auto values = mutable_s32s();
+  return tensorflow::gtl::MutableArraySlice<int32>(values->data(),
+                                                   values->size());
 }
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<uint64>
-LiteralUtil::GetArraySlice<uint64>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == U64);
-  return AsUInt64Slice(literal.u64s());
+tensorflow::gtl::MutableArraySlice<uint32> Literal::GetMutableArraySlice() {
+  auto values = mutable_u32s();
+  return tensorflow::gtl::MutableArraySlice<uint32>(values->data(),
+                                                    values->size());
 }
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>*
-LiteralUtil::GetMutableRepeatedField<tensorflow::protobuf_uint64>(
-    Literal* literal) {
-  CHECK(literal->shape().element_type() == U64);
-  return literal->mutable_u64s();
+tensorflow::gtl::MutableArraySlice<int64> Literal::GetMutableArraySlice() {
+  static_assert(sizeof(int64) == sizeof(tensorflow::protobuf_int64) &&
+                    alignof(int64) == alignof(tensorflow::protobuf_int64),
+                "The int64 and tensorflow::protobuf_int64 types are not "
+                "compatible");
+  auto values = mutable_s64s();
+  // Because of the fact that tensorflow::protobuf_int64 is defined as int64_t
+  // while tensorflow::int64 is defined as long long, a reinterpret_cast<> is
+  // necessary from the raw data pointer returned by the mutable_data() API.
+  return tensorflow::gtl::MutableArraySlice<int64>(
+      reinterpret_cast<int64*>(values->data()), values->size());
 }
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<int32>
-LiteralUtil::GetArraySlice<int32>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == S32);
-  return literal.s32s();
+tensorflow::gtl::MutableArraySlice<uint64> Literal::GetMutableArraySlice() {
+  static_assert(sizeof(uint64) == sizeof(tensorflow::protobuf_uint64) &&
+                    alignof(uint64) == alignof(tensorflow::protobuf_uint64),
+                "The uint64 and tensorflow::protobuf_uint64 types are not "
+                "compatible");
+  auto values = mutable_u64s();
+  // Because of the fact that tensorflow::protobuf_uint64 is defined as uint64_t
+  // while tensorflow::uint64 is defined as unsigned long long, a
+  // reinterpret_cast<> is necessary from the raw data pointer returned by the
+  // mutable_data() API.
+  return tensorflow::gtl::MutableArraySlice<uint64>(
+      reinterpret_cast<uint64*>(values->data()), values->size());
 }
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<int32>*
-LiteralUtil::GetMutableRepeatedField<int32>(Literal* literal) {
-  CHECK(literal->shape().element_type() == S32);
-  return literal->mutable_s32s();
+tensorflow::gtl::MutableArraySlice<float> Literal::GetMutableArraySlice() {
+  auto values = mutable_f32s();
+  return tensorflow::gtl::MutableArraySlice<float>(values->data(),
+                                                   values->size());
 }
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<int64>
-LiteralUtil::GetArraySlice<int64>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == S64);
-  return AsInt64Slice(literal.s64s());
+tensorflow::gtl::MutableArraySlice<double> Literal::GetMutableArraySlice() {
+  auto values = mutable_f64s();
+  return tensorflow::gtl::MutableArraySlice<double>(values->data(),
+                                                    values->size());
 }
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-LiteralUtil::GetMutableRepeatedField<tensorflow::protobuf_int64>(
-    Literal* literal) {
-  CHECK(literal->shape().element_type() == S64);
-  return literal->mutable_s64s();
+tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice<half>() {
+  // C++11 standard, basic_string 21.4.1.5, values should be stored
+  // contiguously. From C++17 a mutable data() member will be provided.
+  // TODO - there is an endianess problem here. fix it, or wait for uint16
+  //        support in protobuf
+  auto values = mutable_f16s();
+  return tensorflow::gtl::MutableArraySlice<half>(
+      reinterpret_cast<half*>(&(*values)[0]), values->size() / sizeof(half));
 }
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<float>*
-LiteralUtil::GetMutableRepeatedField<float>(Literal* literal) {
-  CHECK(literal->shape().element_type() == F32);
-  return literal->mutable_f32s();
+tensorflow::gtl::ArraySlice<bool> Literal::GetArraySlice<bool>() const {
+  CHECK_EQ(shape().element_type(), PRED);
+  return tensorflow::gtl::ArraySlice<bool>(preds().data(), preds().size());
 }
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<double>
-LiteralUtil::GetArraySlice<double>(const Literal& literal) {
-  CHECK(literal.shape().element_type() == F64);
-  return literal.f64s();
+tensorflow::gtl::ArraySlice<uint8> Literal::GetArraySlice<uint8>() const {
+  CHECK_EQ(shape().element_type(), U8);
+  return tensorflow::gtl::ArraySlice<uint8>(
+      reinterpret_cast<const uint8*>(u8s().data()), u8s().size());
 }
 
 template <>
-/* static */ tensorflow::protobuf::RepeatedField<double>*
-LiteralUtil::GetMutableRepeatedField<double>(Literal* literal) {
-  CHECK(literal->shape().element_type() == F64);
-  return literal->mutable_f64s();
+tensorflow::gtl::ArraySlice<int8> Literal::GetArraySlice<int8>() const {
+  CHECK_EQ(shape().element_type(), S8);
+  return tensorflow::gtl::ArraySlice<int8>(
+      reinterpret_cast<const int8*>(u8s().data()), u8s().size());
+}
+
+template <>
+tensorflow::gtl::ArraySlice<uint32> Literal::GetArraySlice<uint32>() const {
+  CHECK_EQ(shape().element_type(), U32);
+  return u32s();
+}
+
+template <>
+tensorflow::gtl::ArraySlice<uint64> Literal::GetArraySlice<uint64>() const {
+  CHECK_EQ(shape().element_type(), U64);
+  return u64s();
+}
+
+template <>
+tensorflow::gtl::ArraySlice<int32> Literal::GetArraySlice<int32>() const {
+  CHECK_EQ(shape().element_type(), S32);
+  return s32s();
+}
+
+template <>
+tensorflow::gtl::ArraySlice<int64> Literal::GetArraySlice<int64>() const {
+  CHECK_EQ(shape().element_type(), S64);
+  return s64s();
+}
+
+template <>
+tensorflow::gtl::ArraySlice<double> Literal::GetArraySlice<double>() const {
+  CHECK_EQ(shape().element_type(), F64);
+  return f64s();
+}
+
+template <>
+tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const {
+  CHECK_EQ(shape().element_type(), F16);
+  return tensorflow::gtl::ArraySlice<half>(
+      reinterpret_cast<const half*>(f16s().data()),
+      f16s().size() / sizeof(half));
 }
 
 template <typename NativeT>
@@ -891,46 +1037,48 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
   for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
     auto multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
-    if (LiteralUtil::Get<NativeT>(literal, multi_index) != value) {
+    if (literal.Get<NativeT>(multi_index) != value) {
       return false;
     }
   }
   return true;
 }
 
-/* static */ bool LiteralUtil::IsAll(const Literal& literal, int8 value) {
-  switch (literal.shape().element_type()) {
+bool Literal::IsAll(int8 value) const {
+  switch (shape().element_type()) {
     case U8:
       if (value >= 0) {
-        return AllElementsEqualValue<uint8>(literal, value);
+        return AllElementsEqualValue<uint8>(*this, value);
       }
       return false;
     case U32:
       if (value >= 0) {
-        return AllElementsEqualValue<uint32>(literal, value);
+        return AllElementsEqualValue<uint32>(*this, value);
       }
       return false;
     case U64:
       if (value >= 0) {
-        return AllElementsEqualValue<uint64>(literal, value);
+        return AllElementsEqualValue<uint64>(*this, value);
       }
       return false;
     case S8:
-      return AllElementsEqualValue<int8>(literal, value);
+      return AllElementsEqualValue<int8>(*this, value);
     case S32:
-      return AllElementsEqualValue<int32>(literal, value);
+      return AllElementsEqualValue<int32>(*this, value);
     case S64:
-      return AllElementsEqualValue<int64>(literal, value);
+      return AllElementsEqualValue<int64>(*this, value);
     case F32:
-      return AllElementsEqualValue<float>(literal, value);
+      return AllElementsEqualValue<float>(*this, value);
     case F64:
-      return AllElementsEqualValue<double>(literal, value);
+      return AllElementsEqualValue<double>(*this, value);
+    case F16:
+      return AllElementsEqualValue<half>(*this, static_cast<half>(value));
     case PRED:
       if (value == 0) {
-        return AllElementsEqualValue<bool>(literal, false);
+        return AllElementsEqualValue<bool>(*this, false);
       }
       if (value == 1) {
-        return AllElementsEqualValue<bool>(literal, true);
+        return AllElementsEqualValue<bool>(*this, true);
       }
       return false;
     default:
@@ -938,89 +1086,219 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
   }
 }
 
-/* static */ bool LiteralUtil::IsAllFloat(const Literal& literal, float value) {
-  switch (literal.shape().element_type()) {
+bool Literal::IsAllFloat(float value) const {
+  switch (shape().element_type()) {
     case F32:
-      return AllElementsEqualValue<float>(literal, value);
+      return AllElementsEqualValue<float>(*this, value);
     case F64:
-      return AllElementsEqualValue<double>(literal, value);
+      return AllElementsEqualValue<double>(*this, value);
+    case F16:
+      return AllElementsEqualValue<half>(*this, static_cast<half>(value));
     default:
       return false;
   }
 }
 
-/* static */ bool LiteralUtil::IsZero(
-    const Literal& literal, tensorflow::gtl::ArraySlice<int64> indices) {
-  switch (literal.shape().element_type()) {
+bool Literal::IsZero(tensorflow::gtl::ArraySlice<int64> indices) const {
+  switch (shape().element_type()) {
     case U8:
-      return Get<uint8>(literal, indices) == 0;
+      return Get<uint8>(indices) == 0;
     case U32:
-      return Get<uint32>(literal, indices) == 0;
+      return Get<uint32>(indices) == 0;
     case U64:
-      return Get<uint64>(literal, indices) == 0;
+      return Get<uint64>(indices) == 0;
     case S8:
-      return Get<int8>(literal, indices) == 0;
+      return Get<int8>(indices) == 0;
     case S32:
-      return Get<int32>(literal, indices) == 0;
+      return Get<int32>(indices) == 0;
     case S64:
-      return Get<int64>(literal, indices) == 0;
+      return Get<int64>(indices) == 0;
     case F32:
-      return Get<float>(literal, indices) == 0.0f;
+      return Get<float>(indices) == 0.0f;
     case F64:
-      return Get<double>(literal, indices) == 0.0;
+      return Get<double>(indices) == 0.0;
+    case F16:
+      return Get<half>(indices) == static_cast<half>(0.0f);
     case PRED:
-      return Get<bool>(literal, indices) == false;
+      return Get<bool>(indices) == false;
     default:
       LOG(FATAL) << "Input literal must be an array.";
   }
 }
 
 template <>
-/* static */ void LiteralUtil::PopulateWithValue(
-    int64 value, tensorflow::gtl::ArraySlice<int64> dimensions,
-    Literal* literal) {
-  *literal->mutable_shape() = ShapeUtil::MakeShape(
-      primitive_util::NativeToPrimitiveType<int64>(), dimensions);
-  tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-      repeated_field =
-          GetMutableRepeatedField<tensorflow::protobuf_int64>(literal);
-  for (int64 i = 0; i < ShapeUtil::ElementsIn(literal->shape()); ++i) {
-    repeated_field->Add(value);
+/* static */ void Literal::Resize<bool>(int64 num_elements, bool value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_preds()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<int8>(int64 num_elements, int8 value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_u8s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<uint8>(int64 num_elements, uint8 value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_u8s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<int32>(int64 num_elements, int32 value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_s32s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<uint32>(int64 num_elements, uint32 value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_u32s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<int64>(int64 num_elements, int64 value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_s64s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<uint64>(int64 num_elements, uint64 value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_u64s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<float>(int64 num_elements, float value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_f32s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<double>(int64 num_elements, double value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_f64s()->resize(num_elements, value);
+}
+
+template <>
+void Literal::Resize<half>(int64 num_elements, half value) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
+  mutable_f16s()->resize(num_elements, value);
+}
+
+template <typename RepeatedFieldT, typename NativeT>
+static void CopyToRepeatedField(RepeatedFieldT* dest,
+                                const std::vector<NativeT>& src) {
+  *dest = RepeatedFieldT(src.begin(), src.end());
+}
+
+template <typename RepeatedFieldT>
+static void CopyToRepeatedBoolField(RepeatedFieldT* dest,
+                                    const BoolVector& src) {
+  *dest = RepeatedFieldT(src.begin(), src.end());
+}
+
+LiteralProto Literal::ToProto() const {
+  LiteralProto proto;
+  proto.Clear();
+  *proto.mutable_shape() = shape();
+  switch (shape().element_type()) {
+    case PRED:
+      if (preds().begin()) {
+        CopyToRepeatedBoolField(proto.mutable_preds(), preds());
+      }
+      break;
+    case U8:
+      *proto.mutable_u8s() = u8s_string();
+      break;
+    case S32:
+      CopyToRepeatedField(proto.mutable_s32s(), s32s());
+      break;
+    case S64:
+      CopyToRepeatedField(proto.mutable_s64s(), s64s());
+      break;
+    case U32:
+      CopyToRepeatedField(proto.mutable_u32s(), u32s());
+      break;
+    case U64:
+      CopyToRepeatedField(proto.mutable_u64s(), u64s());
+      break;
+    case F16:
+      *proto.mutable_f16s() =
+          string(reinterpret_cast<const char*>(f16s_.data()),
+                 f16s_.size() * sizeof(half));
+      break;
+    case F32:
+      CopyToRepeatedField(proto.mutable_f32s(), f32s());
+      break;
+    case F64:
+      CopyToRepeatedField(proto.mutable_f64s(), f64s());
+      break;
+    case TUPLE:
+      for (const auto& tuple : tuple_literals()) {
+        *proto.add_tuple_literals() = tuple.ToProto();
+      }
+      break;
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << shape().element_type();
   }
+
+  return proto;
 }
 
-template <>
-/* static */ void LiteralUtil::PopulateWithValue(
-    uint64 value, tensorflow::gtl::ArraySlice<int64> dimensions,
-    Literal* literal) {
-  *literal->mutable_shape() = ShapeUtil::MakeShape(
-      primitive_util::NativeToPrimitiveType<uint64>(), dimensions);
-  tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>*
-      repeated_field =
-          GetMutableRepeatedField<tensorflow::protobuf_uint64>(literal);
-  for (int64 i = 0; i < ShapeUtil::ElementsIn(literal->shape()); ++i) {
-    repeated_field->Add(value);
+template <typename RepeatedFieldT, typename NativeT>
+static void CopyFromRepeatedField(std::vector<NativeT>* dest,
+                                  const RepeatedFieldT& src) {
+  *dest = std::vector<NativeT>(src.begin(), src.end());
+}
+
+void Literal::CopyFromProto(const LiteralProto& literal_proto) {
+  if (!literal_proto.has_shape()) {
+    return;
   }
-}
 
-template <>
-/* static */ void LiteralUtil::Resize(int64 num_elements, int64 value,
-                                      Literal* literal) {
-  CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
-  tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-      repeated_field =
-          GetMutableRepeatedField<tensorflow::protobuf_int64>(literal);
-  repeated_field->Resize(num_elements, value);
-}
-
-template <>
-/* static */ void LiteralUtil::Resize(int64 num_elements, uint64 value,
-                                      Literal* literal) {
-  CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
-  tensorflow::protobuf::RepeatedField<tensorflow::protobuf_uint64>*
-      repeated_field =
-          GetMutableRepeatedField<tensorflow::protobuf_uint64>(literal);
-  repeated_field->Resize(num_elements, value);
+  *mutable_shape() = literal_proto.shape();
+  switch (shape().element_type()) {
+    case PRED:
+      *mutable_preds() = BoolVector(literal_proto.preds().begin(),
+                                    literal_proto.preds().end());
+      break;
+    case U8:
+      set_u8s(literal_proto.u8s());
+      break;
+    case S32:
+      CopyFromRepeatedField(mutable_s32s(), literal_proto.s32s());
+      break;
+    case S64:
+      CopyFromRepeatedField(mutable_s64s(), literal_proto.s64s());
+      break;
+    case U32:
+      CopyFromRepeatedField(mutable_u32s(), literal_proto.u32s());
+      break;
+    case U64:
+      CopyFromRepeatedField(mutable_u64s(), literal_proto.u64s());
+      break;
+    case F16: {
+      const string& s(literal_proto.f16s());
+      CHECK_EQ(0, s.size() % sizeof(half));
+      f16s_ = std::vector<half>(s.size() / sizeof(half));
+      memcpy(f16s_.data(), s.data(), s.size());
+      break;
+    }
+    case F32:
+      CopyFromRepeatedField(mutable_f32s(), literal_proto.f32s());
+      break;
+    case F64:
+      CopyFromRepeatedField(mutable_f64s(), literal_proto.f64s());
+      break;
+    case TUPLE:
+      for (const auto& proto : literal_proto.tuple_literals()) {
+        mutable_tuple_literals()->push_back(Literal(proto));
+      }
+      break;
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << shape().element_type();
+  }
 }
 
 }  // namespace xla

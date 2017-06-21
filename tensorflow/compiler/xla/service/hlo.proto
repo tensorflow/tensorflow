@@ -1,0 +1,189 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// DO NOT USE THESE PROTO MESSAGES FOR ANYTHING OTHER THAN DEBUGGING.
+//
+// Don't use these protos in the real compilation or execution codepaths. The
+// data format is meant for debugging only, and may change without notice.
+//
+// Many of the protos below are simple 1-to-1 serializations of the
+// corresponding C++ classes.
+//
+// FIELD NAMES ARE IMPORTANT
+//
+// Unlike most protos, you can't safely change the names of fields, even if you
+// keep the numeric ids the same. This is because we sometimes serialize these
+// protos as JSON, which includes the field names in the serialization.
+
+syntax = "proto3";
+
+package xla;
+import "tensorflow/compiler/xla/xla_data.proto";
+
+option cc_enable_arenas = true;
+
+// Serialization of HloInstruction.
+message HloInstructionProto {
+  string name = 1;
+  string opcode = 2;
+  xla.Shape shape = 3;
+  repeated string operand_names = 4;
+  repeated string control_predecessor_names = 5;
+  repeated string called_computation_names = 6;
+
+  xla.OpMetadata metadata = 7;
+
+  // Literal, only present for kConstant.
+  xla.LiteralProto literal = 8;
+
+  // Parameter info, only present for kParameter.
+  int64 parameter_number = 9;
+  string parameter_name = 10;
+
+  // Fusion state, only present for kFusion.
+  string fusion_kind = 11;
+  HloComputationProto fused_instructions_computation = 12;
+
+  // Index for kGetTupleElement.
+  int64 tuple_index = 13;
+}
+
+// Serialization of HloComputation.
+message HloComputationProto {
+  string name = 1;
+
+  // The array of instructions is always in a valid dependency order, where
+  // operands appear before their users.
+  repeated HloInstructionProto instructions = 2;
+}
+
+// Serialization of HloModule.
+message HloModuleProto {
+  string name = 1;
+  string entry_computation_name = 2;
+
+  // The array of computations is always in a valid dependency order, where
+  // callees appear before their callers.
+  repeated HloComputationProto computations = 3;
+}
+
+// Serialization of HloOrdering.
+message HloOrderingProto {
+  // NOTE: currently only sequential orderings are serialized.
+  message SequentialComputation {
+    string computation_name = 1;
+    repeated string instruction_names = 2;
+  }
+  repeated SequentialComputation sequential_computations = 1;
+}
+
+// Serialization of LogicalBuffer.
+message LogicalBufferProto {
+  // Location represents an instruction and its shape index, which uniquely
+  // identifies a point where a buffer is needed.
+  message Location {
+    // NOTE: module_name isn't necessary, since all LogicalBuffers are
+    // associated with a single HloModule.
+    string computation_name = 1;
+    string instruction_name = 2;
+    repeated int64 shape_index = 3;
+  }
+
+  int64 id = 1;
+  int64 size = 2;
+
+  // The location where the buffer is defined.
+  Location defined_at = 3;
+
+  int64 color = 4;
+}
+
+// Serialization of BufferAllocation.
+message BufferAllocationProto {
+  // Assigned represents a single LogicalBuffer that is assigned to this
+  // BufferAllocation.
+  message Assigned {
+    int64 logical_buffer_id = 1;
+    int64 offset = 2;
+    int64 size = 3;
+  }
+
+  int64 index = 1;
+  int64 size = 2;
+  bool is_thread_local = 3;
+  bool is_reusable = 4;
+  bool is_entry_computation_parameter = 5;
+  int64 parameter_number = 6;
+  bool maybe_live_out = 7;
+  int64 color = 8;
+  repeated Assigned assigned = 9;
+}
+
+// A trace of a HeapSimulator run.
+message HeapSimulatorTrace {
+  // The trace includes a list of events, where each event describes one action
+  // performed by the heap simulator.
+  message Event {
+    enum Kind {
+      ALLOC = 0;  // A memory region was allocated for the buffer.
+      FREE = 1;   // A memory region was freed for the buffer.
+
+      // A buffer was shared with another (canonical) buffer. This is similar to
+      // ALLOC, except that instead of allocating a new region of memory, the
+      // memory region of the canonical buffer is directly re-used. Multiple
+      // buffers may share with the same canonical buffer. The lifetime of the
+      // canonical buffer is extended to the union of all lifetimes.
+      SHARE_WITH = 2;
+    }
+    Kind kind = 1;
+
+    // The id of the LogicalBuffer that the event applies to.
+    int64 buffer_id = 2;
+
+    // The HloInstruction that the simulation was processing that caused this
+    // event to occur, identified by its computation and instruction name. E.g.
+    // buffers defined by instruction A are allocated when processing A.
+    string computation_name = 3;
+    string instruction_name = 4;
+
+    // The id of the canonical LogicalBuffer that the buffer shares with. Only
+    // set for SHARE_WITH events.
+    int64 share_with_canonical_id = 5;
+  }
+  repeated Event events = 1;
+  bool whole_module_simulation = 2;
+}
+
+// Serialization of BufferAssignment.
+message BufferAssignmentProto {
+  // Alias represents a source LogicalBuffer, and the buffer location that
+  // aliases it.
+  message BufferAlias {
+    int64 source_buffer_id = 1;
+    LogicalBufferProto.Location location = 2;
+  }
+
+  repeated LogicalBufferProto logical_buffers = 1;
+  repeated BufferAlias buffer_aliases = 2;
+  repeated BufferAllocationProto buffer_allocations = 3;
+  repeated HeapSimulatorTrace heap_simulator_traces = 4;
+}
+
+// Grouping message that contains all of the information above.
+message HloProto {
+  HloModuleProto hlo_module = 1;
+  HloOrderingProto hlo_ordering = 2;
+  BufferAssignmentProto buffer_assignment = 3;
+}

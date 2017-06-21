@@ -41,14 +41,14 @@ using sparse::SparseTensor;
 
 class SparseTensorsMap : public ResourceBase {
  public:
-  SparseTensorsMap(const string& name) : name_(name), counter_(0) {}
+  explicit SparseTensorsMap(const string& name) : name_(name), counter_(0) {}
 
   string DebugString() override { return "A SparseTensorsMap"; }
 
   typedef struct {
     PersistentTensor indices;
     PersistentTensor values;
-    TensorShape shape;
+    gtl::InlinedVector<int64, 8> shape;
   } PersistentSparseTensor;
 
   Status AddSparseTensor(OpKernelContext* ctx, const SparseTensor& sp,
@@ -68,8 +68,9 @@ class SparseTensorsMap : public ResourceBase {
     {
       mutex_lock l(mu_);
       int64 unique_st_handle = counter_++;  // increment is guarded on purpose
-      sp_tensors_[unique_st_handle] =
-          PersistentSparseTensor{persistent_ix, persistent_values, sp.shape()};
+      sp_tensors_[unique_st_handle] = PersistentSparseTensor{
+          persistent_ix, persistent_values,
+          gtl::InlinedVector<int64, 8>(sp.shape().begin(), sp.shape().end())};
       *handle = unique_st_handle;
     }
     return Status::OK();
@@ -86,12 +87,12 @@ class SparseTensorsMap : public ResourceBase {
         const int64 handle = handles(i);
         auto sp_iter = sp_tensors_.find(handle);
         if (sp_iter == sp_tensors_.end()) {
-          return errors::InvalidArgument("Unable to find SparseTensor: ",
-                                         handle, " in map: ", name_);
+          return errors::InvalidArgument(
+              "Unable to find SparseTensor: ", handle, " in map: ", name_);
         }
         const Tensor* ix = sp_iter->second.indices.AccessTensor(ctx);
         const Tensor* values = sp_iter->second.values.AccessTensor(ctx);
-        const TensorShape& shape = sp_iter->second.shape;
+        const auto& shape = sp_iter->second.shape;
         sparse_tensors->emplace_back(*ix, *values, shape);
 
         sp_tensors_.erase(sp_iter);
@@ -116,11 +117,11 @@ class SparseTensorAccessingOp : public OpKernel {
  public:
   typedef std::function<Status(SparseTensorsMap**)> CreatorCallback;
 
-  SparseTensorAccessingOp(OpKernelConstruction* context)
+  explicit SparseTensorAccessingOp(OpKernelConstruction* context)
       : OpKernel(context), sparse_tensors_map_(nullptr) {}
 
  protected:
-  ~SparseTensorAccessingOp() {
+  ~SparseTensorAccessingOp() override {
     if (sparse_tensors_map_) sparse_tensors_map_->Unref();
   }
 
@@ -137,7 +138,7 @@ class SparseTensorAccessingOp : public OpKernel {
                                    is_writing /* use_node_name_as_default */));
 
     CreatorCallback sparse_tensors_map_creator = [this](SparseTensorsMap** c) {
-      SparseTensorsMap *map = new SparseTensorsMap(cinfo_.name());
+      SparseTensorsMap* map = new SparseTensorsMap(cinfo_.name());
       *c = map;
       return Status::OK();
     };
@@ -375,7 +376,7 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
       const SparseTensor& st = sparse_tensors[i];
       const Tensor& output_indices = st.indices();
       const Tensor& output_values = st.values();
-      const TensorShape& output_shape = st.shape();
+      const auto output_shape = st.shape();
 
       OP_REQUIRES(context, TensorShapeUtils::IsMatrix(output_indices.shape()),
                   errors::InvalidArgument(
@@ -403,12 +404,12 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
                       " vs. ", output_values.dim_size(0)));
       int rank = output_indices.dim_size(1);
       OP_REQUIRES(
-          context, rank == output_shape.dims(),
+          context, rank == output_shape.size(),
           errors::InvalidArgument("Expected column counts of SparseTensor[", i,
                                   "].indices to match size of SparseTensor[", i,
                                   "].shape "
                                   "but they do not: ",
-                                  rank, " vs. ", output_shape.dims()));
+                                  rank, " vs. ", output_shape.size()));
 
       // Now we expand each SparseTensors' indices and shape by
       // prefixing a dimension
@@ -426,7 +427,7 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
       // TODO: copy shape from TensorShape to &expanded_shape_t(1)
       // std::copy_n(&output_shape_t(0), rank, &expanded_shape_t(1));
       for (int i = 0; i < rank; ++i) {
-        expanded_shape_t(i + 1) = output_shape.dim_size(i);
+        expanded_shape_t(i + 1) = output_shape[i];
       }
       TensorShape expanded_tensor_shape(expanded_shape_t);
 
@@ -463,6 +464,7 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors_to_concat;
+    tensors_to_concat.reserve(N);
     for (int i = 0; i < N; ++i) {
       tensors_to_concat.emplace_back(std::move(indices_to_concat[i]),
                                      std::move(values_to_concat[i]),
@@ -473,7 +475,7 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
 
     Tensor final_output_shape(DT_INT64, TensorShape({output.dims()}));
 
-    std::copy_n(output.shape().dim_sizes().data(), output.dims(),
+    std::copy_n(output.shape().data(), output.dims(),
                 final_output_shape.vec<int64>().data());
 
     context->set_output(0, output.indices());

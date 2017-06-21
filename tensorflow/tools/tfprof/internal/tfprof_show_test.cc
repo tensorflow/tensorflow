@@ -71,24 +71,48 @@ class TFProfShowTest : public ::testing::Test {
 
 TEST_F(TFProfShowTest, DumpScopeMode) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
-  Options opts(5, 0, 0, 0, 0, {".*"}, "name",
+  Options opts(5, 0, 0, 0, 0, 0, -1, "name",
                {"VariableV2"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
-               {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
-               false, dump_file);
-  tf_stats_->PrintGraph("scope", opts);
+               {"params", "bytes", "micros", "float_ops"}, "file",
+               {{"outfile", dump_file}});
+  tf_stats_->ShowGraphNode("scope", opts);
 
   string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
   EXPECT_EQ(
-      "_TFProfRoot (--/370 params, --/0 flops, --/1.48KB, --/5us)\n  "
-      "conv2d/bias (5, 5/5 params, 0/0 flops, 20B/20B, 1us/1us)\n  "
-      "conv2d/kernel (3x3x3x5, 135/135 params, 0/0 flops, 540B/540B, "
-      "1us/1us)\n  conv2d_1/bias (5, 5/5 params, 0/0 flops, 20B/20B, "
-      "1us/1us)\n  conv2d_1/kernel (3x3x5x5, 225/225 params, 0/0 flops, "
-      "900B/900B, 2us/2us)\n",
+      "node name | # parameters | # float_ops | output bytes | execution "
+      "time\n_TFProfRoot (--/370 params, --/0 flops, --/1.48KB, --/5us)\n  "
+      "conv2d (--/140 params, --/0 flops, --/560B, --/2us)\n    conv2d/bias "
+      "(5, 5/5 params, 0/0 flops, 20B/20B, 1us/1us)\n    conv2d/kernel "
+      "(3x3x3x5, 135/135 params, 0/0 flops, 540B/540B, 1us/1us)\n  conv2d_1 "
+      "(--/230 params, --/0 flops, --/920B, --/3us)\n    conv2d_1/bias (5, 5/5 "
+      "params, 0/0 flops, 20B/20B, 1us/1us)\n    conv2d_1/kernel (3x3x5x5, "
+      "225/225 params, 0/0 flops, 900B/900B, 2us/2us)\n",
       dump_str);
 }
 
+TEST_F(TFProfShowTest, DumpOpMode) {
+  string dump_file = io::JoinPath(testing::TmpDir(), "dump");
+  Options opts(
+      5, 0, 0, 0, 0, 4, -1, "params", {".*"},  // accout_type_regexes
+      {".*"}, {""}, {".*"}, {""}, false,
+      {"params", "bytes", "micros", "float_ops", "occurrence", "input_shapes"},
+      "file", {{"outfile", dump_file}});
+  tf_stats_->ShowMultiGraphNode("op", opts);
+
+  string dump_str;
+  TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
+  EXPECT_EQ(
+      "nodename|outputbytes|executiontime|#parameters|#float_ops|opoccurrence|"
+      "inputshapes\nVariableV21.48KB(100.00%,17.10%),5us(100.00%,5.15%),"
+      "370params(100.00%,100.00%),0float_ops(100.00%,0.00%),4\n\ninput_type:\t("
+      "*4)\texec_time:5us\n\nAssign0B(0.00%,0.00%),0us(94.85%,0.00%),0params(0."
+      "00%,0.00%),0float_ops(100.00%,0.00%),8\n\ninput_type:0:unknown,\t1:"
+      "unknown\t(*8)\texec_time:0us\n\nConst1.54KB(58.87%,17.74%),1us(80.41%,1."
+      "03%),0params(0.00%,0.00%),0float_ops(98.49%,0.00%),24\n\ninput_type:\t(*"
+      "24)\texec_time:1us\n\n",
+      StringReplace(dump_str, " ", ""));
+}
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -20,20 +20,41 @@ import "tensorflow/compiler/xla/service/session.proto";
 
 package xla;
 
-// These settings control how XLA compiles and/or runs code.  Not all settings
-// will have an effect on every platform.
-//
-// When adding new fields, keep in mind that boolean fields default to false.
-message ExecutionOptions {
-  // When false, "unsafe" mathematical optimizations are enabled.  These
+// Debugging options for XLA. These options may change at any time - there are
+// no guarantees about backward or forward compatibility for these fields.
+message DebugOptions {
+  // HLO modules matching this regex will be dumped to a .dot file throughout
+  // various stages in compilation (file names are LOG(INFO)'d). Set to ".*" to
+  // dump *all* HLO modules.
+  string xla_generate_hlo_graph = 1;
+
+  // List of HLO passes to disable. These names must exactly match the pass
+  // names as specified by the HloPassInterface::name() method.
+  repeated string xla_disable_hlo_passes = 2;
+
+  // Numerical optimization level for the XLA compiler backend; the specific
+  // interpretation of this value is left to the backends.
+  int32 xla_backend_optimization_level = 3;
+
+  // When true, "unsafe" mathematical optimizations are enabled. These
   // transformations include but are not limited to:
   //
   //  - Reducing the precision of operations (e.g. using an approximate sin
   //    function, or transforming x/y into x * (1/y)).
   //  - Assuming that operations never produce or consume NaN or +/- Inf.
   //  - Assuming that +0 and -0 are indistinguishable.
-  bool disable_fast_math = 1;
+  bool xla_enable_fast_math = 4;
 
+  // Extra options to pass to the compilation backend; specific interpretation
+  // of these values is left to the backend.
+  map<string, string> xla_backend_extra_options = 5;
+}
+
+// These settings control how XLA compiles and/or runs code.  Not all settings
+// will have an effect on every platform.
+//
+// When adding new fields, keep in mind that boolean fields default to false.
+message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
   // may be faster when using this layout.
@@ -46,6 +67,8 @@ message ExecutionOptions {
   //
   // TODO(b/32083678): Changing the seed unnecessarily forces a recompilation.
   uint64 seed = 3;
+
+  DebugOptions debug_options = 4;
 }
 
 message SnapshotComputationRequest {
@@ -81,11 +104,11 @@ message TransferToClientRequest {
 }
 
 message TransferToClientResponse {
-  Literal literal = 1;
+  LiteralProto literal = 1;
 }
 
 message TransferToServerRequest {
-  Literal literal = 1;
+  LiteralProto literal = 1;
   DeviceHandle device_handle = 2;
 }
 
@@ -93,25 +116,8 @@ message TransferToServerResponse {
   GlobalDataHandle data = 1;
 }
 
-message TransferToServerInProcessRequest {
-  uint64 buffer = 1;
-  Shape shape = 2;
-}
-
-message TransferToServerInProcessResponse {
-  GlobalDataHandle data = 1;
-}
-
-message TransferToClientInProcessRequest {
-  GlobalDataHandle data = 1;
-  uint64 buffer = 2;
-}
-
-message TransferToClientInProcessResponse {
-}
-
 message TransferToInfeedRequest {
-  Literal literal = 1;
+  LiteralProto literal = 1;
   int64 replica_id = 2;
   DeviceHandle device_handle = 3;
 }
@@ -129,7 +135,7 @@ message TransferFromOutfeedRequest {
 }
 
 message TransferFromOutfeedResponse {
-  Literal literal = 1;
+  LiteralProto literal = 1;
 }
 
 message ResetDeviceRequest {

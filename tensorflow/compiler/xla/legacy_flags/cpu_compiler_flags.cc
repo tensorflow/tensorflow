@@ -36,23 +36,15 @@ static std::once_flag flags_init;
 // Allocate *flags.  Called via call_once(&flags_init,...).
 static void AllocateFlags() {
   flags = new CpuCompilerFlags;
-  flags->xla_cpu_llvm_opt_level = 2;
-  flags->xla_cpu_llvm_cl_opts = "";
   flags->xla_cpu_embed_ir = false;
-  flags->xla_cpu_parallel = false;
+  flags->xla_cpu_dump_debug_json_to = "";
   flag_list = new std::vector<tensorflow::Flag>({
-      tensorflow::Flag(
-          "xla_cpu_llvm_opt_level", &flags->xla_cpu_llvm_opt_level,
-          "The LLVM optimization level for the CPU XLA backend. "
-          "Valid range is from 0 to 3 where 0 means no optimizations."),
-      tensorflow::Flag(
-          "xla_cpu_llvm_cl_opts", &flags->xla_cpu_llvm_cl_opts,
-          "Comma-separated list of command line options to pass to LLVM."),
       tensorflow::Flag(
           "xla_cpu_embed_ir", &flags->xla_cpu_embed_ir,
           "Embed the LLVM IR module string in the resultant CpuExecutable."),
-      tensorflow::Flag("xla_cpu_parallel", &flags->xla_cpu_parallel,
-                       "Use the multi-threaded CPU backend."),
+      tensorflow::Flag("xla_cpu_dump_debug_json_to",
+                       &flags->xla_cpu_dump_debug_json_to,
+                       "Dump debug JSON to this directory."),
   });
   ParseFlagsFromEnv(*flag_list);
 }

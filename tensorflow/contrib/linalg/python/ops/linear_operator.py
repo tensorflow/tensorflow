@@ -18,13 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import contextlib
+
+import numpy as np
 
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["LinearOperator"]
 
@@ -45,16 +51,14 @@ class LinearOperator(object):
   To enable a public method, subclasses should implement the leading-underscore
   version of the method.  The argument signature should be identical except for
   the omission of `name="..."`.  For example, to enable
-  `apply(x, adjoint=False, name="apply")` a subclass should implement
-  `_apply(x, adjoint=False)`.
+  `matmul(x, adjoint=False, name="matmul")` a subclass should implement
+  `_matmul(x, adjoint=False)`.
 
   #### Performance contract
 
-  Subclasses should implement a method only if it can be done with a reasonable
-  performance increase over generic dense operations, either in time, parallel
-  scalability, or memory usage.  For example, if the determinant can only be
-  computed using `tf.matrix_determinant(self.to_dense())`, then determinants
-  should not be implemented.
+  Subclasses should only implement the assert methods
+  (e.g. `assert_non_singular`) if they can be done in less than `O(N^3)`
+  time.
 
   Class docstrings should contain an explanation of computational complexity.
   Since this is a high-performance library, attention should be paid to detail,
@@ -68,7 +72,7 @@ class LinearOperator(object):
 
   An example is:
 
-  `x` is a batch matrix with compatible shape for `apply` if
+  `x` is a batch matrix with compatible shape for `matmul` if
 
   ```
   operator.shape = [B1,...,Bb] + [M, N],  b >= 0,
@@ -100,12 +104,12 @@ class LinearOperator(object):
   operator.shape()
   ==> [2, 4, 4]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> Shape [2] Tensor
 
   x = ... Shape [2, 4, 5] Tensor
 
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4, 5] Tensor
   ```
 
@@ -131,6 +135,7 @@ class LinearOperator(object):
   * If `is_X == None` (the default), callers should have no expectation either
     way.
   """
+  __metaclass__ = abc.ABCMeta
 
   def __init__(self,
                dtype,
@@ -146,7 +151,7 @@ class LinearOperator(object):
     **Subclasses should copy-paste this `__init__` documentation.**
 
     Args:
-      dtype: The type of the this `LinearOperator`.  Arguments to `apply` and
+      dtype: The type of the this `LinearOperator`.  Arguments to `matmul` and
         `solve` will have to be this type.
       graph_parents: Python list of graph prerequisites of this `LinearOperator`
         Typically tensors that are passed during initialization.
@@ -167,16 +172,22 @@ class LinearOperator(object):
       ValueError:  If hints are set incorrectly.
     """
     # Check and auto-set flags.
-    if is_square is False:
-      if is_non_singular or is_positive_definite:
-        raise ValueError(
-            "A non-singular or positive definite operator is always square.")
-    self._is_square_set_by_user = is_square
-
     if is_positive_definite:
       if is_non_singular is False:
         raise ValueError("A positive definite matrix is always non-singular.")
       is_non_singular = True
+
+    if is_non_singular:
+      if is_square is False:
+        raise ValueError("A non-singular matrix is always square.")
+      is_square = True
+
+    if is_self_adjoint:
+      if is_square is False:
+        raise ValueError("A self-adjoint matrix is always square.")
+      is_square = True
+
+    self._is_square_set_or_implied_by_hints = is_square
 
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
@@ -239,15 +250,16 @@ class LinearOperator(object):
     """Return `True/False` depending on if this operator is square."""
     # Static checks done after __init__.  Why?  Because domain/range dimension
     # sometimes requires lots of work done in the derived class after init.
-    static_square_check = self.domain_dimension == self.range_dimension
-    if self._is_square_set_by_user is False and static_square_check:
+    auto_square_check = self.domain_dimension == self.range_dimension
+    if self._is_square_set_or_implied_by_hints is False and auto_square_check:
       raise ValueError(
           "User set is_square hint to False, but the operator was square.")
-    if self._is_square_set_by_user is None:
-      return static_square_check
+    if self._is_square_set_or_implied_by_hints is None:
+      return auto_square_check
 
-    return self._is_square_set_by_user
+    return self._is_square_set_or_implied_by_hints
 
+  @abc.abstractmethod
   def _shape(self):
     # Write this in derived class to enable all static shape methods.
     raise NotImplementedError("_shape is not implemented.")
@@ -265,6 +277,7 @@ class LinearOperator(object):
     """
     return self._shape()
 
+  @abc.abstractmethod
   def _shape_tensor(self):
     raise NotImplementedError("_shape_tensor is not implemented.")
 
@@ -367,8 +380,7 @@ class LinearOperator(object):
           self._cached_tensor_rank_tensor = ops.convert_to_tensor(
               self.tensor_rank)
         else:
-          self._cached_tensor_rank_tensor = array_ops.size(
-              self.shape_tensor())
+          self._cached_tensor_rank_tensor = array_ops.size(self.shape_tensor())
       return self._cached_tensor_rank_tensor
 
   @property
@@ -448,14 +460,70 @@ class LinearOperator(object):
       return self._cached_range_dimension_tensor
 
   def _assert_non_singular(self):
+    """Private default implementation of _assert_non_singular."""
+    logging.warn(
+        "Using (possibly slow) default implementation of assert_non_singular."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    if self._can_use_cholesky():
+      return self.assert_positive_definite()
+    else:
+      singular_values = linalg_ops.svd(
+          self._get_cached_dense_matrix(), compute_uv=False)
+      # TODO(langmore) Add .eig and .cond as methods.
+      cond = (math_ops.reduce_max(singular_values, axis=-1) /
+              math_ops.reduce_min(singular_values, axis=-1))
+      return check_ops.assert_less(
+          cond,
+          self._max_condition_number_to_be_non_singular(),
+          message="Singular matrix up to precision epsilon.")
     raise NotImplementedError("assert_non_singular is not implemented.")
 
+  def _max_condition_number_to_be_non_singular(self):
+    """Return the maximum condition number that we consider nonsingular."""
+    with ops.name_scope("max_nonsingular_condition_number"):
+      dtype_eps = np.finfo(self.dtype.as_numpy_dtype).eps
+      eps = math_ops.cast(
+          math_ops.reduce_max([
+              100.,
+              math_ops.cast(self.range_dimension_tensor(), self.dtype),
+              math_ops.cast(self.domain_dimension_tensor(), self.dtype)
+          ]), self.dtype) * dtype_eps
+      return 1. / eps
+
   def assert_non_singular(self, name="assert_non_singular"):
-    """Returns an `Op` that asserts this operator is non singular."""
+    """Returns an `Op` that asserts this operator is non singular.
+
+    This operator is considered non-singular if
+
+    ```
+    ConditionNumber < max{100, range_dimension, domain_dimension} * eps,
+    eps := np.finfo(self.dtype.as_numpy_dtype).eps
+    ```
+
+    Args:
+      name:  A string name to prepend to created ops.
+
+    Returns:
+      An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
+        the operator is singular.
+    """
     with self._name_scope(name):
       return self._assert_non_singular()
 
   def _assert_positive_definite(self):
+    """Default implementation of _assert_positive_definite."""
+    logging.warn(
+        "Using (possibly slow) default implementation of "
+        "assert_positive_definite."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    # If the operator is self-adjoint, then checking that
+    # Cholesky decomposition succeeds + results in positive diag is necessary
+    # and sufficient.
+    if self.is_self_adjoint:
+      return check_ops.assert_positive(
+          array_ops.matrix_diag_part(self._get_cached_chol()),
+          message="Matrix was not positive definite.")
+    # We have no generic check for positive definite.
     raise NotImplementedError("assert_positive_definite is not implemented.")
 
   def assert_positive_definite(self, name="assert_positive_definite"):
@@ -469,16 +537,35 @@ class LinearOperator(object):
       name:  A name to give this `Op`.
 
     Returns:
-      An `Op` that asserts this operator is positive definite.
+      An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
+        the operator is not positive definite.
     """
     with self._name_scope(name):
       return self._assert_positive_definite()
 
   def _assert_self_adjoint(self):
-    raise NotImplementedError("assert_self_adjoint is not implemented.")
+    dense = self._get_cached_dense_matrix()
+    logging.warn(
+        "Using (possibly slow) default implementation of assert_self_adjoint."
+        "  Requires conversion to a dense matrix.")
+    return check_ops.assert_equal(
+        dense,
+        linear_operator_util.matrix_adjoint(dense),
+        message="Matrix was not equal to its adjoint.")
 
   def assert_self_adjoint(self, name="assert_self_adjoint"):
-    """Returns an `Op` that asserts this operator is self-adjoint."""
+    """Returns an `Op` that asserts this operator is self-adjoint.
+
+    Here we check that this operator is *exactly* equal to its hermitian
+    transpose.
+
+    Args:
+      name:  A string name to prepend to created ops.
+
+    Returns:
+      An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
+        the operator is not self-adjoint.
+    """
     with self._name_scope(name):
       return self._assert_self_adjoint()
 
@@ -486,14 +573,29 @@ class LinearOperator(object):
     """Check that arg.dtype == self.dtype."""
     if arg.dtype != self.dtype:
       raise TypeError(
-          "Expected argument to have dtype %s.  Found: %s in tensor %s"
-          % (self.dtype, arg.dtype, arg))
+          "Expected argument to have dtype %s.  Found: %s in tensor %s" %
+          (self.dtype, arg.dtype, arg))
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
-    raise NotImplementedError("_apply is not implemented.")
+  @abc.abstractmethod
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
+    raise NotImplementedError("_matmul is not implemented.")
 
-  def apply(self, x, adjoint=False, adjoint_arg=False, name="apply"):
-    """Transform `x` with left multiplication:  `x --> Ax`.
+  def matmul(self, x, adjoint=False, adjoint_arg=False, name="matmul"):
+    """Transform [batch] matrix `x` with left multiplication:  `x --> Ax`.
+
+    ```python
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
+    operator = LinearOperator(...)
+    operator.shape = [..., M, N]
+
+    X = ... # shape [..., N, R], batch matrix, R > 0.
+
+    Y = operator.matmul(X)
+    Y.shape
+    ==> [..., M, R]
+
+    Y[..., :, r] = sum_j A[..., :, j] X[j, r]
+    ```
 
     Args:
       x: `Tensor` with compatible shape and same `dtype` as `self`.
@@ -514,10 +616,54 @@ class LinearOperator(object):
       arg_dim = -1 if adjoint_arg else -2
       self.shape[self_dim].assert_is_compatible_with(x.get_shape()[arg_dim])
 
-      return self._apply(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+      return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
+  def _matvec(self, x, adjoint=False):
+    x_mat = array_ops.expand_dims(x, axis=-1)
+    y_mat = self.matmul(x_mat, adjoint=adjoint)
+    return array_ops.squeeze(y_mat, axis=-1)
+
+  def matvec(self, x, adjoint=False, name="matvec"):
+    """Transform [batch] vector `x` with left multiplication:  `x --> Ax`.
+
+    ```python
+    # Make an operator acting like batch matric A.  Assume A.shape = [..., M, N]
+    operator = LinearOperator(...)
+
+    X = ... # shape [..., N], batch vector
+
+    Y = operator.matvec(X)
+    Y.shape
+    ==> [..., M]
+
+    Y[..., :] = sum_j A[..., :, j] X[..., j]
+    ```
+
+    Args:
+      x: `Tensor` with compatible shape and same `dtype` as `self`.
+        `x` is treated as a [batch] vector meaning for every set of leading
+        dimensions, the last dimension defines a vector.
+        See class docstring for definition of compatibility.
+      adjoint: Python `bool`.  If `True`, left multiply by the adjoint: `A^H x`.
+      name:  A name for this `Op.
+
+    Returns:
+      A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
+    """
+    with self._name_scope(name, values=[x]):
+      x = ops.convert_to_tensor(x, name="x")
+      self._check_input_dtype(x)
+      self_dim = -2 if adjoint else -1
+      self.shape[self_dim].assert_is_compatible_with(x.get_shape()[-1])
+      return self._matvec(x, adjoint=adjoint)
 
   def _determinant(self):
-    raise NotImplementedError("_det is not implemented.")
+    logging.warn(
+        "Using (possibly slow) default implementation of determinant."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    if self._can_use_cholesky():
+      return math_ops.exp(self.log_abs_determinant())
+    return linalg_ops.matrix_determinant(self._matrix)
 
   def determinant(self, name="det"):
     """Determinant for every batch member.
@@ -539,7 +685,14 @@ class LinearOperator(object):
       return self._determinant()
 
   def _log_abs_determinant(self):
-    raise NotImplementedError("_log_abs_det is not implemented.")
+    logging.warn(
+        "Using (possibly slow) default implementation of determinant."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    if self._can_use_cholesky():
+      diag = array_ops.matrix_diag_part(self._get_cached_chol())
+      return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
+    abs_det = math_ops.abs(self.determinant())
+    return math_ops.log(abs_det)
 
   def log_abs_determinant(self, name="log_abs_det"):
     """Log absolute value of determinant for every batch member.
@@ -561,33 +714,47 @@ class LinearOperator(object):
       return self._log_abs_determinant()
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    # Since this is an exact solve method for all rhs, this will only be
-    # available for non-singular (batch) operators, in particular the operator
-    # must be square.
-    raise NotImplementedError("_solve is not implemented.")
+    """Default implementation of _solve."""
+    if self.is_square is False:
+      raise NotImplementedError(
+          "Solve is not yet implemented for non-square operators.")
+    logging.warn(
+        "Using (possibly slow) default implementation of solve."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
+    if self._can_use_cholesky():
+      return linalg_ops.cholesky_solve(self._get_cached_chol(), rhs)
+    return linalg_ops.matrix_solve(
+        self._get_cached_dense_matrix(), rhs, adjoint=adjoint)
 
   def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
-    """Solve `R` (batch) systems of equations exactly: `A X = rhs`.
+    """Solve (exact or approx) `R` (batch) systems of equations: `A X = rhs`.
+
+    The returned `Tensor` will be close to an exact solution if `A` is well
+    conditioned. Otherwise closeness will vary. See class docstring for details.
 
     Examples:
 
     ```python
-    # Create an operator acting like a 10 x 2 x 2 matrix.
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
     operator = LinearOperator(...)
-    operator.shape # = 10 x 2 x 2
+    operator.shape = [..., M, N]
 
-    # Solve one linear system (R = 1) for every member of the length 10 batch.
-    RHS = ... # shape 10 x 2 x 1
-    X = operator.solve(RHS)  # shape 10 x 2 x 1
+    # Solve R > 0 linear systems for every member of the batch.
+    RHS = ... # shape [..., M, R]
 
-    # Solve five linear systems (R = 5) for every member of the length 10 batch.
-    RHS = ... # shape 10 x 2 x 5
     X = operator.solve(RHS)
-    X[3, :, 2]  # Solution to the linear system A[3, :, :] X = RHS[3, :, 2]
+    # X[..., :, r] is the solution to the r'th linear system
+    # sum_j A[..., :, j] X[..., j, r] = RHS[..., :, r]
+
+    operator.matmul(X)
+    ==> RHS
     ```
 
     Args:
       rhs: `Tensor` with same `dtype` as this operator and compatible shape.
+        `rhs` is treated like a [batch] matrix meaning for every set of leading
+        dimensions, the last two dimensions defines a matrix.
         See class docstring for definition of compatibility.
       adjoint: Python `bool`.  If `True`, solve the system involving the adjoint
         of this `LinearOperator`:  `A^H X = rhs`.
@@ -619,8 +786,63 @@ class LinearOperator(object):
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
+  def _solvevec(self, rhs, adjoint=False):
+    """Default implementation of _solvevec."""
+    rhs_mat = array_ops.expand_dims(rhs, axis=-1)
+    solution_mat = self.solve(rhs_mat, adjoint=adjoint)
+    return array_ops.squeeze(solution_mat, axis=-1)
+
+  def solvevec(self, rhs, adjoint=False, name="solve"):
+    """Solve single equation with best effort: `A X = rhs`.
+
+    The returned `Tensor` will be close to an exact solution if `A` is well
+    conditioned. Otherwise closeness will vary. See class docstring for details.
+
+    Examples:
+
+    ```python
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
+    operator = LinearOperator(...)
+    operator.shape = [..., M, N]
+
+    # Solve one linear system for every member of the batch.
+    RHS = ... # shape [..., M]
+
+    X = operator.solvevec(RHS)
+    # X is the solution to the linear system
+    # sum_j A[..., :, j] X[..., j] = RHS[..., :]
+
+    operator.matvec(X)
+    ==> RHS
+    ```
+
+    Args:
+      rhs: `Tensor` with same `dtype` as this operator.
+        `rhs` is treated like a [batch] vector meaning for every set of leading
+        dimensions, the last dimension defines a vector.  See class docstring
+        for definition of compatibility regarding batch dimensions.
+      adjoint: Python `bool`.  If `True`, solve the system involving the adjoint
+        of this `LinearOperator`:  `A^H X = rhs`.
+      name:  A name scope to use for ops added by this method.
+
+    Returns:
+      `Tensor` with shape `[...,N]` and same `dtype` as `rhs`.
+
+    Raises:
+      NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
+    """
+    with self._name_scope(name, values=[rhs]):
+      rhs = ops.convert_to_tensor(rhs, name="rhs")
+      self._check_input_dtype(rhs)
+      self_dim = -1 if adjoint else -2
+      self.shape[self_dim].assert_is_compatible_with(rhs.get_shape()[-1])
+
+      return self._solvevec(rhs, adjoint=adjoint)
+
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""
+    logging.warn("Using (possibly slow) default implementation of to_dense."
+                 "  Converts by self.matmul(identity).")
     if self.batch_shape.is_fully_defined():
       batch_shape = self.batch_shape
     else:
@@ -632,7 +854,7 @@ class LinearOperator(object):
       n = self.domain_dimension_tensor()
 
     eye = linalg_ops.eye(num_rows=n, batch_shape=batch_shape, dtype=self.dtype)
-    return self.apply(eye)
+    return self.matmul(eye)
 
   def to_dense(self, name="to_dense"):
     """Return a dense (batch) matrix representing this operator."""
@@ -641,7 +863,7 @@ class LinearOperator(object):
 
   def _diag_part(self):
     """Generic and often inefficient implementation.  Override often."""
-    return array_ops.matrix_diag_part(self.to_dense())
+    return array_ops.matrix_diag_part(self._get_cached_dense_matrix())
 
   def diag_part(self, name="diag_part"):
     """Efficiently get the [batch] diagonal part of this operator.
@@ -673,7 +895,7 @@ class LinearOperator(object):
 
   def _add_to_tensor(self, x):
     # Override if a more efficient implementation is available.
-    return self.to_dense() + x
+    return self._get_cached_dense_matrix() + x
 
   def add_to_tensor(self, x, name="add_to_tensor"):
     """Add matrix represented by this operator to `x`.  Equivalent to `A + x`.
@@ -689,3 +911,18 @@ class LinearOperator(object):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
+
+  def _can_use_cholesky(self):
+    # TODO(langmore) Add complex types when tf.cholesky can use them.
+    return (not self.dtype.is_complex and self.is_self_adjoint and
+            self.is_positive_definite)
+
+  def _get_cached_dense_matrix(self):
+    if not hasattr(self, "_cached_dense_matrix"):
+      self._cached_dense_matrix = self.to_dense()
+    return self._cached_dense_matrix
+
+  def _get_cached_chol(self):
+    if not hasattr(self, "_cached_chol"):
+      self._cached_chol = linalg_ops.cholesky(self._get_cached_dense_matrix())
+    return self._cached_chol

@@ -76,8 +76,7 @@ XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
           options,
           Device::BuildDeviceAttributes(
               "", type, Bytes(256 << 20), DeviceLocality(),
-              strings::StrCat("device: XLA compilation device ", type.type())),
-          cpu_allocator()),
+              strings::StrCat("device: XLA compilation device ", type.type()))),
       allocator_(new XlaCompilationAllocator()) {}
 
 XlaCompilationDevice::~XlaCompilationDevice() {}
@@ -119,7 +118,5 @@ void XlaExpression::set_constant_value(Tensor value) {
   has_constant_value_ = true;
   constant_value_ = std::move(value);
 }
-
-void XlaExpression::set_variable_id(int id) { variable_id_ = id; }
 
 }  // namespace tensorflow

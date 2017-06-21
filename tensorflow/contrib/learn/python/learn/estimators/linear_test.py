@@ -37,6 +37,7 @@ from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer as sdca_optimizer_lib
 from tensorflow.contrib.metrics.python.ops import metric_ops
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -172,6 +173,49 @@ class LinearClassifierTest(test.TestCase):
     scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
+  def testMultiClassLabelKeys(self):
+    """Tests n_classes > 2 with label_keys vocabulary for labels."""
+    # Byte literals needed for python3 test to pass.
+    label_keys = [b'label0', b'label1', b'label2']
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      labels = constant_op.constant(
+          [[label_keys[1]], [label_keys[0]], [label_keys[0]]],
+          dtype=dtypes.string)
+      return features, labels
+
+    language_column = feature_column_lib.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+
+    classifier = linear.LinearClassifier(
+        n_classes=3,
+        feature_columns=[language_column],
+        label_keys=label_keys)
+
+    classifier.fit(input_fn=_input_fn, steps=50)
+
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+    self.assertIn('loss', scores)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predicted_classes = list(
+        classifier.predict_classes(
+            input_fn=predict_input_fn, as_iterable=True))
+    self.assertEqual(3, len(predicted_classes))
+    for pred in predicted_classes:
+      self.assertIn(pred, label_keys)
+    predictions = list(
+        classifier.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllEqual(predicted_classes, predictions)
+
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
 
@@ -188,6 +232,32 @@ class LinearClassifierTest(test.TestCase):
 
     classifier = linear.LinearClassifier(feature_columns=[feature_column])
 
+    classifier.fit(input_fn=_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testEstimatorWithCoreFeatureColumns(self):
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'age':
+              input_lib.limit_epochs(
+                  constant_op.constant([[.8], [0.2], [.1]]),
+                  num_epochs=num_epochs),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      return features, constant_op.constant([[1], [0], [0]], dtype=dtypes.int32)
+
+    language_column = fc_core.categorical_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [language_column, fc_core.numeric_column('age')]
+
+    classifier = linear.LinearClassifier(feature_columns=feature_columns)
     classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
@@ -659,7 +729,7 @@ class LinearClassifierTest(test.TestCase):
     self.assertLess(loss, 0.07)
 
   def testSdcaOptimizerRealValuedFeatures(self):
-    """Tests LinearClasssifier with SDCAOptimizer and real valued features."""
+    """Tests LinearClassifier with SDCAOptimizer and real valued features."""
 
     def input_fn():
       return {
@@ -706,7 +776,7 @@ class LinearClassifierTest(test.TestCase):
     self.assertLess(loss, 0.05)
 
   def testSdcaOptimizerBucketizedFeatures(self):
-    """Tests LinearClasssifier with SDCAOptimizer and bucketized features."""
+    """Tests LinearClassifier with SDCAOptimizer and bucketized features."""
 
     def input_fn():
       return {
@@ -732,14 +802,14 @@ class LinearClassifierTest(test.TestCase):
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testSdcaOptimizerSparseFeatures(self):
-    """Tests LinearClasssifier with SDCAOptimizer and sparse features."""
+    """Tests LinearClassifier with SDCAOptimizer and sparse features."""
 
     def input_fn():
       return {
           'example_id':
               constant_op.constant(['1', '2', '3']),
           'price':
-              constant_op.constant([[0.4], [0.6], [0.3]]),
+              constant_op.constant([0.4, 0.6, 0.3]),
           'country':
               sparse_tensor.SparseTensor(
                   values=['IT', 'US', 'GB'],
@@ -763,7 +833,7 @@ class LinearClassifierTest(test.TestCase):
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testSdcaOptimizerWeightedSparseFeatures(self):
-    """LinearClasssifier with SDCAOptimizer and weighted sparse features."""
+    """LinearClassifier with SDCAOptimizer and weighted sparse features."""
 
     def input_fn():
       return {
@@ -794,7 +864,7 @@ class LinearClassifierTest(test.TestCase):
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testSdcaOptimizerCrossedFeatures(self):
-    """Tests LinearClasssifier with SDCAOptimizer and crossed features."""
+    """Tests LinearClassifier with SDCAOptimizer and crossed features."""
 
     def input_fn():
       return {
@@ -827,7 +897,7 @@ class LinearClassifierTest(test.TestCase):
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testSdcaOptimizerMixedFeatures(self):
-    """Tests LinearClasssifier with SDCAOptimizer and a mix of features."""
+    """Tests LinearClassifier with SDCAOptimizer and a mix of features."""
 
     def input_fn():
       return {
@@ -1408,7 +1478,7 @@ class LinearRegressorTest(test.TestCase):
           'example_id':
               constant_op.constant(['1', '2', '3']),
           'price':
-              constant_op.constant([[0.6], [0.8], [0.3]]),
+              constant_op.constant([0.6, 0.8, 0.3]),
           'sq_footage':
               constant_op.constant([[900.0], [700.0], [600.0]]),
           'country':
@@ -1439,7 +1509,7 @@ class LinearRegressorTest(test.TestCase):
     self.assertLess(loss, 0.05)
 
   def testSdcaOptimizerSparseFeaturesWithL1Reg(self):
-    """Tests LinearClasssifier with SDCAOptimizer and sparse features."""
+    """Tests LinearClassifier with SDCAOptimizer and sparse features."""
 
     def input_fn():
       return {
@@ -1511,7 +1581,7 @@ class LinearRegressorTest(test.TestCase):
     self.assertLess(l1_reg_weights_norm, no_l1_reg_weights_norm)
 
   def testSdcaOptimizerBiasOnly(self):
-    """Tests LinearClasssifier with SDCAOptimizer and validates bias weight."""
+    """Tests LinearClassifier with SDCAOptimizer and validates bias weight."""
 
     def input_fn():
       """Testing the bias weight when it's the only feature present.
@@ -1544,7 +1614,7 @@ class LinearRegressorTest(test.TestCase):
         regressor.get_variable_value('linear/bias_weight')[0], 0.25, err=0.1)
 
   def testSdcaOptimizerBiasAndOtherColumns(self):
-    """Tests LinearClasssifier with SDCAOptimizer and validates bias weight."""
+    """Tests LinearClassifier with SDCAOptimizer and validates bias weight."""
 
     def input_fn():
       """Testing the bias weight when there are other features present.
@@ -1606,7 +1676,7 @@ class LinearRegressorTest(test.TestCase):
         regressor.get_variable_value('linear/b/weight')[0], 0.0, err=0.05)
 
   def testSdcaOptimizerBiasAndOtherColumnsFabricatedCentered(self):
-    """Tests LinearClasssifier with SDCAOptimizer and validates bias weight."""
+    """Tests LinearClassifier with SDCAOptimizer and validates bias weight."""
 
     def input_fn():
       """Testing the bias weight when there are other features present.

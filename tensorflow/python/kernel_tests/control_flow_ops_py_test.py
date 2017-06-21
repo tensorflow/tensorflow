@@ -45,6 +45,8 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -322,6 +324,15 @@ class ControlFlowTest(test.TestCase):
     fn2 = lambda: math_ops.subtract(values, 1)
     with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
       _ = control_flow_ops.cond(False, fn1, fn2)
+
+  def testCondInt(self):
+    p = array_ops.placeholder(dtypes.bool, shape=[])
+    v = constant_op.constant(10)
+    fn1 = lambda: math_ops.add(v, 1)
+    fn2 = lambda: math_ops.subtract(v, 1)
+    y = control_flow_ops.cond(p, fn1, fn2)
+    grad = gradients_impl.gradients(y, [v])
+    self.assertAllEqual([None], grad)
 
   def testFetchables(self):
     with self.test_session() as sess:
@@ -1074,6 +1085,27 @@ class ControlFlowTest(test.TestCase):
                                            (constant_op.constant(5),))
       self.assertEqual(0, sess.run(loop))
 
+  def testWhileCondWithControl_1(self):
+    with self.test_session():
+      v = variable_scope.get_variable(
+          "v", [], initializer=init_ops.constant_initializer(2))
+      i0 = constant_op.constant(0)
+      with ops.control_dependencies([i0]):
+        def loop_condition(i):
+          return i < 4
+
+        def loop_body(i):
+          some_cond = control_flow_ops.cond(
+              constant_op.constant(True),
+              lambda: state_ops.assign(v, math_ops.square(v)),
+              lambda: v)
+          with ops.control_dependencies([some_cond]):
+            return i + 1
+      r = control_flow_ops.while_loop(loop_condition, loop_body, (i0,))
+      variables.global_variables_initializer().run()
+      self.assertEqual(4, r.eval())
+      self.assertAllClose(65536.0, v.eval())
+
   def testWhileCondExitControl(self):
     with self.test_session():
       v = variables.Variable(1)
@@ -1391,7 +1423,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
-    gpu_dev_name = test.gpu_device_name() if test.is_gpu_available(
+    gpu_dev_name = test.gpu_device_name().lower() if test.is_gpu_available(
     ) else "/gpu:0"
     gpu_short_name = gpu_dev_name.split("/")[-1]
 
@@ -2138,6 +2170,29 @@ class ControlFlowTest(test.TestCase):
       r = math_ops.add(r, rg)
       r = gradients_impl.gradients(r, y)[0]
       self.assertEqual(388.0, r.eval())
+
+  def testStopGradMultiFlows(self):
+    with self.test_session():
+      def body(i, y, r):
+        x = variable_scope.get_variable(
+            "x", shape=(), dtype=dtypes.float32,
+            initializer=init_ops.ones_initializer())
+        y *= x
+        return [i + 1, y, r + math_ops.reduce_sum(y)]
+
+      i0 = constant_op.constant(0)
+      y0 = array_ops.ones(5)
+      r0 = constant_op.constant(0.0)
+      cond = lambda i, y, r: i < 1
+      _, _, r = control_flow_ops.while_loop(
+          cond, body, [i0, y0, r0], back_prop=True)
+
+      vars_ = variables.global_variables()
+      grads = linalg_ops.norm(gradients_impl.gradients(r, vars_)[0])
+      z = math_ops.add(r, array_ops.stop_gradient(math_ops.reduce_sum(grads)))
+      result = gradients_impl.gradients(z, vars_)[0]
+      variables.global_variables_initializer().run()
+      self.assertEqual(5.0, result.eval())
 
   def testOneValueCond(self):
     with self.test_session():

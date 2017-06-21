@@ -30,7 +30,7 @@ class DocGeneratorVisitor(object):
     """Make a visitor.
 
     As this visitor is starting its traversal at a module or class, it will not
-    be old the name of that object during traversal. `root_name` is the name it
+    be told the name of that object during traversal. `root_name` is the name it
     should use for that object, effectively prefixing all names with
     "root_name.".
 
@@ -170,7 +170,7 @@ class DocGeneratorVisitor(object):
     master names to a lexicographically sorted list of all aliases for that name
     (incl. the master name).
 
-    All these are computed and set as fields if they haven't aready.
+    All these are computed and set as fields if they haven't already.
     """
     if self._reverse_index is not None:
       return

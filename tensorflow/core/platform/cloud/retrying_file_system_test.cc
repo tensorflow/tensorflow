@@ -25,6 +25,7 @@ typedef std::vector<std::tuple<string, Status>> ExpectedCalls;
 
 ExpectedCalls CreateRetriableErrors(const string& method, int n) {
   ExpectedCalls expected_calls;
+  expected_calls.reserve(n);
   for (int i = 0; i < n; i++) {
     expected_calls.emplace_back(std::make_tuple(
         method, errors::Unavailable(strings::StrCat("Retriable error #", i))));
@@ -35,7 +36,7 @@ ExpectedCalls CreateRetriableErrors(const string& method, int n) {
 // A class to manage call expectations on mock implementations.
 class MockCallSequence {
  public:
-  MockCallSequence(const ExpectedCalls& calls) : calls_(calls) {}
+  explicit MockCallSequence(const ExpectedCalls& calls) : calls_(calls) {}
 
   ~MockCallSequence() {
     EXPECT_TRUE(calls_.empty())
@@ -57,7 +58,7 @@ class MockCallSequence {
 
 class MockRandomAccessFile : public RandomAccessFile {
  public:
-  MockRandomAccessFile(const ExpectedCalls& calls) : calls_(calls) {}
+  explicit MockRandomAccessFile(const ExpectedCalls& calls) : calls_(calls) {}
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     return calls_.ConsumeNextCall("Read");
@@ -69,7 +70,7 @@ class MockRandomAccessFile : public RandomAccessFile {
 
 class MockWritableFile : public WritableFile {
  public:
-  MockWritableFile(const ExpectedCalls& calls) : calls_(calls) {}
+  explicit MockWritableFile(const ExpectedCalls& calls) : calls_(calls) {}
   Status Append(const StringPiece& data) override {
     return calls_.ConsumeNextCall("Append");
   }
@@ -83,7 +84,7 @@ class MockWritableFile : public WritableFile {
 
 class MockFileSystem : public FileSystem {
  public:
-  MockFileSystem(const ExpectedCalls& calls) : calls_(calls) {}
+  explicit MockFileSystem(const ExpectedCalls& calls) : calls_(calls) {}
 
   Status NewRandomAccessFile(
       const string& fname, std::unique_ptr<RandomAccessFile>* result) override {

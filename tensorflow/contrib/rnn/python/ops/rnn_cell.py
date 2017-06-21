@@ -23,8 +23,6 @@ import math
 
 from tensorflow.contrib.compiler import jit
 from tensorflow.contrib.layers.python.layers import layers
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
@@ -34,12 +32,10 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-
-
-_checked_scope = core_rnn_cell_impl._checked_scope  # pylint: disable=protected-access
 
 
 def _get_concat_variable(name, shape, dtype, num_shards):
@@ -78,12 +74,12 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
   return shards
 
 
-class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
+class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
 
-    http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+    http://www.bioinf.jku.at/publications/older/2604.pdf
 
   S. Hochreiter and J. Schmidhuber.
   "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
@@ -156,14 +152,12 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
     self._reuse = reuse
 
     if num_proj:
-      self._state_size = (
-          core_rnn_cell.LSTMStateTuple(num_units, num_proj)
-          if state_is_tuple else num_units + num_proj)
+      self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
+                          if state_is_tuple else num_units + num_proj)
       self._output_size = num_proj
     else:
-      self._state_size = (
-          core_rnn_cell.LSTMStateTuple(num_units, num_units)
-          if state_is_tuple else 2 * num_units)
+      self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_units)
+                          if state_is_tuple else 2 * num_units)
       self._output_size = num_units
 
   @property
@@ -256,12 +250,12 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
         m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
         # pylint: enable=invalid-unary-operand-type
 
-    new_state = (core_rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple else
-                 array_ops.concat([c, m], 1))
+    new_state = (rnn_cell_impl.LSTMStateTuple(c, m)
+                 if self._state_is_tuple else array_ops.concat([c, m], 1))
     return m, new_state
 
 
-class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
+class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
   """Time-Frequency Long short-term memory unit (LSTM) recurrent network cell.
 
   This implementation is based on:
@@ -429,7 +423,7 @@ class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
     return freq_inputs
 
 
-class GridLSTMCell(core_rnn_cell.RNNCell):
+class GridLSTMCell(rnn_cell_impl.RNNCell):
   """Grid Long short-term memory unit (LSTM) recurrent network cell.
 
   The default is based on:
@@ -468,7 +462,7 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
         state is clipped by this value prior to the cell output activation.
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
-      num_unit_shards: (optional) int, defualt 1, How to split the weight
+      num_unit_shards: (optional) int, default 1, How to split the weight
         matrix. If > 1,the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
@@ -924,7 +918,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
         state is clipped by this value prior to the cell output activation.
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
-      num_unit_shards: (optional) int, defualt 1, How to split the weight
+      num_unit_shards: (optional) int, default 1, How to split the weight
         matrix. If > 1,the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
@@ -1022,11 +1016,11 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
 
 
 # pylint: disable=protected-access
-_linear = core_rnn_cell_impl._linear
+_linear = rnn_cell_impl._linear
 # pylint: enable=protected-access
 
 
-class AttentionCellWrapper(core_rnn_cell.RNNCell):
+class AttentionCellWrapper(rnn_cell_impl.RNNCell):
   """Basic attention cell wrapper.
 
   Implementation based on https://arxiv.org/abs/1409.0473.
@@ -1060,7 +1054,7 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
           `state_is_tuple` is `False` or if attn_length is zero or less.
     """
     super(AttentionCellWrapper, self).__init__(_reuse=reuse)
-    if not isinstance(cell, core_rnn_cell.RNNCell):
+    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
       raise TypeError("The parameter cell is not RNNCell.")
     if nest.is_sequence(cell.state_size) and not state_is_tuple:
       raise ValueError("Cell returns tuple of states, but the flag "
@@ -1157,7 +1151,90 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
       return new_attns, new_attn_states
 
 
-class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
+class HighwayWrapper(rnn_cell_impl.RNNCell):
+  """RNNCell wrapper that adds highway connection on cell input and output.
+
+  Based on:
+    R. K. Srivastava, K. Greff, and J. Schmidhuber, "Highway networks",
+    arXiv preprint arXiv:1505.00387, 2015.
+    https://arxiv.org/abs/1505.00387
+  """
+
+  def __init__(self, cell,
+               couple_carry_transform_gates=True,
+               carry_bias_init=1.0):
+    """Constructs a `HighwayWrapper` for `cell`.
+
+    Args:
+      cell: An instance of `RNNCell`.
+      couple_carry_transform_gates: boolean, should the Carry and Transform gate
+        be coupled.
+      carry_bias_init: float, carry gates bias initialization.
+    """
+    self._cell = cell
+    self._couple_carry_transform_gates = couple_carry_transform_gates
+    self._carry_bias_init = carry_bias_init
+
+  @property
+  def state_size(self):
+    return self._cell.state_size
+
+  @property
+  def output_size(self):
+    return self._cell.output_size
+
+  def zero_state(self, batch_size, dtype):
+    with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
+      return self._cell.zero_state(batch_size, dtype)
+
+  def _highway(self, inp, out):
+    input_size = inp.get_shape().with_rank(2)[1].value
+    carry_weight = vs.get_variable("carry_w", [input_size, input_size])
+    carry_bias = vs.get_variable(
+        "carry_b", [input_size],
+        initializer=init_ops.constant_initializer(
+            self._carry_bias_init))
+    carry = math_ops.sigmoid(nn_ops.xw_plus_b(inp, carry_weight, carry_bias))
+    if self._couple_carry_transform_gates:
+      transform = 1 - carry
+    else:
+      transform_weight = vs.get_variable("transform_w",
+                                         [input_size, input_size])
+      transform_bias = vs.get_variable(
+          "transform_b", [input_size],
+          initializer=init_ops.constant_initializer(
+              -self._carry_bias_init))
+      transform = math_ops.sigmoid(nn_ops.xw_plus_b(inp,
+                                                    transform_weight,
+                                                    transform_bias))
+    return inp * carry + out * transform
+
+  def __call__(self, inputs, state, scope=None):
+    """Run the cell and add its inputs to its outputs.
+
+    Args:
+      inputs: cell inputs.
+      state: cell state.
+      scope: optional cell scope.
+
+    Returns:
+      Tuple of cell outputs and new state.
+
+    Raises:
+      TypeError: If cell inputs and outputs have different structure (type).
+      ValueError: If cell inputs and outputs have different structure (value).
+    """
+    outputs, new_state = self._cell(inputs, state, scope=scope)
+    nest.assert_same_structure(inputs, outputs)
+    # Ensure shapes match
+    def assert_shape_match(inp, out):
+      inp.get_shape().assert_is_compatible_with(out.get_shape())
+    nest.map_structure(assert_shape_match, inputs, outputs)
+    res_outputs = nest.map_structure(self._highway, inputs, outputs)
+    return (res_outputs, new_state)
+
+
+class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
   """LSTM unit with layer normalization and recurrent dropout.
 
   This class adds layer normalization and recurrent dropout to a
@@ -1219,7 +1296,7 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+    return rnn_cell_impl.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
@@ -1239,10 +1316,10 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
   def _linear(self, args):
     out_size = 4 * self._num_units
     proj_size = args.get_shape()[-1]
-    weights = vs.get_variable("weights", [proj_size, out_size])
+    weights = vs.get_variable("kernel", [proj_size, out_size])
     out = math_ops.matmul(args, weights)
     if not self._layer_norm:
-      bias = vs.get_variable("biases", [out_size])
+      bias = vs.get_variable("bias", [out_size])
       out = nn_ops.bias_add(out, bias)
     return out
 
@@ -1269,11 +1346,11 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
       new_c = self._norm(new_c, "state")
     new_h = self._activation(new_c) * math_ops.sigmoid(o)
 
-    new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
 
 
-class NASCell(core_rnn_cell.RNNCell):
+class NASCell(rnn_cell_impl.RNNCell):
   """Neural Architecture Search (NAS) recurrent network cell.
 
   This implements the recurrent cell from the paper:
@@ -1307,10 +1384,10 @@ class NASCell(core_rnn_cell.RNNCell):
     self._reuse = reuse
 
     if num_proj is not None:
-      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_proj)
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
       self._output_size = num_proj
     else:
-      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_units)
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_units)
       self._output_size = num_units
 
   @property
@@ -1358,10 +1435,10 @@ class NASCell(core_rnn_cell.RNNCell):
     # Variables for the NAS cell. W_m is all matrices multiplying the
     # hiddenstate and W_inputs is all matrices multiplying the inputs.
     concat_w_m = vs.get_variable(
-        "recurrent_weights", [num_proj, 8 * self._num_units],
+        "recurrent_kernel", [num_proj, 8 * self._num_units],
         dtype)
     concat_w_inputs = vs.get_variable(
-        "weights", [input_size.value, 8 * self._num_units],
+        "kernel", [input_size.value, 8 * self._num_units],
         dtype)
 
     m_matrix = math_ops.matmul(m_prev, concat_w_m)
@@ -1417,11 +1494,11 @@ class NASCell(core_rnn_cell.RNNCell):
           dtype)
       new_m = math_ops.matmul(new_m, concat_w_proj)
 
-    new_state = core_rnn_cell.LSTMStateTuple(new_c, new_m)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_m)
     return new_m, new_state
 
 
-class UGRNNCell(core_rnn_cell.RNNCell):
+class UGRNNCell(rnn_cell_impl.RNNCell):
   """Update Gate Recurrent Neural Network (UGRNN) cell.
 
   Compromise between a LSTM/GRU and a vanilla RNN.  There is only one
@@ -1508,7 +1585,7 @@ class UGRNNCell(core_rnn_cell.RNNCell):
     return new_output, new_state
 
 
-class IntersectionRNNCell(core_rnn_cell.RNNCell):
+class IntersectionRNNCell(rnn_cell_impl.RNNCell):
   """Intersection Recurrent Neural Network (+RNN) cell.
 
   Architecture with coupled recurrent gate as well as coupled depth
@@ -1631,7 +1708,7 @@ class IntersectionRNNCell(core_rnn_cell.RNNCell):
 _REGISTERED_OPS = None
 
 
-class CompiledWrapper(core_rnn_cell.RNNCell):
+class CompiledWrapper(rnn_cell_impl.RNNCell):
   """Wraps step execution in an XLA JIT scope."""
 
   def __init__(self, cell, compile_stateful=False):
@@ -1702,7 +1779,7 @@ def _random_exp_initializer(minval,
   return _initializer
 
 
-class PhasedLSTMCell(core_rnn_cell.RNNCell):
+class PhasedLSTMCell(rnn_cell_impl.RNNCell):
   """Phased LSTM recurrent network cell.
 
   https://arxiv.org/pdf/1610.09513v1.pdf
@@ -1728,12 +1805,12 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
           period during which the gates are open.
       trainable_ratio_on: bool, weather ratio_on is trainable.
       period_init_min: float or scalar float Tensor. With value > 0.
-          Minimum value of the initalized period.
+          Minimum value of the initialized period.
           The period values are initialized by drawing from the distribution:
           e^U(log(period_init_min), log(period_init_max))
           Where U(.,.) is the uniform distribution.
       period_init_max: float or scalar float Tensor.
-          With value > period_init_min. Maximum value of the initalized period.
+          With value > period_init_min. Maximum value of the initialized period.
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope. If not `True`, and the existing scope already has
         the given variables, an error is raised.
@@ -1750,7 +1827,7 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+    return rnn_cell_impl.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
@@ -1777,13 +1854,13 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
          It stores the time.
          The second Tensor has shape [batch, features_size], and type float32.
          It stores the features.
-      state: core_rnn_cell.LSTMStateTuple, state from previous timestep.
+      state: rnn_cell_impl.LSTMStateTuple, state from previous timestep.
 
     Returns:
       A tuple containing:
       - A Tensor of float32, and shape [batch_size, num_units], representing the
         output of the cell.
-      - A core_rnn_cell.LSTMStateTuple, containing 2 Tensors of float32, shape
+      - A rnn_cell_impl.LSTMStateTuple, containing 2 Tensors of float32, shape
         [batch_size, num_units], representing the new state and the output.
     """
     (c_prev, h_prev) = state
@@ -1840,6 +1917,181 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
     new_c = k * new_c + (1 - k) * c_prev
     new_h = k * new_h + (1 - k) * h_prev
 
-    new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
 
     return new_h, new_state
+
+
+class GLSTMCell(rnn_cell_impl.RNNCell):
+  """Group LSTM cell (G-LSTM).
+
+  The implementation is based on:
+
+    https://arxiv.org/abs/1703.10722
+
+  O. Kuchaiev and B. Ginsburg
+  "Factorization Tricks for LSTM Networks", ICLR 2017 workshop.
+  """
+
+  def __init__(self, num_units, initializer=None, num_proj=None,
+               number_of_groups=1, forget_bias=1.0, activation=math_ops.tanh,
+               reuse=None):
+    """Initialize the parameters of G-LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the G-LSTM cell
+      initializer: (optional) The initializer to use for the weight and
+        projection matrices.
+      num_proj: (optional) int, The output dimensionality for the projection
+        matrices.  If None, no projection is performed.
+      number_of_groups: (optional) int, number of groups to use.
+        If `number_of_groups` is 1, then it should be equivalent to LSTM cell
+      forget_bias: Biases of the forget gate are initialized by default to 1
+        in order to reduce the scale of forgetting at the beginning of
+        the training.
+      activation: Activation function of the inner states.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already
+        has the given variables, an error is raised.
+
+    Raises:
+      ValueError: If `num_units` or `num_proj` is not divisible by 
+        `number_of_groups`.
+    """
+    super(GLSTMCell, self).__init__(_reuse=reuse)
+    self._num_units = num_units
+    self._initializer = initializer
+    self._num_proj = num_proj
+    self._forget_bias = forget_bias
+    self._activation = activation
+    self._number_of_groups = number_of_groups
+
+    if self._num_units % self._number_of_groups != 0:
+      raise ValueError("num_units must be divisible by number_of_groups")
+    if self._num_proj:
+      if self._num_proj % self._number_of_groups != 0:
+        raise ValueError("num_proj must be divisible by number_of_groups")
+      self._group_shape = [int(self._num_proj / self._number_of_groups),
+                           int(self._num_units / self._number_of_groups)]
+    else:
+      self._group_shape = [int(self._num_units / self._number_of_groups),
+                           int(self._num_units / self._number_of_groups)]
+
+    if num_proj:
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
+      self._output_size = num_proj
+    else:
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_units)
+      self._output_size = num_units
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  @property
+  def output_size(self):
+    return self._output_size
+
+  def _get_input_for_group(self, inputs, group_id, group_size):
+    """Slices inputs into groups to prepare for processing by cell's groups
+
+    Args:
+      inputs: cell input or it's previous state,
+              a Tensor, 2D, [batch x num_units]
+      group_id: group id, a Scalar, for which to prepare input
+      group_size: size of the group
+
+    Returns:
+      subset of inputs corresponding to group "group_id",
+      a Tensor, 2D, [batch x num_units/number_of_groups]
+    """
+    return array_ops.slice(input_=inputs,
+                           begin=[0, group_id * group_size],
+                           size=[self._batch_size, group_size],
+                           name=("GLSTM_group%d_input_generation" % group_id))
+
+  def call(self, inputs, state):
+    """Run one step of G-LSTM.
+
+    Args:
+      inputs: input Tensor, 2D, [batch x num_units].
+      state: this must be a tuple of state Tensors, both `2-D`,
+      with column sizes `c_state` and `m_state`.
+
+    Returns:
+      A tuple containing:
+
+      - A `2-D, [batch x output_dim]`, Tensor representing the output of the
+        G-LSTM after reading `inputs` when previous state was `state`.
+        Here output_dim is:
+           num_proj if num_proj was set,
+           num_units otherwise.
+      - LSTMStateTuple representing the new state of G-LSTM  cell
+        after reading `inputs` when the previous state was `state`.
+
+    Raises:
+      ValueError: If input size cannot be inferred from inputs via
+        static shape inference.
+    """
+    (c_prev, m_prev) = state
+
+    self._batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+    dtype = inputs.dtype
+    scope = vs.get_variable_scope()
+    with vs.variable_scope(scope, initializer=self._initializer):
+      i_parts = []
+      j_parts = []
+      f_parts = []
+      o_parts = []
+
+      for group_id in range(self._number_of_groups):
+        with vs.variable_scope("group%d" % group_id):
+          x_g_id = array_ops.concat(
+            [self._get_input_for_group(inputs, group_id,
+                                       self._group_shape[0]),
+             self._get_input_for_group(m_prev, group_id,
+                                       self._group_shape[0])], axis=1)
+          R_k = _linear(x_g_id, 4 * self._group_shape[1], bias=False)
+          i_k, j_k, f_k, o_k = array_ops.split(R_k, 4, 1)
+
+        i_parts.append(i_k)
+        j_parts.append(j_k)
+        f_parts.append(f_k)
+        o_parts.append(o_k)
+
+      bi = vs.get_variable(name="bias_i",
+                           shape=[self._num_units],
+                           dtype=dtype,
+                           initializer=
+                           init_ops.constant_initializer(0.0, dtype=dtype))
+      bj = vs.get_variable(name="bias_j",
+                           shape=[self._num_units],
+                           dtype=dtype,
+                           initializer=
+                           init_ops.constant_initializer(0.0, dtype=dtype))
+      bf = vs.get_variable(name="bias_f",
+                           shape=[self._num_units],
+                           dtype=dtype,
+                           initializer=
+                           init_ops.constant_initializer(0.0, dtype=dtype))
+      bo = vs.get_variable(name="bias_o",
+                           shape=[self._num_units],
+                           dtype=dtype,
+                           initializer=
+                           init_ops.constant_initializer(0.0, dtype=dtype))
+
+      i = nn_ops.bias_add(array_ops.concat(i_parts, axis=1), bi)
+      j = nn_ops.bias_add(array_ops.concat(j_parts, axis=1), bj)
+      f = nn_ops.bias_add(array_ops.concat(f_parts, axis=1), bf)
+      o = nn_ops.bias_add(array_ops.concat(o_parts, axis=1), bo)
+
+    c = (math_ops.sigmoid(f + self._forget_bias) * c_prev +
+         math_ops.sigmoid(i) * math_ops.tanh(j))
+    m = math_ops.sigmoid(o) * self._activation(c)
+
+    if self._num_proj is not None:
+      with vs.variable_scope("projection"):
+        m = _linear(m, self._num_proj, bias=False)
+
+    new_state = rnn_cell_impl.LSTMStateTuple(c, m)
+    return m, new_state

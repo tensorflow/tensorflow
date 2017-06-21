@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Variables. See the @{python/state_ops} guide.
+"""Variables. See the @{$python/state_ops} guide.
 
 @@Variable
 @@global_variables
@@ -209,7 +209,7 @@ def assign_sub(ref, value, use_locking=None, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign_sub(
         ref, value, use_locking=use_locking, name=name)
-  return ref.assign_sub(value, name=name)
+  return ref.assign_sub(value)
 
 
 def assign_add(ref, value, use_locking=None, name=None):
@@ -237,7 +237,7 @@ def assign_add(ref, value, use_locking=None, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.assign_add(
         ref, value, use_locking=use_locking, name=name)
-  return ref.assign_add(value, name=name)
+  return ref.assign_add(value)
 
 
 def assign(ref, value, validate_shape=None, use_locking=None, name=None):
@@ -269,4 +269,4 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
     return gen_state_ops.assign(
         ref, value, use_locking=use_locking, name=name,
         validate_shape=validate_shape)
-  return ref.assign(value, name=name)
+  return ref.assign(value)

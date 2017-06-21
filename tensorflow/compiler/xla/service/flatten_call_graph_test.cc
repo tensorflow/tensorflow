@@ -108,12 +108,12 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   //    c
   //
   // Calls are made via kCall, kWhile, and kMap instructions.
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* cond_computation =
-      module.AddEmbeddedComputation(MakeConditionComputation());
+      module->AddEmbeddedComputation(MakeConditionComputation());
   HloComputation* c_computation =
-      module.AddEmbeddedComputation(MakeScalarComputation());
-  HloComputation* b_computation = module.AddEmbeddedComputation(
+      module->AddEmbeddedComputation(MakeScalarComputation());
+  HloComputation* b_computation = module->AddEmbeddedComputation(
       MakeMappingComputation(c_computation, /*callsites=*/1));
 
   HloComputation* a_computation;
@@ -125,7 +125,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
         HloInstruction::CreateCall(kScalarShape, {param0}, c_computation));
     builder.AddInstruction(HloInstruction::CreateWhile(
         kScalarShape, cond_computation, b_computation, call));
-    a_computation = module.AddEmbeddedComputation(builder.Build());
+    a_computation = module->AddEmbeddedComputation(builder.Build());
   }
 
   HloComputation* entry_computation;
@@ -135,23 +135,21 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     builder.AddInstruction(HloInstruction::CreateWhile(
         kScalarShape, cond_computation, a_computation, param0));
-    entry_computation = module.AddEntryComputation(builder.Build());
+    entry_computation = module->AddEntryComputation(builder.Build());
   }
 
   {
-    TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(&module));
+    TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> flat_call_graph,
-                           CallGraph::Build(&module));
-    TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* c_node,
-                           flat_call_graph->GetNode(c_computation));
-    EXPECT_EQ(1, c_node->caller_callsites().size());
+    std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(module.get());
+    const CallGraphNode& c_node = flat_call_graph->GetNode(c_computation);
+    EXPECT_EQ(1, c_node.caller_callsites().size());
   }
 }
 
 // Test corner case of a computation used as a body and a loop condition.
 TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* cond_computation;
   {
     HloComputation::Builder builder(TestName() + ".cond");
@@ -163,7 +161,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
     builder.AddInstruction(
         HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
                                      HloOpcode::kEq, param0, false_constant));
-    cond_computation = module.AddEmbeddedComputation(builder.Build());
+    cond_computation = module->AddEmbeddedComputation(builder.Build());
   }
 
   HloComputation* entry_computation;
@@ -174,25 +172,21 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
     builder.AddInstruction(HloInstruction::CreateWhile(
         ShapeUtil::MakeShape(PRED, {}), cond_computation, cond_computation,
         false_constant));
-    entry_computation = module.AddEntryComputation(builder.Build());
+    entry_computation = module->AddEntryComputation(builder.Build());
   }
 
   {
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
-                           CallGraph::Build(&module));
-    TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* cond_node,
-                           call_graph->GetNode(cond_computation));
-    EXPECT_EQ(2, cond_node->caller_callsites().size());
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+    const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
+    EXPECT_EQ(2, cond_node.caller_callsites().size());
   }
 
   {
-    TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(&module));
+    TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
-                           CallGraph::Build(&module));
-    TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* cond_node,
-                           call_graph->GetNode(cond_computation));
-    EXPECT_EQ(1, cond_node->caller_callsites().size());
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+    const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
+    EXPECT_EQ(1, cond_node.caller_callsites().size());
   }
 }
 
@@ -207,30 +201,31 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
 //     C
 //
 TEST_F(FlattenCallGraphTest, FlattenCalls) {
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* c_computation =
-      module.AddEmbeddedComputation(MakeScalarComputation());
+      module->AddEmbeddedComputation(MakeScalarComputation());
 
-  HloComputation* b_computation = module.AddEmbeddedComputation(
+  HloComputation* b_computation = module->AddEmbeddedComputation(
       MakeCallingComputation(c_computation, /*callsites=*/2, ".B"));
 
-  module.AddEntryComputation(
+  module->AddEntryComputation(
       MakeCallingComputation(b_computation, /*callsites=*/2, ".Entry"));
 
-  TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(&module));
+  TF_ASSIGN_OR_ASSERT_OK(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<CallGraph> call_graph,
-                         CallGraph::Build(&module));
-  EXPECT_EQ(7, module.computations().size());
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_EQ(7, module->computations().size());
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* c_node,
-                         call_graph->GetNode(c_computation));
-  EXPECT_EQ(1, c_node->caller_callsites().size());
+  const CallGraphNode& c_node = call_graph->GetNode(c_computation);
+  EXPECT_EQ(1, c_node.caller_callsites().size());
 
-  TF_ASSIGN_OR_ASSERT_OK(const CallGraphNode* b_node,
-                         call_graph->GetNode(b_computation));
-  EXPECT_EQ(1, b_node->caller_callsites().size());
+  const CallGraphNode& b_node = call_graph->GetNode(b_computation);
+  EXPECT_EQ(1, b_node.caller_callsites().size());
 }
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

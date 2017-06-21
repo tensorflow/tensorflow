@@ -95,6 +95,8 @@ class DirectSession : public Session {
   // If 'containers' is empty, then Reset clears the default container.
   ::tensorflow::Status Reset(const std::vector<string>& containers);
 
+  ::tensorflow::Status ListDevices(
+      std::vector<DeviceAttributes>* response) override;
   ::tensorflow::Status Close() override;
 
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
@@ -151,8 +153,8 @@ class DirectSession : public Session {
     IntraProcessRendezvous* rendez = nullptr;
     std::unique_ptr<StepStatsCollector> collector;
     Notification executors_done;
-    std::unordered_set<string> pending_inputs;
-    std::unordered_set<string> pending_outputs;
+    std::unordered_map<string, bool> pending_inputs;   // true if fed
+    std::unordered_map<string, bool> pending_outputs;  // true if fetched
     TensorStore tensor_store;
     ScopedStepContainer step_container;
 
@@ -162,14 +164,19 @@ class DirectSession : public Session {
              const std::vector<string>& pending_output_names, int64 step_id,
              const std::vector<Device*>* devices);
 
+    // Returns true if all pending inputs and outputs have been completed.
+    bool PendingDone() const;
+
     ~RunState();
   };
 
   struct RunStateArgs {
+    RunStateArgs(const DebugOptions& options) : debug_options(options) {}
+
     bool is_partial_run = false;
     string handle;
     std::unique_ptr<Graph> graph;
-    std::unique_ptr<DebuggerStateInterface> debugger_state;
+    const DebugOptions& debug_options;
   };
 
   // Initializes the base execution state given the 'graph',
@@ -235,6 +242,16 @@ class DirectSession : public Session {
     if (closed_) return errors::Cancelled("Session has been closed.");
     return ::tensorflow::Status::OK();
   }
+
+  ::tensorflow::Status CreateDebuggerState(
+      const DebugOptions& debug_options, int64 session_run_index,
+      int64 executor_step_index, const std::vector<string>& input_names,
+      const std::vector<string>& output_names,
+      const std::vector<string>& target_names,
+      std::unique_ptr<DebuggerStateInterface>* debugger_state);
+
+  ::tensorflow::Status DecorateAndPublishGraphForDebug(
+      const DebugOptions& debug_options, Graph* graph, Device* device);
 
   const SessionOptions options_;
 

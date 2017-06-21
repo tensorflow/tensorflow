@@ -22,7 +22,6 @@ from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.contrib.distributions.python.ops import operator_pd_diag
 from tensorflow.contrib.distributions.python.ops import operator_pd_identity
 from tensorflow.contrib.distributions.python.ops import operator_pd_vdvt_update
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,6 +31,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [
@@ -120,7 +120,7 @@ class _TriLPlusVDVTLightweightOperatorPD(object):
 
     Doesn't actually do the sqrt! Named as such to agree with API.
 
-    To compute (M + V D V.T), we use the the Woodbury matrix identity:
+    To compute (M + V D V.T), we use the Woodbury matrix identity:
       inv(M + V D V.T) = inv(M) - inv(M) V inv(C) V.T inv(M)
     where,
       C = inv(D) + V.T inv(M) V.
@@ -166,7 +166,7 @@ class _TriLPlusVDVTLightweightOperatorPD(object):
   def _woodbury_sandwiched_term(self):
     """Computes the sandwiched term in the Woodbury identity.
 
-    Computes the "`C`" in the the identity:
+    Computes the "`C`" in the identity:
        inv(M + V D V.T) = inv(M) - inv(M) V inv(C) V.T inv(M)
     where,
        C = inv(D) + V.T inv(M) V.

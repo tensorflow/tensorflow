@@ -21,10 +21,7 @@ limitations under the License.
 // computations across different threads if necessary.
 #include <algorithm>
 
-#define EIGEN_USE_THREADS
-
 #include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -130,26 +127,9 @@ class LinearAlgebraOp : public OpKernel {
                              const ConstMatrixMaps& inputs,
                              MatrixMaps* outputs) = 0;
 
+ private:
   using TensorInputs = gtl::InlinedVector<const Tensor*, 4>;
   using TensorOutputs = gtl::InlinedVector<Tensor*, 4>;
-
-  // Hook for doing batch-wide processing before ComputeMatrix is called
-  // on each individual slice.
-  virtual void BatchPreCompute(OpKernelContext* context,
-                               const TensorInputs& inputs,
-                               const TensorShapes& input_matrix_shapes,
-                               const TensorOutputs& outputs,
-                               const TensorShapes& output_matrix_shapes) {}
-
-  // Hook for doing batch-wide processing after ComputeMatrix is called
-  // on each individual slice.
-  virtual void BatchPostCompute(OpKernelContext* context,
-                                const TensorInputs& inputs,
-                                const TensorShapes& input_matrix_shapes,
-                                const TensorOutputs& outputs,
-                                const TensorShapes& output_matrix_shapes) {}
-
- private:
   // This function maps 2-d slices (matrices) of the input and output tensors
   // using Eigen::Map and calls ComputeMatrix implemented in terms of the
   // Eigen::MatrixBase API by the derived class.
@@ -183,8 +163,8 @@ class LinearAlgebraOp : public OpKernel {
                       TensorShapes* output_matrix_shapes);
 };
 
-// Declare that LinearAlgebraOp is explicitly instantiated in
-// linalg_ops_common.cc for float and double.
+// Declare LinearAlgebraOp, which is explicitly instantiated in
+// linalg_ops_common.cc for float, double, complex64, and complex128.
 extern template class LinearAlgebraOp<float>;
 extern template class LinearAlgebraOp<double>;
 extern template class LinearAlgebraOp<complex64>;
@@ -199,9 +179,7 @@ extern template class LinearAlgebraOp<complex128>;
   using MatrixMaps = typename Base::MatrixMaps;           \
   using ConstMatrixMap = typename Base::ConstMatrixMap;   \
   using ConstMatrixMaps = typename Base::ConstMatrixMaps; \
-  using TensorShapes = typename Base::TensorShapes;       \
-  using TensorInputs = typename Base::TensorInputs;       \
-  using TensorOutputs = typename Base::TensorOutputs
+  using TensorShapes = typename Base::TensorShapes;
 
 #define REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar) \
   REGISTER_KERNEL_BUILDER(                              \

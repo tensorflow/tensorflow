@@ -149,7 +149,7 @@ TEST_F(MklToTfConversionPass, Positive) {
         " input: ['C', 'D']}");
     EXPECT_EQ(DoRunMklToTfConversionPass(),
               "A(Input);B(Input);C(_MklConv2D);D(Input);E(Sub);M(_MklInput);"
-              "_Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:2;C->Mkl2Tf/_0;"
+              "Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:2;C->Mkl2Tf/_0;"
               "C:1->Mkl2Tf/_0:1;D->E:1;M->C:1;Mkl2Tf/_0->E;N->C:3");
   } else {
     CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
@@ -172,7 +172,7 @@ TEST_F(MklToTfConversionPass, Positive) {
         " input: ['C', 'D']}");
     EXPECT_EQ(DoRunMklToTfConversionPass(),
               "A(Input);B(Input);C(_MklConv2D);D(Input);E(Sub);M(_MklInput);"
-              "_Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:1;C->Mkl2Tf/_0;"
+              "Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:1;C->Mkl2Tf/_0;"
               "C:1->Mkl2Tf/_0:1;D->E:1;M->C:2;Mkl2Tf/_0->E;N->C:3");
   }
 }

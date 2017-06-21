@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/memory_types.h"
@@ -356,7 +357,7 @@ string ControlLoopName(const string& name) {
 }
 
 bool IsControlLoop(const Node* node) {
-  const string& name = node->def().name();
+  const string& name = node->name();
   return StringPiece(name).starts_with("_cloop");
 }
 
@@ -392,7 +393,8 @@ Node* AddControlMerge(const string& in_name1, const string& in_name2, Graph* g,
 Node* AddControlSwitch(NodeBuilder::NodeOut input1, NodeBuilder::NodeOut input2,
                        const string& device_name,
                        const GraphDefBuilder::Options& bopts) {
-  Node* res_node = ops::BinaryOp("Switch", input1, input2, bopts);
+  Node* res_node =
+      ops::BinaryOp("Switch", std::move(input1), std::move(input2), bopts);
   if (bopts.HaveError()) return nullptr;
   res_node->set_assigned_device_name(device_name);
   return res_node;
@@ -401,7 +403,7 @@ Node* AddControlSwitch(NodeBuilder::NodeOut input1, NodeBuilder::NodeOut input2,
 // A next_iteration node for control flow.
 Node* AddControlNext(NodeBuilder::NodeOut input, const string& device_name,
                      const GraphDefBuilder::Options& bopts) {
-  Node* res_node = ops::UnaryOp("NextIteration", input, bopts);
+  Node* res_node = ops::UnaryOp("NextIteration", std::move(input), bopts);
   if (bopts.HaveError()) return nullptr;
   res_node->set_assigned_device_name(device_name);
   return res_node;
@@ -468,7 +470,7 @@ Status AddControlLoop(const PartitionOptions& opts, Graph* g, const Node* src,
   const string& device_name = edge->dst()->assigned_device_name();
   const string& frame_name = src_info.frame_name;
   int parallel_iterations;
-  status = GetNodeAttr(src_info.frame->def(), "parallel_iterations",
+  status = GetNodeAttr(src_info.frame->attrs(), "parallel_iterations",
                        &parallel_iterations);
   if (!status.ok()) return status;
 
@@ -519,9 +521,7 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
   MemoryTypeVector output_memory_types;
 
   info->device_types.resize(g.num_node_ids(), DEVICE_CPU);
-  for (const Node* node : g.nodes()) {
-    if (!node->IsOp()) continue;  // Skip Sink/Source nodes.
-
+  for (const Node* node : g.op_nodes()) {
     DeviceNameUtils::ParsedName parsed;
     if (!DeviceNameUtils::ParseFullName(node->assigned_device_name(),
                                         &parsed)) {
@@ -831,9 +831,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   int32 num_data = 0;
   int32 num_control = 0;
-  for (const Node* dst : g->nodes()) {
-    if (!dst->IsOp()) continue;  // Skip Sink/Source nodes.
-
+  for (const Node* dst : g->op_nodes()) {
     dstp = opts.node_to_loc(dst);
     GraphDef* dst_graph = &(*partitions)[dstp];
     NodeDef* dst_def = dst_graph->add_node();
@@ -903,11 +901,11 @@ Status Partition(const PartitionOptions& opts, Graph* g,
           send_start_time = opts.start_times[src->id()].value();
           recv_start_time = opts.start_times[dst->id()].value();
         } else {
-          status = GetNodeAttr(src->def(), "_start_time", &send_start_time);
+          status = GetNodeAttr(src->attrs(), "_start_time", &send_start_time);
           if (!status.ok()) {
             return status;
           }
-          status = GetNodeAttr(dst->def(), "_start_time", &recv_start_time);
+          status = GetNodeAttr(dst->attrs(), "_start_time", &recv_start_time);
           if (!status.ok()) {
             return status;
           }

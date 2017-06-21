@@ -27,6 +27,7 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -43,19 +44,18 @@ namespace {
 
 // Encapsulate the tensor value inside a Summary proto, and then inside an
 // Event proto.
-Event WrapTensorAsEvent(const string& tensor_name, const string& debug_op,
+Event WrapTensorAsEvent(const DebugNodeKey& debug_node_key,
                         const Tensor& tensor, const uint64 wall_time_us) {
   Event event;
   event.set_wall_time(static_cast<double>(wall_time_us));
-
   Summary::Value* summ_val = event.mutable_summary()->add_value();
 
   // Create the debug node_name in the Summary proto.
   // For example, if tensor_name = "foo/node_a:0", and the debug_op is
   // "DebugIdentity", the debug node_name in the Summary proto will be
   // "foo/node_a:0:DebugIdentity".
-  const string debug_node_name = strings::StrCat(tensor_name, ":", debug_op);
-  summ_val->set_node_name(debug_node_name);
+  summ_val->set_node_name(debug_node_key.debug_node_name);
+  summ_val->set_tag(debug_node_key.device_name);
 
   if (tensor.dtype() == DT_STRING) {
     // Treat DT_STRING specially, so that tensor_util.MakeNdarray can convert
@@ -86,7 +86,60 @@ string AppendTimestampToFilePath(const string& in, const uint64 timestamp) {
   return out;
 }
 
+#if defined(PLATFORM_GOOGLE)
+Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
+                                      const string& device_name,
+                                      const int64 wall_time,
+                                      const string& debug_url) {
+  static const size_t kChunkSizeLimitBytes = 4000 * 1024;
+  const uint64 hash = ::tensorflow::Hash64(encoded_graph_def);
+  const size_t total_length = encoded_graph_def.size();
+  const size_t num_chunks = static_cast<size_t>(
+      std::ceil(static_cast<float>(total_length) / kChunkSizeLimitBytes));
+  for (size_t i = 0; i < num_chunks; ++i) {
+    const size_t pos = i * kChunkSizeLimitBytes;
+    const size_t len =
+        (i == num_chunks - 1) ? (total_length - pos) : kChunkSizeLimitBytes;
+    Event event;
+    event.set_wall_time(static_cast<double>(wall_time));
+    // Prefix the chunk with
+    //   <hash64>,<device_name>,<wall_time>|<index>|<num_chunks>|.
+    event.set_graph_def(strings::StrCat(hash, ",", device_name, ",", wall_time,
+                                        "|", i, "|", num_chunks, "|",
+                                        encoded_graph_def.substr(pos, len)));
+    if (!DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url).ok()) {
+      return errors::FailedPrecondition(
+          "Failed to send chunk ", i, " of ", num_chunks,
+          " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes");
+    }
+  }
+  return Status::OK();
+}
+#endif
+
 }  // namespace
+
+// static
+const char* const DebugIO::kMetadataFilePrefix = "_tfdbg_";
+
+// static
+const char* const DebugIO::kCoreMetadataTag = "core_metadata_";
+
+// static
+const char* const DebugIO::kDeviceTag = "device_";
+
+// static
+const char* const DebugIO::kGraphTag = "graph_";
+
+DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
+                           const int32 output_slot, const string& debug_op)
+    : device_name(device_name),
+      node_name(node_name),
+      output_slot(output_slot),
+      debug_op(debug_op),
+      debug_node_name(
+          strings::StrCat(node_name, ":", output_slot, ":", debug_op)),
+      device_path(DeviceNameToDevicePath(device_name)) {}
 
 Status ReadEventFromFile(const string& dump_file_path, Event* event) {
   Env* env(Env::Default());
@@ -118,14 +171,23 @@ Status ReadEventFromFile(const string& dump_file_path, Event* event) {
 }
 
 // static
+const string DebugNodeKey::DeviceNameToDevicePath(const string& device_name) {
+  return strings::StrCat(
+      DebugIO::kMetadataFilePrefix, DebugIO::kDeviceTag,
+      str_util::StringReplace(
+          str_util::StringReplace(device_name, ":", "_", true), "/", ",",
+          true));
+}
+
+// static
 const char* const DebugIO::kFileURLScheme = "file://";
 // static
 const char* const DebugIO::kGrpcURLScheme = "grpc://";
 
 // static
 Status DebugIO::PublishDebugMetadata(
-    const int64 global_step, const int64 session_run_count,
-    const int64 executor_step_count, const std::vector<string>& input_names,
+    const int64 global_step, const int64 session_run_index,
+    const int64 executor_step_index, const std::vector<string>& input_names,
     const std::vector<string>& output_names,
     const std::vector<string>& target_nodes,
     const std::unordered_set<string>& debug_urls) {
@@ -134,8 +196,8 @@ Status DebugIO::PublishDebugMetadata(
   // Construct a JSON string to carry the metadata.
   oss << "{";
   oss << "\"global_step\":" << global_step << ",";
-  oss << "\"session_run_count\":" << session_run_count << ",";
-  oss << "\"executor_step_count\":" << executor_step_count << ",";
+  oss << "\"session_run_index\":" << session_run_index << ",";
+  oss << "\"executor_step_index\":" << executor_step_index << ",";
   oss << "\"input_names\":[";
   for (size_t i = 0; i < input_names.size(); ++i) {
     oss << "\"" << input_names[i] << "\"";
@@ -196,8 +258,9 @@ Status DebugIO::PublishDebugMetadata(
       const string core_metadata_path = AppendTimestampToFilePath(
           io::JoinPath(
               dump_root_dir,
-              strings::StrCat("_tfdbg_core_metadata_", "sessionrun",
-                              strings::Printf("%.14lld", session_run_count))),
+              strings::StrCat(DebugIO::kMetadataFilePrefix,
+                              DebugIO::kCoreMetadataTag, "sessionrun",
+                              strings::Printf("%.14lld", session_run_index))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
           event, io::Dirname(core_metadata_path).ToString(),
@@ -209,39 +272,19 @@ Status DebugIO::PublishDebugMetadata(
 }
 
 // static
-Status DebugIO::PublishDebugTensor(const string& tensor_name,
-                                   const string& debug_op, const Tensor& tensor,
+Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
+                                   const Tensor& tensor,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string>& debug_urls,
                                    const bool gated_grpc) {
-  // Split the tensor_name into node name and output slot index.
-  std::vector<string> name_items = str_util::Split(tensor_name, ':');
-  string node_name;
-  int32 output_slot = 0;
-  if (name_items.size() == 2) {
-    node_name = name_items[0];
-    if (!strings::safe_strto32(name_items[1], &output_slot)) {
-      return Status(error::INVALID_ARGUMENT,
-                    strings::StrCat("Invalid string value for output_slot: \"",
-                                    name_items[1], "\""));
-    }
-  } else if (name_items.size() == 1) {
-    node_name = name_items[0];
-  } else {
-    return Status(
-        error::INVALID_ARGUMENT,
-        strings::StrCat("Failed to parse tensor name: \"", tensor_name, "\""));
-  }
-
-  int num_failed_urls = 0;
+  int32 num_failed_urls = 0;
   std::vector<Status> fail_statuses;
   for (const string& url : debug_urls) {
     if (str_util::Lowercase(url).find(kFileURLScheme) == 0) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
 
-      Status s =
-          DebugFileIO::DumpTensorToDir(node_name, output_slot, debug_op, tensor,
-                                       wall_time_us, dump_root_dir, nullptr);
+      Status s = DebugFileIO::DumpTensorToDir(
+          debug_node_key, tensor, wall_time_us, dump_root_dir, nullptr);
       if (!s.ok()) {
         num_failed_urls++;
         fail_statuses.push_back(s);
@@ -249,8 +292,7 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
     } else if (str_util::Lowercase(url).find(kGrpcURLScheme) == 0) {
 #if defined(PLATFORM_GOOGLE)
       Status s = DebugGrpcIO::SendTensorThroughGrpcStream(
-          node_name, output_slot, debug_op, tensor, wall_time_us, url,
-          gated_grpc);
+          debug_node_key, tensor, wall_time_us, url, gated_grpc);
 
       if (!s.ok()) {
         num_failed_urls++;
@@ -281,16 +323,16 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
 }
 
 // static
-Status DebugIO::PublishDebugTensor(const string& tensor_name,
-                                   const string& debug_op, const Tensor& tensor,
+Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
+                                   const Tensor& tensor,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string>& debug_urls) {
-  return PublishDebugTensor(tensor_name, debug_op, tensor, wall_time_us,
-                            debug_urls, false);
+  return PublishDebugTensor(debug_node_key, tensor, wall_time_us, debug_urls,
+                            false);
 }
 
 // static
-Status DebugIO::PublishGraph(const Graph& graph,
+Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
                              const std::unordered_set<string>& debug_urls) {
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
@@ -306,15 +348,18 @@ Status DebugIO::PublishGraph(const Graph& graph,
   Status status = Status::OK();
   for (const string& debug_url : debug_urls) {
     if (debug_url.find(kFileURLScheme) == 0) {
-      const string dump_root_dir = debug_url.substr(strlen(kFileURLScheme));
-      const string file_name = strings::StrCat("_tfdbg_graph_", now_micros);
+      const string dump_root_dir =
+          io::JoinPath(debug_url.substr(strlen(kFileURLScheme)),
+                       DebugNodeKey::DeviceNameToDevicePath(device_name));
+      const string file_name = strings::StrCat(DebugIO::kMetadataFilePrefix,
+                                               DebugIO::kGraphTag, now_micros);
 
       status.Update(
           DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
     } else if (debug_url.find(kGrpcURLScheme) == 0) {
 #if defined(PLATFORM_GOOGLE)
-      status.Update(
-          DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url));
+      status.Update(PublishEncodedGraphDefInChunks(buf, device_name, now_micros,
+                                                   debug_url));
 #else
       GRPC_OSS_UNIMPLEMENTED_ERROR;
 #endif
@@ -396,30 +441,30 @@ Status DebugIO::CloseDebugURL(const string& debug_url) {
 static Status CloseDebugURL(const string& debug_url) { return Status::OK(); }
 
 // static
-Status DebugFileIO::DumpTensorToDir(
-    const string& node_name, const int32 output_slot, const string& debug_op,
-    const Tensor& tensor, const uint64 wall_time_us,
-    const string& dump_root_dir, string* dump_file_path) {
-  const string file_path = GetDumpFilePath(dump_root_dir, node_name,
-                                           output_slot, debug_op, wall_time_us);
+Status DebugFileIO::DumpTensorToDir(const DebugNodeKey& debug_node_key,
+                                    const Tensor& tensor,
+                                    const uint64 wall_time_us,
+                                    const string& dump_root_dir,
+                                    string* dump_file_path) {
+  const string file_path =
+      GetDumpFilePath(dump_root_dir, debug_node_key, wall_time_us);
 
   if (dump_file_path != nullptr) {
     *dump_file_path = file_path;
   }
 
-  return DumpTensorToEventFile(node_name, output_slot, debug_op, tensor,
-                               wall_time_us, file_path);
+  return DumpTensorToEventFile(debug_node_key, tensor, wall_time_us, file_path);
 }
 
 // static
 string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
-                                    const string& node_name,
-                                    const int32 output_slot,
-                                    const string& debug_op,
+                                    const DebugNodeKey& debug_node_key,
                                     const uint64 wall_time_us) {
   return AppendTimestampToFilePath(
-      io::JoinPath(dump_root_dir,
-                   strings::StrCat(node_name, "_", output_slot, "_", debug_op)),
+      io::JoinPath(dump_root_dir, debug_node_key.device_path,
+                   strings::StrCat(debug_node_key.node_name, "_",
+                                   debug_node_key.output_slot, "_",
+                                   debug_node_key.debug_op)),
       wall_time_us);
 }
 
@@ -450,14 +495,13 @@ Status DebugFileIO::DumpEventProtoToFile(const Event& event_proto,
 }
 
 // static
-Status DebugFileIO::DumpTensorToEventFile(
-    const string& node_name, const int32 output_slot, const string& debug_op,
-    const Tensor& tensor, const uint64 wall_time_us, const string& file_path) {
-  const string tensor_name = strings::StrCat(node_name, ":", output_slot);
-  Event event = WrapTensorAsEvent(tensor_name, debug_op, tensor, wall_time_us);
-
-  return DumpEventProtoToFile(event, io::Dirname(file_path).ToString(),
-                              io::Basename(file_path).ToString());
+Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
+                                          const Tensor& tensor,
+                                          const uint64 wall_time_us,
+                                          const string& file_path) {
+  return DumpEventProtoToFile(
+      WrapTensorAsEvent(debug_node_key, tensor, wall_time_us),
+      io::Dirname(file_path).ToString(), io::Basename(file_path).ToString());
 }
 
 // static
@@ -497,18 +541,27 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
 
 #if defined(PLATFORM_GOOGLE)
 DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)
-    : url_(strings::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)),
-      ctx_(),
-      channel_(::grpc::CreateCustomChannel(server_stream_addr,
-                                           ::grpc::InsecureChannelCredentials(),
-                                           ::grpc::ChannelArguments())),
-      stub_(EventListener::NewStub(channel_)),
-      reader_writer_(stub_->SendEvents(&ctx_)),
-      mu_() {}
-// TODO(cais): Set GRPC_ARG_MAX_MESSAGE_LENGTH to max if necessary.
+    : server_stream_addr_(server_stream_addr),
+      url_(strings::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)) {}
 
-bool DebugGrpcChannel::is_channel_ready() {
-  return channel_->GetState(false) == GRPC_CHANNEL_READY;
+Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
+  ::grpc::ChannelArguments args;
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  // Avoid problems where default reconnect backoff is too long (e.g., 20 s).
+  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  channel_ = ::grpc::CreateCustomChannel(
+      server_stream_addr_, ::grpc::InsecureChannelCredentials(), args);
+  if (!channel_->WaitForConnected(
+          gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
+                       gpr_time_from_micros(timeout_micros, GPR_TIMESPAN)))) {
+    return errors::FailedPrecondition(
+        "Failed to connect to gRPC channel at ", server_stream_addr_,
+        " within a timeout of ", timeout_micros / 1e6, " s.");
+  }
+  stub_ = EventListener::NewStub(channel_);
+  reader_writer_ = stub_->SendEvents(&ctx_);
+
+  return Status::OK();
 }
 
 bool DebugGrpcChannel::WriteEvent(const Event& event) {
@@ -551,7 +604,11 @@ Status DebugGrpcChannel::ReceiveServerRepliesAndClose() {
 // static
 mutex DebugGrpcIO::streams_mu;
 
-// Static
+// static
+int64 DebugGrpcIO::channel_connection_timeout_micros = 900 * 1000 * 1000;
+// TODO(cais): Make this configurable?
+
+// static
 std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
 DebugGrpcIO::GetStreamChannels() {
   static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
@@ -562,17 +619,14 @@ DebugGrpcIO::GetStreamChannels() {
 
 // static
 Status DebugGrpcIO::SendTensorThroughGrpcStream(
-    const string& node_name, const int32 output_slot, const string& debug_op,
-    const Tensor& tensor, const uint64 wall_time_us,
-    const string& grpc_stream_url, const bool gated) {
-  if (gated &&
-      !IsGateOpen(strings::StrCat(node_name, ":", output_slot, ":", debug_op),
-                  grpc_stream_url)) {
+    const DebugNodeKey& debug_node_key, const Tensor& tensor,
+    const uint64 wall_time_us, const string& grpc_stream_url,
+    const bool gated) {
+  if (gated && !IsGateOpen(debug_node_key.debug_node_name, grpc_stream_url)) {
     return Status::OK();
   } else {
-    const string tensor_name = strings::StrCat(node_name, ":", output_slot);
     return SendEventProtoThroughGrpcStream(
-        WrapTensorAsEvent(tensor_name, debug_op, tensor, wall_time_us),
+        WrapTensorAsEvent(debug_node_key, tensor, wall_time_us),
         grpc_stream_url);
   }
 }
@@ -581,10 +635,11 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
 Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
     const Event& event_proto, const string& grpc_stream_url) {
   const string addr_with_path =
-      grpc_stream_url.substr(strlen(DebugIO::kFileURLScheme));
+      grpc_stream_url.find(DebugIO::kGrpcURLScheme) == 0
+          ? grpc_stream_url.substr(strlen(DebugIO::kGrpcURLScheme))
+          : grpc_stream_url;
   const string server_stream_addr =
       addr_with_path.substr(0, addr_with_path.find('/'));
-
   std::shared_ptr<DebugGrpcChannel> debug_grpc_channel;
   {
     mutex_lock l(streams_mu);
@@ -592,12 +647,8 @@ Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
         stream_channels = GetStreamChannels();
     if (stream_channels->find(grpc_stream_url) == stream_channels->end()) {
       debug_grpc_channel.reset(new DebugGrpcChannel(server_stream_addr));
-
-      if (!debug_grpc_channel->is_channel_ready()) {
-        return errors::FailedPrecondition(
-            strings::StrCat("Channel at the following gRPC stream URL is ",
-                            "not ready: ", grpc_stream_url));
-      }
+      TF_RETURN_IF_ERROR(
+          debug_grpc_channel->Connect(channel_connection_timeout_micros));
 
       (*stream_channels)[grpc_stream_url] = debug_grpc_channel;
       CreateEmptyEnabledSet(grpc_stream_url);
@@ -609,7 +660,7 @@ Status DebugGrpcIO::SendEventProtoThroughGrpcStream(
   bool write_ok = debug_grpc_channel->WriteEvent(event_proto);
   if (!write_ok) {
     return errors::Cancelled(strings::StrCat("Write event to stream URL ",
-                                             grpc_stream_url, "failed."));
+                                             grpc_stream_url, " failed."));
   }
 
   return Status::OK();

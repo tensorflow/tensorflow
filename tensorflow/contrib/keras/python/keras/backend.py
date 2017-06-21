@@ -21,10 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import defaultdict
 import json
 import os
-import warnings
 
 import numpy as np
 
@@ -34,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -52,6 +51,7 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.training import moving_averages
+from tensorflow.python.util import tf_inspect
 
 
 py_all = all
@@ -92,7 +92,7 @@ _IMAGE_DATA_FORMAT = 'channels_last'
 def backend():
   """Publicly accessible method for determining the current backend.
 
-  Only exists for API compatibily with multi-backend Keras.
+  Only exists for API compatibility with multi-backend Keras.
 
   Returns:
       The string "tensorflow".
@@ -245,17 +245,33 @@ def set_image_data_format(data_format):
 
 
 def get_uid(prefix=''):
-  global _GRAPH_UID_DICTS  # pylint: disable=global-variable-not-assigned
+  """Associates a string prefix with an integer counter in a TensorFlow graph.
+
+  Arguments:
+    prefix: String prefix to index.
+
+  Returns:
+    Unique integer ID.
+
+  Example:
+
+  ```
+    >>> get_uid('dense')
+    1
+    >>> get_uid('dense')
+    2
+  ```
+  """
   graph = ops.get_default_graph()
-  if graph not in _GRAPH_UID_DICTS:
-    _GRAPH_UID_DICTS[graph] = defaultdict(int)
-  _GRAPH_UID_DICTS[graph][prefix] += 1
-  return _GRAPH_UID_DICTS[graph][prefix]
+  layer_name_uids = tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS[graph]
+  layer_name_uids[prefix] += 1
+  return layer_name_uids[prefix]
 
 
 def reset_uids():
-  global _GRAPH_UID_DICTS
-  _GRAPH_UID_DICTS = {}
+  layer_name_uids_collection = ops.get_collection_ref('LAYER_NAME_UIDS')
+  if layer_name_uids_collection:
+    layer_name_uids_collection.pop()
 
 
 def clear_session():
@@ -370,6 +386,17 @@ def set_session(session):
 
 
 def _convert_string_dtype(dtype):
+  """Get the type from a string.
+
+  Arguments:
+      dtype: A string representation of a type.
+
+  Returns:
+      The type requested.
+
+  Raises:
+      ValueError: if `dtype` is not supported.
+  """
   if dtype == 'float16':
     return dtypes_module.float16
   if dtype == 'float32':
@@ -391,6 +418,15 @@ def _convert_string_dtype(dtype):
 
 
 def _to_tensor(x, dtype):
+  """Convert the input `x` to a tensor of type `dtype`.
+
+  Arguments:
+      x: An object to be converted (numpy array, list, tensors).
+      dtype: The destination type.
+
+  Returns:
+      A tensor.
+  """
   x = ops.convert_to_tensor(x)
   if x.dtype != dtype:
     x = math_ops.cast(x, dtype)
@@ -505,6 +541,17 @@ def _initialize_variables():
 
 
 def constant(value, dtype=None, shape=None, name=None):
+  """Creates a constant tensor.
+
+  Arguments:
+      value: A constant value (or list)
+      dtype: The type of the elements of the resulting tensor.
+      shape: Optional dimensions of resulting tensor.
+      name: Optional name for the tensor.
+
+  Returns:
+      A Constant Tensor.
+  """
   if dtype is None:
     dtype = floatx()
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
@@ -817,6 +864,18 @@ def ones_like(x, dtype=None, name=None):
   return array_ops.ones_like(x, dtype=dtype, name=name)
 
 
+def identity(x):
+  """Returns a tensor with the same content as the input tensor.
+
+  Arguments:
+      x: The input tensor.
+
+  Returns:
+      A tensor of the same shape, type and content.
+  """
+  return array_ops.identity(x)
+
+
 def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
   """Instantiates a variable with values drawn from a uniform distribution.
 
@@ -955,14 +1014,42 @@ def update(x, new_x):
 
 
 def update_add(x, increment):
+  """Update the value of `x` by adding `increment`.
+
+  Arguments:
+      x: A Variable.
+      increment: A tensor of same shape as `x`.
+
+  Returns:
+      The variable `x` updated.
+  """
   return state_ops.assign_add(x, increment)
 
 
 def update_sub(x, decrement):
+  """Update the value of `x` by subtracting `decrement`.
+
+  Arguments:
+      x: A Variable.
+      decrement: A tensor of same shape as `x`.
+
+  Returns:
+      The variable `x` updated.
+  """
   return state_ops.assign_sub(x, decrement)
 
 
 def moving_average_update(x, value, momentum):
+  """Compute the moving average of a variable.
+
+  Arguments:
+      x: A Variable.
+      value: A tensor with the same shape as `variable`.
+      momentum: The moving average momentum.
+
+  Returns:
+      An Operation to update the variable.
+  """
   return moving_averages.assign_moving_average(
       x, value, momentum, zero_debias=False)
 
@@ -1094,6 +1181,20 @@ def batch_dot(x, y, axes=None):
   """
   if isinstance(axes, int):
     axes = (axes, axes)
+  x_ndim = ndim(x)
+  y_ndim = ndim(y)
+  if x_ndim > y_ndim:
+    diff = x_ndim - y_ndim
+    y = array_ops.reshape(y,
+                          array_ops.concat(
+                              [array_ops.shape(y), [1] * (diff)], axis=0))
+  elif y_ndim > x_ndim:
+    diff = y_ndim - x_ndim
+    x = array_ops.reshape(x,
+                          array_ops.concat(
+                              [array_ops.shape(x), [1] * (diff)], axis=0))
+  else:
+    diff = 0
   if ndim(x) == 2 and ndim(y) == 2:
     if axes[0] == axes[1]:
       out = math_ops.reduce_sum(math_ops.multiply(x, y), axes[0])
@@ -1108,6 +1209,12 @@ def batch_dot(x, y, axes=None):
       adj_x = None
       adj_y = None
     out = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
+  if diff:
+    if x_ndim > y_ndim:
+      idx = x_ndim + y_ndim - 3
+    else:
+      idx = x_ndim - 1
+    out = array_ops.squeeze(out, list(range(idx, idx + diff)))
   if ndim(out) == 1:
     out = expand_dims(out, 1)
   return out
@@ -1467,6 +1574,28 @@ def log(x):
       A tensor.
   """
   return math_ops.log(x)
+
+
+def logsumexp(x, axis=None, keepdims=False):
+  """Computes log(sum(exp(elements across dimensions of a tensor))).
+
+  This function is more numerically stable than log(sum(exp(x))).
+  It avoids overflows caused by taking the exp of large inputs and
+  underflows caused by taking the log of small inputs.
+
+  Arguments:
+      x: A tensor or variable.
+      axis: An integer, the axis to reduce over.
+      keepdims: A boolean, whether to keep the dimensions or not.
+          If `keepdims` is `False`, the rank of the tensor is reduced
+          by 1. If `keepdims` is `True`, the reduced dimension is
+          retained with length 1.
+
+  Returns:
+      The reduced tensor.
+  """
+  axis = _normalize_axis(axis, ndim(x))
+  return math_ops.reduce_logsumexp(x, axis=axis, keep_dims=keepdims)
 
 
 def round(x):
@@ -1970,14 +2099,14 @@ def batch_flatten(x):
 
 
 def expand_dims(x, axis=-1):
-  """Adds a 1-sized dimension at index "dim".
+  """Adds a 1-sized dimension at index "axis".
 
   Arguments:
       x: A tensor or variable.
       axis: Position where to add a new axis.
 
   Returns:
-      A tensor with expended dimensions.
+      A tensor with expanded dimensions.
   """
   return array_ops.expand_dims(x, axis)
 
@@ -2231,9 +2360,11 @@ class Function(object):
       inputs: Feed placeholders to the computation graph.
       outputs: Output tensors to fetch.
       updates: Additional update ops to be run at function call.
+      name: a name to help users identify what this function does.
   """
 
-  def __init__(self, inputs, outputs, updates=None):
+  def __init__(self, inputs, outputs, updates=None, name=None,
+               **session_kwargs):
     updates = updates or []
     if not isinstance(inputs, (list, tuple)):
       raise TypeError('`inputs` to a TensorFlow backend function '
@@ -2256,6 +2387,8 @@ class Function(object):
           # assumed already an op
           updates_ops.append(update)
       self.updates_op = control_flow_ops.group(*updates_ops)
+    self.name = name
+    self.session_kwargs = session_kwargs
 
   def __call__(self, inputs):
     if not isinstance(inputs, (list, tuple)):
@@ -2269,7 +2402,10 @@ class Function(object):
         value = (indices, sparse_coo.data, sparse_coo.shape)
       feed_dict[tensor] = value
     session = get_session()
-    updated = session.run(self.outputs + [self.updates_op], feed_dict=feed_dict)
+    updated = session.run(
+        self.outputs + [self.updates_op],
+        feed_dict=feed_dict,
+        **self.session_kwargs)
     return updated[:len(self.outputs)]
 
 
@@ -2280,18 +2416,22 @@ def function(inputs, outputs, updates=None, **kwargs):
       inputs: List of placeholder tensors.
       outputs: List of output tensors.
       updates: List of update ops.
-      **kwargs: Not used with TensorFlow.
+      **kwargs: Passed to `tf.Session.run`.
 
   Returns:
       Output values as Numpy arrays.
+
+  Raises:
+      ValueError: if invalid kwargs are passed in.
   """
   if kwargs:
-    msg = [
-        'Expected no kwargs, you passed %s' % len(kwargs),
-        'kwargs passed to function are ignored with Tensorflow backend'
-    ]
-    warnings.warn('\n'.join(msg))
-  return Function(inputs, outputs, updates=updates)
+    for key in kwargs:
+      if (key not in tf_inspect.getargspec(session_module.Session.run)[0] and
+          key not in tf_inspect.getargspec(Function.__init__)[0]):
+        msg = ('Invalid argument "%s" passed to K.function with Tensorflow '
+               'backend') % key
+        raise ValueError(msg)
+  return Function(inputs, outputs, updates=updates, **kwargs)
 
 
 def gradients(loss, variables):
@@ -2436,7 +2576,8 @@ def rnn(step_function,
           # (see earlier comment for tile explanation)
           tiled_mask_t = array_ops.tile(mask_t,
                                         array_ops.stack(
-                                            [1, array_ops.shape(new_state)[1]]))
+                                            [1,
+                                             array_ops.shape(new_state)[1]]))
           return_states.append(array_ops.where(tiled_mask_t, new_state, state))
         states = return_states
         successive_outputs.append(output)
@@ -2595,7 +2736,7 @@ def in_train_phase(x, alt, training=None):
           (tensor or callable that returns a tensor).
       training: Optional scalar tensor
           (or Python boolean, or Python integer)
-          specifing the learning phase.
+          specifying the learning phase.
 
   Returns:
       Either `x` or `alt` based on the `training` flag.
@@ -2638,7 +2779,7 @@ def in_test_phase(x, alt, training=None):
           (tensor or callable that returns a tensor).
       training: Optional scalar tensor
           (or Python boolean, or Python integer)
-          specifing the learning phase.
+          specifying the learning phase.
 
   Returns:
       Either `x` or `alt` based on `K.learning_phase`.
@@ -2915,6 +3056,16 @@ def in_top_k(predictions, targets, k):
 
 
 def _preprocess_deconv_output_shape(x, shape, data_format):
+  """Get the output_shape for the deconvolution.
+
+  Arguments:
+      x: input tensor.
+      shape: output shape.
+      data_format: string, one of 'channels_last', 'channels_first'.
+
+  Returns:
+      The output shape.
+  """
   if data_format == 'channels_first':
     shape = (shape[0], shape[2], shape[3], shape[1])
 
@@ -2925,6 +3076,15 @@ def _preprocess_deconv_output_shape(x, shape, data_format):
 
 
 def _preprocess_conv2d_input(x, data_format):
+  """Transpose and cast the input before the conv2d.
+
+  Arguments:
+      x: input tensor.
+      data_format: string, one of 'channels_last', 'channels_first'.
+
+  Returns:
+      A tensor.
+  """
   if dtype(x) == 'float64':
     x = math_ops.cast(x, 'float32')
   if data_format == 'channels_first':
@@ -2937,6 +3097,15 @@ def _preprocess_conv2d_input(x, data_format):
 
 
 def _preprocess_conv3d_input(x, data_format):
+  """Transpose and cast the input before the conv3d.
+
+  Arguments:
+      x: input tensor.
+      data_format: string, one of 'channels_last', 'channels_first'.
+
+  Returns:
+      A tensor.
+  """
   if dtype(x) == 'float64':
     x = math_ops.cast(x, 'float32')
   if data_format == 'channels_first':
@@ -2945,6 +3114,15 @@ def _preprocess_conv3d_input(x, data_format):
 
 
 def _preprocess_conv2d_kernel(kernel, data_format):
+  """Transpose and cast the kernel before the conv2d.
+
+  Arguments:
+      kernel: kernel tensor.
+      data_format: string, one of 'channels_last', 'channels_first'.
+
+  Returns:
+      A tensor.
+  """
   if dtype(kernel) == 'float64':
     kernel = math_ops.cast(kernel, 'float32')
   if data_format == 'channels_first':
@@ -2953,6 +3131,15 @@ def _preprocess_conv2d_kernel(kernel, data_format):
 
 
 def _preprocess_conv3d_kernel(kernel, data_format):
+  """Transpose and cast the kernel before the conv3d.
+
+  Arguments:
+      kernel: kernel tensor.
+      data_format: string, one of 'channels_last', 'channels_first'.
+
+  Returns:
+      A tensor.
+  """
   if dtype(kernel) == 'float64':
     kernel = math_ops.cast(kernel, 'float32')
   if data_format == 'channels_first':
@@ -2961,16 +3148,37 @@ def _preprocess_conv3d_kernel(kernel, data_format):
 
 
 def _preprocess_padding(padding):
+  """Convert keras' padding to tensorflow's padding.
+
+  Arguments:
+      padding: string, one of 'same' , 'valid'
+
+  Returns:
+      a string, one of 'SAME', 'VALID'.
+
+  Raises:
+      ValueError: if invalid `padding'`
+  """
   if padding == 'same':
     padding = 'SAME'
   elif padding == 'valid':
     padding = 'VALID'
   else:
-    raise ValueError('Invalid border mode:', padding)
+    raise ValueError('Invalid padding:', padding)
   return padding
 
 
 def _postprocess_conv2d_output(x, data_format):
+  """Transpose and cast the output from conv2d if needed.
+
+  Arguments:
+      x: A tensor.
+      data_format: string, one of "channels_last", "channels_first".
+
+  Returns:
+      A tensor.
+  """
+
   if data_format == 'channels_first':
     x = array_ops.transpose(x, (0, 3, 1, 2))
 
@@ -2980,6 +3188,15 @@ def _postprocess_conv2d_output(x, data_format):
 
 
 def _postprocess_conv3d_output(x, data_format):
+  """Transpose and cast the output from conv3d if needed.
+
+  Arguments:
+      x: A tensor.
+      data_format: string, one of "channels_last", "channels_first".
+
+  Returns:
+      A tensor.
+  """
   if data_format == 'channels_first':
     x = array_ops.transpose(x, (0, 4, 1, 2, 3))
 
@@ -3043,7 +3260,7 @@ def conv2d(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
       dilation_rate: tuple of 2 integers.
 
   Returns:
@@ -3091,7 +3308,7 @@ def conv2d_transpose(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
 
   Returns:
       A tensor, result of transposed 2D convolution.
@@ -3177,7 +3394,7 @@ def conv3d(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
       dilation_rate: tuple of 3 integers.
 
   Returns:

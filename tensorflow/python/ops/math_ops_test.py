@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -27,6 +28,8 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+
+ops._USE_C_API = True
 
 exp = np.exp
 log = np.log
@@ -53,7 +56,8 @@ class ReduceTest(test_util.TensorFlowTestCase):
   def testReduceInvalidAxis(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     axis = np.array([[0], [1]])
-    with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "must be at most rank 1"):
       math_ops.reduce_sum(x, axis)
 
 
@@ -220,6 +224,7 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
 
 class ScalarMulTest(test_util.TensorFlowTestCase):
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testAcceptsRefs(self):
     var = variables.Variable(10)
     result = math_ops.scalar_mul(3, var)
@@ -278,7 +283,8 @@ class AddNTest(test_util.TensorFlowTestCase):
     for _ in range(98):
       partials.append(math_ops.add_n([constant_op.constant(1)]))
     partials.append(
-        math_ops.add_n([constant_op.constant(1), constant_op.constant(1)]))
+        math_ops.add_n([constant_op.constant(1),
+                        constant_op.constant(1)]))
 
     res = math_ops.add_n(partials) + constant_op.constant(0)
     with self.test_session(use_gpu=True):
@@ -321,6 +327,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     divs = np.arange(-3, 0, .25).reshape(1, 12)
     return nums, divs
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testFloorModInt(self):
     nums, divs = self.intTestData()
     with self.test_session():
@@ -330,6 +337,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = nums % divs
       self.assertAllEqual(tf_result, np_result)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testFloorModFloat(self):
     nums, divs = self.floatTestData()
     with self.test_session():
@@ -341,6 +349,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       #               % array_ops.constant(divs)).eval()
       # self.assertAllEqual(tf2_result, tf_result)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testTruncateModInt(self):
     nums, divs = self.intTestData()
     with self.test_session():
@@ -348,6 +357,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.fmod(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testTruncateModFloat(self):
     nums, divs = self.floatTestData()
     with self.test_session():
@@ -355,6 +365,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.fmod(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testDivideInt(self):
     nums, divs = self.intTestData()
     with self.test_session():
@@ -366,12 +377,14 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       #               // array_ops.constant(divs)).eval()
       # self.assertAllEqual(tf2_result, tf_result)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testDivideName(self):
     with self.test_session():
       op = math_ops.divide(
           array_ops.constant(3), array_ops.constant(4), name="my_cool_divide")
       self.assertEqual(op.name, "my_cool_divide:0")
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testRealDiv(self):
     nums, divs = self.floatTestData()
     with self.test_session():
@@ -379,12 +392,14 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.divide(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
     with self.test_session():
       _ = math_ops.divide(foo, 1.).eval()
       _ = math_ops.div(foo, 2.).eval()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testFloorDivGrad(self):
     with self.test_session():
       a = variables.Variable(2.)
@@ -399,6 +414,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
         self.assertAllEqual([None if x is None else x.eval()
                              for x in c_grad], [None, None])
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testConsistent(self):
     nums, divs = self.intTestData()
     with self.test_session():
@@ -408,9 +424,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       tf_divs = array_ops.constant(divs)
       tf2_result = (tf_nums // tf_divs * tf_divs + tf_nums % tf_divs).eval()
       np_result = (nums // divs) * divs + (nums % divs)
-      # consistentcy with numpy
+      # Consistent with numpy
       self.assertAllEqual(tf_result, np_result)
-      # consistentcy with two forms of divide
+      # Consistent with two forms of divide
       self.assertAllEqual(tf_result, tf2_result)
       # consistency for truncation form
       tf3_result = (math_ops.truncatediv(nums, divs) * divs +

@@ -1,20 +1,41 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+ts_web_library(
     name = "vz_histogram_timeseries",
-    srcs = [
-        "vz-histogram-timeseries.html",
-    ],
+    srcs = ["vz-histogram-timeseries.html"],
     path = "/vz-histogram-timeseries",
     deps = [
         "//tensorflow/tensorboard/components/tf_imports:d3",
-        "@org_polymer",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
+    ],
+)
+
+ts_web_library(
+    name = "demo",
+    srcs = ["index.html"],
+    path = "/vz-histogram-timeseries",
+    deps = [
+        ":vz_histogram_timeseries",
+        "//tensorflow/tensorboard/components/tf_imports:webcomponentsjs",
+        "@org_polymer_iron_demo_helpers",
+        "@org_polymer_paper_button",
+        "@org_polymer_paper_styles",
+    ],
+)
+
+tensorboard_webcomponent_library(
+    name = "legacy",
+    srcs = [":vz_histogram_timeseries"],
+    visibility = ["//learning/vis/vz_elements/catalog:__pkg__"],
+    destdir = "vz-histogram-timeseries",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_imports_google:lib",
+        "//third_party/javascript/polymer/v1/polymer:lib",
     ],
 )
 
@@ -22,26 +43,4 @@ filegroup(
     name = "all_files",
     srcs = glob(["**"]),
     tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
-
-tensorboard_webcomponent_library(
-    name = "legacy",
-    srcs = [
-        "index.html",
-        "vz-histogram-timeseries.html",
-        ":legacy_ts",
-    ],
-    visibility = ["//visibility:public"],
-    destdir = "vz-histogram-timeseries",
-    deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
-        "//third_party/javascript/polymer/v1/polymer:lib",
-    ],
-)
-
-tensorboard_ts_library(
-    name = "legacy_ts",
 )

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import functools
 
-from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import embedding_ops
@@ -34,116 +33,10 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-
-
-def _is_variable(v):
-  """Returns true if `v` is a variable."""
-  return isinstance(v, (variables.Variable,
-                        resource_variable_ops.ResourceVariable))
-
-
-def _embeddings_from_arguments(column,
-                               args,
-                               weight_collections,
-                               trainable,
-                               output_rank=2):
-  """Returns embeddings for a column based on the computed arguments.
-
-  Args:
-   column: the column name.
-   args: the _DeepEmbeddingLookupArguments for this column.
-   weight_collections: collections to store weights in.
-   trainable: whether these embeddings should be trainable.
-   output_rank: the desired rank of the returned `Tensor`. Inner dimensions will
-     be combined to produce the desired rank.
-
-  Returns:
-   the embeddings.
-
-  Raises:
-   ValueError: if not possible to create.
-  """
-  # pylint: disable=protected-access
-  input_tensor = layers._inner_flatten(args.input_tensor, output_rank)
-  weight_tensor = None
-  if args.weight_tensor is not None:
-    weight_tensor = layers._inner_flatten(args.weight_tensor, output_rank)
-  # pylint: enable=protected-access
-
-  # This option is only enabled for scattered_embedding_column.
-  if args.hash_key:
-    embeddings = contrib_variables.model_variable(
-        name='weights',
-        shape=[args.vocab_size],
-        dtype=dtypes.float32,
-        initializer=args.initializer,
-        trainable=(trainable and args.trainable),
-        collections=weight_collections)
-
-    return embedding_ops.scattered_embedding_lookup_sparse(
-        embeddings, input_tensor, args.dimension,
-        hash_key=args.hash_key,
-        combiner=args.combiner, name='lookup')
-
-  if args.shared_embedding_name is not None:
-    shared_embedding_collection_name = (
-        'SHARED_EMBEDDING_COLLECTION_' + args.shared_embedding_name.upper())
-    graph = ops.get_default_graph()
-    shared_embedding_collection = (
-        graph.get_collection_ref(shared_embedding_collection_name))
-    shape = [args.vocab_size, args.dimension]
-    if shared_embedding_collection:
-      if len(shared_embedding_collection) > 1:
-        raise ValueError('Collection %s can only contain one '
-                         '(partitioned) variable.'
-                         % shared_embedding_collection_name)
-      else:
-        embeddings = shared_embedding_collection[0]
-        if embeddings.get_shape() != shape:
-          raise ValueError('The embedding variable with name {} already '
-                           'exists, but its shape does not match required '
-                           'embedding shape  here. Please make sure to use '
-                           'different shared_embedding_name for different '
-                           'shared embeddings.'.format(
-                               args.shared_embedding_name))
-    else:
-      embeddings = contrib_variables.model_variable(
-          name=args.shared_embedding_name,
-          shape=shape,
-          dtype=dtypes.float32,
-          initializer=args.initializer,
-          trainable=(trainable and args.trainable),
-          collections=weight_collections)
-      graph.add_to_collection(shared_embedding_collection_name, embeddings)
-  else:
-    embeddings = contrib_variables.model_variable(
-        name='weights',
-        shape=[args.vocab_size, args.dimension],
-        dtype=dtypes.float32,
-        initializer=args.initializer,
-        trainable=(trainable and args.trainable),
-        collections=weight_collections)
-
-  if _is_variable(embeddings):
-    embeddings = [embeddings]
-  else:
-    embeddings = embeddings._get_variable_list()  # pylint: disable=protected-access
-  # pylint: disable=protected-access
-  _maybe_restore_from_checkpoint(
-      column._checkpoint_path(), embeddings)
-  return embedding_ops.safe_embedding_lookup_sparse(
-      embeddings,
-      input_tensor,
-      sparse_weights=weight_tensor,
-      combiner=args.combiner,
-      name=column.name + 'weights',
-      max_norm=args.max_norm)
 
 
 def _maybe_reshape_input_tensor(tensor, column_name, output_rank):
@@ -232,12 +125,13 @@ def _input_from_feature_columns(columns_to_tensors,
           # pylint: disable=protected-access
           arguments = column._deep_embedding_lookup_arguments(
               transformed_tensor)
-          output_tensors.append(_embeddings_from_arguments(
-              column,
-              arguments,
-              weight_collections,
-              trainable,
-              output_rank=output_rank))
+          output_tensors.append(
+              fc._embeddings_from_arguments(  # pylint: disable=protected-access
+                  column,
+                  arguments,
+                  weight_collections,
+                  trainable,
+                  output_rank=output_rank))
 
         except NotImplementedError as ee:
           try:
@@ -393,7 +287,7 @@ def _create_embedding_lookup(column,
         initializer=embedding_lookup_arguments.initializer,
         trainable=trainable,
         collections=weight_collections)
-    if _is_variable(variable):
+    if fc._is_variable(variable):  # pylint: disable=protected-access
       variable = [variable]
     else:
       variable = variable._get_variable_list()  # pylint: disable=protected-access
@@ -404,16 +298,6 @@ def _create_embedding_lookup(column,
         combiner=embedding_lookup_arguments.combiner,
         name=column.name + '_weights')
     return variable, predictions
-
-
-def _maybe_restore_from_checkpoint(checkpoint_path, variable):
-  if checkpoint_path is not None:
-    path, tensor_name = checkpoint_path
-    weights_to_restore = variable
-    if len(variable) == 1:
-      weights_to_restore = variable[0]
-    checkpoint_utils.init_from_checkpoint(path,
-                                          {tensor_name: weights_to_restore})
 
 
 def _create_joint_embedding_lookup(columns_to_tensors,
@@ -451,7 +335,7 @@ def _create_joint_embedding_lookup(columns_to_tensors,
         initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=weight_collections)
-    if _is_variable(variable):
+    if fc._is_variable(variable):  # pylint: disable=protected-access
       variable = [variable]
     else:
       variable = variable._get_variable_list()  # pylint: disable=protected-access
@@ -634,7 +518,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
           predictions, shape=(-1, num_outputs)))
       column_to_variable[column] = variable
       _log_variable(variable)
-      _maybe_restore_from_checkpoint(column._checkpoint_path(), variable)
+      fc._maybe_restore_from_checkpoint(column._checkpoint_path(), variable)  # pylint: disable=protected-access
     # pylint: enable=protected-access
     predictions_no_bias = math_ops.add_n(output_tensors)
     bias = contrib_variables.model_variable(
@@ -827,10 +711,10 @@ def parse_feature_columns_from_sequence_examples(
 def _log_variable(variable):
   if isinstance(variable, list):
     for var in variable:
-      if _is_variable(variable):
+      if fc._is_variable(variable):  # pylint: disable=protected-access
         logging.info('Created variable %s, with device=%s', var.name,
                      var.device)
-  elif _is_variable(variable):
+  elif fc._is_variable(variable):  # pylint: disable=protected-access
     logging.info('Created variable %s, with device=%s', variable.name,
                  variable.device)
 
@@ -972,7 +856,8 @@ def _add_variable_collection(weight_collections):
 # pylint: disable=protected-access
 _SUPPORTED_SEQUENCE_COLUMNS = (fc._OneHotColumn,
                                fc._EmbeddingColumn,
-                               fc._RealValuedColumn)
+                               fc._RealValuedColumn,
+                               fc._RealValuedVarLenColumn)
 
 _FORBIDDEN_SEQUENCE_COLUMNS = (fc._ScatteredEmbeddingColumn,
                                fc._BucketizedColumn,

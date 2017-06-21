@@ -21,8 +21,7 @@ py_library(
         "python/training/bucket_ops.py",
         "python/training/device_setter.py",
         "python/training/evaluation.py",
-        "python/training/failure_tolerator.py",
-        "python/training/feeder.py",
+        "python/training/feeding_queue_runner.py",
         "python/training/hparam.py",
         "python/training/python_input.py",
         "python/training/resample.py",
@@ -59,6 +58,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -117,37 +117,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "failure_tolerator_test",
-    size = "small",
-    srcs = ["python/training/failure_tolerator_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":training_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "feeder_test",
-    size = "medium",
-    srcs = ["python/training/feeder_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "notap",  # Disabling until b/34151496 is better understood.
-    ],
-    deps = [
-        ":training_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:training",
     ],
 )
 

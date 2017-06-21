@@ -40,6 +40,9 @@ See the @{$python/contrib.framework} guide.
 @@has_arg_scope
 @@arg_scoped_arguments
 
+@@prepend_name_scope
+@@strip_name_scope
+
 @@add_model_variable
 @@assert_global_step
 @@assert_or_get_global_step
@@ -71,6 +74,10 @@ See the @{$python/contrib.framework} guide.
 @@list_variables
 @@load_variable
 @@init_from_checkpoint
+@@load_and_remap_matrix_initializer
+@@load_embedding_initializer
+@@load_linear_multiclass_bias_initializer
+@@load_variable_slot_initializer
 """
 
 from __future__ import absolute_import
@@ -82,7 +89,11 @@ from tensorflow.contrib.framework.python.framework import *
 from tensorflow.contrib.framework.python.ops import *
 # pylint: enable=unused-import,wildcard-import
 
+from tensorflow.python.framework.ops import prepend_name_scope
+from tensorflow.python.framework.ops import strip_name_scope
+
 from tensorflow.python.util.all_util import remove_undocumented
 
+_allowed_symbols = ['nest']
 
-remove_undocumented(__name__)
+remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -61,7 +62,7 @@ namespace {
 class ReduceTest : public ClientLibraryTestBase {
  protected:
   ReduceTest() {
-    // Implementation note: layed out z >> y >> x by default.
+    // Implementation note: laid out z >> y >> x by default.
     // clang-format off
     literal_2d_ = LiteralUtil::CreateR2<float>({
       // x0   x1   x2
@@ -628,6 +629,7 @@ INSTANTIATE_TEST_CASE_P(
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

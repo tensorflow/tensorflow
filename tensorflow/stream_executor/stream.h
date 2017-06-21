@@ -245,6 +245,16 @@ class Stream {
                        const dnn::FilterDescriptor &filter_descriptor,
                        const DeviceMemory<float> &filter_data,
                        const dnn::ConvolutionDescriptor &convolution_descriptor,
+                       const DeviceMemory<float> &biases,
+                       dnn::ActivationMode activation_mode,
+                       const dnn::BatchDescriptor &output_descriptor,
+                       DeviceMemory<float> *output);
+
+  Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
+                       const DeviceMemory<float> &input_data,
+                       const dnn::FilterDescriptor &filter_descriptor,
+                       const DeviceMemory<float> &filter_data,
+                       const dnn::ConvolutionDescriptor &convolution_descriptor,
                        const dnn::BatchDescriptor &output_descriptor,
                        DeviceMemory<float> *output);
 
@@ -274,6 +284,27 @@ class Stream {
       const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<Eigen::half> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<Eigen::half> &biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveWithScratch(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveWithScratch(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<Eigen::half> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator);
 
@@ -285,6 +316,31 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<Eigen::half> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<Eigen::half> &biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
@@ -1539,18 +1595,14 @@ class Stream {
     return ThenMemcpy(gpu_dst, gpu_src, size);
   }
 
-  // Entrain onto the stream: a memset of zero at a GPU location of size
-  // bytes.
+  // Entrain onto the stream: a memset of zero at a GPU location of size bytes.
   // The location must not be null.
   Stream &ThenMemZero(DeviceMemoryBase *location, uint64 size);
 
-  // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location
-  // of
-  // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly
-  // divisible
+  // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
+  // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  Stream &ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,
-                       uint64 size);
+  Stream &ThenMemset32(DeviceMemoryBase *location, uint32 pattern, uint64 size);
 
   // Enqueue a forward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnForward for more details.
@@ -1596,6 +1648,27 @@ class Stream {
                           DeviceMemory<float> *params_backprop_data,
                           DeviceMemory<uint8> *reserve_space_data,
                           ScratchAllocator *workspace_allocator);
+
+  // Enqueue onto the stream a operation that transforms a tensor.
+  // See DnnSupport::DoTransformTensor for more details.
+  Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                              dnn::DataType input_type,
+                              const DeviceMemoryBase &input_data,
+                              const dnn::BatchDescriptor &output_desc,
+                              dnn::DataType output_type,
+                              DeviceMemoryBase *output_data);
+
+  // The templated version of the above ThenTransformTensor. Useful when the
+  // input and output types are statically known.
+  template <typename InElemT, typename OutElemT>
+  Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                              const DeviceMemory<InElemT> &input_data,
+                              const dnn::BatchDescriptor &output_desc,
+                              DeviceMemory<OutElemT> *output_data) {
+    return ThenTransformTensor(input_desc, dnn::ToDataType<InElemT>(),
+                               input_data, output_desc,
+                               dnn::ToDataType<OutElemT>(), output_data);
+  }
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program

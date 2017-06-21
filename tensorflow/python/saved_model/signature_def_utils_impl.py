@@ -136,14 +136,6 @@ def predict_signature_def(inputs, outputs):
   if outputs is None:
     raise ValueError('outputs cannot be None or empty for prediction.')
 
-  # If there's only one input or output, we can standardize keys
-  if len(inputs) == 1:
-    (_, value), = inputs.items()
-    inputs = {signature_constants.PREDICT_INPUTS: value}
-  if len(outputs) == 1:
-    (_, value), = outputs.items()
-    outputs = {signature_constants.PREDICT_OUTPUTS: value}
-
   signature_inputs = {key: utils.build_tensor_info(tensor)
                       for key, tensor in inputs.items()}
   signature_outputs = {key: utils.build_tensor_info(tensor)

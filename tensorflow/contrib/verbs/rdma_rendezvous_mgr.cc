@@ -29,10 +29,8 @@ namespace tensorflow {
 
 class RdmaRemoteRendezvous : public BaseRemoteRendezvous {
  public:
-  RdmaRemoteRendezvous(const WorkerEnv* env, const string& worker_name,
-                       int64 step_id, RdmaMgr* rdma_mgr)
-      : BaseRemoteRendezvous(env, worker_name, step_id, true),
-        rdma_mgr_(rdma_mgr) {}
+  RdmaRemoteRendezvous(const WorkerEnv* env, int64 step_id, RdmaMgr* rdma_mgr)
+      : BaseRemoteRendezvous(env, step_id, true), rdma_mgr_(rdma_mgr) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -133,15 +131,12 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
   rb->SendNextItem();
 }
 
-RdmaRendezvousMgr::RdmaRendezvousMgr(const WorkerEnv* env,
-                                     const string& worker_name,
-                                     WorkerCacheInterface* worker_cache)
-    : BaseRendezvousMgr(env, worker_name) {}
+RdmaRendezvousMgr::RdmaRendezvousMgr(const WorkerEnv* env)
+    : BaseRendezvousMgr(env) {}
 
 BaseRemoteRendezvous* RdmaRendezvousMgr::Create(int64 step_id,
-                                                const WorkerEnv* worker_env,
-                                                const string& worker_name) {
-  return new RdmaRemoteRendezvous(worker_env, worker_name, step_id, rdma_mgr_);
+                                                const WorkerEnv* worker_env) {
+  return new RdmaRemoteRendezvous(worker_env, step_id, rdma_mgr_);
 }
 
 }  // end namespace tensorflow

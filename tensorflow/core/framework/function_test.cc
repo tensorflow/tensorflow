@@ -17,7 +17,6 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -29,6 +28,24 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+namespace {
+
+// A helper class to make AttrSlice from initializer lists
+class Attrs {
+ public:
+  Attrs(const std::initializer_list<  // NOLINT(runtime/explicit)
+        std::pair<string, FunctionDefHelper::AttrValueWrapper>>
+            attrs) {
+    for (const auto& aval : attrs) {
+      map_.insert({aval.first, aval.second.proto});
+    }
+  }
+
+  operator AttrSlice() { return AttrSlice(&map_); }  // NOLINT(runtime/explicit)
+
+ private:
+  AttrValueMap map_;
+};
 
 typedef FunctionDefHelper FDH;
 
@@ -45,8 +62,6 @@ Returns a tensor with a single element (1) of type T.
 y: A scalar in type T.
 
 )doc");
-
-static InstantiateAttrValueMap kNoAttrs;
 
 TEST(TFunc, SquarePlusOne) {
   auto fdef = FDH::Create(
@@ -81,7 +96,8 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
 
   // Instantiate one with T=float
   InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result));
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result));
   const char* e2 = R"P(
 (x:float) -> (y:float) {
   a = Square[T=float](x)
@@ -91,7 +107,7 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 TEST(TFunc, ControlDep) {
@@ -126,7 +142,8 @@ ControlDep(x:int32) -> (y:int32) {
 
   // Instantiate one with T=float
   InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result));
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result));
   const char* e2 = R"P(
 (x:int32) -> (y:int32) {
   a = Identity[T=int32](x)
@@ -136,7 +153,7 @@ ControlDep(x:int32) -> (y:int32) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_INT32}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_INT32}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 REGISTER_OP("HasDefaultType")
@@ -145,7 +162,7 @@ REGISTER_OP("HasDefaultType")
 
 // This verifies that a function using an op before a type attr (with
 // a default) is added, still works.  This is important for backwards
-// compatibilty.
+// compatibility.
 TEST(TFunc, MissingTypeAttr) {
   auto fdef = FDH::Create(
       // Name
@@ -171,8 +188,7 @@ BackCompat() -> (y:float) {
   EXPECT_EQ(DebugString(fdef), e);
 
   InstantiationResult result;
-  TF_ASSERT_OK(
-      InstantiateFunction(fdef, InstantiateAttrValueMap{}, GetOpSig, &result));
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
   // Should get T=float from Op's default.
   const char* e2 = R"P(
 () -> (a:float) {
@@ -181,7 +197,7 @@ BackCompat() -> (y:float) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector());
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 TEST(TFunc, NTimesT) {
@@ -209,7 +225,7 @@ NTimesT(x:float, y:float) -> (z:float) {
   EXPECT_EQ(DebugString(fdef), e);
 
   InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
   const char* e2 = R"P(
 (x:float, y:float) -> (a:float) {
   a = AddN[N=2, T=float](x, y)
@@ -217,7 +233,7 @@ NTimesT(x:float, y:float) -> (z:float) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 // NOTE: This is the simplest Map op. It takes a f:T->U.
@@ -272,8 +288,8 @@ AddSquared[N:int, T:{float, double, int32, int64}](x:N*T) -> (y:T) {
 
   // Instantiate one with T=float
   InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, {{"N", 3}, {"T", DT_FLOAT}}, GetOpSig,
-                                   &result));
+  TF_ASSERT_OK(InstantiateFunction(fdef, Attrs({{"N", 3}, {"T", DT_FLOAT}}),
+                                   GetOpSig, &result));
   const char* e2 = R"P(
 (x_0:float, x_1:float, x_2:float) -> (y:float) {
   a = Map[N=3, T=float, U=float, func=Square[T=float]](x_0, x_1, x_2)
@@ -282,7 +298,7 @@ AddSquared[N:int, T:{float, double, int32, int64}](x:N*T) -> (y:T) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT, DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 TEST(TFunc, ControlDeps) {
@@ -315,7 +331,7 @@ ControlDeps(x:float) -> () {
   EXPECT_EQ(DebugString(fdef), e);
 
   InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
   const char* e2 = R"P(
 (x:float) -> () {
   a = One[T=float]() @ x
@@ -327,7 +343,7 @@ ControlDeps(x:float) -> () {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 TEST(TFunc, XTimesTwo) {
@@ -395,7 +411,7 @@ Test(i:float) -> (o:float) {
   EXPECT_EQ(DebugString(fdef), e);
 
   InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
   const char* e2 = R"P(
 (i:float) -> (o:float) {
   zero = Const[dtype=int32, value=Tensor<type: int32 shape: [] values: 0>]()
@@ -408,7 +424,7 @@ Test(i:float) -> (o:float) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 REGISTER_OP("Cond")
@@ -467,7 +483,7 @@ MySelect(x:float) -> (z:float) {
   EXPECT_EQ(DebugString(fdef), e);
 
   InstantiationResult result;
-  TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
   const char* e2 = R"P(
 (x:float) -> (z:float) {
   y = Cond[Tin={float}, cond=MyCond, else_branch=MyElse, out_types={float}, then_branch=MyThen](x)
@@ -476,7 +492,7 @@ MySelect(x:float) -> (z:float) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 static void HasError(const Status& s, const string& substr) {
@@ -488,8 +504,9 @@ TEST(InstantiateErrors, Not_Sufficient_Attrs) {
   auto fdef =
       FDH::Define("nop", {}, {}, {"T:{float, double, int32, int64}"}, {});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, {{"U", DT_FLOAT}}, GetOpSig, &result),
-           "Attr T is not found from ");
+  HasError(
+      InstantiateFunction(fdef, Attrs({{"U", DT_FLOAT}}), GetOpSig, &result),
+      "Attr T is not found from ");
 }
 
 #if 0  // TODO(josh11b): Enable this test once having an extra attr is an error.
@@ -497,7 +514,7 @@ TEST(InstantiateErrors, Too_Many_Attrs) {
   auto fdef =
       FDH::Define("nop", {}, {}, {"T:{float, double, int32, int64}"}, {});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, {{"T", DT_INT32}, {"U", DT_FLOAT}},
+  HasError(InstantiateFunction(fdef, Attrs({{"T", DT_INT32}, {"U", DT_FLOAT}}),
                                GetOpSig, &result),
            "Attr U is not found in ");
 }
@@ -508,7 +525,7 @@ TEST(InstantiateErrors, AttrValue_Value_Placeholder) {
       FDH::Define("nop", {}, {}, {"T:{float, double, int32, int64}"}, {});
   InstantiationResult result;
   HasError(
-      InstantiateFunction(fdef, {{"T", "$bad"}}, GetOpSig, &result),
+      InstantiateFunction(fdef, Attrs({{"T", "$bad"}}), GetOpSig, &result),
       "AttrValue had value with unexpected type 'placeholder'\n\tfor attr 'T'");
 }
 
@@ -518,14 +535,15 @@ TEST(InstantiateErrors, Unbounded_Attr) {
                               {{"a"}, "One", {}, {{"T", "$unknown"}}, {"x"}},
                           });
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, {{"T", DT_FLOAT}}, GetOpSig, &result),
-           "Failed to bind all placeholders");
+  HasError(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result),
+      "Failed to bind all placeholders");
 }
 
 TEST(InstantiateErrors, DupArgs) {
   auto fdef = FDH::Define("test", {"x:float", "x:float"}, {}, {}, {});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Duplicated arg name");
 }
 
@@ -536,7 +554,7 @@ TEST(InstantiateErrors, Dup_Node_Names) {
                               {{"y"}, "One", {}, {{"T", DT_FLOAT}}},
                           });
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Duplicated ret name");
 }
 
@@ -547,7 +565,7 @@ TEST(InstantiateErrors, Node_Arg_Notfound) {
                           },
                           {});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "input z is not found");
 }
 
@@ -557,7 +575,7 @@ TEST(InstantiateErrors, Node_Arg_TypeMismatch) {
                               {{"y"}, "Add", {"x", "x"}, {{"T", DT_INT32}}},
                           });
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "input x[0] expected type int32 != float, the type of x[0]");
 }
 
@@ -568,7 +586,7 @@ TEST(InstantiateErrors, Node_Arg_ControlMissing) {
                       {{"y"}, "Add", {"x", "x"}, {{"T", DT_FLOAT}}, {"z"}},
                   });
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "input[2] == '^z', is not found.");
 }
 
@@ -579,7 +597,7 @@ TEST(InstantiateErrors, FuncRet_Missing) {
                           },
                           {});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Return y missing");
 }
 
@@ -590,7 +608,7 @@ TEST(InstantiateErrors, FuncRet_NotFound) {
                           },
                           {{"y", "z"}});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Return y -> z is not found");
 }
 
@@ -601,7 +619,7 @@ TEST(InstantiateErrors, FuncRet_NameMismatch) {
                           },
                           {{"z", "x:y:0"}});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Return y missing");
 }
 
@@ -613,7 +631,7 @@ TEST(InstantiateErrors, FuncRet_NameMismatch) {
 //                           },
 //                           {{"y", "x:y:0"}, {"z", "x:y:0"}});
 //   InstantiationResult result;
-//   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+//   HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
 //            "ret is not found");
 // }
 
@@ -623,7 +641,7 @@ TEST(InstantiateErrors, FuncRet_TypeMismatch) {
                               {{"y"}, "One", {}, {{"T", DT_DOUBLE}}},
                           });
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Invalid ret types y : float vs. double\n\tIn function output y");
 }
 
@@ -649,7 +667,7 @@ TEST(InstantiateErrors, TypeList_Missing_Retval_Attr) {
       },
       {{"y", "y:output"}});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "type attr not found: out_types");
 }
 
@@ -676,7 +694,7 @@ TEST(InstantiateErrors, TypeList_Num_Retval_Mismatch) {
       },
       {{"y", "y:output"}});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Invalid ret types");
 }
 
@@ -703,7 +721,7 @@ TEST(InstantiateErrors, TypeList_Missing_Arg) {
       },
       {{"y", "y:output"}});
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "input unknown is not found");
 }
 
@@ -724,7 +742,7 @@ TEST(InstantiateErrors, TooManyInputs) {
       {{"z", "a:sum:0"}});
 
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Expected input[2] == 'x' to be a control input.");
 }
 
@@ -745,7 +763,7 @@ TEST(InstantiateErrors, TooFewInputs) {
       {{"z", "a:sum:0"}});
 
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Attempt to access beyond input size: 2 >= 2");
 }
 
@@ -773,7 +791,7 @@ TEST(InstantiateErrors, TooManyInputsFromArray1) {
       {{"z", "a:sum:0"}});
 
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Expected input[1] == 'y' to be a control input.");
 }
 
@@ -801,7 +819,7 @@ TEST(InstantiateErrors, TooManyInputsFromArray2) {
       {{"z", "a:sum:0"}});
 
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "Input a:output too long for inputs");
 }
 
@@ -822,7 +840,7 @@ TEST(InstantiateErrors, TypeMismatch) {
       {{"z", "a:sum:0"}});
 
   InstantiationResult result;
-  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+  HasError(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result),
            "input inputs[1] expected type float != int32, the type of y[0]");
 }
 
@@ -874,17 +892,17 @@ TEST(FunctionCallFrame, Float_Float_Float) {
 }
 
 TEST(Canonicalize, Basic) {
-  EXPECT_EQ(Canonicalize("MatMul", {{"T", DT_FLOAT},
-                                    {"transpose_a", false},
-                                    {"transpose_b", false}}),
+  EXPECT_EQ(Canonicalize("MatMul", Attrs({{"T", DT_FLOAT},
+                                          {"transpose_a", false},
+                                          {"transpose_b", false}})),
             "MatMul[T=float,transpose_a=false,transpose_b=false]");
-  EXPECT_EQ(Canonicalize("MatMul", {{"T", DT_FLOAT},
-                                    {"transpose_b", false},
-                                    {"transpose_a", false}}),
+  EXPECT_EQ(Canonicalize("MatMul", Attrs({{"T", DT_FLOAT},
+                                          {"transpose_b", false},
+                                          {"transpose_a", false}})),
             "MatMul[T=float,transpose_a=false,transpose_b=false]");
-  EXPECT_EQ(Canonicalize("MatMul", {{"T", DT_DOUBLE},
-                                    {"transpose_b", true},
-                                    {"transpose_a", false}}),
+  EXPECT_EQ(Canonicalize("MatMul", Attrs({{"T", DT_DOUBLE},
+                                          {"transpose_b", true},
+                                          {"transpose_a", false}})),
             "MatMul[T=double,transpose_a=false,transpose_b=true]");
 }
 
@@ -944,6 +962,15 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
   ASSERT_NE(second, nullptr);
   EXPECT_EQ(second->DebugString(),
             test::function::WXPlusB().signature().DebugString());
+
+  // Can't add function with same name as existing op
+  FunctionDef fdef = test::function::XTimesTwo();
+  fdef.mutable_signature()->set_name("Add");
+  Status s = lib_def.AddFunctionDef(fdef);
+  EXPECT_FALSE(s.ok());
+  EXPECT_EQ(s.error_message(),
+            "Cannot add function 'Add' because an op with the same name "
+            "already exists.");
 }
 
 TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
@@ -993,14 +1020,14 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   EXPECT_EQ(s.error_message(),
             "Gradient for function 'XTimesTwo' already exists.");
 
-  // No conflicing functions or gradients OK
+  // No conflicting functions or gradients OK
   proto.Clear();
   *proto.add_function() = test::function::XTimesFour();
   grad.set_function_name(test::function::XTimes16().signature().name());
   *proto.add_gradient() = grad;
   FunctionLibraryDefinition lib_def3(OpRegistry::Global(), proto);
   TF_EXPECT_OK(lib_def.AddLibrary(lib_def3));
-};
+}
 
 TEST(FunctionLibraryDefinitionTest, ToProto) {
   FunctionDefLibrary proto1;
@@ -1139,4 +1166,5 @@ TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
 }
 
+}  // end namespace
 }  // end namespace tensorflow

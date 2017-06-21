@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import copy
 import json
 import os
 
@@ -28,7 +27,22 @@ import six
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as core_run_config
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+
+
+# A list of the property names in RunConfig user allows to change. They will
+# not affect the execution framework, so when execution framework checks the
+# `uid` of the RunConfig, it should be ingored.
+_DEFAULT_UID_WHITE_LIST = [
+    'tf_random_seed',
+    'save_summary_steps',
+    'save_checkpoints_steps',
+    'save_checkpoints_secs',
+    'session_config',
+    'keep_checkpoint_max',
+    'keep_checkpoint_every_n_hours',
+]
 
 
 class Environment(object):
@@ -249,10 +263,12 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
         the feature.
       evaluation_master: the master on which to perform evaluation.
       model_dir: directory where model parameters, graph etc are saved. If
-        `None`, see `Estimator` about where the model will be saved.
+        `None`, will use `model_dir` property in `TF_CONFIG` environment
+        variable. If both are set, must have same value. If both are `None`, see
+        `Estimator` about where the model will be saved.
       session_config: a ConfigProto used to set session parameters, or None.
-         Note - using this argument, it is easy to provide settings which break
-         otherwise perfectly good models. Use with care.
+        Note - using this argument, it is easy to provide settings which break
+        otherwise perfectly good models. Use with care.
     """
     super(RunConfig, self).__init__(
         master=master, evaluation_master=evaluation_master)
@@ -280,50 +296,32 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     # create Scaffold and Saver in their model_fn to set these.
     self._keep_checkpoint_max = keep_checkpoint_max
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
-    self._model_dir = model_dir
-
-  def replace(self, **kwargs):
-    """Returns a new instance of `RunConfig` replacing specified properties.
-
-    Only the properties in the following list are allowed to be replaced:
-      - `model_dir`.
-
-    Args:
-      **kwargs: keyword named properties with new values.
-
-    Raises:
-      ValueError: If any property name in `kwargs` does not exist or is not
-        allowed to be replaced.
-
-    Returns:
-      a new instance of `RunConfig`.
-    """
-
-    new_copy = copy.deepcopy(self)
-
-    # TODO(b/33295821): Allow more fields to be replaced.
-    for key, new_value in six.iteritems(kwargs):
-      if key == 'model_dir':
-        new_copy._model_dir = new_value  # pylint: disable=protected-access
-        continue
-
-      raise ValueError('{} is not supported by RunConfig replace'.format(key))
-
-    return new_copy
+    self._model_dir = _get_model_dir(model_dir)
 
   @experimental
-  def uid(self):
+  def uid(self, whitelist=None):
     """Generates a 'Unique Identifier' based on all internal fields.
 
     Caller should use the uid string to check `RunConfig` instance integrity
     in one session use, but should not rely on the implementation details, which
     is subject to change.
 
+    Args:
+      whitelist: A list of the string names of the properties uid should not
+        include. If `None`, defaults to `_DEFAULT_UID_WHITE_LIST`, which
+        includes most properties user allowes to change.
+
     Returns:
       A uid string.
     """
-    # TODO(b/33295821): Allows user to specify a whitelist.
+    if whitelist is None:
+      whitelist = _DEFAULT_UID_WHITE_LIST
+
     state = {k: v for k, v in self.__dict__.items() if not k.startswith('__')}
+    # Pop out the keys in whitelist.
+    for k in whitelist:
+      state.pop('_' + k, None)
+
     ordered_state = collections.OrderedDict(
         sorted(state.items(), key=lambda t: t[0]))
     # For class instance without __repr__, some special cares are required.
@@ -412,3 +410,21 @@ def _get_master(cluster_spec, task_type, task_id):
   # For backwards compatibility, we return empty string if task_type was
   # not set (task_type did not previously exist).
   return ''
+
+
+def _get_model_dir(model_dir):
+  """Returns `model_dir` based user provided `model_dir` or `TF_CONFIG`."""
+
+  model_dir_in_tf_config = json.loads(
+      os.environ.get('TF_CONFIG') or '{}').get('model_dir', None)
+  if model_dir_in_tf_config is not None:
+    if model_dir is not None and model_dir_in_tf_config != model_dir:
+      raise ValueError(
+          '`model_dir` provided in RunConfig construct, if set, '
+          'must have the same value as the model_dir in TF_CONFIG. '
+          'model_dir: {}\nTF_CONFIG["model_dir"]: {}.\n'.format(
+              model_dir, model_dir_in_tf_config))
+
+    logging.info('Using model_dir in TF_CONFIG: %s', model_dir_in_tf_config)
+
+  return model_dir or model_dir_in_tf_config

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -54,6 +55,15 @@ XLA_TEST_F(ConcatTest, Concat_R1_With_Nothing) {
   auto concatenated = builder.ConcatInDim({a}, 0);
 
   std::vector<float> expected = {42, 64};
+  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(ConcatTest, Concat_R1_L0_With_Nothing) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({});
+  auto concatenated = builder.ConcatInDim({a}, 0);
+
+  std::vector<float> expected = {};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
@@ -433,6 +443,39 @@ XLA_TEST_F(ConcatTest, ConcatSeveralR1S32s) {
   ComputeAndCompareR1<int32>(&builder, expected, {});
 }
 
+XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
+  ComputationBuilder builder(client_, TestName());
+
+  Array3D<float> arr0(9, 17, 1);
+  arr0.Fill(1);
+
+  Array3D<float> arr1(9, 17, 256);
+  arr1.Fill(2);
+
+  Array3D<float> expected(9, 17, arr0.n3() + arr1.n3());
+  for (int64 i = 0; i < expected.n1(); ++i) {
+    for (int64 j = 0; j < expected.n2(); ++j) {
+      int64 kk = 0;
+      for (const Array3D<float>& arr : {arr0, arr1}) {
+        for (int64 k = 0; k < arr.n3(); ++k, ++kk) {
+          expected(i, j, kk) = arr(i, j, k);
+        }
+      }
+    }
+  }
+
+  ComputationDataHandle h0;
+  auto p0 = CreateR3Parameter<float>(arr0, /*parameter_number=*/0, "p0",
+                                     &builder, &h0);
+  ComputationDataHandle h1;
+  auto p1 = CreateR3Parameter<float>(arr1, /*parameter_number=*/1, "p1",
+                                     &builder, &h1);
+
+  auto concatenated = builder.ConcatInDim({h0, h1}, 2);
+
+  ComputeAndCompareR3<float>(&builder, expected, {p0.get(), p1.get()});
+}
+
 // Describes a binary rank-2 concatenation test.
 struct R2BinarySpec {
   int64 lhs_dim0;
@@ -493,6 +536,63 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
                              {x_data.get(), y_data.get()}, ErrorSpec(1e-4));
 }
 
+// Test that the HLO optimization to replace a concat of a bradcasted scalar
+// produces the correct result in rank 1.
+XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
+  auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
+  auto x_literal = LiteralUtil::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
+  auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
+  auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
+  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
+  auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.Parameter(0, x_literal->shape(), "x");
+  auto y = builder.Parameter(1, f32_scalar, "y");
+  auto z = builder.Parameter(2, f32_scalar, "z");
+  auto bcast = builder.Broadcast(y, {5});
+  auto bcast2 = builder.Broadcast(z, {3});
+  auto concat = builder.ConcatInDim({bcast, x}, /*dimension=*/0);
+  builder.ConcatInDim({concat, bcast2}, /*dimension=*/0);
+
+  ComputeAndCompareR1<float>(
+      &builder,
+      {1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 2.0f, 3.0f, 5.0f, 6.0f, 5.5f, 5.5f, 5.5f},
+      {x_data.get(), y_data.get(), z_data.get()}, ErrorSpec(1e-4));
+}
+
+// Test that the HLO optimization to replace a concat of a bradcasted scalar
+// produces the correct result in rank 3 with both high and low padding in
+// different dimensions.
+XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
+  auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
+  Array3D<float> x3d(3, 5, 7, 3.14f);
+  auto x_literal = LiteralUtil::CreateR3FromArray3D<float>(x3d);
+  auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
+  auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
+  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
+  auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.Parameter(0, x_literal->shape(), "x");
+  auto y = builder.Parameter(1, f32_scalar, "y");
+  auto z = builder.Parameter(2, f32_scalar, "y");
+  auto y_bcast = builder.Broadcast(y, {1, 5, 7});
+  auto z_bcast = builder.Broadcast(z, {4, 1, 7});
+  auto concat = builder.ConcatInDim({y_bcast, x}, /*dimension=*/0);
+  builder.ConcatInDim({concat, z_bcast}, /*dimension=*/1);
+  Array3D<float> y_bcast3d(1, 5, 7, 1.5f);
+  Array3D<float> z_bcast3d(4, 1, 7, 5.5f);
+  auto concat0 = ReferenceUtil::Concat3D(y_bcast3d, x3d, 0);
+  auto concat1 = ReferenceUtil::Concat3D(*concat0, z_bcast3d, 1);
+
+  ComputeAndCompareR3<float>(&builder, *concat1,
+                             {x_data.get(), y_data.get(), z_data.get()},
+                             ErrorSpec(1e-4));
+}
+
 INSTANTIATE_TEST_CASE_P(ConcatR2BinaryTestInstantiation, ConcatR2BinaryTest,
                         ::testing::Values(R2BinarySpec{1, 1, 1, 1, 0},
                                           R2BinarySpec{1, 1, 1, 1, 1},
@@ -506,6 +606,7 @@ INSTANTIATE_TEST_CASE_P(ConcatR2BinaryTestInstantiation, ConcatR2BinaryTest,
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

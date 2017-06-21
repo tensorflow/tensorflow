@@ -158,7 +158,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
             ImageUtils.saveBitmap(croppedBitmap);
         }
 
-
         runInBackground(
                 new Runnable() {
                     @Override

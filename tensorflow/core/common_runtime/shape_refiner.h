@@ -55,6 +55,11 @@ class ShapeRefiner {
   Status SetShape(const Node* node, int output_port,
                   shape_inference::ShapeHandle shape);
 
+  // Update the input shapes of node in case the shapes of the fan-ins of 'node'
+  // have themselves been modified (For example, in case of incremental shape
+  // refinement). Sets refined to true if any of the node shape has changed.
+  Status UpdateNode(const Node* node, bool* refined);
+
   // Returns the InferenceContext for 'node', if present.
   shape_inference::InferenceContext* GetContext(const Node* node) const {
     auto it = node_to_context_.find(node);
@@ -65,10 +70,21 @@ class ShapeRefiner {
   }
 
   // Getters and setters for graph_def_version_.
-  int32 graph_def_version() { return graph_def_version_; }
+  int32 graph_def_version() const { return graph_def_version_; }
   void set_graph_def_version(int32 version) { graph_def_version_ = version; }
 
+  void set_require_shape_inference_fns(bool require_shape_inference_fns) {
+    require_shape_inference_fns_ = require_shape_inference_fns;
+  }
+
  private:
+  // Tries to infer tensor output based on the input shapes of the node. In some
+  // cases, the shapes of the inputs are sufficient for inferring the contents
+  // of the output tensor. For example, a Shape op with fully defined input
+  // shapes can have its output tensor inferred.
+  Status TryToInferTensorOutputFromInputShapes(const Edge* edge, Tensor* output,
+                                               bool* success);
+
   // Extracts the subgraph ending at 'node' that is statically
   // computable and inserts into 'out_graph'. If statically computable,
   // 'is_constant_graph' will be true.
@@ -104,6 +120,9 @@ class ShapeRefiner {
                               const Node* node, int dst_idx,
                               shape_inference::ShapeHandle* result);
 
+  Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
+                    shape_inference::InferenceContext* c);
+
   int32 graph_def_version_;
   const OpRegistryInterface* const ops_registry_;
 
@@ -128,6 +147,8 @@ class ShapeRefiner {
   // Only tensors less than 1KiB are currently stored in the cache.
   static constexpr int64 kMaxTensorSize = 1024;
   std::unordered_map<string, Tensor> const_tensor_map_;
+
+  bool require_shape_inference_fns_ = true;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };

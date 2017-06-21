@@ -44,9 +44,10 @@ limitations under the License.
 
 namespace xla {
 
-using ::tensorflow::strings::StrAppend;
 using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::Printf;
+using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
     int64 parameter_number, const Shape& shape, const string& name) {
@@ -64,7 +65,7 @@ using ::tensorflow::strings::Printf;
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
   instruction->literal_.reset(new Literal);
-  *instruction->literal_->mutable_u8s() += tag;
+  instruction->literal_->append_u8s(tag);
   return instruction;
 }
 
@@ -212,10 +213,10 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kConvolution, shape));
   if (window_util::HasBaseDilation(window)) {
-    instruction->set_name(instruction->name() + "-base-dilated");
+    instruction->name_ = instruction->name() + "-base-dilated";
   }
   if (window_util::HasWindowDilation(window)) {
-    instruction->set_name(instruction->name() + "-window-dilated");
+    instruction->name_ = instruction->name() + "-window-dilated";
   }
   instruction->AppendOperand(lhs);
   instruction->AppendOperand(rhs);
@@ -291,11 +292,13 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSlice(
     const Shape& shape, HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices) {
+    tensorflow::gtl::ArraySlice<int64> limit_indices,
+    tensorflow::gtl::ArraySlice<int64> strides) {
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kSlice, shape));
   instruction->AppendOperand(operand);
   instruction->slice_starts_.assign(start_indices.begin(), start_indices.end());
   instruction->slice_limits_.assign(limit_indices.begin(), limit_indices.end());
+  instruction->slice_strides_.assign(strides.begin(), strides.end());
   return instruction;
 }
 
@@ -409,7 +412,9 @@ HloInstruction::CreateSelectAndScatter(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReshape(
     const Shape& shape, HloInstruction* operand) {
   CHECK_EQ(ShapeUtil::ElementsIn(shape),
-           ShapeUtil::ElementsIn(operand->shape()));
+           ShapeUtil::ElementsIn(operand->shape()))
+      << "shape: " << ShapeUtil::HumanString(shape)
+      << " operand: " << ShapeUtil::HumanString(operand->shape());
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kReshape, shape));
   instruction->AppendOperand(operand);
   return instruction;
@@ -504,16 +509,8 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   HloInstruction* clone = nullptr;
   if (fused_instructions_computation_ == nullptr) {
     // New fusion instruction.
-    string computation_name;
-    HloModule* module = GetModule();
-    if (module) {
-      computation_name = module->GetUniqueCompuationName(
-          instruction_to_fuse->name() + ".fusion");
-    } else {
-      computation_name = instruction_to_fuse->name() + ".fusion";
-    }
-    auto builder = HloComputation::Builder(computation_name, true);
-    builder.AddInstruction(instruction_to_fuse->Clone());
+    auto builder = HloComputation::Builder("fused_computation", true);
+    builder.AddInstruction(instruction_to_fuse->Clone(/*suffix=*/""));
     fused_instructions_computation_ = builder.Build();
     clone = fused_expression_root();
     clone->parent_fusion_instruction_ = this;
@@ -521,7 +518,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
     CHECK(fused_instructions_computation_ != nullptr &&
           fused_instructions_computation_->IsFusionComputation());
     clone = fused_instructions_computation_->AddInstruction(
-        instruction_to_fuse->Clone());
+        instruction_to_fuse->Clone(/*suffix=*/""));
     clone->parent_fusion_instruction_ = this;
     // instruction_to_fuse is necessarily an operand of the fusion instruction.
     // After fusion this will no longer be the case. Remove the operand from the
@@ -577,9 +574,13 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
       // instruction. Add it as an operand and add a corresponding fused
       // parameter instruction.
       int64 param_no = fused_parameters_.size();
-      std::unique_ptr<HloInstruction> param_instruction = CreateParameter(
-          param_no, operand->shape(),
-          tensorflow::strings::StrCat("fusion_param.", param_no));
+      // Name the parameter after the instruction it represents in the outer
+      // (non-fusion) computation. Strip the leading "%" from the operand name
+      // to avoid a double %%.
+      string param_name =
+          StrCat(operand->name().substr(1), ".param_", param_no);
+      std::unique_ptr<HloInstruction> param_instruction =
+          CreateParameter(param_no, operand->shape(), param_name);
 
       param_instruction->parent_fusion_instruction_ = this;
       fused_param = fused_instructions_computation_->AddParameter(
@@ -818,7 +819,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateReshape(shape, new_operands[0]);
     case HloOpcode::kSlice:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_);
+      return CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_,
+                         slice_strides_);
     case HloOpcode::kDynamicSlice:
       return CreateDynamicSlice(shape, new_operands[0], new_operands[1],
                                 dynamic_slice_sizes_);
@@ -858,7 +860,39 @@ HloInstruction::~HloInstruction() {}
 std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
-  clone->name_ = name() + "." + suffix;
+  if (suffix.empty()) {
+    clone->name_ = name();
+  } else {
+    // If an instruction is cloned multiple times avoid names like
+    // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
+    // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
+    // clone of foo.suffix2 is named foo.suffix3 and so on.
+    const string dot_suffix = "." + suffix;
+    size_t index = name().rfind(dot_suffix);
+    if (index == string::npos) {
+      // Existing name does not include ".suffix".
+      clone->name_ = name() + dot_suffix;
+    } else {
+      // Existing name includes ".suffix". Determine if substring after
+      // ".suffix" is numeric and should be replaced with an incremented number.
+      string after_suffix = name().substr(index + dot_suffix.size());
+      if (after_suffix.empty()) {
+        // Existing name ends in ".suffix". New name should end in ".suffix2".
+        clone->name_ = name() + "2";
+      } else {
+        // If names ends with .suffix[0-9]+ then replace with a suffix with the
+        // numeric value incremented.
+        int64 numeric_suffix;
+        if (tensorflow::strings::safe_strto64(after_suffix, &numeric_suffix)) {
+          clone->name_ =
+              StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
+        } else {
+          // Substring after ".suffix" is non-numeric.
+          clone->name_ = name() + dot_suffix;
+        }
+      }
+    }
+  }
   clone->set_parent(parent());
   clone->set_metadata(metadata_);
   return clone;
@@ -1052,7 +1086,7 @@ bool HloInstruction::Identical(
   // general, there is no need to check shape because shape is inferred from the
   // shape of the operands.
   if (opcode() != other.opcode() ||
-      !ContainersEqual(operands(), other.operands(), eq_operands)) {
+      !ContainersEqual(operands(), other.operands(), std::move(eq_operands))) {
     return false;
   }
 
@@ -1275,7 +1309,7 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
 
 void HloInstruction::DetachFromOperands() {
   CHECK_EQ(0, user_count());
-  // An intruction may be repeated as an operand. To avoid calling RemoveUser
+  // An instruction may be repeated as an operand. To avoid calling RemoveUser
   // twice on the same operand, keep a set of already detached operands.
   std::set<HloInstruction*> detached_operands;
   for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
@@ -1387,8 +1421,7 @@ string HloInstruction::SignatureString() const {
       Join(operands_, ", ", [](string* out, HloInstruction* operand) {
         StrAppend(out, ShapeUtil::HumanString(operand->shape()));
       });
-  return tensorflow::strings::StrCat("(", operands, ") -> ",
-                                     ShapeUtil::HumanString(shape()));
+  return StrCat("(", operands, ") -> ", ShapeUtil::HumanString(shape()));
 }
 
 string HloInstruction::ExtendedOpcodeStr() const {
@@ -1400,7 +1433,8 @@ string HloInstruction::ExtendedOpcodeStr() const {
   return opc_name;
 }
 
-string HloInstruction::ToString(bool compact_operands) const {
+string HloInstruction::ToString(bool compact_operands,
+                                bool include_metadata) const {
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
@@ -1414,7 +1448,9 @@ string HloInstruction::ToString(bool compact_operands) const {
       // Concatenate elements in "v" with spaces separating them, but ignoring
       // empty entries.
       for (const auto& s : v) {
-        if (s.empty()) continue;
+        if (s.empty()) {
+          continue;
+        }
         StrAppend(&operands, (first ? "" : " "), s);
         first = false;
       }
@@ -1453,9 +1489,10 @@ string HloInstruction::ToString(bool compact_operands) const {
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
+    bounds.reserve(slice_starts_.size());
     for (int i = 0; i < slice_starts_.size(); ++i) {
-      bounds.push_back(tensorflow::strings::StrCat("[", slice_starts_[i], ":",
-                                                   slice_limits_[i], "]"));
+      bounds.push_back(
+          StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
     }
     StrAppend(&extra, ", slice={", Join(bounds, ", "), "}");
   }
@@ -1481,8 +1518,9 @@ string HloInstruction::ToString(bool compact_operands) const {
   if (opcode() == HloOpcode::kGetTupleElement) {
     StrAppend(&extra, ", index=", tuple_index());
   }
-  if (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
-      !metadata_.source_file().empty()) {
+  if (include_metadata &&
+      (!metadata_.op_type().empty() || !metadata_.op_name().empty() ||
+       !metadata_.source_file().empty())) {
     StrAppend(&extra, " # metadata=", metadata_.ShortDebugString());
   }
 
@@ -1499,6 +1537,51 @@ string HloInstruction::ToShortString() const {
                        StrAppend(out, operand->name());
                      })
                     .c_str());
+}
+
+HloInstructionProto HloInstruction::ToProto() const {
+  HloInstructionProto proto;
+  proto.set_name(name_);
+  proto.set_opcode(HloOpcodeString(opcode_));
+  *proto.mutable_shape() = shape_;
+  for (const HloInstruction* operand : operands_) {
+    *proto.add_operand_names() = operand->name();
+  }
+  for (const HloInstruction* control : control_predecessors_) {
+    *proto.add_control_predecessor_names() = control->name();
+  }
+  for (const HloComputation* computation : called_computations_) {
+    *proto.add_called_computation_names() = computation->name();
+  }
+  *proto.mutable_metadata() = metadata_;
+  switch (opcode_) {
+    case HloOpcode::kConstant:
+      *proto.mutable_literal() = literal_->ToProto();
+      break;
+    case HloOpcode::kParameter:
+      proto.set_parameter_number(parameter_number_);
+      proto.set_parameter_name(parameter_name_);
+      break;
+    case HloOpcode::kFusion: {
+      HloComputationProto* proto_fused_computation =
+          proto.mutable_fused_instructions_computation();
+      proto_fused_computation->set_name(FullyQualifiedName());
+
+      // Fill in fused instructions. Note that fused_instructions() returns in
+      // reverse post-order (i.e. root first), so we reverse to get post-order.
+      for (auto fused_it = fused_instructions().rbegin();
+           fused_it != fused_instructions().rend(); ++fused_it) {
+        HloInstructionProto fused_proto = (*fused_it)->ToProto();
+        proto_fused_computation->add_instructions()->Swap(&fused_proto);
+      }
+      break;
+    }
+    case HloOpcode::kGetTupleElement:
+      proto.set_tuple_index(tuple_index_);
+      break;
+    default: {}  // Nothing to do
+  }
+  return proto;
 }
 
 string HloInstruction::ToCategory() const {
@@ -1538,7 +1621,9 @@ string HloInstruction::ToCategory() const {
           return "non-elementwise fusion";
         }
       case FusionKind::kInput:
-        return "reduce fusion";
+        return "input fusion";
+      case FusionKind::kOutput:
+        return "output fusion";
       case FusionKind::kTransposeDot:
         return "dot fusion";
       case FusionKind::kConvBackwardFilter:
@@ -1556,11 +1641,10 @@ string HloInstruction::ToCategory() const {
 
 string HloInstruction::FullyQualifiedName() const {
   if (IsFused()) {
-    return tensorflow::strings::StrCat(fusion_instruction()->parent()->name(),
-                                       "::", fusion_instruction()->name(),
-                                       "::", name_);
+    return StrCat(fusion_instruction()->parent()->name(),
+                  "::", fusion_instruction()->name(), "::", name_);
   }
-  return tensorflow::strings::StrCat(parent_->name(), "::", name_);
+  return StrCat(parent_->name(), "::", name_);
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
@@ -1569,10 +1653,10 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
   trace_instruction_ = trace_instruction;
 }
 
-const string& HloInstruction::tracing_tag() const {
+string HloInstruction::TracingTag() const {
   CHECK_EQ(HloOpcode::kTrace, opcode());
   CHECK(literal_ != nullptr);
-  return literal_->u8s();
+  return literal_->u8s_string();
 }
 
 bool HloInstruction::IsFused() const {
@@ -1587,7 +1671,6 @@ bool HloInstruction::IsFusable() const {
 
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
-    case HloOpcode::kFusion:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
@@ -1750,7 +1833,7 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kSlice:
       return visitor->HandleSlice(this, operands_[0]);
     case HloOpcode::kDynamicSlice:
-      return visitor->HandleDynamicSlice(this, operands_);
+      return visitor->HandleDynamicSlice(this, operands_[0], operands_[1]);
     case HloOpcode::kDynamicUpdateSlice:
       return visitor->HandleDynamicUpdateSlice(this, operands_[0], operands_[1],
                                                operands_[2]);
@@ -1786,7 +1869,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
 }
 
 Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor,
-                                      const CompareFunction* operand_order) {
+                                      const CompareFunction* operand_order,
+                                      bool ignore_control_predecessors) {
   // Do not visit this HLO node again if it is already visited.
   if (visitor->DidVisit(*this)) {
     VLOG(3) << "Not visiting HLO " << name() << " as it was already visited.";
@@ -1801,34 +1885,41 @@ Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor,
   }
   visitor->SetVisiting(*this);
 
-  // Sort operands and control predecessors, if an ordering was provided.  Note
-  // that 'temp_sorted_operands' must live at this scope, since 'operands' will
-  // point to it if the operands are sorted.  The point of the 'operands'
-  // pointer is to avoid copying the operands in the common case where the
-  // operands are not sorted.
+  // Sort operands, if an ordering was provided. 'temp_sorted_operands' must
+  // live at this scope, since 'operands' will point to it if the operands are
+  // sorted.  The purpose of the 'operands' pointer is to avoid copying the
+  // operands in the common case where the operands are not sorted.
   std::vector<HloInstruction*>* operands = &operands_;
   std::vector<HloInstruction*> temp_sorted_operands;
-  std::vector<HloInstruction*> predecessors(control_predecessors_.begin(),
-                                            control_predecessors_.end());
   if (operand_order != nullptr) {
     temp_sorted_operands = operands_;
     std::sort(temp_sorted_operands.begin(), temp_sorted_operands.end(),
               *operand_order);
-    std::sort(predecessors.begin(), predecessors.end(), *operand_order);
     operands = &temp_sorted_operands;
   }
-
-  for (auto operand : *operands) {
+  for (HloInstruction* operand : *operands) {
     VLOG(3) << "Going to visit HLO " << operand->name() << " as operand of HLO "
             << name();
-    TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor, operand_order));
+    TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor, operand_order,
+                                               ignore_control_predecessors));
   }
 
-  for (auto control_predecessor : predecessors) {
-    VLOG(3) << "Going to visit HLO " << control_predecessor->name()
-            << " as a control predecessor of HLO " << name();
-    TF_RETURN_IF_ERROR(
-        control_predecessor->AcceptInternal(visitor, operand_order));
+  if (!ignore_control_predecessors) {
+    // This uses the same pointer/vector sorting to avoid extra copies as above.
+    std::vector<HloInstruction*>* predecessors = &control_predecessors_;
+    std::vector<HloInstruction*> temp_sorted_predecessors;
+    if (operand_order != nullptr) {
+      temp_sorted_predecessors = control_predecessors_;
+      std::sort(temp_sorted_predecessors.begin(),
+                temp_sorted_predecessors.end(), *operand_order);
+      predecessors = &temp_sorted_predecessors;
+    }
+    for (HloInstruction* control_predecessor : *predecessors) {
+      VLOG(3) << "Going to visit HLO " << control_predecessor->name()
+              << " as a control predecessor of HLO " << name();
+      TF_RETURN_IF_ERROR(control_predecessor->AcceptInternal(
+          visitor, operand_order, ignore_control_predecessors));
+    }
   }
 
   TF_RETURN_IF_ERROR(visitor->Preprocess(this));
@@ -1838,9 +1929,11 @@ Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor,
   return visitor->Postprocess(this);
 }
 
-Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit) {
+Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit,
+                              bool ignore_control_predecessors) {
   VLOG(2) << "HloInstruction::Accept(" << name() << ")";
-  TF_RETURN_IF_ERROR(AcceptInternal(visitor, nullptr));
+  TF_RETURN_IF_ERROR(
+      AcceptInternal(visitor, nullptr, ignore_control_predecessors));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -1851,7 +1944,8 @@ Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, const CompareFunction& operand_order,
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(" << name() << ")";
-  TF_RETURN_IF_ERROR(AcceptInternal(visitor, &operand_order));
+  TF_RETURN_IF_ERROR(AcceptInternal(visitor, &operand_order,
+                                    /*ignore_control_predecessors=*/false));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -2071,6 +2165,70 @@ bool HloInstruction::IsElementwiseOnOperand(int64 operand_idx) const {
   return true;
 }
 
+// A helper class for memoized, recursive computation of HloOpcode::kFusion
+// in HloInstruction::OperandElementUse below.
+class HloInstruction::FusionReusesParamElements {
+ public:
+  using UseKind = HloInstruction::UseKind;
+
+  // We could rather iterate backwards thru fused_instructions_ here, as it is
+  // in reverse postorder, and compute whether each fused instruction reuses the
+  // value of this parameter, which would save stack space but not allow us to
+  // finish early if we find a reuse.
+  static UseKind Compute(int64 i, const HloInstruction& hlo) {
+    tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> memoization_cache;
+    return ComputeInternal(i, hlo, &memoization_cache);
+  }
+
+ private:
+  static UseKind ComputeInternal(
+      int64 i, const HloInstruction& hlo,
+      tensorflow::gtl::FlatMap<const HloInstruction*, UseKind>* cache) {
+    if (hlo.opcode_ == HloOpcode::kParameter && hlo.parameter_number_ == i) {
+      return UseKind::kUse;
+    }
+
+    auto p = cache->emplace(&hlo, UseKind{});
+    auto value_it = p.first;
+    const bool key_is_new = p.second;
+
+    if (key_is_new) {
+      for (int64 j = 0; j < hlo.operands_.size(); ++j) {
+        UseKind old_val = value_it->second;
+
+        // The next operation invalidates iterators.
+        UseKind new_val =
+            Plus(old_val, std::min(hlo.OperandElementUse(j),
+                                   ComputeInternal(i, *hlo.operand(j), cache)));
+
+        // Re-acquire the iterator. We could work harder to do this only if
+        // absolutely necessary, but this code is not hot enough to warrant
+        // that.
+        value_it = cache->find(&hlo);
+        value_it->second = new_val;
+      }
+    }
+    return value_it->second;
+  }
+
+  // Fold operation for UseKinds.
+  static UseKind Plus(UseKind a, UseKind b) {
+    if (a == UseKind::kNoUse) {
+      return b;
+    } else if (b == UseKind::kNoUse) {
+      return a;
+    } else if (a == UseKind::kReuse || b == UseKind::kReuse) {
+      return UseKind::kReuse;
+    } else if (a == UseKind::kUsePermutingElements ||
+               b == UseKind::kUsePermutingElements) {
+      return UseKind::kReuse;
+    } else {
+      CHECK(a == UseKind::kUse && b == UseKind::kUse);
+      return UseKind::kUse;
+    }
+  }
+};
+
 HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
   switch (opcode_) {
     case HloOpcode::kBitcast:
@@ -2085,45 +2243,9 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       // Pad reuses the padding value but not the padded array elements.
       // Reduce reuses the init value but not the operand array elements.
       return i > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
-    case HloOpcode::kFusion: {
-      tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> cache;
-      // We could rather iterate backwards thru fused_instructions_ here, as it
-      // is in reverse postorder, and compute whether each fused instruction
-      // reuses the value of this parameter, which would save stack space but
-      // not allow us to finish early if we find a reuse.
-      std::function<UseKind(const HloInstruction&)> reuses_parameter_elements =
-          [i, &cache, &reuses_parameter_elements](const HloInstruction& hlo) {
-            auto plus = [](const UseKind& a, const UseKind& b) {
-              if (a == UseKind::kNoUse) return b;
-              if (b == UseKind::kNoUse) return a;
-              if (a == UseKind::kReuse || b == UseKind::kReuse) {
-                return UseKind::kReuse;
-              }
-              if (a == UseKind::kUsePermutingElements ||
-                  b == UseKind::kUsePermutingElements) {
-                return UseKind::kReuse;
-              }
-              CHECK(UseKind::kUse == a && UseKind::kUse == b);
-              return UseKind::kUse;
-            };
-
-            if (hlo.opcode_ == HloOpcode::kParameter &&
-                hlo.parameter_number_ == i) {
-              return UseKind::kUse;
-            }
-            if (!ContainsKey(cache, &hlo)) {
-              for (int64 j = 0; j < hlo.operands_.size(); ++j) {
-                UseKind old = cache[&hlo];
-                UseKind updated = plus(
-                    old, std::min(hlo.OperandElementUse(j),
-                                  reuses_parameter_elements(*hlo.operand(j))));
-                cache[&hlo] = updated;
-              }
-            }
-            return cache[&hlo];
-          };
-      return reuses_parameter_elements(*fused_expression_root());
-    }
+    case HloOpcode::kFusion:
+      // Uses the memoizing, recursive computation defined above.
+      return FusionReusesParamElements::Compute(i, *fused_expression_root());
     default:
       return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
@@ -2144,6 +2266,8 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kLoop";
     case HloInstruction::FusionKind::kInput:
       return "kInput";
+    case HloInstruction::FusionKind::kOutput:
+      return "kOutput";
     case HloInstruction::FusionKind::kTransposeDot:
       return "kTransposeDot";
     case HloInstruction::FusionKind::kConvBackwardFilter:
@@ -2183,15 +2307,14 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
   lhs_dims[dnums.batch_dimension()] = 'b';
   lhs_dims[dnums.feature_dimension()] = 'f';
   for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
-    lhs_dims[dnums.spatial_dimensions(i)] = tensorflow::strings::StrCat(i);
+    lhs_dims[dnums.spatial_dimensions(i)] = StrCat(i);
   }
 
   std::vector<string> rhs_dims(2 + dnums.kernel_spatial_dimensions().size());
   rhs_dims[dnums.kernel_input_feature_dimension()] = "i";
   rhs_dims[dnums.kernel_output_feature_dimension()] = "o";
   for (int64 i = 0; i < dnums.spatial_dimensions().size(); ++i) {
-    rhs_dims[dnums.kernel_spatial_dimensions(i)] =
-        tensorflow::strings::StrCat(i);
+    rhs_dims[dnums.kernel_spatial_dimensions(i)] = StrCat(i);
   }
 
   result += "dim_labels=";
@@ -2220,4 +2343,9 @@ HloModule* HloInstruction::GetModule() const {
   }
   return nullptr;
 }
+
+void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
+  name_ = name_uniquer->GetUniqueName(name_);
+}
+
 }  // namespace xla
