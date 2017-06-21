@@ -90,7 +90,7 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
   }
 
   auto result = Literal::CreateFromShape(shape);
-  TF_RETURN_IF_ERROR(result.get()->Populate<bool>(
+  TF_RETURN_IF_ERROR(result->Populate<bool>(
       [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
         return compare_op(lhs_literal.Get<OperandT>(multi_index),
                           rhs_literal.Get<OperandT>(multi_index));
@@ -119,7 +119,7 @@ StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
 
   auto result = Literal::CreateFromShape(shape);
 
-  TF_RETURN_IF_ERROR(result.get()->Populate<ReturnT>(
+  TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
       [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
         return unary_op(operand_literal.Get<NativeT>(multi_index));
       }));
@@ -439,7 +439,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     auto result = Literal::CreateFromShape(shape);
 
-    TF_RETURN_IF_ERROR(result.get()->Populate<ReturnT>(
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
           return binary_op(lhs_literal.Get<ReturnT>(multi_index),
                            rhs_literal.Get<ReturnT>(multi_index));
@@ -476,7 +476,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
     auto result = Literal::CreateFromShape(shape);
 
-    TF_RETURN_IF_ERROR(result.get()->Populate<ReturnT>(
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
           return ternary_op(lhs_literal.Get<LhsType>(multi_index),
                             rhs_literal.Get<RhsType>(multi_index),
@@ -637,7 +637,7 @@ Status HloEvaluator::HandleConcatenate(
 
   for (auto operand : operands) {
     const Shape& operand_shape = operand->shape();
-    TF_RETURN_IF_ERROR(result_literal.get()->Copy(
+    TF_RETURN_IF_ERROR(result_literal->Copy(
         GetEvaluatedLiteralFor(operand), source_indices, dest_indices,
         AsInt64Slice(operand_shape.dimensions())));
     dest_indices[concat_dim] +=
@@ -769,9 +769,9 @@ Status HloEvaluator::HandleSlice(HloInstruction* slice,
 
   DimensionVector dest_indices(slice->slice_starts().size(), 0);
 
-  TF_RETURN_IF_ERROR(literal.get()->Copy(GetEvaluatedLiteralFor(operand),
-                                         slice->slice_starts(), dest_indices,
-                                         AsInt64Slice(shape.dimensions())));
+  TF_RETURN_IF_ERROR(literal->Copy(GetEvaluatedLiteralFor(operand),
+                                   slice->slice_starts(), dest_indices,
+                                   AsInt64Slice(shape.dimensions())));
 
   evaluated_[slice] = std::move(literal);
   return Status::OK();
