@@ -176,7 +176,8 @@ SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
 
 void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::ModuleHandleT handle) {
   module_handles_.erase(
-      std::remove(module_handles_.begin(), module_handles_.end(), handle));
+      std::remove(module_handles_.begin(), module_handles_.end(), handle),
+      module_handles_.end());
   compile_layer_.removeModuleSet(handle);
 }
 
