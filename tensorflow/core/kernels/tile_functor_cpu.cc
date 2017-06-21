@@ -28,8 +28,8 @@ void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
   const int64 nelem = out->NumElements();
   gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
   gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
-  const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
-  T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
+  const T* p = reinterpret_cast<const T*>(in.flat<T>().data());
+  T* q = reinterpret_cast<T*>(const_cast<T*>((out->flat<T>().data())));
 
   for (int64 o_idx = 0; o_idx < nelem; ++o_idx) {
     int64 i_idx = 0;
