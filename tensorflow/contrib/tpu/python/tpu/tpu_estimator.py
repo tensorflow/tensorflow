@@ -307,7 +307,7 @@ def _convert_model_fn_to_train_step(model_fn, dequeue_fn, mode, run_config):
 
   def _call_model_fn(features, labels):
     """Calls the model_fn with required parameters."""
-    model_fn_args = estimator_lib._model_fn_args(model_fn)  # pylint: disable=protected-access
+    model_fn_args = estimator_lib._fn_args(model_fn)  # pylint: disable=protected-access
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
