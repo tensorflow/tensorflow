@@ -22,7 +22,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Instructions.h"
 #include "external/llvm/include/llvm/IR/Module.h"
 #include "external/llvm/include/llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -233,22 +232,16 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   // The two transpose_... parameters are actually booleans, but we use int32
   // to avoid target-dependent calling convention details.
 
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  bool multi_threaded = flags->xla_cpu_multi_thread_eigen;
   PrimitiveType type = target_array_.GetShape().element_type();
   llvm::Type* float_type;
   const char* fn_name;
   switch (type) {
     case F32:
-      fn_name = multi_threaded
-                    ? runtime::kEigenMatmulF32SymbolName
-                    : runtime::kEigenSingleThreadedMatmulF32SymbolName;
+      fn_name = runtime::kEigenMatmulF32SymbolName;
       float_type = ir_builder_->getFloatTy();
       break;
     case F64:
-      fn_name = multi_threaded
-                    ? runtime::kEigenMatmulF64SymbolName
-                    : runtime::kEigenSingleThreadedMatmulF64SymbolName;
+      fn_name = runtime::kEigenMatmulF64SymbolName;
       float_type = ir_builder_->getDoubleTy();
       break;
     default:

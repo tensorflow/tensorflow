@@ -36,7 +36,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
 #include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "tensorflow/compiler/xla/legacy_flags/compiler_functor_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
@@ -159,9 +158,7 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
   // Our vectorized library calls are currently implement by calling into Eigen.
   // As such, only emit calls to these routines if --xla_cpu_use_eigen is
   // enabled.
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (flags->xla_cpu_use_eigen &&
-      (arch == llvm::Triple::x86 || llvm::Triple::x86_64)) {
+  if (arch == llvm::Triple::x86 || llvm::Triple::x86_64) {
     llvm::SmallVector<llvm::StringRef, 32> features;
     feature_string.split(features, ',', -1, /*KeepEmpty=*/false);
     if (std::find(features.begin(), features.end(), "+sse4.1") !=

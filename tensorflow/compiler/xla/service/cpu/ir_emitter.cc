@@ -33,7 +33,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Intrinsics.h"
 #include "external/llvm/include/llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -862,11 +861,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
            int64_type,    int64_type,     int64_type,     int64_type,
            int64_type,    int64_type,     int64_type,     int64_type},
           /*isVarArg=*/false);
-      legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-      const char* fn_name =
-          (flags->xla_cpu_multi_thread_eigen
-               ? runtime::kEigenConvF32SymbolName
-               : runtime::kEigenSingleThreadedConvF32SymbolName);
+      const char* fn_name = runtime::kEigenConvF32SymbolName;
       llvm::Function* conv_func = llvm::cast<llvm::Function>(
           module_->getOrInsertFunction(fn_name, conv_type));
       conv_func->setCallingConv(llvm::CallingConv::C);
