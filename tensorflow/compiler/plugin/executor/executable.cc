@@ -36,7 +36,7 @@ static se::DeviceMemoryBase AllocateSingleOutput(sep::ExecutorExecutor* executor
                                                  const Literal& literal) {
   int64 size(xla::ShapeUtil::ByteSizeOf(literal.shape()));
   void* buf = executor->Allocate(size);
-  const void* src = LiteralUtil::InternalData(literal);
+  const void* src = Literal::InternalData(literal);
   memcpy(buf, src, size);
   return se::DeviceMemoryBase(buf, size);
 }
@@ -86,11 +86,11 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
   for (int64 p = 0; p < computation->num_parameters(); p++) {
     // Create the input literal for the parameter
     HloInstruction* param = computation->parameter_instruction(p);
-    arg_literals.emplace_back(LiteralUtil::CreateFromShape(param->shape()));
+    arg_literals.emplace_back(Literal::CreateFromShape(param->shape()));
     arg_literals_ptrs.push_back(arg_literals.back().get());
 
     // Copy in the data from the stream_executor buffers
-    void* buffer = LiteralUtil::MutableInternalData(arg_literals.back().get());
+    void* buffer = Literal::MutableInternalData(arg_literals.back().get());
     memcpy(buffer, arguments[p].opaque(),
            ShapeUtil::ByteSizeOf(param->shape()));
   }
