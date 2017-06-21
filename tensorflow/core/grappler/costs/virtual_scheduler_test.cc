@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
-
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
@@ -39,15 +38,40 @@ class TestVirtualScheduler : public VirtualScheduler {
 
 class VirtualSchedulerTest : public ::testing::Test {
  protected:
+  NodeDef node1_, node2_, node3_, node4_, node5_, node6_;
+
   const string kCPU0 = "/job:localhost/replica:0/task:0/cpu:0";
 
-  void SetUp() override {
-    // Initializes cluster_ and placer_.
-    std::unordered_map<string, DeviceProperties> devices;
+  DeviceProperties GetDummyCPUDevice() {
+    // Create CPU with 2 cores, 4 Ghz freq, 2 GB/s mem bandwidth.
+    // - 8 Gflops
+    // - 2 GB/s
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
-    devices[kCPU0] = cpu_device;
+    cpu_device.set_frequency(4000);
+    cpu_device.set_num_cores(2);
+    cpu_device.set_bandwidth(2000000);
+    return cpu_device;
+  }
 
+  void SetUp() override {
+    // Initializes nodes for manager
+    node1_.set_name("Node1");
+    node2_.set_name("Node2");
+    node3_.set_name("Node3");
+    node4_.set_name("Node4");
+    node5_.set_name("Node5");
+    node6_.set_name("Node6");
+
+    // Initializes cluster_ and placer_.
+    std::unordered_map<string, DeviceProperties> devices;
+
+    // Set some dummy CPU properties
+    DeviceProperties cpu_device = GetDummyCPUDevice();
+
+    // IMPORTANT: Device is not actually ever used in the test case since
+    // force_cpu_type is defaulted to "Haswell"
+    devices[kCPU0] = cpu_device;
     cluster_.reset(new VirtualCluster(devices));
     placer_.reset(new VirtualPlacer(cluster_.get()));
   }
@@ -100,6 +124,41 @@ class VirtualSchedulerTest : public ::testing::Test {
     grappler_item_->fetch = {"y"};
 
     dependency_["y"] = {"x", "f"};
+  }
+
+  void CreateGrapplerItemWithMatmulChain() {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
+    // Add control dependencies to ensure tests do not rely on specific
+    // manager and the order remains consistent for the test.
+    auto a = tensorflow::ops::RandomUniform(s.WithOpName("a"), {3200, 3200},
+                                            DT_FLOAT);
+    auto b = tensorflow::ops::RandomUniform(
+        s.WithOpName("b").WithControlDependencies(a), {3200, 3200}, DT_FLOAT);
+    auto c = tensorflow::ops::RandomUniform(
+        s.WithOpName("c").WithControlDependencies(b), {3200, 3200}, DT_FLOAT);
+    auto d = tensorflow::ops::RandomUniform(
+        s.WithOpName("d").WithControlDependencies(c), {3200, 3200}, DT_FLOAT);
+    auto e = tensorflow::ops::RandomUniform(
+        s.WithOpName("e").WithControlDependencies(d), {3200, 3200}, DT_FLOAT);
+
+    auto ab = tensorflow::ops::MatMul(
+        s.WithOpName("ab").WithControlDependencies(e), a, b);
+    auto abc = tensorflow::ops::MatMul(s.WithOpName("abc"), ab, c);
+    auto abcd = tensorflow::ops::MatMul(s.WithOpName("abcd"), abc, d);
+    auto abcde = tensorflow::ops::MatMul(s.WithOpName("abcde"), abcd, e);
+
+    GraphDef def;
+    TF_CHECK_OK(s.ToGraphDef(&def));
+
+    grappler_item_.reset(new GrapplerItem);
+    grappler_item_->id = "test_matmul_sequence_graph";
+    grappler_item_->graph = def;
+    grappler_item_->fetch = {"abcde"};
+
+    dependency_["ab"] = {"a", "b"};
+    dependency_["abc"] = {"ab", "c"};
+    dependency_["abcd"] = {"abc", "d"};
+    dependency_["abcde"] = {"abcd", "e"};
   }
 
   // AddN that takes 4 tensors with 10x10x10x10.
@@ -201,6 +260,20 @@ class VirtualSchedulerTest : public ::testing::Test {
     TF_CHECK_OK(scheduler_->Init());
   }
 
+  // Returns cost based on op.
+  Costs SimplePredictCosts(const NodeInfo& info) const {
+    Costs c;
+    int64 exec_cost = 0;
+    if (info.op_info.op() == "MatMul") {
+      exec_cost = 2000000000;
+    }
+    if (info.op_info.op() == "RandomUniform") {
+      exec_cost = 1000000000;
+    }
+    c.execution_time = Costs::NanoSeconds(exec_cost);
+    return c;
+  }
+
   // Call this after init scheduler_. Scheduler stops after executing
   // target_node.
   std::unordered_map<string, NodeInfo> RunScheduler(const string& target_node) {
@@ -211,6 +284,8 @@ class VirtualSchedulerTest : public ::testing::Test {
       NodeInfo node_info = scheduler_->GetCurrNodeInfo();
       ops_executed[node_info.name] = node_info;
 
+      Costs node_costs = SimplePredictCosts(node_info);
+
       // Check scheduling order.
       auto it = dependency_.find(node_info.name);
       if (it != dependency_.end()) {
@@ -218,7 +293,7 @@ class VirtualSchedulerTest : public ::testing::Test {
           EXPECT_GT(ops_executed.count(preceding_node), 0);
         }
       }
-      more_nodes = scheduler_->MarkCurrNodeExecuted(zero_costs);
+      more_nodes = scheduler_->MarkCurrNodeExecuted(node_costs);
 
       if (node_info.name == target_node) {
         // Scheduler has the state after executing the target node.
@@ -263,7 +338,8 @@ class VirtualSchedulerTest : public ::testing::Test {
   // Helper method tthat checks name - port pairs.
   void ValidateMemoryUsageSnapshot(
       const std::vector<string>& expected_names, const int port_num_expected,
-      const std::set<std::pair<const NodeDef*, int>>& mem_usage_snapshot) {
+      const std::unordered_set<std::pair<const NodeDef*, int>,
+                               DeviceState::NodePairHash>& mem_usage_snapshot) {
     std::set<std::pair<string, int>> nodes_at_peak_mem_usage;
     std::transform(
         mem_usage_snapshot.begin(), mem_usage_snapshot.end(),
@@ -310,6 +386,218 @@ class VirtualSchedulerTest : public ::testing::Test {
   const int kernel_ = 3;
   const int depth_out_ = 16;
 };
+
+// Test that FIFOManager correctly returns the current node with only 1 node.
+TEST_F(VirtualSchedulerTest, GetSingleNodeFIFOManager) {
+  // Init.
+  FIFOManager manager = FIFOManager();
+
+  // Add the node to FIFOManager.
+  manager.AddNode(&node1_);
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+}
+
+// Test that FIFOManager removes the only node contained within.
+TEST_F(VirtualSchedulerTest, RemoveSingleNodeFIFOManager) {
+  // Init.
+  FIFOManager manager = FIFOManager();
+
+  // Add the node to FIFOManager.
+  manager.AddNode(&node1_);
+
+  // Remove the only node in FIFOManager.
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that FIFOManager can remove multiple nodes and returns the current node
+// in the right order
+TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFIFOManager) {
+  // Init.
+  FIFOManager manager = FIFOManager();
+
+  // Add the nodes to FIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node while removing nodes from manager.
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that FIFOManager can remove multiple nodes and add more nodes, still
+// returning the current node in the right order
+TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleFIFOManager) {
+  // Init.
+  FIFOManager manager = FIFOManager();
+
+  // Add the nodes to FIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node as nodes are removed and added.
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.AddNode(&node5_);
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.AddNode(&node6_);
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that LIFOManager correctly returns the current node with only 1 node.
+TEST_F(VirtualSchedulerTest, GetSingleNodeLIFOManager) {
+  // Init.
+  LIFOManager manager = LIFOManager();
+
+  // Add the node to LIFOManager.
+  manager.AddNode(&node1_);
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+}
+
+// Test that LIFOManager removes the only node contained within.
+TEST_F(VirtualSchedulerTest, RemoveSingleNodeLIFOManager) {
+  // Init.
+  LIFOManager manager = LIFOManager();
+
+  // Add the node to LIFOManager.
+  manager.AddNode(&node1_);
+
+  // Remove the only node in LIFOManager.
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that LIFOManager can remove multiple nodes and returns the current node
+// in the right order
+TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleLIFOManager) {
+  // Init.
+  LIFOManager manager = LIFOManager();
+
+  // Add the nodes to LIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node while removing nodes from manager.
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that LIFOManager can remove multiple nodes (must be removing the current
+// node) and add more nodes, still returning the current node in the right order
+TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleLIFOManager) {
+  // Init.
+  LIFOManager manager = LIFOManager();
+
+  // Add the nodes to LIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node as nodes are removed and added.
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.AddNode(&node5_);
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.AddNode(&node6_);
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Create small graph, run predict costs on it, make sure the costs from the
+// summary match the hand-calculated costs.
+TEST_F(VirtualSchedulerTest, SummaryCostTest) {
+  // Run matmul test.
+  CreateGrapplerItemWithMatmulChain();
+  InitScheduler();
+  auto ops_executed = RunScheduler("");
+  Costs c = scheduler_->Summary();
+
+  // RandomUniform - 5
+  // Matmuls - 4 * 2 = 8
+  // Total: 13
+  EXPECT_EQ(13000000, c.execution_time.asMicroSeconds().count());
+}
+
+// Like the above SummaryCostTest, but makes sure the stepstats timeline is
+// correct.
+TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
+  // Run matmul test.
+  CreateGrapplerItemWithMatmulChain();
+  InitScheduler();
+  auto ops_executed = RunScheduler("");
+  StepStats stepstats;
+  Costs c = scheduler_->Summary(&stepstats);
+  EXPECT_EQ(13000000, c.execution_time.asMicroSeconds().count());
+
+  // Should only be 1 device!
+  EXPECT_EQ(1, stepstats.dev_stats().size());
+
+  // Create a map of op name -> start and end times (micros).
+  std::map<string, std::pair<int64, int64>> start_end_times;
+  for (const auto& device_step_stats : stepstats.dev_stats()) {
+    for (const auto& stats : device_step_stats.node_stats()) {
+      // The node name is actually in the timeline_label.
+      int64 start = stats.all_start_micros();
+      int64 end = start + stats.all_end_rel_micros();
+      start_end_times[stats.timeline_label()] =
+          std::pair<int64, int64>(start, end);
+    }
+  }
+
+  // The base start_time is the time to compute RandomUniforms
+  int64 cur_time = static_cast<int64>(5000000);
+  // The increment is the execution time of one matmul. See
+  // CreateGrapplerItemWithMatmulChain for details.
+  int64 increment = static_cast<int64>(2000000);
+  auto op_names = {"ab", "abc", "abcd", "abcde"};
+  for (const auto& op_name : op_names) {
+    int64 actual_start = start_end_times[op_name].first;
+    int64 actual_end = start_end_times[op_name].second;
+    int64 expected_start = cur_time;
+    int64 expected_end = cur_time + increment;
+    EXPECT_EQ(expected_start, actual_start);
+    EXPECT_EQ(expected_end, actual_end);
+    cur_time += increment;
+  }
+}
 
 TEST_F(VirtualSchedulerTest, InitAndBasicScheduling) {
   // Init.

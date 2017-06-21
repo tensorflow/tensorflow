@@ -305,6 +305,10 @@ tf_module {
     argspec: "args=[\'meta_graph_or_file\', \'clear_devices\', \'import_scope\'], varargs=None, keywords=kwargs, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "init_from_checkpoint"
+    argspec: "args=[\'ckpt_dir_or_file\', \'assignment_map\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "input_producer"
     argspec: "args=[\'input_tensor\', \'element_shape\', \'num_epochs\', \'shuffle\', \'seed\', \'capacity\', \'shared_name\', \'summary_name\', \'name\', \'cancel_op\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'32\', \'None\', \'None\', \'None\', \'None\'], "
   }
@@ -319,6 +323,18 @@ tf_module {
   member_method {
     name: "limit_epochs"
     argspec: "args=[\'tensor\', \'num_epochs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "list_variables"
+    argspec: "args=[\'ckpt_dir_or_file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load_checkpoint"
+    argspec: "args=[\'ckpt_dir_or_file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load_variable"
+    argspec: "args=[\'ckpt_dir_or_file\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "match_filenames_once"

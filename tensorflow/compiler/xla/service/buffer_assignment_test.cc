@@ -105,7 +105,7 @@ class BufferAssignmentTest : public HloTestBase {
     auto param =
         builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
     auto value = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
     builder.AddInstruction(
         HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, param, value));
     return builder.Build();
@@ -122,7 +122,7 @@ class BufferAssignmentTest : public HloTestBase {
       const string& name) {
     auto builder = HloComputation::Builder(name);
     auto const4 = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(4)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int>(4)));
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, t_s32_f32v4_, "x"));
     auto index = builder.AddInstruction(
@@ -147,9 +147,9 @@ class BufferAssignmentTest : public HloTestBase {
       const string& name) {
     auto builder = HloComputation::Builder(name);
     auto const1 = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int>(1)));
     auto constv = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
+        Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, t_s32_f32v4_, "x"));
     auto indexc = builder.AddInstruction(
@@ -264,7 +264,7 @@ static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
 TEST_F(BufferAssignmentTest, ScalarConstant) {
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
@@ -278,9 +278,9 @@ TEST_F(BufferAssignmentTest, BufferForConst) {
   // no buffers assigned, and their consumer has a buffer.
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
+      Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({4.1f, 4.2f, 4.3f, 4.4f})));
+      Literal::CreateR1<float>({4.1f, 4.2f, 4.3f, 4.4f})));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, const0, const1));
   auto module = CreateNewModule();
@@ -298,7 +298,7 @@ TEST_F(BufferAssignmentTest, BufferForOutputConst) {
   // This computation copies a constant to output.
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
+      Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
   auto copy = builder.AddInstruction(
       HloInstruction::CreateUnary(const0->shape(), HloOpcode::kCopy, const0));
   auto module = CreateNewModule();
@@ -586,7 +586,7 @@ TEST_F(BufferAssignmentTest, CannotReuseInputBufferOfReduce) {
   auto exp2 = builder.AddInstruction(
       HloInstruction::CreateUnary(f32a100x10_, HloOpcode::kExp, exp1));
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
       /*shape=*/f32vec10_,
       /*operand=*/exp2,
@@ -634,9 +634,9 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
   // Creates the main kernel and verifies instruction counts.
   auto builder = HloComputation::Builder(TestName());
   auto const3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int>(0)));
   auto const4 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
+      Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({const3, const4}));
   auto while_op = builder.AddInstruction(HloInstruction::CreateWhile(
@@ -1075,9 +1075,8 @@ TEST_F(BufferAssignmentTest, DISABLED_TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output is
   // properly handled.
   auto builder = HloComputation::Builder(TestName());
-  builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(0).get(),
-                              LiteralUtil::CreateR0<int64>(1).get()})));
+  builder.AddInstruction(HloInstruction::CreateConstant(Literal::MakeTuple(
+      {Literal::CreateR0<int64>(0).get(), Literal::CreateR0<int64>(1).get()})));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
@@ -1369,9 +1368,9 @@ class WhileBufferAssignmentTest : public HloTestBase {
     builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
     auto zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int>(0)));
     auto ten = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(10)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int>(10)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, zero, ten));
     return builder.Build();
@@ -1429,7 +1428,7 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
       HloInstruction::CreateParameter(2, data_shape_, "weights1"));
 
   auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0)));
   auto output0 = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
   auto output1 = builder.AddInstruction(
@@ -1484,7 +1483,7 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
       HloInstruction::CreateParameter(1, data_shape_, "weights0"));
 
   auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0)));
   auto output0 = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
   auto output1 = builder.AddInstruction(
@@ -1532,16 +1531,16 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, r0f32, "param"));
     auto constant1 = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
     auto add = builder.AddInstruction(
         HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, param, constant1));
     sub_computation = module->AddEmbeddedComputation(builder.Build(add));
   }
   auto builder = HloComputation::Builder(TestName());
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.0)));
   auto call1 = builder.AddInstruction(
       HloInstruction::CreateCall(r0f32, {constant2}, sub_computation));
   auto call2 = builder.AddInstruction(
@@ -1565,6 +1564,104 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
   EXPECT_TRUE(BuffersDistinct({call1}, {call2}, *assignment));
 }
 
+static bool IsPostOrderTraversal(
+    const std::vector<const HloInstruction*>& sequence) {
+  tensorflow::gtl::FlatSet<const HloInstruction*> seen_so_far;
+  auto has_not_been_seen_yet = [&](const HloInstruction* instruction) {
+    return seen_so_far.count(instruction) == 0;
+  };
+
+  for (auto instruction : sequence) {
+    if (std::any_of(instruction->operands().begin(),
+                    instruction->operands().end(), has_not_been_seen_yet) ||
+        std::any_of(instruction->control_predecessors().begin(),
+                    instruction->control_predecessors().end(),
+                    has_not_been_seen_yet)) {
+      return false;  // Not a post order.
+    }
+    if (!seen_so_far.insert(instruction).second) {
+      return false;  // Not a "traversal".
+    }
+  }
+
+  return true;
+}
+
+TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
+  auto module = MakeUnique<HloModule>(TestName());
+  auto builder = HloComputation::Builder(TestName());
+
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0)));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+
+  auto input0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape_, "input0"));
+  auto weights0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "weights0"));
+  auto output0 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+
+  auto input1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, data_shape_, "input1"));
+  auto weights1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(3, data_shape_, "weights1"));
+  auto output1 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, one, {1}));
+
+  auto cond =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body = module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple0 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input0, weights0, output0}));
+  auto tuple1 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input1, weights1, output1}));
+
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond, body, tuple0));
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond, body, tuple1));
+
+  auto root_add = builder.AddInstruction(HloInstruction::CreateBinary(
+      while0->shape(), HloOpcode::kAdd, while0, while1));
+  module->AddEntryComputation(builder.Build());
+
+  RunCopyInsertion(module.get());
+
+  {
+    FlattenCallGraph flatten;
+    TF_ASSIGN_OR_ASSERT_OK(bool result, flatten.Run(module.get()));
+    EXPECT_TRUE(result);
+  }
+
+  auto sequence =
+      CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
+
+  // To trigger b/38494731, we want a specific Hlo sequence for the
+  // root computation, so we overwrite that entry with a manually
+  // crafted sequence.
+  std::vector<const HloInstruction*> sequence_for_buffer_assigment = {
+      input1,   weights1, one,     output1, tuple1, while1,  input0,
+      weights0, zero,     output0, tuple0,  while0, root_add};
+
+  // If this ASSERT_TRUE fails, we constructed a bogus sequence above
+  // and this test itself is buggy.
+  ASSERT_TRUE(IsPostOrderTraversal(sequence_for_buffer_assigment));
+
+  sequence[module->entry_computation()] =
+      std::move(sequence_for_buffer_assigment);
+
+  auto assignment = BufferAssigner::Run(module.get(),
+                                        MakeUnique<SequentialHloOrdering>(
+                                            module.get(), sequence),
+                                        ByteSizeOf, 1)
+                        .ConsumeValueOrDie();
+
+  EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
+}
+
 // Test buffer assignment for while nodes with multiple uses.
 // TODO(b/37245345): Fix buffer assignment for this case.
 TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
@@ -1577,7 +1674,7 @@ TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
       HloInstruction::CreateParameter(1, data_shape_, "weights0"));
 
   auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0)));
   auto output0 = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
 

@@ -1280,6 +1280,69 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
   return true;
 }
 
+/* static */ Status RemoteFusedGraphExecuteUtils::CopyByteArrayToTensor(
+    const void* src_ptr, const int src_size, Tensor* tensor) {
+  CHECK(tensor->TotalBytes() >= src_size)
+      << tensor->TotalBytes() << ", " << src_size;
+  void* dst_ptr;
+  switch (tensor->dtype()) {
+    case DT_FLOAT:
+      dst_ptr = tensor->flat<float>().data();
+      break;
+    case DT_DOUBLE:
+      dst_ptr = tensor->flat<double>().data();
+      break;
+    case DT_INT32:
+      dst_ptr = tensor->flat<int32>().data();
+      break;
+    case DT_UINT8:
+      dst_ptr = tensor->flat<uint8>().data();
+      break;
+    case DT_INT16:
+      dst_ptr = tensor->flat<int16>().data();
+      break;
+    case DT_INT8:
+      dst_ptr = tensor->flat<int8>().data();
+      break;
+    case DT_STRING:
+      dst_ptr = tensor->flat<string>().data();
+      break;
+    case DT_INT64:
+      dst_ptr = tensor->flat<int64>().data();
+      break;
+    case DT_BOOL:
+      dst_ptr = tensor->flat<bool>().data();
+      break;
+    case DT_QINT8:
+      dst_ptr = tensor->flat<qint8>().data();
+      break;
+    case DT_QUINT8:
+      dst_ptr = tensor->flat<quint8>().data();
+      break;
+    case DT_QINT32:
+      dst_ptr = tensor->flat<qint32>().data();
+      break;
+    case DT_BFLOAT16:
+      dst_ptr = tensor->flat<bfloat16>().data();
+      break;
+    case DT_QINT16:
+      dst_ptr = tensor->flat<qint16>().data();
+      break;
+    case DT_QUINT16:
+      dst_ptr = tensor->flat<quint16>().data();
+      break;
+    case DT_UINT16:
+      dst_ptr = tensor->flat<uint16>().data();
+      break;
+    default:
+      CHECK(false) << "type " << tensor->dtype() << " is not supported.";
+      break;
+  }
+  CHECK_NOTNULL(dst_ptr);
+  std::memcpy(dst_ptr, src_ptr, src_size);
+  return Status::OK();
+}
+
 /* static */ Status RemoteFusedGraphExecuteUtils::ReplaceInputNodeByPlaceHolder(
     const string& input, const DataType type, const TensorShape& shape,
     GraphDef* graph_def) {

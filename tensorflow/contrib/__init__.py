@@ -68,11 +68,12 @@ from tensorflow.contrib import tfprof
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.ndlstm import python as ndlstm
+from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
 
 from tensorflow.python.util.lazy_loader import LazyLoader
-ffmpeg = LazyLoader("ffmpeg", globals(),
-                    "tensorflow.contrib.ffmpeg")
+ffmpeg = LazyLoader("ffmpeg",
+                    globals(), "tensorflow.contrib.ffmpeg")
 del LazyLoader
 
 del absolute_import

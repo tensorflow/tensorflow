@@ -43,6 +43,7 @@ namespace xla {
     case HloOpcode::kConstant:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kEq:
@@ -64,6 +65,7 @@ namespace xla {
     case HloOpcode::kNegate:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSelect:
@@ -75,6 +77,7 @@ namespace xla {
       return false;
 
     // Expensive instructions.
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kCall:
     case HloOpcode::kConvolution:
     case HloOpcode::kCrossReplicaSum:

@@ -1936,15 +1936,6 @@ tf_kernel_library(
     deps = IO_DEPS,
 )
 
-# TODO(jhseu): Restore after merge.
-#tf_kernel_library(
-#    name = "lmdb_reader_op",
-#    prefix = "lmdb_reader_op",
-#    deps = IO_DEPS + [
-#        "@lmdb",
-#    ],
-#)
-
 tf_kernel_library(
     name = "lmdb_reader_op",
     prefix = "lmdb_reader_op",
@@ -2355,7 +2346,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     prefix = "cwise_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + ["//tensorflow/core:bitwise_ops_op_lib"],
 )
 
 tf_kernel_library(
@@ -4171,6 +4162,9 @@ filegroup(
         "cwise_op_abs.cc",
         "cwise_op_add_1.cc",
         "cwise_op_add_2.cc",
+        "cwise_op_bitwise_and.cc",
+        "cwise_op_bitwise_or.cc",
+        "cwise_op_bitwise_xor.cc",
         "cwise_op_div.cc",
         "cwise_op_equal_to_1.cc",
         "cwise_op_equal_to_2.cc",
@@ -4179,6 +4173,7 @@ filegroup(
         "cwise_op_floor_div.cc",
         "cwise_op_greater.cc",
         "cwise_op_greater_equal.cc",
+        "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_less.cc",
         "cwise_op_log.cc",
@@ -4990,25 +4985,12 @@ tf_kernel_library(
     name = "remote_fused_graph_ops",
     prefix = "remote_fused_graph_execute_op",
     deps = [
-        ":remote_fused_graph_execute_op",
         ":remote_fused_graph_execute_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:remote_fused_graph_ops_op_lib",
-    ],
-)
-
-cc_library(
-    name = "remote_fused_graph_execute_op",
-    srcs = ["remote_fused_graph_execute_op.cc"],
-    deps = [
-        ":remote_fused_graph_execute_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -5080,9 +5062,9 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
-        ":remote_fused_graph_execute_op",
         ":remote_fused_graph_execute_op_test_utils",
         ":remote_fused_graph_execute_utils",
+        ":remote_fused_graph_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",

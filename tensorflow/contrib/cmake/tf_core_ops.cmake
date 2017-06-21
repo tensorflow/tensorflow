@@ -14,6 +14,7 @@
 # ==============================================================================
 set(tf_op_lib_names
     "array_ops"
+    "bitwise_ops"
     "candidate_sampling_ops"
     "control_flow_ops"
     "ctc_ops"

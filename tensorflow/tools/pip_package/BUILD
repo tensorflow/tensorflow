@@ -75,10 +75,6 @@ py_binary(
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:tools_pip",
         # These targets don't build on Windows yet. Exclude them for now.
-        # rules_closure currently doesn't build on Windows due to
-        # https://github.com/bazelbuild/rules_closure/pull/206
-        # Since tensorboard dependes on rules_closure, exclude tensorboard until it's fixed.
-        # "//tensorflow/tensorboard",
         # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
         # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
@@ -113,15 +109,12 @@ filegroup(
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
-        "@org_html5lib//:LICENSE",
-        "@org_mozilla_bleach//:LICENSE",
-        "@org_pocoo_werkzeug//:LICENSE",
-        "@org_pythonhosted_markdown//:LICENSE.md",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
+        "@org_python_pypi_backports_weakref//:LICENSE",
     ] + if_not_windows([
         "@nccl_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
@@ -154,6 +147,7 @@ sh_binary(
             "//tensorflow/contrib/specs:specs",
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
+            "//tensorflow/contrib/predictor:predictor_pip",
             "//tensorflow/examples/tutorials/mnist:package",
             "//tensorflow/python:distributed_framework_test_lib",
             "//tensorflow/python:meta_graph_testdata",
@@ -161,7 +155,6 @@ sh_binary(
             "//tensorflow/python/debug:debug_pip",
             "//tensorflow/python/saved_model:saved_model",
             "//tensorflow/python/tools:tools_pip",
-            "//tensorflow/tensorboard",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )

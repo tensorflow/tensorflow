@@ -89,11 +89,11 @@ StatusOr<std::unique_ptr<Literal>> Compare(const Shape& shape, HloOpcode opcode,
                  << HloOpcodeString(opcode);
   }
 
-  auto result = LiteralUtil::CreateFromShape(shape);
-  TF_RETURN_IF_ERROR(LiteralUtil::Populate<bool>(
-      result.get(), [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-        return compare_op(LiteralUtil::Get<OperandT>(lhs_literal, multi_index),
-                          LiteralUtil::Get<OperandT>(rhs_literal, multi_index));
+  auto result = Literal::CreateFromShape(shape);
+  TF_RETURN_IF_ERROR(result.get()->Populate<bool>(
+      [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+        return compare_op(lhs_literal.Get<OperandT>(multi_index),
+                          rhs_literal.Get<OperandT>(multi_index));
       }));
 
   return std::move(result);
@@ -117,12 +117,11 @@ StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
         ShapeUtil::HumanString(operand->shape()).c_str());
   }
 
-  auto result = LiteralUtil::CreateFromShape(shape);
+  auto result = Literal::CreateFromShape(shape);
 
-  TF_RETURN_IF_ERROR(LiteralUtil::Populate<ReturnT>(
-      result.get(), [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-        return unary_op(
-            LiteralUtil::Get<NativeT>(operand_literal, multi_index));
+  TF_RETURN_IF_ERROR(result.get()->Populate<ReturnT>(
+      [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+        return unary_op(operand_literal.Get<NativeT>(multi_index));
       }));
   return std::move(result);
 }
@@ -168,6 +167,23 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return HandleAbs<ReturnT>(abs, operand);
   };
 
+  Status HandleBroadcast(HloInstruction* broadcast) override {
+    parent_->evaluated_[broadcast] =
+        Literal::CreateFromShape(broadcast->shape());
+    auto output = parent_->evaluated_[broadcast].get();
+    auto operand_to_broadcast =
+        parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
+    std::vector<int64> broadcast_indices(
+        ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
+    return output->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
+            broadcast_indices[i] = multi_index[broadcast->dimensions(i)];
+          }
+          return operand_to_broadcast.Get<ReturnT>(broadcast_indices);
+        });
+  }
+
   Status HandleCeil(HloInstruction* ceil, HloInstruction* operand) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[ceil],
                         ElementWiseUnaryOp(ceil, [](ReturnT elem_operand) {
@@ -176,7 +192,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override {
+  Status HandleCopy(HloInstruction* copy) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[copy],
                         ElementWiseUnaryOp(copy, [](ReturnT elem_operand) {
                           return elem_operand;
@@ -187,22 +203,21 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   template <PrimitiveType src_type, PrimitiveType dest_type>
   std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
     DCHECK_EQ(src_type, src_literal.shape().element_type());
-    return LiteralUtil::Convert<
+    return src_literal.Convert<
         typename primitive_util::PrimitiveTypeToNative<src_type>::type,
-        typename primitive_util::PrimitiveTypeToNative<dest_type>::type>(
-        src_literal);
+        typename primitive_util::PrimitiveTypeToNative<dest_type>::type>();
   }
 
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* operand) override {
+  Status HandleConvert(HloInstruction* convert) override {
+    const HloInstruction* operand = convert->operand(0);
     auto operand_literal = parent_->GetEvaluatedLiteralFor(operand);
 
     switch (operand->shape().element_type()) {
 #define CONVERT_IF_TYPES_MATCH(src_type)                                \
   case (src_type):                                                      \
-    parent_->evaluated_[convert] = LiteralUtil::Convert<                \
+    parent_->evaluated_[convert] = operand_literal.Convert<             \
         typename primitive_util::PrimitiveTypeToNative<src_type>::type, \
-        ReturnT>(operand_literal);                                      \
+        ReturnT>();                                                     \
     break;
       CONVERT_IF_TYPES_MATCH(PRED)
       CONVERT_IF_TYPES_MATCH(S8)
@@ -322,8 +337,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status HandleMaximum(HloInstruction* maximum, HloInstruction* lhs,
-                       HloInstruction* rhs) override {
+  Status HandleMaximum(HloInstruction* maximum) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[maximum],
         ElementWiseBinaryOp(maximum, [](ReturnT lhs, ReturnT rhs) {
@@ -332,8 +346,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status HandleMinimum(HloInstruction* minimum, HloInstruction* lhs,
-                       HloInstruction* rhs) override {
+  Status HandleMinimum(HloInstruction* minimum) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[minimum],
         ElementWiseBinaryOp(minimum, [](ReturnT lhs_el, ReturnT rhs_el) {
@@ -446,12 +459,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
-    auto result = LiteralUtil::CreateFromShape(shape);
+    auto result = Literal::CreateFromShape(shape);
 
-    TF_RETURN_IF_ERROR(LiteralUtil::Populate<ReturnT>(
-        result.get(), [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-          return binary_op(LiteralUtil::Get<ReturnT>(lhs_literal, multi_index),
-                           LiteralUtil::Get<ReturnT>(rhs_literal, multi_index));
+    TF_RETURN_IF_ERROR(result.get()->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          return binary_op(lhs_literal.Get<ReturnT>(multi_index),
+                           rhs_literal.Get<ReturnT>(multi_index));
         }));
     return std::move(result);
   }
@@ -483,14 +496,13 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
     const Literal& ehs_literal = parent_->GetEvaluatedLiteralFor(ehs);
 
-    auto result = LiteralUtil::CreateFromShape(shape);
+    auto result = Literal::CreateFromShape(shape);
 
-    TF_RETURN_IF_ERROR(LiteralUtil::Populate<ReturnT>(
-        result.get(), [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
-          return ternary_op(
-              LiteralUtil::Get<LhsType>(lhs_literal, multi_index),
-              LiteralUtil::Get<RhsType>(rhs_literal, multi_index),
-              LiteralUtil::Get<EhsType>(ehs_literal, multi_index));
+    TF_RETURN_IF_ERROR(result.get()->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          return ternary_op(lhs_literal.Get<LhsType>(multi_index),
+                            rhs_literal.Get<RhsType>(multi_index),
+                            ehs_literal.Get<EhsType>(multi_index));
         }));
 
     return std::move(result);
@@ -552,7 +564,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
     if (operand->opcode() == HloOpcode::kParameter) {
       const Literal* input_literal = arg_literals_[operand->parameter_number()];
       VLOG(2) << "Parameter operand evaluated to: "
-              << LiteralUtil::ToString(*input_literal);
+              << input_literal->ToString();
       TF_RET_CHECK(ShapeUtil::Equal(operand->shape(), input_literal->shape()));
 
       evaluated_[operand] = MakeUnique<Literal>(*input_literal);
@@ -589,8 +601,7 @@ std::unique_ptr<Literal> HloEvaluator::TryEvaluate(
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   VLOG(2) << "HandleParameter: " << parameter->ToString();
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
-  VLOG(2) << "Parameter evaluated to: "
-          << LiteralUtil::ToString(*input_literal);
+  VLOG(2) << "Parameter evaluated to: " << input_literal->ToString();
   DCHECK(ShapeUtil::Equal(parameter->shape(), input_literal->shape()));
 
   evaluated_[parameter] = MakeUnique<Literal>(*input_literal);
@@ -606,14 +617,14 @@ Status HloEvaluator::HandleConstant(HloInstruction* constant,
 Status HloEvaluator::HandleReshape(HloInstruction* reshape) {
   TF_ASSIGN_OR_RETURN(
       evaluated_[reshape],
-      LiteralUtil::Reshape(GetEvaluatedLiteralFor(reshape->operand(0)),
-                           AsInt64Slice(reshape->shape().dimensions())));
+      GetEvaluatedLiteralFor(reshape->operand(0))
+          .Reshape(AsInt64Slice(reshape->shape().dimensions())));
   return Status::OK();
 }
 
 Status HloEvaluator::HandleTranspose(HloInstruction* transpose) {
-  evaluated_[transpose] = LiteralUtil::Transpose(
-      GetEvaluatedLiteralFor(transpose->operand(0)), transpose->dimensions());
+  evaluated_[transpose] = GetEvaluatedLiteralFor(transpose->operand(0))
+                              .Transpose(transpose->dimensions());
   return Status::OK();
 }
 
@@ -641,16 +652,16 @@ Status HloEvaluator::HandleConcatenate(
         ShapeUtil::GetDimension(operand_shape, concat_dim);
   }
 
-  auto result_literal = LiteralUtil::CreateFromDimensions(
+  auto result_literal = Literal::CreateFromDimensions(
       reference_shape.element_type(), concat_dimensions);
   DimensionVector source_indices(rank, 0);
   DimensionVector dest_indices(concat_dimensions.size(), 0);
 
   for (auto operand : operands) {
     const Shape& operand_shape = operand->shape();
-    TF_RETURN_IF_ERROR(LiteralUtil::Copy(
-        GetEvaluatedLiteralFor(operand), source_indices, result_literal.get(),
-        dest_indices, AsInt64Slice(operand_shape.dimensions())));
+    TF_RETURN_IF_ERROR(result_literal.get()->Copy(
+        GetEvaluatedLiteralFor(operand), source_indices, dest_indices,
+        AsInt64Slice(operand_shape.dimensions())));
     dest_indices[concat_dim] +=
         ShapeUtil::GetDimension(operand_shape, concat_dim);
   }
@@ -775,14 +786,14 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare, HloOpcode opcode,
 Status HloEvaluator::HandleSlice(HloInstruction* slice,
                                  HloInstruction* operand) {
   const Shape& shape = slice->shape();
-  auto literal = LiteralUtil::CreateFromDimensions(
+  auto literal = Literal::CreateFromDimensions(
       shape.element_type(), AsInt64Slice(shape.dimensions()));
 
   DimensionVector dest_indices(slice->slice_starts().size(), 0);
 
-  TF_RETURN_IF_ERROR(LiteralUtil::Copy(
-      GetEvaluatedLiteralFor(operand), slice->slice_starts(), literal.get(),
-      dest_indices, AsInt64Slice(shape.dimensions())));
+  TF_RETURN_IF_ERROR(literal.get()->Copy(GetEvaluatedLiteralFor(operand),
+                                         slice->slice_starts(), dest_indices,
+                                         AsInt64Slice(shape.dimensions())));
 
   evaluated_[slice] = std::move(literal);
   return Status::OK();

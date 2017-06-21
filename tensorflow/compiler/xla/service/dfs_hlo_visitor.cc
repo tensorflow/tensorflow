@@ -24,16 +24,13 @@ limitations under the License.
 namespace xla {
 
 Status DfsHloVisitor::HandleElementwiseUnary(HloInstruction* hlo,
-                                             HloOpcode opcode,
-                                             HloInstruction* operand) {
+                                             HloOpcode opcode) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseUnary: %s",
                        HloOpcodeString(opcode).c_str());
 }
 
 Status DfsHloVisitor::HandleElementwiseBinary(HloInstruction* hlo,
-                                              HloOpcode opcode,
-                                              HloInstruction* lhs,
-                                              HloInstruction* rhs) {
+                                              HloOpcode opcode) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseBinary: %s",
                        HloOpcodeString(opcode).c_str());
 }
@@ -51,22 +48,18 @@ void DfsHloVisitor::SetVisited(const HloInstruction& instruction) {
 }
 
 bool DfsHloVisitor::IsVisiting(const HloInstruction& instruction) {
-  if (visit_state_.count(&instruction) == 0) {
-    return false;
-  }
-  return visit_state_[&instruction] == VisitState::kVisiting;
+  auto it = visit_state_.find(&instruction);
+  return it != visit_state_.end() && it->second == VisitState::kVisiting;
 }
 
 bool DfsHloVisitor::DidVisit(const HloInstruction& instruction) {
-  if (visit_state_.count(&instruction) == 0) {
-    return false;
-  }
-  return visit_state_[&instruction] == VisitState::kVisited;
+  auto it = visit_state_.find(&instruction);
+  return it != visit_state_.end() && it->second == VisitState::kVisited;
 }
 
 bool DfsHloVisitor::NotVisited(const HloInstruction& instruction) {
-  return visit_state_.count(&instruction) == 0 ||
-         visit_state_[&instruction] == VisitState::kNotVisited;
+  auto it = visit_state_.find(&instruction);
+  return it == visit_state_.end() || it->second == VisitState::kNotVisited;
 }
 
 Status DfsHloVisitor::Preprocess(HloInstruction* hlo) { return Status::OK(); }

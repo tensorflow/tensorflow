@@ -42,8 +42,8 @@ py_library(
     srcs = ["plugins/projector/__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":protos_all_py",
         "//tensorflow/python:lib",
-        "//tensorflow/tensorboard/plugins/projector:protos_all_py",
     ],
 )
 
@@ -54,10 +54,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":projector",
+        ":protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
-        "//tensorflow/tensorboard/plugins/projector:protos_all_py",
     ],
 )
 

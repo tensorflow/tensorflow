@@ -19,6 +19,18 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+namespace {
+bool CountAsAcceleratorTime(const string& device) {
+  return device.find("stream:all") != device.npos;
+}
+
+bool CountAsCPUTime(const string& device) {
+  return RE2::FullMatch(device, ".*/(gpu|cpu):\\d+");
+}
+
+bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
+
+}  // namespace
 // Notes about start and end time from the NodeExecStats proto:
 // For GPU, there is no difference between op_end_rel_micros and
 // all_end_rel_micros. All are kernel times.
@@ -52,13 +64,16 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
     latest_end_micros_ = std::max(
         latest_end_micros_, step_stat.all_start_micros() + op_end_rel_micros);
 
-    op_execs_[dev].push_back(
-        std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
-
-    // TODO(xpan): Can a stream only in stream:all or doesn't in stream at all?
-    if (dev.find("stream") != dev.npos && dev.find("stream:all") == dev.npos) {
-      gpu_kernel_execs_[dev].push_back(
-          std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
+    const std::pair<int64, int64> pair =
+        std::make_pair(step_stat.all_start_micros(), op_end_rel_micros);
+    if (CountAsAcceleratorTime(dev)) {
+      accelerator_execs_[dev].push_back(pair);
+      op_execs_[dev].push_back(pair);
+    } else if (CountAsCPUTime(dev)) {
+      // TODO(xpan): A while-loop can has multiple nodes sharing the
+      // same name. They shouldn't be counted in one node.
+      cpu_execs_[dev].push_back(pair);
+      op_execs_[dev].push_back(pair);
     }
   }
 }
@@ -113,8 +128,11 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
                               const NodeExecStats& step_stat) {
   string dev = str_util::Lowercase(device);
 
-  // TODO(xpan): Test it.
-  if (RE2::FullMatch(dev, "/job:.*/replica:\\d+/task:\\d+/[a-z]+:\\d+")) {
+  // TODO(xpan): Make this more robust?
+  // See run_metadata_test.py
+  // It can be /job:0/replica:0/xxxx/gpu:0, or simply /gpu:0.
+  // It can has some ad-hoc suffix, such as /stream:xx or /memcpy:xx.
+  if (IsCanonicalDevice(device)) {
     if (!canonical_device_.empty()) {
       if (canonical_device_ != dev) {
         fprintf(stderr, "Unexpected: graph node changed device: %s->%s.\n",
@@ -143,26 +161,15 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
 }
 
 int64 ExecStep::exec_micros() const {
-  int64 total = accelerator_exec_micros();
-  if (total > 0) return total;
-
-  // If there is no gpu kernel time, fall back to assume it runs on cpu.
-  // TODO(xpan): No way to track CPU async op timing accurately?
-  if (op_execs_.size() > 1) {
-    fprintf(stderr, "Op: %s has over 1 no-gpu assignment\n",
-            node->name().c_str());
-  }
-  for (const auto& execs : op_execs_) {
-    for (const auto& exec : execs.second) {
-      total += exec.second;
-    }
-  }
-  return total;
+  return accelerator_exec_micros() + cpu_exec_micros();
 }
 
 int64 ExecStep::accelerator_exec_micros() const {
   int64 total = 0;
-  for (const auto& execs : gpu_kernel_execs_) {
+  // Normally, an op should only be scheduled on 1 accelerator device.
+  // Hence there should generally be 1 element in accelerator_execs_.
+  for (const auto& execs : accelerator_execs_) {
+    // A op can fire multiple kernel runs hence multiple elements here.
     for (const auto& exec : execs.second) {
       total += exec.second;
     }
@@ -170,12 +177,20 @@ int64 ExecStep::accelerator_exec_micros() const {
   return total;
 }
 
-bool IsCombinedGPUStream(const string& device) {
-  return device.find("stream:all") != device.npos;
-}
-
-bool IsCPUDevice(const string& device) {
-  return device.find("cpu:0") != device.npos;
+int64 ExecStep::cpu_exec_micros() const {
+  int64 total = 0;
+  // Here we use for loop just for consistent appearence with
+  // accelerator_execs.
+  // We only expect cpu_execs_ to have 1 element because an
+  // op can only be scheduled on 1 device.
+  for (const auto& execs : cpu_execs_) {
+    // We only expect exec to have 1 element because an op
+    // can only be schedule once.
+    for (const auto& exec : execs.second) {
+      total += exec.second;
+    }
+  }
+  return total;
 }
 
 std::vector<int64> ShapeProtoToVec(const TensorShapeProto& shape_pb) {
@@ -203,7 +218,7 @@ TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
   return shape_pb;
 }
 
-bool IsAcceleratorDevice(const string& device) {
+bool IsPlacedOnAccelerator(const string& device) {
   return device.find("gpu") != device.npos;
 }
 }  // namespace tfprof

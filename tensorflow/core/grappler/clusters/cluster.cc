@@ -14,27 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include <atomic>
 
 namespace tensorflow {
 namespace grappler {
 
-static std::atomic<bool> already_created(false);
-
 Cluster::Cluster(int timeout_s) : timeout_s_(timeout_s) {
-  // This is really ugly: to avoid leaking variables, we need to reset the tf
-  // session every time we're done processing a grappler item. However,
-  // variables are global, and therefore we can't have more than 1 session alive
-  // at a time. This check detects when more that one cluster is created.
-  CHECK(!already_created);
-  already_created = true;
-
   DisableDetailedStats(false);
 }
 
 Cluster::~Cluster() {
-  CHECK(already_created);
-  already_created = false;
 }
 
 void Cluster::AllowSoftPlacement(bool soft_placement_state) {

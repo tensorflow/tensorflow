@@ -50,7 +50,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
 
   ConstantRequest constant_request;
   *constant_request.mutable_literal() =
-      LiteralUtil::CreateR1<float>({123.0f, 42.0f})->ToProto();
+      Literal::CreateR1<float>({123.0f, 42.0f})->ToProto();
   TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle constant_handle,
                          computation.AddConstantInstruction(constant_request));
 
@@ -161,12 +161,12 @@ TEST_F(UserComputationTest, EliminateScalarBroadcast) {
 
   ConstantRequest a_request;
   *a_request.mutable_literal() =
-      LiteralUtil::CreateR1<float>({123.0f, 42.0f})->ToProto();
+      Literal::CreateR1<float>({123.0f, 42.0f})->ToProto();
   TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle a_handle,
                          computation.AddConstantInstruction(a_request));
 
   ConstantRequest b_request;
-  *b_request.mutable_literal() = LiteralUtil::CreateR0<float>(1.0f)->ToProto();
+  *b_request.mutable_literal() = Literal::CreateR0<float>(1.0f)->ToProto();
   TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle b_handle,
                          computation.AddConstantInstruction(b_request));
 

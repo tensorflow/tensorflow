@@ -126,10 +126,8 @@ cc_library(
     deps = [
         ":tfcompile_lib",
         ":tfcompile_proto",
-        "//tensorflow/compiler/xla/legacy_flags:alias_analysis_flags",
         "//tensorflow/compiler/xla/legacy_flags:buffer_assignment_flags",
         "//tensorflow/compiler/xla/legacy_flags:compiler_functor_flags",
-        "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
         "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
