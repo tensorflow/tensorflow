@@ -45,11 +45,7 @@ TEST_F(AutoParallelTest, SimpleParallel) {
   GrapplerItem item;
   item.init_ops.push_back("assign");
   item.fetch.push_back("apply_gradient");
-  VariableDef var_def;
-  var_def.set_variable_name("var");
-  var_def.set_initializer_name("assign");
-  var_def.set_snapshot_name("identity");
-  item.variable_def.push_back(var_def);
+  item.init_ops.push_back("assign");
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   AutoParallel parallel(2);

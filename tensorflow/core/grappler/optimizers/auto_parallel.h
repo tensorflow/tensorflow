@@ -45,7 +45,6 @@ class AutoParallel : public GraphOptimizer {
   std::set<string> apply_gradients_nodes_;
   std::set<string> replica_nodes_;
   std::set<string> shared_nodes_;
-  std::map<string, VariableDef> variables_;
   const GrapplerItem* item_;
   int num_replicas_;
   int num_gpus_;

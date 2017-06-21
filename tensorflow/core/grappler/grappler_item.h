@@ -49,9 +49,6 @@ struct GrapplerItem {
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;
 
-  // Variables of this model.
-  std::vector<VariableDef> variable_def;
-
   // Return the set of node evaluated during a regular train/inference step.
   std::vector<const NodeDef*> MainOpsFanin() const;
   // Return the set nodes used by TensorFlow to initialize the graph.
