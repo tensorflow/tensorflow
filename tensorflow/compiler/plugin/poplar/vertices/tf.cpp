@@ -118,6 +118,35 @@ template class RandomNormal<float>;
 template class RandomNormal<half>;
 
 template<typename T>
+class RandomTruncatedNormal : public Vertex {
+public:
+  Output<Vector<T>> out;
+  Input<T> mean;
+  Input<T> sd;
+
+  std::default_random_engine random_engine;
+  std::normal_distribution<float> normal_distribution;
+
+  bool compute() {
+    T m = mean;
+    T s = sd;
+    for (unsigned i = 0; i < out.size(); ++i) {
+      T val = (T)normal_distribution(random_engine);
+      while (val < (T)(-2.0) || val > (T)(2.0)) {
+        val = (T)normal_distribution(random_engine);
+      }
+      out[i] = val * s + m;
+    }
+    return true;
+  }
+
+  int getCycleEstimate() const { return 1; }
+};
+
+template class RandomTruncatedNormal<float>;
+template class RandomTruncatedNormal<half>;
+
+template<typename T>
 class ScalarSelect : public Vertex {
 public:
   Input<bool> pred;
