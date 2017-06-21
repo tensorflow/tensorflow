@@ -40,7 +40,9 @@ cc_library(
         ":split_collection_operators",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -109,7 +111,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -151,7 +153,7 @@ cc_library(
         ":input_data",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -173,32 +175,12 @@ cc_library(
     srcs = ["split_collection_operators.cc"],
     hdrs = ["split_collection_operators.h"],
     deps = [
-        ":grow_stats",
-        ":input_data",
-        ":input_target",
-        ":leaf_model_operators",
-        ":params",
-        ":stat_utils",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
-        "//tensorflow/contrib/tensor_forest:tree_utils",
-        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
-        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
-    ],
-)
-
-cc_library(
-    name = "graph_collection_operator",
-    srcs = ["graph_collection_operator.cc"],
-    hdrs = ["graph_collection_operator.h"],
-    deps = [
         ":candidate_graph_runner",
         ":grow_stats",
         ":input_data",
         ":input_target",
         ":leaf_model_operators",
         ":params",
-        ":split_collection_operators",
         ":stat_utils",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",

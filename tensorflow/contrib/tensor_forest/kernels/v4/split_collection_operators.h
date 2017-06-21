@@ -17,6 +17,7 @@
 
 #include <vector>
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model.pb.h"
+#include "tensorflow/contrib/tensor_forest/kernels/v4/candidate_graph_runner.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/grow_stats.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/input_data.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/input_target.h"
@@ -85,37 +86,59 @@ class SplitCollectionOperator {
   std::unordered_map<int32, std::unique_ptr<GrowStats>> stats_;
 };
 
-class CollectionCreator {
+
+class GraphRunnerSplitCollectionOperator : public SplitCollectionOperator {
  public:
-  virtual std::unique_ptr<SplitCollectionOperator> Create(
-      const TensorForestParams& params) = 0;
-  virtual ~CollectionCreator() {}
+  explicit GraphRunnerSplitCollectionOperator(const TensorForestParams& params)
+      : SplitCollectionOperator(params) {
+    if (params.num_splits_to_consider().ParamType_case() ==
+        DepthDependentParam::PARAMTYPE_NOT_SET) {
+      LOG(FATAL) << "GRAPH_RUNNER_COLLECTION must specify a constant value for "
+                 << " num_splits_to_consider";
+    } else {
+      num_splits_to_consider_ =
+          params.num_splits_to_consider().constant_value();
+    }
+  }
+
+  std::unique_ptr<GrowStats> CreateGrowStats(int32 node_id,
+                                             int32 depth) const override;
+
+  // Updates the slot's candidates with the new example.
+  // Assumes slot has been initialized.
+  void AddExample(const std::unique_ptr<TensorDataSet>& input_data,
+                  const InputTarget* target, const std::vector<int>& examples,
+                  int32 node_id) const override;
+
+  // Create a new candidate and initialize it with the given example.
+  void CreateAndInitializeCandidateWithExample(
+      const std::unique_ptr<TensorDataSet>& input_data, int example,
+      int32 node_id) const override;
+
+  bool BestSplit(int32 node_id, SplitCandidate* best,
+                 int32* depth) const override;
+
+  void ClearSlot(int32 node_id) override;
+
+ protected:
+  int64 UniqueId(int32 node_id, int32 split_id) const;
+
+  mutable std::unordered_map<int64, std::unique_ptr<CandidateGraphRunner>>
+      runners_;
+  int features_per_node_;
+  string graph_dir_;
+  // Must have a constant value because of how we make unique ids right now.
+  int32 num_splits_to_consider_;
 };
 
+// Creates a type of SplitCollectionOperator depending on the type passed,
+// which is SplitCollectionType in fertile_stats.proto.
+// Can create a SplitCollectionOperator itself, known as "basic".
 class SplitCollectionOperatorFactory {
  public:
   static std::unique_ptr<SplitCollectionOperator> CreateSplitCollectionOperator(
       const TensorForestParams& params);
-
-  static std::unordered_map<int, CollectionCreator*> factories_;
 };
-
-template <typename T>
-class AnyCollectionCreator : public CollectionCreator {
- public:
-  AnyCollectionCreator(SplitCollectionType type) {
-    SplitCollectionOperatorFactory::factories_[type] = this;
-  }
-  virtual std::unique_ptr<SplitCollectionOperator> Create(
-      const TensorForestParams& params) {
-    return std::unique_ptr<SplitCollectionOperator>(new T(params));
-  }
-};
-
-#define REGISTER_SPLIT_COLLECTION(name, cls) \
-  namespace {                                \
-  AnyCollectionCreator<cls> creator(name);   \
-  }
 
 }  // namespace tensorforest
 }  // namespace tensorflow
