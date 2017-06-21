@@ -40,23 +40,20 @@ config_setting(
 cc_library(
     name = "cuda_headers",
     hdrs = [
-        "cuda/cuda_config.h",
+        "cuda_config.h",
         %{cuda_headers}
     ],
     includes = [
         ".",
-        "cuda/include",
+        "include",
     ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudart_static",
-    srcs = ["cuda/lib/%{cudart_static_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    srcs = ["lib/%{cudart_static_lib}"],
+    includes = ["include"],
     linkopts = select({
         ":freebsd": [],
         "//conditions:default": ["-ldl"],
@@ -69,46 +66,34 @@ cc_library(
 
 cc_library(
     name = "cuda_driver",
-    srcs = ["cuda/lib/%{cuda_driver_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    srcs = ["lib/%{cuda_driver_lib}"],
+    includes = ["include"],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudart",
-    srcs = ["cuda/lib/%{cudart_lib}"],
-    data = ["cuda/lib/%{cudart_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    srcs = ["lib/%{cudart_lib}"],
+    data = ["lib/%{cudart_lib}"],
+    includes = ["include"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cublas",
-    srcs = ["cuda/lib/%{cublas_lib}"],
-    data = ["cuda/lib/%{cublas_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    srcs = ["lib/%{cublas_lib}"],
+    data = ["lib/%{cublas_lib}"],
+    includes = ["include"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cusolver",
-    srcs = ["cuda/lib/%{cusolver_lib}"],
-    data = ["cuda/lib/%{cusolver_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    srcs = ["lib/%{cusolver_lib}"],
+    data = ["lib/%{cusolver_lib}"],
+    includes = ["include"],
     linkstatic = 1,
     linkopts = ["-lgomp"],
     visibility = ["//visibility:public"],
@@ -116,36 +101,27 @@ cc_library(
 
 cc_library(
     name = "cudnn",
-    srcs = ["cuda/lib/%{cudnn_lib}"],
-    data = ["cuda/lib/%{cudnn_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    srcs = ["lib/%{cudnn_lib}"],
+    data = ["lib/%{cudnn_lib}"],
+    includes = ["include"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cufft",
-    srcs = ["cuda/lib/%{cufft_lib}"],
-    data = ["cuda/lib/%{cufft_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    srcs = ["lib/%{cufft_lib}"],
+    data = ["lib/%{cufft_lib}"],
+    includes = ["include"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "curand",
-    srcs = ["cuda/lib/%{curand_lib}"],
-    data = ["cuda/lib/%{curand_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    srcs = ["lib/%{curand_lib}"],
+    data = ["lib/%{curand_lib}"],
+    includes = ["include"],
     linkstatic = 1,
     visibility = ["//visibility:public"],
 )
@@ -166,23 +142,19 @@ cc_library(
 cc_library(
     name = "cupti_headers",
     hdrs = [
-        "cuda/cuda_config.h",
+        "cuda_config.h",
         ":cuda-extras",
     ],
     includes = [
         ".",
-        "cuda/extras/CUPTI/include/",
+        "extras/CUPTI/include/",
     ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cupti_dsos",
-    data = ["cuda/lib/%{cupti_lib}"],
-    includes = [
-        ".",
-        "cuda/include",
-    ],
+    data = ["lib/%{cupti_lib}"],
     visibility = ["//visibility:public"],
 )
 
