@@ -63,6 +63,11 @@ tensorflow::ImportNumpy();
 // Constants used by TensorHandle (get_session_handle).
 %constant const char* TENSOR_HANDLE_KEY = tensorflow::SessionState::kTensorHandleResourceTypeName;
 
+// Convert TF_OperationName output to unicode python string
+%typemap(out) const char* TF_OperationName {
+  $result = PyUnicode_FromString($1);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
