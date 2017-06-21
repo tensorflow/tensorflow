@@ -535,6 +535,7 @@ tf_library(
     cpp_class = "LSTMLayerInference",
     graph = "lstm_layer_inference.pbtxt",
     tags = ["manual"],
+    tfcompile_flags = "--xla_cpu_multi_thread_eigen=false",
 )
 
 # -----------------------------------------------------------------------------

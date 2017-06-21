@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -25,6 +26,11 @@ namespace cpu {
 
 bool PotentiallyImplementedAsEigenConvolution(
     const HloInstruction& convolution) {
+  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
+  if (!flags->xla_cpu_use_eigen) {
+    return false;
+  }
+
   // The following conditions are necessary (but not sufficient) for
   // implementing `convolution` with Eigen convolution:
   // - the input and kernel have a non-zero number of elements.
@@ -76,6 +82,11 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
 }  // namespace
 
 bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
+  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
+  if (!flags->xla_cpu_use_eigen) {
+    return false;
+  }
+
   // For certain types of Dot, we can call Eigen
   if (hlo.opcode() == HloOpcode::kDot) {
     const Shape& lhs_shape = hlo.operand(0)->shape();

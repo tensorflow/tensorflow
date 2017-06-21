@@ -80,6 +80,18 @@ cc_library(
 )
 
 cc_library(
+    name = "cpu_runtime_flags",
+    srcs = ["cpu_runtime_flags.cc"],
+    hdrs = ["cpu_runtime_flags.h"],
+    deps =
+        [
+            ":parse_flags_from_env",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+        ],
+)
+
+cc_library(
     name = "compiler_functor_flags",
     srcs = ["compiler_functor_flags.cc"],
     hdrs = ["compiler_functor_flags.h"],

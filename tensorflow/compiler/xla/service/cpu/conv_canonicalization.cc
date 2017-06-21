@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 
+#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -29,6 +30,11 @@ namespace xla {
 namespace cpu {
 
 StatusOr<bool> ConvCanonicalization::Run(HloModule* module) {
+  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
+  if (!flags->xla_cpu_use_eigen) {
+    return false;
+  }
+
   bool changed = false;
   for (HloInstruction* hlo :
        module->entry_computation()->MakeInstructionPostOrder()) {
