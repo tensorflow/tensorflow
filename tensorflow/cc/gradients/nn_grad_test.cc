@@ -58,10 +58,16 @@ TEST_F(NNGradTest, SoftmaxGrad) {
 }
 
 TEST_F(NNGradTest, LogSoftmaxGrad) {
-  TensorShape shape({32, 10});
+  TensorShape shape({5, 3});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto y = LogSoftmax(scope_, x);
-  RunTest(x, shape, y, shape);
+  // Avoid numerical instability when computing finite differences.
+  Tensor x_init_value = test::AsTensor<float>(
+          {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f,
+           0.1f, 0.3f, 0.5f, 0.7f, 0.8f,
+           -0.1f, 0.1f, 0.1f, 0.1f, 1.2f},
+          {5, 3});
+  RunTest(x, x_init_value, y, shape);
 }
 
 TEST_F(NNGradTest, ReluGrad) {
