@@ -304,7 +304,11 @@ AddRecomputeControlDependencyNodes(
   for (const NodeDef* target_node : target_nodes) {
     for (const string& target_input_name_raw : target_node->input()) {
       const NodeDef* target_input = node_map.GetNode(target_input_name_raw);
-      if (recomputed_source_nodes.count(target_input) != 0 ||
+      // If this node has already had one of its inputs recomputed during this
+      // rewriting pass, we ignore that recomputed node here (it will not be in
+      // the NodeMap).
+      if (target_input == nullptr ||
+          recomputed_source_nodes.count(target_input) != 0 ||
           components.find(target_node)->second ==
               components.find(target_input)->second) {
         continue;

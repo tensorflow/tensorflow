@@ -69,6 +69,36 @@ TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   EXPECT_EQ("^gradients/d", recompute_trigger->input(0));
 }
 
+TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Const(s.WithOpName("a"), 1.f, {2, 3, 4});
+  Output b = ops::Const(s.WithOpName("b"), 1.f, {2, 3, 4});
+  Output d = ops::AddN(s.WithOpName("gradients/two_subgraph_inputs"), {a, b});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  EXPECT_EQ(3, item.graph.node_size());
+  NodeMap pre_transform_node_map(&item.graph);
+  (*pre_transform_node_map.GetNode("a")->mutable_attr())["_recompute_hint"]
+      .set_i(0);
+  (*pre_transform_node_map.GetNode("b")->mutable_attr())["_recompute_hint"]
+      .set_i(0);
+
+  MemoryOptimizer optimizer(RewriterConfig::MANUAL);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+
+  TF_EXPECT_OK(status);
+  NodeMap post_transform_node_map(&output);
+  // Mostly checking that this case does not crash.
+  EXPECT_EQ(7, output.node_size());
+  EXPECT_NE(post_transform_node_map.GetNode("Recomputed/a"), nullptr);
+  EXPECT_NE(post_transform_node_map.GetNode("Recomputed/b"), nullptr);
+  EXPECT_NE(post_transform_node_map.GetNode("RecomputeTrigger/a"), nullptr);
+  EXPECT_NE(post_transform_node_map.GetNode("RecomputeTrigger/b"), nullptr);
+}
+
 TEST_F(RecomputeSubgraphTest, MultiNode) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
