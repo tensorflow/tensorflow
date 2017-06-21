@@ -131,6 +131,26 @@ TEST_F(ReduceWindowTest, Along2ndMinorDim) {
   ComputeAndCompareR4<float>(&builder_, *res, {}, ErrorSpec(1e-3, 1e-3));
 }
 
+TEST_F(ReduceWindowTest, AmongMajor2Dims) {
+  Array4D<float> input_array(4, 4, 6, 8);
+  input_array.FillWithMinorDimNum();
+
+  int win_len = 3;
+  int win_stride = 1;
+
+  Padding padding = Padding::kSame;
+  const auto input_data_handle =
+      builder_.ConstantR4FromArray4D<float>(input_array);
+  // Reduce only along the x and y dimensions, according to the win_len.
+  ReduceWindowAdd(input_data_handle, {win_len, win_len, 1, 1},
+                  {win_stride, win_stride, 1, 1}, padding);
+
+  auto result = ReferenceUtil::ReduceWindow4DAdd(
+      input_array, 0.0f, {win_len, win_len, 1, 1},
+      {win_stride, win_stride, 1, 1}, padding);
+  ComputeAndCompareR4<float>(&builder_, *result, {}, ErrorSpec(1e-3, 1e-3));
+}
+
 TEST_F(ReduceWindowTest, AmongMajor2DimsMediumSize) {
   Array4D<float> input_array(9, 12, 4, 89);
   input_array.FillRandom(2.0f);
@@ -468,6 +488,272 @@ XLA_TEST_F(ReduceWindowTest, NonstandardReduceFunction) {
 
   ComputeAndCompareR4<float>(&builder_, *expected, {}, ErrorSpec(1e-3, 1e-3));
 }
+
+TEST_F(ReduceWindowTest, R2ReduceWindowNonOverlappingFromBroadcast) {
+  Array2D<float> input_array(6, 4, 1.0f);
+  ComputationDataHandle input =
+      builder_.Broadcast(builder_.ConstantLiteral(Literal::One(F32)), {6, 4});
+
+  Padding padding = Padding::kSame;
+  ReduceWindowAdd(input, {4, 2}, {3, 3}, padding);
+
+  auto res = ReferenceUtil::ReduceWindow2DAdd(input_array, 0.0f, {4, 2}, {3, 3},
+                                              padding);
+
+  ComputeAndCompareR2<float>(&builder_, *res, {}, ErrorSpec(1e-3, 1e-3));
+}
+
+enum Reducer { kAdd, kMax };
+
+struct R4ReduceWindowTestData {
+  int64 base_bounds[4];
+  int64 window_bounds[4];
+  int64 strides[4];
+  int64 pad_low[4];
+  int64 pad_high[4];
+
+  Reducer reducer;
+};
+
+string R4ReduceWindowTestDataToString(
+    const ::testing::TestParamInfo<R4ReduceWindowTestData>& data) {
+  string str = tensorflow::strings::StrCat(
+      "base_bounds_",
+      tensorflow::str_util::Join(data.param.base_bounds, "x"),  //
+      "__window_bounds_",
+      tensorflow::str_util::Join(data.param.window_bounds, "x"),            //
+      "__strides_", tensorflow::str_util::Join(data.param.strides, "x"),    //
+      "__pad_low_", tensorflow::str_util::Join(data.param.pad_low, "x"),    //
+      "__pad_high_", tensorflow::str_util::Join(data.param.pad_high, "x"),  //
+      (data.param.reducer == kAdd) ? "add" : "max");
+  CHECK(data.param.reducer == kAdd || data.param.reducer == kMax);
+
+  // Test names are not allowed to contain the '-' character.
+  std::replace(str.begin(), str.end(), '-', 'n');
+  return str;
+}
+
+class R4ReduceWindowTest
+    : public ClientLibraryTestBase,
+      public ::testing::WithParamInterface<R4ReduceWindowTestData> {};
+TEST_P(R4ReduceWindowTest, DoIt) {
+  ComputationBuilder b(client_, TestName());
+  const auto& param = GetParam();
+
+  const float kInitValue = 0.0f;
+
+  Array4D<float> input(param.base_bounds[0], param.base_bounds[1],
+                       param.base_bounds[2], param.base_bounds[3]);
+  input.FillIota(1);
+  std::unique_ptr<Literal> input_literal = Literal::CreateR4FromArray4D(input);
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_arg,
+                         client_->TransferToServer(*input_literal));
+
+  std::vector<std::pair<int64, int64>> padding(4);
+  for (int i = 0; i < 4; ++i) {
+    padding[i] = {param.pad_low[i], param.pad_high[i]};
+  }
+
+  auto parameter = b.Parameter(0, input_literal->shape(), "p0");
+  auto pad_value = b.ConstantR0<float>(kInitValue);
+  CHECK(param.reducer == kAdd || param.reducer == kMax);
+  auto computation = param.reducer == kAdd
+                         ? CreateScalarAddComputation(F32, &b)
+                         : CreateScalarMaxComputation(F32, &b);
+  b.ReduceWindowWithGeneralPadding(
+      /*operand=*/parameter,
+      /*init_value=*/pad_value,
+      /*computation=*/computation,
+      /*window_dimensions=*/param.window_bounds,
+      /*window_strides=*/param.strides,
+      /*padding=*/padding);
+
+  CHECK(param.reducer == kAdd || param.reducer == kMax);
+  auto reduce_func = param.reducer == kAdd
+                         ? +[](float a, float b) { return a + b; }
+                         : +[](float a, float b) { return std::max(a, b); };
+  std::unique_ptr<Array4D<float>> expected =
+      ReferenceUtil::ReduceWindow4DGeneric(
+          /*operand=*/input,
+          /*init=*/kInitValue,
+          /*reduce_func=*/reduce_func,
+          /*window=*/param.window_bounds,
+          /*stride=*/param.strides,
+          /*padding=*/padding);
+  ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()});
+}
+
+// base_bounds, window_bounds, strides, pad_low, pad_high
+const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
+    // Minimal edge case.
+    R4ReduceWindowTestData{/*base_bounds=*/{1, 1, 1, 1},
+                           /*window_bounds=*/{1, 1, 1, 1},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // Zero base bound edge case.
+    R4ReduceWindowTestData{/*base_bounds=*/{1, 0, 1, 1},
+                           /*window_bounds=*/{1, 1, 1, 1},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // With non-1x1 window.
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 6, 17, 140},
+                           /*window_bounds=*/{2, 3, 1, 1},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // With max instead of add.
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 6, 17, 140},
+                           /*window_bounds=*/{2, 3, 1, 1},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*reducer=*/kMax},
+
+    // With stride.
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 10, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 4, 1, 1},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // With low padding.
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 6, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{3, 2, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // With high padding.
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 6, 17, 140},
+                           /*window_bounds=*/{3, 2, 1, 1},
+                           /*strides=*/{2, 2, 1, 1},
+                           /*pad_low=*/{0, 0, 0, 0},
+                           /*pad_high=*/{2, 3, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // Window touches both sides of the padding simultaneously.
+    R4ReduceWindowTestData{/*base_bounds=*/{1, 1, 17, 140},
+                           /*window_bounds=*/{3, 3, 1, 1},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{1, 1, 0, 0},
+                           /*pad_high=*/{1, 1, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // Window is entirely in the padding for some positions.
+    R4ReduceWindowTestData{/*base_bounds=*/{1, 1, 17, 140},
+                           /*window_bounds=*/{3, 3, 1, 1},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{4, 4, 0, 0},
+                           /*pad_high=*/{4, 4, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // Zero base bound with padding edge case.
+    R4ReduceWindowTestData{/*base_bounds=*/{2, 0, 3, 4},
+                           /*window_bounds=*/{1, 1, 1, 1},
+                           /*strides=*/{1, 1, 1, 1},
+                           /*pad_low=*/{0, 1, 0, 0},
+                           /*pad_high=*/{0, 0, 0, 0},
+                           /*reducer=*/kAdd},
+
+    // With stride, low padding and high padding.
+    R4ReduceWindowTestData{/*base_bounds=*/{4, 3, 17, 140},
+                           /*window_bounds=*/{3, 4, 1, 1},
+                           /*strides=*/{3, 1, 1, 1},
+                           /*pad_low=*/{10, 1, 0, 0},
+                           /*pad_high=*/{2, 3, 0, 0},
+                           /*reducer=*/kAdd},
+};
+
+INSTANTIATE_TEST_CASE_P(R4ReduceWindowTestInstantiation, R4ReduceWindowTest,
+                        ::testing::ValuesIn(kR4ReduceWindowTestValues),
+                        R4ReduceWindowTestDataToString);
+
+struct R2ReduceWindowTestData {
+  int64 base_bounds[2];
+  int64 window_bounds[2];
+  int64 strides[2];
+  int64 layout[2];
+  Padding padding;
+  Reducer reducer;
+} kR2TestCases[] = {
+    {/*base_bounds=*/{4, 18}, /*window_bounds=*/{2, 4},
+     /*strides=*/{1, 2}, /*layout=*/{0, 1},
+     /*padding=*/Padding::kSame, /*reducer*/ Reducer::kAdd},
+    {/*base_bounds=*/{2, 5}, /*window_bounds=*/{2, 4},
+     /*strides=*/{1, 1}, /*layout=*/{0, 1},
+     /*padding=*/Padding::kSame, /*reducer*/ Reducer::kAdd},
+    {/*base_bounds=*/{1, 3}, /*window_bounds=*/{2, 3},
+     /*strides=*/{1, 1}, /*layout=*/{0, 1},
+     /*padding=*/Padding::kSame, /*reducer*/ Reducer::kAdd},
+    {/*base_bounds=*/{3, 129}, /*window_bounds=*/{1, 100},
+     /*strides=*/{2, 99}, /*layout=*/{0, 1},
+     /*padding=*/Padding::kSame, /*reducer*/ Reducer::kAdd},
+    {/*base_bounds=*/{6, 152}, /*window_bounds=*/{2, 25},
+     /*strides=*/{5, 4}, /*layout=*/{0, 1},
+     /*padding=*/Padding::kSame, /*reducer*/ Reducer::kAdd},
+    {/*base_bounds=*/{6, 4}, /*window_bounds=*/{4, 2},
+     /*strides=*/{3, 3}, /*layout=*/{0, 1},
+     /*padding=*/Padding::kSame, /*reducer*/ Reducer::kAdd},
+};
+
+string R2ReduceWindowTestDataToString(
+    const ::testing::TestParamInfo<R2ReduceWindowTestData>& data) {
+  string str = tensorflow::strings::StrCat(
+      "base_bounds_",
+      tensorflow::str_util::Join(data.param.base_bounds, "x"),  //
+      "__window_bounds_",
+      tensorflow::str_util::Join(data.param.window_bounds, "x"),              //
+      "__strides_", tensorflow::str_util::Join(data.param.strides, "x"),      //
+      "__padding_", data.param.padding == Padding::kSame ? "same" : "valid",  //
+      "__layout_", data.param.layout[0], "_", data.param.layout[1],           //
+      "__reducer_", data.param.reducer == kAdd ? "add" : "max");
+  return str;
+}
+
+class R2ReduceWindowTest
+    : public ClientLibraryTestBase,
+      public ::testing::WithParamInterface<R2ReduceWindowTestData> {};
+
+TEST_P(R2ReduceWindowTest, Add) {
+  ComputationBuilder b(client_, TestName());
+  const auto& param = GetParam();
+  CHECK(param.reducer == kAdd);
+
+  const float kInitValue = 0.0f;
+  Array2D<float> input(param.base_bounds[0], param.base_bounds[1], 1.0f);
+  std::unique_ptr<Literal> input_literal =
+      Literal::CreateR2FromArray2DWithLayout(
+          input, LayoutUtil::MakeLayout(param.layout));
+  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_arg,
+                         client_->TransferToServer(*input_literal));
+  b.ReduceWindow(/*operand=*/
+                 b.Parameter(0, input_literal->shape(), "p0"),
+                 /*init_value=*/b.ConstantR0<float>(kInitValue),
+                 /*computation=*/CreateScalarAddComputation(F32, &b),
+                 /*window_dimensions=*/param.window_bounds,
+                 /*window_strides=*/param.strides, /*padding=*/param.padding);
+
+  auto expected = ReferenceUtil::ReduceWindow2DAdd(
+      /*operand=*/input, /*init=*/kInitValue, /*window=*/param.window_bounds,
+      /*stride=*/param.strides, /*padding=*/param.padding);
+
+  ComputeAndCompareR2<float>(&b, *expected, {input_arg.get()},
+                             ErrorSpec(1e-3, 1e-3));
+}
+
+INSTANTIATE_TEST_CASE_P(R2ReduceWindowTestInstantiation, R2ReduceWindowTest,
+                        ::testing::ValuesIn(kR2TestCases),
+                        R2ReduceWindowTestDataToString);
 
 }  // namespace
 }  // namespace xla
