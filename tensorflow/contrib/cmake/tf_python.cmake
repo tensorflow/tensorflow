@@ -659,6 +659,10 @@ GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_hybrid_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/hybrid/ops/gen_training_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_model_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_model_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_stats_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_stats_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_text_skip_gram_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/text/python/ops/gen_skip_gram_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
