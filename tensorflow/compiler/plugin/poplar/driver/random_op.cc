@@ -174,7 +174,7 @@ CreateRandomTruncatedNormalOp(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
-  auto cs = graph.addComputeSet(inst->ToString());
+  auto cs = graph.addComputeSet(inst->name());
   const auto &device_info = graph.getDevice().getDeviceInfo();
 
   const unsigned long N = ShapeUtil::ElementsIn(output_shape);
