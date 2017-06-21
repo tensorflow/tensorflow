@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <vector>
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -25,12 +24,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
 
+#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -92,12 +92,12 @@ class MklToTfOp : public OpKernel {
     if (input_fmt_nhwc && ndims == 4 && has_avx512f_) {
       size_t strides_nchw[4];
       GetStridesFromSizes(FORMAT_NCHW, strides_nchw, in_sizes);
-      CHECK_EQ(dnnLayoutCreate_F32(&lt_trans_input, ndims, in_sizes,
-                                           strides_nchw), E_SUCCESS);
+      CHECK_EQ(
+          dnnLayoutCreate_F32(&lt_trans_input, ndims, in_sizes, strides_nchw),
+          E_SUCCESS);
       AllocTmpBuffer(context, &mkl_tmp_trans_input_buf_tensor, lt_trans_input,
                      &buf_trans_input);
-    }
-    else {
+    } else {
       lt_trans_input = static_cast<dnnLayout_t>(input_shape.GetTfLayout());
       buf_trans_input =
           static_cast<void*>(const_cast<T*>(output_tensor->flat<T>().data()));
@@ -111,13 +111,13 @@ class MklToTfOp : public OpKernel {
     // NCHW -> NHWC, if data format is NHWC
     if (input_fmt_nhwc && ndims == 4 && has_avx512f_) {
       dnnLayoutDelete_F32(lt_trans_input);
-      TensorShape nhwc_shape = ShapeFromFormat(FORMAT_NHWC,
-          in_sizes[MklDims::N], in_sizes[MklDims::H],
+      TensorShape nhwc_shape = ShapeFromFormat(
+          FORMAT_NHWC, in_sizes[MklDims::N], in_sizes[MklDims::H],
           in_sizes[MklDims::W], in_sizes[MklDims::C]);
       MklNCHWToNHWC(mkl_tmp_trans_input_buf_tensor, &output_tensor);
     }
 
-    delete in_sizes;
+    delete[] in_sizes;
 
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
