@@ -149,17 +149,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_test_base_flags",
-    srcs = ["hlo_test_base_flags.cc"],
-    hdrs = ["hlo_test_base_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "backend_flags",
     srcs = ["backend_flags.cc"],
     hdrs = ["backend_flags.h"],

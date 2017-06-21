@@ -24,7 +24,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_test_base_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -56,16 +55,8 @@ struct HloTestBase::EigenThreadPoolWrapper {
 
 HloTestBase::HloTestBase()
     : backend_(Backend::CreateDefaultBackend().ConsumeValueOrDie()) {
-  // TODO(b/62411181): get rid of this flag entirely when the usual debug flags
-  // are piped to all HLO tests.
   test_hlo_dumper_ = [](const HloModule& module, const string& label) {
-    legacy_flags::HloTestBaseFlags* flags = legacy_flags::GetHloTestBaseFlags();
-    if (flags->xla_hlo_test_generate_hlo_graph) {
-      const bool show_addresses = true;
-      const bool show_layouts = true;
-      hlo_graph_dumper::DumpGraph(*module.entry_computation(), label,
-                                  show_addresses, show_layouts);
-    }
+    return Executable::DumpExecutedHlo(module, label, /*profile=*/nullptr);
   };
   VLOG(1) << "executing on platform " << backend_->platform()->Name();
 }
