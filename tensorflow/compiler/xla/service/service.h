@@ -333,12 +333,6 @@ class Service : public ServiceInterface {
       const std::function<StatusOr<ComputationDataHandle>(UserComputation*)>&
           adder);
 
-  // If the service is running in the client process
-  // (runs_in_client_process_ is true) then return
-  // tensorflow::Status::OK. Otherwise return an appropriate error
-  // status with the given method name. Used for "InProcess" methods.
-  tensorflow::Status CheckRunsInClientProcess(const string& method_name) const;
-
   // Convenience function which checks whether the given shape_with_layout
   // (presumably passed by the client to set the result layout) is valid for the
   // given computation result shape.
@@ -379,9 +373,6 @@ class Service : public ServiceInterface {
 
   // Backend to use when executing ComputeConstant.
   std::unique_ptr<Backend> compute_constant_backend_;
-
-  // Whether the service runs in the same process as the client.
-  bool runs_in_client_process_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Service);
 };

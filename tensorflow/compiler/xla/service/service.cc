@@ -1207,17 +1207,6 @@ tensorflow::Status Service::GetComputationStats(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status Service::CheckRunsInClientProcess(
-    const string& method_name) const {
-  if (runs_in_client_process_) {
-    return tensorflow::Status::OK();
-  } else {
-    return FailedPrecondition(
-        "%s only supported if service runs in the same process as the client",
-        method_name.c_str());
-  }
-}
-
 template <typename RequestT, typename ResponseT>
 tensorflow::Status Service::AddInstruction(
     const RequestT* arg, ResponseT* result,

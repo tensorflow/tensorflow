@@ -71,9 +71,7 @@ LocalService::LocalService(const ServiceOptions& options,
                            std::unique_ptr<Backend> execute_backend,
                            std::unique_ptr<Backend> compute_constant_backend)
     : Service(options, std::move(execute_backend),
-              std::move(compute_constant_backend)) {
-  runs_in_client_process_ = true;
-}
+              std::move(compute_constant_backend)) {}
 
 namespace {
 // Returns the space required to allocate a shape. If
