@@ -167,6 +167,11 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
   for (const auto& variable : item.MainVariables()) {
     dont_replicate_nodes.insert(variable->name());
   }
+
+  for (const auto& init : item.init_ops) {
+    dont_replicate_nodes.insert(NodeName(init));
+  }
+
   // Don't replicate all input nodes, except the dequeue node.
   for (const auto& input_node : input_nodes) {
     if (input_node->name() != dequeue_node->name()) {
