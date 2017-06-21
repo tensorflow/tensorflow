@@ -329,6 +329,7 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
     ] + tf_additional_test_deps(),
 )
@@ -422,6 +423,7 @@ cc_library(
     hdrs = ["util/overflow.h"],
     deps = [
         ":framework_lite",
+        ":lib",
     ],
 )
 
@@ -433,6 +435,7 @@ cc_library(
     deps = [
         ":framework",
         ":lib",
+        ":protos_all_cc",
     ],
 )
 
@@ -460,6 +463,10 @@ cc_library(
     name = "session_options",
     hdrs = ["public/session_options.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -495,6 +502,7 @@ cc_library(
 tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
+        "bitwise_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -573,6 +581,7 @@ cc_library(
     deps = [
         ":array_ops_op_lib",
         ":audio_ops_op_lib",
+        ":bitwise_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
@@ -590,6 +599,7 @@ cc_library(
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
+        ":remote_fused_graph_ops_op_lib",
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
@@ -665,6 +675,7 @@ tf_cuda_library(
     name = "core_cpu",
     hdrs = [
         "common_runtime/device.h",
+        "common_runtime/optimization_registry.h",
         "common_runtime/shape_refiner.h",
         "graph/algorithm.h",
         "graph/default_device.h",
@@ -1130,7 +1141,6 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":proto_text",
         ":protos_all_cc",
         ":stream_executor",
     ],
@@ -1348,6 +1358,7 @@ cc_library(
     }),
     deps = [
         ":lib",
+        ":lib_internal",
         "//tensorflow/core/platform/default/build_config:gif",
     ],
 )
@@ -1370,6 +1381,7 @@ cc_library(
     }),
     deps = [
         ":lib",
+        ":lib_internal",
         "//tensorflow/core/platform/default/build_config:jpeg",
     ],
 )
@@ -1733,6 +1745,7 @@ cc_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        ":core_cpu",
         ":core_cpu_internal",
         ":framework",
         ":lib",
@@ -1845,7 +1858,7 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":proto_text",
         "//third_party/eigen3",
         "@local_config_sycl//sycl:sycl",
     ],
@@ -1866,7 +1879,10 @@ cc_library(
         "lib/random/philox_random_test_utils.h",
         "platform/snappy.h",
     ],
-    deps = [":lib_internal"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+    ],
 )
 
 cc_library(
@@ -1892,6 +1908,7 @@ cc_library(
         ":framework",
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
     ],
 )
 
@@ -2833,7 +2850,6 @@ cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:example_parsing_ops",
-        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

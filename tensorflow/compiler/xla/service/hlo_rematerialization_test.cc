@@ -126,7 +126,7 @@ class HloRematerializationTest : public HloTestBase {
     builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1_shape_, "param"));
     builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+        HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
     return builder.Build();
   }
 
@@ -215,7 +215,7 @@ TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -254,7 +254,7 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -289,7 +289,7 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 

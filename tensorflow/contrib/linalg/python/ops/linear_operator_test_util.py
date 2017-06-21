@@ -263,6 +263,23 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                                                    feed_dict=feed_dict)
                 self.assertAC(op_solve_v, mat_solve_v)
 
+  def test_trace(self):
+    self._skip_if_tests_to_skip_contains("trace")
+    for use_placeholder in False, True:
+      for shape in self._shapes_to_test:
+        for dtype in self._dtypes_to_test:
+          with self.test_session(graph=ops.Graph()) as sess:
+            sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                shape, dtype, use_placeholder=use_placeholder)
+            op_trace = operator.trace()
+            mat_trace = math_ops.trace(mat)
+            if not use_placeholder:
+              self.assertAllEqual(op_trace.get_shape(), mat_trace.get_shape())
+            op_trace_v, mat_trace_v = sess.run([op_trace, mat_trace],
+                                               feed_dict=feed_dict)
+            self.assertAC(op_trace_v, mat_trace_v)
+
   def test_add_to_tensor(self):
     self._skip_if_tests_to_skip_contains("add_to_tensor")
     for use_placeholder in False, True:

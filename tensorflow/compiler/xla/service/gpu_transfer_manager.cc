@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -44,16 +43,66 @@ GpuTransferManager::GpuTransferManager()
 Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                                                    const Literal& literal) {
   const Shape& shape = literal.shape();
-  VLOG(2) << "Transferring literal shape to infeed: "
+  VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
 
-  // TODO(b/30467474) handle tuples.
+  std::vector<gpu::InfeedBuffer*> buffers;
+
   if (ShapeUtil::IsTuple(shape)) {
-    return Unimplemented("Infeed with a tuple shape is not supported: %s",
-                         ShapeUtil::HumanString(literal.shape()).c_str());
+    if (ShapeUtil::IsNestedTuple(shape)) {
+      return Unimplemented(
+          "Infeed with a nested tuple shape is not supported: %s",
+          ShapeUtil::HumanString(literal.shape()).c_str());
+    }
+
+    for (const auto& tuple_element : literal.tuple_literals()) {
+      TF_ASSIGN_OR_RETURN(
+          gpu::InfeedBuffer * buffer,
+          TransferLiteralToInfeedInternal(executor, tuple_element));
+      buffers.push_back(buffer);
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(gpu::InfeedBuffer * buffer,
+                        TransferLiteralToInfeedInternal(executor, literal));
+    buffers.push_back(buffer);
   }
 
+  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
+  se::Stream* stream = infeed_manager->GetStream(executor);
+
+  // TODO(b/30467474): Since this stream is shared across different
+  // infeed requests, blocking on the stream might be
+  // heavy-handed. Figure out if finer-grained acknowledgement is
+  // possible.
+  if (!stream->BlockHostUntilDone()) {
+    for (gpu::InfeedBuffer* b : buffers) {
+      b->Done();
+    }
+    return InternalError("Failed to complete data transfer on stream %p",
+                         stream);
+  }
+
+  infeed_manager->EnqueueBuffers(buffers);
+
+  VLOG(2) << "Infeed data transferred";
+
+  return Status::OK();
+}
+
+Status GpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
+                                                  int64 size,
+                                                  const void* source) {
+  return TransferBufferToInfeedInternal(executor, size, source).status();
+}
+
+StatusOr<gpu::InfeedBuffer*>
+GpuTransferManager::TransferLiteralToInfeedInternal(
+    se::StreamExecutor* executor, const Literal& literal) {
+  const Shape& shape = literal.shape();
+  CHECK(!ShapeUtil::IsTuple(shape));
+
   int64 size = GetByteSizeRequirement(shape);
+
   if (size > std::numeric_limits<int32>::max()) {
     return Unimplemented("Infeed shape is too large: %s needs %lld bytes",
                          ShapeUtil::HumanString(literal.shape()).c_str(), size);
@@ -64,6 +113,11 @@ Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                          ShapeUtil::HumanString(literal.shape()).c_str());
   }
 
+  return TransferBufferToInfeedInternal(executor, size, literal.InternalData());
+}
+
+StatusOr<gpu::InfeedBuffer*> GpuTransferManager::TransferBufferToInfeedInternal(
+    se::StreamExecutor* executor, int64 size, const void* source) {
   gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
   se::Stream* stream = infeed_manager->GetStream(executor);
   if (stream == nullptr) {
@@ -71,21 +125,11 @@ Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   }
 
   gpu::InfeedBuffer* buffer = new gpu::InfeedBuffer(executor, size);
-  stream->ThenMemcpy(buffer->device_memory(),
-                     LiteralUtil::InternalData(literal), size);
+  stream->ThenMemcpy(buffer->device_memory(), source, size);
 
   VLOG(2) << "Queued infeed data on stream " << stream;
 
-  if (!stream->BlockHostUntilDone()) {
-    buffer->Done();
-    return InternalError("Failed to complete data transfer on stream %p",
-                         stream);
-  }
-
-  infeed_manager->EnqueueBuffer(buffer);
-
-  VLOG(2) << "Infeed data transferred";
-  return Status::OK();
+  return buffer;
 }
 
 }  // namespace xla

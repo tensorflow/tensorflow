@@ -32,9 +32,108 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-// Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
-// <*queue_shapes_and_types>.
-Status MergeEnqueueShapesAndTypes(
+// If a Merge node has a NextIteration node as an input then that input will
+// try to forward an UnknownShape at graph construction time. However, the
+// Merge shape function will always propagate an UnknownShape if any of its
+// inputs are UnknownShapes. So we need to ignore the input from NextIteration
+// nodes to propagate any known shape from the Merge node.
+Status ShapeOfMergeNode(const Node* node, InferenceContext* c) {
+  ShapeHandle out = c->input(0);
+  if (!c->RankKnown(out)) {
+    out = c->UnknownShape();
+  } else {
+    int32 rank = c->Rank(out);
+    for (const Edge* e : node->in_edges()) {
+      if (e->src()->IsNextIteration() || e->dst_input() <= 0) {
+        continue;
+      }
+      ShapeHandle input = c->input(e->dst_input());
+      if (!c->RankKnown(input) || c->Rank(input) != rank) {
+        out = c->UnknownShape();
+        break;
+      }
+
+      for (int d = 0; d < rank; ++d) {
+        if (c->Value(c->Dim(input, d)) != c->Value(c->Dim(out, d))) {
+          TF_RETURN_IF_ERROR(c->ReplaceDim(out, d, c->UnknownDim(), &out));
+        }
+      }
+    }
+  }
+  c->set_output(0, out);
+  c->set_output(1, c->Scalar());
+  return Status::OK();
+}
+
+// Manually propagate the input shape for Enter nodes and update any Merge node
+// outputs.
+Status UpdateEnter(ShapeRefiner* shape_refiner, const Node* node, bool relax,
+                   std::queue<const Node*>* new_shapes) {
+  auto enter_ctx = shape_refiner->GetContext(node);
+  for (int i = 0; i < enter_ctx->num_outputs(); i++) {
+    TF_RETURN_IF_ERROR(shape_refiner->SetShape(node, i, enter_ctx->input(0)));
+  }
+  for (const Edge* e : node->out_edges()) {
+    Node* dst = e->dst();
+    if (dst->IsMerge()) {
+      bool updated = false;
+      TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(dst, relax, &updated));
+      if (!updated) {
+        continue;
+      }
+      InferenceContext* merge_ctx = shape_refiner->GetContext(dst);
+      DCHECK_NE(merge_ctx, nullptr);
+      TF_RETURN_IF_ERROR(ShapeOfMergeNode(dst, merge_ctx));
+      new_shapes->push(dst);
+    }
+  }
+  return Status::OK();
+}
+
+// Propagates the shapes in the transitive fan-out of <new_shapes>.
+Status PropagateShapes(ShapeRefiner* shape_refiner, bool relax,
+                       std::queue<const Node*>* new_shapes) {
+  while (!new_shapes->empty()) {
+    const Node* n = new_shapes->front();
+    new_shapes->pop();
+    for (const Node* fanout : n->out_nodes()) {
+      bool updated = false;
+      TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(fanout, relax, &updated));
+      if (fanout->IsEnter()) {
+        TF_RETURN_IF_ERROR(
+            UpdateEnter(shape_refiner, fanout, relax, new_shapes));
+      } else if (updated) {
+        // We want to avoid propagating through loops on the merge pass because
+        // the shapes are not guaranteed to converge.
+        if (!relax && fanout->IsNextIteration()) {
+          continue;
+        }
+        new_shapes->push(fanout);
+      }
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+void GraphProperties::Relax(InferenceContext* c, ShapeHandle s0, ShapeHandle s1,
+                            ShapeHandle* out) {
+  c->Relax(s0, s1, out);
+}
+
+bool GraphProperties::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
+                                       ShapeHandle s1) {
+  return ShapeRefiner::SameDefinedShape(c, s0, s1);
+}
+
+bool GraphProperties::IsUpdatedShapesOrTypes(
+    InferenceContext* c, const std::vector<ShapeAndType>& existing,
+    const std::vector<ShapeAndType>& updated) {
+  return ShapeRefiner::IsUpdatedShapesOrTypes(c, existing, updated);
+}
+
+Status GraphProperties::MergeEnqueueShapesAndTypes(
     const std::vector<ShapeAndType>& shapes_and_types, InferenceContext* qctx,
     std::vector<ShapeAndType>* queue_shapes_and_types) {
   if (shapes_and_types.size() != queue_shapes_and_types->size()) {
@@ -56,7 +155,27 @@ Status MergeEnqueueShapesAndTypes(
   return Status::OK();
 }
 
-}  // namespace
+Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
+    const std::vector<ShapeAndType>& shapes_and_types, InferenceContext* qctx,
+    std::vector<ShapeAndType>* queue_shapes_and_types) {
+  if (shapes_and_types.size() != queue_shapes_and_types->size()) {
+    return errors::InvalidArgument(
+        "Enqueue nodes mixed number of tensors: ", shapes_and_types.size(),
+        "  vs ", queue_shapes_and_types->size());
+  }
+  for (int i = 0; i < shapes_and_types.size(); ++i) {
+    const ShapeAndType& a = shapes_and_types[i];
+    ShapeAndType& b = (*queue_shapes_and_types)[i];
+    if (a.dtype != b.dtype) {
+      return errors::InvalidArgument("Enqueue nodes mixed dtypes for tensor ",
+                                     i, ": ", DataTypeString(a.dtype), " vs ",
+                                     DataTypeString(b.dtype));
+    }
+
+    Relax(qctx, a.shape, b.shape, &b.shape);
+  }
+  return Status::OK();
+}
 
 Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
@@ -66,8 +185,11 @@ Status GraphProperties::InferStatically() {
   Status s = ImportGraphDef(options, item_.graph, &graph, &shape_refiner);
   TF_RETURN_IF_ERROR(s);
 
-  // List the resources and the nodes using them
+  // List the resources and the nodes using them. Also collect the Enter and
+  // Merge nodes.
   std::unordered_map<const Node*, std::unordered_set<const Node*>> resources;
+  std::unordered_set<const Node*> enter_nodes;
+  std::unordered_set<const Node*> merge_nodes;
   for (const Node* const node : graph.nodes()) {
     for (int i = 0; i < node->num_inputs(); ++i) {
       if (node->input_type(i) == DataType::DT_RESOURCE) {
@@ -76,82 +198,142 @@ Status GraphProperties::InferStatically() {
         resources[resource].insert(node);
       }
     }
+    if (node->IsEnter()) {
+      enter_nodes.insert(node);
+    } else if (node->IsMerge()) {
+      merge_nodes.insert(node);
+    }
   }
 
-  // If we found a resource, try to propagate the shapes through it.
-  bool done = true;
-  do {
-    std::queue<const Node*> new_shapes;
-    for (const auto& resource_data : resources) {
-      const Node* qnode = resource_data.first;
-      StringPiece type(qnode->type_string());
-      if (!type.ends_with("QueueV2")) {
-        continue;
+  // Propagate the initial shapes of Enter nodes manually (the Enter shape
+  // function always forwards an UnknownShape).
+  std::queue<const Node*> new_shapes;
+  for (const Node* node : enter_nodes) {
+    TF_RETURN_IF_ERROR(
+        UpdateEnter(&shape_refiner, node, false /* relax */, &new_shapes));
+  }
+  TF_RETURN_IF_ERROR(
+      PropagateShapes(&shape_refiner, false /* relax */, &new_shapes));
+
+  // We propagate shapes through the graph in two phases. In the first phase, we
+  // exclusively merge shapes but we do not propagate shapes through loops. Then
+  // on the second phase, we exclusively relax shapes and propagate shapes
+  // through loops until reaching fixed point.
+  for (int relax = 0; relax < 2; relax++) {
+    // We don't update Merge nodes with the input of NextIteration nodes on the
+    // merge pass. So we do that at the beginning of the relax pass instead.
+    if (relax) {
+      bool updated = false;
+      for (const Node* node : merge_nodes) {
+        TF_RETURN_IF_ERROR(
+            shape_refiner.UpdateNode(node, false /* relax */, &updated));
       }
-      auto qctx = shape_refiner.GetContext(qnode);
-      if (!qctx) {
-        continue;
+    }
+
+    bool done = true;
+    do {
+      if (relax) {
+        // Propagate shapes through any loops in the graph by relaxing.
+        for (const Node* node : merge_nodes) {
+          new_shapes.push(node);
+        }
+        TF_RETURN_IF_ERROR(PropagateShapes(&shape_refiner, relax, &new_shapes));
       }
 
-      // Check to see if the shape is fully defined.
-      auto* queue_handle_data = qctx->output_handle_shapes_and_types(0);
-      if (queue_handle_data != nullptr) {
-        bool fully_defined = true;
-        for (const auto& shape_and_type : *queue_handle_data) {
-          if (!qctx->FullyDefined(shape_and_type.shape) ||
-              shape_and_type.dtype == DT_INVALID) {
-            fully_defined = false;
-          }
-        }
-        if (fully_defined) {
+      // If we found a resource, try to propagate the shapes through it.
+      new_shapes = std::queue<const Node*>();
+      for (const auto& resource_data : resources) {
+        const Node* qnode = resource_data.first;
+        StringPiece type(qnode->type_string());
+        if (!type.ends_with("QueueV2") && !qnode->IsEnter()) {
           continue;
         }
-      }
-
-      std::vector<ShapeAndType> queue_shapes_and_types;
-      if (queue_handle_data != nullptr) {
-        queue_shapes_and_types = *queue_handle_data;
-      }
-      for (const auto& node : resource_data.second) {
-        auto ctx = shape_refiner.GetContext(node);
-        if (!ctx) {
+        auto qctx = shape_refiner.GetContext(qnode);
+        if (!qctx) {
           continue;
         }
-        // TODO(bsteiner): handle EnqueueMany as well.
-        if (node->type_string().find("Enqueue") != std::string::npos &&
-            node->type_string().find("EnqueueMany") == std::string::npos) {
-          std::vector<ShapeAndType> shapes_and_types;
-          for (int i = 1; i < ctx->num_inputs(); ++i) {
-            shapes_and_types.push_back({ctx->input(i), node->input_type(i)});
-          }
 
-          if (queue_shapes_and_types.empty()) {
-            queue_shapes_and_types = shapes_and_types;
+        // Check to see if the shape is fully defined.
+        auto* queue_handle_data = qctx->output_handle_shapes_and_types(0);
+        if (queue_handle_data != nullptr) {
+          bool fully_defined = true;
+          for (const auto& shape_and_type : *queue_handle_data) {
+            if (!qctx->FullyDefined(shape_and_type.shape) ||
+                shape_and_type.dtype == DT_INVALID) {
+              fully_defined = false;
+            }
+          }
+          // If we are merging, then we are done. If we are relaxing, then we
+          // could potentially propagate a less specific shape.
+          if (fully_defined && !relax) {
+            continue;
+          }
+        }
+
+        // Merge all inputs into the enqueue node, regardless of which phase we
+        // are in.
+        std::vector<ShapeAndType> queue_shapes_and_types;
+        for (const auto& node : resource_data.second) {
+          auto ctx = shape_refiner.GetContext(node);
+          if (!ctx) {
+            continue;
+          }
+          // TODO(bsteiner): handle EnqueueMany as well.
+          if (node->type_string().find("Enqueue") != std::string::npos &&
+              node->type_string().find("EnqueueMany") == std::string::npos) {
+            std::vector<ShapeAndType> shapes_and_types;
+            for (int i = 1; i < ctx->num_inputs(); ++i) {
+              shapes_and_types.push_back({ctx->input(i), node->input_type(i)});
+            }
+
+            if (queue_shapes_and_types.empty()) {
+              queue_shapes_and_types = shapes_and_types;
+            } else {
+              TF_RETURN_IF_ERROR(MergeEnqueueShapesAndTypes(
+                  shapes_and_types, qctx, &queue_shapes_and_types));
+            }
+          }
+        }
+        // Combine the input shapes with the existing output shape. We either
+        // merge or relax depending on which phase we are in.
+        if (queue_handle_data != nullptr) {
+          if (relax) {
+            TF_RETURN_IF_ERROR(RelaxEnqueueShapesAndMergeTypes(
+                *queue_handle_data, qctx, &queue_shapes_and_types));
           } else {
             TF_RETURN_IF_ERROR(MergeEnqueueShapesAndTypes(
-                shapes_and_types, qctx, &queue_shapes_and_types));
+                *queue_handle_data, qctx, &queue_shapes_and_types));
+          }
+        }
+        // Set the output ShapeAndType handles. If we successfully update the
+        // resource node, add its fan-out to the queue.
+        const std::vector<ShapeAndType>* outputs =
+            qctx->output_handle_shapes_and_types(0);
+        std::vector<ShapeAndType> existing_outputs;
+        if (outputs) {
+          existing_outputs = *outputs;
+        }
+        if (!queue_shapes_and_types.empty()) {
+          if (!relax && qctx->MergeOutputHandleShapesAndTypes(
+                            0, queue_shapes_and_types)) {
+            new_shapes.push(qnode);
+          } else if (relax && qctx->RelaxOutputHandleShapesAndMergeTypes(
+                                  0, queue_shapes_and_types)) {
+            if (IsUpdatedShapesOrTypes(
+                    qctx, existing_outputs,
+                    *qctx->output_handle_shapes_and_types(0))) {
+              new_shapes.push(qnode);
+            }
           }
         }
       }
-      if (!queue_shapes_and_types.empty() &&
-          qctx->MergeOutputHandleShapesAndTypes(0, queue_shapes_and_types)) {
-        new_shapes.push(qnode);
+      // Propagate the shapes in the transitive fan-out of the queue.
+      done = new_shapes.empty();
+      if (!done) {
+        TF_RETURN_IF_ERROR(PropagateShapes(&shape_refiner, relax, &new_shapes));
       }
-    }
-    // Propagate the shapes in the transitive fan-out of the queue.
-    done = new_shapes.empty();
-    while (!new_shapes.empty()) {
-      const Node* n = new_shapes.front();
-      new_shapes.pop();
-      for (const Node* fanout : n->out_nodes()) {
-        bool updated = false;
-        TF_RETURN_IF_ERROR(shape_refiner.UpdateNode(fanout, &updated));
-        if (updated) {
-          new_shapes.push(fanout);
-        }
-      }
-    }
-  } while (!done);
+    } while (!done);
+  }
 
   for (const Node* const node : graph.nodes()) {
     VLOG(1) << "<Node> " << node->name();

@@ -92,6 +92,15 @@ class HloModuleConfig {
     debug_options_ = debug_options;
   }
 
+  // Sets/returns the number of intra op threads for this module.
+  void set_intra_op_parallelism_threads(
+      const int intra_op_parallelism_threads) {
+    intra_op_parallelism_threads_ = intra_op_parallelism_threads;
+  }
+  int64 intra_op_parallelism_threads() const {
+    return intra_op_parallelism_threads_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -115,6 +124,10 @@ class HloModuleConfig {
 
   // The number of replicas to compile this binary for.
   int64 replica_count_ = 1;
+
+  // The target maximum parallelism at which to partition HLOs for parallel
+  // execution on the CPU backend.
+  int64 intra_op_parallelism_threads_ = -1;
 
   DebugOptions debug_options_;
 };

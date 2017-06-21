@@ -59,7 +59,7 @@ class FusionMergerTest : public HloTestBase {
 
     // Create const vector of ones to be used in element-wise computations.
     auto one_vec = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
+        Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
 
     // Create simple fusable computation for tuple element 0 (wont get merged).
     auto out0 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -138,7 +138,7 @@ class FusionMergerTest : public HloTestBase {
 
     // Create two sub-computations, both of which are users of 'mul0'.
     auto one_vec = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
+        Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
 
     // First sub-computation: out0 = Mul(Add(mul0, one_vec), one_vec)
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -209,7 +209,7 @@ class FusionMergerTest : public HloTestBase {
     // Create two fusable sub-computations which are dependent on shared
     // computation 'reduce_out'.
     auto one_vec = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
+        Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
 
     // First sub-computation: out0 = Mul(Add(reduce_out, one_vec), one_vec)
     auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(

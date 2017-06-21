@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -58,7 +57,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
     builder_.ReduceWindow(
-        input, builder_.ConstantLiteral(LiteralUtil::MinValue(F32)),
+        input, builder_.ConstantLiteral(Literal::MinValue(F32)),
         CreateScalarMax(), window_dimensions, window_strides, padding);
   }
 
@@ -67,7 +66,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
     builder_.ReduceWindow(input,
-                          builder_.ConstantLiteral(LiteralUtil::MaxValue(F32)),
+                          builder_.ConstantLiteral(Literal::MaxValue(F32)),
                           CreateScalarMinComputation(F32, &builder_),
                           window_dimensions, window_strides, padding);
   }
@@ -476,7 +475,6 @@ XLA_TEST_F(ReduceWindowTest, NonstandardReduceFunction) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

@@ -60,7 +60,8 @@ class LocalService : public Service {
       const Shape* result_layout, int device_ordinal, bool has_hybrid_result);
 
  private:
-  explicit LocalService(std::unique_ptr<Backend> backend,
+  explicit LocalService(const ServiceOptions& options,
+                        std::unique_ptr<Backend> backend,
                         std::unique_ptr<Backend> compute_constant_backend);
   LocalService(const LocalService&) = delete;
   void operator=(const LocalService&) = delete;

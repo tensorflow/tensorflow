@@ -58,7 +58,7 @@ def _lstm_block_cell(x,
 
   ```python
   xh = [x, h_prev]
-  [i, f, ci, o] = xh * w + b
+  [i, ci, f, o] = xh * w + b
   f = f + forget_bias
 
   if not use_peephole:
@@ -93,7 +93,7 @@ def _lstm_block_cell(x,
       The weight matrix for output gate peephole connection.
     forget_bias: An optional `float`. Defaults to `1`. The forget gate bias.
     cell_clip: An optional `float`. Defaults to `3`.
-      Value to clip the 'cs' value to.
+      Value to clip the 'cs' value to. Disable by setting to negative value.
     use_peephole: An optional `bool`. Defaults to `False`.
       Whether to use peephole weights.
     name: A name for the operation (optional).
@@ -341,17 +341,24 @@ class LSTMBlockCell(rnn_cell_impl.RNNCell):
   def __init__(self,
                num_units,
                forget_bias=1.0,
+               clip_cell=True,
                use_peephole=False):
     """Initialize the basic LSTM cell.
 
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
+      clip_cell: boolean, whether to apply cell clipping. See
+        `_lstm_block_cell()` for details.
       use_peephole: Whether to use peephole connections or not.
+
+      When restoring from CudnnLSTM-trained checkpoints, must set the following:
+      forget_bias, clip_cell, use_peephole  = 0, False, False
     """
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
+    self._clip_cell = clip_cell
     self._names = {
         "W": "kernel",
         "b": "bias",
@@ -400,6 +407,7 @@ class LSTMBlockCell(rnn_cell_impl.RNNCell):
           wco=wco,
           wcf=wcf,
           forget_bias=self._forget_bias,
+          cell_clip=None if self._clip_cell else -1,
           use_peephole=self._use_peephole)
 
       new_state = rnn_cell_impl.LSTMStateTuple(cs, h)
