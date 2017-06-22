@@ -130,10 +130,30 @@ Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
   return Status::OK();
 }
 
-template <typename T>
-class SparseReduceSumOp : public OpKernel {
+struct SumOp {
+  template <typename T>
+  static void Run(OpKernelContext *ctx, typename TTypes<T>::Scalar &s, const typename TTypes<T>::UnalignedVec &v) {
+      s.device(ctx->eigen_cpu_device()) = v.sum();
+  }
+  static StringPiece Name() {
+      return "sum";
+  }
+};
+
+struct MaxOp {
+  template <typename T>
+  static void Run(OpKernelContext *ctx, typename TTypes<T>::Scalar &s, const typename TTypes<T>::UnalignedVec &v) {
+      s.device(ctx->eigen_cpu_device()) = v.maximum();
+  }
+  static StringPiece Name() {
+      return "max";
+  }
+};
+
+template <typename T, typename Op>
+class SparseReduceOp : public OpKernel {
  public:
-  explicit SparseReduceSumOp(OpKernelConstruction *ctx) : OpKernel(ctx) {
+  explicit SparseReduceOp(OpKernelConstruction *ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
   }
 
@@ -163,10 +183,10 @@ class SparseReduceSumOp : public OpKernel {
     auto out_flat = out_values->flat<T>();
     out_flat.setZero();
 
-    Tensor tmp_group_sum;
+    Tensor tmp_reduced_val;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                           TensorShape({}), &tmp_group_sum));
-    auto group_sum = tmp_group_sum.scalar<T>();
+                                           TensorShape({}), &tmp_reduced_val));
+    auto reduced_val = tmp_reduced_val.scalar<T>();
 
     // Compute strides, and use it to convert coords to flat index.  The
     // coordinates returned by .group() have the same ndims as group_by_dims.
@@ -196,11 +216,12 @@ class SparseReduceSumOp : public OpKernel {
     // g.group() provides the coordinates of a particular reduced value.
     sp.Reorder<T>(reduction.reorder_dims);
     for (const auto &g : sp.group(reduction.group_by_dims)) {
-      group_sum.device(ctx->eigen_cpu_device()) = g.template values<T>().sum();
+      Op::template Run<T>(ctx, reduced_val, g.template values<T>());
       const int64 idx = CoordinatesToFlatIndex(g.group(), output_strides);
-      out_flat(idx) = group_sum();
+      out_flat(idx) = reduced_val();
       VLOG(2) << "coords: " << str_util::Join(g.group(), ",")
-              << "; idx: " << idx << "; group sum: " << group_sum();
+              << "; idx: " << idx << "; group " << Op::Name() << ": "
+              << reduced_val();
     }
   }
 
@@ -212,14 +233,21 @@ class SparseReduceSumOp : public OpKernel {
 #define REGISTER_KERNELS(T)                                              \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("SparseReduceSum").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SparseReduceSumOp<T>)
+      SparseReduceOp<T, SumOp>)
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-template <typename T>
-class SparseReduceSumSparseOp : public OpKernel {
+#define REGISTER_KERNELS(T)                                              \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("SparseReduceMax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SparseReduceOp<T, MaxOp>)
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+template <typename T, typename Op>
+class SparseReduceSparseOp : public OpKernel {
  public:
-  explicit SparseReduceSumSparseOp(OpKernelConstruction *ctx) : OpKernel(ctx) {
+  explicit SparseReduceSparseOp(OpKernelConstruction *ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
   }
 
@@ -260,13 +288,13 @@ class SparseReduceSumSparseOp : public OpKernel {
                    ctx->allocate_output(1, TensorShape({nnz}), &out_values_t));
     auto out_flat = out_values_t->flat<T>();
 
-    Tensor tmp_group_sum;
+    Tensor tmp_reduced_val;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                           TensorShape({}), &tmp_group_sum));
-    auto group_sum = tmp_group_sum.scalar<T>();
+                                           TensorShape({}), &tmp_reduced_val));
+    auto reduced_val = tmp_reduced_val.scalar<T>();
     int64 i = 0;
     for (const auto &g : sp.group(reduction.group_by_dims)) {
-      group_sum.device(ctx->eigen_cpu_device()) = g.template values<T>().sum();
+      Op::template Run<T>(ctx, reduced_val, g.template values<T>());
       std::vector<int64> group = g.group();
       for (int64 j = 0; j < group.size(); j++) {
         if (keep_dims_) {
@@ -275,10 +303,11 @@ class SparseReduceSumSparseOp : public OpKernel {
           out_indices_mat(i, j) = group[j];
         }
       }
-      out_flat(i) = group_sum();
+      out_flat(i) = reduced_val();
       i++;
       VLOG(2) << "coords: " << str_util::Join(g.group(), ",")
-              << "; group sum: " << group_sum();
+              << "; group " << Op::Name() << ": "
+              << reduced_val();
     }
 
     Tensor *out_shape_t;
@@ -298,8 +327,15 @@ class SparseReduceSumSparseOp : public OpKernel {
 #define REGISTER_KERNELS(T)                                                    \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("SparseReduceSumSparse").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SparseReduceSumSparseOp<T>)
+      SparseReduceSparseOp<T, SumOp>)
 TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
+#undef REGISTER_KERNELS
+
+#define REGISTER_KERNELS(T)                                                    \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("SparseReduceMaxSparse").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      SparseReduceSparseOp<T, MaxOp>)
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 }  // namespace tensorflow
