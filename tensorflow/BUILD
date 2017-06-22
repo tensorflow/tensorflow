@@ -389,6 +389,11 @@ load(
     "if_mkl",
 )
 
+load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl",
+)
+
 filegroup(
     name = "intel_binary_blob",
     data = if_mkl(
@@ -428,7 +433,7 @@ cc_binary(
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
         "//tensorflow/core:tensorflow",
-    ] + if_sycl[("@local_sycl_config//sycl:syclrt")],
+    ] + if_sycl(["@local_config_sycl//sycl:syclrt"]),
 )
 
 cc_binary(

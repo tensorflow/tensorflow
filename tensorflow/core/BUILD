@@ -1850,7 +1850,7 @@ cc_library(
         "common_runtime/sycl/sycl_device_context.h",
     ]),
     copts = tf_copts(),
-    linkstatic = 1,
+    linkstatic = 0,
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
