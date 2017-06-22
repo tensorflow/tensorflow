@@ -86,6 +86,9 @@ def _sigmoid(logits):
 
 class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
 
+  def setUp(self):
+    ops.reset_default_graph()
+
   def test_n_classes_is_none(self):
     with self.assertRaisesRegexp(ValueError, 'n_classes must be > 2'):
       head_lib._multi_class_head_with_softmax_cross_entropy_loss(
@@ -673,6 +676,9 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
 # TODO(ptucker): Add thresholds tests.
 class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
 
+  def setUp(self):
+    ops.reset_default_graph()
+
   def test_threshold_too_small(self):
     with self.assertRaisesRegexp(ValueError, r'thresholds not in \(0, 1\)'):
       head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
@@ -1240,6 +1246,9 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
 
 
 class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
+
+  def setUp(self):
+    ops.reset_default_graph()
 
   def test_invalid_label_dimension(self):
     with self.assertRaisesRegexp(ValueError, r'Invalid label_dimension'):
