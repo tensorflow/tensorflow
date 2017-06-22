@@ -54,6 +54,7 @@ py_binary(
     name = "run_and_gather_logs",
     srcs = ["run_and_gather_logs.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":run_and_gather_logs_lib",
         "//tensorflow/python:client_testlib",
