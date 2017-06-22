@@ -446,10 +446,22 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
         // Try the next input
         continue;
       }
+
+      string const_out_name =
+          AddPrefixToNodeName(node.name(), kConstantFoldingConst);
+      string const_index_name = AddPrefixToNodeName(
+          strings::StrCat(node.name(), "_index"), kConstantFoldingConst);
+      if (node_map_->GetNode(const_out_name) ||
+          node_map_->GetNode(const_index_name)) {
+        // Intended name already exists.
+        return errors::AlreadyExists(
+            strings::StrCat(const_out_name, " or ", const_index_name,
+                            "already present in the graph"));
+      }
+
       NodeDef* const_out = output->add_node();
       *const_out = *input_node;
-      const_out->set_name(
-          AddPrefixToNodeName(node.name(), kConstantFoldingConst));
+      const_out->set_name(const_out_name);
       *const_out->add_input() = AsControlDependency(node);
       node_map_->AddNode(const_out->name(), const_out);
 
@@ -460,8 +472,7 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       (*const_index->mutable_attr())["dtype"].set_type(DT_INT32);
       index.AsProtoTensorContent(
           (*const_index->mutable_attr())["value"].mutable_tensor());
-      const_index->set_name(AddPrefixToNodeName(
-          strings::StrCat(node.name(), "_index"), kConstantFoldingConst));
+      const_index->set_name(const_index_name);
       *const_index->add_input() = AsControlDependency(node);
       node_map_->AddNode(const_index->name(), const_index);
 
@@ -497,6 +508,12 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       // just skip it. We'll preserve the edges that originate from that output
       // below to preserve the overall behavior of the graph wrt dead edges.
       continue;
+    }
+
+    if (node_map_->GetNode(const_node.name())) {
+      // Intended name already exists.
+      return errors::AlreadyExists(
+          strings::StrCat(const_node.name(), "already present in the graph"));
     }
     NodeDef* added_node = output->add_node();
     *added_node = const_node;
@@ -551,9 +568,10 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
 }
 
 Status ConstantFolding::FoldGraph(GraphDef* output) {
-  std::set<string> processed_nodes;
-  while (1) {
-    int previous_processed = processed_nodes.size();
+  std::unordered_set<string> processed_nodes;
+  int previously_processed = 0;
+  do {
+    previously_processed = processed_nodes.size();
     for (const auto& node : graph_.node()) {
       if (IsFoldable(node) &&
           processed_nodes.find(node.name()) == processed_nodes.end()) {
@@ -561,13 +579,11 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
         processed_nodes.insert(node.name());
       }
     }
-    int current_processed = processed_nodes.size();
-    LOG(INFO) << "Previous number of processed nodes: " << previous_processed
-              << "; Current number of processed nodes: " << current_processed;
-    if (current_processed == previous_processed) {
-      break;
-    }
-  }
+    // Try again as long as we find new constants. In most cases, this loop will
+    // only run once since the graph is already in topological order.
+    VLOG(1) << "Folded " << processed_nodes.size() - previously_processed
+            << " nodes in this pass";
+  } while (previously_processed != processed_nodes.size());
 
   // Build the graph after constant folding. Note that we keep all processed
   // nodes in the graph in case users need to fetch their values.
