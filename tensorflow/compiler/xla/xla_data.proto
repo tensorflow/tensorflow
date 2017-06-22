@@ -200,7 +200,7 @@ message OpMetadata {
   string op_name = 2;
   // Indicate a file and line that this op is associated to in a user's program.
   //
-  // e.g. it could be be the file and line of user code that generated the op.
+  // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
 }
