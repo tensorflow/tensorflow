@@ -29,6 +29,7 @@ struct DebugOptionsFlags {
   bool xla_enable_fast_math;
   int32 xla_backend_optimization_level;
   bool xla_embed_ir_in_executable;
+  string xla_dump_ir_to;
   string xla_dump_debug_json_to;
 
   string xla_gpu_cuda_data_dir;
@@ -52,6 +53,7 @@ void AllocateFlags() {
   flag_values->xla_enable_fast_math = true;
   flag_values->xla_backend_optimization_level = 3;
   flag_values->xla_embed_ir_in_executable = false;
+  flag_values->xla_dump_ir_to = "";
   flag_values->xla_dump_debug_json_to = "";
   flag_values->xla_gpu_cuda_data_dir = "./cuda_sdk_lib";
   flag_values->xla_gpu_ftz = false;
@@ -78,6 +80,8 @@ void AllocateFlags() {
        tensorflow::Flag("xla_embed_ir_in_executable",
                         &flag_values->xla_embed_ir_in_executable,
                         "Embed the compiler IR as a string in the executable."),
+       tensorflow::Flag("xla_dump_ir_to", &flag_values->xla_dump_ir_to,
+                        "Dump the compiler IR into this file/path."),
        tensorflow::Flag("xla_gpu_cuda_data_dir",
                         &flag_values->xla_gpu_cuda_data_dir,
                         "If non-empty, speficies a local directory containing "
@@ -123,6 +127,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
       flag_values->xla_backend_optimization_level);
   options.set_xla_embed_ir_in_executable(
       flag_values->xla_embed_ir_in_executable);
+  options.set_xla_dump_ir_to(flag_values->xla_dump_ir_to);
   options.set_xla_dump_debug_json_to(flag_values->xla_dump_debug_json_to);
   options.set_xla_gpu_cuda_data_dir(flag_values->xla_gpu_cuda_data_dir);
   options.set_xla_gpu_ftz(flag_values->xla_gpu_ftz);

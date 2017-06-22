@@ -92,29 +92,6 @@ cc_library(
 )
 
 cc_library(
-    name = "compiler_functor_flags",
-    srcs = ["compiler_functor_flags.cc"],
-    hdrs = ["compiler_functor_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "convolution_thunk_flags",
-    srcs = ["convolution_thunk_flags.cc"],
-    hdrs = ["convolution_thunk_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "stream_assignment_flags",
     srcs = ["stream_assignment_flags.cc"],
     hdrs = ["stream_assignment_flags.h"],

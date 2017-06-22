@@ -48,14 +48,17 @@ message DebugOptions {
   // Embed the compiler IR as a string in the executable.
   bool xla_embed_ir_in_executable = 5;
 
+  // Dump the compiler IR into this file/path.
+  string xla_dump_ir_to = 6;
+
   // Dump compilation artifacts as JSON into this directory.
-  string xla_dump_debug_json_to = 6;
+  string xla_dump_debug_json_to = 7;
 
   // Path to directory with cuda/ptx tools and libraries.
-  string xla_gpu_cuda_data_dir = 7;
+  string xla_gpu_cuda_data_dir = 8;
 
   // Enable flush-to-zero semantics in the GPU backend.
-  bool xla_gpu_ftz = 8;
+  bool xla_gpu_ftz = 9;
 
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.

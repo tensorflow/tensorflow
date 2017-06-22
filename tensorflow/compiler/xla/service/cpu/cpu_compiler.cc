@@ -82,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace se = ::perftools::gputools;
 
@@ -374,10 +375,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
   std::unique_ptr<Executable> cpu_executable;
 
-  // Cache this flag here since we'll want to access it after the module's
+  // Cache these flags here since we'll want to access them after the module's
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
+  const string dump_ir_to = module->config().debug_options().xla_dump_ir_to();
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();
 
@@ -460,8 +462,16 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
 
     string ir_module_string;
-    if (embed_ir_in_executable) {
+    if (embed_ir_in_executable || !dump_ir_to.empty()) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
+
+      if (!dump_ir_to.empty()) {
+        std::unique_ptr<tensorflow::WritableFile> f;
+        TF_RETURN_IF_ERROR(
+            tensorflow::Env::Default()->NewAppendableFile(dump_ir_to, &f));
+        TF_RETURN_IF_ERROR(f->Append(ir_module_string));
+        TF_RETURN_IF_ERROR(f->Close());
+      }
     }
 
     // JIT compile the LLVM IR module to in-memory machine code.

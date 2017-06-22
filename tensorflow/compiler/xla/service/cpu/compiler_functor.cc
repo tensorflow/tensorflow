@@ -35,7 +35,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/Transforms/IPO.h"
 #include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
 #include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "tensorflow/compiler/xla/legacy_flags/compiler_functor_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -66,15 +64,6 @@ operator()(llvm::Module& module) const {
 
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
-  legacy_flags::CompilerFunctorFlags* flags =
-      legacy_flags::GetCompilerFunctorFlags();
-  string dump_path = flags->xla_debug_cpu_dump_ir;
-  if (!dump_path.empty()) {
-    std::unique_ptr<tensorflow::WritableFile> f;
-    TF_CHECK_OK(tensorflow::Env::Default()->NewAppendableFile(dump_path, &f));
-    TF_CHECK_OK(f->Append(llvm_ir::DumpModuleToString(module)));
-    TF_CHECK_OK(f->Close());
-  }
 
   // Build up optimization pipeline.
   AddOptimizationPasses(&module_passes, &function_passes);
