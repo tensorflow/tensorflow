@@ -2267,7 +2267,12 @@ REGISTER_OP("QuantizedMul")
     .Attr("T2: quantizedtype")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .SetIsCommutative()
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns x * y element-wise, working on quantized buffers.
 
@@ -2296,7 +2301,12 @@ REGISTER_OP("QuantizedAdd")
     .Attr("T2: quantizedtype")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .SetIsCommutative()
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns x + y element-wise, working on quantized buffers.
 
