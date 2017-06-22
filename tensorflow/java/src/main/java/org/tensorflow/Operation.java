@@ -15,8 +15,6 @@ limitations under the License.
 
 package org.tensorflow;
 
-import com.google.errorprone.annotations.Immutable;
-
 /**
  * A Graph node that performs computation on Tensors.
  *
@@ -29,7 +27,6 @@ import com.google.errorprone.annotations.Immutable;
  *
  * <p>Operation instances are immutable and thread-safe.
  */
-@Immutable
 public final class Operation {
 
   // Create an Operation instance referring to an operation in g, with the given handle to the C
@@ -101,13 +98,7 @@ public final class Operation {
 
   @Override
   public int hashCode() {
-    Graph.Reference r = graph.ref();
-    try {
-      // xor the first and last 32 bits of the underlying 64-bit pointer value.
-      return (int) (unsafeNativeHandle ^ (unsafeNativeHandle >>> 32));
-    } finally {
-      r.close();
-    }
+    return Long.valueOf(unsafeNativeHandle).hashCode();
   }
 
   @Override
@@ -165,10 +156,6 @@ public final class Operation {
 
   private final long unsafeNativeHandle;
 
-  // Graph is mutable, but used in this class only to fetch read-only data, and is never
-  // passed externally. Note however that this object is itself valid only when the Graph
-  // is active, and can throw exceptions after the Graph is closed.
-  @SuppressWarnings("Immutable")
   private final Graph graph;
 
   private static native String name(long handle);

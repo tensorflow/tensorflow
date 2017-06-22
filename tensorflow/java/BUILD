@@ -16,7 +16,6 @@ java_library(
     data = [":libtensorflow_jni"],
     javacopts = JAVACOPTS,
     visibility = ["//visibility:public"],
-    deps = ["@errorprone_annotations"],
 )
 
 # NOTE(ashankar): Rule to include the Java API in the Android Inference Library

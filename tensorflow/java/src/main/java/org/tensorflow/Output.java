@@ -15,8 +15,7 @@ limitations under the License.
 
 package org.tensorflow;
 
-import com.google.errorprone.annotations.Immutable;
-
+import java.util.Objects;
 /**
  * A symbolic handle to a tensor produced by an {@link Operation}.
  *
@@ -26,7 +25,6 @@ import com.google.errorprone.annotations.Immutable;
  * <p>By implementing the {@link Input} interface, instances of this class could also be passed
  * directly in input to an operation.
  */
-@Immutable
 public final class Output implements Input {
 
   /** Handle to the idx-th output of the Operation {@code op}. */
@@ -62,7 +60,7 @@ public final class Output implements Input {
 
   @Override
   public int hashCode() {
-    return operation.hashCode() + 37 * index + 17;
+    return Objects.hash(operation, index);
   }
 
   @Override
