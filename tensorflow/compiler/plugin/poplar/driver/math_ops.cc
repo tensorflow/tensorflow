@@ -356,18 +356,16 @@ CreateCastOp(poplar::Graph &graph,
   // Find the input tensor
   poplar::Tensor in;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
-  in = in.flatten();
 
-  // Allocate the output tensor
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  std::string poplar_type;
+  TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(output_shape));
+
+  poplar::program::Sequence seq;
+  poplar::Tensor out = popstd::cast(graph, in, poplar_type, seq, inst->name());
+
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
 
-  auto cs = graph.addComputeSet(inst->ToString());
-  popstd::cast(graph, in, out, cs);
-
-  return poplar::program::Execute(cs);
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>
