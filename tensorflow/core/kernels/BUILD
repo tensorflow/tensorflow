@@ -236,7 +236,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
-    ],
+    ] + if_sycl([ "//tensorflow/core:sycl_runtime"]),
 )
 
 cc_library(

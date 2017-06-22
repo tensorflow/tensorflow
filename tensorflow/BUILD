@@ -428,7 +428,7 @@ cc_binary(
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + if_sycl[("@local_sycl_config//sycl:syclrt")],
 )
 
 cc_binary(
