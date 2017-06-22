@@ -71,7 +71,7 @@ def _run_model():
 class RunMetadataTest(test.TestCase):
 
   def testGPU(self):
-    if not test.is_gpu_available():
+    if not test.is_gpu_available(cuda_only=True):
       return
 
     with ops.device('/gpu:0'):
