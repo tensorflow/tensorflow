@@ -56,7 +56,7 @@ void TopologicalSort(GraphDef* graph) {
     ready_nodes.pop_front();
   }
   if (sorted_graph.node_size() == graph->node_size()) {
-    *graph = sorted_graph;
+    graph->mutable_node()->Swap(sorted_graph.mutable_node());
   }
 }
 

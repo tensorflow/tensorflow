@@ -52,14 +52,16 @@ CompileOnlyService::NewService(const ServiceOptions& options) {
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
-  std::unique_ptr<CompileOnlyService> service(
-      new CompileOnlyService(compiler, std::move(compute_constant_backend)));
+  std::unique_ptr<CompileOnlyService> service(new CompileOnlyService(
+      options, compiler, std::move(compute_constant_backend)));
   return std::move(service);
 }
 
 CompileOnlyService::CompileOnlyService(
-    Compiler* compiler, std::unique_ptr<Backend> compute_constant_backend)
-    : Service(/*backend=*/nullptr, std::move(compute_constant_backend)),
+    const ServiceOptions& options, Compiler* compiler,
+    std::unique_ptr<Backend> compute_constant_backend)
+    : Service(options, /*backend=*/nullptr,
+              std::move(compute_constant_backend)),
       compiler_(compiler) {
   runs_in_client_process_ = true;
 }

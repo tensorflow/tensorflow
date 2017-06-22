@@ -44,6 +44,7 @@ namespace {
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
 XLAJIT_MAKE_UNARY(Ceil, b->Ceil(x));
+XLAJIT_MAKE_UNARY(Cos, b->Cos(x));
 XLAJIT_MAKE_UNARY(Exp, b->Exp(x));
 XLAJIT_MAKE_UNARY(Floor, b->Floor(x));
 // Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.

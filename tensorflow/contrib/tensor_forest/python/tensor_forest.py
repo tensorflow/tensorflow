@@ -435,7 +435,7 @@ class RandomForestGraphs(object):
           if processed_sparse_features is not None:
             raise NotImplementedError(
                 'Feature bagging not supported with sparse features.')
-          tree_data = self._bag_features(i, input_data)
+          tree_data = self._bag_features(i, tree_data)
         probabilities.append(self.trees[i].inference_graph(
             tree_data,
             data_spec,

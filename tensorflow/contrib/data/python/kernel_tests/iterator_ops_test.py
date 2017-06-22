@@ -20,11 +20,13 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -127,6 +129,71 @@ class IteratorTest(test.TestCase):
               self.assertAllEqual(component[i]**2, result_component)
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
+
+  def testOneShotIteratorNonBlocking(self):
+    dataset = dataset_ops.Dataset.from_tensors([1, 2, 3]).map(lambda x: x * x)
+    iterator = dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+
+    # Create a session with a single thread to ensure that the
+    # one-shot iterator initializer does not deadlock.
+    config = config_pb2.ConfigProto(inter_op_parallelism_threads=1,
+                                    use_per_session_threads=True)
+    with session.Session(config=config) as sess:
+      self.assertAllEqual([1, 4, 9], sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+    # Test with multiple threads invoking the one-shot iterator concurrently.
+    with session.Session(config=config) as sess:
+      results = []
+      def consumer_thread():
+        try:
+          results.append(sess.run(next_element))
+        except errors.OutOfRangeError:
+          results.append(None)
+
+      num_threads = 8
+      threads = [
+          self.checkedThread(consumer_thread) for _ in range(num_threads)]
+      for t in threads:
+        t.start()
+      for t in threads:
+        t.join()
+
+      self.assertEqual(num_threads, len(results))
+      self.assertEqual(num_threads - 1,
+                       len([None for r in results if r is None]))
+      self.assertAllEqual([[1, 4, 9]], [r for r in results if r is not None])
+
+  def testOneShotIteratorInitializerFails(self):
+    # Define a dataset whose initialization will always fail.
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.check_numerics(
+            constant_op.constant(1.0) / constant_op.constant(0.0), "oops"))
+    iterator = dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
+        sess.run(next_element)
+
+      # Test that subsequent attempts to use the iterator also fail.
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
+        sess.run(next_element)
+
+    with self.test_session() as sess:
+      def consumer_thread():
+        with self.assertRaisesRegexp(errors.InvalidArgumentError, "oops"):
+          sess.run(next_element)
+
+      num_threads = 8
+      threads = [
+          self.checkedThread(consumer_thread) for _ in range(num_threads)]
+      for t in threads:
+        t.start()
+      for t in threads:
+        t.join()
 
   def testSimpleSharedResource(self):
     components = (

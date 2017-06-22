@@ -38,6 +38,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -1702,13 +1703,6 @@ class BatchNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'Weighted mean and variance'):
         _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
 
-  def testParamRegularizersFused(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
-      with self.assertRaisesRegexp(ValueError,
-                                   'Regularizers are not currently'):
-        _layers.batch_norm(inputs, param_regularizers={}, fused=True)
-
   def _testCreateOp(self, fused):
     height, width = 3, 3
     with self.test_session():
@@ -1779,7 +1773,8 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session():
       images = random_ops.random_uniform((5, height, width, 3), seed=1)
-      _layers.batch_norm(images, scale=True, zero_debias_moving_mean=True)
+      _layers.batch_norm(
+          images, scale=True, zero_debias_moving_mean=True, fused=False)
       self.assertEqual(len(variables.get_model_variables()), 6)
       moving_mean = variables.get_variables_by_name('moving_mean')[0]
       moving_variance = variables.get_variables_by_name('moving_variance')[0]
@@ -1873,7 +1868,8 @@ class BatchNormTest(test.TestCase):
         images,
         decay=0.1,
         updates_collections=None,
-        zero_debias_moving_mean=True)
+        zero_debias_moving_mean=True,
+        fused=False)
     moving_mean = variables.get_variables_by_name('BatchNorm/moving_mean')[0]
     moving_variance = variables.get_variables_by_name('moving_variance')[0]
     biased = variables.get_variables_by_name('biased')[0]
@@ -2522,7 +2518,7 @@ class BatchNormTest(test.TestCase):
 
   def _runBatchNormalizationWithFormat(self, shape, data_format, is_training):
     channels = shape[-1]
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       images = np.arange(np.product(shape), dtype=np.float32).reshape(shape)
       beta = init_ops.constant_initializer(
           np.arange(
@@ -2560,20 +2556,22 @@ class BatchNormTest(test.TestCase):
       return sess.run(output)
 
   def testNHWCAndNCHWInferenceProduceSameOutput(self):
-    for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
-      nhwc = self._runBatchNormalizationWithFormat(
-          data_format='NHWC', shape=shape, is_training=False)
-      nchw = self._runBatchNormalizationWithFormat(
-          data_format='NCHW', shape=shape, is_training=False)
-      self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
+    if test.is_gpu_available(cuda_only=True):
+      for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
+        nhwc = self._runBatchNormalizationWithFormat(
+            data_format='NHWC', shape=shape, is_training=False)
+        nchw = self._runBatchNormalizationWithFormat(
+            data_format='NCHW', shape=shape, is_training=False)
+        self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
   def testNHWCAndNCHWTrainingProduceSameOutput(self):
-    for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
-      nhwc = self._runBatchNormalizationWithFormat(
-          data_format='NHWC', shape=shape, is_training=True)
-      nchw = self._runBatchNormalizationWithFormat(
-          data_format='NCHW', shape=shape, is_training=True)
-      self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
+    if test.is_gpu_available(cuda_only=True):
+      for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
+        nhwc = self._runBatchNormalizationWithFormat(
+            data_format='NHWC', shape=shape, is_training=True)
+        nchw = self._runBatchNormalizationWithFormat(
+            data_format='NCHW', shape=shape, is_training=True)
+        self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
 
 class LayerNormTest(test.TestCase):
@@ -3229,6 +3227,69 @@ class UnitNormTests(test.TestCase):
       with self.test_session():
         actual = norms.eval({image: placeholder_value})
         self.assertAllClose(expected, actual, 1e-4, 1e-4)
+
+
+class PoincareNormalizeTest(test.TestCase):
+
+  def _PoincareNormalize(self, x, dim, epsilon=1e-5):
+    if isinstance(dim, list):
+      norm = np.linalg.norm(x, axis=tuple(dim))
+      for d in dim:
+        norm = np.expand_dims(norm, d)
+      norm_x = ((1. - epsilon) * x) / norm
+    else:
+      norm = np.expand_dims(np.apply_along_axis(np.linalg.norm, dim, x), dim)
+      norm_x = ((1. - epsilon) * x) / norm
+    return np.where(norm > 1.0 - epsilon, norm_x, x)
+
+  def testPoincareNormalize(self):
+    x_shape = [20, 7, 3]
+    epsilon = 1e-5
+    tol = 1e-6
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float32)
+    for dim in range(len(x_shape)):
+      y_np = self._PoincareNormalize(x_np, dim, epsilon)
+      with self.test_session():
+        x_tf = constant_op.constant(x_np, name='x')
+        y_tf = _layers.poincare_normalize(x_tf, dim, epsilon)
+        y_tf_eval = y_tf.eval()
+        norm = np.linalg.norm(y_np, axis=dim)
+        self.assertLessEqual(norm.max(), 1. - epsilon + tol)
+        norm = np.linalg.norm(y_tf_eval, axis=dim)
+        self.assertLessEqual(norm.max(), 1. - epsilon + tol)
+        self.assertAllClose(y_np, y_tf_eval)
+
+  def testPoincareNormalizeDimArray(self):
+    x_shape = [20, 7, 3]
+    epsilon = 1e-5
+    tol = 1e-6
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float32)
+    dim = [1, 2]
+    y_np = self._PoincareNormalize(x_np, dim, epsilon)
+    with self.test_session():
+      x_tf = constant_op.constant(x_np, name='x')
+      y_tf = _layers.poincare_normalize(x_tf, dim, epsilon)
+      y_tf_eval = y_tf.eval()
+      norm = np.linalg.norm(y_np, axis=tuple(dim))
+      self.assertLess(norm.max(), 1. - epsilon + tol)
+      norm = np.linalg.norm(y_tf_eval, axis=tuple(dim))
+      self.assertLess(norm.max(), 1. - epsilon + tol)
+      self.assertAllClose(y_np, y_tf_eval, rtol=1e-6, atol=1e-6)
+
+  def testPoincareNormalizeGradient(self):
+    x_shape = [20, 7, 3]
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float64)
+    for dim in range(len(x_shape)):
+      with self.test_session():
+        x_tf = constant_op.constant(x_np, name='x')
+        y_tf = _layers.poincare_normalize(x_tf, dim)
+        err = gradient_checker.compute_gradient_error(x_tf, x_shape,
+                                                      y_tf, x_shape)
+      print('PoinCareNormalize gradient err = %g ' % err)
+      self.assertLess(err, 1e-4)
 
 
 # TODO(b/28426988): Add separate tests for non-legacy versions.

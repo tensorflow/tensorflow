@@ -1,52 +1,55 @@
-# Creating Estimators in tf.contrib.learn
+# Creating Estimators in tf.estimator
 
-The tf.contrib.learn framework makes it easy to construct and train machine
-learning models via its high-level
-@{$python/contrib.learn#estimators$Estimator} API. `Estimator`
+The tf.estimator framework makes it easy to construct and train machine
+learning models via its high-level Estimator API. `Estimator`
 offers classes you can instantiate to quickly configure common model types such
 as regressors and classifiers:
 
-*   @{tf.contrib.learn.LinearClassifier}:
+*   @{tf.estimator.LinearClassifier}:
     Constructs a linear classification model.
-*   @{tf.contrib.learn.LinearRegressor}:
+*   @{tf.estimator.LinearRegressor}:
     Constructs a linear regression model.
-*   @{tf.contrib.learn.DNNClassifier}:
+*   @{tf.estimator.DNNClassifier}:
     Construct a neural network classification model.
-*   @{tf.contrib.learn.DNNRegressor}:
-    Construct a neural network regressions model.
+*   @{tf.estimator.DNNRegressor}:
+    Construct a neural network regression model.
+*   @{tf.estimator.DNNLinearCombinedClassifier}:
+    Construct a neural network and linear combined classification model.
+*   @{tf.estimator.DNNRegressor}:
+    Construct a neural network and linear combined regression model.
 
-But what if none of `tf.contrib.learn`'s predefined model types meets your
-needs? Perhaps you need more granular control over model configuration, such as
+But what if none of `tf.estimator`'s predefined model types meets your needs?
+Perhaps you need more granular control over model configuration, such as
 the ability to customize the loss function used for optimization, or specify
 different activation functions for each neural network layer. Or maybe you're
 implementing a ranking or recommendation system, and neither a classifier nor a
 regressor is appropriate for generating predictions.
 
 This tutorial covers how to create your own `Estimator` using the building
-blocks provided in `tf.contrib.learn`, which will predict the ages of
+blocks provided in `tf.estimator`, which will predict the ages of
 [abalones](https://en.wikipedia.org/wiki/Abalone) based on their physical
 measurements. You'll learn how to do the following:
 
 *   Instantiate an `Estimator`
 *   Construct a custom model function
-*   Configure a neural network using `tf.contrib.layers`
+*   Configure a neural network using `tf.feature_column` and `tf.layers`
 *   Choose an appropriate loss function from `tf.losses`
 *   Define a training op for your model
 *   Generate and return predictions
 
 ## Prerequisites
 
-This tutorial assumes you already know tf.contrib.learn API basics, such as
-feature columns, input functions, and `fit()`/`evaluate()`/`predict()`
-operations. If you've never used tf.contrib.learn before, or need a refresher,
+This tutorial assumes you already know tf.estimator API basics, such as
+feature columns, input functions, and `train()`/`evaluate()`/`predict()`
+operations. If you've never used tf.estimator before, or need a refresher,
 you should first review the following tutorials:
 
-*   @{$tflearn$tf.contrib.learn Quickstart}: Quick introduction to
-    training a neural network using tf.contrib.learn.
+*   @{$estimator$tf.estimator Quickstart}: Quick introduction to
+    training a neural network using tf.estimator.
 *   @{$wide$TensorFlow Linear Model Tutorial}: Introduction to
     feature columns, and an overview on building a linear classifier in
-    tf.contrib.learn.
-*   @{$input_fn$Building Input Functions with tf.contrib.learn}: Overview of how
+    tf.estimator.
+*   @{$input_fn$Building Input Functions with tf.estimator}: Overview of how
     to construct an input_fn to preprocess and feed data into your models.
 
 ## An Abalone Age Predictor {#abalone-predictor}
@@ -113,7 +116,6 @@ from six.moves import urllib
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 
 FLAGS = None
 ```
@@ -207,17 +209,17 @@ if __name__ == "__main__":
 
 ## Instantiating an Estimator
 
-When defining a model using one of tf.contrib.learn's provided classes, such as
+When defining a model using one of tf.estimator's provided classes, such as
 `DNNClassifier`, you supply all the configuration parameters right in the
 constructor, e.g.:
 
 ```python
-my_nn = tf.contrib.learn.DNNClassifier(feature_columns=[age, height, weight],
-                                       hidden_units=[10, 10, 10],
-                                       activation_fn=tf.nn.relu,
-                                       dropout=0.2,
-                                       n_classes=3,
-                                       optimizer="Adam")
+my_nn = tf.estimator.DNNClassifier(feature_columns=[age, height, weight],
+                                   hidden_units=[10, 10, 10],
+                                   activation_fn=tf.nn.relu,
+                                   dropout=0.2,
+                                   n_classes=3,
+                                   optimizer="Adam")
 ```
 
 You don't need to write any further code to instruct TensorFlow how to train the
@@ -229,8 +231,7 @@ constructor accepts just two high-level parameters for model configuration,
 `model_fn` and `params`:
 
 ```python
-nn = tf.contrib.learn.Estimator(
-    model_fn=model_fn, params=model_params)
+nn = tf.estimator.Estimator(model_fn=model_fn, params=model_params)
 ```
 
 *   `model_fn`: A function object that contains all the aforementioned logic to
@@ -242,7 +243,7 @@ nn = tf.contrib.learn.Estimator(
 *   `params`: An optional dict of hyperparameters (e.g., learning rate, dropout)
     that will be passed into the `model_fn`.
 
-Note: Just like `tf.contrib.learn`'s predefined regressors and classifiers, the
+Note: Just like `tf.estimator`'s predefined regressors and classifiers, the
 `Estimator` initializer also accepts the general configuration arguments
 `model_dir` and `config`.
 
@@ -266,7 +267,7 @@ containing the learning rate and instantiates the `Estimator`:
 model_params = {"learning_rate": LEARNING_RATE}
 
 # Instantiate Estimator
-nn = tf.contrib.learn.Estimator(model_fn=model_fn, params=model_params)
+nn = tf.estimator.Estimator(model_fn=model_fn, params=model_params)
 ```
 
 ## Constructing the `model_fn` {#constructing-modelfn}
@@ -274,31 +275,31 @@ nn = tf.contrib.learn.Estimator(model_fn=model_fn, params=model_params)
 The basic skeleton for an `Estimator` API model function looks like this:
 
 ```python
-def model_fn(features, targets, mode, params):
+def model_fn(features, labels, mode, params):
    # Logic to do the following:
    # 1. Configure the model via TensorFlow operations
    # 2. Define the loss function for training/evaluation
    # 3. Define the training operation/optimizer
    # 4. Generate predictions
-   # 5. Return predictions/loss/train_op/eval_metric_ops in ModelFnOps object
-   return ModelFnOps(mode, predictions, loss, train_op, eval_metric_ops)
+   # 5. Return predictions/loss/train_op/eval_metric_ops in EstimatorSpec object
+   return EstimatorSpec(mode, predictions, loss, train_op, eval_metric_ops)
 ```
 
 The `model_fn` must accept three arguments:
 
-*   `features`: A dict containing the features passed to the model via `fit()`,
-    `evaluate()`, or `predict()`.
-*   `targets`: A `Tensor` containing the labels passed to the model via `fit()`,
-    `evaluate()`, or `predict()`. Will be empty for `predict()` calls, as these
-    are the values the model will infer.
-*   `mode`: One of the following @{tf.contrib.learn.ModeKeys} string values
+*   `features`: A dict containing the features passed to the model via
+    `input_fn`.
+*   `labels`: A `Tensor` containing the labels passed to the model via
+    `input_fn`. Will be empty for `predict()` calls, as these are the values the
+    model will infer.
+*   `mode`: One of the following @{tf.estimator.ModeKeys} string values
     indicating the context in which the model_fn was invoked:
-    *   `tf.contrib.learn.ModeKeys.TRAIN` The `model_fn` was invoked in training
-        mode—e.g., via a `fit()` call.
-    *   `tf.contrib.learn.ModeKeys.EVAL`. The `model_fn` was invoked in
-        evaluation mode—e.g., via an `evaluate()` call.
-    *   `tf.contrib.learn.ModeKeys.INFER`. The `model_fn` was invoked in
-        inference mode—e.g., via a `predict()` call.
+    *   `tf.estimator.ModeKeys.TRAIN` The `model_fn` was invoked in training
+        mode, namely via a `train()` call.
+    *   `tf.estimator.ModeKeys.EVAL`. The `model_fn` was invoked in
+        evaluation mode, namely via an `evaluate()` call.
+    *   `tf.estimator.ModeKeys.PREDICT`. The `model_fn` was invoked in
+        predict mode, namely via a `predict()` call.
 
 `model_fn` may also accept a `params` argument containing a dict of
 hyperparameters used for training (as shown in the skeleton above).
@@ -313,28 +314,23 @@ sections that follow):
 *   Defining the training operation that specifies the `optimizer` algorithm to
     minimize the loss values calculated by the loss function.
 
-The `model_fn` must return a @{tf.contrib.learn.ModelFnOps}
+The `model_fn` must return a @{tf.estimator.EstimatorSpec}
 object, which contains the following values:
 
 *   `mode` (required). The mode in which the model was run. Typically, you will
     return the `mode` argument of the `model_fn` here.
 
-*   `predictions` (required in `INFER` and `EVAL` modes). A dict that maps key
-    names of your choice to `Tensor`s containing the predictions from the model,
-    e.g.:
+*   `predictions` (required in `PREDICT` mode). A dict that maps key names of
+    your choice to `Tensor`s containing the predictions from the model, e.g.:
 
     ```python
     predictions = {"results": tensor_of_predictions}
     ```
 
-    In `INFER` mode, the dict that you return in `ModelFnOps` will then be
+    In `PREDICT` mode, the dict that you return in `EstimatorSpec` will then be
     returned by `predict()`, so you can construct it in the format in which
     you'd like to consume it.
 
-    In `EVAL` mode, the dict is used by
-    @{$python/contrib.metrics#Metric_Ops_$metric functions}
-    to compute metrics.
-    
 
 *   `loss` (required in `EVAL` and `TRAIN` mode). A `Tensor` containing a scalar
     loss value: the output of the model's loss function (discussed in more depth
@@ -362,7 +358,7 @@ object, which contains the following values:
     If you do not specify `eval_metric_ops`, only `loss` will be calculated
     during evaluation.
 
-### Configuring a neural network with `tf.contrib.layers`
+### Configuring a neural network with `tf.feature_column` and `tf.layers`
 
 Constructing a [neural
 network](https://en.wikipedia.org/wiki/Artificial_neural_network) entails
@@ -372,23 +368,21 @@ layer.
 The input layer is a series of nodes (one for each feature in the model) that
 will accept the feature data that is passed to the `model_fn` in the `features`
 argument. If `features` contains an n-dimensional `Tensor` with all your feature
-data (which is the case if `x` and `y` `Dataset`s are passed to `fit()`,
-`evaluate()`, and `predict()` directly), then it can serve as the input layer.
+data, then it can serve as the input layer.
 If `features` contains a dict of @{$linear#feature-columns-and-transformations$feature columns} passed to
 the model via an input function, you can convert it to an input-layer `Tensor`
-with the @{tf.contrib.layers.input_from_feature_columns} function in
-@{tf.contrib.layers}.
+with the @{tf.feature_column.input_layer} function.
 
 ```python
-input_layer = tf.contrib.layers.input_from_feature_columns(
-    columns_to_tensors=features, feature_columns=[age, height, weight])
+input_layer = tf.feature_column.input_layer(
+    features=features, feature_columns=[age, height, weight])
 ```
 
-As shown above, `input_from_feature_columns()` takes two required arguments:
+As shown above, `input_layer()` takes two required arguments:
 
-*   `columns_to_tensors`. A mapping of the model's `FeatureColumns` to the
-    `Tensors` containing the corresponding feature data. This is exactly what is
-    passed to the `model_fn` in the `features` argument.
+*   `features`. A mapping from string keys to the `Tensors` containing the
+    corresponding feature data. This is exactly what is passed to the `model_fn`
+    in the `features` argument.
 *   `feature_columns`. A list of all the `FeatureColumns` in the model—`age`,
     `height`, and `weight` in the above example.
 
@@ -397,44 +391,44 @@ hidden layers via an [activation
 function](https://en.wikipedia.org/wiki/Activation_function) that performs a
 nonlinear transformation on the data from the previous layer. The last hidden
 layer is then connected to the output layer, the final layer in the model.
-tf.contrib.layers provides the following convenience functions for constructing
-fully connected layers:
+`tf.layers` provides the `tf.layers.dense` function for constructing fully
+connected layers. The activation is controlled by the `activation` argument.
+Some options to pass to the `activation` argument are:
 
-*   `relu(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
-    connected to the previous layer `inputs` with a [ReLU activation
-    function](https://en.wikipedia.org/wiki/Rectifier_\(neural_networks\))
+*   `tf.nn.relu`. The following code creates a layer of `units` nodes fully
+    connected to the previous layer `input_layer` with a
+    [ReLU activation function](https://en.wikipedia.org/wiki/Rectifier_\(neural_networks\))
     (@{tf.nn.relu}):
 
     ```python
-    hidden_layer = tf.contrib.layers.relu(inputs=input_layer, num_outputs=10)
+    hidden_layer = tf.layers.dense(
+        inputs=input_layer, units=10, activation=tf.nn.relu)
     ```
 
-*   `relu6(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
+*   `tf.nn.relu6`. The following code creates a layer of `units` nodes fully
     connected to the previous layer `hidden_layer` with a ReLU 6 activation
     function (@{tf.nn.relu6}):
 
     ```python
-    second_hidden_layer = tf.contrib.layers.relu6(inputs=hidden_layer, num_outputs=20)
+    second_hidden_layer = tf.layers.dense(
+        inputs=hidden_layer, units=20, activation=tf.nn.relu)
     ```
 
-*   `linear(inputs, num_outputs)`. Create a layer of `num_outputs` nodes fully
-    connected to the previous layer `second_hidden_layer` with *no* activation
-    function, just a linear transformation:
+*   `None`. The following code creates a layer of `units` nodes fully connected
+    to the previous layer `second_hidden_layer` with *no* activation function,
+    just a linear transformation:
 
     ```python
-    output_layer = tf.contrib.layers.linear(inputs=second_hidden_layer, num_outputs=3)
+    output_layer = tf.layers.dense(
+        inputs=second_hidden_layer, units=3, activation=None)
     ```
 
-All these functions are
-[partials](https://docs.python.org/2/library/functools.html#functools.partial)
-of the more general @{tf.contrib.layers.fully_connected}
-function, which can be used to add fully connected layers with other activation
-functions, e.g.:
+Other activation functions are possible, e.g.:
 
 ```python
-output_layer = tf.contrib.layers.fully_connected(inputs=second_hidden_layer,
-                                                 num_outputs=10,
-                                                 activation_fn=tf.sigmoid)
+output_layer = tf.layers.dense(inputs=second_hidden_layer,
+                               units=10,
+                               activation_fn=tf.sigmoid)
 ```
 
 The above code creates the neural network layer `output_layer`, which is fully
@@ -446,18 +440,19 @@ Putting it all together, the following code constructs a full neural network for
 the abalone predictor, and captures its predictions:
 
 ```python
-def model_fn(features, targets, mode, params):
+def model_fn(features, labels, mode, params):
   """Model function for Estimator."""
 
   # Connect the first hidden layer to input layer
-  # (features) with relu activation
-  first_hidden_layer = tf.contrib.layers.relu(features, 10)
+  # (features["x"]) with relu activation
+  first_hidden_layer = tf.layers.dense(features["x"], 10, activation=tf.nn.relu)
 
   # Connect the second hidden layer to first hidden layer with relu
-  second_hidden_layer = tf.contrib.layers.relu(first_hidden_layer, 10)
+  second_hidden_layer = tf.layers.dense(
+      first_hidden_layer, 10, activation=tf.nn.relu)
 
   # Connect the output layer to second hidden layer (no activation fn)
-  output_layer = tf.contrib.layers.linear(second_hidden_layer, 1)
+  output_layer = tf.layers.dense(second_hidden_layer, 1)
 
   # Reshape output layer to 1-dim Tensor to return predictions
   predictions = tf.reshape(output_layer, [-1])
@@ -465,9 +460,9 @@ def model_fn(features, targets, mode, params):
   ...
 ```
 
-Here, because you'll be passing the abalone `Datasets` directly to `fit()`,
-`evaluate()`, and `predict()` via `x` and `y` arguments, the input layer is the
-`features` `Tensor` passed to the `model_fn`. The network contains two hidden
+Here, because you'll be passing the abalone `Datasets` using `numpy_input_fn`
+as shown below, `features` is a dict `{"x": data_tensor}`, so
+`features["x"]` is the input layer. The network contains two hidden
 layers, each with 10 nodes and a ReLU activation function. The output layer
 contains no activation function, and is
 @{tf.reshape} to a one-dimensional
@@ -476,47 +471,49 @@ tensor to capture the model's predictions, which are stored in
 
 ### Defining loss for the model {#defining-loss}
 
-The `ModelFnOps` returned by the `model_fn` must contain `loss`: a `Tensor`
+The `EstimatorSpec` returned by the `model_fn` must contain `loss`: a `Tensor`
 representing the loss value, which quantifies how well the model's predictions
-reflect the target values during training and evaluation runs. The @{tf.losses}
+reflect the label values during training and evaluation runs. The @{tf.losses}
 module provides convenience functions for calculating loss using a variety of
 metrics, including:
 
-*   `absolute_difference(predictions, targets)`. Calculates loss using the
+*   `absolute_difference(labels, predictions)`. Calculates loss using the
     [absolute-difference
     formula](https://en.wikipedia.org/wiki/Deviation_\(statistics\)#Unsigned_or_absolute_deviation)
     (also known as L<sub>1</sub> loss).
 
-*   `log_loss(predictions, targets)`. Calculates loss using the [logistic loss
+*   `log_loss(labels, predictions)`. Calculates loss using the [logistic loss
     forumula](https://en.wikipedia.org/wiki/Loss_functions_for_classification#Logistic_loss)
     (typically used in logistic regression).
 
-*   `mean_squared_error(predictions, targets)`. Calculates loss using the [mean
+*   `mean_squared_error(labels, predictions)`. Calculates loss using the [mean
     squared error](https://en.wikipedia.org/wiki/Mean_squared_error) (MSE; also
     known as L<sub>2</sub> loss).
 
 The following example adds a definition for `loss` to the abalone `model_fn`
 using `mean_squared_error()` (in bold):
 
-<pre class="prettyprint"><code class="lang-python">def model_fn(features, targets, mode, params):
+<pre class="prettyprint"><code class="lang-python">def model_fn(features, labels, mode, params):
   """Model function for Estimator."""
 
   # Connect the first hidden layer to input layer
-  # (features) with relu activation
-  first_hidden_layer = tf.contrib.layers.relu(features, 10)
+  # (features["x"]) with relu activation
+  first_hidden_layer = tf.layers.dense(features["x"], 10, activation=tf.nn.relu)
 
   # Connect the second hidden layer to first hidden layer with relu
-  second_hidden_layer = tf.contrib.layers.relu(first_hidden_layer, 10)
+  second_hidden_layer = tf.layers.dense(
+      first_hidden_layer, 10, activation=tf.nn.relu)
 
   # Connect the output layer to second hidden layer (no activation fn)
-  output_layer = tf.contrib.layers.linear(second_hidden_layer, 1)
+  output_layer = tf.layers.dense(second_hidden_layer, 1)
 
   # Reshape output layer to 1-dim Tensor to return predictions
   predictions = tf.reshape(output_layer, [-1])
   predictions_dict = {"ages": predictions}
 
+
   <strong># Calculate loss using mean squared error
-  loss = tf.losses.mean_squared_error(targets, predictions)</strong>
+  loss = tf.losses.mean_squared_error(labels, predictions)</strong>
   ...</code></pre>
 
 See the @{$python/contrib.losses$API guide} for a
@@ -524,14 +521,14 @@ full list of loss functions and more details on supported arguments and usage.
 
 Supplementary metrics for evaluation can be added to an `eval_metric_ops` dict.
 The following code defines an `rmse` metric, which calculates the root mean
-squared error for the model predictions. Note that the `targets` tensor is cast
+squared error for the model predictions. Note that the `labels` tensor is cast
 to a `float64` type to match the data type of the `predictions` tensor, which
 will contain real values:
 
 ```python
 eval_metric_ops = {
     "rmse": tf.metrics.root_mean_squared_error(
-        tf.cast(targets, tf.float64), predictions)
+        tf.cast(labels, tf.float64), predictions)
 }
 ```
 
@@ -539,64 +536,24 @@ eval_metric_ops = {
 
 The training op defines the optimization algorithm TensorFlow will use when
 fitting the model to the training data. Typically when training, the goal is to
-minimize loss. The tf.contrib.layers API provides the function `optimize_loss`,
-which returns a training op that will do just that. `optimize_loss` has four
-required arguments:
-
-*   `loss`. The loss value calculated by the `model_fn` (see [Defining Loss for
-    the Model](#defining-loss)).
-*   `global_step`. An integer
-    @{tf.Variable} representing the
-    step counter to increment for each model training run. Can easily be
-    created/incremented in TensorFlow via the
-    @{tf.train.get_global_step}
-    function.
-*   `learning_rate`. The [learning
-    rate](https://en.wikipedia.org/wiki/Stochastic_gradient_descent#Background)
-    (also known as _step size_) hyperparameter that the optimization algorithm
-    uses when training.
-*   `optimizer`. The optimization algorithm to use during training. `optimizer`
-    can accept any of the following string values, representing an optimization
-    algorithm predefined in `tf.contrib.layers.optimizers`:
-    *   `SGD`. Implementation of [gradient
-        descent](https://en.wikipedia.org/wiki/Gradient_descent)
-        (@{tf.train.GradientDescentOptimizer})
-    *   `Adagrad`. Implementation of the [AdaGrad optimization
-        algorithm](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
-        (@{tf.train.AdagradOptimizer})
-    *   `Adam`. Implementation of the [Adam optimization
-        algorithm](http://arxiv.org/pdf/1412.6980.pdf)
-        (@{tf.train.AdamOptimizer})
-    *   `Ftrl`. Implementation of the
-        [FTRL-Proximal](https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf)
-        ("Follow The (Proximally) Regularized Leader") algorithm
-        (@{tf.train.FtrlOptimizer})
-    *   `Momentum`. Implementation of stochastic gradient descent with
-        [momentum](https://en.wikipedia.org/wiki/Stochastic_gradient_descent#Momentum)
-        (@{tf.train.MomentumOptimizer})
-    *   `RMSProp`. Implementation of the
-        [RMSprop](http://sebastianruder.com/optimizing-gradient-descent/index.html#rmsprop)
-        algorithm
-        (@{tf.train.RMSPropOptimizer})
-
-Note: The `optimize_loss` function supports additional optional arguments to
-further configure the optimizer, such as for implementing decay. See the
-@{tf.contrib.layers.optimize_loss$API docs} for more info.
+minimize loss. A simple way to create the training op is to instantiate a
+`tf.train.Optimizer` subclass and call the `minimize` method.
 
 The following code defines a training op for the abalone `model_fn` using the
 loss value calculated in [Defining Loss for the Model](#defining-loss), the
-learning rate passed to the function in `params`, and the SGD optimizer. For
-`global_step`, the convenience function
-@{tf.train.get_global_step}
-in tf.contrib.framework takes care of generating an integer variable:
+learning rate passed to the function in `params`, and the gradient descent
+optimizer. For `global_step`, the convenience function
+@{tf.train.get_global_step} takes care of generating an integer variable:
 
 ```python
-train_op = tf.contrib.layers.optimize_loss(
-    loss=loss,
-    global_step=tf.contrib.framework.get_global_step(),
-    learning_rate=params["learning_rate"],
-    optimizer="SGD")
+optimizer = tf.train.GradientDescentOptimizer(
+    learning_rate=params["learning_rate"])
+train_op = optimizer.minimize(
+    loss=loss, global_step=tf.train.get_global_step())
 ```
+
+For a full list of optimizers, and other details, see the
+@{$python/train#optimizers$API guide}.
 
 ### The complete abalone `model_fn`
 
@@ -606,40 +563,39 @@ and returns a `ModelFnOps` object containing `mode`, `predictions_dict`, `loss`,
 and `train_op`:
 
 ```python
-def model_fn(features, targets, mode, params):
+def model_fn(features, labels, mode, params):
   """Model function for Estimator."""
 
   # Connect the first hidden layer to input layer
-  # (features) with relu activation
-  first_hidden_layer = tf.contrib.layers.relu(features, 10)
+  # (features["x"]) with relu activation
+  first_hidden_layer = tf.layers.dense(features["x"], 10, activation=tf.nn.relu)
 
   # Connect the second hidden layer to first hidden layer with relu
-  second_hidden_layer = tf.contrib.layers.relu(first_hidden_layer, 10)
+  second_hidden_layer = tf.layers.dense(
+      first_hidden_layer, 10, activation=tf.nn.relu)
 
   # Connect the output layer to second hidden layer (no activation fn)
-  output_layer = tf.contrib.layers.linear(second_hidden_layer, 1)
+  output_layer = tf.layers.dense(second_hidden_layer, 1)
 
   # Reshape output layer to 1-dim Tensor to return predictions
   predictions = tf.reshape(output_layer, [-1])
   predictions_dict = {"ages": predictions}
 
   # Calculate loss using mean squared error
-  loss = tf.losses.mean_squared_error(targets, predictions)
+  loss = tf.losses.mean_squared_error(labels, predictions)
 
   # Calculate root mean squared error as additional eval metric
   eval_metric_ops = {
-      "rmse":
-          tf.metrics.root_mean_squared_error(
-              tf.cast(targets, tf.float64), predictions)
+      "rmse": tf.metrics.root_mean_squared_error(
+          tf.cast(labels, tf.float64), predictions)
   }
 
-  train_op = tf.contrib.layers.optimize_loss(
-      loss=loss,
-      global_step=tf.contrib.framework.get_global_step(),
-      learning_rate=params["learning_rate"],
-      optimizer="SGD")
+  optimizer = tf.train.GradientDescentOptimizer(
+      learning_rate=params["learning_rate"])
+  train_op = optimizer.minimize(
+      loss=loss, global_step=tf.train.get_global_step())
 
-  return model_fn_lib.ModelFnOps(
+  return tf.estimator.EstimatorSpec(
       mode=mode,
       predictions=predictions_dict,
       loss=loss,
@@ -657,29 +613,31 @@ Add the following code to the end of `main()` to fit the neural network to the
 training data and evaluate accuracy:
 
 ```python
-def get_train_inputs():
-  x = tf.constant(training_set.data)
-  y = tf.constant(training_set.target)
-  return x, y
+train_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": np.array(training_set.data)},
+    y=np.array(training_set.target),
+    num_epochs=None,
+    shuffle=True)
 
-# Fit
-nn.fit(input_fn=get_train_inputs, steps=5000)
-
-def get_test_inputs():
-  x = tf.constant(test_set.data)
-  y = tf.constant(test_set.target)
-  return x, y
+# Train
+nn.train(input_fn=train_input_fn, steps=5000)
 
 # Score accuracy
-ev = nn.evaluate(input_fn=get_test_inputs, steps=1)
+test_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": np.array(test_set.data)},
+    y=np.array(test_set.target),
+    num_epochs=1,
+    shuffle=False)
+
+ev = nn.evaluate(input_fn=test_input_fn)
 print("Loss: %s" % ev["loss"])
 print("Root Mean Squared Error: %s" % ev["rmse"])
 ```
 
 Note: The above code uses input functions to feed feature (`x`) and label (`y`)
-`Tensor`s into the model for both training (`get_train_inputs()`) and evaluation
-(`get_test_inputs()`). To learn more about input functions, see the tutorial
-@{$input_fn$Building Input Functions with tf.contrib.learn}.
+`Tensor`s into the model for both training (`train_input_fn`) and evaluation
+(`test_input_fn`). To learn more about input functions, see the tutorial
+@{$input_fn$Building Input Functions with tf.estimator}.
 
 Then run the code. You should see output like the following:
 
@@ -701,7 +659,11 @@ To predict ages for the `ABALONE_PREDICT` data set, add the following to
 
 ```python
 # Print out predictions
-predictions = nn.predict(x=prediction_set.data, as_iterable=True)
+predict_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": prediction_set.data},
+    num_epochs=1,
+    shuffle=False)
+predictions = nn.predict(input_fn=predict_input_fn)
 for i, p in enumerate(predictions):
   print("Prediction %s: %s" % (i + 1, p["ages"]))
 ```
@@ -723,11 +685,10 @@ Prediction 7: 11.1289
 
 ## Additional Resources
 
-Congrats! You've successfully built a tf.contrib.learn `Estimator` from scratch.
+Congrats! You've successfully built a tf.estimator `Estimator` from scratch.
 For additional reference materials on building `Estimator`s, see the following
 sections of the API guides:
 
-*   @{$python/contrib.learn#Estimators$Estimators}
 *   @{$python/contrib.layers$Layers}
 *   @{$python/contrib.losses$Losses}
 *   @{$python/contrib.layers#optimization$Optimization}

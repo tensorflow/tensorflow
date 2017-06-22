@@ -26,6 +26,60 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+namespace {
+string FormatToalExecTime(const ShowMultiNode* node,
+                          const ShowMultiNode* root) {
+  double accu_pct = 0.0;
+  double pct = 0.0;
+  if (node->proto().total_exec_micros() > 0) {
+    accu_pct = 100.0 * node->proto().total_exec_micros() /
+               root->proto().total_exec_micros();
+    pct =
+        100.0 * node->proto().exec_micros() / root->proto().total_exec_micros();
+  }
+
+  return strings::Printf(
+      "%30s", strings::Printf("%s (%.2f%%, %.2f%%)",
+                              FormatTime(node->proto().exec_micros()).c_str(),
+                              accu_pct, pct)
+                  .c_str());
+}
+string FormatCPUExecTime(const ShowMultiNode* node, const ShowMultiNode* root) {
+  double accu_pct = 0.0;
+  double pct = 0.0;
+  if (node->proto().total_cpu_exec_micros() > 0) {
+    accu_pct = 100.0 * node->proto().total_cpu_exec_micros() /
+               root->proto().total_cpu_exec_micros();
+    pct = 100.0 * node->proto().cpu_exec_micros() /
+          root->proto().total_cpu_exec_micros();
+  }
+
+  return strings::Printf(
+      "%30s",
+      strings::Printf("%s (%.2f%%, %.2f%%)",
+                      FormatTime(node->proto().cpu_exec_micros()).c_str(),
+                      accu_pct, pct)
+          .c_str());
+}
+string FormatAcceleratorExecTime(const ShowMultiNode* node,
+                                 const ShowMultiNode* root) {
+  double accu_pct = 0.0;
+  double pct = 0.0;
+  if (node->proto().total_accelerator_exec_micros() > 0) {
+    accu_pct = 100.0 * node->proto().total_accelerator_exec_micros() /
+               root->proto().total_accelerator_exec_micros();
+    pct = 100.0 * node->proto().accelerator_exec_micros() /
+          root->proto().total_accelerator_exec_micros();
+  }
+
+  return strings::Printf(
+      "%30s", strings::Printf(
+                  "%s (%.2f%%, %.2f%%)",
+                  FormatTime(node->proto().accelerator_exec_micros()).c_str(),
+                  accu_pct, pct)
+                  .c_str());
+}
+}  // namespace
 
 void TFOp::AddNode(TFGraphNode* node) {
   const string& op = node->op();
@@ -168,22 +222,18 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
   }
 
   if (opts.select.find(kShown[1]) != opts.select.end()) {
-    double accu_pct = 0.0;
-    double pct = 0.0;
-    if (node->proto().total_exec_micros() > 0) {
-      accu_pct = 100.0 * node->proto().total_exec_micros() /
-          root->proto().total_exec_micros();
-      pct = 100.0 * node->proto().exec_micros() /
-          root->proto().total_exec_micros();
-    }
-
-    attrs.push_back(strings::Printf(
-        "%30s", strings::Printf("%s (%.2f%%, %.2f%%)",
-                                FormatTime(node->proto().exec_micros()).c_str(),
-                                accu_pct, pct)
-                    .c_str()));
+    attrs.push_back(FormatToalExecTime(node, root));
+    attrs.push_back(FormatAcceleratorExecTime(node, root));
+    attrs.push_back(FormatCPUExecTime(node, root));
   }
-
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    attrs.push_back(FormatAcceleratorExecTime(node, root));
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    attrs.push_back(FormatCPUExecTime(node, root));
+  }
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     double accu_pct = 0.0;
     double pct = 0.0;

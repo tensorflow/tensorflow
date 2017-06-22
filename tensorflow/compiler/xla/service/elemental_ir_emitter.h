@@ -84,6 +84,9 @@ class ElementalIrEmitter {
   virtual StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
                                              llvm::Value* value) const;
 
+  virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
+                                                     llvm::Value* x) const;
+
   // A helper method for MakeElementGenerator. Given an elementwise op `hlo` and
   // the target array index, computes the source array index of its
   // `operand_no`-th operand.

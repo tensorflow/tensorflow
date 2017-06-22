@@ -510,6 +510,9 @@ class ComputationBuilder {
   // Enqueues a sign instruction onto the computation.
   ComputationDataHandle Sign(const ComputationDataHandle& operand);
 
+  // Enqueues a cosine instruction onto the computation.
+  ComputationDataHandle Cos(const ComputationDataHandle& operand);
+
   // Enqueues a tanh instruction onto the computation.
   ComputationDataHandle Tanh(const ComputationDataHandle& operand);
 
@@ -596,6 +599,11 @@ class ComputationBuilder {
   ComputationDataHandle While(const Computation& condition,
                               const Computation& body,
                               const ComputationDataHandle& init);
+
+  // Enqueues a ReducePrecision node onto the computation.
+  ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
+                                        const int exponent_bits,
+                                        const int mantissa_bits);
 
   // Enqueues a Send node onto the computation, to send the given operand to
   // a Recv instruction that shares the same channel handle.
@@ -820,87 +828,80 @@ class ComputationBuilder {
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR0(NativeT value) {
-  return ConstantOp(
-      [value](Literal* literal) { LiteralUtil::PopulateR0(value, literal); });
+  return ConstantOp([value](Literal* literal) { literal->PopulateR0(value); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(
     tensorflow::gtl::ArraySlice<NativeT> values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR1(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR1(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(int64 length,
                                                      NativeT value) {
   return ConstantOp([length, value](Literal* literal) {
-    LiteralUtil::PopulateWithValue(value, {length}, literal);
+    literal->PopulateWithValue(value, {length});
   });
 }
 
 inline ComputationDataHandle ComputationBuilder::ConstantR1(
     const tensorflow::core::Bitmap& values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR1(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR1(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR2(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR2(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR2FromArray2DWithLayout(values, layout, literal);
+    literal->PopulateR2FromArray2DWithLayout(values, layout);
   });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR2FromArray2D(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR2FromArray2D(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR3FromArray3DWithLayout(values, layout, literal);
+    literal->PopulateR3FromArray3DWithLayout(values, layout);
   });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3D(
     const Array3D<NativeT>& values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR3FromArray3D(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR3FromArray3D(values); });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR4FromArray4DWithLayout(values, layout, literal);
+    literal->PopulateR4FromArray4DWithLayout(values, layout);
   });
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4D(
     const Array4D<NativeT>& values) {
-  return ConstantOp([&values](Literal* literal) {
-    LiteralUtil::PopulateR4FromArray4D(values, literal);
-  });
+  return ConstantOp(
+      [&values](Literal* literal) { literal->PopulateR4FromArray4D(values); });
 }
 
 }  // namespace xla

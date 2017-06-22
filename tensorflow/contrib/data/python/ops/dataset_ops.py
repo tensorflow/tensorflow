@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -599,6 +600,29 @@ class Dataset(object):
     )
     dataset = dataset.batch(batch_size)
     return dataset
+
+  @staticmethod
+  def list_files(file_pattern):
+    """A dataset of all files matching a pattern.
+
+    Example:
+      If we had the following files on our filesystem:
+        - /path/to/dir/a.txt
+        - /path/to/dir/b.py
+        - /path/to/dir/c.py
+      If we pass "/path/to/dir/*.py" as the directory, the dataset would
+      produce:
+        - /path/to/dir/b.py
+        - /path/to/dir/c.py
+
+    Args:
+      file_pattern: A string or scalar string `tf.Tensor`, representing
+        the filename pattern that will be matched.
+
+    Returns:
+     A `Dataset` of strings corresponding to file names.
+    """
+    return Dataset.from_tensor_slices(gen_io_ops.matching_files(file_pattern))
 
   def repeat(self, count=None):
     """Repeats this dataset `count` times.

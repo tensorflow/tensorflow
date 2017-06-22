@@ -399,7 +399,6 @@ cc_library(
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

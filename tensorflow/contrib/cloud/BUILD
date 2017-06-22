@@ -49,9 +49,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_bigquery_reader_ops",
-        "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:util",
     ],
 )
 

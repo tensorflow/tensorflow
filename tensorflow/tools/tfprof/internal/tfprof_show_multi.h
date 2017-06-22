@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/tools/tfprof/internal/tfprof_node.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_node_show.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_show.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_tensor.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_timeline.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
@@ -67,6 +68,8 @@ class TFMultiShow {
 
   string FormatLegend(const Options& opts);
   string FormatInputShapes(const TFMultiGraphNodeProto& proto);
+  std::vector<string> FormatTimes(const ShowMultiNode* node,
+                                  const Options& opts);
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {
@@ -88,12 +91,18 @@ class TFMultiShow {
                   return n1->proto().total_exec_micros() >
                          n2->proto().total_exec_micros();
                 } else if (opts.order_by == kOrderBy[3]) {
+                  return n1->proto().total_accelerator_exec_micros() >
+                         n2->proto().total_accelerator_exec_micros();
+                } else if (opts.order_by == kOrderBy[4]) {
+                  return n1->proto().total_cpu_exec_micros() >
+                         n2->proto().total_cpu_exec_micros();
+                } else if (opts.order_by == kOrderBy[5]) {
                   return n1->proto().total_parameters() >
                          n2->proto().total_parameters();
-                } else if (opts.order_by == kOrderBy[4]) {
+                } else if (opts.order_by == kOrderBy[6]) {
                   return n1->proto().total_float_ops() >
                          n2->proto().total_float_ops();
-                } else if (opts.order_by == kOrderBy[5]) {
+                } else if (opts.order_by == kOrderBy[7]) {
                   return n1->node->graph_nodes().size() >
                          n2->node->graph_nodes().size();
                 }

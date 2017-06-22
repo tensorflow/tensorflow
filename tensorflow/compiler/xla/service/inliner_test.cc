@@ -51,10 +51,10 @@ TEST_F(InlinerTest, MapMax) {
   auto max_f32 = max_builder.Build();
 
   auto builder = HloComputation::Builder("MapMaxFunction");
-  auto lhs = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({1, 2, 3, 4})));
-  auto rhs = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({4, 3, 2, 1})));
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3, 4})));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({4, 3, 2, 1})));
   builder.AddInstruction(
       HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
 
@@ -70,7 +70,7 @@ TEST_F(InlinerTest, MapMax) {
 
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
-  auto expected = LiteralUtil::CreateR1<float>({4, 3, 3, 4});
+  auto expected = Literal::CreateR1<float>({4, 3, 3, 4});
   LiteralTestUtil::ExpectEqual(*result, *expected);
 }
 
@@ -83,12 +83,12 @@ TEST_F(InlinerTest, MapConstant) {
       HloInstruction::CreateParameter(0, r0f32, "x"));
   (void)param1;
   const2_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0f)));
   auto const2_f32 = const2_builder.Build();
 
   auto builder = HloComputation::Builder("MapConstFunction");
   auto lhs = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1, 2, 3, 4}, {5, 6, 7, 8}})));
+      Literal::CreateR2<float>({{1, 2, 3, 4}, {5, 6, 7, 8}})));
   builder.AddInstruction(
       HloInstruction::CreateMap(lhs->shape(), {lhs}, const2_f32.get()));
 
@@ -104,7 +104,7 @@ TEST_F(InlinerTest, MapConstant) {
 
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
-  auto expected = LiteralUtil::CreateR2<float>({{2, 2, 2, 2}, {2, 2, 2, 2}});
+  auto expected = Literal::CreateR2<float>({{2, 2, 2, 2}, {2, 2, 2, 2}});
   LiteralTestUtil::ExpectEqual(*result, *expected);
 }
 

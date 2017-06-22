@@ -171,8 +171,7 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
       break;
     case HloOpcode::kConstant:
       if (ShapeUtil::IsScalar(instruction->shape())) {
-        attrs["value"].set_s(
-            LiteralUtil::GetAsString(instruction->literal(), {}));
+        attrs["value"].set_s(instruction->literal().GetAsString({}));
       }
       break;
     case HloOpcode::kCustomCall:

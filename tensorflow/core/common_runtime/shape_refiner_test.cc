@@ -26,6 +26,35 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+class ShapeRefinerTest : public ::testing::Test {
+ protected:
+  // These give access to private functions of DimensionHandle and ShapeHandle.
+  bool SameHandle(shape_inference::DimensionHandle a,
+                  shape_inference::DimensionHandle b) {
+    return a.SameHandle(b);
+  }
+
+  bool SameHandle(shape_inference::ShapeHandle a,
+                  shape_inference::ShapeHandle b) {
+    return a.SameHandle(b);
+  }
+
+  // These give access to private functions of ShapeRefiner.
+  bool SameDefinedShape(shape_inference::InferenceContext* c,
+                        shape_inference::ShapeHandle s0,
+                        shape_inference::ShapeHandle s1) {
+    return ShapeRefiner::SameDefinedShape(c, s0, s1);
+  }
+
+  bool IsUpdatedShapesOrTypes(
+      shape_inference::InferenceContext* c,
+      const std::vector<shape_inference::ShapeAndType>& existing,
+      const std::vector<shape_inference::ShapeAndType>& updated) {
+    return ShapeRefiner::IsUpdatedShapesOrTypes(c, existing, updated);
+  }
+};
+
 namespace {
 
 #define EXPECT_SHAPE(EXPECTED, M, OP, IDX)                            \
@@ -34,7 +63,7 @@ namespace {
     EXPECT_EQ(EXPECTED, ctx->DebugString(ctx->output(IDX)));          \
   } while (0);
 
-TEST(ShapeRefinerTest, Constant) {
+TEST_F(ShapeRefinerTest, Constant) {
   // Create a constant node and validate that adding it is successful
   // and that its shape is correct.
   Scope root = Scope::NewRootScope();
@@ -45,7 +74,7 @@ TEST(ShapeRefinerTest, Constant) {
   EXPECT_SHAPE("[]", m, c, 0);
 }
 
-TEST(ShapeRefinerTest, MatMul) {
+TEST_F(ShapeRefinerTest, MatMul) {
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
 
   Scope root = Scope::NewRootScope();
@@ -62,7 +91,7 @@ TEST(ShapeRefinerTest, MatMul) {
   EXPECT_SHAPE("[2,2]", m, mm, 0);
 }
 
-TEST(ShapeRefinerTest, InvalidOrder) {
+TEST_F(ShapeRefinerTest, InvalidOrder) {
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
@@ -77,7 +106,7 @@ TEST(ShapeRefinerTest, InvalidOrder) {
       s.error_message());
 }
 
-TEST(ShapeRefinerTest, BadShapes) {
+TEST_F(ShapeRefinerTest, BadShapes) {
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
@@ -94,7 +123,7 @@ TEST(ShapeRefinerTest, BadShapes) {
                   .contains("Dimensions must be equal, but are 1 and 2"));
 }
 
-TEST(ShapeRefinerTest, SetShape) {
+TEST_F(ShapeRefinerTest, SetShape) {
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
 
   Scope root = Scope::NewRootScope();
@@ -133,7 +162,7 @@ REGISTER_OP("TestOpWithNoShapeFn").Input("a: int32").Output("o: int32");
 
 }  // namespace
 
-TEST(ShapeRefinerTest, MissingShapeInferenceFns) {
+TEST_F(ShapeRefinerTest, MissingShapeInferenceFns) {
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, 42);
   Node* b;
@@ -147,7 +176,7 @@ TEST(ShapeRefinerTest, MissingShapeInferenceFns) {
   TF_EXPECT_OK(m.AddNode(b));
 }
 
-TEST(ShapeRefinerTest, PropagateConstants) {
+TEST_F(ShapeRefinerTest, PropagateConstants) {
   // Reduction dimension is a variable, so we don't know its value.
   // So the output shape value is unknown (though its rank is known).
   {
@@ -220,7 +249,7 @@ REGISTER_OP("TestOp")
 
 }  // namespace
 
-TEST(ShapeRefinerTest, InputTensorDependencies) {
+TEST_F(ShapeRefinerTest, InputTensorDependencies) {
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Graph graph(OpRegistry::Global());
   Node* node;
@@ -289,7 +318,7 @@ REGISTER_OP("ShapeDataInt64")
 
 }  // namespace
 
-TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContent) {
+TEST_F(ShapeRefinerTest, PropagateShapeAcrossTensorContent) {
   Scope root = Scope::NewRootScope();
 
   // Create variable 2x4 tensor.
@@ -320,7 +349,7 @@ TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContent) {
   EXPECT_EQ("[4]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt64) {
+TEST_F(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt64) {
   Scope root = Scope::NewRootScope();
 
   // Create variable 2x4 tensor.
@@ -354,7 +383,7 @@ TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt64) {
   EXPECT_EQ("[4]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt32Overflow) {
+TEST_F(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt32Overflow) {
   Scope root = Scope::NewRootScope();
 
   // Create variable 2x4 tensor.
@@ -386,7 +415,7 @@ TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt32Overflow) {
   EXPECT_FALSE(m.AddNode(shape_data).ok());
 }
 
-TEST(ShapeRefinerTest, PropagateRankAcrossTensorContent) {
+TEST_F(ShapeRefinerTest, PropagateRankAcrossTensorContent) {
   Scope root = Scope::NewRootScope();
 
   // Create variable 2x4x3 tensor.
@@ -412,7 +441,7 @@ TEST(ShapeRefinerTest, PropagateRankAcrossTensorContent) {
   EXPECT_EQ("[3]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContent) {
+TEST_F(ShapeRefinerTest, PropagateSizeAcrossTensorContent) {
   Scope root = Scope::NewRootScope();
 
   // Create variable.
@@ -438,7 +467,7 @@ TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContent) {
   EXPECT_EQ("[120]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt64) {
+TEST_F(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt64) {
   Scope root = Scope::NewRootScope();
 
   // Create variable.
@@ -469,7 +498,7 @@ TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt64) {
   EXPECT_EQ("[515396075280]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt32Overflow) {
+TEST_F(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt32Overflow) {
   Scope root = Scope::NewRootScope();
 
   // Create variable.
@@ -496,7 +525,7 @@ TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt32Overflow) {
   EXPECT_FALSE(m.AddNode(shape_data).ok());
 }
 
-TEST(ShapeRefinerTest, PropagateShape) {
+TEST_F(ShapeRefinerTest, PropagateShape) {
   Scope root = Scope::NewRootScope();
   // 3x2 input
   auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
@@ -518,7 +547,7 @@ TEST(ShapeRefinerTest, PropagateShape) {
   EXPECT_EQ("[3,2]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, PropagateSize) {
+TEST_F(ShapeRefinerTest, PropagateSize) {
   Scope root = Scope::NewRootScope();
   // 3x2 input
   auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
@@ -539,7 +568,7 @@ TEST(ShapeRefinerTest, PropagateSize) {
   EXPECT_EQ("[6]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, PropagateRank) {
+TEST_F(ShapeRefinerTest, PropagateRank) {
   Scope root = Scope::NewRootScope();
   // 3x2 input
   auto input = ops::Const(root, {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
@@ -560,7 +589,7 @@ TEST(ShapeRefinerTest, PropagateRank) {
   EXPECT_EQ("[2]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, PropagateRange) {
+TEST_F(ShapeRefinerTest, PropagateRange) {
   Scope root = Scope::NewRootScope();
   auto begin = ops::Const(root, 1);
   auto limit = ops::Const(root, 11);
@@ -583,7 +612,7 @@ TEST(ShapeRefinerTest, PropagateRange) {
   EXPECT_EQ("[1,4,7,10]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, ConstantValueTwoInputsToSameNode) {
+TEST_F(ShapeRefinerTest, ConstantValueTwoInputsToSameNode) {
   Scope root = Scope::NewRootScope();
   // This node is used as two inputs to 'range'.
   auto begin_and_delta = ops::Const(root, 1);
@@ -607,7 +636,7 @@ TEST(ShapeRefinerTest, ConstantValueTwoInputsToSameNode) {
 
 // Creates a graph where 'begin' is attempted to be visited during
 // constant value evaluation after having been processed once.
-TEST(ShapeRefinerTest, ConstantValueVisitNodeTwice) {
+TEST_F(ShapeRefinerTest, ConstantValueVisitNodeTwice) {
   Scope root = Scope::NewRootScope();
   auto begin = ops::Const(root, 1);
   auto limit = ops::Const(root, 8);
@@ -716,7 +745,7 @@ REGISTER_OP("WithUnknownShape")
 
 }  // namespace
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_EmptyVector) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_EmptyVector) {
   Scope root = Scope::NewRootScope();
   Node* input;
   TF_ASSERT_OK(
@@ -734,7 +763,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_EmptyVector) {
   EXPECT_EQ("[]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_Shape) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_Shape) {
   for (int pass = 0; pass < 2; ++pass) {
     Scope root = Scope::NewRootScope();
     Node* input;
@@ -761,7 +790,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_Shape) {
   }
 }
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
   Scope root = Scope::NewRootScope();
   Node* scalar_non_const;
   TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt32")
@@ -793,7 +822,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
   EXPECT_EQ("[10,20,?,40]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
   Scope root = Scope::NewRootScope();
   Node* scalar_non_const;
   TF_ASSERT_OK(NodeBuilder("in", "NonConstScalarInt64")
@@ -825,7 +854,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
   EXPECT_EQ("[10,20,?,1099511627776]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
   Scope root = Scope::NewRootScope();
 
   InputList inputs{
@@ -851,7 +880,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
   EXPECT_EQ("[10,?]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
   Scope root = Scope::NewRootScope();
 
   // Inputs are length 2 vectors instead of scalars.
@@ -876,7 +905,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
       StringPiece(m.AddNode(result).error_message()).contains("but is rank 2"));
 }
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_Concat) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_Concat) {
   Scope root = Scope::NewRootScope();
   Graph* g = root.graph();
   Node* partial_1;
@@ -913,7 +942,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_Concat) {
   EXPECT_EQ("[1,?,3,?,5,6,?,8,9,10,11]", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
   Scope root = Scope::NewRootScope();
   Graph* g = root.graph();
   Node* scalar_non_const;
@@ -956,7 +985,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatWithUnknown) {
   EXPECT_EQ("?", ctx->DebugString(ctx->output(0)));
 }
 
-TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
+TEST_F(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
   Scope root = Scope::NewRootScope();
   Graph* g = root.graph();
   Node* scalar_non_const;
@@ -995,7 +1024,78 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
             m.AddNode(result).error_message());
 }
 
-TEST(ShapeRefinerTest, IncrementalUpdates) {
+namespace {
+
+// Dummy op to test ShapeRefiner util functions
+REGISTER_OP("Dummy");
+
+}  // namespace
+
+TEST_F(ShapeRefinerTest, SameDefinedShape) {
+  Scope root = Scope::NewRootScope();
+  Graph* g = root.graph();
+  Node* test;
+  TF_CHECK_OK(NodeBuilder("test", "Dummy").Finalize(g, &test));
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  m.set_require_shape_inference_fns(false);
+  TF_ASSERT_OK(m.AddNode(test));
+  shape_inference::InferenceContext* ctx = m.GetContext(test);
+
+  auto unknown = ctx->UnknownShape();
+  auto unknown_b = ctx->UnknownShape();
+  auto s_1_2 = ctx->MakeShape({1, 2});
+  auto s_1_2_b = ctx->MakeShape({1, 2});
+  auto s_2_2 = ctx->MakeShape({2, 2});
+  auto s_unknown_2 = ctx->MakeShape({-1, 2});
+  auto s_unknown_2_b = ctx->MakeShape({-1, 2});
+
+  EXPECT_TRUE(SameDefinedShape(ctx, unknown, unknown_b));
+  EXPECT_FALSE(SameDefinedShape(ctx, unknown, s_1_2));
+  EXPECT_TRUE(SameDefinedShape(ctx, s_1_2, s_1_2_b));
+  EXPECT_FALSE(SameDefinedShape(ctx, s_1_2, s_2_2));
+  EXPECT_TRUE(SameDefinedShape(ctx, s_unknown_2, s_unknown_2_b));
+}
+
+TEST_F(ShapeRefinerTest, IsUpdatedShapesOrTypes) {
+  Scope root = Scope::NewRootScope();
+  Graph* g = root.graph();
+  Node* test;
+  TF_CHECK_OK(NodeBuilder("test", "Dummy").Finalize(g, &test));
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  m.set_require_shape_inference_fns(false);
+  TF_ASSERT_OK(m.AddNode(test));
+  shape_inference::InferenceContext* ctx = m.GetContext(test);
+
+  std::vector<shape_inference::ShapeAndType> t0{
+      {ctx->MakeShape({1, 2, 3}), DT_FLOAT},
+      {ctx->UnknownShape(), DT_INVALID},
+      {ctx->MakeShape({4, 3, 2, 1}), DT_INT32}};
+
+  std::vector<shape_inference::ShapeAndType> t1{
+      {ctx->MakeShape({1, 2, 3}), DT_FLOAT},
+      {ctx->UnknownShape(), DT_INVALID},
+      {ctx->MakeShape({4, 3, 2, 1}), DT_INT32}};
+
+  std::vector<shape_inference::ShapeAndType> t2{
+      {ctx->MakeShape({1, 2, 4}), DT_FLOAT},
+      {ctx->UnknownShape(), DT_INVALID},
+      {ctx->MakeShape({4, 3, 2, 1}), DT_INT32}};
+
+  std::vector<shape_inference::ShapeAndType> t3{
+      {ctx->MakeShape({1, 2, 3}), DT_INT32},
+      {ctx->UnknownShape(), DT_INVALID},
+      {ctx->MakeShape({4, 3, 2, 1}), DT_INT32}};
+
+  EXPECT_FALSE(IsUpdatedShapesOrTypes(ctx, t0, t1));
+
+  // A shape has been modified
+  EXPECT_TRUE(IsUpdatedShapesOrTypes(ctx, t0, t2));
+
+  // A type has been modified
+  EXPECT_TRUE(IsUpdatedShapesOrTypes(ctx, t0, t3));
+}
+
+TEST_F(ShapeRefinerTest, IncrementalUpdates) {
   Scope root = Scope::NewRootScope();
   Graph* g = root.graph();
   Node* queue;
@@ -1020,12 +1120,34 @@ TEST(ShapeRefinerTest, IncrementalUpdates) {
   shape_inference::ShapeHandle shp = ctx->MakeShape({3, 7});
   ctx->set_output_handle_shapes_and_types(
       0, std::vector<shape_inference::ShapeAndType>{{shp, DT_FLOAT}});
-
   bool refined = false;
-  TF_ASSERT_OK(m.UpdateNode(dequeue, &refined));
+  TF_ASSERT_OK(m.UpdateNode(dequeue, false /* relax */, &refined));
   EXPECT_TRUE(refined);
   ctx = m.GetContext(dequeue);
   EXPECT_EQ("[3,7]", ctx->DebugString(ctx->output(0)));
+
+  // Inject another shape, but relax instead of merge.
+  ctx = m.GetContext(queue);
+  shp = ctx->MakeShape({2, 7});
+  ctx->set_output_handle_shapes_and_types(
+      0, std::vector<shape_inference::ShapeAndType>{{shp, DT_FLOAT}});
+  refined = false;
+  TF_ASSERT_OK(m.UpdateNode(dequeue, true /* relax */, &refined));
+  EXPECT_TRUE(refined);
+  ctx = m.GetContext(dequeue);
+  EXPECT_EQ("[?,7]", ctx->DebugString(ctx->output(0)));
+
+  // Inject another partially unknown shape and attempt to relax it.
+  ctx = m.GetContext(queue);
+  shp = ctx->MakeShape({shape_inference::InferenceContext::kUnknownDim, 7});
+  ctx->set_output_handle_shapes_and_types(
+      0, std::vector<shape_inference::ShapeAndType>{{shp, DT_FLOAT}});
+  refined = false;
+  TF_ASSERT_OK(m.UpdateNode(dequeue, true /* relax */, &refined));
+  EXPECT_FALSE(refined);
+  ctx = m.GetContext(dequeue);
+  EXPECT_EQ("[?,7]", ctx->DebugString(ctx->output(0)));
+  ASSERT_FALSE(SameHandle(ctx->Dim(ctx->output(0), 0), ctx->Dim(shp, 0)));
 }
 
 }  // namespace

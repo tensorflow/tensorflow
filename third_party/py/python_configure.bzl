@@ -13,6 +13,7 @@ _NUMPY_INCLUDE_PATH = "NUMPY_INCLUDE_PATH"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 _PYTHON_INCLUDE_PATH = "PYTHON_INCLUDE_PATH"
 _PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
+_TF_PYTHON_CONFIG_REPO = "TF_PYTHON_CONFIG_REPO"
 
 
 def _tpl(repository_ctx, tpl, substitutions={}, out=None):
@@ -278,18 +279,20 @@ def _create_local_python_repository(repository_ctx):
     })
 
 
-def _create_remote_python_repository(repository_ctx):
+def _create_remote_python_repository(repository_ctx, remote_config_repo):
   """Creates pointers to a remotely configured repo set up to build with Python.
   """
   _tpl(repository_ctx, "remote.BUILD", {
-      "%{REMOTE_PYTHON_REPO}": repository_ctx.attr.remote_config_repo,
+      "%{REMOTE_PYTHON_REPO}": remote_config_repo,
   }, "BUILD")
 
 
 def _python_autoconf_impl(repository_ctx):
   """Implementation of the python_autoconf repository rule."""
-  if repository_ctx.attr.remote_config_repo != "":
-    _create_remote_python_repository(repository_ctx)
+  remote_config_repo = _get_env_var(repository_ctx, _TF_PYTHON_CONFIG_REPO,
+      repository_ctx.attr.remote_config_repo, False)
+  if remote_config_repo != "":
+    _create_remote_python_repository(repository_ctx, remote_config_repo)
   else:
     _create_local_python_repository(repository_ctx)
 
@@ -307,6 +310,7 @@ python_configure = repository_rule(
         _PYTHON_INCLUDE_PATH,
         _PYTHON_LIB_PATH,
         _NUMPY_INCLUDE_PATH,
+        _TF_PYTHON_CONFIG_REPO,
     ],
 )
 """Detects and configures the local Python.

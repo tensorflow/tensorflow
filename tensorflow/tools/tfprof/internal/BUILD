@@ -185,6 +185,7 @@ cc_library(
         ":tfprof_node_show",
         ":tfprof_options",
         ":tfprof_scope",
+        ":tfprof_show",
         ":tfprof_tensor",
         ":tfprof_timeline",
         ":tfprof_utils",

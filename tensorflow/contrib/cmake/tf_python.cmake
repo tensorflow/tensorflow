@@ -124,7 +124,6 @@ file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
-    "${tensorflow_source_dir}/tensorflow/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
@@ -138,7 +137,6 @@ RELATIVE_PROTOBUF_GENERATE_PYTHON(
 file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
-    "${tensorflow_source_dir}/tensorflow/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
@@ -232,19 +230,6 @@ add_python_module("tensorflow/python/training")
 add_python_module("tensorflow/python/user_ops")
 add_python_module("tensorflow/python/util")
 add_python_module("tensorflow/python/util/protobuf")
-add_python_module("tensorflow/tensorboard")
-add_python_module("tensorflow/tensorboard/backend")
-add_python_module("tensorflow/tensorboard/backend/event_processing")
-add_python_module("tensorflow/tensorboard/plugins")
-add_python_module("tensorflow/tensorboard/plugins/audio")
-add_python_module("tensorflow/tensorboard/plugins/distributions")
-add_python_module("tensorflow/tensorboard/plugins/graphs")
-add_python_module("tensorflow/tensorboard/plugins/histograms")
-add_python_module("tensorflow/tensorboard/plugins/images")
-add_python_module("tensorflow/tensorboard/plugins/projector")
-add_python_module("tensorflow/tensorboard/plugins/scalars")
-add_python_module("tensorflow/tensorboard/plugins/text")
-add_python_module("tensorflow/tensorboard/scripts")
 add_python_module("tensorflow/contrib")
 add_python_module("tensorflow/contrib/android")
 add_python_module("tensorflow/contrib/android/java")
@@ -458,6 +443,9 @@ add_python_module("tensorflow/contrib/pi_examples/label_image")
 add_python_module("tensorflow/contrib/pi_examples/label_image/data")
 add_python_module("tensorflow/contrib/quantization")
 add_python_module("tensorflow/contrib/quantization/python")
+add_python_module("tensorflow/contrib/remote_fused_graph/pylib")
+add_python_module("tensorflow/contrib/remote_fused_graph/pylib/python")
+add_python_module("tensorflow/contrib/remote_fused_graph/pylib/python/ops")
 add_python_module("tensorflow/contrib/rnn")
 add_python_module("tensorflow/contrib/rnn/kernels")
 add_python_module("tensorflow/contrib/rnn/ops")
@@ -527,6 +515,11 @@ add_python_module("tensorflow/contrib/tfprof" DONTCOPY)  # SWIG wrapper not impl
 #add_python_module("tensorflow/contrib/tfprof/python")
 #add_python_module("tensorflow/contrib/tfprof/python/tools")
 #add_python_module("tensorflow/contrib/tfprof/python/tools/tfprof")
+add_python_module("tensorflow/contrib/tpu")
+add_python_module("tensorflow/contrib/tpu/ops")
+add_python_module("tensorflow/contrib/tpu/python")
+add_python_module("tensorflow/contrib/tpu/python/ops")
+add_python_module("tensorflow/contrib/tpu/python/tpu")
 add_python_module("tensorflow/contrib/training")
 add_python_module("tensorflow/contrib/training/python")
 add_python_module("tensorflow/contrib/training/python/training")
@@ -603,6 +596,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
 endfunction()
 
 GENERATE_PYTHON_OP_LIB("array_ops")
+GENERATE_PYTHON_OP_LIB("bitwise_ops")
 GENERATE_PYTHON_OP_LIB("math_ops")
 GENERATE_PYTHON_OP_LIB("functional_ops")
 GENERATE_PYTHON_OP_LIB("candidate_sampling_ops")
@@ -619,6 +613,8 @@ GENERATE_PYTHON_OP_LIB("lookup_ops")
 GENERATE_PYTHON_OP_LIB("nn_ops")
 GENERATE_PYTHON_OP_LIB("parsing_ops")
 GENERATE_PYTHON_OP_LIB("random_ops")
+GENERATE_PYTHON_OP_LIB("remote_fused_graph_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/remote_fused_graph/pylib/python/ops/gen_remote_fused_graph_ops.py)
 GENERATE_PYTHON_OP_LIB("resource_variable_ops")
 GENERATE_PYTHON_OP_LIB("script_ops")
 GENERATE_PYTHON_OP_LIB("sdca_ops")
@@ -910,19 +906,6 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/MANIFEST.in
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
-
-# Copy resources for TensorBoard.
-file(DOWNLOAD http://mirror.bazel.build/tensorboard/index.html ${DOWNLOAD_LOCATION}/tensorboard/index.html
-  EXPECTED_HASH SHA256=25554e708552ad8587152f7a444db3f4ca753f9ed72d9f8105203c1d1806d521)
-add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
-  COMMAND ${CMAKE_COMMAND} -E make_directory
-  ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/components/)
-add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy ${DOWNLOAD_LOCATION}/tensorboard/index.html
-  ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/components/)
-add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/TAG
-  ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/)
 
 # Copy datasets for tf.contrib.learn.
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
