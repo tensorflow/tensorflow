@@ -63,6 +63,11 @@ tensorflow::ImportNumpy();
 // Constants used by TensorHandle (get_session_handle).
 %constant const char* TENSOR_HANDLE_KEY = tensorflow::SessionState::kTensorHandleResourceTypeName;
 
+// Convert TF_OperationName output to unicode python string
+%typemap(out) const char* TF_OperationName {
+  $result = PyUnicode_FromString($1);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
@@ -112,6 +117,8 @@ tensorflow::ImportNumpy();
     tensorflow::PyObjectVector temp) {
   $1 = &temp;
 }
+// TODO(iga): move this and the corresponding typemap(argout) to
+// tf_sessionrun_wrapper.i once we get rid of this code for DeprecatedSession.
 %typemap(in, numinputs=0) char** out_handle (
     char* temp) {
   $1 = &temp;
@@ -142,7 +149,7 @@ tensorflow::ImportNumpy();
 %#else
   $result = PyUnicode_FromStringAndSize(
 %#endif
-    *$1, strlen(*$1));
+    *$1, *$1 == nullptr ? 0 : strlen(*$1));
   delete[] *$1;
 }
 
@@ -163,29 +170,37 @@ tensorflow::ImportNumpy();
 // Helper function to convert a Python list of Tensors to a C++ vector of
 // TF_Outputs.
 //
-// Caller should have already checked that `py_tensor_list` is a list (this
-// isn't done in this function to allow for function-specific error messages)
-void PyTensorListToVector(PyObject* py_tensor_list,
-                          std::vector<TF_Output>* vec) {
+// Returns true if successful. Otherwise, returns false and sets error_msg.
+bool PyTensorListToVector(PyObject* py_tensor_list,
+                          std::vector<TF_Output>* vec,
+                          string* error_msg) {
+  if (!PyList_Check(py_tensor_list)) {
+    *error_msg = "expected Python list.";
+    return false;
+  }
   size_t size = PyList_Size(py_tensor_list);
   for (int i = 0; i < size; ++i) {
     PyObject* item = PyList_GetItem(py_tensor_list, i);
     TF_Output* input_ptr;
-    SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
-                    SWIGTYPE_p_TF_Output, 0);
+    if (!SWIG_IsOK(SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
+                                   SWIGTYPE_p_TF_Output, 0))) {
+      *error_msg = "expected Python list of wrapped TF_Output objects. "
+          "Found python list of something else.";
+      return false;
+    }
     vec->push_back(*input_ptr);
   }
+  return true;
 }
 %}
 
 // Converts input Python list of wrapped TF_Outputs into a single array
 %typemap(in) (const TF_Output* inputs, int num_inputs)
     (std::vector<TF_Output> inputs) {
-  if (!PyList_Check($input)) {
-    SWIG_exception_fail(
-        SWIG_TypeError, "$symname: expected Python list of wrapped TF_Outputs");
+  string error_msg;
+  if (!PyTensorListToVector($input, &inputs, &error_msg)) {
+    SWIG_exception_fail(SWIG_TypeError, ("$symname: " + error_msg).c_str());
   }
-  PyTensorListToVector($input, &inputs);
   $1 = inputs.data();
   $2 = inputs.size();
 }
@@ -211,6 +226,17 @@ void PyTensorListToVector(PyObject* py_tensor_list,
 // PyArray_Return, maybe others).
 %noexception TF_SessionRun_wrapper;
 
+// We use TF_SessionPRunSetup_wrapper instead of TF_SessionPRunSetup
+%ignore TF_SessionPRunSetup;
+%unignore TF_SessionPRunSetup_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_SessionPRunSetup_wrapper;
+
+// We use TF_SessionPRun_wrapper instead of TF_SessionPRun
+%ignore TF_SessionPRun;
+%unignore TF_SessionPRun_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_SessionPRun_wrapper;
 
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;

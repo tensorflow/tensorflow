@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
@@ -76,8 +77,16 @@ Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
       return Status::OK();
     }
   }
+  string tags_as_string = "{ ";
+  for (const string& tag : tags) {
+    tags_as_string = strings::StrCat(tags_as_string, tag, " ");
+  }
+  tags_as_string = strings::StrCat(tags_as_string, "}");
   return Status(error::Code::NOT_FOUND,
-                "Could not find meta graph def matching supplied tags.");
+                "Could not find meta graph def matching supplied tags: " +
+                    tags_as_string +
+                    ". To inspect available tag-sets in the SavedModel, please "
+                    "use the SavedModel CLI: `saved_model_cli`");
 }
 
 Status LoadMetaGraphIntoSession(const MetaGraphDef& meta_graph_def,

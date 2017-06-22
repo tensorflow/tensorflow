@@ -491,13 +491,13 @@ Returns:
 
 class TestParseFunctionDetails(googletest.TestCase):
 
-  def testParseFunctionDetails(self):
+  def test_parse_function_details(self):
     docstring, function_details = parser._parse_function_details(RELU_DOC)
 
     self.assertEqual(len(function_details), 2)
     args = function_details[0]
     self.assertEqual(args.keyword, 'Args')
-    self.assertEmpty(args.header)
+    self.assertEqual(len(args.header), 0)
     self.assertEqual(len(args.items), 2)
     self.assertEqual(args.items[0][0], 'features')
     self.assertEqual(args.items[1][0], 'name')
@@ -513,6 +513,61 @@ class TestParseFunctionDetails(googletest.TestCase):
     self.assertEqual(
         RELU_DOC,
         docstring + ''.join(str(detail) for detail in function_details))
+
+
+class TestGenerateSignature(googletest.TestCase):
+
+  def test_known_object(self):
+    if sys.version_info >= (3, 0):
+      print('Warning: Doc generation is not supported from python3.')
+      return
+
+    known_object = object()
+    reverse_index = {id(known_object): 'location.of.object.in.api'}
+
+    def example_fun(arg=known_object):  # pylint: disable=unused-argument
+      pass
+
+    sig = parser._generate_signature(example_fun, reverse_index)
+    self.assertEqual(sig, ['arg=location.of.object.in.api'])
+
+  def test_literals(self):
+    if sys.version_info >= (3, 0):
+      print('Warning: Doc generation is not supported from python3.')
+      return
+
+    def example_fun(a=5, b=5.0, c=None, d=True, e='hello', f=(1, (2, 3))):  # pylint: disable=g-bad-name, unused-argument
+      pass
+
+    sig = parser._generate_signature(example_fun, reverse_index={})
+    self.assertEqual(
+        sig, ['a=5', 'b=5.0', 'c=None', 'd=True', "e='hello'", 'f=(1, (2, 3))'])
+
+  def test_dotted_name(self):
+    if sys.version_info >= (3, 0):
+      print('Warning: Doc generation is not supported from python3.')
+      return
+
+    # pylint: disable=g-bad-name
+    class a(object):
+
+      class b(object):
+
+        class c(object):
+
+          class d(object):
+
+            def __init__(self, *args):
+              pass
+    # pylint: enable=g-bad-name
+
+    e = {'f': 1}
+
+    def example_fun(arg1=a.b.c.d, arg2=a.b.c.d(1, 2), arg3=e['f']):  # pylint: disable=unused-argument
+      pass
+
+    sig = parser._generate_signature(example_fun, reverse_index={})
+    self.assertEqual(sig, ['arg1=a.b.c.d', 'arg2=a.b.c.d(1, 2)', "arg3=e['f']"])
 
 
 if __name__ == '__main__':

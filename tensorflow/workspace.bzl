@@ -4,13 +4,7 @@ load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
-
-load("//third_party:polymer.bzl", "tensorboard_polymer_workspace")
-load("//third_party:python.bzl", "tensorboard_python_workspace")
-load("//third_party:js.bzl", "tensorboard_js_workspace")
-load("//third_party:typings.bzl", "tensorboard_typings_workspace")
 
 
 def _is_windows(repository_ctx):
@@ -150,12 +144,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
     print("path_prefix was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
 
-  # TODO(dandelion): Take these out when TB exits TF
-  tensorboard_polymer_workspace()
-  tensorboard_python_workspace()
-  tensorboard_typings_workspace()
-  tensorboard_js_workspace()
-
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
@@ -291,11 +279,44 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "six_archive",
       urls = [
           "http://mirror.bazel.build/pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
-          "http://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
+          "https://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
       ],
       sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
       strip_prefix = "six-1.10.0",
       build_file = str(Label("//third_party:six.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "org_python_pypi_backports_weakref",
+      urls = [
+          "http://mirror.bazel.build/pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
+          "https://pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
+      ],
+      sha256 = "8813bf712a66b3d8b85dc289e1104ed220f1878cf981e2fe756dfaabe9a82892",
+      strip_prefix = "backports.weakref-1.0rc1/src",
+      build_file = str(Label("//third_party:backports_weakref.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "com_github_andreif_codegen",
+      urls = [
+          "http://mirror.bazel.build/github.com/andreif/codegen/archive/1.0.tar.gz",
+          "https://github.com/andreif/codegen/archive/1.0.tar.gz",
+      ],
+      sha256 = "2dadd04a2802de27e0fe5a19b76538f6da9d39ff244036afa00c1bba754de5ee",
+      strip_prefix = "codegen-1.0",
+      build_file = str(Label("//third_party:codegen.BUILD")),
+  )
+
+  filegroup_external(
+      name = "org_python_license",
+      licenses = ["notice"],  # Python 2.0
+      sha256_urls = {
+          "b5556e921715ddb9242c076cae3963f483aa47266c5e37ea4c187f77cc79501c": [
+              "http://mirror.bazel.build/docs.python.org/2.7/_sources/license.txt",
+              "https://docs.python.org/2.7/_sources/license.txt",
+          ],
+      },
   )
 
   native.bind(
@@ -622,4 +643,3 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "pprof-c0fb62ec88c411cc91194465e54db2632845b650",
       build_file = str(Label("//third_party:pprof.BUILD")),
   )
-

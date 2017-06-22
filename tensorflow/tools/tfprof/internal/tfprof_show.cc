@@ -156,13 +156,17 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) {
     info.push_back(memory);
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(node->proto().total_exec_micros());
-    if (node->account) {
-      time = FormatTime(node->proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    info.push_back(time);
+    info.push_back(FormatTotalExecTime(node, opts));
+    info.push_back(FormatAcceleratorExecTime(node, opts));
+    info.push_back(FormatCPUExecTime(node, opts));
+  }
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    info.push_back(FormatAcceleratorExecTime(node, opts));
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    info.push_back(FormatCPUExecTime(node, opts));
   }
   if (opts.select.find(kShown[5]) != opts.select.end()) {
     if (node->proto().devices_size() > 0) {
@@ -202,7 +206,17 @@ string TFShow::FormatLegend(const Options& opts) {
     legends.push_back("output bytes");
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {
-    legends.push_back("execution time");
+    legends.push_back("total execution time");
+    legends.push_back("accelerator execution time");
+    legends.push_back("cpu execution time");
+  }
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    legends.push_back("accelerator execution time");
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    legends.push_back("cpu execution time");
   }
   if (opts.select.find(kShown[5]) != opts.select.end()) {
     legends.push_back("assigned devices");

@@ -40,6 +40,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:variables",
     ],
 )
@@ -323,7 +324,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "reverse_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["reverse_ops_test.py"],
     deps = [
         ":xla_test",

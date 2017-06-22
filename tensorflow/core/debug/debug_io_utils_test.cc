@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_io_utils.h"
 
+#include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -124,9 +125,17 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
 
   ASSERT_GE(wall_time, event.wall_time());
   ASSERT_EQ(1, event.summary().value().size());
-  ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+  ASSERT_EQ(kDebugNodeKey.node_name, event.summary().value(0).tag());
   ASSERT_EQ(kDebugNodeKey.debug_node_name,
             event.summary().value(0).node_name());
+
+  // Determine and validate some information from the metadata.
+  third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
+  auto status = tensorflow::protobuf::util::JsonStringToMessage(
+      event.summary().value(0).metadata().plugin_data(0).content(), &metadata);
+  ASSERT_TRUE(status.ok());
+  ASSERT_EQ(kDebugNodeKey.device_name, metadata.device());
+  ASSERT_EQ(kDebugNodeKey.output_slot, metadata.output_slot());
 
   Tensor b_prime(DT_STRING);
   ASSERT_TRUE(b_prime.FromProto(event.summary().value(0).tensor()));
@@ -229,9 +238,18 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
 
     ASSERT_GE(wall_time, event.wall_time());
     ASSERT_EQ(1, event.summary().value().size());
-    ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+    ASSERT_EQ(kDebugNodeKey.node_name, event.summary().value(0).tag());
     ASSERT_EQ(kDebugNodeKey.debug_node_name,
               event.summary().value(0).node_name());
+
+    // Determine and validate some information from the metadata.
+    third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
+    auto status = tensorflow::protobuf::util::JsonStringToMessage(
+        event.summary().value(0).metadata().plugin_data(0).content(),
+        &metadata);
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(kDebugNodeKey.device_name, metadata.device());
+    ASSERT_EQ(kDebugNodeKey.output_slot, metadata.output_slot());
 
     Tensor a_prime(DT_FLOAT);
     ASSERT_TRUE(a_prime.FromProto(event.summary().value(0).tensor()));
@@ -333,9 +351,18 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
       ASSERT_GE(wall_time, event.wall_time());
       ASSERT_EQ(1, event.summary().value().size());
-      ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+      ASSERT_EQ(kDebugNodeKey.node_name, event.summary().value(0).tag());
       ASSERT_EQ(kDebugNodeKey.debug_node_name,
                 event.summary().value(0).node_name());
+
+      // Determine and validate some information from the metadata.
+      third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
+      auto status = tensorflow::protobuf::util::JsonStringToMessage(
+          event.summary().value(0).metadata().plugin_data(0).content(),
+          &metadata);
+      ASSERT_TRUE(status.ok());
+      ASSERT_EQ(kDebugNodeKey.device_name, metadata.device());
+      ASSERT_EQ(kDebugNodeKey.output_slot, metadata.output_slot());
 
       Tensor a_prime(DT_FLOAT);
       ASSERT_TRUE(a_prime.FromProto(event.summary().value(0).tensor()));

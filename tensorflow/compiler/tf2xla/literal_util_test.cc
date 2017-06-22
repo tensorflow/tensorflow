@@ -27,7 +27,7 @@ TEST(LiteralUtil, LiteralToHostTensor) {
   {
     std::vector<int64> int64_values = {1, 2, 3};
     std::unique_ptr<xla::Literal> int64_values_literal =
-        xla::LiteralUtil::CreateR1(gtl::ArraySlice<int64>(int64_values));
+        xla::Literal::CreateR1(gtl::ArraySlice<int64>(int64_values));
     Tensor host_tensor;
     EXPECT_EQ("Cannot convert literal of type S64 to tensor of type int32",
               LiteralToHostTensor(*int64_values_literal, DT_INT32, &host_tensor)
@@ -48,7 +48,7 @@ TEST(LiteralUtil, LiteralToHostTensor) {
     Tensor host_tensor;
     std::vector<int32> int32_values = {10, 11};
     std::unique_ptr<xla::Literal> int32_values_literal =
-        xla::LiteralUtil::CreateR1(gtl::ArraySlice<int32>(int32_values));
+        xla::Literal::CreateR1(gtl::ArraySlice<int32>(int32_values));
     EXPECT_TRUE(
         LiteralToHostTensor(*int32_values_literal, DT_INT32, &host_tensor)
             .ok());

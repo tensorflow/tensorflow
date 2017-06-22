@@ -1350,7 +1350,13 @@ class Operation(object):
   @property
   def name(self):
     """The full name of this operation."""
-    return self._node_def.name
+    if _USE_C_API:
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._node_def.name == c_api.TF_OperationName(self._c_op)
+      return c_api.TF_OperationName(self._c_op)
+    else:
+      return self._node_def.name
 
   @property
   def _id(self):

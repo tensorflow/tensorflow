@@ -208,7 +208,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* get_tuple_element,
                                HloInstruction* operand) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                       HloInstruction* on_true,
                       HloInstruction* on_false) override;

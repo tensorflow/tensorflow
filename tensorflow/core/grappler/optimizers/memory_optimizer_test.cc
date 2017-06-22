@@ -35,89 +35,108 @@ TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   Output a = ops::Const(s.WithOpName("a"), 1.f, {2, 3, 4});
-  Output b = ops::AddN(s.WithOpName("b"), {a});  // Recomputed
-  Output c = ops::AddN(s.WithOpName("c"), {b});
-  Output d = ops::AddN(s.WithOpName("d"), {c});
-  Output e = ops::AddN(s.WithOpName("e"), {d, b});
-  Output f = ops::AddN(s.WithOpName("f"), {e, a});
+  Output b = ops::Identity(s.WithOpName("b"), a);  // Recomputed
+  Output c = ops::Identity(s.WithOpName("c"), b);
+  Output d = ops::AddN(s.WithOpName("gradients/d"), {c});
+  Output e = ops::AddN(s.WithOpName("gradients/e"), {d, b});
+  Output f = ops::AddN(s.WithOpName("gradients/f"), {e, a});
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   EXPECT_EQ(6, item.graph.node_size());
   NodeMap pre_transform_node_map(&item.graph);
-  std::vector<const NodeDef*> recomputed_source_nodes;
-  recomputed_source_nodes.push_back(pre_transform_node_map.GetNode(b.name()));
-  std::vector<NodeDef*> target_nodes;
-  target_nodes.push_back(pre_transform_node_map.GetNode(e.name()));
-  RecomputeSubgraph(recomputed_source_nodes, d.name(), target_nodes,
-                    &item.graph);
-  NodeMap post_transform_node_map(&item.graph);
-  EXPECT_EQ(7, item.graph.node_size());
+  (*pre_transform_node_map.GetNode("b")->mutable_attr())["_recompute_hint"]
+      .set_i(0);
+
+  MemoryOptimizer optimizer(RewriterConfig::MANUAL);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+
+  TF_EXPECT_OK(status);
+  NodeMap post_transform_node_map(&output);
+  EXPECT_EQ(8, output.node_size());
   NodeDef* transformed_e = post_transform_node_map.GetNode(e.name());
   EXPECT_EQ(2, transformed_e->input_size());
-  EXPECT_EQ("d", transformed_e->input(0));
+  EXPECT_EQ("gradients/d", transformed_e->input(0));
   EXPECT_EQ("Recomputed/b", transformed_e->input(1));
   NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed/b");
   EXPECT_EQ(2, recomputed_b->input_size());
   EXPECT_EQ("a", recomputed_b->input(0));
-  EXPECT_EQ("^d", recomputed_b->input(1).substr(0, 2));
+  EXPECT_EQ("^RecomputeTrigger/b", recomputed_b->input(1));
+  NodeDef* recompute_trigger =
+      post_transform_node_map.GetNode("RecomputeTrigger/b");
+  EXPECT_EQ(1, recompute_trigger->input_size());
+  EXPECT_EQ("^gradients/d", recompute_trigger->input(0));
 }
 
 TEST_F(RecomputeSubgraphTest, MultiNode) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   Output a = ops::Const(s.WithOpName("Conv"), 1.f, {2, 3, 4});
-  Output b = ops::AddN(s.WithOpName("BN"), {a});    // Recomputed
-  Output c = ops::AddN(s.WithOpName("ReLU"), {b});  // Recomputed
-  Output d = ops::AddN(s.WithOpName("Conv1"), {c});
+  Output b = ops::Identity(s.WithOpName("BN"), a);    // Recomputed
+  Output c = ops::Identity(s.WithOpName("ReLU"), b);  // Recomputed
+  Output d = ops::Identity(s.WithOpName("Conv1"), c);
 
-  Output trigger = ops::Const(s.WithOpName("BN1Grad"), 0.f, {2, 3, 4});
-  Output e = ops::AddN(s.WithOpName("Conv1Grad"), {trigger, c});
-  Output f = ops::AddN(s.WithOpName("ReLUGrad"), {e, c});
-  Output g = ops::AddN(s.WithOpName("BNGrad"), {f, a});
-  Output h = ops::AddN(s.WithOpName("ConvGrad"), {g});
+  // The "gradients/" prefix means the heuristic will pick these up as
+  // candidates to have their inputs recomputed.
+  Output trigger = ops::AddN(s.WithOpName("gradients/BN1Grad"), {d});
+  Output e = ops::AddN(s.WithOpName("gradients/Conv1Grad"), {trigger, c});
+  Output f = ops::AddN(s.WithOpName("gradients/ReLUGrad"), {e, c});
+  Output g = ops::AddN(s.WithOpName("gradients/BNGrad"), {f, a});
+  Output h = ops::AddN(s.WithOpName("gradients/ConvGrad"), {g});
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   EXPECT_EQ(9, item.graph.node_size());
   NodeMap pre_transform_node_map(&item.graph);
-  std::vector<const NodeDef*> recomputed_source_nodes;
-  recomputed_source_nodes.push_back(pre_transform_node_map.GetNode(b.name()));
-  recomputed_source_nodes.push_back(pre_transform_node_map.GetNode(c.name()));
-  std::vector<NodeDef*> target_nodes;
-  target_nodes.push_back(pre_transform_node_map.GetNode(e.name()));
-  target_nodes.push_back(pre_transform_node_map.GetNode(f.name()));
-  target_nodes.push_back(pre_transform_node_map.GetNode(g.name()));
-  RecomputeSubgraph(recomputed_source_nodes, trigger.name(), target_nodes,
-                    &item.graph);
-  NodeMap post_transform_node_map(&item.graph);
-  EXPECT_EQ(11, item.graph.node_size());
+  // Set op types so that the heuristic will pick these nodes up to be
+  // recomputed
+  pre_transform_node_map.GetNode("BN")->set_op("FusedBatchNorm");
+  pre_transform_node_map.GetNode("ReLU")->set_op("Relu");
+
+  MemoryOptimizer optimizer(RewriterConfig::HEURISTICS);
+  GraphDef first_pass_output;
+  Status first_pass_status =
+      optimizer.Optimize(nullptr, item, &first_pass_output);
+  TF_EXPECT_OK(first_pass_status);
+
+  NodeMap post_transform_node_map(&first_pass_output);
+  EXPECT_EQ(13, first_pass_output.node_size());
   NodeDef* transformed_e = post_transform_node_map.GetNode(e.name());
   EXPECT_EQ(2, transformed_e->input_size());
-  EXPECT_EQ("BN1Grad", transformed_e->input(0));
+  EXPECT_EQ("gradients/BN1Grad", transformed_e->input(0));
   EXPECT_EQ("Recomputed/ReLU", transformed_e->input(1));
   NodeDef* transformed_f = post_transform_node_map.GetNode(f.name());
   EXPECT_EQ(2, transformed_f->input_size());
-  EXPECT_EQ("Conv1Grad", transformed_f->input(0));
+  EXPECT_EQ("gradients/Conv1Grad", transformed_f->input(0));
   EXPECT_EQ("Recomputed/ReLU", transformed_f->input(1));
   NodeDef* transformed_g = post_transform_node_map.GetNode(g.name());
   EXPECT_EQ(2, transformed_g->input_size());
-  EXPECT_EQ("ReLUGrad", transformed_g->input(0));
+  EXPECT_EQ("gradients/ReLUGrad", transformed_g->input(0));
   EXPECT_EQ("Conv", transformed_g->input(1));
 
   NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed/BN");
   EXPECT_EQ(2, recomputed_b->input_size());
   EXPECT_EQ("Conv", recomputed_b->input(0));
-  EXPECT_EQ("^BN1Grad", recomputed_b->input(1).substr(0, 8));
+  EXPECT_EQ("^RecomputeTrigger/BN", recomputed_b->input(1));
+  NodeDef* recompute_trigger_b =
+      post_transform_node_map.GetNode("RecomputeTrigger/BN");
+  EXPECT_EQ(1, recompute_trigger_b->input_size());
+  EXPECT_EQ("^RecomputeTrigger/ReLU", recompute_trigger_b->input(0));
+
   NodeDef* recomputed_c = post_transform_node_map.GetNode("Recomputed/ReLU");
   EXPECT_EQ(2, recomputed_c->input_size());
   EXPECT_EQ("Recomputed/BN", recomputed_c->input(0));
-  EXPECT_EQ("^BN1Grad", recomputed_c->input(1).substr(0, 8));
+  EXPECT_EQ("^RecomputeTrigger/ReLU", recomputed_c->input(1));
+  NodeDef* recompute_trigger_c =
+      post_transform_node_map.GetNode("RecomputeTrigger/ReLU");
+  EXPECT_EQ(1, recompute_trigger_c->input_size());
+  EXPECT_EQ("^gradients/BN1Grad", recompute_trigger_c->input(0));
 }
 
 class MemoryOptimizerTest : public ::testing::Test {
  public:
-  static VirtualCluster CreateVirtualCluster() {
+  static std::unique_ptr<VirtualCluster> CreateVirtualCluster() {
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
     cpu_device.set_frequency(1000);
@@ -125,7 +144,7 @@ class MemoryOptimizerTest : public ::testing::Test {
     cpu_device.set_bandwidth(32);
     std::unordered_map<string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
-    return VirtualCluster(devices);
+    return std::unique_ptr<VirtualCluster>(new VirtualCluster(devices));
   }
 };
 
@@ -148,11 +167,11 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
       (*item.graph.mutable_node(4)->mutable_attr())["_swap_to_host"];
   val.mutable_list()->add_i(0);
 
-  VirtualCluster cluster(CreateVirtualCluster());
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
 
-  MemoryOptimizer optimizer;
+  MemoryOptimizer optimizer(RewriterConfig::MANUAL);
   GraphDef output;
-  Status status = optimizer.Optimize(&cluster, item, &output);
+  Status status = optimizer.Optimize(cluster.get(), item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(7, output.node_size());

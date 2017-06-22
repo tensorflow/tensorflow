@@ -103,8 +103,7 @@ class DynamicStitchOp : public XlaOpKernel {
     int max_index = -1;
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
-        max_index = std::max(
-            max_index, xla::LiteralUtil::Get<int>(indices[input_num], {i}));
+        max_index = std::max(max_index, indices[input_num].Get<int>({i}));
       }
     }
     int number_of_indices = max_index + 1;
@@ -118,7 +117,7 @@ class DynamicStitchOp : public XlaOpKernel {
     int index_used_count = 0;
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
-        int index = xla::LiteralUtil::Get<int>(indices[input_num], {i});
+        int index = indices[input_num].Get<int>({i});
         src_input_vector[index] = input_num;
         src_slice_vector[index] = i;
         if (!src_index_used[index]) {

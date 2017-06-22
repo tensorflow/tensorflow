@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import gzip
 import os
+import shutil
 import threading
 import zlib
 
@@ -35,6 +36,8 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
+
+prefix_path = "tensorflow/core/lib"
 
 # pylint: disable=invalid-name
 TFRecordCompressionType = tf_record.TFRecordCompressionType
@@ -858,48 +861,50 @@ class AsyncReaderTest(test.TestCase):
     output.append(sess.run(args))
 
 
-# TODO(jhseu): Restore after fixing.
-#class LMDBReaderTest(test.TestCase):
-#
-#  def setUp(self):
-#    super(LMDBReaderTest, self).setUp()
-#
-#  def testReadFromFile(self):
-#    with self.test_session() as sess:
-#      reader = io_ops.LMDBReader(name="test_read_from_file")
-#      path = os.path.join("tensorflow", "core", "lib", "lmdb", "testdata",
-#                          "data.mdb")
-#      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-#      key, value = reader.read(queue)
-#
-#      queue.enqueue([path]).run()
-#      queue.close().run()
-#      for i in range(10):
-#        k, v = sess.run([key, value])
-#        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
-#        self.assertAllEqual(compat.as_bytes(v), compat.as_bytes(str(chr(ord('a') + i))))
-#
-#      with self.assertRaisesOpError("is closed and has insufficient elements "
-#                                    "\\(requested 1, current size 0\\)"):
-#        k, v = sess.run([key, value])
-#
-#  def testReadFromFolder(self):
-#    with self.test_session() as sess:
-#      reader = io_ops.LMDBReader(name="test_read_from_folder")
-#      path = os.path.join("tensorflow", "core", "lib", "lmdb", "testdata")
-#      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
-#      key, value = reader.read(queue)
-#
-#      queue.enqueue([path]).run()
-#      queue.close().run()
-#      for i in range(10):
-#        k, v = sess.run([key, value])
-#        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
-#        self.assertAllEqual(compat.as_bytes(v), compat.as_bytes(str(chr(ord('a') + i))))
-#
-#      with self.assertRaisesOpError("is closed and has insufficient elements "
-#                                    "\\(requested 1, current size 0\\)"):
-#        k, v = sess.run([key, value])
+class LMDBReaderTest(test.TestCase):
+
+  def setUp(self):
+    super(LMDBReaderTest, self).setUp()
+    # Copy database out because we need the path to be writable to use locks.
+    path = os.path.join(prefix_path, "lmdb", "testdata", "data.mdb")
+    self.db_path = os.path.join(self.get_temp_dir(), "data.mdb")
+    shutil.copy(path, self.db_path)
+
+  def testReadFromFile(self):
+    with self.test_session() as sess:
+      reader = io_ops.LMDBReader(name="test_read_from_file")
+      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue([self.db_path]).run()
+      queue.close().run()
+      for i in range(10):
+        k, v = sess.run([key, value])
+        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
+        self.assertAllEqual(
+            compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
+
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
+
+  def testReadFromFolder(self):
+    with self.test_session() as sess:
+      reader = io_ops.LMDBReader(name="test_read_from_folder")
+      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue([self.db_path]).run()
+      queue.close().run()
+      for i in range(10):
+        k, v = sess.run([key, value])
+        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
+        self.assertAllEqual(
+            compat.as_bytes(v), compat.as_bytes(str(chr(ord("a") + i))))
+
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
 
 
 if __name__ == "__main__":
