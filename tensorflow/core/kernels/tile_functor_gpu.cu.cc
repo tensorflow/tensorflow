@@ -67,7 +67,7 @@ void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
   d.memcpyHostToDevice(dev_buf, host_buf.data(), num_bytes);
   // Launch kernel to q[...] = p[...].
   const T* p = in.flat<T>().data();
-  T* q = const_cast<T*>((out->flat<T>().data()));
+  T* q = out->flat<T>().data();
   CudaLaunchConfig cfg = GetCudaLaunchConfig(out_nelem, d);
   TileKernel<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
       cfg.virtual_thread_count, p, reinterpret_cast<const int32*>(dev_buf),
