@@ -58,7 +58,9 @@ class WorkerCacheLogger {
   // later retrieval by RetrieveLogs().
   void RecordRecvTensor(int64 step_id, int64 start_usecs, int64 end_usecs,
                         const string& tensor_name, const string& src_device,
-                        const string& dst_device, int64 bytes);
+                        const string& dst_device, int64 bytes,
+                        const string& node="",
+                        const string& title="RecvTensor");
 
  private:
   mutex count_mu_;
