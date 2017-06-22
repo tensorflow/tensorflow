@@ -34,7 +34,7 @@ class RecomputeSubgraphTest : public ::testing::Test {};
 TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("a"), 1.f, {2, 3, 4});
+  Output a = ops::Variable(s.WithOpName("a"), {2, 3, 4}, DT_FLOAT);
   Output b = ops::Identity(s.WithOpName("b"), a);  // Recomputed
   Output c = ops::Identity(s.WithOpName("c"), b);
   Output d = ops::AddN(s.WithOpName("gradients/d"), {c});
@@ -72,8 +72,8 @@ TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
 TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("a"), 1.f, {2, 3, 4});
-  Output b = ops::Const(s.WithOpName("b"), 1.f, {2, 3, 4});
+  Output a = ops::Variable(s.WithOpName("a"), {2, 3, 4}, DT_FLOAT);
+  Output b = ops::Variable(s.WithOpName("b"), {2, 3, 4}, DT_FLOAT);
   Output d = ops::AddN(s.WithOpName("gradients/two_subgraph_inputs"), {a, b});
 
   GrapplerItem item;
@@ -102,7 +102,7 @@ TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
 TEST_F(RecomputeSubgraphTest, MultiNode) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("Conv"), 1.f, {2, 3, 4});
+  Output a = ops::Variable(s.WithOpName("Conv"), {2, 3, 4}, DT_FLOAT);
   Output b = ops::Identity(s.WithOpName("BN"), a);    // Recomputed
   Output c = ops::Identity(s.WithOpName("ReLU"), b);  // Recomputed
   Output d = ops::Identity(s.WithOpName("Conv1"), c);
@@ -182,7 +182,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   // Build a simple graph with an op that's marked for swapping.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  Output a = ops::Variable(s.WithOpName("a"), {10, 10}, DT_FLOAT);
   Output b = ops::AddN(s.WithOpName("b"), {a});
   Output c = ops::AddN(s.WithOpName("c"), {b});
   Output d = ops::AddN(s.WithOpName("d"), {c});
