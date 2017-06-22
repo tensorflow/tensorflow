@@ -738,6 +738,16 @@ class HloInstruction {
     return called_computations_;
   }
 
+  // Replaces all called computations based on a map function. This is needed
+  // when we clone hlo_computations and want to let the instructions to point
+  // to the newly cloned nodes.
+  void ReplaceCalledComputations(
+      std::function<HloComputation*(HloComputation*)> map_function) {
+    for (int64 i = 0; i < called_computations_.size(); ++i) {
+      called_computations_[i] = map_function(called_computations_[i]);
+    }
+  }
+
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
   // after performing necessary implicit broadcast
