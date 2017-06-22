@@ -87,15 +87,17 @@ void WorkerCacheLogger::RecordRecvTensor(int64 step_id, int64 start_usecs,
                                          const string& tensor_name,
                                          const string& src_device,
                                          const string& dst_device,
-                                         int64 bytes) {
+                                         int64 bytes,
+                                         const string& note,
+                                         const string& title) {
   NodeExecStats* ns = new NodeExecStats;
-  ns->set_node_name("RecvTensor");
+  ns->set_node_name(title);
   string byte_string = strings::StrCat("[", bytes, "B] ");
   if (bytes >= 0.1 * 1048576.0) {
     byte_string = strings::Printf("[%.1fMB] ", bytes / 1048576.0);
   }
   ns->set_timeline_label(strings::StrCat(byte_string, tensor_name, " from ",
-                                         src_device, " to ", dst_device));
+                                         src_device, " to ", dst_device, note));
   ns->set_all_start_micros(start_usecs);
   ns->set_op_start_rel_micros(0);
   int64 elapsed = end_usecs - start_usecs;
