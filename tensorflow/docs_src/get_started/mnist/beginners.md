@@ -367,7 +367,7 @@ train_step = tf.train.GradientDescentOptimizer(0.05).minimize(cross_entropy)
 
 In this case, we ask TensorFlow to minimize `cross_entropy` using the
 [gradient descent algorithm](https://en.wikipedia.org/wiki/Gradient_descent)
-with a learning rate of 0.5. Gradient descent is a simple procedure, where
+with a learning rate of 0.05. Gradient descent is a simple procedure, where
 TensorFlow simply shifts each variable a little bit in the direction that
 reduces the cost. But TensorFlow also provides
 @{$python/train#Optimizers$many other optimization algorithms}:
