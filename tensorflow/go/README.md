@@ -9,37 +9,6 @@ Construct and execute TensorFlow graphs in Go.
 > (`github.com/tensorflow/tensorflow/tensorflow/go`).
 
 ## Quickstart
-1.  Download and extract the TensorFlow C library, preferably into `/usr/local`.
-    GPU-enabled versions require CUDA 8.0 and cuDNN 5.1. For other versions, the
-    TensorFlow C library will have to be built from source (see below).
-
-    -   Linux:
-        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-cpu-linux-x86_64-1.1.0.tar.gz),
-        [GPU-enabled](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-gpu-linux-x86_64-1.1.0.tar.gz)
-    -   OS X
-        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-cpu-darwin-x86_64-1.1.0.tar.gz),
-
-    The following shell snippet downloads and extracts into `/usr/local`:
-
-    ```sh
-    TF_TYPE="cpu" # Set to "gpu" for GPU support
-    curl -L \
-      "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-$(go env GOOS)-x86_64-1.1.0.tar.gz" |
-    sudo tar -C /usr/local -xz
-    export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/lib
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
-    ```
-
-2.  `go get` this package (and run tests):
-
-    ```sh
-    go get github.com/tensorflow/tensorflow/tensorflow/go
-    go test github.com/tensorflow/tensorflow/tensorflow/go
-    ```
-
-3.  Done!
-
-### Installing into locations other than `/usr/local`
 
 Refer to [Installing TensorFlow for Go](https://www.tensorflow.org/install/install_go)
 
