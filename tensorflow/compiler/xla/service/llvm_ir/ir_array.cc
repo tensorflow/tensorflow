@@ -158,7 +158,7 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     tensorflow::gtl::ArraySlice<int64> dimension_mapping,
     llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> operand_multidim_index =
-      Permute<std::vector, llvm::Value*>(dimension_mapping, multidim());
+      Permute(dimension_mapping, multidim());
   if (linear() != nullptr &&
       ShapeUtil::TransposeIsBitcast(operand_shape, shape, dimension_mapping)) {
     return Index(operand_multidim_index, linear(), operand_shape);
