@@ -575,7 +575,10 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
     for (const auto& node : graph_.node()) {
       if (IsFoldable(node) &&
           processed_nodes.find(node.name()) == processed_nodes.end()) {
-        TF_RETURN_IF_ERROR(FoldNode(node, output));
+        Status s = FoldNode(node, output);
+        if (!s.ok()) {
+          VLOG(1) << "Failed to fold node " << node.name() << ": " << s;
+        }
         processed_nodes.insert(node.name());
       }
     }
