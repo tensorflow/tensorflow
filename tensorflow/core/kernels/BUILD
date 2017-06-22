@@ -236,7 +236,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
-    ] + if_sycl([ "//tensorflow/core:sycl_runtime"]),
+    ],
 )
 
 cc_library(
@@ -486,7 +486,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
-] + if_sycl(["//tensorflow/core:sycl_runtime"])
+]
 
 cc_library(
     name = "array_not_windows",
@@ -3448,7 +3448,7 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:state_ops_op_lib",
-] + if_sycl(["//tensorflow/core:sycl_runtime"])
+]
 
 tf_kernel_library(
     name = "count_up_to_op",
