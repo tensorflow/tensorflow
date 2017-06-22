@@ -722,13 +722,13 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "tile_ops",
-    prefix = "tile_ops",
     srcs = ["tile_functor_cpu.cc"],
     hdrs = ["tile_functor.h"],
     gpu_srcs = [
-        "tile_functor_gpu.cu.cc",
         "tile_functor.h",
+        "tile_functor_gpu.cu.cc",
     ],
+    prefix = "tile_ops",
     deps = ARRAY_DEPS,
 )
 
