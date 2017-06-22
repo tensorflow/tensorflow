@@ -110,6 +110,60 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
 }
 
 // Check it goes through call sites
+TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
+  Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
+
+  Shape conv_shape = ShapeInference::InferConvolveShape(
+          input_shape, weight_shape,
+          GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+
+  /* Create convolution sub-computation */
+  auto builder_sub = HloComputation::Builder(TestName());
+  auto op0_sub = builder_sub.AddInstruction(
+        HloInstruction::CreateParameter(0, input_shape, "input"));
+  auto op1_sub = builder_sub.AddInstruction(
+        HloInstruction::CreateParameter(1, weight_shape, "weights"));
+
+  auto conv = builder_sub.AddInstruction(
+        HloInstruction::CreateConvolve(conv_shape, op0_sub, op1_sub,
+                                       GetConv1Window(), GetConvDimensions()));
+
+  auto computation_sub = builder_sub.Build();
+
+  /* Create main computation */
+  auto builder_main = HloComputation::Builder(TestName());
+  auto op0 = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(0, input_shape, "op0"));
+  auto op1 = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(1, input_shape, "op1"));
+  auto op2 = builder_main.AddInstruction(
+          HloInstruction::CreateParameter(2, weight_shape, "op2"));
+
+  auto add = builder_main.AddInstruction(
+          HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
+
+  auto call = builder_main.AddInstruction(
+          HloInstruction::CreateCall(conv_shape, {op1, op2},
+                                     computation_sub.get()));
+
+  builder_main.AddInstruction(
+          HloInstruction::CreateTuple({add, call}));
+
+  auto computation_main = builder_main.Build();
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEmbeddedComputation(std::move(computation_sub));
+  hlo_module->AddEntryComputation(std::move(computation_main));
+
+  AllocationFinder finder;
+  TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
+
+  EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), conv);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), conv);
+}
+
 
 // Check it works for multiple valid destinations
 

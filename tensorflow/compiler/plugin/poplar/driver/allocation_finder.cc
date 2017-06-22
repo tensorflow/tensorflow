@@ -85,12 +85,32 @@ public:
 
 HloInstruction* AllocationFinder::FindConsumers(HloInstruction* inst) {
   for (auto user : inst->users()) {
-    if (user->opcode() == HloOpcode::kConvolution) {
-      return user;
-    }
-    HloInstruction* target = FindConsumers(user);
-    if (target != nullptr) {
-      return target;
+    switch (user->opcode()) {
+      case HloOpcode::kConvolution:
+        return user;
+      case HloOpcode::kCall:
+      {
+        int64 op_index = user->operand_index(inst);
+        HloComputation* comp = user->to_apply();
+        HloInstruction* param = comp->parameter_instruction(op_index);
+        HloInstruction *target = FindConsumers(param);
+        if (target != nullptr) {
+          return target;
+        }
+        // if nothing appears then check the users of the call
+        target = FindConsumers(user);
+        if (target != nullptr) {
+          return target;
+        }
+        break;
+      }
+      // TODO add other opcodes in here (reduce, ???)
+      default:
+        HloInstruction *target = FindConsumers(user);
+        if (target != nullptr) {
+          return target;
+        }
+        break;
     }
   }
   return nullptr;
