@@ -39,7 +39,8 @@ class TFProfTimelineTest : public ::testing::Test {
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "tools/tfprof/internal/testdata/graph.pbtxt");
     std::unique_ptr<tensorflow::GraphDef> graph_pb(new tensorflow::GraphDef());
-    TF_CHECK_OK(ReadGraphDef(Env::Default(), graph_path, graph_pb.get()));
+    TF_CHECK_OK(
+        ReadProtoFile(Env::Default(), graph_path, graph_pb.get(), false));
 
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb(
         new tensorflow::RunMetadata());
@@ -47,7 +48,7 @@ class TFProfTimelineTest : public ::testing::Test {
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "tools/tfprof/internal/testdata/run_meta");
     TF_CHECK_OK(
-        ReadBinaryProto(Env::Default(), run_meta_path, run_meta_pb.get()));
+        ReadProtoFile(Env::Default(), run_meta_path, run_meta_pb.get(), true));
 
     tf_stats_.reset(new TFStats(std::move(graph_pb), std::move(run_meta_pb),
                                 nullptr, nullptr));

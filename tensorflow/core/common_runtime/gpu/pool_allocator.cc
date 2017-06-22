@@ -239,11 +239,9 @@ void PoolAllocator::EvictOne() {
         (alloc_request_count == 0)
             ? 0.0
             : allocated_count_ / static_cast<double>(alloc_request_count);
-    static int log_counter = 0;
-    // (counter increment not thread safe but it's just for logging, so we
-    // don't care).
-    bool should_log = ((log_counter++ % 10) == 0);
-    if (should_log) {
+    // Can turn on for debugging purposes.
+    const bool kShouldLog = false;
+    if (kShouldLog) {
       LOG(INFO) << "PoolAllocator: After " << alloc_request_count
                 << " get requests, put_count=" << put_count_
                 << " evicted_count=" << evicted_count_
@@ -255,7 +253,7 @@ void PoolAllocator::EvictOne() {
       size_t new_size_limit = (pool_size_limit_ < kMinPoolSize)
                                   ? kMinPoolSize
                                   : (kIncreaseFactor * pool_size_limit_);
-      if (should_log) {
+      if (kShouldLog) {
         LOG(INFO) << "Raising pool_size_limit_ from " << pool_size_limit_
                   << " to " << new_size_limit;
       }

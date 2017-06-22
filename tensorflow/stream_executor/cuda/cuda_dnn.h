@@ -455,7 +455,7 @@ class CudnnSupport : public dnn::DnnSupport {
                          dnn::DataType input_type,
                          const DeviceMemoryBase& input_data,
                          const dnn::BatchDescriptor& output_desc,
-                         dnn::DataType output_type,
+                         dnn::DataType output_type, float scale,
                          DeviceMemoryBase* output_data) override;
 
  private:

@@ -129,16 +129,18 @@ void XlaContext::AddSideEffects() {
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
-Status XlaContext::CreateVariable(int arg_num, string name, DataType type,
+Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
+                                  string name, DataType type,
                                   const xla::ComputationDataHandle& handle,
-                                  XlaVariable** variable) {
-  variables_.emplace_back(new XlaVariable);
-  *variable = variables_.back().get();
-  XlaVariable& var = **variable;
-  var.arg_num = arg_num;
-  var.name = std::move(name);
-  var.type = type;
-  var.initial_value = var.value = handle;
+                                  XlaResource** resource) {
+  resources_.emplace_back(new XlaResource);
+  *resource = resources_.back().get();
+  XlaResource& r = **resource;
+  r.kind = kind;
+  r.arg_num = arg_num;
+  r.name = std::move(name);
+  r.type = type;
+  r.initial_value = r.value = handle;
   return Status::OK();
 }
 

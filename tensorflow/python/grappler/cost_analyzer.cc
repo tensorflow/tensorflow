@@ -30,11 +30,11 @@ CostAnalyzer::CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
       analytical_estimator_(cluster, false),
       suffix_(suffix) {}
 
-Status CostAnalyzer::GenerateReport(std::ostream& os) {
+Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report) {
   GatherCosts();
   PreprocessCosts();
   AnalyzeCosts();
-  PrintAnalysis(os);
+  PrintAnalysis(os, per_node_report);
   return Status::OK();
 }
 
@@ -158,7 +158,7 @@ void CostAnalyzer::AnalyzeCosts() {
   }
 }
 
-void CostAnalyzer::PrintAnalysis(std::ostream& os) const {
+void CostAnalyzer::PrintAnalysis(std::ostream& os, bool per_node_report) const {
   os << std::endl;
   os << std::left << std::setw(50)
      << "Total time measured in ns (serialized): " << std::right
@@ -225,6 +225,11 @@ void CostAnalyzer::PrintAnalysis(std::ostream& os) const {
     os << std::endl;
   }
   os << std::endl;
+
+  if (per_node_report) {
+    os << "Below is the per-node report:" << std::endl;
+    os << op_perf_.DebugString();
+  }
 }
 
 }  // end namespace grappler

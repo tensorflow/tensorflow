@@ -309,17 +309,8 @@ TEST_F(GraphPropertiesTest, Queues) {
   EXPECT_EQ("float: [1,2,3]", PropToString(props5[2]));
 }
 
-TEST_F(GraphPropertiesTest, Loops) {
-  // Test graph produced in python using:
-  /*
-     with tf.Graph().as_default():
-       i = tf.constant(0)
-       c = lambda i: tf.less(i, 10)
-       b = lambda i: tf.add(i, 1)
-       r = tf.while_loop(c, b, [i])
-       with open('/tmp/graph.txt', 'w') as f:
-         f.write(str(tf.get_default_graph().as_graph_def()))
-  */
+TEST_F(GraphPropertiesTest, WhileLoop) {
+  // Python code used to generate the graph is below.
   const string gdef_ascii = R"EOF(
 node {
   name: "Const"
@@ -343,6 +334,33 @@ node {
   }
 }
 node {
+  name: "ones"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 2
+          }
+        }
+        float_val: 1.0
+      }
+    }
+  }
+}
+node {
   name: "while/Enter"
   op: "Enter"
   input: "Const"
@@ -350,6 +368,35 @@ node {
     key: "T"
     value {
       type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Enter_1"
+  op: "Enter"
+  input: "ones"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
     }
   }
   attr {
@@ -386,6 +433,24 @@ node {
     key: "T"
     value {
       type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Merge_1"
+  op: "Merge"
+  input: "while/Enter_1"
+  input: "while/NextIteration_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
     }
   }
 }
@@ -449,6 +514,26 @@ node {
   }
 }
 node {
+  name: "while/Switch_1"
+  op: "Switch"
+  input: "while/Merge_1"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge_1"
+      }
+    }
+  }
+}
+node {
   name: "while/Identity"
   op: "Identity"
   input: "while/Switch:1"
@@ -460,7 +545,18 @@ node {
   }
 }
 node {
-  name: "while/Add/y"
+  name: "while/Identity_1"
+  op: "Identity"
+  input: "while/Switch_1:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/add/y"
   op: "Const"
   input: "^while/Identity"
   attr {
@@ -482,10 +578,10 @@ node {
   }
 }
 node {
-  name: "while/Add"
+  name: "while/add"
   op: "Add"
   input: "while/Identity"
-  input: "while/Add/y"
+  input: "while/add/y"
   attr {
     key: "T"
     value {
@@ -494,13 +590,71 @@ node {
   }
 }
 node {
+  name: "while/concat/axis"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/concat"
+  op: "ConcatV2"
+  input: "while/Identity_1"
+  input: "while/Identity_1"
+  input: "while/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
   name: "while/NextIteration"
   op: "NextIteration"
-  input: "while/Add"
+  input: "while/add"
   attr {
     key: "T"
     value {
       type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration_1"
+  op: "NextIteration"
+  input: "while/concat"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
     }
   }
 }
@@ -515,21 +669,2333 @@ node {
     }
   }
 }
+node {
+  name: "while/Exit_1"
+  op: "Exit"
+  input: "while/Switch_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
 versions {
-  producer: 11
+  producer: 21
 }
   )EOF";
+
+  // Test graph produced in python using:
+  /*
+     with tf.Graph().as_default():
+       i0 = tf.constant(0)
+       m0 = tf.ones([2, 2])
+       c = lambda i, m: i < 10
+       b = lambda i, m: [i+1, tf.concat([m, m], axis=0)]
+       r = tf.while_loop(
+              c, b, loop_vars=[i0, m0],
+              shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
+       with open('/tmp/graph.pbtxt', 'w') as f:
+         f.write(str(tf.get_default_graph().as_graph_def()))
+  */
 
   GrapplerItem item;
   CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
   GraphProperties properties(item);
   TF_CHECK_OK(properties.InferStatically());
 
-  const auto props = properties.GetOutputProperties("while/Exit");
-  EXPECT_EQ(1, props.size());
+  std::vector<string> nodes{"while/Merge_1", "while/NextIteration_1",
+                            "while/Exit_1"};
+  for (const string& node : nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,2]", PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, NestedLoop) {
+  // Python code used to generate the graph is below.
+  const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "ones"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+        }
+        float_val: 1.0
+      }
+    }
+  }
+}
+node {
+  name: "while/Enter"
+  op: "Enter"
+  input: "Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Enter_1"
+  op: "Enter"
+  input: "ones"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Merge"
+  op: "Merge"
+  input: "while/Enter"
+  input: "while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Merge_1"
+  op: "Merge"
+  input: "while/Enter_1"
+  input: "while/NextIteration_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/Less/y"
+  op: "Const"
+  input: "^while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 3
+      }
+    }
+  }
+}
+node {
+  name: "while/Less"
+  op: "Less"
+  input: "while/Merge"
+  input: "while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/LoopCond"
+  op: "LoopCond"
+  input: "while/Less"
+}
+node {
+  name: "while/Switch"
+  op: "Switch"
+  input: "while/Merge"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/Switch_1"
+  op: "Switch"
+  input: "while/Merge_1"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge_1"
+      }
+    }
+  }
+}
+node {
+  name: "while/Identity"
+  op: "Identity"
+  input: "while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Identity_1"
+  op: "Identity"
+  input: "while/Switch_1:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/while/Const"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/while/Enter"
+  op: "Enter"
+  input: "while/while/Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/while/Enter_1"
+  op: "Enter"
+  input: "while/Identity_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/while/Merge"
+  op: "Merge"
+  input: "while/while/Enter"
+  input: "while/while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/Merge_1"
+  op: "Merge"
+  input: "while/while/Enter_1"
+  input: "while/while/NextIteration_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/while/Less/y"
+  op: "Const"
+  input: "^while/while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 3
+      }
+    }
+  }
+}
+node {
+  name: "while/while/Less"
+  op: "Less"
+  input: "while/while/Merge"
+  input: "while/while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/LoopCond"
+  op: "LoopCond"
+  input: "while/while/Less"
+}
+node {
+  name: "while/while/Switch"
+  op: "Switch"
+  input: "while/while/Merge"
+  input: "while/while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/while/Switch_1"
+  op: "Switch"
+  input: "while/while/Merge_1"
+  input: "while/while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/while/Merge_1"
+      }
+    }
+  }
+}
+node {
+  name: "while/while/Identity"
+  op: "Identity"
+  input: "while/while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/Identity_1"
+  op: "Identity"
+  input: "while/while/Switch_1:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/while/add/y"
+  op: "Const"
+  input: "^while/while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "while/while/add"
+  op: "Add"
+  input: "while/while/Identity"
+  input: "while/while/add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/concat/axis"
+  op: "Const"
+  input: "^while/while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "while/while/concat"
+  op: "ConcatV2"
+  input: "while/while/Identity_1"
+  input: "while/while/Identity_1"
+  input: "while/while/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/NextIteration"
+  op: "NextIteration"
+  input: "while/while/add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/NextIteration_1"
+  op: "NextIteration"
+  input: "while/while/concat"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/while/Exit"
+  op: "Exit"
+  input: "while/while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/Exit_1"
+  op: "Exit"
+  input: "while/while/Switch_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/add/y"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "while/add"
+  op: "Add"
+  input: "while/Identity"
+  input: "while/add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/concat/axis"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/concat"
+  op: "ConcatV2"
+  input: "while/Identity_1"
+  input: "while/Identity_1"
+  input: "while/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration"
+  op: "NextIteration"
+  input: "while/add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration_1"
+  op: "NextIteration"
+  input: "while/concat"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/Exit"
+  op: "Exit"
+  input: "while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Exit_1"
+  op: "Exit"
+  input: "while/Switch_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+versions {
+  producer: 21
+}
+  )EOF";
+
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i0 = tf.constant(0)
+
+      def inner(j, y):
+        def inner_cond(j, y):
+          return j < 3
+
+        def inner_body(j, y):
+          return j+1, tf.concat([y, y], axis=2)
+
+        return tf.while_loop(inner_cond, inner_body, loop_vars=[j, y],
+                             shape_invariants=[i0.get_shape(),
+                                              tf.TensorShape([None, 1, None])])
+
+      def outer_cond(i, x):
+        return i < 3
+
+      def outer_body(i, x):
+        j, y = inner(0, x)
+        return i+1, tf.concat([x, x], axis=0)
+
+      r = tf.while_loop(outer_cond, outer_body,
+                        loop_vars=[i0, tf.ones([1, 1, 1])],
+                        shape_invariants=[i0.get_shape(),
+                                          tf.TensorShape([None, 1, None])])
+
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+  */
+
+  GrapplerItem item;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
+                                  "while/Exit_1"};
+  std::vector<string> inner_nodes{"while/while/Merge_1",
+                                  "while/while/NextIteration_1",
+                                  "while/while/Exit_1"};
+  for (const string& node : outer_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,1,1]", PropToString(prop));
+  }
+  for (const string& node : inner_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,1,-1]", PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, LoopsAndQueues) {
+  // Python code used to generate the graph is below.
+  const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "fifo_queue"
+  op: "FIFOQueueV2"
+  attr {
+    key: "capacity"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "component_types"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "shapes"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "ones"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+        }
+        float_val: 1.0
+      }
+    }
+  }
+}
+node {
+  name: "while/Enter"
+  op: "Enter"
+  input: "Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Enter_1"
+  op: "Enter"
+  input: "ones"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Merge"
+  op: "Merge"
+  input: "while/Enter"
+  input: "while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Merge_1"
+  op: "Merge"
+  input: "while/Enter_1"
+  input: "while/NextIteration_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/Less/y"
+  op: "Const"
+  input: "^while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 3
+      }
+    }
+  }
+}
+node {
+  name: "while/Less"
+  op: "Less"
+  input: "while/Merge"
+  input: "while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/LoopCond"
+  op: "LoopCond"
+  input: "while/Less"
+}
+node {
+  name: "while/Switch"
+  op: "Switch"
+  input: "while/Merge"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/Switch_1"
+  op: "Switch"
+  input: "while/Merge_1"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge_1"
+      }
+    }
+  }
+}
+node {
+  name: "while/Identity"
+  op: "Identity"
+  input: "while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Identity_1"
+  op: "Identity"
+  input: "while/Switch_1:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/fifo_queue_enqueue/Enter"
+  op: "Enter"
+  input: "fifo_queue"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/fifo_queue_enqueue"
+  op: "QueueEnqueueV2"
+  input: "while/fifo_queue_enqueue/Enter"
+  input: "while/Identity_1"
+  attr {
+    key: "Tcomponents"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "timeout_ms"
+    value {
+      i: -1
+    }
+  }
+}
+node {
+  name: "while/concat/axis"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "while/concat"
+  op: "ConcatV2"
+  input: "while/Identity_1"
+  input: "while/Identity_1"
+  input: "while/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/fifo_queue_Dequeue"
+  op: "QueueDequeueV2"
+  input: "while/fifo_queue_enqueue/Enter"
+  input: "^while/Identity"
+  attr {
+    key: "component_types"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "timeout_ms"
+    value {
+      i: -1
+    }
+  }
+}
+node {
+  name: "while/while/Const"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/while/Enter"
+  op: "Enter"
+  input: "while/while/Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/while/Enter_1"
+  op: "Enter"
+  input: "while/fifo_queue_Dequeue"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/while/Merge"
+  op: "Merge"
+  input: "while/while/Enter"
+  input: "while/while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/Merge_1"
+  op: "Merge"
+  input: "while/while/Enter_1"
+  input: "while/while/NextIteration_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/while/Less/y"
+  op: "Const"
+  input: "^while/while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 3
+      }
+    }
+  }
+}
+node {
+  name: "while/while/Less"
+  op: "Less"
+  input: "while/while/Merge"
+  input: "while/while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/LoopCond"
+  op: "LoopCond"
+  input: "while/while/Less"
+}
+node {
+  name: "while/while/Switch"
+  op: "Switch"
+  input: "while/while/Merge"
+  input: "while/while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/while/Switch_1"
+  op: "Switch"
+  input: "while/while/Merge_1"
+  input: "while/while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/while/Merge_1"
+      }
+    }
+  }
+}
+node {
+  name: "while/while/Identity"
+  op: "Identity"
+  input: "while/while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/Identity_1"
+  op: "Identity"
+  input: "while/while/Switch_1:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/while/add/y"
+  op: "Const"
+  input: "^while/while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "while/while/add"
+  op: "Add"
+  input: "while/while/Identity"
+  input: "while/while/add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/concat/axis"
+  op: "Const"
+  input: "^while/while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/while/concat"
+  op: "ConcatV2"
+  input: "while/while/Identity_1"
+  input: "while/while/Identity_1"
+  input: "while/while/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/NextIteration"
+  op: "NextIteration"
+  input: "while/while/add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/NextIteration_1"
+  op: "NextIteration"
+  input: "while/while/concat"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/while/Exit"
+  op: "Exit"
+  input: "while/while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/while/Exit_1"
+  op: "Exit"
+  input: "while/while/Switch_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/add/y"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "while/add"
+  op: "Add"
+  input: "while/Identity"
+  input: "while/add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration"
+  op: "NextIteration"
+  input: "while/add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration_1"
+  op: "NextIteration"
+  input: "while/concat"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/Exit"
+  op: "Exit"
+  input: "while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Exit_1"
+  op: "Exit"
+  input: "while/Switch_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+versions {
+  producer: 21
+}
+  )EOF";
+
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i0 = tf.constant(0)
+      q = tf.FIFOQueue(1, "float")
+
+      def inner(j, y):
+        def inner_cond(j, y):
+          return j < 3
+
+        def inner_body(j, y):
+          return j+1, tf.concat([y, y], axis=0)
+
+        return tf.while_loop(inner_cond, inner_body,
+                             loop_vars=[j, y],
+                             shape_invariants=[i0.get_shape(),
+                                               tf.TensorShape(None)])
+
+      def outer_cond(i, x):
+        return i < 3
+
+      def outer_body(i, x):
+        q.enqueue(x)
+        y = tf.concat([x, x], axis=2)
+        inner(0, q.dequeue())
+        return i+1, y
+
+      i, z = tf.while_loop(outer_cond, outer_body,
+                           loop_vars=[i0, tf.ones([1, 1, 1])],
+                           shape_invariants=[i0.get_shape(),
+                                             tf.TensorShape([None, 1, None])])
+
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+   */
+
+  GrapplerItem item;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> outer_nodes{"while/Merge_1", "while/NextIteration_1",
+                                  "while/Exit_1"};
+  std::vector<string> inner_nodes{"while/while/Merge_1",
+                                  "while/while/NextIteration_1",
+                                  "while/while/Exit_1"};
+  for (const string& node : outer_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [1,1,-1]", PropToString(prop));
+  }
+  for (const string& node : inner_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,1,-1]", PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, QueuesAndLoops) {
+  // Python code used to generate the graph is below.
+  const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "fifo_queue"
+  op: "FIFOQueueV2"
+  attr {
+    key: "capacity"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "component_types"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "shapes"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "ones"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 2
+          }
+        }
+        float_val: 1.0
+      }
+    }
+  }
+}
+node {
+  name: "fifo_queue_enqueue"
+  op: "QueueEnqueueV2"
+  input: "fifo_queue"
+  input: "ones"
+  attr {
+    key: "Tcomponents"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "timeout_ms"
+    value {
+      i: -1
+    }
+  }
+}
+node {
+  name: "fifo_queue_1"
+  op: "FIFOQueueV2"
+  attr {
+    key: "capacity"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "component_types"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "shapes"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "fifo_queue_Dequeue"
+  op: "QueueDequeueV2"
+  input: "fifo_queue"
+  attr {
+    key: "component_types"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "timeout_ms"
+    value {
+      i: -1
+    }
+  }
+}
+node {
+  name: "while/Enter"
+  op: "Enter"
+  input: "Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Enter_1"
+  op: "Enter"
+  input: "fifo_queue_Dequeue"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 10
+    }
+  }
+}
+node {
+  name: "while/Merge"
+  op: "Merge"
+  input: "while/Enter"
+  input: "while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Merge_1"
+  op: "Merge"
+  input: "while/Enter_1"
+  input: "while/NextIteration_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/Less/y"
+  op: "Const"
+  input: "^while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 10
+      }
+    }
+  }
+}
+node {
+  name: "while/Less"
+  op: "Less"
+  input: "while/Merge"
+  input: "while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/LoopCond"
+  op: "LoopCond"
+  input: "while/Less"
+}
+node {
+  name: "while/Switch"
+  op: "Switch"
+  input: "while/Merge"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/Switch_1"
+  op: "Switch"
+  input: "while/Merge_1"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge_1"
+      }
+    }
+  }
+}
+node {
+  name: "while/Identity"
+  op: "Identity"
+  input: "while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Identity_1"
+  op: "Identity"
+  input: "while/Switch_1:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/add/y"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "while/add"
+  op: "Add"
+  input: "while/Identity"
+  input: "while/add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/concat/axis"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "while/concat"
+  op: "ConcatV2"
+  input: "while/Identity_1"
+  input: "while/Identity_1"
+  input: "while/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration"
+  op: "NextIteration"
+  input: "while/add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration_1"
+  op: "NextIteration"
+  input: "while/concat"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "while/Exit"
+  op: "Exit"
+  input: "while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Exit_1"
+  op: "Exit"
+  input: "while/Switch_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "fifo_queue_1_enqueue"
+  op: "QueueEnqueueV2"
+  input: "fifo_queue_1"
+  input: "while/Exit_1"
+  attr {
+    key: "Tcomponents"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "timeout_ms"
+    value {
+      i: -1
+    }
+  }
+}
+node {
+  name: "fifo_queue_1_Dequeue"
+  op: "QueueDequeueV2"
+  input: "fifo_queue_1"
+  attr {
+    key: "component_types"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "timeout_ms"
+    value {
+      i: -1
+    }
+  }
+}
+node {
+  name: "concat/axis"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "concat"
+  op: "ConcatV2"
+  input: "fifo_queue_1_Dequeue"
+  input: "fifo_queue_1_Dequeue"
+  input: "concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 21
+}
+  )EOF";
+
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      i0 = tf.constant(0)
+      q0 = tf.FIFOQueue(1, "float")
+      q0.enqueue(tf.ones([2, 2]))
+      q1 = tf.FIFOQueue(1, "float")
+
+      def c(i, m):
+        return i < 10
+
+      def b(i, m):
+        return i+1, tf.concat([m, m], axis=0)
+
+      i, m = tf.while_loop(
+          c, b, loop_vars=[i0,  q0.dequeue()],
+          shape_invariants=[i0.get_shape(), tf.TensorShape(None)])
+
+      q1.enqueue(m)
+      v = q1.dequeue();
+      tf.concat([v, v], axis=1)
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+  */
+
+  GrapplerItem item;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> nodes{"while/Merge_1", "while/NextIteration_1",
+                            "while/Exit_1"};
+
+  for (const string& node : nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ("float: [-1,2]", PropToString(prop));
+  }
+
+  const auto props = properties.GetOutputProperties("concat");
   const OpInfo::TensorProperties& prop = props[0];
-  EXPECT_EQ(DT_INT32, prop.dtype());
-  EXPECT_TRUE(prop.shape().unknown_rank());
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_EQ("float: [-1,4]", PropToString(prop));
 }
 
 }  // namespace

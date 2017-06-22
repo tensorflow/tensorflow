@@ -48,7 +48,7 @@ namespace {
 // Returns whether operand is a literal with the given value.
 bool IsLiteralWithValue(const HloInstruction* operand, int8 value) {
   return operand->opcode() == HloOpcode::kConstant &&
-         LiteralUtil::IsAll(operand->literal(), value);
+         operand->literal().IsAll(value);
 }
 
 bool IsAll(const HloInstruction* op, int8 value) {
@@ -126,10 +126,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* concatenate,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
 
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleCopy(HloInstruction* copy) override;
 
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* operand) override;
+  Status HandleConvert(HloInstruction* convert) override;
 
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
@@ -179,11 +178,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleSubtract(HloInstruction* sub, HloInstruction* lhs,
                         HloInstruction* rhs) override;
 
-  Status HandleMaximum(HloInstruction* maximum, HloInstruction* lhs,
-                       HloInstruction* rhs) override;
-
-  Status HandleMinimum(HloInstruction* minimum, HloInstruction* lhs,
-                       HloInstruction* rhs) override;
+  Status HandleMaximum(HloInstruction* maximum) override;
+  Status HandleMinimum(HloInstruction* minimum) override;
 
   // Returns whether algebraic simplification has occurred.
   const bool changed() const { return changed_; }
@@ -334,16 +330,16 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add,
   return Status::OK();
 }
 
-Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy,
-                                              HloInstruction* operand) {
+Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
   // If a copy feeds a copy, make it a single copy.
-  if (operand->opcode() == HloOpcode::kCopy) {
+  if (copy->operand(0)->opcode() == HloOpcode::kCopy) {
     return ReplaceWithNewInstruction(
-        copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy,
-                                          operand->operands()[0]));
+        copy, HloInstruction::CreateUnary(
+                  copy->shape(), HloOpcode::kCopy,
+                  copy->mutable_operand(0)->mutable_operand(0)));
   }
   // All copies can be eliminated (assuming layout constraints are satisified).
-  ReplaceInstructionIfSameShape(copy, operand);
+  ReplaceInstructionIfSameShape(copy, copy->mutable_operand(0));
   return Status::OK();
 }
 
@@ -469,7 +465,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
       ShapeUtil::HasZeroElements(lhs->shape()) ||
       ShapeUtil::HasZeroElements(rhs->shape())) {
     auto zero = computation_->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
     return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
@@ -507,7 +503,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
     HloComputation* add_reduce_computation = CreateScalarBinaryComputation(
         computation_->parent(), F32, HloOpcode::kAdd);
     auto zero = computation_->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
     auto reduce = computation_->AddInstruction(HloInstruction::CreateReduce(
         ShapeUtil::MakeShape(dot->shape().element_type(), {}), multiply, zero,
         {0}, add_reduce_computation));
@@ -531,7 +527,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
     HloComputation* add_reduce_computation = CreateScalarBinaryComputation(
         computation_->parent(), F32, HloOpcode::kAdd);
     auto zero = computation_->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
     HloInstruction* reduce;
     if (ShapeUtil::Rank(rhs->shape()) == 1) {
       auto multiply = computation_->AddInstruction(HloInstruction::CreateBinary(
@@ -571,7 +567,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
     HloComputation* add_reduce_computation = CreateScalarBinaryComputation(
         computation_->parent(), F32, HloOpcode::kAdd);
     auto zero = computation_->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
     auto reduce = computation_->AddInstruction(HloInstruction::CreateReduce(
         ShapeUtil::MakeShape(dot->shape().element_type(),
                              {lhs->shape().dimensions(0)}),
@@ -792,12 +788,11 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
 // A conversion to the same element type as the operand is a nop and can be
 // removed.  A conversion of a constant can be simplified by making a new
 // constant.
-Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert,
-                                                 HloInstruction* operand) {
-  PrimitiveType src_type = operand->shape().element_type();
+Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
+  PrimitiveType src_type = convert->operand(0)->shape().element_type();
   PrimitiveType dest_type = convert->shape().element_type();
   if (src_type == dest_type) {
-    return ReplaceInstruction(convert, operand);
+    return ReplaceInstruction(convert, convert->mutable_operand(0));
   }
   return Status::OK();
 }
@@ -897,8 +892,8 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
                                                HloInstruction* rhs) {
   VLOG(10) << "trying transform [pow(A, 0) => 1]: " << power->ToString();
   if (IsAll(rhs, 0)) {
-    auto one = HloInstruction::CreateConstant(LiteralUtil::CloneToUnique(
-        LiteralUtil::One(power->shape().element_type())));
+    auto one = HloInstruction::CreateConstant(
+        Literal::One(power->shape().element_type()).CloneToUnique());
     std::unique_ptr<HloInstruction> ones;
     if (ShapeUtil::IsScalar(power->shape())) {
       ones = std::move(one);
@@ -923,9 +918,8 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
 
   VLOG(10) << "trying transform [pow(A, -1) => 1/A]: " << power->ToString();
   if (IsAll(rhs, -1)) {
-    auto* one = computation_->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CloneToUnique(
-            LiteralUtil::One(rhs->shape().element_type()))));
+    auto* one = computation_->AddInstruction(HloInstruction::CreateConstant(
+        Literal::One(rhs->shape().element_type()).CloneToUnique()));
     return ReplaceWithNewInstruction(
         power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kDivide,
                                             one, lhs));
@@ -1008,7 +1002,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   // dimension.
   if (ShapeUtil::HasZeroElements(reshape->shape())) {
     auto empty_constant = HloInstruction::CreateConstant(
-        LiteralUtil::CreateFromShape(reshape->shape()));
+        Literal::CreateFromShape(reshape->shape()));
 
     return ReplaceWithNewInstruction(reshape, std::move(empty_constant));
   }
@@ -1208,8 +1202,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     // try to get more fancy about proving equivalence in cases beyond that.
     if (pad_value->opcode() != HloOpcode::kConstant ||
         reduce_init_value->opcode() != HloOpcode::kConstant ||
-        !LiteralUtil::Equal(pad_value->literal(),
-                            reduce_init_value->literal())) {
+        !pad_value->literal().Equal(reduce_init_value->literal())) {
       VLOG(10) << "Not folding pad into reduce-window due to different pad "
                   "values.";
       return Status::OK();
@@ -1396,9 +1389,7 @@ bool AlgebraicSimplifierVisitor::TransformToClampIfSameShape(
   return true;
 }
 
-Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum,
-                                                 HloInstruction* lhs,
-                                                 HloInstruction* rhs) {
+Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
   // Match the following tree:
   //          min_operand     operand
   //                     \   /
@@ -1429,9 +1420,7 @@ Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum,
   return Status::OK();
 }
 
-Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum,
-                                                 HloInstruction* lhs,
-                                                 HloInstruction* rhs) {
+Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
   // Match the following tree:
   //          max_operand     operand
   //                     \   /

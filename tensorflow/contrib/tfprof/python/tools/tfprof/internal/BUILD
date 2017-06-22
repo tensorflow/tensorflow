@@ -2,6 +2,7 @@ package(default_visibility = ["//tensorflow/contrib/tfprof/python/tools/tfprof:_
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -56,6 +57,19 @@ py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/tools/tfprof:protos_all_py",
+    ],
+)
+
+cuda_py_test(
+    name = "run_metadata_test",
+    srcs = ["run_metadata_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/tfprof/python/tools/tfprof:model_analyzer",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
         "//tensorflow/tools/tfprof:protos_all_py",
     ],
 )

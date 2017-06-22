@@ -1074,7 +1074,8 @@ void BufferAssigner::AddSetToColocatedBufferSets(
 // different while instructions.
 void BufferAssigner::AddWhileSetToColocatedBufferSets(
     const std::vector<const LogicalBuffer*>& colocated_set,
-    const LogicalBuffer* while_init_buffer, const HloInstruction* while_hlo,
+    const LogicalBuffer* while_init_buffer,
+    const LogicalBuffer* while_result_buffer, const HloInstruction* while_hlo,
     const HloComputation& computation, const BufferLiveness& buffer_liveness,
     const LogicalBuffer::SizeFunction& buffer_size,
     std::vector<ColocatedBufferSet>* colocated_buffer_sets) {
@@ -1137,16 +1138,30 @@ void BufferAssigner::AddWhileSetToColocatedBufferSets(
       continue;
     }
 
-    // Skip predecessor set if the live range of any predecessor buffers
-    // overlaps with 'while_init_buffer'. Note that tuple element buffer
-    // forwarding can cause the same buffer to appear on both sides of the
-    // interference comparison below.
-    if (std::any_of(
-            predecessor_while_buffers.begin(), predecessor_while_buffers.end(),
-            [while_init_buffer, &buffer_liveness](const LogicalBuffer* buffer) {
-              return while_init_buffer->id() != buffer->id() &&
-                     buffer_liveness.MayInterfere(*while_init_buffer, *buffer);
-            })) {
+    // Skip predecessor set if the live range of any predecessor
+    // buffers overlaps with 'while_init_buffer' or
+    // 'while_result_buffer' (we need to check both since they're
+    // aliased together, but the points-to analysis is unaware of this
+    // aliasing). Note that tuple element buffer forwarding can cause
+    // the same buffer to appear on both sides of the interference
+    // comparison below.
+    auto may_interfere_with_init_or_result = [&](const LogicalBuffer* buffer) {
+      if (while_init_buffer->id() != buffer->id() &&
+          buffer_liveness.MayInterfere(*while_init_buffer, *buffer)) {
+        return true;
+      }
+
+      if (while_result_buffer->id() != buffer->id() &&
+          buffer_liveness.MayInterfere(*while_result_buffer, *buffer)) {
+        return true;
+      }
+
+      return false;
+    };
+
+    if (std::any_of(predecessor_while_buffers.begin(),
+                    predecessor_while_buffers.end(),
+                    may_interfere_with_init_or_result)) {
       continue;
     }
 
@@ -1209,8 +1224,8 @@ void BufferAssigner::BuildColocatedBufferSets(
                   AddBufferToColocatedSet(while_hlo->operand(0), index,
                                           points_to_analysis, &colocated_set);
               // Add while.result.
-              AddBufferToColocatedSet(while_hlo, index, points_to_analysis,
-                                      &colocated_set);
+              auto* result_buffer = AddBufferToColocatedSet(
+                  while_hlo, index, points_to_analysis, &colocated_set);
               // Add while.cond.parameter.
               AddBufferToColocatedSet(
                   while_hlo->while_condition()->parameter_instruction(0), index,
@@ -1224,8 +1239,9 @@ void BufferAssigner::BuildColocatedBufferSets(
                   while_hlo->while_body()->root_instruction(), index,
                   points_to_analysis, &colocated_set);
               AddWhileSetToColocatedBufferSets(
-                  colocated_set, init_buffer, while_hlo, *computation,
-                  buffer_liveness, buffer_size, colocated_buffer_sets);
+                  colocated_set, init_buffer, result_buffer, while_hlo,
+                  *computation, buffer_liveness, buffer_size,
+                  colocated_buffer_sets);
             });
       } else if (opcode == HloOpcode::kCall) {
         const HloInstruction* call_hlo = instruction;

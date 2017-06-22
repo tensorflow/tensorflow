@@ -70,13 +70,13 @@ Status ExecutorTransferManager::TransferLiteralFromDevice(
   }
 
   *literal->mutable_shape() = device_shape;
-  LiteralUtil::Reserve(ShapeUtil::ElementsIn(device_shape), literal);
+  literal->Reserve(ShapeUtil::ElementsIn(device_shape));
   TF_RETURN_IF_ERROR(TransferBufferFromDevice(
       executor, source, ShapeUtil::ByteSizeOf(device_shape),
-      LiteralUtil::MutableInternalData(literal)));
+      literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
     literal->Swap(
-        LiteralUtil::Relayout(*literal, literal_shape.layout()).get());
+        literal->Relayout(literal_shape.layout()).get());
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -134,7 +134,7 @@ Status ExecutorTransferManager::TransferLiteralToDevice(
   }
 
   return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
-                                LiteralUtil::InternalData(literal),
+                                literal.InternalData(),
                                 destination);
 }
 
@@ -145,6 +145,11 @@ Status ExecutorTransferManager::TransferLiteralToInfeed(
           << ShapeUtil::HumanString(shape);
 
   return Status::OK();
+}
+
+Status ExecutorTransferManager::TransferBufferToInfeed(
+    se::StreamExecutor* executor, int64 size, const void* source) {
+  return Unimplemented("Transfer to Infeed");
 }
 
 Status ExecutorTransferManager::TransferLiteralFromOutfeed(
