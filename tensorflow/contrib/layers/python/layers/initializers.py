@@ -42,7 +42,7 @@ def xavier_initializer(uniform=True, seed=None, dtype=dtypes.float32):
   This initializer is designed to keep the scale of the gradients roughly the
   same in all layers. In uniform distribution this ends up being the range:
   `x = sqrt(6. / (in + out)); [-x, x]` and for normal distribution a standard
-  deviation of `sqrt(3. / (in + out))` is used.
+  deviation of `sqrt(2. / (in + out))` is used.
 
   Args:
     uniform: Whether to use uniform or normal distributed random initialization.
