@@ -102,7 +102,7 @@ string AsControlDependency(const NodeDef& node) {
 ConstantFolding::ConstantFolding() {
   ops_to_preserve_ = std::regex(
       "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|Enter|Exit|"
-      "NextIteration");
+      "NextIteration|.*Quantized.*");
 }
 
 string ConstantFolding::AddControlDependency(const string& input_name) {
