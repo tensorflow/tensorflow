@@ -22,10 +22,6 @@ REGISTER5(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
 REGISTER4(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
           float, Eigen::half, double, int64);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference,
-          float, double, int64);
-#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -38,5 +34,18 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("z")
         .TypeConstraint<int32>("T"),
     BinaryOp<CPUDevice, functor::squared_difference<int32>>);
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER3(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference,
+          float, double, int64);
+REGISTER_KERNEL_BUILDER(
+    Name("SquaredDifference")
+        .Device(DEVICE_SYCL)
+        .HostMemory("x")
+        .HostMemory("y")
+        .HostMemory("z")
+        .TypeConstraint<int32>("T"),
+    BinaryOp<CPUDevice, functor::squared_difference<int32>>);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
