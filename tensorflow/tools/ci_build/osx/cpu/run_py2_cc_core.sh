@@ -36,5 +36,4 @@ bazel test --test_tag_filters=-gpu,-benchmark-test,-nomac \
     --test_timeout 300,450,1200,3600 \
     --test_size_filters=small,medium \
     --jobs=${N_JOBS} --build_tests_only --test_output=errors -k -- \
-    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
-    -//tensorflow/tensorboard/...
+    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...

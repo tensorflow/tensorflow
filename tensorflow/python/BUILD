@@ -47,6 +47,7 @@ py_library(
     deps = [
         ":tf_optimizer",
         ":array_ops",
+        ":bitwise_ops",
         ":check_ops",
         ":client",
         ":client_testlib",
@@ -1057,6 +1058,17 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "bitwise_ops_gen",
+    require_shape_functions = True,
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/contrib/quantization:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
@@ -1265,6 +1277,17 @@ py_library(
 )
 
 py_library(
+    name = "bitwise_ops",
+    srcs = ["ops/bitwise_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":bitwise_ops_gen",
+        ":framework",
+        ":util",
+    ],
+)
+
+py_library(
     name = "sets",
     srcs = [
         "ops/sets.py",
@@ -1424,6 +1447,7 @@ py_library(
     deps = [
         ":array_grad",
         ":array_ops",
+        ":bitwise_ops",
         ":control_flow_grad",
         ":control_flow_ops",
         ":framework",
@@ -2129,6 +2153,18 @@ py_library(
 )
 
 cuda_py_test(
+    name = "bitwise_ops_test",
+    size = "small",
+    srcs = ["ops/bitwise_ops_test.py"],
+    additional_deps = [
+        ":bitwise_ops",
+        ":constant_op",
+        ":dtypes",
+        ":framework_test_lib",
+    ],
+)
+
+cuda_py_test(
     name = "control_flow_ops_test",
     size = "small",
     srcs = ["ops/control_flow_ops_test.py"],
@@ -2465,6 +2501,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//third_party/py/numpy",
+        "@org_python_pypi_backports_weakref",
         "@protobuf//:protobuf_python",
         "@six_archive//:six",
     ],
@@ -3148,7 +3185,6 @@ cuda_py_tests(
         "training/adagrad_da_test.py",
         "training/adagrad_test.py",
         "training/basic_loops_test.py",
-        "training/checkpoint_utils_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
         "training/ftrl_test.py",
@@ -3349,6 +3385,27 @@ py_test(
         ":variables",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/testing:testing_py",
+    ],
+)
+
+py_test(
+    name = "checkpoint_utils_test",
+    size = "small",
+    srcs = ["training/checkpoint_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":client",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":io_ops",
+        ":partitioned_variables",
+        ":platform",
+        ":pywrap_tensorflow",
+        ":state_ops",
+        ":training",
+        ":variable_scope",
+        ":variables",
     ],
 )
 
@@ -3713,6 +3770,26 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "conv2d_benchmark",
+    size = "large",
+    srcs = ["ops/conv2d_benchmark.py"],
+    additional_deps = [
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":nn_ops",
+        ":platform",
+        ":platform_benchmark",
+        ":random_ops",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/conv2d_benchmark.py",
+)
+
+cuda_py_test(
     name = "split_benchmark",
     srcs = ["ops/split_benchmark.py"],
     additional_deps = [
@@ -3801,7 +3878,13 @@ py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":nn",
+        ":random_seed",
+        ":session",
         ":tf_optimizer",
+        ":training",
+        ":variable_scope",
+        ":variables",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
     ],
@@ -3831,6 +3914,20 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [":pywrap_tensorflow_internal"],
+)
+
+py_binary(
+    name = "cost_analyzer_tool",
+    srcs = [
+        "grappler/cost_analyzer_tool.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cost_analyzer",
+        ":framework_for_generated_wrappers",
+        ":tf_optimizer",
+        "//tensorflow/core:protos_all_py",
+    ],
 )
 
 py_test(

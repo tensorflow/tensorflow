@@ -13,7 +13,7 @@ for sparse features is in the works.
 We will use [tf.contrib.learn](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn) (TensorFlow's high-level Machine Learning API) Estimators for our ML models. The
 tf.contrib.learn API reduces the boilerplate code one needs to write for
 configuring, training and evaluating models and will let us focus on the core
-ideas. If you are not familiar with this API, [tf.contrib.learn Quickstart](https://www.tensorflow.org/get_started/tflearn) is a good place to start. We
+ideas. If you are not familiar with this API, [tf.estimator Quickstart](https://www.tensorflow.org/get_started/estimator) is a good place to start. We
 will use MNIST, a widely-used dataset containing images of handwritten digits
 (between 0 and 9). The tutorial consists of the following steps:
 

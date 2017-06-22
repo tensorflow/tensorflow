@@ -105,6 +105,11 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   return equal;
 }
 
+/* static */ int64 ShapeUtil::Rank(const Shape& shape) {
+  CHECK(!ShapeUtil::IsTuple(shape)) << "Tuples do not have a rank";
+  return shape.dimensions_size();
+}
+
 /* static */ int64 ShapeUtil::TrueRank(const Shape& shape) {
   int64 accum = 0;
   for (int64 dimension : shape.dimensions()) {
@@ -165,6 +170,17 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
   return MakeShapeWithMonotonicDim0MajorLayout(shape.element_type(), dims);
 }
+
+/* static */ Shape ShapeUtil::ShapeWithoutPadding(const Shape& shape) {
+  Shape result = shape;
+  ForEachMutableSubshape(&result, [](Shape* subshape, const ShapeIndex& index) {
+    auto layout = subshape->mutable_layout();
+    layout->clear_padding_value();
+    layout->clear_padded_dimensions();
+  });
+  return result;
+}
+
 /* static */ void ShapeUtil::PopulateShape(
     PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
     Shape* shape) {
@@ -270,7 +286,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsEmptyTuple(shape) || HasZeroElements(shape);
+  return IsTuple(shape) ? IsEmptyTuple(shape) : HasZeroElements(shape);
 }
 
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
@@ -323,6 +339,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
+  CHECK(!IsTuple(shape));
   CHECK_EQ(shape.dimensions_size(), Rank(shape));
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
@@ -534,11 +551,6 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
   if (shape.element_type() == TUPLE) {
-    // Tuple shape.
-    if (Rank(shape) != 0) {
-      return InvalidArgument("tuples must be rank-0; got rank %lld",
-                             Rank(shape));
-    }
     if (shape.dimensions_size() != 0) {
       return InvalidArgument("tuples must not have dimensions specified");
     }

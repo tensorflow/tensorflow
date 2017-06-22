@@ -382,9 +382,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
     with ops.name_scope(name, "ScheduledOutputTrainingHelperSample",
                         [time, outputs, state]):
       sampler = bernoulli.Bernoulli(probs=self._sampling_probability)
-      return math_ops.cast(
-          sampler.sample(sample_shape=self.batch_size, seed=self._seed),
-          dtypes.bool)
+      return sampler.sample(sample_shape=self.batch_size, seed=self._seed)
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):
     with ops.name_scope(name, "ScheduledOutputTrainingHelperNextInputs",
@@ -396,6 +394,7 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
               state=state,
               sample_ids=sample_ids,
               name=name))
+      sample_ids = math_ops.cast(sample_ids, dtypes.bool)
 
       def maybe_sample():
         """Perform scheduled sampling."""

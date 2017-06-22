@@ -511,7 +511,8 @@ class BufferAssigner {
   // colocated buffers for while instructions.
   void AddWhileSetToColocatedBufferSets(
       const std::vector<const LogicalBuffer*>& colocated_set,
-      const LogicalBuffer* while_init_buffer, const HloInstruction* while_hlo,
+      const LogicalBuffer* while_init_buffer,
+      const LogicalBuffer* while_result_buffer, const HloInstruction* while_hlo,
       const HloComputation& computation, const BufferLiveness& buffer_liveness,
       const LogicalBuffer::SizeFunction& buffer_size,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);

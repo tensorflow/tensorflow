@@ -42,6 +42,7 @@ cc_library(
         ":op_performance_data_cc",
         ":utils",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -160,7 +161,7 @@ cc_test(
     srcs = ["virtual_placer_test.cc"],
     deps = [
         ":virtual_placer",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -264,7 +265,6 @@ cc_library(
         ":virtual_scheduler",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
     ],
 )

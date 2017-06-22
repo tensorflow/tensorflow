@@ -80,7 +80,7 @@ class FlattenCallGraphTest : public HloTestBase {
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, param0, zero));
     return builder.Build();
@@ -157,7 +157,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
         builder.AddInstruction(HloInstruction::CreateParameter(
             0, ShapeUtil::MakeShape(PRED, {}), "param0"));
     HloInstruction* false_constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+        HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
     builder.AddInstruction(
         HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
                                      HloOpcode::kEq, param0, false_constant));
@@ -168,7 +168,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   {
     HloComputation::Builder builder(TestName() + ".entry");
     HloInstruction* false_constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+        HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
     builder.AddInstruction(HloInstruction::CreateWhile(
         ShapeUtil::MakeShape(PRED, {}), cond_computation, cond_computation,
         false_constant));

@@ -628,7 +628,7 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
                   // Target nodes
                   const char** c_target_oper_names, int ntargets,
                   const char** handle, TF_Status* status) {
-  status->status = Status::OK();
+  *handle = nullptr;
 
   std::vector<tensorflow::string> input_names(ninputs);
   std::vector<tensorflow::string> output_names(noutputs);
@@ -643,16 +643,12 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
     target_oper_names[i] = c_target_oper_names[i];
   }
   tensorflow::string new_handle;
-  Status result;
-  result = s->session->PRunSetup(input_names, output_names, target_oper_names,
-                                 &new_handle);
-  if (result.ok()) {
+  status->status = s->session->PRunSetup(input_names, output_names,
+                                         target_oper_names, &new_handle);
+  if (status->status.ok()) {
     char* buf = new char[new_handle.size() + 1];
     memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
     *handle = buf;
-  } else {
-    *handle = nullptr;
-    status->status = result;
   }
 }
 
@@ -2326,6 +2322,8 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
                          int ninputs, const TF_Output* outputs, int noutputs,
                          const TF_Operation* const* target_opers, int ntargets,
                          const char** handle, TF_Status* status) {
+  *handle = nullptr;
+
   if (!ExtendSessionGraphHelper(session, status)) {
     return;
   }

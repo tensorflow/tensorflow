@@ -38,7 +38,7 @@ class HloModuleTest : public HloTestBase {
   std::unique_ptr<HloComputation> CreateConstantComputation() {
     auto builder = HloComputation::Builder("Constant");
     builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
     return builder.Build();
   }
 

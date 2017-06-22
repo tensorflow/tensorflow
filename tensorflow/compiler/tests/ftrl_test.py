@@ -218,7 +218,7 @@ class FtrlOptimizerTest(XLATestCase):
         self.assertAllClose(np.array([-0.24059935, -0.46829352]), var0.eval())
         self.assertAllClose(np.array([-0.02406147, -0.04830509]), var1.eval())
 
-  # When variables are intialized with Zero, FTRL-Proximal has two properties:
+  # When variables are initialized with Zero, FTRL-Proximal has two properties:
   # 1. Without L1&L2 but with fixed learning rate, FTRL-Proximal is identical
   # with GradientDescent.
   # 2. Without L1&L2 but with adaptive learning rate, FTRL-Proximal is idential

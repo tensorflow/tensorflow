@@ -72,19 +72,6 @@ string StringReplace(const string& str, const string& oldsub,
   return out;
 }
 
-Status ReadGraphDef(Env* env, const string& fname, GraphDef* graph_def) {
-  string out;
-  Status s = ReadFileToString(env, fname, &out);
-  if (!s.ok()) return s;
-  if (protobuf::TextFormat::ParseFromString(out, graph_def)) {
-    return Status();
-  } else if (ReadBinaryProto(tensorflow::Env::Default(), fname, graph_def)
-                 .ok()) {
-    return Status();
-  }
-  return errors::InvalidArgument("Cannot parse proto string.");
-}
-
 namespace {
 string StripQuote(const string& s) {
   int start = s.find_first_not_of("\"\'");
@@ -301,8 +288,8 @@ void PrintHelp() {
       "of times. Only available in op view.\n\n"
       "  -step: Show the stats of a step when multiple steps of "
       "RunMetadata were added. By default (-1), show the average of all steps."
-      "  -order_by: Order the results by [name|depth|bytes|micros|params|"
-      "float_ops]\n\n"
+      "  -order_by: Order the results by [name|depth|bytes|micros"
+      "|accelerator_micros|cpu_micros|params|float_ops]\n\n"
       "  -account_type_regexes: Account and display the ops whose types match "
       "one of the type regexes specified. tfprof "
       "allow user to define extra op types for ops "
@@ -333,7 +320,8 @@ void PrintHelp() {
       "ops eventually displayed. If False, account all "
       "op statistics matching -account_type_regexes recursively.\n\n"
       "  -select: Comma-separated list of metrics to show: [bytes|micros|"
-      "params|float_ops|tensor_value|device|op_types]."
+      "accelerator_micros|cpu_micros|params|float_ops|tensor_value|device|"
+      "op_types|input_shapes]."
       "\n\n"
       "  -dump_to_file: Dump the output to a file, instead of terminal.\n\n"
       ""

@@ -75,15 +75,12 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
 }
 
 Status HloCostAnalysis::HandleElementwiseUnary(HloInstruction* hlo,
-                                               HloOpcode opcode,
-                                               HloInstruction* operand) {
+                                               HloOpcode opcode) {
   return HandleElementwiseOp(hlo);
 }
 
 Status HloCostAnalysis::HandleElementwiseBinary(HloInstruction* hlo,
-                                                HloOpcode opcode,
-                                                HloInstruction* lhs,
-                                                HloInstruction* rhs) {
+                                                HloOpcode opcode) {
   return HandleElementwiseOp(hlo);
 }
 
@@ -98,6 +95,11 @@ Status HloCostAnalysis::HandleClamp(HloInstruction* clamp,
                                     HloInstruction* arg_instruction,
                                     HloInstruction* max_instruction) {
   return HandleElementwiseOp(clamp);
+}
+
+Status HloCostAnalysis::HandleReducePrecision(HloInstruction* hlo,
+                                              HloInstruction* operand) {
+  return HandleElementwiseOp(hlo);
 }
 
 Status HloCostAnalysis::HandleParameter(HloInstruction* parameter) {
@@ -164,13 +166,11 @@ Status HloCostAnalysis::HandleConcatenate(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConvert(HloInstruction* convert,
-                                      HloInstruction* operand) {
+Status HloCostAnalysis::HandleConvert(HloInstruction* convert) {
   return HandleElementwiseOp(convert);
 }
 
-Status HloCostAnalysis::HandleCopy(HloInstruction* copy,
-                                   HloInstruction* operand) {
+Status HloCostAnalysis::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
@@ -314,6 +314,12 @@ Status HloCostAnalysis::HandleReshape(HloInstruction* reshape) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleBatchNormTraining(
+    HloInstruction* batchNormTraining) {
+  // TODO(b/62294698): Implement cost analysis for batch-norm-learning.
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleTranspose(HloInstruction* transpose) {
   return Status::OK();
 }
@@ -361,6 +367,19 @@ Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
   // operations inside might not have a layout.
   HloCostAnalysis visitor([](const Shape&) { return 0; });
   TF_RETURN_IF_ERROR(fused_expression_root->Accept(&visitor));
+
+  // If a fusion node produces a tuple, it also produces the operands of that
+  // tuple.
+  current_bytes_accessed_ = 0;
+  ShapeUtil::ForEachSubshape(
+      fusion->shape(),
+      [this](const Shape& subshape, const ShapeIndex& /*shape_index*/) {
+        current_bytes_accessed_ += shape_size_(subshape);
+      });
+
+  for (const HloInstruction* operand : fusion->operands()) {
+    current_bytes_accessed_ += shape_size_(operand->shape());
+  }
 
   // Attribute the cost of the fused expression to the fusion node.
   current_transcendental_count_ = visitor.transcendental_count();

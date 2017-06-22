@@ -49,6 +49,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kAbs;
     case UNOP_CEIL:
       return HloOpcode::kCeil;
+    case UNOP_COS:
+      return HloOpcode::kCos;
     case UNOP_EXP:
       return HloOpcode::kExp;
     case UNOP_FLOOR:
@@ -465,6 +467,45 @@ StatusOr<ComputationDataHandle> UserComputation::AddReduceInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle>
+UserComputation::AddBatchNormTrainingInstruction(
+    const BatchNormTrainingRequest& batch_norm_training_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(batch_norm_training_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* scale,
+                      LookUpRequest(batch_norm_training_request.scale()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* offset,
+                      LookUpRequest(batch_norm_training_request.offset()));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+
+  TF_ASSIGN_OR_RETURN(
+      Shape inferred_shape,
+      ShapeInference::InferBatchNormTrainingShape(
+          operand->output_shape(), scale->output_shape(),
+          offset->output_shape(), batch_norm_training_request.feature_index()));
+
+  *request.mutable_output_shape() = inferred_shape;
+
+  *request.mutable_output_handle() = handle;
+
+  *request.mutable_request()->mutable_batch_norm_training_request() =
+      batch_norm_training_request;
+
+  VLOG(1) << "AddBatchNormTrainingInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << batch_norm_training_request.ShortDebugString();
+
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddReduceWindowInstruction(
     const ReduceWindowRequest& reduce_window_request,
     const UserComputation& to_apply_computation) {
@@ -838,6 +879,34 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvertInstruction(
   VLOG(1) << "AddConvertInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << convert_request.ShortDebugString();
+  return handle;
+}
+
+StatusOr<ComputationDataHandle> UserComputation::AddReducePrecisionInstruction(
+    const ReducePrecisionRequest& reduce_precision_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(reduce_precision_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(
+      Shape new_shape,
+      ShapeInference::InferReducePrecisionShape(
+          operand->output_shape(), reduce_precision_request.exponent_bits(),
+          reduce_precision_request.mantissa_bits()));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = new_shape;
+  *request.mutable_request()->mutable_reduce_precision_request() =
+      reduce_precision_request;
+
+  VLOG(1) << "AddReducePrecisionInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << reduce_precision_request.ShortDebugString();
   return handle;
 }
 
@@ -1556,6 +1625,19 @@ void ConstantVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kBatchNormTrainingRequest: {
+      const BatchNormTrainingRequest& batch_norm_training_request =
+          request.request().batch_norm_training_request();
+      ConstantVisitor(session_computation,
+                      batch_norm_training_request.operand(), visited,
+                      is_constant);
+      ConstantVisitor(session_computation, batch_norm_training_request.scale(),
+                      visited, is_constant);
+      ConstantVisitor(session_computation, batch_norm_training_request.offset(),
+                      visited, is_constant);
+      break;
+    }
+
     case OpRequest::kBinaryOpRequest: {
       const BinaryOpRequest& binary_op_request =
           request.request().binary_op_request();
@@ -1824,7 +1906,6 @@ Status UserComputation::CheckParametersAreContiguous(
     }
   }
 
-  auto program_shape = MakeUnique<ProgramShape>();
   for (int64 i = 0; i < parameter_requests.size(); ++i) {
     auto it = parameter_requests.find(i);
     if (it == parameter_requests.end()) {
@@ -1961,6 +2042,16 @@ static void ForEachOperand(
           request.request().convolve_request();
       apply(convolve_request.lhs());
       apply(convolve_request.rhs());
+      break;
+    }
+
+    case OpRequest::kBatchNormTrainingRequest: {
+      const BatchNormTrainingRequest& batch_norm_training_request =
+          request.request().batch_norm_training_request();
+
+      apply(batch_norm_training_request.operand());
+      apply(batch_norm_training_request.scale());
+      apply(batch_norm_training_request.offset());
       break;
     }
 
@@ -2114,6 +2205,13 @@ static void ForEachOperand(
           request.request().binary_op_request();
       apply(binary_op_request.rhs());
       apply(binary_op_request.lhs());
+      break;
+    }
+
+    case OpRequest::kReducePrecisionRequest: {
+      const ReducePrecisionRequest& reduce_precision_request =
+          request.request().reduce_precision_request();
+      apply(reduce_precision_request.operand());
       break;
     }
 
@@ -2276,7 +2374,7 @@ void ComputationLowerer::Visit(
       const ConstantRequest& constant_request =
           request.request().constant_request();
       hlo_instruction = add_instruction(HloInstruction::CreateConstant(
-          LiteralUtil::CloneToUnique(Literal(constant_request.literal()))));
+          Literal(constant_request.literal()).CloneToUnique()));
       break;
     }
 
@@ -2454,6 +2552,23 @@ void ComputationLowerer::Visit(
           request.output_shape(), operand, select_computation,
           select_and_scatter_request.window(), source, init_value,
           scatter_computation));
+      break;
+    }
+
+    case OpRequest::kBatchNormTrainingRequest: {
+      const BatchNormTrainingRequest& batch_norm_training_request =
+          request.request().batch_norm_training_request();
+      HloInstruction* operand =
+          lookup_instruction(batch_norm_training_request.operand());
+      HloInstruction* scale =
+          lookup_instruction(batch_norm_training_request.scale());
+      HloInstruction* offset =
+          lookup_instruction(batch_norm_training_request.offset());
+
+      hlo_instruction = add_instruction(HloInstruction::CreateBatchNormTraining(
+          request.output_shape(), operand, scale, offset,
+          batch_norm_training_request.epsilon(),
+          batch_norm_training_request.feature_index()));
       break;
     }
 
@@ -2685,6 +2800,18 @@ void ComputationLowerer::Visit(
       }
       hlo_instruction = add_instruction(HloInstruction::CreateBinary(
           request.output_shape(), hlo_opcode, lhs, rhs));
+      break;
+    }
+
+    case OpRequest::kReducePrecisionRequest: {
+      const ReducePrecisionRequest& reduce_precision_request =
+          request.request().reduce_precision_request();
+      HloInstruction* operand =
+          lookup_instruction(reduce_precision_request.operand());
+      auto exponent_bits = reduce_precision_request.exponent_bits();
+      auto mantissa_bits = reduce_precision_request.mantissa_bits();
+      hlo_instruction = add_instruction(HloInstruction::CreateReducePrecision(
+          request.output_shape(), operand, exponent_bits, mantissa_bits));
       break;
     }
 

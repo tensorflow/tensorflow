@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -123,16 +124,16 @@ class HloValue {
   bool is_phi() const { return is_phi_; }
 
   // Return the location where this value is defined.
-  const HloLocation& DefinitionLocation() const { return locations_[0]; }
+  const HloLocation& defining_location() const { return locations_[0]; }
 
   // Return the instruction which defines this HloValue.
-  HloInstruction* instruction() const {
-    return DefinitionLocation().instruction;
+  HloInstruction* defining_instruction() const {
+    return defining_location().instruction;
   }
 
   // Return the shape index at which this HloValue is defined in the output of
-  // instruction().
-  const ShapeIndex& index() const { return DefinitionLocation().index; }
+  // its defining instruction.
+  const ShapeIndex& defining_index() const { return defining_location().index; }
 
   // Add or remove a location at which the HloValue appears. The definition
   // location can not be removed. The uses of the HloValue are updated.
@@ -145,8 +146,11 @@ class HloValue {
   // Return all uses of the HloValue.
   const std::vector<HloUse>& uses() const { return uses_; }
 
-  // Set/get whether this HloValue is live out of the module.
+  // Get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
+
+  // Get whether this HloValue is live out of the computation it is defined in.
+  bool live_out_of_computation() const { return live_out_of_computation_; }
 
   bool operator==(const HloValue& other) const;
   bool operator!=(const HloValue& other) const;
@@ -172,6 +176,9 @@ class HloValue {
 
   // Whether this value is live out of the HLO module.
   bool live_out_of_module_ = false;
+
+  // Whether this value is live out of its computation.
+  bool live_out_of_computation_ = false;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloValue& hlo_value);
@@ -309,6 +316,17 @@ class HloDataflowAnalysis {
   const HloValue& GetValue(HloValue::Id value_id) const;
   HloValue& GetValue(HloValue::Id value_id);
 
+  // Returns whether the given values interfere assuming the given HLO
+  // ordering. Two values interfere if they may both be simultaneously live.
+  bool MayInterfere(const HloValue& a, const HloValue& b,
+                    const HloOrdering& ordering) const;
+
+  // Overload which takes HloValue:Ids.
+  bool MayInterfere(HloValue::Id a, HloValue::Id b,
+                    const HloOrdering& ordering) const {
+    return MayInterfere(GetValue(a), GetValue(b), ordering);
+  }
+
   // Return the total number of HloValues.
   int64 value_count() const { return values_.size(); }
 
@@ -373,6 +391,20 @@ class HloDataflowAnalysis {
   void UpdateLocationsOfValuesAt(
       HloInstruction* instruction, const InstructionValueSet& new_value_set,
       const InstructionValueSet* prev_value_set = nullptr);
+
+  // Returns true if the live range of the given value 'a' is strictly before
+  // the live range of value 'b' using the given HLO ordering.
+  bool LiveRangeStrictlyBefore(const HloValue& a, const HloValue& b,
+                               const HloOrdering& ordering) const;
+
+  // Returns whether the value 'a' is defined before the value 'b' under the
+  // given ordering.
+  bool IsDefinedBefore(const HloValue& a, const HloValue& b,
+                       const HloOrdering& ordering) const;
+
+  // Returns whether the given use is before the given value definition.
+  bool UseIsBeforeValueDefinition(const HloUse& use, const HloValue& value,
+                                  const HloOrdering& ordering) const;
 
   HloModule* const module_;
   const bool ssa_form_;

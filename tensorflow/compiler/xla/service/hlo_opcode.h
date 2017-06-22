@@ -30,6 +30,7 @@ namespace xla {
 enum class HloOpcode {
   kAbs,
   kAdd,
+  kBatchNormTraining,
   kBitcast,
   kBroadcast,
   kCall,
@@ -40,6 +41,7 @@ enum class HloOpcode {
   kConvert,
   kConvolution,
   kCopy,
+  kCos,
   kCrossReplicaSum,
   kCustomCall,
   kDivide,
@@ -74,6 +76,7 @@ enum class HloOpcode {
   kPower,
   kRecv,
   kReduce,
+  kReducePrecision,
   kReduceWindow,
   kRemainder,
   kReshape,

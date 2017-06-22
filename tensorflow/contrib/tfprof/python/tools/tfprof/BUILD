@@ -2,6 +2,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
@@ -16,12 +17,10 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "model_analyzer_test",
     srcs = ["model_analyzer_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    deps = [
+    additional_deps = [
         ":model_analyzer",
         "//tensorflow/contrib/tfprof/python/tools/tfprof/internal:model_analyzer_testlib",
         "//tensorflow/python:client",
@@ -30,14 +29,13 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_pip"],
 )
 
-py_test(
+cuda_py_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    deps = [
+    additional_deps = [
         ":model_analyzer",
         "//tensorflow/contrib/tfprof/python/tools/tfprof/internal:model_analyzer_testlib",
         "//tensorflow/python:client",
@@ -46,6 +44,7 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_pip"],
 )
 
 py_library(

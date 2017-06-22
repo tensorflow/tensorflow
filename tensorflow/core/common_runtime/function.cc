@@ -326,13 +326,14 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
 
-  // TODO(zhifengc): For now, we assume int32 is always on host memory
-  // and other types are always on device memory. We should do type
-  // inference over function body to derive the correct input/output
-  // memory types.
+  // TODO(zhifengc): For now, we assume int32 and resources are always on host
+  // memory and other types are always on device memory. We should do type
+  // inference over function body to derive the correct input/output memory
+  // types.
   MemoryTypeVector input_memory_types;
   for (const auto& t : fbody->arg_types) {
-    input_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
+    input_memory_types.push_back(
+        (t == DT_INT32 || t == DT_RESOURCE) ? HOST_MEMORY : DEVICE_MEMORY);
   }
   MemoryTypeVector output_memory_types;
   for (const auto& t : fbody->ret_types) {
@@ -1046,10 +1047,12 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
     // to be unique and stable after optimization rewrites. Therefore,
     // we use "n<node id>" instead.
     for (const Edge* e : inputs) {
-      const string srcname = NewName(e->src(), pretty);
       if (e == nullptr) {
         ndef->add_input("unknown");
-      } else if (!e->src()->IsOp()) {
+        continue;
+      }
+      const string srcname = NewName(e->src(), pretty);
+      if (!e->src()->IsOp()) {
       } else if (e->IsControlEdge()) {
         ndef->add_input(strings::StrCat("^", srcname));
       } else if (e->src_output() == 0) {

@@ -113,6 +113,20 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
   // a_ancestor and b_ancestor must be either both null or both non-null.
   CHECK_NE(b_ancestor, nullptr);
   CHECK_EQ(a_ancestor->parent(), b_ancestor->parent());
+
+  // If the common ancestor is a while instruction there is an additional
+  // ordering criteria which may apply. The condition computation is considered
+  // to execute before the body computation so if 'a' is in the condition and
+  // 'b' is in the body, then 'a' executes before 'b'.
+  if (a_ancestor == b_ancestor && a_ancestor->opcode() == HloOpcode::kWhile) {
+    const HloComputation* body = a_ancestor->while_body();
+    const HloComputation* condition = a_ancestor->while_condition();
+    if (call_graph_->InstructionIsNestedIn(a, condition) &&
+        call_graph_->InstructionIsNestedIn(b, body)) {
+      return true;
+    }
+  }
+
   return ExecutesBeforeInSameComputation(a_ancestor, b_ancestor);
 }
 

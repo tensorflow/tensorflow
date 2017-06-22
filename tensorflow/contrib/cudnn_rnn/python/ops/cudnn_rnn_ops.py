@@ -16,7 +16,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import itertools
 
 from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
 from tensorflow.contrib.util import loader
@@ -46,9 +45,11 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
   """SaveableObject implementation that handles the RNN params variable."""
 
   def __init__(self,
+               cudnn_rnn,
                params_to_canonical,
                canonical_to_params,
                param_variables,
+               base_variable_scope=None,
                name="params_canonical"):
     """Creates a RNNParamsSaveable object.
 
@@ -75,6 +76,7 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
        tensor 1 and 4 the update gate; tensor 2 and 5 the new memory gate.
 
     Args:
+      cudnn_rnn: cudnn RNN class instance.
       params_to_canonical: a function to convert params from a specific format
           for cuDNN or other RNN ops to the canonical format.
           _CudnnRNN.params_to_canonical() should be provided here.
@@ -87,25 +89,42 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
           For cuDNN RNN ops, this is a single merged variable for both weights
           and biases; for other RNN ops, this might be multiple unmerged or
           partially merged variables respectively for weights and biases.
+      base_variable_scope: a string, name of outer variable scope, used as
+          part of prefix of names of saved variables.
       name: the name of the RNNParamsSaveable object.
     """
     # There is only a single merged parameter variable for cuDNN when saving.
+    self._cudnn_rnn = cudnn_rnn
     weights, biases = params_to_canonical(param_variables[0])
+    weights, biases, = self._transform_canonical(weights, biases)
+    weight_names, biase_names = self._transformed_canonical_names(
+        weights, biases)
     self._canonical_to_params = canonical_to_params
     self._variables = param_variables
     # We currently don't use slice_spec. It might be useful in a distributed
     # setting where each parameter server node stores a slice of variable,
     # instead of having the master pull all slices and then save them.
     slice_spec = ""
+    params = weights + biases
+    param_names = weight_names + biase_names
+    if base_variable_scope:
+      param_names = ["%s/%s" % (base_variable_scope, pn) for pn in param_names]
     specs = [
-        saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param.name)
-        for param in itertools.chain(weights, biases)
+        saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param_name)
+        for param, param_name in zip(params, param_names)
     ]
     super(RNNParamsSaveable, self).__init__(None, specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
-    weights = restored_tensors[:len(restored_tensors) // 2]
-    biases = restored_tensors[len(restored_tensors) // 2:]
+    if (self._cudnn_rnn.direction == "unidirectional" and
+        self._cudnn_rnn.rnn_mode == "lstm"):
+      assert len(restored_tensors) % 4 == 0
+      weights = restored_tensors[:len(restored_tensors) // 4]
+      biases = restored_tensors[len(restored_tensors) // 4:]
+    else:
+      weights = restored_tensors[:len(restored_tensors) // 2]
+      biases = restored_tensors[len(restored_tensors) // 2:]
+    weights, biases = self._untransform_canonical(weights, biases)
     params = self._canonical_to_params(weights, biases)
     if not isinstance(params, tuple):
       params = (params,)
@@ -114,6 +133,159 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         for variable, param in zip(self._variables, params)
     ]
     return control_flow_ops.group(*assign_ops)
+
+  def _switch_inner(self, array, base_idx):
+    array[base_idx + 1], array[base_idx + 2] = (array[base_idx + 2],
+                                                array[base_idx + 1])
+
+  def _transform_canonical(self, weights, biases):
+    if (self._cudnn_rnn.direction != "unidirectional" or
+        self._cudnn_rnn.rnn_mode != "lstm"):
+      return weights, biases
+    return self._transform_lstm_canonical(weights, biases)
+
+  def _transformed_canonical_names(self, weights, biases):
+    """Return canonical names for fused weight and bias tensors."""
+    if (self._cudnn_rnn.direction != "unidirectional" or
+        self._cudnn_rnn.rnn_mode != "lstm"):
+      assert len(weights) == len(biases)
+      return ([w.name for w in weights], [b.name for b in biases])
+    else:
+      w_names, b_names = [], []
+      assert len(weights) * 3 == len(biases)
+      num_layers = self._cudnn_rnn.num_layers
+      # TODO(jamesqin): get rid of multi_rnn_cell when num_layers is 1
+      for i in range(num_layers):
+        # One fused weight tensor each layer.
+        w_names.append("multi_rnn_cell/cell_%d/lstm_cell/kernel" % i)
+        # Three fused bias tensors each layer:
+        # the 1st is for LSTMBlockCell restore; the latter two sum up to the
+        # 1st, and are used for cuDNN restore.
+        b_names.append("multi_rnn_cell/cell_%d/lstm_cell/bias" % i)
+        b_names.extend([
+            "multi_rnn_cell/cell_%d/lstm_cell/bias_cudnn_%d" % (i, j)
+            for j in range(2)
+        ])
+      return w_names, b_names
+
+  def _transform_lstm_canonical(self, weights, biases):
+    """Create fused lstm canonical params.
+
+    Produce properly-shaped monolithic weight and bias tensors to share between
+    cuDNN and non-platform specific LSTM cells (w/o peephole).
+    Args:
+      weights: a list of Tensors recovered from cuDNN params_to_canonical.
+      biases: a list of Tensors recovered from cuDNN params_to_canonical.
+    Returns:
+      Two lists of tensors, one for weight and bias each.
+      The weight list contains num_layers tensors and bias one contains 3 *
+      num_layers tensors. Both original and combined biases since cuDNN biases
+      are not restorable from the fused version.
+    """
+    transformed_weights, transformed_biases = [], []
+    for i in range(self._cudnn_rnn.num_layers):
+      base_idx = i * 8
+      num_units = self._cudnn_rnn.num_units
+      input_size = self._cudnn_rnn.input_size if i == 0 else num_units
+      # cuDNN tensor shapes per time_step:
+      # input.shape:         [batch_size, input_size],
+      # input_weights.shape: [num_units, input_size] (first layer)
+      #                      [num_units, num_units]  (other layers)
+      # state_weights.shape: [num_units, num_units]
+      # biases.shape:        [num_units]
+      #
+      # General LSTM cells compute gate functions using:
+      #   [x, h_prev] * weights + biases
+      # Therefore for each layer, they expect
+      # weight.shape: [input_size + num_units, 4 * num_units] (first_layer)
+      #               [num_units + num_units, 4 * num_units]  (other layers)
+      # bias.shape:   [4 * num_units]
+
+      # Stitch weights together in this layer.
+      stitched_w = []
+      for j in range(4):
+        stitched_w.append(
+            array_ops.concat(
+                [
+                    array_ops.reshape(weights[base_idx + j],
+                                      [num_units, input_size]),
+                    array_ops.reshape(weights[base_idx + j + 4],
+                                      [num_units, num_units])
+                ],
+                axis=1))
+      # cuDNN weights are in ifco order, convert to icfo order.
+      self._switch_inner(stitched_w, 0)
+      transformed_weights.append(
+          array_ops.transpose(array_ops.concat(stitched_w, axis=0)))
+
+      # Stitch biases together in this layer.
+      # Convert to icfo order.
+      self._switch_inner(biases, base_idx)
+      self._switch_inner(biases, base_idx + 4)
+      # The bias for layer input.
+      b_in = array_ops.concat(biases[base_idx:base_idx + 4], axis=0)
+      # The bias for recurrent input.
+      b_rec = array_ops.concat(biases[base_idx + 4:base_idx + 8], axis=0)
+
+      transformed_biases.extend([b_in + b_rec, b_in, b_rec])
+    return transformed_weights, transformed_biases
+
+  def _untransform_canonical(self, transformed_weights, transformed_biases):
+    if (self._cudnn_rnn.direction != "unidirectional" or
+        self._cudnn_rnn.rnn_mode != "lstm"):
+      return transformed_weights, transformed_biases
+    return self._untransform_lstm_canonical(transformed_weights,
+                                            transformed_biases)
+
+  def _untransform_lstm_canonical(self, transformed_weights,
+                                  transformed_biases):
+    """The reverse procedure of _transform_lstm_canonical().
+
+    Args:
+      transformed_weights: a list of tensors, one for each layer.
+      transformed_biases: a list of tensors , 3 for each layer: the 2nd for
+        layer input, the 3rd for recurrent input, the 1st is the sum of the
+        latter two.
+    Returns:
+      Two lists of tensors for weights and biases respectively.
+      There are 8 tensors per weight and per bias for each layer:
+      tensor 0-3 are applied to the input from the previous layer;
+      tensor 4-7 to the recurrent input. Tensor 0 and 4 are for the input gate;
+      tensor 1 and 5 the forget gate; tensor 2 and 6 the new memory gate;
+      tensor 3 and 7 the output gate.
+    """
+    weights, biases = [], []
+    assert 3 * len(transformed_weights) == len(transformed_biases)
+    for i in range(len(transformed_weights)):
+      num_units = self._cudnn_rnn.num_units
+      input_size = self._cudnn_rnn.input_size if i == 0 else num_units
+      # weights applied on layer inputs.
+      wi = array_ops.slice(transformed_weights[i], [0, 0],
+                           [input_size, 4 * num_units])
+      # weights applied on recurrent inputs.
+      wr = array_ops.slice(transformed_weights[i], [input_size, 0],
+                           [num_units, 4 * num_units])
+      wi_list = array_ops.split(wi, 4, axis=1)
+      wr_list = array_ops.split(wr, 4, axis=1)
+
+      for j in range(len(wi_list)):
+        wi_list[j] = array_ops.reshape(array_ops.transpose(wi_list[j]), [-1])
+        wr_list[j] = array_ops.reshape(array_ops.transpose(wr_list[j]), [-1])
+      # canonical weights are in icfo order, convert to ifco order for cuDNN.
+      self._switch_inner(wi_list, 0)
+      self._switch_inner(wr_list, 0)
+      weights.extend(wi_list)
+      weights.extend(wr_list)
+
+      base_idx = 3 * i
+      bi_list = array_ops.split(transformed_biases[base_idx + 1], 4, axis=0)
+      br_list = array_ops.split(transformed_biases[base_idx + 2], 4, axis=0)
+      # canonical weights are in icfo order, convert to ifco order for cuDNN.
+      self._switch_inner(bi_list, 0)
+      self._switch_inner(br_list, 0)
+      biases.extend(bi_list)
+      biases.extend(br_list)
+    return weights, biases
 
 
 _cudnn_rnn_common_doc_string = """
@@ -199,6 +371,26 @@ class _CudnnRNN(object):
     if self._seed is None and self._seed2 is None:
       self._seed, self._seed2 = 0, 0
 
+  @property
+  def input_size(self):
+    return self._input_size
+
+  @property
+  def num_units(self):
+    return self._num_units
+
+  @property
+  def num_layers(self):
+    return self._num_layers
+
+  @property
+  def rnn_mode(self):
+    return self._rnn_mode
+
+  @property
+  def direction(self):
+    return self._direction
+
   def params_size(self):
     """Calculates the size of the opaque parameter buffer needed for this model.
 
@@ -222,9 +414,12 @@ class _CudnnRNN(object):
     """Runs the forward step for the RNN model.
 
     Args:
-      input_data: the input sequence to the RNN model.
-      input_h: the initial hidden state for h.
+      input_data: the input sequence to the RNN model. A Tensor of shape [?,
+        batch_size, input_size].
+      input_h: the initial hidden state for h. A Tensor of shape [num_layers,
+        batch_size, num_units].
       input_c: the initial hidden state for c. This is only relevant for LSTM.
+        A Tensor of the same shape as input_h.
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
 
@@ -308,7 +503,7 @@ class CudnnLSTM(_CudnnRNN):
                num_layers,
                num_units,
                input_size,
-               input_mode="auto_select",
+               input_mode="linear_input",
                direction="unidirectional",
                dropout=0.,
                seed=0):
@@ -344,9 +539,12 @@ class CudnnLSTM(_CudnnRNN):
     """Runs the forward step for the Cudnn LSTM model.
 
     Args:
-      input_data: the input sequence to the LSTM model.
-      input_h: the initial hidden state for h.
-      input_c: the initial hidden state for c.
+      input_data: the input sequence to the LSTM model. A Tensor of shape [?,
+        batch_size, input_size].
+      input_h: the initial hidden state for h. A Tensor of shape [num_layers,
+        batch_size, num_units].
+      input_c: the initial hidden state for c. A Tensor of the same shape as
+        input_h.
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
 
@@ -368,7 +566,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
                num_layers,
                num_units,
                input_size,
-               input_mode="auto_select",
+               input_mode="linear_input",
                direction="unidirectional",
                dropout=0.,
                seed=0):
@@ -390,6 +588,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the seed used for initializing dropout.
     """
+
     super(_CudnnRNNNoInputC, self).__init__(
         self._rnn_mode,
         num_layers,
@@ -404,8 +603,10 @@ class _CudnnRNNNoInputC(_CudnnRNN):
     """Runs the forward step for the Cudnn LSTM model.
 
     Args:
-      input_data: the input sequence to the LSTM model.
-      input_h: the initial hidden state for h.
+      input_data: the input sequence to the RNN model. A Tensor of shape [?,
+        batch_size, input_size].
+      input_h: the initial hidden state for h. A Tensor of shape [num_layers,
+        batch_size, num_units].
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
 

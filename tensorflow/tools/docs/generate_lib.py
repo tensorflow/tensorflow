@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import os
+import sys
 
 import six
 
@@ -415,6 +416,8 @@ class DocGenerator(object):
   """Main entry point for generating docs."""
 
   def __init__(self):
+    if sys.version_info >= (3, 0):
+      print('Warning: Doc generation is not supported from python3.')
     self.argument_parser = argparse.ArgumentParser()
     self._py_modules = None
     self._private_map = _get_default_private_map()

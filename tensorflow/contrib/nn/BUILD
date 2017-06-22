@@ -17,7 +17,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:nn"],
+    deps = [
+        "//tensorflow/python:nn",
+        "//tensorflow/python:util",
+    ],
 )
 
 filegroup(

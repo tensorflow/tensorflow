@@ -87,7 +87,7 @@ TEST_F(CopyInsertionTest, SingleParameter) {
 TEST_F(CopyInsertionTest, SingleConstant) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant}));
 
@@ -110,9 +110,9 @@ TEST_F(CopyInsertionTest, MultipleConstantsAndParameters) {
   auto builder = HloComputation::Builder(TestName());
 
   HloInstruction* constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   HloInstruction* constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
 
   HloInstruction* x = builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "x"));
@@ -140,11 +140,11 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
   // the computation result. Verify that copies are added properly.
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   HloInstruction* constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   HloInstruction* constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.0)));
 
   HloInstruction* tuple1 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
@@ -152,7 +152,7 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
       HloInstruction::CreateTuple({constant3, constant2}));
 
   HloInstruction* pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   builder.AddInstruction(HloInstruction::CreateTernary(
       tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
 
@@ -196,9 +196,8 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
   // The output of a bitcast is its operand (same buffer), so a bitcast
   // constant feeding the result must have a copy added.
   auto builder = HloComputation::Builder(TestName());
-  HloInstruction* constant =
-      builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<float>({1.0, 42.0})));
+  HloInstruction* constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({1.0, 42.0})));
   HloInstruction* bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(F32, {2, 2}), HloOpcode::kBitcast, constant));
 
@@ -308,9 +307,9 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
   // copy is added.
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   HloInstruction* constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
 
   HloInstruction* tuple1 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
@@ -318,7 +317,7 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
       HloInstruction::CreateTuple({constant2, constant1}));
 
   HloInstruction* pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   HloInstruction* select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
   HloInstruction* gte =
@@ -350,7 +349,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
       bool nested = false) {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(10)));
     const Shape& loop_state_shape =
         nested ? nested_loop_state_shape_ : loop_state_shape_;
     auto loop_state = builder.AddInstruction(
@@ -381,7 +380,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
     // Update data GTE(1).
@@ -419,7 +418,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
 
     // add0 = Add(in0, 1)
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -488,7 +487,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
     // add0 = Add(in0, 1)
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
@@ -503,9 +502,8 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
       data = builder.AddInstruction(
           HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
     }
-    auto update = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
-            {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+    auto update = builder.AddInstruction(HloInstruction::CreateConstant(
+        Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
     // add1 = Add(in1, {1, 1, 1, 1, 1, 1, 1, 1})
     auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, data, update));
@@ -538,7 +536,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto gte0 = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
         induction_variable_shape_, loop_state, 0));
     auto inc = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         gte0->shape(), HloOpcode::kAdd, gte0, inc));
 
@@ -548,9 +546,8 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     // GTE(GTE(loop_state, 1), 0) -> Add
     auto gte10 = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(data_shape_, gte1, 0));
-    auto update10 = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
-            {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+    auto update10 = builder.AddInstruction(HloInstruction::CreateConstant(
+        Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
     auto add10 = builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, gte10, update10));
 
@@ -574,11 +571,10 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
                                         bool nested = false) {
     auto builder = HloComputation::Builder(TestName() + ".While");
     auto induction_var_init = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(0)));
 
-    auto data_init = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
-            {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
+    auto data_init = builder.AddInstruction(HloInstruction::CreateConstant(
+        Literal::CreateR1<float>({0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
 
     if (nested) {
       auto inner_init = builder.AddInstruction(
@@ -601,9 +597,8 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
 
   HloInstruction* BuildWhileInstruction_InitPointsToConstant() {
     auto builder = HloComputation::Builder(TestName() + ".While");
-    auto data_init = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
-            {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
+    auto data_init = builder.AddInstruction(HloInstruction::CreateConstant(
+        Literal::CreateR1<float>({0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
     return BuildWhileInstructionWithCustomInit(loop_state_shape_, data_init,
                                                &builder);
   }
@@ -620,11 +615,11 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto builder = HloComputation::Builder(TestName() + ".While");
 
     auto one = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
     auto v1 = builder.AddInstruction(
         HloInstruction::CreateBroadcast(data_shape_, one, {1}));
     auto zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
     auto v2 = builder.AddInstruction(
         HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
 
@@ -632,7 +627,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto tuple2 = builder.AddInstruction(HloInstruction::CreateTuple({v2, v1}));
 
     auto pred = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+        HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
     auto data_init = builder.AddInstruction(HloInstruction::CreateTernary(
         nested_tuple_shape_, HloOpcode::kSelect, pred, tuple1, tuple2));
 
@@ -644,7 +639,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto builder = HloComputation::Builder(TestName() + ".While");
 
     auto one = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
     auto one_vec = builder.AddInstruction(
         HloInstruction::CreateBroadcast(data_shape_, one, {1}));
     auto data_init =
@@ -657,12 +652,11 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
   HloInstruction* BuildWhileInstruction_InitPointsToInterfering() {
     auto builder = HloComputation::Builder(TestName() + ".While");
     auto one = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
     auto data_init = builder.AddInstruction(
         HloInstruction::CreateBroadcast(data_shape_, one, {1}));
-    auto one_vec = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
-            {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
+    auto one_vec = builder.AddInstruction(HloInstruction::CreateConstant(
+        Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f})));
     // Take a reference to 'data_init' to make it interfere with while result.
     builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, data_init, one_vec));
@@ -677,7 +671,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     const bool nested =
         ShapeUtil::Equal(loop_state_shape, nested_loop_state_shape_);
     auto induction_var_init = builder->AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(0)));
     auto condition =
         module_->AddEmbeddedComputation(BuildConditionComputation(nested));
     auto body = module_->AddEmbeddedComputation(

@@ -53,7 +53,8 @@ enum PrimitiveType {
   // computation; e.g. a computation that returns weights and biases may have a
   // signature that results in a tuple like (f32[784x2000], f32[2000])
   //
-  // Tuples are currently special in that they may only be rank 0.
+  // If a shape proto has the tuple element type, it may not have any entries
+  // in the dimensions field.
   TUPLE = 13;
 
   // An opaque type used for passing context specific data to a custom
@@ -199,7 +200,7 @@ message OpMetadata {
   string op_name = 2;
   // Indicate a file and line that this op is associated to in a user's program.
   //
-  // e.g. it could be be the file and line of user code that generated the op.
+  // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
 }
@@ -255,11 +256,15 @@ message ComputationDataHandle {
   int64 handle = 1;
 }
 
-// Handle given to a user that represents a device to execute a computation.
-// When replication is enabled, the device handle represents the device for the
-// replica id 0.
+// Handle given to a user that represents a replicated virtual device. Each
+// replicated device represents N physical devices for execution where N is the
+// number of replicas.
 message DeviceHandle {
   int64 handle = 1;
+
+  // The number of model-parallel virtual devices that communicate via XLA
+  // Send/Recv instructions.
+  int64 device_count = 2;
 }
 
 // Handle given to a user to represent a channel between two computations
@@ -267,6 +272,21 @@ message DeviceHandle {
 // Send instructions will be blocked until the data is transferred.
 message ChannelHandle {
   int64 handle = 1;
+}
+
+// DeviceAssignmentProto is a serialized form of DeviceAssignment class, which
+// represents the device ids assigned to a set of replicated computations.
+// See xla::DeviceAssignment class comment for more details.
+message DeviceAssignmentProto {
+  int32 replica_count = 1;
+  int32 computation_count = 2;
+
+  // Each logical computation runs on replica_count physical devices.
+  // ComputationDevice represents the device ids assinged to the replicas.
+  message ComputationDevice {
+    repeated int32 replica_device_ids = 1;
+  }
+  repeated ComputationDevice computation_devices = 3;
 }
 
 // Literals are used when the server and client need to exchange materialized
@@ -463,6 +483,14 @@ message ReduceWindowRequest {
   ComputationHandle to_apply = 5;
 }
 
+message BatchNormTrainingRequest {
+  ComputationDataHandle operand = 1;
+  ComputationDataHandle scale = 2;
+  ComputationDataHandle offset = 3;
+  float epsilon = 4;
+  int64 feature_index = 5;
+}
+
 message CrossReplicaSumRequest {
   ComputationDataHandle operand = 2;
 }
@@ -596,6 +624,9 @@ enum UnaryOperation {
 
   // Elementwise, tests if values are finite (not NaN or inf)
   UNOP_IS_FINITE = 11;
+
+  // Elementwise, computes the cosine of x.
+  UNOP_COS = 12;
 }
 
 message UnaryOpRequest {
@@ -713,6 +744,12 @@ message VariadicOpRequest {
   repeated ComputationDataHandle operands = 3;
 }
 
+message ReducePrecisionRequest {
+  ComputationDataHandle operand = 1;
+  int32 exponent_bits = 2;
+  int32 mantissa_bits = 3;
+}
+
 message SendRequest {
   ComputationDataHandle operand = 1;
   ChannelHandle channel_handle = 2;
@@ -744,6 +781,7 @@ message OpRequest {
     MapRequest map_request = 15;
     PadRequest pad_request = 16;
     ParameterRequest parameter_request = 17;
+    ReducePrecisionRequest reduce_precision_request = 36;
     ReduceRequest reduce_request = 18;
     ReduceWindowRequest reduce_window_request = 19;
     ReshapeRequest reshape_request = 20;
@@ -760,7 +798,8 @@ message OpRequest {
     SendRequest send_request = 30;
     RecvRequest recv_request = 31;
     OutfeedRequest outfeed_request = 32;
-    // Next: 35
+    BatchNormTrainingRequest batch_norm_training_request = 35;
+    // Next: 37
   }
 }
 

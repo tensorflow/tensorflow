@@ -264,15 +264,9 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
     }
     attrs.push_back(memory);
   }
-  if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(node->proto().total_exec_micros());
-    if (node->account) {
-      time = FormatTime(node->proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    attrs.push_back(time);
-  }
+  std::vector<string> time_attrs = FormatTimes(node, opts);
+  attrs.insert(attrs.end(), time_attrs.begin(), time_attrs.end());
+
   if (opts.select.find(kShown[5]) != opts.select.end() &&
       !node->node->devices().empty()) {
     attrs.push_back(str_util::Join(node->node->devices(), "|"));
