@@ -882,7 +882,8 @@ class BlockingOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
 REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
 
-static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
+static void TestSessionInterOpThreadsImpl(bool use_function_lib,
+                                          bool use_global_pools) {
   FunctionDefLibrary library_graph_def;
   if (use_function_lib) {
     const string lib = R"proto(
@@ -921,24 +922,45 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
   (*options.config.mutable_device_count())["GPU"] = 0;
   (*options.config.mutable_device_count())["SYCL"] = 0;
 
-  options.config.add_session_inter_op_thread_pool();
   auto* p = options.config.add_session_inter_op_thread_pool();
+  if (use_global_pools) p->set_global_name("large pool");
+  p = options.config.add_session_inter_op_thread_pool();
+  if (use_global_pools) p->set_global_name("small pool");
   p->set_num_threads(1);
   const int kLargePool = 0;
   const int kSmallPool = 1;
 
-  std::unique_ptr<Session> session(NewSession(options));
-  ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def));
+  std::vector<std::unique_ptr<Session>> sessions;
+  if (!use_global_pools) {
+    sessions.emplace_back(NewSession(options));
+    TF_ASSERT_OK(sessions.back()->Create(def));
+  }
+  mutex sessions_mu;
 
   std::atomic<int32> num_done(0);
   // Runs session to compute <node>:0 using inter_op thread pool <pool>.
-  auto add_session_run_call = [&session, &num_done](
-      thread::ThreadPool* tp, Node* node, int inter_op_pool) {
-    auto fn = [&session, inter_op_pool, node, &num_done]() {
+  auto add_session_run_call = [use_global_pools, &def, &options, &sessions,
+                               &sessions_mu,
+                               &num_done](thread::ThreadPool* tp, Node* node,
+                                          int inter_op_pool) {
+    auto fn = [use_global_pools, &def, &options, &sessions, &sessions_mu,
+               inter_op_pool, node, &num_done]() {
       RunOptions run_options;
       run_options.set_inter_op_thread_pool(inter_op_pool);
       std::vector<Tensor> outputs;
+
+      Session* session;
+      if (use_global_pools) {
+        std::unique_ptr<Session> s(NewSession(options));
+        TF_ASSERT_OK(s->Create(def));
+        session = s.get();
+
+        mutex_lock l(sessions_mu);
+        sessions.emplace_back(std::move(s));
+      } else {
+        session = sessions[0].get();
+      }
+
       Status s = session->Run(run_options, {} /* inputs */,
                               {node->name() + ":0"} /* output_names */, {},
                               &outputs, nullptr /* run_metadata */);
@@ -999,11 +1021,23 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
 }
 
 TEST(DirectSessionTest, TestSessionInterOpThreads) {
-  TestSessionInterOpThreadsImpl(false /* use_function_lib */);
+  TestSessionInterOpThreadsImpl(false /* use_function_lib */,
+                                false /*use_global_pools */);
 }
 
 TEST(DirectSessionTest, TestSessionInterOpThreadsWithFunctions) {
-  TestSessionInterOpThreadsImpl(true /* use_function_lib */);
+  TestSessionInterOpThreadsImpl(true /* use_function_lib */,
+                                false /*use_global_pools */);
+}
+
+TEST(DirectSessionTest, TestSessionInterOpGlobalPools) {
+  TestSessionInterOpThreadsImpl(false /* use_function_lib */,
+                                true /*use_global_pools */);
+}
+
+TEST(DirectSessionTest, TestSessionInterOpGlobalPoolsWithFunctions) {
+  TestSessionInterOpThreadsImpl(true /* use_function_lib */,
+                                true /*use_global_pools */);
 }
 
 TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
@@ -1023,19 +1057,42 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   options.config.add_session_inter_op_thread_pool();
 
   // Wrong pool number on Run call.
-  std::unique_ptr<Session> session(NewSession(options));
-  ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def));
-  for (int pool_num = -1; pool_num <= 1; pool_num += 2) {
-    RunOptions run_options;
-    run_options.set_inter_op_thread_pool(pool_num);
-    std::vector<Tensor> outputs;
-    Status s = session->Run(run_options, {} /* inputs */,
-                            {x->name() + ":0"} /* output_names */, {}, &outputs,
-                            nullptr /* run_metadata */);
-    EXPECT_EQ(strings::StrCat(
-                  "Invalid argument: Invalid inter_op_thread_pool: ", pool_num),
-              s.ToString());
+  {
+    std::unique_ptr<Session> session(NewSession(options));
+    TF_ASSERT_OK(session->Create(def));
+    for (int pool_num = -1; pool_num <= 1; pool_num += 2) {
+      RunOptions run_options;
+      run_options.set_inter_op_thread_pool(pool_num);
+      std::vector<Tensor> outputs;
+      Status s = session->Run(run_options, {} /* inputs */,
+                              {x->name() + ":0"} /* output_names */, {},
+                              &outputs, nullptr /* run_metadata */);
+      EXPECT_EQ(
+          strings::StrCat("Invalid argument: Invalid inter_op_thread_pool: ",
+                          pool_num),
+          s.ToString());
+    }
+  }
+
+  // Global name changes thread count.
+  std::vector<std::unique_ptr<Session>> sessions;
+  auto* pool_config = options.config.mutable_session_inter_op_thread_pool(0);
+  pool_config->set_num_threads(0);
+  pool_config->set_global_name("foo");
+  sessions.emplace_back(NewSession(options));
+  TF_ASSERT_OK(sessions.back()->Create(def));
+  sessions.emplace_back(NewSession(options));  // repeat creation, okay.
+  TF_ASSERT_OK(sessions.back()->Create(def));
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int i = 1; i < 128; ++i) {
+      pool_config->set_num_threads(i);
+      sessions.emplace_back(NewSession(options));
+      auto status = sessions.back()->Create(def);
+      ASSERT_FALSE(status.ok()) << status;
+    }
+
+    // Clear existing sessions before second pass; error still happens.
+    sessions.clear();
   }
 }
 
