@@ -205,7 +205,8 @@ std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
   return output;
 }
 
-// Override of the above that works around compile failures with vectors.
+// Override of the above that works around compile failures with gcc 7.1.1.
+// For details see https://github.com/tensorflow/tensorflow/issues/10843
 template <typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
                        const std::vector<T>& input) {
