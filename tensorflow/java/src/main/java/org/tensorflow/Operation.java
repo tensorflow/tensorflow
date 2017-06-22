@@ -102,9 +102,7 @@ public final class Operation {
    *
    * <p>An Operation has multiple named inputs, each of which contains either
    * a single tensor or a list of tensors. This method returns the size of
-   * the list of tensors for a specific named input of the operation.The length
-   * of the list should be equal to the number of inputs specified by this
-   * operation's op def.
+   * the list of tensors for a specific named input of the operation.
    *
    * @param name identifier of the list of tensors (of which there may
    *        be many) inputs to this operation.
