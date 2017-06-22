@@ -394,7 +394,9 @@ py_test(
     size = "small",
     srcs = ["canned/head_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
+        ":dnn_testing_utils",
         ":head",
         ":metric_keys",
         ":model_fn",
