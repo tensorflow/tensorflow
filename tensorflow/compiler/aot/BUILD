@@ -108,6 +108,7 @@ cc_test(
     deps = [
         ":tfcompile_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -157,6 +158,17 @@ tf_library(
     tags = ["manual"],
 )
 
+# A test of tf_library that includes a graph with an unknown op, but where
+# the compilation works because the the unknown op is not needed for the fetches.
+tf_library(
+    name = "test_graph_tfunknownop",
+    testonly = 1,
+    config = "test_graph_tfunknownop.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
+    tags = ["manual"],
+)
+
 # Utility library for benchmark binaries, used by the *_benchmark rules that are
 # added by the tfcompile bazel macro.
 cc_library(
@@ -200,6 +212,7 @@ test_suite(
     tests = [
         ":benchmark_test",
         ":test_graph_tfadd_test",
+        ":test_graph_tfunknownop_test",
         "//tensorflow/compiler/aot/tests:all_tests",
     ],
 )
