@@ -172,7 +172,7 @@ class _OrderedDictNumpyFeedFn(object):
     self._trav = (integer_indexes[-1] + 1) % self._max
     feed_dict = {self._index_placeholder: integer_indexes}
     cols = [
-        column[integer_indexes]
+        column[sorted(integer_indexes)]
         for column in self._ordered_dict_of_arrays.values()
     ]
     feed_dict.update(dict(zip(self._col_placeholders, cols)))
