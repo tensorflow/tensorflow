@@ -328,7 +328,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   Status optimize_status =
       OptimizeGraph(new_item->graph, &new_item->graph, cfg);
   if (!optimize_status.ok()) {
-    LOG(ERROR) << "Function optimization failed: " << optimize_status;
+    LOG(ERROR) << "Graph preprocessing failed: " << optimize_status;
     return nullptr;
   }
 
