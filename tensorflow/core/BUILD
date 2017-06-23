@@ -937,21 +937,21 @@ filegroup(
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
-    #srcs = if_android(["//tensorflow/core:android_srcs"]),
-    #copts = tf_copts() + [
-    #    "-Os",
-    #],
-    #linkopts = ["-lz"],
-    #tags = [
-    #    "manual",
-    #    "notap",
-    #],
-    #visibility = ["//visibility:public"],
-    #deps = [
-    #    ":protos_cc",
-    #    "//third_party/eigen3",
-    #],
-    #alwayslink = 1,
+    srcs = if_android(["//tensorflow/core:android_srcs"]),
+    copts = tf_copts() + [
+        "-Os",
+    ],
+    linkopts = ["-lz"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_cc",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
 )
 
 # Native library support for iOS applications.
@@ -998,20 +998,20 @@ cc_library(
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
     name = "android_tensorflow_lib",
-    # srcs = if_android([":android_op_registrations_and_gradients"]),
-    # copts = tf_copts(),
-    # tags = [
-    #     "manual",
-    #     "notap",
-    # ],
-    # visibility = ["//visibility:public"],
-    # deps = [
-    #     ":android_tensorflow_lib_lite",
-    #     ":protos_cc",
-    #     "//tensorflow/core/kernels:android_tensorflow_kernels",
-    #     "//third_party/eigen3",
-    # ],
-    # alwayslink = 1,
+    srcs = if_android([":android_op_registrations_and_gradients"]),
+    copts = tf_copts(),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":android_tensorflow_lib_lite",
+        ":protos_cc",
+        "//tensorflow/core/kernels:android_tensorflow_kernels",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
 )
 
 # Android library for use with the SELECTIVE_REGISTRATION feature.
