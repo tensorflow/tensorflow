@@ -105,6 +105,16 @@ Status BaseVisitor::HandleConvert(
   return Status::OK();
 }
 
+Status BaseVisitor::HandleCopy(HloInstruction* inst) {
+  poplar::Tensor in;
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
+
+  sequence.add(poplar::program::Copy(in, out));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  return Status::OK();
+}
+
 Status BaseVisitor::HandleClamp(
         HloInstruction* inst,
         HloInstruction* min,
@@ -299,6 +309,11 @@ Status BaseVisitor::HandleWhile(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandlePad(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleReducePrecision(HloInstruction* inst,
+                                          HloInstruction* operand) {
   return Unimplemented(inst);
 }
 
