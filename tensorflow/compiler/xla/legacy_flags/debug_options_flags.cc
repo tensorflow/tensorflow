@@ -27,6 +27,9 @@ struct DebugOptionsFlags {
   string xla_generate_hlo_graph;
   string xla_disable_hlo_passes;
   bool xla_enable_fast_math;
+  bool xla_llvm_enable_alias_scope_metadata;
+  bool xla_llvm_enable_noalias_metadata;
+  bool xla_llvm_enable_invariant_load_metadata;
   int32 xla_backend_optimization_level;
   bool xla_embed_ir_in_executable;
   string xla_dump_ir_to;
@@ -53,6 +56,9 @@ void AllocateFlags() {
   flag_values->xla_generate_hlo_graph = "";
   flag_values->xla_disable_hlo_passes = "";
   flag_values->xla_enable_fast_math = true;
+  flag_values->xla_llvm_enable_alias_scope_metadata = true;
+  flag_values->xla_llvm_enable_noalias_metadata = true;
+  flag_values->xla_llvm_enable_invariant_load_metadata = true;
   flag_values->xla_backend_optimization_level = 3;
   flag_values->xla_embed_ir_in_executable = false;
   flag_values->xla_dump_ir_to = "";
@@ -71,6 +77,19 @@ void AllocateFlags() {
            "xla_enable_fast_math", &flag_values->xla_enable_fast_math,
            "Enable unsafe fast-math optimizations in the compiler; "
            "this may produce faster code at the expense of some accuracy."),
+       tensorflow::Flag("xla_llvm_enable_alias_scope_metadata",
+                        &flag_values->xla_llvm_enable_alias_scope_metadata,
+                        "In LLVM-based backends, enable the emission of "
+                        "!alias.scope metadata in the generated IR."),
+       tensorflow::Flag("xla_llvm_enable_noalias_metadata",
+                        &flag_values->xla_llvm_enable_noalias_metadata,
+                        "In LLVM-based backends, enable the emission of "
+                        "!noalias metadata in the generated IR."),
+       tensorflow::Flag("xla_llvm_enable_invariant_load_metadata",
+                        &flag_values->xla_llvm_enable_invariant_load_metadata,
+                        "In LLVM-based backends, enable the emission of "
+                        "!invariant.load metadata in "
+                        "the generated IR."),
        tensorflow::Flag(
            "xla_backend_optimization_level",
            &flag_values->xla_backend_optimization_level,
@@ -140,6 +159,12 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
       flag_values->xla_cpu_multi_thread_eigen);
   options.set_xla_gpu_cuda_data_dir(flag_values->xla_gpu_cuda_data_dir);
   options.set_xla_gpu_ftz(flag_values->xla_gpu_ftz);
+  options.set_xla_llvm_enable_alias_scope_metadata(
+      flag_values->xla_llvm_enable_alias_scope_metadata);
+  options.set_xla_llvm_enable_noalias_metadata(
+      flag_values->xla_llvm_enable_noalias_metadata);
+  options.set_xla_llvm_enable_invariant_load_metadata(
+      flag_values->xla_llvm_enable_invariant_load_metadata);
 
   std::vector<string> extra_options_parts =
       tensorflow::str_util::Split(flag_values->xla_backend_extra_options, ',');

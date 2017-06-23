@@ -1899,11 +1899,14 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
       GetTempBuffersArgument(), slice.index(), &ir_builder_);
   llvm::LoadInst* tempbuf_address_base =
       ir_builder_.CreateLoad(tempbuf_address_ptr);
-  //  Loading the address of a buffer is invariant of the point at which the
-  //  load is executed in the program because we never reassign buffers.
-  tempbuf_address_base->setMetadata(
-      llvm::LLVMContext::MD_invariant_load,
-      llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
+  if (hlo_module_config_.debug_options()
+          .xla_llvm_enable_invariant_load_metadata()) {
+    //  Loading the address of a buffer is invariant of the point at which the
+    //  load is executed in the program because we never reassign buffers.
+    tempbuf_address_base->setMetadata(
+        llvm::LLVMContext::MD_invariant_load,
+        llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
+  }
   llvm_ir::SetTbaaForInstruction(tempbuf_address_base, target_shape,
                                  /*is_pointer_to=*/true);
   AttachAlignmentMetadataForLoad(tempbuf_address_base, allocation.size());

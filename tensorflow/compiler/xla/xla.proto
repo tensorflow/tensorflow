@@ -64,6 +64,18 @@ message DebugOptions {
   // Enable flush-to-zero semantics in the GPU backend.
   bool xla_gpu_ftz = 10;
 
+  // If true, in LLVM-based backends, emit !alias.scope metadata in
+  // generated IR.
+  bool xla_llvm_enable_alias_scope_metadata = 11;
+
+  // If true, in LLVM-based backends, emit !noalias metadata in the
+  // generated IR.
+  bool xla_llvm_enable_noalias_metadata = 12;
+
+  // If true, in LLVM-based backends, emit !invariant.load metadata in
+  // the generated IR.
+  bool xla_llvm_enable_invariant_load_metadata = 13;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
