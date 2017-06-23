@@ -59,7 +59,6 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   private HandlerThread handlerThread;
   private boolean useCamera2API;
   protected Bitmap rgbFrameBitmap = null;
-  protected int[] rgbBytes = null;
   protected int previewWidth = 0;
   protected int previewHeight = 0;
   protected Bitmap croppedBitmap = null;
@@ -88,18 +87,17 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   }
 
   /*
- * Callback for android.hardware.Camera API
- */
+  * Callback for android.hardware.Camera API
+  */
   @Override
   public void onPreviewFrame(final byte[] bytes, final Camera camera) {
     if (computing) {
       return;
     }
     computing = true;
-
-
     Camera.Size previewSize = camera.getParameters().getPreviewSize();
     yuvBytes[0]=bytes;
+    int[] rgbBytes = null;
     try {
       // Initialize the storage bitmaps once when the resolution is known.
       if (previewSize.width!=0 ||  previewSize.height!=0) {
@@ -108,22 +106,18 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         rgbBytes = new int[previewWidth * previewHeight];
         onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
         ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
-
       }
-
     } catch (final Exception e) {
       LOGGER.e(e, "Exception!");
       return;
     }
-
     postInferenceCallback = new Runnable() {
       @Override
       public void run() {
         camera.addCallbackBuffer(bytes);
       }
     };
-
-    processImageRGBbytes(new byte[bytes.length * 2/3]);
+    processImageRGBbytes(rgbBytes);
   }
 
   /*
@@ -132,9 +126,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
-    rgbBytes = new int[previewWidth * previewHeight];
-
-
+    int[] rgbBytes =new int[previewWidth * previewHeight];
     try {
       image = reader.acquireLatestImage();
 
@@ -147,12 +139,9 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         return;
       }
       computing = true;
-
       Trace.beginSection("imageAvailable");
-
       final Plane[] planes = image.getPlanes();
       fillBytes(planes, yuvBytes);
-
       yRowStride = planes[0].getRowStride();
       final int uvRowStride = planes[1].getRowStride();
       final int uvPixelStride = planes[1].getPixelStride();
@@ -167,7 +156,6 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
               uvRowStride,
               uvPixelStride,
               false);
-
       image.close();
 
     } catch (final Exception e) {
@@ -178,9 +166,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
       Trace.endSection();
       return;
     }
-
-    processImageRGBbytes(new byte[yuvBytes[0].length]);
-
+    processImageRGBbytes(rgbBytes);
     Trace.endSection();
   }
 
@@ -387,7 +373,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     return super.onKeyDown(keyCode, event);
   }
 
-  protected abstract void processImageRGBbytes(byte[] luminance) ;
+  protected abstract void processImageRGBbytes(int[] rgbBytes ) ;
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
   protected abstract Size getDesiredPreviewFrameSize();

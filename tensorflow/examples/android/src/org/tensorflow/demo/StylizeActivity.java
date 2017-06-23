@@ -458,22 +458,19 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
     cropToFrameTransform = new Matrix();
     frameToCropTransform.invert(cropToFrameTransform);
-
     yuvBytes = new byte[3][];
-
     intValues = new int[desiredSize * desiredSize];
     floatValues = new float[desiredSize * desiredSize * 3];
     initializedSize = desiredSize;
   }
 
-  protected void processImageRGBbytes(byte[] luminance) {
+  protected void processImageRGBbytes(int[] rgbBytes ) {
     if (desiredSize != initializedSize) {
       LOGGER.i(
               "Initializing at size preview size %dx%d, stylize size %d",
               previewWidth, previewHeight, desiredSize);
       rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
       croppedBitmap = Bitmap.createBitmap(desiredSize, desiredSize, Config.ARGB_8888);
-
       frameToCropTransform =
               ImageUtils.getTransformationMatrix(
                       previewWidth, previewHeight,
@@ -482,13 +479,10 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
       cropToFrameTransform = new Matrix();
       frameToCropTransform.invert(cropToFrameTransform);
-
       yuvBytes = new byte[3][];
-
       intValues = new int[desiredSize * desiredSize];
       floatValues = new float[desiredSize * desiredSize * 3];
-S      initializedSize = desiredSize;
-
+      initializedSize = desiredSize;
     }
     rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
     final Canvas canvas = new Canvas(croppedBitmap);
@@ -503,16 +497,12 @@ S      initializedSize = desiredSize;
       @Override
       public void run() {
         cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-
         final long startTime = SystemClock.uptimeMillis();
         stylizeImage(croppedBitmap);
         lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-
         textureCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-
         requestRender();
         computing = false;
-
         if (postInferenceCallback != null) {
           postInferenceCallback.run();
         }

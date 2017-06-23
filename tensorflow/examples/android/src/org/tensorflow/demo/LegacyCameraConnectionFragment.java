@@ -37,7 +37,7 @@ import org.tensorflow.demo.env.Logger;
 
 public class LegacyCameraConnectionFragment extends Fragment {
 
-  private Camera mCamera;
+  private Camera camera;
   private static final Logger LOGGER = new Logger();
   private Camera.PreviewCallback imageListener;
 
@@ -76,27 +76,27 @@ public class LegacyCameraConnectionFragment extends Fragment {
             final SurfaceTexture texture, final int width, final int height) {
 
           int index = getCameraId();
-          mCamera = Camera.open(index);
+          camera = Camera.open(index);
 
           try {
-            Camera.Parameters parameters = mCamera.getParameters();
+            Camera.Parameters parameters = camera.getParameters();
             parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
 
-            mCamera.setDisplayOrientation(90);
-            mCamera.setParameters(parameters);
-            mCamera.setPreviewTexture(texture);
+            camera.setDisplayOrientation(90);
+            camera.setParameters(parameters);
+            camera.setPreviewTexture(texture);
           } catch (IOException exception) {
-            mCamera.release();
+            camera.release();
           }
 
-          mCamera.setPreviewCallbackWithBuffer(imageListener);
-          Camera.Size s = mCamera.getParameters().getPreviewSize();
+          camera.setPreviewCallbackWithBuffer(imageListener);
+          Camera.Size s = camera.getParameters().getPreviewSize();
           int bufferSize = s.height * s.width * 3 / 2;
-          mCamera.addCallbackBuffer(new byte[bufferSize]);
+          camera.addCallbackBuffer(new byte[bufferSize]);
 
           textureView.setAspectRatio(s.height, s.width);
 
-          mCamera.startPreview();
+          camera.startPreview();
         }
 
         @Override
@@ -150,7 +150,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
     // the SurfaceTextureListener).
 
     if (textureView.isAvailable()) {
-      mCamera.startPreview();
+      camera.startPreview();
     } else {
       textureView.setSurfaceTextureListener(surfaceTextureListener);
     }
@@ -185,11 +185,11 @@ public class LegacyCameraConnectionFragment extends Fragment {
   }
 
   protected void stopCamera() {
-    if (mCamera != null) {
-      mCamera.stopPreview();
-      mCamera.setPreviewCallback(null);
-      mCamera.release();
-      mCamera = null;
+    if (camera != null) {
+      camera.stopPreview();
+      camera.setPreviewCallback(null);
+      camera.release();
+      camera = null;
     }
   }
 

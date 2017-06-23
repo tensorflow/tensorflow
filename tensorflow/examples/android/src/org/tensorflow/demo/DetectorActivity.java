@@ -347,7 +347,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     Trace.endSection();
   }
 
-  protected  void processImageRGBbytes(byte[] luminance) {}
+  protected  void processImageRGBbytes(int[] rgbBytes ) {}
 
   @Override
   protected int getLayoutId() {

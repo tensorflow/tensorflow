@@ -146,41 +146,36 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
         });
   }
 
+  protected void processImageRGBbytes(int[] rgbBytes ) {
+    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+    final Canvas canvas = new Canvas(croppedBitmap);
+    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
 
-
-    protected void processImageRGBbytes(byte[] luminance) {
-        rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
-        final Canvas canvas = new Canvas(croppedBitmap);
-        canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
-
-        // For examining the actual TF input.
-        if (SAVE_PREVIEW_BITMAP) {
-            ImageUtils.saveBitmap(croppedBitmap);
-        }
-
-        runInBackground(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        final long startTime = SystemClock.uptimeMillis();
-                        final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
-                        lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-                        LOGGER.i("Detect: %s", results);
-                        cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-                        if (resultsView==null)
-                            resultsView = (ResultsView) findViewById(R.id.results);
-
-                        resultsView.setResults(results);
-                        requestRender();
-                        computing = false;
-
-                        if (postInferenceCallback != null) {
-                            postInferenceCallback.run();
-                        }
-                    }
-                });
+    // For examining the actual TF input.
+    if (SAVE_PREVIEW_BITMAP) {
+        ImageUtils.saveBitmap(croppedBitmap);
     }
-
+    runInBackground(
+            new Runnable() {
+                @Override
+                public void run() {
+                    final long startTime = SystemClock.uptimeMillis();
+                    final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
+                    lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+                    LOGGER.i("Detect: %s", results);
+                    cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                    if (resultsView==null) {
+                        resultsView = (ResultsView) findViewById(R.id.results);
+                    }
+                    resultsView.setResults(results);
+                    requestRender();
+                    computing = false;
+                    if (postInferenceCallback != null) {
+                        postInferenceCallback.run();
+                    }
+                }
+            });
+  }
 
   @Override
   public void onSetDebug(boolean debug) {
