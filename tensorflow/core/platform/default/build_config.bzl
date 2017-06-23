@@ -1,8 +1,10 @@
 # Platform-specific build configurations.
 
-load("@protobuf//:protobuf.bzl", "cc_proto_library")
+#load("@protobuf//:protobuf.bzl", "cc_proto_library")
+load("@protobuf//:protobuf.bzl", "proto_gen")
 load("@protobuf//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -20,6 +22,118 @@ def tf_deps(deps, suffix):
     tf_deps += [tf_dep + suffix]
 
   return tf_deps
+
+def _CcHdrs(srcs, use_grpc_plugin=False):
+  ret = [s[:-len(".proto")] + ".pb.h" for s in srcs]
+  if use_grpc_plugin:
+    ret += [s[:-len(".proto")] + ".grpc.pb.h" for s in srcs]
+  return ret
+
+def _CcSrcs(srcs, use_grpc_plugin=False):
+  ret = [s[:-len(".proto")] + ".pb.cc" for s in srcs]
+  if use_grpc_plugin:
+    ret += [s[:-len(".proto")] + ".grpc.pb.cc" for s in srcs]
+  return ret
+
+def cc_proto_library(
+        name,
+        srcs=[],
+        deps=[],
+        cc_libs=[],
+        include=None,
+        protoc="//:protoc",
+        internal_bootstrap_hack=False,
+        use_grpc_plugin=False,
+        default_runtime="//:protobuf",
+        **kargs):
+  """Bazel rule to create a C++ protobuf library from proto source files
+
+  NOTE: the rule is only an internal workaround to generate protos. The
+  interface may change and the rule may be removed when bazel has introduced
+  the native rule.
+
+  Args:
+    name: the name of the cc_proto_library.
+    srcs: the .proto files of the cc_proto_library.
+    deps: a list of dependency labels; must be cc_proto_library.
+    cc_libs: a list of other cc_library targets depended by the generated
+        cc_library.
+    include: a string indicating the include path of the .proto files.
+    protoc: the label of the protocol compiler to generate the sources.
+    internal_bootstrap_hack: a flag indicate the cc_proto_library is used only
+        for bootstraping. When it is set to True, no files will be generated.
+        The rule will simply be a provider for .proto files, so that other
+        cc_proto_library can depend on it.
+    use_grpc_plugin: a flag to indicate whether to call the grpc C++ plugin
+        when processing the proto files.
+    default_runtime: the implicitly default runtime which will be depended on by
+        the generated cc_library target.
+    **kargs: other keyword arguments that are passed to cc_library.
+
+  """
+
+  includes = []
+  if include != None:
+    includes = [include]
+
+  if internal_bootstrap_hack:
+    # For pre-checked-in generated files, we add the internal_bootstrap_hack
+    # which will skip the codegen action.
+    proto_gen(
+        name=name + "_genproto",
+        srcs=srcs,
+        deps=[s + "_genproto" for s in deps],
+        includes=includes,
+        protoc=protoc,
+        visibility=["//visibility:public"],
+    )
+    # An empty cc_library to make rule dependency consistent.
+    native.cc_library(
+        name=name,
+        **kargs)
+    return
+
+  grpc_cpp_plugin = None
+  if use_grpc_plugin:
+    grpc_cpp_plugin = "//external:grpc_cpp_plugin"
+
+  gen_srcs = _CcSrcs(srcs, use_grpc_plugin)
+  gen_hdrs = _CcHdrs(srcs, use_grpc_plugin)
+  outs = gen_srcs + gen_hdrs
+
+  proto_gen(
+      name=name + "_genproto",
+      srcs=srcs,
+      deps=[s + "_genproto" for s in deps],
+      includes=includes,
+      protoc=protoc,
+      plugin=grpc_cpp_plugin,
+      plugin_language="grpc",
+      gen_cc=1,
+      outs=outs,
+      visibility=["//visibility:public"],
+  )
+
+  if default_runtime and not default_runtime in cc_libs:
+    cc_libs += [default_runtime]
+  if use_grpc_plugin:
+    cc_libs += ["//external:grpc_lib"]
+
+  impl_rule = native.cc_library(
+      name=name + "_impl",
+      srcs=gen_srcs,
+      hdrs=gen_hdrs,
+      deps=cc_libs + deps,
+      includes=includes,
+      visibility=["//tensorflow/core:__pkg__"])
+  cc_header_only_library(
+      name = name + "_dep_headers",
+      deps=deps)
+  native.cc_library(
+      name=name,
+      hdrs=gen_hdrs,
+      deps=["@protobuf//:protobuf_headers", ":" + name + "_dep_headers"],
+      **kargs)
 
 def tf_proto_library_cc(name, srcs = [], has_services = None,
                         protodeps = [], visibility = [], testonly = 0,
@@ -44,14 +158,14 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       name = name + "_cc",
       srcs = srcs,
       deps = tf_deps(protodeps, "_cc") + ["@protobuf//:cc_wkt_protos"],
-      cc_libs = cc_libs + ["@protobuf//:protobuf"],
+      cc_libs = cc_libs + ["@protobuf//:protobuf_headers"],
       copts = [
           "-Wno-unknown-warning-option",
           "-Wno-unused-but-set-variable",
           "-Wno-sign-compare",
       ],
       protoc = "@protobuf//:protoc",
-      default_runtime = "@protobuf//:protobuf",
+      default_runtime = "@protobuf//:protobuf_headers",
       use_grpc_plugin = use_grpc_plugin,
       testonly = testonly,
       visibility = visibility,

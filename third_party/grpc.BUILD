@@ -1581,7 +1581,6 @@ cc_library(
         ":gpr",
         ":grpc",
         "//external:libssl",
-        "//external:protobuf_clib",
     ],
 )
 
@@ -1785,7 +1784,6 @@ cc_library(
     deps = [
         ":gpr",
         ":grpc_unsecure",
-        "//external:protobuf_clib",
     ],
 )
 

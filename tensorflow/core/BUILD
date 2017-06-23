@@ -418,6 +418,16 @@ tf_cuda_library(
     deps = [":framework_internal"],
 )
 
+cc_binary(
+    name = "libframework.so",
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        ":framework",
+        ":framework_internal_impl",
+    ],
+)
+
 cc_library(
     name = "overflow",
     hdrs = ["util/overflow.h"],
@@ -454,8 +464,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
-        ":op_gen_overrides_proto_cc",
-        ":protos_all_cc",
+        ":op_gen_overrides_proto_cc_impl",
+        ":protos_all_cc_impl",
     ],
 )
 
@@ -858,7 +868,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs",
     srcs = [
-        ":proto_text_srcs_all",
+        #":proto_text_srcs_all",
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
@@ -927,21 +937,21 @@ filegroup(
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
     name = "android_tensorflow_lib_lite",
-    srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + [
-        "-Os",
-    ],
-    linkopts = ["-lz"],
-    tags = [
-        "manual",
-        "notap",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":protos_cc",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
+    #srcs = if_android(["//tensorflow/core:android_srcs"]),
+    #copts = tf_copts() + [
+    #    "-Os",
+    #],
+    #linkopts = ["-lz"],
+    #tags = [
+    #    "manual",
+    #    "notap",
+    #],
+    #visibility = ["//visibility:public"],
+    #deps = [
+    #    ":protos_cc",
+    #    "//third_party/eigen3",
+    #],
+    #alwayslink = 1,
 )
 
 # Native library support for iOS applications.
@@ -988,20 +998,20 @@ cc_library(
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
     name = "android_tensorflow_lib",
-    srcs = if_android([":android_op_registrations_and_gradients"]),
-    copts = tf_copts(),
-    tags = [
-        "manual",
-        "notap",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":android_tensorflow_lib_lite",
-        ":protos_cc",
-        "//tensorflow/core/kernels:android_tensorflow_kernels",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
+    # srcs = if_android([":android_op_registrations_and_gradients"]),
+    # copts = tf_copts(),
+    # tags = [
+    #     "manual",
+    #     "notap",
+    # ],
+    # visibility = ["//visibility:public"],
+    # deps = [
+    #     ":android_tensorflow_lib_lite",
+    #     ":protos_cc",
+    #     "//tensorflow/core/kernels:android_tensorflow_kernels",
+    #     "//third_party/eigen3",
+    # ],
+    # alwayslink = 1,
 )
 
 # Android library for use with the SELECTIVE_REGISTRATION feature.
@@ -1394,6 +1404,17 @@ proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
 
 cc_library(
     name = "proto_text",
+    #srcs = proto_text_hdrs_and_srcs.srcs,
+    hdrs = proto_text_hdrs_and_srcs.hdrs,
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "proto_text_impl",
     srcs = proto_text_hdrs_and_srcs.srcs,
     hdrs = proto_text_hdrs_and_srcs.hdrs,
     deps = [
@@ -1414,6 +1435,100 @@ cc_library(
 
 tf_cuda_library(
     name = "framework_internal",
+    srcs = glob(
+        [
+            "example/**/*.h",
+            "framework/**/*.h",
+            "util/**/*.h",
+        ] + [
+            "graph/edgeset.h",
+            "graph/graph.h",
+        ],
+        exclude = [
+            "**/*test*",
+            "**/*main.cc",
+            "example/example_parser_configuration.*",
+            "util/reporter.h",
+            "util/reporter.cc",
+            "framework/fake_input.*",
+            "framework/op_gen_lib.*",
+            "framework/reader_base.*",
+            "util/memmapped_file_system.*",
+            "util/memmapped_file_system_writer.*",
+            "util/version_info.cc",
+        ],
+    ) + select({
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "util/memmapped_file_system.h",
+            "util/memmapped_file_system_writer.h",
+        ],
+    }),
+    hdrs = [
+        "framework/op_segment.h",
+        "framework/rendezvous.h",  # only needed for tests
+        "framework/tensor_reference.h",
+        "framework/tracking_allocator.h",  # only needed for tests
+        "framework/unique_tensor_references.h",
+        "util/command_line_flags.h",
+        "util/env_var.h",
+        "util/equal_graph_def.h",
+        "util/presized_cuckoo_map.h",
+        "util/tensor_slice_set.h",
+        "util/tensor_slice_util.h",
+    ],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }) + [
+        "-lm",
+    ],
+    deps = [
+        ":framework_internal_headers_lib",
+        ":protos_all_cc",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+cc_header_only_library(
+    name = "framework_internal_headers_lib",
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":version_lib",
+        "//tensorflow/core/kernels:bounds_check",
+    ],
+)
+
+# Contains the implementations (.cc) for all protocol buffers which are used in
+# core TensorFlow (whether they have their own build rule or are grouped with
+# protos_all). Should never be referenced outside of the framework shared
+# object, since having implementations in two different shared objects will
+# cause corrupted protocol buffers.
+cc_library(
+    name = "all_proto_impls",
+    deps = [
+        ":master_proto_cc_impl",
+        ":master_service_proto_cc_impl",
+        ":op_gen_overrides_proto_cc_impl",
+        ":protos_all_cc_impl",
+        ":protos_test_cc_impl",
+        ":worker_proto_cc_impl",
+        ":worker_service_proto_cc_impl",
+        "//tensorflow/core/debug:debug_service_proto_cc_impl",
+        "//tensorflow/core/debug:debugger_event_metadata_proto_cc_impl",
+        "//tensorflow/core/grappler/costs:op_performance_data_cc_impl",
+        "//tensorflow/python:cpp_shape_inference_proto_cc_impl",
+        "//tensorflow/python:protos_all_cc_impl",
+        "//tensorflow/tools/tfprof:protos_all_cc_impl",
+    ],
+)
+
+tf_cuda_library(
+    name = "framework_internal_impl",
     srcs = glob(
         [
             "example/**/*.h",
@@ -1450,7 +1565,7 @@ tf_cuda_library(
             "util/memmapped_file_system_writer.h",
             "util/memmapped_file_system_writer.cc",
         ],
-    }),
+    }) + proto_text_hdrs_and_srcs.srcs,
     hdrs = [
         "framework/op_segment.h",
         "framework/rendezvous.h",  # only needed for tests
@@ -1463,7 +1578,7 @@ tf_cuda_library(
         "util/presized_cuckoo_map.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
-    ],
+    ] + proto_text_hdrs_and_srcs.hdrs,
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
@@ -1474,9 +1589,12 @@ tf_cuda_library(
     deps = [
         ":lib",
         ":lib_internal",
+        #":framework_internal_headers_lib",
+        "@protobuf//:protobuf",
+        ":all_proto_impls",
         ":proto_text",
-        ":protos_all_cc",
         ":version_lib",
+        "//tensorflow/core/kernels:lookup_util",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),

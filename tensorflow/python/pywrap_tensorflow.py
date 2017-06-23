@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import ctypes
-import sys
 import traceback
 
 # pylint: disable=wildcard-import,g-import-not-at-top,unused-import,line-too-long
@@ -34,16 +33,10 @@ import traceback
 try:
   # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
   # use `dlopen()` for dynamic loading.
-  _use_rtld_global = hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags')
-  if _use_rtld_global:
-    _default_dlopen_flags = sys.getdlopenflags()
-    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
   from tensorflow.python.pywrap_tensorflow_internal import *
   from tensorflow.python.pywrap_tensorflow_internal import __version__
   from tensorflow.python.pywrap_tensorflow_internal import __git_version__
   from tensorflow.python.pywrap_tensorflow_internal import __compiler_version__
-  if _use_rtld_global:
-    sys.setdlopenflags(_default_dlopen_flags)
 except ImportError:
   msg = """%s\n\nFailed to load the native TensorFlow runtime.\n
 See https://www.tensorflow.org/install/install_sources#common_installation_problems\n
