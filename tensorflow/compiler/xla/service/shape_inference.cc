@@ -550,9 +550,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       ExpectNotTupleOrOpaque(rhs, "rhs of elementwise binary operation"));
 
   if (!ShapeUtil::SameElementType(lhs, rhs)) {
-    return InvalidArgument("binary op with different element types: %s and %s",
-                           ShapeUtil::HumanString(lhs).c_str(),
-                           ShapeUtil::HumanString(rhs).c_str());
+    return InvalidArgument(
+        "binary op %s with different element types: %s and %s",
+        BinaryOperation_Name(operation).c_str(),
+        ShapeUtil::HumanString(lhs).c_str(),
+        ShapeUtil::HumanString(rhs).c_str());
   }
 
   if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
@@ -1518,10 +1520,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const ProgramShape& to_apply) {
   // The applied function's arity equals the number of arguments.
   if (arg_shapes.size() != to_apply.parameters_size()) {
+    string computation_signature = ShapeUtil::HumanString(to_apply);
+    string argument_shapes = tensorflow::str_util::Join(
+        arg_shapes, ", ", [](string* out, const Shape* shape) {
+          tensorflow::strings::StrAppend(out, ShapeUtil::HumanString(*shape));
+        });
     return InvalidArgument(
         "Call applied function arity must match number of arguments; got: "
-        "arity: %d, arguments: %zu",
-        to_apply.parameters_size(), arg_shapes.size());
+        "arity: %d, arguments: %zu; computation signature: %s; argument "
+        "shapes: [%s]",
+        to_apply.parameters_size(), arg_shapes.size(),
+        computation_signature.c_str(), argument_shapes.c_str());
   }
 
   // All arguments must be compatible with the program shape.
