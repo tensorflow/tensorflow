@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -61,7 +60,8 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
 
   // Run it.
   std::unique_ptr<Literal> literal =
-      client_->ExecuteAndTransfer(replayed, /*arguments=*/{})
+      client_
+          ->ExecuteAndTransfer(replayed, /*arguments=*/{}, &execution_options_)
           .ConsumeValueOrDie();
 
   // Expect 4.
@@ -92,15 +92,16 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
 
   // Run it.
   std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(2))
+      client_->TransferToServer(*Literal::CreateR0<int32>(2))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> y_data =
-      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(3))
+      client_->TransferToServer(*Literal::CreateR0<int32>(3))
           .ConsumeValueOrDie();
   std::unique_ptr<Literal> literal =
       client_
           ->ExecuteAndTransfer(replayed,
-                               /*arguments=*/{x_data.get(), y_data.get()})
+                               /*arguments=*/{x_data.get(), y_data.get()},
+                               &execution_options_)
           .ConsumeValueOrDie();
 
   // Expect 5.
@@ -141,7 +142,8 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
 
   // Run it.
   std::unique_ptr<Literal> literal =
-      client_->ExecuteAndTransfer(replayed, /*arguments=*/{})
+      client_
+          ->ExecuteAndTransfer(replayed, /*arguments=*/{}, &execution_options_)
           .ConsumeValueOrDie();
 
   // Expect result.
@@ -154,7 +156,6 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

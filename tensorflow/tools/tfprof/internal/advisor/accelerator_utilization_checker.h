@@ -76,7 +76,7 @@ class AcceleratorUtilizationChecker : public Checker {
     if (execs.empty()) {
       return;
     }
-    if (!IsAcceleratorDevice(node->canonical_device())) {
+    if (!IsPlacedOnAccelerator(node->canonical_device())) {
       return;
     }
 

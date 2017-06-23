@@ -332,6 +332,29 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     return nullptr;
   }
 
+  // Validate feed, fetch and init nodes
+  std::unordered_set<string> nodes;
+  for (const auto& node : new_item->graph.node()) {
+    nodes.insert(node.name());
+  }
+  for (const auto& feed : new_item->feed) {
+    if (nodes.find(feed.first) == nodes.end()) {
+      LOG(ERROR) << "Feed node " << feed.first << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
+  for (const auto& fetch : new_item->fetch) {
+    if (nodes.find(fetch) == nodes.end()) {
+      LOG(ERROR) << "Fetch node " << fetch << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
+  for (const auto& init : new_item->init_ops) {
+    if (nodes.find(init) == nodes.end()) {
+      LOG(ERROR) << "Init node " << init << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
   return new_item;
 }
 

@@ -28,7 +28,11 @@ namespace xla {
 // Tests that verify IR emitted by the CPU/GPU backend is as expected.
 class CodegenTestBase : public HloTestBase {
  protected:
-  CodegenTestBase() {}
+  // Like HloTestBase::CreateNewModule, but also sets the "embed ir in
+  // executable" flag to true, since this is needed for codegen tests.
+  // The optional ftz flags configures whether these modules have their ftz
+  // option turned on.
+  std::unique_ptr<HloModule> CreateNewModuleWithEmbeddedIr(bool ftz = false);
 
   // Returns the embedded LLVM IR from the given executable. Codegen tests must
   // override this method, but execution tests do not have to because they do

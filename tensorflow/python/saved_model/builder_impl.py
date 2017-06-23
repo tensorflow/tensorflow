@@ -287,16 +287,12 @@ class SavedModelBuilder(object):
     # The graph almost certainly previously contained at least one Saver, and
     # possibly several (e.g. one for loading a pretrained embedding, and another
     # for the model weights).  However, a *new* Saver was just created that
-    # includes all of the variables.  In the context of the SavedModel, this
-    # new Saver is the only one that needs to be retained. The associated
-    # checkpoint produced in add_meta_graph_and_variables() contains all of the
-    # variable values.  Thus, any preexisting Savers are redundant and useless
-    # at best, but worse may break downstream graph-processing tools, and can be
-    # confusing during debugging. It is therefore safe and wise to set
-    # `clear_extraneous_savers` to `True`, since it removes both the extraneous
-    # SaverDefs and their associated Save/Restore Ops from the graph.
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices,
-                                             clear_extraneous_savers=True)
+    # includes all of the variables.  Removing the preexisting ones was the
+    # motivation for the clear_extraneous_savers option, but it turns out that
+    # there are edge cases where that option breaks the graph.  Until that is
+    # resolved, we just leave the option set to False for now.
+    # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -378,16 +374,12 @@ class SavedModelBuilder(object):
     # The graph almost certainly previously contained at least one Saver, and
     # possibly several (e.g. one for loading a pretrained embedding, and another
     # for the model weights).  However, a *new* Saver was just created that
-    # includes all of the variables.  In the context of the SavedModel, this
-    # new Saver is the only one that needs to be retained.  The associated
-    # checkpoint that was saved just above contains all of the variable values.
-    # Thus, any preexisting Savers are redundant and useless at best, but worse
-    # may break downstream graph-processing tools, and can be confusing during
-    # debugging.  It is therefore safe and wise to set `clear_extraneous_savers`
-    # to `True`, since it removes both the extraneous SaverDefs and their
-    # associated Save/Restore Ops from the graph.
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices,
-                                             clear_extraneous_savers=True)
+    # includes all of the variables.  Removing the preexisting ones was the
+    # motivation for the clear_extraneous_savers option, but it turns out that
+    # there are edge cases where that option breaks the graph.  Until that is
+    # resolved, we just leave the option set to False for now.
+    # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)

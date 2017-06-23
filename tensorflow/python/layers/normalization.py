@@ -123,6 +123,10 @@ class BatchNormalization(base.Layer):
     if self.fused and renorm:
       raise ValueError(
           'Batch renorm is currently not supported with fused batch norm.')
+    if self.fused and (beta_regularizer is not None or
+                       gamma_regularizer is not None):
+      raise ValueError('Regularizers are not currently '
+                       'supported for fused batch norm.')
     if renorm:
       renorm_clipping = renorm_clipping or {}
       keys = ['rmax', 'rmin', 'dmax']
@@ -153,7 +157,12 @@ class BatchNormalization(base.Layer):
                        ' is out of range for input with rank ' + str(ndim))
 
     if self.fused is None:
-      self.fused = not self.renorm and ndim == 4 and axis in [1, 3]
+      # Currently fused batch norm doesn't support renorm and beta/gamma
+      # regularizer; and only supports an input tensor of rank 4 and a channel
+      # dimension on axis 1 and 3.
+      self.fused = not self.renorm and ndim == 4 and axis in [
+          1, 3
+      ] and self.beta_regularizer is None and self.gamma_regularizer is None
 
     if self.fused:
       if axis == 1:

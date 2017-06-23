@@ -41,15 +41,19 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
   // Default action performed on HloInstruction.
   virtual Status DefaultAction(HloInstruction* hlo_instruction) = 0;
 
-  Status HandleElementwiseUnary(HloInstruction* hlo, HloOpcode opcode,
-                                HloInstruction* operand) override {
+  Status HandleElementwiseUnary(HloInstruction* hlo,
+                                HloOpcode opcode) override {
     return DefaultAction(hlo);
   }
-  Status HandleElementwiseBinary(HloInstruction* hlo, HloOpcode opcode,
-                                 HloInstruction* lhs,
-                                 HloInstruction* rhs) override {
+  Status HandleElementwiseBinary(HloInstruction* hlo,
+                                 HloOpcode opcode) override {
     return DefaultAction(hlo);
   }
+
+  Status HandleBatchNormTraining(HloInstruction* hlo) override {
+    return DefaultAction(hlo);
+  }
+
   Status HandleClamp(HloInstruction* clamp, HloInstruction* /*min*/,
                      HloInstruction* /*arg*/,
                      HloInstruction* /*max*/) override {
@@ -60,12 +64,10 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
       tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
     return DefaultAction(concatenate);
   }
-  Status HandleConvert(HloInstruction* convert,
-                       HloInstruction* /*operand*/) override {
+  Status HandleConvert(HloInstruction* convert) override {
     return DefaultAction(convert);
   }
-  Status HandleCopy(HloInstruction* copy,
-                    HloInstruction* /*operand*/) override {
+  Status HandleCopy(HloInstruction* copy) override {
     return DefaultAction(copy);
   }
   Status HandleSelect(HloInstruction* select, HloInstruction* /*pred*/,

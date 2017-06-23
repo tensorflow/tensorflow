@@ -49,7 +49,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 `-step`: Show the stats of the this step when multiple steps of RunMetadata were added. By default, show the average of all steps."
 
-`-order_by`: Order the results by [name|depth|bytes|micros|params|float_ops|occurrence]
+`-order_by`: Order the results by [name|depth|bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence]
 
 `-account_type_regexes`: Account and display the ops whose types match one of the type regexes specified. tfprof allow user to define extra op types for ops through tensorflow.tfprof.OpLog proto. regexes are comma-sperated.
 
@@ -73,7 +73,7 @@ as long as they match the `-account_xxx` options.
 `-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 
 `-select`: Comma-separated list of metrics to show:
-[bytes|micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].
+[bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].
 
 `-output`: Output results as stdout, file or timeline.
 The format is ```output_type:key=value,key=value```.

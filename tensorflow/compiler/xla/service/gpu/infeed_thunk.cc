@@ -21,31 +21,59 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-InfeedThunk::InfeedThunk(const BufferAllocation::Slice& destination_buffer,
-                         uint64 mem_size, const HloInstruction* hlo_instruction)
+InfeedThunk::InfeedThunk(
+    tensorflow::gtl::ArraySlice<BufferAllocation::Slice> tuple_element_buffers,
+    const BufferAllocation::Slice& destination_buffer,
+    const HloInstruction* hlo_instruction)
     : Thunk(Kind::kInfeed, hlo_instruction),
-      destination_buffer_(destination_buffer),
-      mem_size_(mem_size) {}
+      tuple_element_buffers_(tuple_element_buffers.begin(),
+                             tuple_element_buffers.end()),
+      destination_buffer_(destination_buffer) {}
 
 tensorflow::Status InfeedThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations,
     perftools::gputools::Stream* stream) {
   VLOG(2) << "Infeeding to GPU ";
-  perftools::gputools::DeviceMemoryBase destination_data =
+
+  perftools::gputools::DeviceMemoryBase destination_address =
       buffer_allocations.GetDeviceAddress(destination_buffer_);
 
   InfeedManager* infeed_manager = GetOrCreateInfeedManager();
-  InfeedBuffer* buffer = infeed_manager->BlockingDequeueBuffer();
-  CHECK_EQ(buffer->length(), mem_size_);
-  stream->ThenMemcpy(&destination_data, *(buffer->device_memory()),
-                     buffer->length());
+  std::vector<InfeedBuffer*> infeed_buffers;
+  if (ShapeUtil::IsTuple(hlo_instruction()->shape())) {
+    CHECK(!ShapeUtil::IsNestedTuple(hlo_instruction()->shape()));
+    // Transfer the tuple elements first.
+    std::vector<void*> tuple_element_addresses;
+    for (BufferAllocation::Slice tuple_element_buffer :
+         tuple_element_buffers_) {
+      perftools::gputools::DeviceMemoryBase tuple_element_address =
+          buffer_allocations.GetDeviceAddress(tuple_element_buffer);
+
+      InfeedBuffer* buffer = infeed_manager->BlockingDequeueBuffer();
+      infeed_buffers.push_back(buffer);
+      stream->ThenMemcpy(&tuple_element_address, *(buffer->device_memory()),
+                         buffer->length());
+      tuple_element_addresses.push_back(tuple_element_address.opaque());
+    }
+    // Transfer the tuple outer buffer.
+    auto host_size = tuple_element_addresses.size() * sizeof(void*);
+    stream->ThenMemcpy(&destination_address, tuple_element_addresses.data(),
+                       host_size);
+  } else {
+    InfeedBuffer* buffer = infeed_manager->BlockingDequeueBuffer();
+    infeed_buffers.push_back(buffer);
+    stream->ThenMemcpy(&destination_address, *(buffer->device_memory()),
+                       buffer->length());
+  }
+
   if (!stream->BlockHostUntilDone()) {
     return InternalError("Failed to complete data transfer on stream %p",
                          stream);
   }
-  // Since Infeeds are totally ordered, no other infeed should sneak
-  // in and we should be able to release the same buffer we dequeued.
-  infeed_manager->ReleaseCurrentBuffer(buffer->device_memory());
+
+  infeed_manager->ReleaseBuffers(infeed_buffers);
+
+  VLOG(2) << "Infeeding to GPU complete";
   return tensorflow::Status::OK();
 }
 

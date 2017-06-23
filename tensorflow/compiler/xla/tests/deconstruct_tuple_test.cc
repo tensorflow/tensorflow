@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -48,7 +47,8 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
       tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
     Computation computation = builder->Build().ConsumeValueOrDie();
     auto global_data =
-        client_->Execute(computation, arguments).ConsumeValueOrDie();
+        client_->Execute(computation, arguments, &execution_options_)
+            .ConsumeValueOrDie();
     TF_CHECK_OK(client_->Transfer(*global_data).status());
     return global_data;
   }
@@ -173,7 +173,7 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({3.14f, -100.25f});
+      Literal::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   auto p = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "param0");
@@ -205,7 +205,6 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {
