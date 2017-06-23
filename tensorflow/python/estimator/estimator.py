@@ -693,13 +693,13 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
 
-      if model_fn_lib.MetricKeys.LOSS in estimator_spec.eval_metric_ops:
+      if model_fn_lib.LOSS_METRIC_KEY in estimator_spec.eval_metric_ops:
         raise ValueError(
             'Metric with name "%s" is not allowed, because Estimator ' % (
-                model_fn_lib.MetricKeys.LOSS) +
+                model_fn_lib.LOSS_METRIC_KEY) +
             'already defines a default metric with the same name.')
       estimator_spec.eval_metric_ops[
-          model_fn_lib.MetricKeys.LOSS] = metrics_lib.mean(estimator_spec.loss)
+          model_fn_lib.LOSS_METRIC_KEY] = metrics_lib.mean(estimator_spec.loss)
 
       update_op, eval_dict = _extract_metric_update_ops(
           estimator_spec.eval_metric_ops)

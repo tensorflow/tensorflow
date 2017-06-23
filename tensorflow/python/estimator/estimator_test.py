@@ -869,9 +869,9 @@ class EstimatorEvaluateTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn_with_incremental_loss)
     est.train(dummy_input_fn, steps=1)
     scores = est.evaluate(dummy_input_fn, steps=5)
-    self.assertIn(model_fn_lib.MetricKeys.LOSS, scores)
+    self.assertIn(model_fn_lib.LOSS_METRIC_KEY, scores)
     # Average loss will be (2 + 4 + 6 + 8 + 10)/5=6
-    self.assertAlmostEqual(6., scores[model_fn_lib.MetricKeys.LOSS])
+    self.assertAlmostEqual(6., scores[model_fn_lib.LOSS_METRIC_KEY])
 
   def test_hooks_should_be_session_run_hook(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
