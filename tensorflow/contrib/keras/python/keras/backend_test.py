@@ -105,9 +105,12 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.image_data_format(), image_data_format)
     keras.backend.set_image_data_format('channels_last')
 
-  def test_get_uid(self):
+  def test_get_reset_uids(self):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
     self.assertEqual(keras.backend.get_uid('foo'), 2)
+
+    keras.backend.reset_uids()
+    self.assertEqual(keras.backend.get_uid('foo'), 1)
 
 
 class BackendVariableTest(test.TestCase):

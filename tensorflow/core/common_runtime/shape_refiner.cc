@@ -139,7 +139,7 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
   return Status::OK();
 }
 
-Status ShapeRefiner::UpdateNode(const Node* node, bool* refined) {
+Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
   auto it = node_to_context_.find(node);
   if (it == node_to_context_.end()) {
     *refined = true;
@@ -155,29 +155,55 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool* refined) {
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
 
+    int dst_input = e->dst_input();
+    int src_output = e->src_output();
+
     Node* input = e->src();
     auto iter = node_to_context_.find(input);
     if (iter == node_to_context_.end()) {
       return errors::FailedPrecondition(
-          "Input ", e->dst_input(), " ('", input->name(), "') for '",
-          node->name(), "' was not previously added to ShapeRefiner.");
+          "Input ", dst_input, " ('", input->name(), "') for '", node->name(),
+          "' was not previously added to ShapeRefiner.");
     }
 
     InferenceContext* c = iter->second.get();
-    DCHECK_GE(e->dst_input(), 0);
-    if (node_context->MergeInput(e->dst_input(), c->output(e->src_output()))) {
+    DCHECK_GE(dst_input, 0);
+    ShapeHandle existing_input = node_context->input(dst_input);
+    if (!relax && node_context->MergeInput(dst_input, c->output(src_output))) {
       *refined = true;
+    } else if (relax) {
+      if (node_context->RelaxInput(dst_input, c->output(src_output))) {
+        if (!SameDefinedShape(node_context, node_context->input(dst_input),
+                              existing_input)) {
+          *refined = true;
+        }
+      }
     }
 
     // Also propagate handle shape and dtype of edges which are carrying
     // resource handles.
-    if (e->src()->output_type(e->src_output()) == DT_RESOURCE) {
-      auto* shapes_and_types =
-          c->output_handle_shapes_and_types(e->src_output());
-      if (shapes_and_types != nullptr &&
-          node_context->MergeInputHandleShapesAndTypes(e->dst_input(),
-                                                       *shapes_and_types)) {
+    if (e->src()->output_type(src_output) == DT_RESOURCE) {
+      auto* outputs = c->output_handle_shapes_and_types(src_output);
+      if (!outputs) continue;
+
+      if (!relax &&
+          node_context->MergeInputHandleShapesAndTypes(dst_input, *outputs)) {
         *refined = true;
+      } else if (relax) {
+        std::vector<ShapeAndType> existing_inputs;
+        const std::vector<ShapeAndType>* inputs =
+            node_context->input_handle_shapes_and_types(dst_input);
+        if (inputs) {
+          existing_inputs = *inputs;
+        }
+        if (node_context->RelaxInputHandleShapesAndMergeTypes(dst_input,
+                                                              *outputs)) {
+          if (IsUpdatedShapesOrTypes(
+                  node_context, existing_inputs,
+                  *node_context->input_handle_shapes_and_types(dst_input))) {
+            *refined = true;
+          }
+        }
       }
     }
   }
@@ -636,6 +662,38 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
   } while (rerun_shape_fn);
 
   return Status::OK();
+}
+
+bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
+                                    ShapeHandle s1) {
+  if (c->Rank(s0) != c->Rank(s1)) {
+    return false;
+  } else if (!c->RankKnown(s0)) {
+    return true;
+  }
+
+  for (int i = 0; i < c->Rank(s0); ++i) {
+    if (c->Value(c->Dim(s0, i)) != c->Value(c->Dim(s1, i))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool ShapeRefiner::IsUpdatedShapesOrTypes(
+    InferenceContext* c, const std::vector<ShapeAndType>& existing,
+    const std::vector<ShapeAndType>& updated) {
+  if (existing.size() != updated.size()) {
+    return true;
+  }
+  for (int i = 0; i < existing.size(); i++) {
+    if (!SameDefinedShape(c, existing[i].shape, updated[i].shape) ||
+        existing[i].dtype != updated[i].dtype) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace tensorflow

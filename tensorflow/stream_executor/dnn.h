@@ -1980,13 +1980,14 @@ class DnnSupport {
   //  input_data: the device memory region that contains the input tensor.
   //  output_desc: specifies the shape and the data layout of the output tensor.
   //  output_type: the data type of the output tensor.
+  //  scale: an element-wise scaling factor to apply.
   //  output_data: the device memory region that contains the output tensor.
   virtual bool DoTransformTensor(Stream* stream,
                                  const dnn::BatchDescriptor& input_desc,
                                  dnn::DataType input_type,
                                  const DeviceMemoryBase& input_data,
                                  const dnn::BatchDescriptor& output_desc,
-                                 dnn::DataType output_type,
+                                 dnn::DataType output_type, float scale,
                                  DeviceMemoryBase* output_data) {
     return false;
   }

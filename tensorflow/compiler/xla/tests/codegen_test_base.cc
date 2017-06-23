@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <utility>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -31,6 +32,17 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
+
+std::unique_ptr<HloModule> CodegenTestBase::CreateNewModuleWithEmbeddedIr(
+    bool ftz) {
+  HloModuleConfig config;
+  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  debug_options.set_xla_embed_ir_in_executable(true);
+  debug_options.set_xla_gpu_ftz(ftz);
+  config.set_debug_options(debug_options);
+  return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
+                               config);
+}
 
 void CodegenTestBase::CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
                                          const string& pattern) {

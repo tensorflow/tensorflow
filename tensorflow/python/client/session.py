@@ -971,7 +971,6 @@ class BaseSession(SessionInterface):
       TypeError: If `fetches` or `feed_dict` keys are of an inappropriate type.
       tf.errors.OpError: Or one of its subclasses if a TensorFlow error happens.
     """
-    assert not self._created_with_new_api, 'Partial runs don\'t work with C API'
 
     def _feed_fn(feed):
       for tensor_type, _, _, feed_fn in _REGISTERED_EXPANSIONS:
@@ -999,7 +998,12 @@ class BaseSession(SessionInterface):
         try:
           subfeed_t = self.graph.as_graph_element(subfeed, allow_tensor=True,
                                                   allow_operation=False)
-          feed_list.append(compat.as_bytes(subfeed_t.name))
+          if self._created_with_new_api:
+            # pylint: disable=protected-access
+            feed_list.append(subfeed_t._as_tf_output())
+            # pylint: enable=protected-access
+          else:
+            feed_list.append(compat.as_bytes(subfeed_t.name))
         except Exception as e:
           e.message = ('Cannot interpret feed_list key as Tensor: '
                        + e.message)
@@ -1014,12 +1018,24 @@ class BaseSession(SessionInterface):
     def _setup_fn(session, feed_list, fetch_list, target_list):
       self._extend_graph()
       with errors.raise_exception_on_not_ok_status() as status:
-        return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
-                                       target_list, status)
+        if self._created_with_new_api:
+          return tf_session.TF_SessionPRunSetup_wrapper(
+              session, feed_list, fetch_list, target_list, status)
+        else:
+          return tf_session.TF_PRunSetup(session, feed_list, fetch_list,
+                                         target_list, status)
 
-    return self._do_call(_setup_fn, self._session, feed_list,
-                         _name_list(fetch_handler.fetches()),
-                         _name_list(fetch_handler.targets()))
+    if self._created_with_new_api:
+      # pylint: disable=protected-access
+      final_fetches = [t._as_tf_output() for t in fetch_handler.fetches()]
+      final_targets = [op._c_op for op in fetch_handler.targets()]
+      # pylint: enable=protected-access
+    else:
+      final_fetches = _name_list(fetch_handler.fetches())
+      final_targets = _name_list(fetch_handler.targets())
+
+    return self._do_call(_setup_fn, self._session, feed_list, final_fetches,
+                         final_targets)
 
   def _run(self, handle, fetches, feed_dict, options, run_metadata):
     """Perform either run or partial_run, depending the presence of `handle`."""
@@ -1248,13 +1264,15 @@ class BaseSession(SessionInterface):
                                    status, run_metadata)
 
     def _prun_fn(session, handle, feed_dict, fetch_list):
-      assert not self._created_with_new_api, ('Partial runs don\'t work with '
-                                              'C API')
       if target_list:
         raise RuntimeError('partial_run() requires empty target_list.')
       with errors.raise_exception_on_not_ok_status() as status:
-        return tf_session.TF_PRun(session, handle, feed_dict, fetch_list,
-                                  status)
+        if self._created_with_new_api:
+          return tf_session.TF_SessionPRun_wrapper(session, handle, feed_dict,
+                                                   fetch_list, status)
+        else:
+          return tf_session.TF_PRun(session, handle, feed_dict, fetch_list,
+                                    status)
 
     if handle is None:
       return self._do_call(_run_fn, self._session, feeds, fetches, targets,

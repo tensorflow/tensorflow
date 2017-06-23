@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -78,7 +77,7 @@ class CallOpTest : public ClientLibraryTestBase {
 XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32IdentityScalar)) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR0F32IdentityComputation();
-  auto constant = builder.ConstantLiteral(*LiteralUtil::CreateR0<float>(42.0));
+  auto constant = builder.ConstantLiteral(*Literal::CreateR0<float>(42.0));
   builder.Call(callee, {constant});
 
   ComputeAndCompareR0<float>(&builder, 42.0, {}, ErrorSpec(0.01f));
@@ -87,8 +86,8 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32IdentityScalar)) {
 XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S0F32AddArray)) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR1S0F32AdditionComputation();
-  auto x = builder.ConstantLiteral(*LiteralUtil::CreateR1<float>({}));
-  auto y = builder.ConstantLiteral(*LiteralUtil::CreateR1<float>({}));
+  auto x = builder.ConstantLiteral(*Literal::CreateR1<float>({}));
+  auto y = builder.ConstantLiteral(*Literal::CreateR1<float>({}));
   builder.Call(callee, {x, y});
 
   ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.01f));
@@ -97,8 +96,8 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S0F32AddArray)) {
 XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S2F32AddArray)) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR1S2F32AdditionComputation();
-  auto x = builder.ConstantLiteral(*LiteralUtil::CreateR1<float>({1.0f, 2.0f}));
-  auto y = builder.ConstantLiteral(*LiteralUtil::CreateR1<float>({2.0f, 3.0f}));
+  auto x = builder.ConstantLiteral(*Literal::CreateR1<float>({1.0f, 2.0f}));
+  auto y = builder.ConstantLiteral(*Literal::CreateR1<float>({2.0f, 3.0f}));
   builder.Call(callee, {x, y});
 
   ComputeAndCompareR1<float>(&builder, {3.0f, 5.0f}, {}, ErrorSpec(0.01f));
@@ -107,8 +106,8 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S2F32AddArray)) {
 XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32Tuple)) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR0F32TupleComputation();
-  auto elem = LiteralUtil::CreateR0<float>(42.0);
-  auto tuple = LiteralUtil::MakeTuple({elem.get()});
+  auto elem = Literal::CreateR0<float>(42.0);
+  auto tuple = Literal::MakeTuple({elem.get()});
   builder.Call(callee, {builder.ConstantLiteral(*elem)});
 
   ComputeAndCompareTuple(&builder, *tuple, {}, ErrorSpec(0.01f));
@@ -120,7 +119,6 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32Tuple)) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

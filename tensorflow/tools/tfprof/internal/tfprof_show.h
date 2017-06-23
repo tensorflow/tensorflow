@@ -101,6 +101,36 @@ class TFShow {
   checkpoint::CheckpointReader* ckpt_reader_;
 };
 
+template <typename T>
+string FormatTotalExecTime(const T* node, const Options& opts) {
+  string time = FormatTime(node->proto().total_exec_micros());
+  if (node->account) {
+    time = FormatTime(node->proto().exec_micros()) + "/" + time;
+  } else {
+    time = "--/" + time;
+  }
+  return time;
+}
+template <typename T>
+string FormatCPUExecTime(const T* node, const Options& opts) {
+  string time = FormatTime(node->proto().total_cpu_exec_micros());
+  if (node->account) {
+    time = FormatTime(node->proto().cpu_exec_micros()) + "/" + time;
+  } else {
+    time = "--/" + time;
+  }
+  return time;
+}
+template <typename T>
+string FormatAcceleratorExecTime(const T* node, const Options& opts) {
+  string time = FormatTime(node->proto().total_accelerator_exec_micros());
+  if (node->account) {
+    time = FormatTime(node->proto().accelerator_exec_micros()) + "/" + time;
+  } else {
+    time = "--/" + time;
+  }
+  return time;
+}
 }  // namespace tfprof
 }  // namespace tensorflow
 

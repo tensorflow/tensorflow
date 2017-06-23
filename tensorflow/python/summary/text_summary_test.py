@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
@@ -43,16 +42,11 @@ class TextPluginTest(test_util.TensorFlowTestCase):
       # The API accepts vectors.
       arr = array_ops.constant(["one", "two", "three"])
       summ = text_summary.text_summary("foo", arr)
-      self.assertEqual(summ.op.type, "TensorSummary")
+      self.assertEqual(summ.op.type, "TensorSummaryV2")
 
       # the API accepts scalars
       summ = text_summary.text_summary("foo", array_ops.constant("one"))
-      self.assertEqual(summ.op.type, "TensorSummary")
-
-  def testTextSummaryCollections(self):
-    text_summary.text_summary("bar", array_ops.constant("2"), collections=[])
-    summaries = framework_ops.get_collection(framework_ops.GraphKeys.SUMMARIES)
-    self.assertEqual(len(summaries), 0)
+      self.assertEqual(summ.op.type, "TensorSummaryV2")
 
 
 if __name__ == "__main__":

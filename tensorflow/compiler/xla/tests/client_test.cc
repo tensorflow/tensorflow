@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -47,7 +46,7 @@ TEST_F(ClientTest, ExecuteWithLayout) {
       auto computation = b.Build();
       ASSERT_TRUE(computation.ok()) << computation.status();
 
-      ExecutionOptions execution_options;
+      ExecutionOptions execution_options = execution_options_;
       *execution_options.mutable_shape_with_output_layout() =
           ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                          execute_layout);
@@ -77,7 +76,7 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
   auto computation = b.Build();
   ASSERT_TRUE(computation.ok()) << computation.status();
 
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   // Create a result shape with one element column major and the other row
   // major.
   *execution_options.mutable_shape_with_output_layout() =
@@ -115,7 +114,6 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

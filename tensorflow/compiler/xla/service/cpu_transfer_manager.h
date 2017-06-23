@@ -37,6 +37,8 @@ class CpuTransferManager : public GenericTransferManager {
 
   Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
                                  const Literal& literal) override;
+  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
+                                int64 size, const void* source) override;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
