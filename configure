@@ -657,13 +657,9 @@ write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 # Configure the compute capabilities that TensorFlow builds for.
 # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
 function get_native_cuda_compute_capabilities {
-  tmpfile=$(mktemp)
-  device_query_src="$CUDA_TOOLKIT_PATH/samples/1_Utilities/deviceQuery/deviceQuery.cpp"
-  cuda_samples_inc="$CUDA_TOOLKIT_PATH/samples/common/inc"
-  $CUDA_TOOLKIT_PATH/bin/nvcc "$device_query_src" -I "$cuda_samples_inc" -o "$tmpfile" 2>/dev/null
-  chmod +x "$tmpfile"
-  "$tmpfile"|grep 'Capability'|grep -o '[0-9]*\.[0-9]*'|sed ':a;{N;s/\n/,/};ba'
-  rm "$tmpfile"
+  device_query_bin="$CUDA_TOOLKIT_PATH/extras/demo_suite/deviceQuery"
+  device_query_bin_windows="${device_query_bin}.exe"
+  (is_windows && "$device_query_bin_windows" || "$device_query_bin") | grep 'Capability' | grep -o '[0-9]*\.[0-9]*' | sed ':a;{N;s/\n/,/};ba'
 }
 while true; do
   fromuser=""
