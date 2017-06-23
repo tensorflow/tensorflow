@@ -68,6 +68,78 @@ py_library(
 # Kernel tests
 
 py_test(
+    name = "ensemble_optimizer_ops_test",
+    size = "small",
+    srcs = ["python/kernel_tests/ensemble_optimizer_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ensemble_optimizer_ops_py",
+        ":model_ops_py",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "model_ops_test",
+    size = "small",
+    srcs = ["python/kernel_tests/model_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ensemble_optimizer_ops_py",
+        ":model_ops_py",
+        ":prediction_ops_py",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "prediction_ops_test",
+    size = "small",
+    srcs = ["python/kernel_tests/prediction_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":model_ops_py",
+        ":prediction_ops_py",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "quantile_ops_test",
+    size = "small",
+    srcs = ["python/kernel_tests/quantile_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":quantile_ops_py",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "split_handler_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/split_handler_ops_test.py"],
@@ -77,6 +149,39 @@ py_test(
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_test(
+    name = "stats_accumulator_ops_test",
+    size = "small",
+    srcs = ["python/kernel_tests/stats_accumulator_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":stats_accumulator_ops_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_ops_test",
+    size = "small",
+    srcs = ["python/kernel_tests/training_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":model_ops_py",
+        ":training_ops_py",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
         "//tensorflow/python:training",
     ],
 )
