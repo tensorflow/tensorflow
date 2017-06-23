@@ -25,6 +25,9 @@ class HloInstruction;
 
 namespace poplarplugin {
 
+using TensorTarget = std::pair<HloInstruction*,int64>;
+using TensorAllocationMap = std::map<HloInstruction*, TensorTarget>;
+
 /**
  * This class finds all instructions that explicitly add tensors to the
  * graph.  For each one of them, it locates the downstream consumers of that
@@ -39,10 +42,10 @@ public:
 
   Status CreateAllocationMap(HloModule* module);
 
-  std::map<HloInstruction*, HloInstruction*> tensor_allocation_map;
+  TensorAllocationMap tensor_allocation_map;
 
 private:
-  HloInstruction* FindConsumers(HloInstruction* inst);
+  TensorTarget FindConsumers(HloInstruction* inst);
 };
 
 }

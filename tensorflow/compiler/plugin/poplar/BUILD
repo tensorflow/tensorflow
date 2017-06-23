@@ -269,6 +269,7 @@ test_suite(
         "graph_compile_io_map_test",
         "conversions_test",
         "64_bit_test",
+        "allocation_finder_test",
     ],
 )
 

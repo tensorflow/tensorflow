@@ -105,8 +105,8 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
   TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
 
   EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op1), conv);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op2), conv);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(conv,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(conv,1ll));
 }
 
 // Check it goes through call sites
@@ -160,8 +160,8 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
 
   EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op1), conv);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op2), conv);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(conv,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(conv,1ll));
 }
 
 
@@ -238,8 +238,8 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations) {
   TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
 
   EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op1), conv1);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op2), conv1);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(conv1,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(conv1,1ll));
 }
 
 
@@ -281,12 +281,9 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
   TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
 
   EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op1), conv);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op2), conv);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(conv,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(conv,1ll));
 }
-
-//  auto indices = builder.AddInstruction(
-//HloInstruction::CreateConstant(LiteralUtil::CreateR1<int64>({1, 2})));
 
 }
 }

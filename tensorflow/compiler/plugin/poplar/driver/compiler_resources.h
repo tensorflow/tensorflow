@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
 #define TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_call.h"
 
 #include <popconv/Convolution.hpp>
@@ -30,6 +31,8 @@ using ComputationMap = std::map<const HloComputation*, CallVisitor>;
 
 struct CompilerResources {
   ComputationMap computation_map;
+
+  TensorAllocationMap tensor_allocation_map;
 
   popconv::PlanningCache convolution_cache;
 };

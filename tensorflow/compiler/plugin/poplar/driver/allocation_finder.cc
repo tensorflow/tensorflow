@@ -83,37 +83,40 @@ public:
   std::vector<HloInstruction*> allocating_instructions;
 };
 
-HloInstruction* AllocationFinder::FindConsumers(HloInstruction* inst) {
+TensorTarget
+AllocationFinder::FindConsumers(HloInstruction* inst) {
   for (auto user : inst->users()) {
+    int64 op_index = user->operand_index(inst);
     switch (user->opcode()) {
       case HloOpcode::kConvolution:
-        return user;
+      {
+        return std::make_pair(user, op_index);
+      }
       case HloOpcode::kCall:
       {
-        int64 op_index = user->operand_index(inst);
         HloComputation* comp = user->to_apply();
         HloInstruction* param = comp->parameter_instruction(op_index);
-        HloInstruction *target = FindConsumers(param);
-        if (target != nullptr) {
+        TensorTarget target = FindConsumers(param);
+        if (target.first != nullptr) {
           return target;
         }
         // if nothing appears then check the users of the call
         target = FindConsumers(user);
-        if (target != nullptr) {
+        if (target.first != nullptr) {
           return target;
         }
         break;
       }
       // TODO add other opcodes in here (reduce, ???)
       default:
-        HloInstruction *target = FindConsumers(user);
-        if (target != nullptr) {
+        TensorTarget target = FindConsumers(user);
+        if (target.first != nullptr) {
           return target;
         }
         break;
     }
   }
-  return nullptr;
+  return std::make_pair(nullptr, 0);
 }
 
 Status AllocationFinder::CreateAllocationMap(HloModule* module) {
@@ -123,9 +126,9 @@ Status AllocationFinder::CreateAllocationMap(HloModule* module) {
   TF_RETURN_IF_ERROR(entry->Accept(&finder));
 
   for (auto inst : finder.allocating_instructions) {
-    HloInstruction* consumer = FindConsumers(inst);
-    if (consumer != nullptr) {
-      tensor_allocation_map.insert(std::make_pair(inst, consumer));
+    TensorTarget target = FindConsumers(inst);
+    if (target.first != nullptr) {
+      tensor_allocation_map.insert(std::make_pair(inst, target));
     }
   }
 
