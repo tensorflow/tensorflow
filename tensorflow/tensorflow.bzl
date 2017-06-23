@@ -337,8 +337,8 @@ def tf_gen_op_wrapper_py(name,
       copts=tf_copts(),
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
       deps=([
-          clean_dep("//tensorflow/core:framework"),
-          clean_dep("//tensorflow/python:python_op_gen_main")
+          clean_dep("//tensorflow/core:framework_internal_impl"),
+          clean_dep("//tensorflow/python:python_op_gen_main"),
       ] + deps),
       visibility=[clean_dep("//tensorflow:internal")],)
 
@@ -854,6 +854,7 @@ def tf_custom_op_library_additional_deps():
       "@protobuf//:protobuf_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
+
   ]
 
 
@@ -936,7 +937,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
 
   native.cc_binary(
       name=name,
-      srcs=srcs,
+      srcs=srcs + [clean_dep("//tensorflow/core:libframework.so")],
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(),
@@ -1020,9 +1021,9 @@ def tf_py_wrap_cc(name,
 
   native.cc_binary(
       name=cc_library_name,
-      srcs=[module_name + ".cc"],
+      srcs=[module_name + ".cc", "//tensorflow/core:libframework.so"],
       copts=(copts + [
-          "-Wno-self-assign", "-Wno-sign-compare", "-Wno-write-strings"
+          "-Wno-self-assign", "-Wno-sign-compare", "-Wno-write-strings",
       ] + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,
