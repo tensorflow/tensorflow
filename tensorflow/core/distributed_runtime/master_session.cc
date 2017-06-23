@@ -994,8 +994,7 @@ MasterSession::MasterSession(
           << " #remote " << remote_devs_->size();
 
   LOG(INFO) << "Start master session " << handle_
-            << " with config: " << std::endl
-            << session_opts_.config.DebugString();
+            << " with config: " << session_opts_.config.ShortDebugString();
 }
 
 MasterSession::~MasterSession() {
