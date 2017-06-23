@@ -77,7 +77,7 @@ AddConstantTensor(poplar::Graph&graph,
                   poplar::Tensor& tensor) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
-  const TYPE* data(static_cast<const TYPE*>(LiteralUtil::InternalData(literal)));
+  const TYPE* data(static_cast<const TYPE*>(literal.InternalData()));
 
   if (num_elements == 0) {
     tensor = graph.addConstantTensor(type, {0}, (TYPE)0);
@@ -96,7 +96,7 @@ Add64BitConstantTensor(poplar::Graph&graph,
                   poplar::Tensor& tensor) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
-  const void* data(static_cast<const void*>(LiteralUtil::InternalData(literal)));
+  const void* data(static_cast<const void*>(literal.InternalData()));
 
   std::vector<char> converted =
           ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);

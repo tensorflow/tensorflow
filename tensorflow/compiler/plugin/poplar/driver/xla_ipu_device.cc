@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
+namespace se = ::perftools::gputools;
+
 namespace tensorflow {
 
 const char* const DEVICE_XLA_IPU = "XLA_IPU";
@@ -46,6 +48,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
   TF_RETURN_IF_ERROR(XlaDevice::Create("Poplar", DEVICE_XLA_IPU, 0,
                                        DEVICE_IPU_XLA_JIT, options, name_prefix,
                                        &device));
+
   devices->push_back(device.release());
   return Status::OK();
 }

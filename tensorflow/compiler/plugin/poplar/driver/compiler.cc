@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -348,6 +349,19 @@ PoplarCompiler::ShapeSizeBytesFunction() const {
 
 }  // namespace poplarplugin
 }  // namespace xla
+
+static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
+  return xla::MakeUnique<xla::ComputationPlacer>();
+}
+
+static bool RegisterComputationPlacer() {
+  xla::ComputationPlacer::RegisterComputationPlacer(
+          se::poplarplugin::kPoplarPlatformId,
+          &CreateComputationPlacer);
+  return true;
+}
+
+bool placer_registration = RegisterComputationPlacer();
 
 REGISTER_MODULE_INITIALIZER(poplar_compiler, {
   xla::Compiler::RegisterCompilerFactory(sep::kPoplarPlatformId, []() {

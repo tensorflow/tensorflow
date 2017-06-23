@@ -40,16 +40,12 @@ public:
   virtual const Shape& GetOutputShape(HloInstruction*) const;
 
   Status HandleElementwiseUnary(HloInstruction* inst,
-                                HloOpcode opcode,
-                                HloInstruction* operand) override;
+                                HloOpcode opcode) override;
 
   Status HandleElementwiseBinary(HloInstruction* inst,
-                                 HloOpcode opcode,
-                                 HloInstruction* lhs,
-                                 HloInstruction* rhs) override;
+                                 HloOpcode opcode) override;
 
-  Status HandleConvert(HloInstruction* inst,
-                       HloInstruction* operand) override;
+  Status HandleConvert(HloInstruction* inst) override;
 
   Status HandleClamp(HloInstruction* inst,
                      HloInstruction* min,
@@ -151,6 +147,8 @@ public:
   Status HandleSend(HloInstruction* inst) override;
 
   Status HandleRecv(HloInstruction* inst) override;
+
+  Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override;
 
   TensorMap tensor_map;
 

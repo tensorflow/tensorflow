@@ -74,13 +74,13 @@ Status PoplarTransferManager::TransferLiteralFromDevice(
   }
 
   *literal->mutable_shape() = device_shape;
-  LiteralUtil::Reserve(ShapeUtil::ElementsIn(device_shape), literal);
+  literal->Reserve(ShapeUtil::ElementsIn(device_shape));
   TF_RETURN_IF_ERROR(TransferBufferFromDevice(
           executor, source, ShapeUtil::ByteSizeOf(device_shape),
-          LiteralUtil::MutableInternalData(literal)));
+          literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
     literal->Swap(
-            LiteralUtil::Relayout(*literal, literal_shape.layout()).get());
+            literal->Relayout(literal_shape.layout()).get());
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -139,18 +139,20 @@ Status PoplarTransferManager::TransferLiteralToDevice(
   }
 
   return TransferBufferToDevice(
-          executor, GetByteSizeRequirement(shape),
-          LiteralUtil::InternalData(literal), destination);
+          executor, GetByteSizeRequirement(shape), literal.InternalData(),
+          destination);
 }
 
 Status
 PoplarTransferManager::TransferLiteralToInfeed(se::StreamExecutor *executor,
                                                const Literal &literal) {
-  const Shape &shape = literal.shape();
-  VLOG(1) << "transferring literal shape to infeed: "
-            << ShapeUtil::HumanString(shape);
+  return Unimplemented("TransferLiteralToInfeed");
+}
 
-  return Status::OK();
+Status
+PoplarTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
+                                              int64 size, const void* source) {
+  return Unimplemented("TransferBufferToInfeed");
 }
 
 Status
@@ -158,11 +160,7 @@ PoplarTransferManager::TransferLiteralFromOutfeed(
         perftools::gputools::StreamExecutor* executor,
         const Shape& literal_shape,
         Literal* literal) {
-  const Shape &shape = literal->shape();
-  VLOG(1) << "transferring literal shape from outfeed: "
-          << ShapeUtil::HumanString(shape);
-
-  return Status::OK();
+  return Unimplemented("TransferLiteralFromOutfeed");
 }
 
 

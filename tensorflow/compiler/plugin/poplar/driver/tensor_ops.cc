@@ -48,8 +48,7 @@ CreateSliceUpdateOp(poplar::Graph &graph,
                         "Invalid update slice start");
   }
 
-  const int64* start = static_cast<const int64*>(
-          LiteralUtil::InternalData(s_lit));
+  const int64* start = static_cast<const int64*>(s_lit.InternalData());
   const std::vector<int64> begin(start, start + rank);
 
   std::vector<std::size_t> s_begin =

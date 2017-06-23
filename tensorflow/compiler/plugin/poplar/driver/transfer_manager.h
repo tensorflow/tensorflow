@@ -65,6 +65,9 @@ public:
   TransferLiteralToInfeed(se::StreamExecutor *executor,
                           const Literal &literal) override;
 
+  Status TransferBufferToInfeed(se::StreamExecutor* executor,
+                                int64 size, const void* source) override;
+
   Status TransferLiteralFromOutfeed(
           se::StreamExecutor* executor,
           const Shape& literal_shape,

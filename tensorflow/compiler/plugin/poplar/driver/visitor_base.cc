@@ -66,8 +66,7 @@ Status BaseVisitor::Unimplemented(HloInstruction* inst) {
 
 Status BaseVisitor::HandleElementwiseUnary(
         HloInstruction* inst,
-        HloOpcode opcode,
-        HloInstruction* operand) {
+        HloOpcode opcode) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateUnaryElementwiseOp(*graph_,
@@ -81,9 +80,7 @@ Status BaseVisitor::HandleElementwiseUnary(
 
 Status BaseVisitor::HandleElementwiseBinary(
         HloInstruction* inst,
-        HloOpcode opcode,
-        HloInstruction* lhs,
-        HloInstruction* rhs) {
+        HloOpcode opcode) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateBinaryElementwiseOp(*graph_,
@@ -96,8 +93,7 @@ Status BaseVisitor::HandleElementwiseBinary(
 }
 
 Status BaseVisitor::HandleConvert(
-        HloInstruction* inst,
-        HloInstruction* operand) {
+        HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCastOp(*graph_,
@@ -321,6 +317,9 @@ Status BaseVisitor::HandleRecv(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleBatchNormTraining(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
 
 }  // namespace poplarplugin
 }  // namespace xla
