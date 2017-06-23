@@ -140,7 +140,7 @@ cuda_py_test(
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/ops/losses:losses_py",
+        "//tensorflow/python/ops/losses:losses",
     ],
 )
 
