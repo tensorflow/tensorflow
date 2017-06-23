@@ -162,8 +162,8 @@ class GetLogitsAndProbsTest(test.TestCase):
       new_logits, new_p = distribution_util.get_logits_and_probs(
           logits=logits, validate_args=True)
 
-      self.assertAllClose(p, new_p.eval(), rtol=1e-6, atol=0.)
-      self.assertAllClose(logits, new_logits.eval(), rtol=1e-6, atol=0.)
+      self.assertAllClose(p, new_p.eval(), rtol=1e-5, atol=0.)
+      self.assertAllClose(logits, new_logits.eval(), rtol=1e-5, atol=0.)
 
   def testLogitsMultidimensional(self):
     p = np.array([0.2, 0.3, 0.5], dtype=np.float32)
