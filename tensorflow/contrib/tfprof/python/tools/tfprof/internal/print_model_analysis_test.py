@@ -157,6 +157,9 @@ class PrintModelAnalysisTest(test.TestCase):
             cpu_exec_micros: 0
             total_accelerator_exec_micros: 0
             total_cpu_exec_micros: 0
+            run_count: 0
+            total_run_count: 0
+            total_definition_count: 1
           }
           children {
             name: "DW"
@@ -213,6 +216,9 @@ class PrintModelAnalysisTest(test.TestCase):
               cpu_exec_micros: 0
               total_accelerator_exec_micros: 0
               total_cpu_exec_micros: 0
+              run_count: 0
+              total_run_count: 0
+              total_definition_count: 1
             }
             children {
               name: "DW/Initializer"
@@ -249,6 +255,9 @@ class PrintModelAnalysisTest(test.TestCase):
                   cpu_exec_micros: 0
                   total_accelerator_exec_micros: 0
                   total_cpu_exec_micros: 0
+                  run_count: 0
+                  total_run_count: 0
+                  total_definition_count: 1
                 }
                 children {
                   name: "DW/Initializer/random_normal/mean"
@@ -263,6 +272,9 @@ class PrintModelAnalysisTest(test.TestCase):
                   cpu_exec_micros: 0
                   total_accelerator_exec_micros: 0
                   total_cpu_exec_micros: 0
+                  run_count: 0
+                  total_run_count: 0
+                  total_definition_count: 1
                 }
                 children {
                   name: "DW/Initializer/random_normal/mul"
@@ -302,6 +314,9 @@ class PrintModelAnalysisTest(test.TestCase):
                   cpu_exec_micros: 0
                   total_accelerator_exec_micros: 0
                   total_cpu_exec_micros: 0
+                  run_count: 0
+                  total_run_count: 0
+                  total_definition_count: 1
                 }
                 children {
                   name: "DW/Initializer/random_normal/shape"
@@ -316,6 +331,9 @@ class PrintModelAnalysisTest(test.TestCase):
                   cpu_exec_micros: 0
                   total_accelerator_exec_micros: 0
                   total_cpu_exec_micros: 0
+                  run_count: 0
+                  total_run_count: 0
+                  total_definition_count: 1
                 }
                 children {
                   name: "DW/Initializer/random_normal/stddev"
@@ -330,6 +348,9 @@ class PrintModelAnalysisTest(test.TestCase):
                   cpu_exec_micros: 0
                   total_accelerator_exec_micros: 0
                   total_cpu_exec_micros: 0
+                  run_count: 0
+                  total_run_count: 0
+                  total_definition_count: 1
                 }
                 float_ops: 0
                 total_float_ops: 0
@@ -362,6 +383,9 @@ class PrintModelAnalysisTest(test.TestCase):
                 cpu_exec_micros: 0
                 total_accelerator_exec_micros: 0
                 total_cpu_exec_micros: 0
+                run_count: 0
+                total_run_count: 0
+                total_definition_count: 6
               }
               float_ops: 0
               total_float_ops: 0
@@ -369,6 +393,9 @@ class PrintModelAnalysisTest(test.TestCase):
               cpu_exec_micros: 0
               total_accelerator_exec_micros: 0
               total_cpu_exec_micros: 0
+              run_count: 0
+              total_run_count: 0
+              total_definition_count: 7
             }
             children {
               name: "DW/read"
@@ -400,6 +427,9 @@ class PrintModelAnalysisTest(test.TestCase):
               cpu_exec_micros: 0
               total_accelerator_exec_micros: 0
               total_cpu_exec_micros: 0
+              run_count: 0
+              total_run_count: 0
+              total_definition_count: 1
             }
             float_ops: 0
             total_float_ops: 0
@@ -407,6 +437,9 @@ class PrintModelAnalysisTest(test.TestCase):
             cpu_exec_micros: 0
             total_accelerator_exec_micros: 0
             total_cpu_exec_micros: 0
+            run_count: 0
+            total_run_count: 0
+            total_definition_count: 10
           }
           children {
             name: "zeros"
@@ -421,13 +454,19 @@ class PrintModelAnalysisTest(test.TestCase):
             cpu_exec_micros: 0
             total_accelerator_exec_micros: 0
             total_cpu_exec_micros: 0
+            run_count: 0
+            total_run_count: 0
+            total_definition_count: 1
           }
           float_ops: 0
           total_float_ops: 0
           accelerator_exec_micros: 0
           cpu_exec_micros: 0
           total_accelerator_exec_micros: 0
-          total_cpu_exec_micros: 0""", expected_pb)
+          total_cpu_exec_micros: 0
+          run_count: 0
+          total_run_count: 0
+          total_definition_count: 13""", expected_pb)
       self.assertEqual(expected_pb, tfprof_pb)
 
 

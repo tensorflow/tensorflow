@@ -75,6 +75,7 @@ bool TFShow::ShouldShow(const ShowNode* node, const Options& opts,
       node->proto().exec_micros() < opts.min_micros ||
       node->proto().parameters() < opts.min_params ||
       node->proto().float_ops() < opts.min_float_ops ||
+      node->proto().run_count() < opts.min_occurrence ||
       depth > opts.max_depth || !ShouldShowIfExtra(node, opts, depth)) {
     return false;
   }
@@ -181,6 +182,21 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
     const std::set<string>& op_types = node->node->op_types();
     info.push_back(str_util::Join(op_types, "|"));
   }
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    string run = FormatNumber(node->proto().total_run_count());
+    if (node->account) {
+      run = FormatNumber(node->proto().run_count()) + "/" + run;
+    } else {
+      run = "--/" + run;
+    }
+    string definition = FormatNumber(node->proto().total_definition_count());
+    if (node->account) {
+      definition = "1/" + definition;
+    } else {
+      definition = "--/" + definition;
+    }
+    info.push_back(run + "|" + definition);
+  }
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     std::vector<string> shape_vec;
     for (const auto& s : node->node->input_shapes()) {
@@ -227,6 +243,9 @@ string TFShow::FormatLegend(const Options& opts) const {
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     legends.push_back("op types");
+  }
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    legends.push_back("op count (run|defined)");
   }
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     legends.push_back("input shapes");

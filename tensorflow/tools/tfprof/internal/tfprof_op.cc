@@ -283,9 +283,14 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
   }
 
   if (opts.select.find(kShown[7]) != opts.select.end()) {
+    int64 total_runs = 0;
+    for (const auto& gnode : node->proto().graph_nodes()) {
+      total_runs += gnode.run_count();
+    }
     attrs.push_back(strings::Printf(
         "%10s",
-        strings::Printf("%d", node->proto().graph_nodes_size()).c_str()));
+        strings::Printf("%lld|%d", total_runs, node->proto().graph_nodes_size())
+            .c_str()));
   }
 
   string node_str = strings::Printf("%-25s%s\n", node->name().c_str(),

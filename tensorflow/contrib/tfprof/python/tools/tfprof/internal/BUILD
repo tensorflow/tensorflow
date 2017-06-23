@@ -65,6 +65,7 @@ cuda_py_test(
     name = "run_metadata_test",
     srcs = ["run_metadata_test.py"],
     additional_deps = [
+        ":model_analyzer_testlib",
         "//tensorflow/contrib/tfprof/python/tools/tfprof:model_analyzer",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -72,6 +73,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/tools/tfprof:protos_all_py",
     ],
+    tags = ["no_pip"],
 )
 
 # -----------------------------------------------------------------------------

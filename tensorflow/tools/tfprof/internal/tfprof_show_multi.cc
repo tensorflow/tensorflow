@@ -135,7 +135,7 @@ string TFMultiShow::FormatLegend(const Options& opts) const {
     legends.push_back("op types");
   }
   if (opts.select.find(kShown[7]) != opts.select.end()) {
-    legends.push_back("op occurrence");
+    legends.push_back("op occurrence (run|defined)");
   }
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     legends.push_back("input shapes");
@@ -146,8 +146,8 @@ string TFMultiShow::FormatLegend(const Options& opts) const {
 
 string TFMultiShow::FormatInputShapes(
     const TFMultiGraphNodeProto& proto) const {
-  std::map<string, int> input_shapes_str;
-  std::map<string, int> input_time_str;
+  // input_shape string -> (static defined count, run count, run_micros)
+  std::map<string, std::tuple<int64, int64, int64>> input_shapes_attr;
   for (int i = 0; i < proto.graph_nodes_size(); ++i) {
     const TFGraphNodeProto& gnode = proto.graph_nodes(i);
     // Convert and sort by input_idx.
@@ -167,27 +167,36 @@ string TFMultiShow::FormatInputShapes(
     }
     string shape_type_str = strings::Printf(
         "input_type: %s", str_util::Join(input_vec, ",\t").c_str());
-    input_shapes_str[shape_type_str] += 1;
-    input_time_str[shape_type_str] += gnode.exec_micros();
+    auto t = input_shapes_attr.find(shape_type_str);
+    if (t == input_shapes_attr.end()) {
+      input_shapes_attr.insert(
+          std::make_pair(shape_type_str, std::make_tuple(0, 0, 0)));
+      t = input_shapes_attr.find(shape_type_str);
+    }
+    input_shapes_attr[shape_type_str] = std::make_tuple(
+        std::get<0>(t->second) + 1, std::get<1>(t->second) + gnode.run_count(),
+        std::get<2>(t->second) + gnode.exec_micros());
   }
-  if (input_shapes_str.empty()) {
+  if (input_shapes_attr.empty()) {
     return "";
   }
 
-  std::vector<std::pair<string, int>> shape_count_vec(input_shapes_str.begin(),
-                                                      input_shapes_str.end());
-  std::sort(shape_count_vec.begin(), shape_count_vec.end(),
-            [](const std::pair<const string, int>& a,
-               const std::pair<const string, int>& b) {
-              return a.second > b.second;
-            });
+  std::vector<std::pair<string, std::tuple<int64, int64, int64>>>
+      shape_count_vec(input_shapes_attr.begin(), input_shapes_attr.end());
+  std::sort(
+      shape_count_vec.begin(), shape_count_vec.end(),
+      [](const std::pair<const string, std::tuple<int64, int64, int64>>& a,
+         const std::pair<const string, std::tuple<int64, int64, int64>>& b) {
+        return std::get<1>(a.second) > std::get<1>(b.second);
+      });
 
   std::vector<string> input_types;
   input_types.reserve(shape_count_vec.size());
   for (const auto& s : shape_count_vec) {
-    input_types.push_back(
-        strings::Printf("%s\t(*%d)\texec_time: %s", s.first.c_str(), s.second,
-                        FormatTime(input_time_str[s.first]).c_str()));
+    std::tuple<int64, int64, int64> t = s.second;
+    input_types.push_back(strings::Printf(
+        "%s\t(run*%lld|defined*%lld)\texec_time: %s", s.first.c_str(),
+        std::get<1>(t), std::get<0>(t), FormatTime(std::get<2>(t)).c_str()));
   }
   return str_util::Join(input_types, "\n");
 }

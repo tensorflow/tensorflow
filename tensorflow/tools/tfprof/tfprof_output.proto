@@ -21,6 +21,9 @@ message TFGraphNodeProto {
   // tensor value restored from checkpoint.
   optional TFProfTensorProto tensor_value = 15;
   // op execution time.
+  // A node can be defined once but run multiple times in tf.while_loop.
+  // the times sum up all different runs.
+  optional int64 run_count = 21;
   optional int64 exec_micros = 2;
   optional int64 accelerator_exec_micros = 17;
   optional int64 cpu_exec_micros = 18;
@@ -35,9 +38,12 @@ message TFGraphNodeProto {
   // Since an op can fire multiple kernel calls, there can be multiple devices.
   repeated string devices = 10;
 
-  // The following are the aggregated stats from all accounted children and
-  // the node itself. The actual children depend on the data structure used
-  // (scope, graph).
+  // The following are the aggregated stats from all *accounted* children and
+  // the node itself. The actual children depend on the data structure used.
+  // In graph view, children are inputs recursively.
+  // In scope view, children are nodes under the name scope.
+  optional int64 total_definition_count = 23;
+  optional int64 total_run_count = 22;
   optional int64 total_exec_micros = 6;
   optional int64 total_accelerator_exec_micros = 19;
   optional int64 total_cpu_exec_micros = 20;
