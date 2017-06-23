@@ -181,14 +181,10 @@ class Node {
  private:
   friend class Graph;
   Node();
-  ~Node();
 
-  NodeProperties* properties() const { return props_; }
+  NodeProperties* properties() const { return props_.get(); }
 
-  // Initialize() adopts a reference to props, and so is suitable if props was
-  // just allocated or you call props->Ref() to increment the reference
-  // count for a props being held by another Node.
-  void Initialize(int id, int cost_id, NodeProperties* props);
+  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props);
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
@@ -238,7 +234,10 @@ class Node {
   EdgeSet in_edges_;
   EdgeSet out_edges_;
 
-  NodeProperties* props_;
+  // NOTE(skyewm): inheriting from core::RefCounted may have a slight
+  // performance benefit over using shared_ptr, at the cost of manual ref
+  // counting
+  std::shared_ptr<NodeProperties> props_;
 
   // Index within Graph::device_names_ of the name of device assigned
   // to perform this computation.
@@ -505,7 +504,10 @@ class Graph {
   // If cost_node is non-null, then cost accounting (in CostModel)
   // will be associated with that node rather than the new one being
   // created.
-  Node* AllocateNode(NodeProperties* props, const Node* cost_node);
+  //
+  // Ownership of the returned Node is not transferred to caller.
+  Node* AllocateNode(std::shared_ptr<NodeProperties> props,
+                     const Node* cost_node);
   void ReleaseNode(Node* node);
 
   // Registry of all known ops, including functions.
