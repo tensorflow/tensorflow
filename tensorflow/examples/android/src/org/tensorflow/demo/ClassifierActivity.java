@@ -156,25 +156,25 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
         ImageUtils.saveBitmap(croppedBitmap);
     }
     runInBackground(
-            new Runnable() {
-                @Override
-                public void run() {
-                    final long startTime = SystemClock.uptimeMillis();
-                    final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
-                    lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-                    LOGGER.i("Detect: %s", results);
-                    cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-                    if (resultsView==null) {
-                        resultsView = (ResultsView) findViewById(R.id.results);
-                    }
-                    resultsView.setResults(results);
-                    requestRender();
-                    computing = false;
-                    if (postInferenceCallback != null) {
-                        postInferenceCallback.run();
-                    }
-                }
-            });
+        new Runnable() {
+          @Override
+          public void run() {
+            final long startTime = SystemClock.uptimeMillis();
+            final List<Classifier.Recognition> results = classifier.recognizeImage(croppedBitmap);
+            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+            LOGGER.i("Detect: %s", results);
+            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+            if (resultsView==null) {
+              resultsView = (ResultsView) findViewById(R.id.results);
+            }
+            resultsView.setResults(results);
+            requestRender();
+            computing = false;
+            if (postInferenceCallback != null) {
+              postInferenceCallback.run();
+            }
+          }
+        });
   }
 
   @Override

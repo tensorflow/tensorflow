@@ -59,6 +59,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   private HandlerThread handlerThread;
   private boolean useCamera2API;
   protected Bitmap rgbFrameBitmap = null;
+  private int[] rgbBytes = null;
   protected int previewWidth = 0;
   protected int previewHeight = 0;
   protected Bitmap croppedBitmap = null;
@@ -86,9 +87,9 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
-  /*
-  * Callback for android.hardware.Camera API
-  */
+  /**
+   * Callback for android.hardware.Camera API
+   */
   @Override
   public void onPreviewFrame(final byte[] bytes, final Camera camera) {
     if (computing) {
@@ -97,7 +98,6 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     computing = true;
     Camera.Size previewSize = camera.getParameters().getPreviewSize();
     yuvBytes[0]=bytes;
-    int[] rgbBytes = null;
     try {
       // Initialize the storage bitmaps once when the resolution is known.
       if (previewSize.width!=0 ||  previewSize.height!=0) {
@@ -120,13 +120,12 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     processImageRGBbytes(rgbBytes);
   }
 
-  /*
+  /**
    * Callback for Camera2 API
    */
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
-    int[] rgbBytes =new int[previewWidth * previewHeight];
     try {
       image = reader.acquireLatestImage();
 
