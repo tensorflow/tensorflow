@@ -345,6 +345,15 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
   }
 }
 
+Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
+  std::unique_ptr<tensorflow::WritableFile> f;
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+  TF_RETURN_IF_ERROR(f->Append(ir_module_string));
+  TF_RETURN_IF_ERROR(f->Close());
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
@@ -469,11 +478,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
 
       if (!dump_ir_to.empty()) {
-        std::unique_ptr<tensorflow::WritableFile> f;
-        TF_RETURN_IF_ERROR(
-            tensorflow::Env::Default()->NewAppendableFile(dump_ir_to, &f));
-        TF_RETURN_IF_ERROR(f->Append(ir_module_string));
-        TF_RETURN_IF_ERROR(f->Close());
+        TF_RETURN_IF_ERROR(AppendIRToFile(dump_ir_to, ir_module_string));
       }
     }
 
@@ -540,8 +545,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
     string function_name = llvm_ir::AsString(entry_function->getName());
     string ir_module_string;
-    if (embed_ir_in_executable) {
+    if (embed_ir_in_executable || !dump_ir_to.empty()) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
+
+      if (!dump_ir_to.empty()) {
+        TF_RETURN_IF_ERROR(AppendIRToFile(dump_ir_to, ir_module_string));
+      }
     }
 
     // JIT compile the LLVM IR module to in-memory machine code.
