@@ -205,7 +205,7 @@ CreateSimpleReduction(poplar::Graph &graph,
 
   // Allocate the output tensor
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
@@ -262,7 +262,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
 
   // Allocate the output tensor
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
@@ -346,7 +346,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
 
   poplar::Tensor partial;
   TF_ASSIGN_OR_RETURN(partial,
-                      AddTensor(graph, "partial", partial_shape));
+                      AddTensor(graph, inst, partial_shape, res));
 
   poplar::Tensor init;
   TF_ASSIGN_OR_RETURN(init, BroadcastTensor(init_val, partial_shape));
@@ -442,7 +442,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
 
   // Allocate the output tensor
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 

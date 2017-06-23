@@ -20,28 +20,15 @@
 namespace xla {
 namespace poplarplugin {
 
+port::StatusOr<popconv::ConvParams>
+GetConvolutionParameters(const HloInstruction* inst) {
 
-port::StatusOr <poplar::program::Program>
-CreateConv2D(poplar::Graph &graph,
-             CompilerResources& res,
-             const HloInstruction *inst,
-             const xla::Shape &output_shape,
-             TensorMap &tensor_map) {
-
-  // Find the input tensor
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
-
-  // Find the input tensor
-  poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1, 0));
-
-  popconv::ConvOptions opts;
-  opts.cache = &res.convolution_cache;
+  const Shape& input = inst->operand(0)->shape();
+  const Shape& kernel = inst->operand(1)->shape();
 
   const Window& window(inst->window());
 
-  if (in.rank() != 4 || kernel.rank() != 4) {
+  if (ShapeUtil::Rank(input) != 4 || ShapeUtil::Rank(kernel) != 4) {
     return port::Status(
             port::error::FAILED_PRECONDITION,
             port::StrCat("Poplar supports 2D convolution only: ", inst->name()));
@@ -53,10 +40,11 @@ CreateConv2D(poplar::Graph &graph,
             port::StrCat("Invalid window dimension count on ", inst->name()));
   }
 
-  const std::string& dtype(in.elementType());
+  std::string dtype;
+  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(input));
 
-  const std::vector<size_t> &input_dims = in.shape();
-  const std::vector<size_t> &kernel_dims = kernel.shape();
+  std::vector<size_t> input_dims = PoplarShapeFromXlaShape(input);
+  std::vector<size_t> kernel_dims = PoplarShapeFromXlaShape(kernel);
 
   const ConvolutionDimensionNumbers& dims(inst->convolution_dimension_numbers());
   unsigned int n_b = input_dims[dims.batch_dimension()];
@@ -93,9 +81,34 @@ CreateConv2D(poplar::Graph &graph,
                              {0, 0},
                              {dw_y, dw_x});
 
+  return params;
+}
+
+port::StatusOr <poplar::program::Program>
+CreateConv2D(poplar::Graph &graph,
+             CompilerResources& res,
+             const HloInstruction *inst,
+             const xla::Shape &output_shape,
+             TensorMap &tensor_map) {
+
+  // Find the input tensor
+  poplar::Tensor in;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
+
+  // Find the input tensor
+  poplar::Tensor kernel;
+  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1, 0));
+
+  popconv::ConvOptions opts;
+  opts.cache = &res.convolution_cache;
+
+  const ConvolutionDimensionNumbers& dims(inst->convolution_dimension_numbers());
+
+  popconv::ConvParams params;
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst));
+
   poplar::program::Sequence prog;
 
-  // TODO : create these at original tensor creation time
   in = in.dimShuffle({
     (unsigned int)dims.batch_dimension(),
     (unsigned int)dims.spatial_dimensions(0),

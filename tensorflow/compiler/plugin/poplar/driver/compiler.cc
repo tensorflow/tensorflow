@@ -22,6 +22,8 @@ limitations under the License.
 #include <unistd.h>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
+
+#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
@@ -102,7 +104,8 @@ public:
 
   Status HandleParameter(HloInstruction* inst) {
     poplar::Tensor out;
-    TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, inst->name(), inst->shape()));
+    TF_ASSIGN_OR_RETURN(out,
+                        AddTensor(*graph_, inst, inst->shape(), resources_));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
     graph_->createHostWrite(sep::GetCopyHandle(inst->parameter_number()), out);
@@ -246,11 +249,18 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   HloComputation* entry = hlo_module->entry_computation();
 
+  VLOG(2) << "Running poplar call site finder";
+
   // Find all Call instructions
   CallTargetFinder call_finder;
   TF_RETURN_IF_ERROR(entry->Accept(&call_finder));
 
-  // Find subgraphs that will not be inlined and construct poplar equivalents
+  VLOG(2) << "Running tensor allocation tracker";
+
+  AllocationFinder finder;
+  TF_RETURN_IF_ERROR(finder.CreateAllocationMap(hlo_module.get()));
+  resources.tensor_allocation_map = std::move(finder.tensor_allocation_map);
+
   for (const auto& comp : call_finder.targets) {
     if (comp != entry) {
       // If this computation is a target of a 'call' then compile
@@ -266,7 +276,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   VLOG(1) << "Compiling main computation " << entry->name();
 
-  // Visit the graph, building up a poplar equivalent
   EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {
     TF_RETURN_IF_ERROR(entry->Accept(&visitor));

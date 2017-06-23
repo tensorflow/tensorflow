@@ -104,9 +104,11 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
   AllocationFinder finder;
   TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
 
+  const HloInstruction* c_conv = conv;
+
   EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op1), conv);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op2), conv);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(c_conv,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(c_conv,1ll));
 }
 
 // Check it goes through call sites
@@ -159,9 +161,11 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   AllocationFinder finder;
   TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
 
+  const HloInstruction* c_conv = conv;
+
   EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op1), conv);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op2), conv);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(c_conv,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(c_conv,1ll));
 }
 
 
@@ -198,7 +202,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations) {
   auto op1_sub2 = builder_sub2.AddInstruction(
           HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
-  auto conv2 = builder_sub2.AddInstruction(
+  builder_sub2.AddInstruction(
           HloInstruction::CreateConvolve(conv2_shape, op0_sub2, op1_sub2,
                                          GetConv1Window(), GetConvDimensions()));
 
@@ -237,15 +241,57 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations) {
   AllocationFinder finder;
   TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
 
+  const HloInstruction* c_conv = conv1;
+
   EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op1), conv1);
-  EXPECT_EQ(finder.tensor_allocation_map.at(op2), conv1);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(c_conv,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(c_conv,1ll));
 }
 
 
 // Check it works for constants
-//  auto indices = builder.AddInstruction(
-//HloInstruction::CreateConstant(LiteralUtil::CreateR1<int64>({1, 2})));
+TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
+  Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
+
+  Shape conv_shape = ShapeInference::InferConvolveShape(
+          input_shape, weight_shape,
+          GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal = Literal::CreateFromShape(weight_shape);
+
+  auto builder = HloComputation::Builder(TestName());
+  auto op0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, input_shape, "op0"));
+  auto op1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, input_shape, "op1"));
+  auto op2 = builder.AddInstruction(
+        HloInstruction::CreateConstant(std::move(literal)));
+
+  auto add = builder.AddInstruction(
+        HloInstruction::CreateBinary(input_shape, HloOpcode::kAdd, op0, op1));
+
+  auto conv = builder.AddInstruction(
+        HloInstruction::CreateConvolve(conv_shape, op1, op2,
+                                       GetConv1Window(), GetConvDimensions()));
+
+  builder.AddInstruction(
+        HloInstruction::CreateTuple({add, conv}));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  AllocationFinder finder;
+  TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
+
+  const HloInstruction* c_conv = conv;
+
+  EXPECT_EQ(finder.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(finder.tensor_allocation_map.at(op1), std::make_pair(c_conv,0ll));
+  EXPECT_EQ(finder.tensor_allocation_map.at(op2), std::make_pair(c_conv,1ll));
+}
 
 }
 }

@@ -83,37 +83,72 @@ public:
   std::vector<HloInstruction*> allocating_instructions;
 };
 
-HloInstruction* AllocationFinder::FindConsumers(HloInstruction* inst) {
+TensorTarget
+AllocationFinder::FindConsumers(HloInstruction* inst) {
   for (auto user : inst->users()) {
+    int64 op_index = user->operand_index(inst);
     switch (user->opcode()) {
       case HloOpcode::kConvolution:
-        return user;
+      {
+        return std::make_pair(user, op_index);
+      }
       case HloOpcode::kCall:
       {
-        int64 op_index = user->operand_index(inst);
         HloComputation* comp = user->to_apply();
         HloInstruction* param = comp->parameter_instruction(op_index);
-        HloInstruction *target = FindConsumers(param);
-        if (target != nullptr) {
+        TensorTarget target = FindConsumers(param);
+        if (target.first != nullptr) {
           return target;
         }
         // if nothing appears then check the users of the call
         target = FindConsumers(user);
-        if (target != nullptr) {
+        if (target.first != nullptr) {
           return target;
         }
         break;
       }
-      // TODO add other opcodes in here (reduce, ???)
+      case HloOpcode::kBatchNormTraining:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kCrossReplicaSum:
+      case HloOpcode::kCustomCall:
+      case HloOpcode::kDot:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kFusion:
+      case HloOpcode::kGetTupleElement:
+      case HloOpcode::kIndex:
+      case HloOpcode::kInfeed:
+      case HloOpcode::kMap:
+      case HloOpcode::kOutfeed:
+      case HloOpcode::kPad:
+      case HloOpcode::kParameter:
+      case HloOpcode::kRecv:
+      case HloOpcode::kReduce:
+      case HloOpcode::kReducePrecision:
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReshape:
+      case HloOpcode::kReverse:
+      case HloOpcode::kSelectAndScatter:
+      case HloOpcode::kSend:
+      case HloOpcode::kSlice:
+      case HloOpcode::kSort:
+      case HloOpcode::kTrace:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kTuple:
+      case HloOpcode::kUpdate:
+      case HloOpcode::kWhile:
+        // These opcodes produce different shaped outputs
+        break;
       default:
-        HloInstruction *target = FindConsumers(user);
-        if (target != nullptr) {
+        TensorTarget target = FindConsumers(user);
+        if (target.first != nullptr) {
           return target;
         }
         break;
     }
   }
-  return nullptr;
+  return std::make_pair(nullptr, 0);
 }
 
 Status AllocationFinder::CreateAllocationMap(HloModule* module) {
@@ -123,9 +158,9 @@ Status AllocationFinder::CreateAllocationMap(HloModule* module) {
   TF_RETURN_IF_ERROR(entry->Accept(&finder));
 
   for (auto inst : finder.allocating_instructions) {
-    HloInstruction* consumer = FindConsumers(inst);
-    if (consumer != nullptr) {
-      tensor_allocation_map.insert(std::make_pair(inst, consumer));
+    TensorTarget target = FindConsumers(inst);
+    if (target.first != nullptr) {
+      tensor_allocation_map.insert(std::make_pair(inst, target));
     }
   }
 

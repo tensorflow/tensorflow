@@ -61,6 +61,8 @@ public:
           HloInstruction* inst,
           tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
 
+  Status HandleCopy(HloInstruction* inst) override;
+
   Status HandleDot(HloInstruction* inst,
                    HloInstruction* lhs,
                    HloInstruction* rhs) override;
@@ -139,6 +141,9 @@ public:
   Status HandleWhile(HloInstruction* inst) override;
 
   Status HandlePad(HloInstruction* inst) override;
+
+  Status HandleReducePrecision(HloInstruction* reduce_precision,
+                               HloInstruction* operand) override;
 
   Status HandleInfeed(HloInstruction* inst) override;
 

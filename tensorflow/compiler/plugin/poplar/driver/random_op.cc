@@ -36,7 +36,7 @@ CreateRandomUniformOp(poplar::Graph &graph,
 
   // Allocate the output tensor
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
@@ -82,7 +82,7 @@ CreateRandomNormalOp(poplar::Graph &graph,
 
   // Allocate the output tensor
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
@@ -125,7 +125,7 @@ CreateRandomBernoulliOp(poplar::Graph &graph,
 
   // Allocate the output tensor
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
@@ -170,7 +170,7 @@ CreateRandomTruncatedNormalOp(poplar::Graph &graph,
 
   // Allocate the output tensor
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   out = out.flatten();
 
