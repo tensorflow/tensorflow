@@ -1,5 +1,25 @@
-#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
+/* Copyright 2017 Graphcore Ltd
+ */
+
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -40,9 +60,9 @@ PoplarDataType(const xla::Shape& shape) {
     case F32:
       return std::string("float");
     default:
-      return port::Status(port::error::FAILED_PRECONDITION,
-                          port::StrCat("unsupported primitive type in poplar ",
-                                       shape.element_type()));
+      return tensorflow::errors::FailedPrecondition(
+              port::StrCat("unsupported primitive type in poplar ",
+                           shape.element_type()));
   }
 }
 
@@ -55,11 +75,10 @@ PoplarShapeFromXlaShape(const xla::Shape &xla_shape) {
   return shape;
 }
 
-port::StatusOr<poplar::Tensor>
-AddTensor(poplar::Graph& graph,
-          const HloInstruction* inst,
-          const xla::Shape& shape,
-          const CompilerResources& resources) {
+static port::StatusOr<poplar::Tensor>
+AddPlainTensor(poplar::Graph& graph,
+               const HloInstruction* inst,
+               const xla::Shape& shape) {
   poplar::Tensor out;
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
   std::string poplar_type;
@@ -67,6 +86,85 @@ AddTensor(poplar::Graph& graph,
 
   out = graph.addTensor(poplar_type, dim, inst->name());
   popstd::mapTensor(graph, out);
+  return out;
+}
+
+static port::StatusOr<poplar::Tensor>
+AddConvolutionInput(poplar::Graph& graph,
+                    const HloInstruction* inst,
+                    const HloInstruction* target,
+                    CompilerResources& resources) {
+  popconv::ConvParams params;
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target));
+
+  popconv::ConvOptions opts;
+  opts.cache = &resources.convolution_cache;
+
+  poplar::Tensor out = popconv::createInput(graph, params, inst->name(), opts);
+  return out;
+}
+
+static port::StatusOr<poplar::Tensor>
+AddConvolutionWeights(poplar::Graph& graph,
+                      const HloInstruction* inst,
+                      const HloInstruction* target,
+                      CompilerResources& resources) {
+  popconv::ConvParams params;
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target));
+
+  popconv::ConvOptions opts;
+  opts.cache = &resources.convolution_cache;
+
+  poplar::Tensor out = popconv::createWeights(graph, params, inst->name(),
+                                              opts);
+
+  out = out.dimShuffle({0, 1, 3, 2});
+  return out;
+}
+
+
+port::StatusOr<poplar::Tensor>
+AddTensor(poplar::Graph& graph,
+          const HloInstruction* inst,
+          const xla::Shape& shape,
+          CompilerResources& resources) {
+  poplar::Tensor out;
+
+  auto target = resources.tensor_allocation_map.find(inst);
+  if (target != resources.tensor_allocation_map.end()) {
+    switch (target->second.first->opcode()) {
+      case HloOpcode::kConvolution:
+      {
+        switch (target->second.second) {
+          case 0:
+          {
+            TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, inst,
+                                                         target->second.first,
+                                                         resources));
+            break;
+          }
+          case 1:
+          {
+            TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(graph, inst,
+                                                           target->second.first,
+                                                           resources));
+            break;
+          }
+          default:
+            return tensorflow::errors::FailedPrecondition(
+                    port::StrCat("invalid operand for tensor allocation on ",
+                                 inst->name()));
+        }
+        break;
+      }
+      default:
+        return tensorflow::errors::FailedPrecondition(
+                port::StrCat("unknown special tensor target on ",
+                             inst->name()));
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, inst, shape));
+  }
   return out;
 }
 
@@ -119,7 +217,7 @@ AddConstantTensor(poplar::Graph& graph,
                   const HloInstruction* inst,
                   const xla::Shape& shape,
                   const xla::Literal& literal,
-                  const CompilerResources& resources) {
+                  CompilerResources& resources) {
   poplar::Tensor tensor;
 
   std::string type;

@@ -25,8 +25,8 @@ class HloInstruction;
 
 namespace poplarplugin {
 
-using TensorTarget = std::pair<HloInstruction*,int64>;
-using TensorAllocationMap = std::map<HloInstruction*, TensorTarget>;
+using TensorTarget = std::pair<const HloInstruction*,int64>;
+using TensorAllocationMap = std::map<const HloInstruction*, TensorTarget>;
 
 /**
  * This class finds all instructions that explicitly add tensors to the

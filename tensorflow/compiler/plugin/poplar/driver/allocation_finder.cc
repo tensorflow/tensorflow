@@ -107,7 +107,39 @@ AllocationFinder::FindConsumers(HloInstruction* inst) {
         }
         break;
       }
-      // TODO add other opcodes in here (reduce, ???)
+      case HloOpcode::kBatchNormTraining:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kCrossReplicaSum:
+      case HloOpcode::kCustomCall:
+      case HloOpcode::kDot:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kFusion:
+      case HloOpcode::kGetTupleElement:
+      case HloOpcode::kIndex:
+      case HloOpcode::kInfeed:
+      case HloOpcode::kMap:
+      case HloOpcode::kOutfeed:
+      case HloOpcode::kPad:
+      case HloOpcode::kParameter:
+      case HloOpcode::kRecv:
+      case HloOpcode::kReduce:
+      case HloOpcode::kReducePrecision:
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReshape:
+      case HloOpcode::kReverse:
+      case HloOpcode::kSelectAndScatter:
+      case HloOpcode::kSend:
+      case HloOpcode::kSlice:
+      case HloOpcode::kSort:
+      case HloOpcode::kTrace:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kTuple:
+      case HloOpcode::kUpdate:
+      case HloOpcode::kWhile:
+        // These opcodes produce different shaped outputs
+        break;
       default:
         TensorTarget target = FindConsumers(user);
         if (target.first != nullptr) {

@@ -28,6 +28,12 @@ GetConvolutionParameters(const HloInstruction* inst) {
 
   const Window& window(inst->window());
 
+  if (ShapeUtil::Rank(input) != 4 || ShapeUtil::Rank(kernel) != 4) {
+    return port::Status(
+            port::error::FAILED_PRECONDITION,
+            port::StrCat("Poplar supports 2D convolution only: ", inst->name()));
+  }
+
   if (window.dimensions().size() != 2) {
     return port::Status(
             port::error::FAILED_PRECONDITION,
@@ -96,12 +102,6 @@ CreateConv2D(poplar::Graph &graph,
   popconv::ConvOptions opts;
   opts.cache = &res.convolution_cache;
 
-  if (in.rank() != 4 || kernel.rank() != 4) {
-    return port::Status(
-            port::error::FAILED_PRECONDITION,
-            port::StrCat("Poplar supports 2D convolution only: ", inst->name()));
-  }
-
   const ConvolutionDimensionNumbers& dims(inst->convolution_dimension_numbers());
 
   popconv::ConvParams params;
@@ -109,7 +109,6 @@ CreateConv2D(poplar::Graph &graph,
 
   poplar::program::Sequence prog;
 
-  // TODO : create these at original tensor creation time
   in = in.dimShuffle({
     (unsigned int)dims.batch_dimension(),
     (unsigned int)dims.spatial_dimensions(0),

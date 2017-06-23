@@ -31,14 +31,14 @@ port::StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
           const HloInstruction* inst,
           const xla::Shape& shape,
-          const CompilerResources& resources);
+          CompilerResources& resources);
 
 port::StatusOr<poplar::Tensor>
 AddConstantTensor(poplar::Graph& graph,
                   const HloInstruction* inst,
                   const xla::Shape& shape,
                   const xla::Literal& literal,
-                  const CompilerResources& resources);
+                  CompilerResources& resources);
 
 template <typename T>
 poplar::Tensor
