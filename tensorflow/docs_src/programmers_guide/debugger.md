@@ -441,6 +441,22 @@ calls, as a function of the `fetches` and `feed_dict` and other states. See
 @{tfdbg.DumpingDebugWrapperSession.__init__$this API doc}
 for more details.
 
+## Debugging Keras Models with TFDBG
+
+To use TFDBG with [Keras](https://keras.io/), let the Keras backend use
+a TFDBG-wrapped Session object. For example, to use the CLI wrapper:
+
+``` python
+import tensorflow as tf
+from keras import backend as keras_backend
+from tensorflow.python import debug as tf_debug
+
+keras_backend.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
+
+# Define your keras model, called "model".
+model.fit(...)  # This will break into the TFDBG CLI.
+```
+
 ## Offline Debugging of Remotely-Running Sessions
 
 Oftentimes, your model is running in a remote machine or process that you don't
