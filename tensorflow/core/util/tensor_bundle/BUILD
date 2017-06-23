@@ -37,7 +37,6 @@ cc_library(
     copts = tf_copts() + ["-Wno-sign-compare"],
     deps = [
         ":naming",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

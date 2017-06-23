@@ -1596,6 +1596,7 @@ tf_cuda_library(
         ":version_lib",
         "//tensorflow/core/kernels:lookup_util",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/util/tensor_bundle",
         "//third_party/eigen3",
     ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),
     alwayslink = 1,
