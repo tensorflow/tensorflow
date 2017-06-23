@@ -22,5 +22,13 @@ message OptionsProto {
   optional bool account_displayed_op_only = 13;
   repeated string select = 14;
   optional string output = 15;
-  optional string dump_to_file = 16;
+  optional string dump_to_file = 16 [deprecated = true];
+}
+
+message AdvisorOptionsProto {
+  // checker name -> a dict of key-value options.
+  map<string, CheckerOption> checkers = 1;
+  message CheckerOption {
+    map<string, string> options = 1;
+  }
 }

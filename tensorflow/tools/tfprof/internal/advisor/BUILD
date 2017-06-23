@@ -44,11 +44,20 @@ cc_library(
 )
 
 cc_library(
+    name = "expensive_operation_checker",
+    hdrs = ["expensive_operation_checker.h"],
+    deps = [
+        ":checker",
+    ],
+)
+
+cc_library(
     name = "tfprof_advisor",
     hdrs = ["tfprof_advisor.h"],
     deps = [
         ":accelerator_utilization_checker",
         ":checker",
+        ":expensive_operation_checker",
         ":internal_checker_runner_dummy",
         ":operation_checker",
     ],

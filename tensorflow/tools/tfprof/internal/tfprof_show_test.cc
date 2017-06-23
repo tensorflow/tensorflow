@@ -65,6 +65,7 @@ class TFProfShowTest : public ::testing::Test {
 
     tf_stats_.reset(new TFStats(std::move(graph_pb), std::move(run_meta_pb),
                                 std::move(op_log_pb), std::move(ckpt_reader)));
+    tf_stats_->BuildAllViews();
   }
 
   std::unique_ptr<TFStats> tf_stats_;

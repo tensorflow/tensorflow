@@ -28,7 +28,9 @@ namespace tensorflow {
 namespace tfprof {
 
 const TFMultiGraphNodeProto& TFMultiShow::Show(const Options& opts) {
-  if (opts.output_type == kOutput[0]) {
+  if (opts.output_type == kOutput[3]) {
+    return ShowInternal(opts, nullptr)->proto();
+  } else if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else if (opts.output_type == kOutput[2]) {
@@ -48,8 +50,8 @@ const TFMultiGraphNodeProto& TFMultiShow::Show(const Options& opts) {
   }
 }
 
-bool TFMultiShow::ShouldShow(ShowMultiNode* node, const Options& opts,
-                            int depth) {
+bool TFMultiShow::ShouldShow(const ShowMultiNode* node, const Options& opts,
+                             int depth) const {
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
@@ -88,8 +90,8 @@ bool TFMultiShow::ShouldShow(ShowMultiNode* node, const Options& opts,
   return true;
 }
 
-bool TFMultiShow::ShouldTrim(ShowMultiNode* node,
-                            const std::vector<string>& regexes) {
+bool TFMultiShow::ShouldTrim(const ShowMultiNode* node,
+                             const std::vector<string>& regexes) const {
   for (const string& regex : regexes) {
     if (RE2::FullMatch(node->name(), regex)) {
       return true;
@@ -102,7 +104,7 @@ bool TFMultiShow::ReAccount(ShowMultiNode* node, const Options& opts) {
   return node->ReInit(opts.step, opts.account_type_regexes);
 }
 
-string TFMultiShow::FormatLegend(const Options& opts) {
+string TFMultiShow::FormatLegend(const Options& opts) const {
   std::vector<string> legends;
   if (opts.select.find(kShown[0]) != opts.select.end()) {
     legends.push_back("output bytes");
@@ -142,7 +144,8 @@ string TFMultiShow::FormatLegend(const Options& opts) {
                          str_util::Join(legends, " | ").c_str());
 }
 
-string TFMultiShow::FormatInputShapes(const TFMultiGraphNodeProto& proto) {
+string TFMultiShow::FormatInputShapes(
+    const TFMultiGraphNodeProto& proto) const {
   std::map<string, int> input_shapes_str;
   std::map<string, int> input_time_str;
   for (int i = 0; i < proto.graph_nodes_size(); ++i) {
@@ -190,7 +193,7 @@ string TFMultiShow::FormatInputShapes(const TFMultiGraphNodeProto& proto) {
 }
 
 std::vector<string> TFMultiShow::FormatTimes(const ShowMultiNode* node,
-                                             const Options& opts) {
+                                             const Options& opts) const {
   std::vector<string> attrs;
   if (opts.select.find(kShown[1]) != opts.select.end()) {
     attrs.push_back(FormatTotalExecTime(node, opts));
