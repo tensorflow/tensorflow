@@ -1165,7 +1165,6 @@ WorkerCacheInterface* MasterSession::get_worker_cache() const {
 Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
                                 ReffedClientGraph** rcg, bool is_partial) {
   const uint64 hash = HashBuildGraphOptions(opts);
-  ReffedClientGraph* to_unref = nullptr;
   {
     mutex_lock l(mu_);
     // Keep track of how many times this subgraph has been executed in
@@ -1196,7 +1195,6 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
     *rcg = iter->second;
     (*rcg)->Ref();
   }
-  if (to_unref) to_unref->Unref();
   return Status::OK();
 }
 

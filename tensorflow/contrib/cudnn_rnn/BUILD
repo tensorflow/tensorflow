@@ -87,6 +87,8 @@ cuda_py_test(
     additional_deps = [
         ":cudnn_rnn_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/python/ops/losses:losses",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",

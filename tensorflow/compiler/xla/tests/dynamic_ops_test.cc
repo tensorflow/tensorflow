@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -389,8 +388,8 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void DumpArray(const string& name, const Array3D<NativeT> values) {
     std::unique_ptr<Literal> literal =
-        LiteralUtil::CreateR3FromArray3D<NativeT>(values);
-    LOG(INFO) << name << ":" << LiteralUtil::ToString(*literal);
+        Literal::CreateR3FromArray3D<NativeT>(values);
+    LOG(INFO) << name << ":" << literal->ToString();
   }
 };
 
@@ -470,7 +469,7 @@ void BM_DynamicSlice(int num_iters) {
   ComputationBuilder builder(client, "DynamicSlice");
 
   // Create input as a constant: shape [1, 2, 3, 4]
-  auto input_literal = LiteralUtil::CreateR4(
+  auto input_literal = Literal::CreateR4(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
   auto input = builder.ConstantLiteral(*input_literal);
@@ -488,7 +487,7 @@ void BM_DynamicSlice(int num_iters) {
                                                            &allocator, 0)
                     .ConsumeValueOrDie();
 
-  auto start_indices_literal = LiteralUtil::CreateR1<int32>({0, 1, 2, 3});
+  auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
       executors[device_ordinal], *start_indices_literal,
       buffer->mutable_buffer({})));
@@ -521,7 +520,6 @@ BENCHMARK(BM_DynamicSlice);
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

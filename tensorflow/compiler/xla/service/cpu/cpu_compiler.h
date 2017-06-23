@@ -132,7 +132,7 @@ class CpuCompiler : public Compiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* hlo_module, HloDumper dump_hlo);
+  Status RunHloPasses(HloModule* module, HloDumper dump_hlo);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

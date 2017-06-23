@@ -21,6 +21,8 @@ limitations under the License.
 #include <list>
 #include <utility>
 
+#include "external/llvm/include/llvm/ExecutionEngine/ExecutionEngine.h"
+#include "external/llvm/include/llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "external/llvm/include/llvm/IR/Mangler.h"
 #include "external/llvm/include/llvm/Support/CodeGen.h"
 #include "external/llvm/include/llvm/Support/Host.h"

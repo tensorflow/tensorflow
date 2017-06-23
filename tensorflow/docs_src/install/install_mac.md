@@ -108,7 +108,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      Python 2.7, the command to install
      TensorFlow in the active Virtualenv is as follows:
 
-     <pre> $ <b>pip3 install --upgrade \
+     <pre> $ <b>pip install --upgrade \
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py2-none-any.whl</b></pre>
 
 If you encounter installation problems, see
@@ -229,7 +229,7 @@ take the following steps:
      you are installing TensorFlow for Mac OS and Python 2.7
      issue the following command:
 
-     <pre> $ <b>sudo pip3 install --upgrade \
+     <pre> $ <b>sudo pip install --upgrade \
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py2-none-any.whl</b> </pre>
 
      If the preceding command fails, see

@@ -46,15 +46,17 @@ static const char* const kOptions[] = {
 };
 
 static const char* const kOrderBy[] = {
-    "name", "bytes", "micros", "params", "float_ops", "occurrence",
+    "name",       "bytes",  "micros",    "accelerator_micros",
+    "cpu_micros", "params", "float_ops", "occurrence",
 };
 
 // Append Only.
 // TODO(xpan): As we are adding more fields to be selected, we
 // need to have a way to tell users what fields are available in which view.
 static const char* const kShown[] = {
-    "bytes",  "micros",   "params",     "float_ops",   "tensor_value",
-    "device", "op_types", "occurrence", "input_shapes"};
+    "bytes",     "micros",   "params",     "float_ops",    "tensor_value",
+    "device",    "op_types", "occurrence", "input_shapes", "accelerator_micros",
+    "cpu_micros"};
 
 static const char* const kCmds[] = {
     "scope", "graph", "code", "op", "set", "help",

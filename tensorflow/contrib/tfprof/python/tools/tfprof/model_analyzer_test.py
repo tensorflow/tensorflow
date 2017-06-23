@@ -38,7 +38,7 @@ class PrintModelAnalysisTest(test.TestCase):
     outfile = os.path.join(test.get_temp_dir(), 'dump')
     opts['output'] = 'file:outfile=' + outfile
 
-    with session.Session() as sess, ops.device('/cpu:0'):
+    with session.Session() as sess:
       _ = lib.BuildSmallModel()
       model_analyzer.print_model_analysis(sess.graph, tfprof_options=opts)
 
@@ -57,7 +57,7 @@ class PrintModelAnalysisTest(test.TestCase):
     opts['output'] = 'file:outfile=' + outfile
     opts['account_type_regexes'] = ['.*']
     opts['select'] = [
-        'bytes', 'params', 'float_ops', 'occurrence', 'device', 'op_types',
+        'params', 'float_ops', 'occurrence', 'device', 'op_types',
         'input_shapes'
     ]
 
@@ -77,7 +77,7 @@ class PrintModelAnalysisTest(test.TestCase):
       with gfile.Open(outfile, 'r') as f:
         # pylint: disable=line-too-long
         self.assertEqual(
-            'node name | # parameters | # float_ops | output bytes | assigned devices | op types | input shapes\n_TFProfRoot (--/451 params, --/10.44k flops, --/5.28KB, _kTFScopeParent, )\n  Conv2D (0/0 params, 5.83k/5.83k flops, 432B/432B, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Conv2D, 0:2x6x6x3|1:3x3x3x6)\n  Conv2D_1 (0/0 params, 4.61k/4.61k flops, 384B/384B, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Conv2D, 0:2x3x3x6|1:2x2x6x12)\n  DW (3x3x3x6, 162/162 params, 0/0 flops, 648B/1.30KB, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|VariableV2|_trainable_variables, )\n    DW/Assign (0/0 params, 0/0 flops, 0B/0B, Assign, 0:3x3x3x6|1:3x3x3x6)\n    DW/Initializer (0/0 params, 0/0 flops, 0B/0B, _kTFScopeParent, )\n      DW/Initializer/random_normal (0/0 params, 0/0 flops, 0B/0B, Add, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, 0B/0B, RandomStandardNormal, 0:4)\n        DW/Initializer/random_normal/mean (0/0 params, 0/0 flops, 0B/0B, Const, )\n        DW/Initializer/random_normal/mul (0/0 params, 0/0 flops, 0B/0B, Mul, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/shape (0/0 params, 0/0 flops, 0B/0B, Const, )\n        DW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, 0B/0B, Const, )\n    DW/read (0/0 params, 0/0 flops, 648B/648B, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Identity, 0:3x3x3x6)\n  DW2 (2x2x6x12, 288/288 params, 0/0 flops, 1.15KB/2.30KB, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|VariableV2|_trainable_variables, )\n    DW2/Assign (0/0 params, 0/0 flops, 0B/0B, Assign, 0:2x2x6x12|1:2x2x6x12)\n    DW2/Initializer (0/0 params, 0/0 flops, 0B/0B, _kTFScopeParent, )\n      DW2/Initializer/random_normal (0/0 params, 0/0 flops, 0B/0B, Add, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, 0B/0B, RandomStandardNormal, 0:4)\n        DW2/Initializer/random_normal/mean (0/0 params, 0/0 flops, 0B/0B, Const, )\n        DW2/Initializer/random_normal/mul (0/0 params, 0/0 flops, 0B/0B, Mul, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/shape (0/0 params, 0/0 flops, 0B/0B, Const, )\n        DW2/Initializer/random_normal/stddev (0/0 params, 0/0 flops, 0B/0B, Const, )\n    DW2/read (0/0 params, 0/0 flops, 1.15KB/1.15KB, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Identity, 0:2x2x6x12)\n  ScalarW (1, 1/1 params, 0/0 flops, 0B/0B, VariableV2|_trainable_variables, )\n    ScalarW/Assign (0/0 params, 0/0 flops, 0B/0B, Assign, 0:1|1:1)\n    ScalarW/Initializer (0/0 params, 0/0 flops, 0B/0B, _kTFScopeParent, )\n      ScalarW/Initializer/random_normal (0/0 params, 0/0 flops, 0B/0B, Add, 0:1|1:1)\n        ScalarW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, 0B/0B, RandomStandardNormal, 0:0)\n        ScalarW/Initializer/random_normal/mean (0/0 params, 0/0 flops, 0B/0B, Const, )\n        ScalarW/Initializer/random_normal/mul (0/0 params, 0/0 flops, 0B/0B, Mul, 0:1|1:1)\n        ScalarW/Initializer/random_normal/shape (0/0 params, 0/0 flops, 0B/0B, Const, )\n        ScalarW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, 0B/0B, Const, )\n    ScalarW/read (0/0 params, 0/0 flops, 0B/0B, Identity, 0:1)\n  init (0/0 params, 0/0 flops, 0B/0B, NoOp, 0:1|1:3x3x3x6|2:2x2x6x12)\n  zeros (0/0 params, 0/0 flops, 864B/864B, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Const, )\n',
+            'node name | # parameters | # float_ops | assigned devices | op types | input shapes\n_TFProfRoot (--/451 params, --/10.44k flops, _kTFScopeParent, )\n  Conv2D (0/0 params, 5.83k/5.83k flops, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Conv2D, 0:2x6x6x3|1:3x3x3x6)\n  Conv2D_1 (0/0 params, 4.61k/4.61k flops, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Conv2D, 0:2x3x3x6|1:2x2x6x12)\n  DW (3x3x3x6, 162/162 params, 0/0 flops, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|VariableV2|_trainable_variables, )\n    DW/Assign (0/0 params, 0/0 flops, Assign, 0:3x3x3x6|1:3x3x3x6)\n    DW/Initializer (0/0 params, 0/0 flops, _kTFScopeParent, )\n      DW/Initializer/random_normal (0/0 params, 0/0 flops, Add, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0:4)\n        DW/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, )\n        DW/Initializer/random_normal/mul (0/0 params, 0/0 flops, Mul, 0:3x3x3x6|1:1)\n        DW/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, )\n        DW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, )\n    DW/read (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Identity, 0:3x3x3x6)\n  DW2 (2x2x6x12, 288/288 params, 0/0 flops, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|VariableV2|_trainable_variables, )\n    DW2/Assign (0/0 params, 0/0 flops, Assign, 0:2x2x6x12|1:2x2x6x12)\n    DW2/Initializer (0/0 params, 0/0 flops, _kTFScopeParent, )\n      DW2/Initializer/random_normal (0/0 params, 0/0 flops, Add, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0:4)\n        DW2/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, )\n        DW2/Initializer/random_normal/mul (0/0 params, 0/0 flops, Mul, 0:2x2x6x12|1:1)\n        DW2/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, )\n        DW2/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, )\n    DW2/read (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Identity, 0:2x2x6x12)\n  ScalarW (1, 1/1 params, 0/0 flops, VariableV2|_trainable_variables, )\n    ScalarW/Assign (0/0 params, 0/0 flops, Assign, 0:1|1:1)\n    ScalarW/Initializer (0/0 params, 0/0 flops, _kTFScopeParent, )\n      ScalarW/Initializer/random_normal (0/0 params, 0/0 flops, Add, 0:1|1:1)\n        ScalarW/Initializer/random_normal/RandomStandardNormal (0/0 params, 0/0 flops, RandomStandardNormal, 0:0)\n        ScalarW/Initializer/random_normal/mean (0/0 params, 0/0 flops, Const, )\n        ScalarW/Initializer/random_normal/mul (0/0 params, 0/0 flops, Mul, 0:1|1:1)\n        ScalarW/Initializer/random_normal/shape (0/0 params, 0/0 flops, Const, )\n        ScalarW/Initializer/random_normal/stddev (0/0 params, 0/0 flops, Const, )\n    ScalarW/read (0/0 params, 0/0 flops, Identity, 0:1)\n  init (0/0 params, 0/0 flops, NoOp, 0:1|1:3x3x3x6|2:2x2x6x12)\n  zeros (0/0 params, 0/0 flops, /job:localhost/replica:0/task:0/cpu:0, /job:localhost/replica:0/task:0/cpu:0|Const, )\n',
             f.read())
         # pylint: enable=line-too-long
 
@@ -96,7 +96,7 @@ class PrintModelAnalysisTest(test.TestCase):
         'input_shapes'
     ]
 
-    with session.Session() as sess, ops.device('/cpu:0'):
+    with session.Session() as sess:
       x = lib.BuildSmallModel()
 
       sess.run(variables.global_variables_initializer())
@@ -177,7 +177,7 @@ class PrintModelAnalysisTest(test.TestCase):
         'bytes', 'params', 'float_ops', 'device'
     ]
 
-    with session.Session() as sess, ops.device('/cpu:0'):
+    with session.Session() as sess:
       x = lib.BuildSmallModel()
 
       sess.run(variables.global_variables_initializer())
@@ -205,7 +205,7 @@ class PrintModelAnalysisTest(test.TestCase):
     opts['max_depth'] = 100000
     opts['step'] = 0
 
-    with session.Session() as sess, ops.device('/cpu:0'):
+    with session.Session() as sess:
       x = lib.BuildFullModel()
 
       sess.run(variables.global_variables_initializer())
@@ -233,7 +233,7 @@ class PrintModelAnalysisTest(test.TestCase):
     opts['select'] = ['params', 'micros', 'occurrence', 'input_shapes']
     opts['order_by'] = 'occurrence'
 
-    with session.Session() as sess, ops.device('/cpu:0'):
+    with session.Session() as sess:
       x = lib.BuildFullModel()
 
       sess.run(variables.global_variables_initializer())
@@ -247,9 +247,11 @@ class PrintModelAnalysisTest(test.TestCase):
           sess.graph, run_meta, tfprof_cmd='op', tfprof_options=opts)
 
       with gfile.Open(outfile, 'r') as f:
+        # pylint: disable=line-too-long
         self.assertEqual(
-            'nodename|executiontime|#parameters|opoccurrence|inputshapes\n',
-            f.read().replace('\t', '').replace(' ', '')[0:60])
+            'nodename|totalexecutiontime|acceleratorexecutiontime|cpuexecutiontime|#parameters|opoccurrence|input',
+            f.read().replace('\t', '').replace(' ', '')[0:100])
+        # pylint: enable=line-too-long
 
       total_children = 0
       last_occurrence = 1e32
