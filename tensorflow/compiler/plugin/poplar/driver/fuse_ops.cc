@@ -27,6 +27,12 @@ bool FuseOps::ShouldFuse(HloInstruction* consumer, int64 operand_index) {
       consumer->opcode() == HloOpcode::kDynamicUpdateSlice) {
     return true;
   }
+
+  if (producer->opcode() == HloOpcode::kRng &&
+      consumer->opcode() == HloOpcode::kWhile &&
+      consumer->while_condition()->name().substr(0, 16) == "truncated_normal") {
+    return true;
+  }
   return false;
 }
 

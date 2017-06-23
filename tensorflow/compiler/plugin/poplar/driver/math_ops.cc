@@ -292,18 +292,16 @@ CreateSelectOp(poplar::Graph &graph,
 
   poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 1, 0));
-  in0 = in0.flatten();
 
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 2, 0));
-  in1 = in1.flatten();
-
-  const std::string& poplar_data_type(in0.elementType());
 
   // Allocate the output tensor
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  poplar::Tensor out = graph.clone(in0, inst->name());
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  in0 = in0.flatten();
+  in1 = in1.flatten();
   out = out.flatten();
 
   auto cs = graph.addComputeSet(inst->ToString());
@@ -313,6 +311,8 @@ CreateSelectOp(poplar::Graph &graph,
 
   unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
   num_workers = std::min(num_workers, N);
+
+  const std::string& poplar_data_type(in0.elementType());
 
   if (pred.dim(0) == 1) {
     std::string vertex_name = templateVertex("ScalarSelect", poplar_data_type);
@@ -356,18 +356,16 @@ CreateCastOp(poplar::Graph &graph,
   // Find the input tensor
   poplar::Tensor in;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0, 0));
-  in = in.flatten();
 
-  // Allocate the output tensor
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  std::string poplar_type;
+  TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(output_shape));
+
+  poplar::program::Sequence seq;
+  poplar::Tensor out = popstd::cast(graph, in, poplar_type, seq, inst->name());
+
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
 
-  auto cs = graph.addComputeSet(inst->ToString());
-  popstd::cast(graph, in, out, cs);
-
-  return poplar::program::Execute(cs);
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>

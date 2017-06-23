@@ -81,10 +81,12 @@ cc_library(
 cc_library(
     name = "optimizers",
     srcs = [
+        "driver/allocation_finder.cc",
         "driver/fuse_ops.cc",
         "driver/outliner.cc",
     ],
     hdrs = [
+        "driver/allocation_finder.h",
         "driver/fuse_ops.h",
         "driver/outliner.h",
     ],
@@ -142,6 +144,17 @@ cc_test(
 cc_test(
     name = "outliner_test",
     srcs = ["tests/outliner_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "allocation_finder_test",
+    srcs = ["tests/allocation_finder_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
