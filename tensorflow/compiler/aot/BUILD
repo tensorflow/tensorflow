@@ -128,7 +128,6 @@ cc_library(
         ":tfcompile_lib",
         ":tfcompile_proto",
         "//tensorflow/compiler/xla/legacy_flags:buffer_assignment_flags",
-        "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
         "//tensorflow/compiler/xla/legacy_flags:service_flags",

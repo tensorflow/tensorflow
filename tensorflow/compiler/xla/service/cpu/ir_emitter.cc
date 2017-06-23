@@ -33,7 +33,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Intrinsics.h"
 #include "external/llvm/include/llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -777,7 +776,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot, HloInstruction* lhs,
   // Dot operation is complicated so we delegate to a helper class.
   TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
       *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
-      lhs_array, rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_));
+      lhs_array, rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_,
+      hlo_module_config_));
 
   emitted_value_[dot] = target_address;
   return Status::OK();
@@ -862,9 +862,10 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
            int64_type,    int64_type,     int64_type,     int64_type,
            int64_type,    int64_type,     int64_type,     int64_type},
           /*isVarArg=*/false);
-      legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
+      bool multi_threaded_eigen =
+          hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
       const char* fn_name =
-          (flags->xla_cpu_multi_thread_eigen
+          (multi_threaded_eigen
                ? runtime::kEigenConvF32SymbolName
                : runtime::kEigenSingleThreadedConvF32SymbolName);
       llvm::Function* conv_func = llvm::cast<llvm::Function>(
@@ -1525,7 +1526,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
         *dot, dot->operand(0)->IsRank2Transpose(),
         dot->operand(1)->IsRank2Transpose(), target_array, lhs_array, rhs_array,
-        GetExecutableRunOptionsArgument(), &ir_builder_));
+        GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_));
 
     emitted_value_[fusion] = target_address;
     return Status::OK();

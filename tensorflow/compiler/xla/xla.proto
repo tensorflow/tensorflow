@@ -54,11 +54,15 @@ message DebugOptions {
   // Dump compilation artifacts as JSON into this directory.
   string xla_dump_debug_json_to = 7;
 
+  // When generating calls to Eigen in the CPU backend, use multi-threaded Eigen
+  // mode.
+  bool xla_cpu_multi_thread_eigen = 8;
+
   // Path to directory with cuda/ptx tools and libraries.
-  string xla_gpu_cuda_data_dir = 8;
+  string xla_gpu_cuda_data_dir = 9;
 
   // Enable flush-to-zero semantics in the GPU backend.
-  bool xla_gpu_ftz = 9;
+  bool xla_gpu_ftz = 10;
 
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
