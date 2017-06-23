@@ -350,6 +350,7 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     std::unique_ptr<HloModule> module, HloDumper dump_hlo,
     se::StreamExecutor* stream_exec) {
+  VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
                  &InitializeLLVMCommandLineOptions, module->config());
@@ -384,6 +385,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       module->config().debug_options().xla_dump_debug_json_to();
 
   if (CpuParallelBackendRequested(module->config())) {
+    VLOG(1) << "Using parallel cpu backend";
+
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
     // DependencyHloOrdering is used for the parallel emitter because the order
@@ -486,6 +489,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
           .set_ir_module_string(ir_module_string);
     }
   } else {
+    VLOG(1) << "Using sequential cpu backend";
+
     // Select an order for emitting the HLO instructions for each
     // computation. Using this sequence enables tighter buffer liveness analysis
     // and reduced memory usage (as compared to using DependencyHloOrdering).
@@ -551,6 +556,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
   }
 
+  VLOG(1) << "Compilation finished";
   return std::move(cpu_executable);
 }
 
@@ -652,6 +658,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   std::vector<std::unique_ptr<AotCompilationResult>> results;
   for (size_t i = 0; i < modules.size(); ++i) {
     HloModule* module = modules[i].get();
+    VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
     TF_RETURN_IF_ERROR(RunHloPasses(module, dump_hlo));
 
@@ -730,6 +737,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         std::move(object_file_data), std::move(buffer_sizes),
         result_slice.index()));
   }
+
+  VLOG(1) << "Compilation finished";
   return std::move(results);
 }
 
