@@ -590,6 +590,9 @@ while true; do
     # Result returned from "read" will be used unexpanded. That make "~" unusable.
     # Going through one more level of expansion to handle that.
     CUDNN_INSTALL_PATH=`"${PYTHON_BIN_PATH}" -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
+    if is_windows; then
+      CUDNN_INSTALL_PATH="$(cygpath -m "$CUDNN_INSTALL_PATH")"
+    fi
   fi
 
   if [[ -z "$TF_CUDNN_VERSION" ]]; then
