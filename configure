@@ -658,8 +658,8 @@ write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
 function get_native_cuda_compute_capabilities {
   device_query_bin="$CUDA_TOOLKIT_PATH/extras/demo_suite/deviceQuery"
-  device_query_bin_windows="${device_query_bin}.exe"
-  (is_windows && "$device_query_bin_windows" || "$device_query_bin") | grep 'Capability' | grep -o '[0-9]*\.[0-9]*' | sed ':a;{N;s/\n/,/};ba'
+  "$device_query_bin" | grep 'Capability' | grep -o '[0-9]*\.[0-9]*' | sed ':a;{N;s/\n/,/};ba'
+  exit 0
 }
 while true; do
   fromuser=""
