@@ -659,7 +659,7 @@ write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 function get_native_cuda_compute_capabilities {
   device_query_bin="$CUDA_TOOLKIT_PATH/extras/demo_suite/deviceQuery" # Also works on Windows without .exe
   "$device_query_bin" | grep 'Capability' | grep -o '[0-9]*\.[0-9]*' | sed ':a;{N;s/\n/,/};ba'
-  exit 0
+  exit 0 # ensure that this function always exit success even if device detection fails, to prevent the whole configure from aborting
 }
 while true; do
   fromuser=""
