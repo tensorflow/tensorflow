@@ -70,6 +70,10 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // correct optimizations.
 Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
                      const ItemConfig& cfg) {
+  if (!cfg.apply_optimizations && !cfg.inline_functions) {
+    return Status::OK();
+  }
+
   // Create a session option for a single GPU device.
   SessionOptions options;
 
