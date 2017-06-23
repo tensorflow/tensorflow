@@ -86,7 +86,7 @@ class AddTreesToEnsembleOp : public OpKernel {
     OP_REQUIRES(context, fc_usage_counts_lhs_t.IsInitialized(),
                 errors::FailedPrecondition(
                     "Attempting to use uninitialized variables: ",
-                    def().input(kFeatureColumnUsageCountsHandleIdx)));
+                    requested_input(kFeatureColumnUsageCountsHandleIdx)));
 
     Tensor fc_gains_lhs_t =
         context->mutable_input(kFeatureColumnGainsHandleIdx, true);
@@ -95,7 +95,7 @@ class AddTreesToEnsembleOp : public OpKernel {
     OP_REQUIRES(context, fc_gains_lhs_t.IsInitialized(),
                 errors::FailedPrecondition(
                     "Attempting to use uninitialized variables: ",
-                    def().input(kFeatureColumnGainsHandleIdx)));
+                    requested_input(kFeatureColumnGainsHandleIdx)));
 
     const Tensor fc_usage_counts_rhs_t =
         context->input(kFeatureColumnUsageCountsToAddIdx);

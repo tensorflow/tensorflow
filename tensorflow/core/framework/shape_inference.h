@@ -196,19 +196,7 @@ class InferenceContext {
   //
   // On error, additional context is provided in the error message.
   Status Run(
-      const std::function<Status(shape_inference::InferenceContext* c)>& fn) {
-    Status s = fn(this);
-    if (!s.ok()) {
-      return AttachContext(s);
-    }
-#ifndef NDEBUG
-    for (int i = 0; i < num_outputs(); ++i) {
-      DCHECK(output(i).IsSet())
-          << i << " for " << node_def_.name() << " of type " << node_def_.op();
-    }
-#endif  // NDEBUG
-    return s;
-  }
+      const std::function<Status(shape_inference::InferenceContext* c)>& fn);
 
   // Merge the stored shape of the input in position idx with <shape> according
   // to the following rules:

@@ -294,7 +294,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
   }
   InferenceContext* c = it->second.get();
 
-  if (node->def().op() == "Shape") {
+  if (node->type_string() == "Shape") {
     // If input shapes to the shape op are fully defined,
     // we can infer the shape op's output tensor.
     bool fully_defined_inputs = c->FullyDefined(c->input(0));
@@ -324,7 +324,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
       *output = t;
       *success = true;
     }
-  } else if (node->def().op() == "Rank") {
+  } else if (node->type_string() == "Rank") {
     bool rank_known = c->RankKnown(c->input(0));
     if (rank_known) {
       int32 input_rank = c->Rank(c->input(0));
@@ -333,7 +333,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
       *output = t;
       *success = true;
     }
-  } else if (node->def().op() == "Size") {
+  } else if (node->type_string() == "Size") {
     bool fully_defined_inputs = c->FullyDefined(c->input(0));
     if (fully_defined_inputs) {
       int32 rank = c->Rank(c->input(0));

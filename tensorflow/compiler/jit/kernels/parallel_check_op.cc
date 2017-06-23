@@ -64,7 +64,7 @@ class ParallelCheckOp : public OpKernel {
           ok = (diff <= tolerance);
         }
         if (ok) continue;
-        LOG(ERROR) << "Op " << def().name() << " fails equality at output "
+        LOG(ERROR) << "Op " << name() << " fails equality at output "
                    << input_idx << " type " << DataTypeString(dtype)
                    << " element " << i << ": std_val=" << p0[i]
                    << " test_val=" << p1[i] << " diff=" << (p0[i] - p1[i]);
@@ -75,7 +75,7 @@ class ParallelCheckOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    VLOG(1) << "Compute " << def().name();
+    VLOG(1) << "Compute " << name();
     const int num_pairs = ctx->num_inputs() / 2;
     for (int i = 0; i < num_pairs; ++i) {
       CHECK_EQ(ctx->input_dtype(i), ctx->input_dtype(i + num_pairs));
@@ -113,7 +113,7 @@ class ParallelCheckOp : public OpKernel {
           LOG(FATAL) << "unimpl: " << ctx->input_dtype(i);
       }
       if (failed > 0) {
-        LOG(ERROR) << "check failed for " << def().name() << " output " << i
+        LOG(ERROR) << "check failed for " << name() << " output " << i
                    << " num_elts: " << num_elts;
         legacy_flags::ParallelCheckOpFlags* flags =
             legacy_flags::GetParallelCheckOpFlags();
@@ -121,7 +121,7 @@ class ParallelCheckOp : public OpKernel {
           LOG(QFATAL) << "failfast on first parallel-check failure";
         }
       } else {
-        VLOG(1) << "check passed for " << def().name() << " output " << i
+        VLOG(1) << "check passed for " << name() << " output " << i
                 << " num_elts: " << num_elts;
       }
 

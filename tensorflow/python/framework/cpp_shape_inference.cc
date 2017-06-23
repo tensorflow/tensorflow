@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/python/framework/cpp_shape_inference.h"
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
