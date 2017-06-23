@@ -703,5 +703,17 @@ class SoftplusTest(test.TestCase):
       # Equivalent to `assertAllFalse` (if it existed).
       self.assertAllEqual(np.zeros_like(grads).astype(np.bool), np.isnan(grads))
 
+  def testInverseSoftplusGradientFinite(self):
+    with self.test_session():
+      # This range of x is all finite, and so is 1 / x.  So the
+      # gradient and its approximations should be finite as well.
+      x = constant_op.constant(np.logspace(-4.8, 4.5).astype(np.float16))
+      y = distribution_util.softplus_inverse(x)
+      grads = gradients_impl.gradients(y, x)[0].eval()
+      # Equivalent to `assertAllTrue` (if it existed).
+      self.assertAllEqual(
+          np.ones_like(grads).astype(np.bool), np.isfinite(grads))
+
+
 if __name__ == "__main__":
   test.main()
