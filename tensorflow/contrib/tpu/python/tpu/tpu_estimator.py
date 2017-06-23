@@ -146,9 +146,8 @@ class TpuInfeedSessionHook(session_run_hook.SessionRunHook):
 class TpuEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
 
-  The only difference is a wrapped  model_fn is set in the constructor.
+  The only difference is a wrapped model_fn is set in the constructor.
   """
-
   def __init__(self,
                model_fn=None,
                model_dir=None,
@@ -156,17 +155,16 @@ class TpuEstimator(estimator_lib.Estimator):
                params=None,
                use_tpu=True):
     if use_tpu:
+      if not isinstance(config, tpu_config.RunConfig):
+        raise ValueError('`config` must be `tpu_config.RunConfig`')
       model_function = wrapped_model_fn(model_fn, config)
     else:
       model_function = model_fn
-
     super(TpuEstimator, self).__init__(
         model_fn=model_function,
         model_dir=model_dir,
         config=config,
         params=params)
-    if not isinstance(config, tpu_config.RunConfig):
-      raise ValueError('`config` must be `tpu_config.RunConfig`')
 
   def _create_global_step(self, graph):
     """Creates a global step suitable for TPUs.
