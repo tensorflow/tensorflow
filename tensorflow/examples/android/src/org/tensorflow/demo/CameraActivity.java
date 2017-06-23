@@ -126,6 +126,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
+    rgbBytes = new int[previewWidth * previewHeight]; 
     try {
       image = reader.acquireLatestImage();
 
