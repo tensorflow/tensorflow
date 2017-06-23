@@ -193,9 +193,10 @@ Status BaseVisitor::HandleConstant(
         const Literal& literal) {
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, AddConstantTensor(*graph_,
-                                           inst->name(),
+                                           inst,
                                            GetOutputShape(inst),
-                                           inst->literal()));
+                                           inst->literal(),
+                                           resources_));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
 }

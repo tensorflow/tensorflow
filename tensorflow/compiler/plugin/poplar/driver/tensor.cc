@@ -4,6 +4,7 @@
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -56,14 +57,15 @@ PoplarShapeFromXlaShape(const xla::Shape &xla_shape) {
 
 port::StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
-          const std::string& name,
-          const xla::Shape& shape) {
+          const HloInstruction* inst,
+          const xla::Shape& shape,
+          const CompilerResources& resources) {
   poplar::Tensor out;
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
   std::string poplar_type;
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
-  out = graph.addTensor(poplar_type, dim, name);
+  out = graph.addTensor(poplar_type, dim, inst->name());
   popstd::mapTensor(graph, out);
   return out;
 }
@@ -114,9 +116,10 @@ Add64BitConstantTensor(poplar::Graph&graph,
 
 port::StatusOr<poplar::Tensor>
 AddConstantTensor(poplar::Graph& graph,
-                  const std::string& name,
+                  const HloInstruction* inst,
                   const xla::Shape& shape,
-                  const xla::Literal& literal) {
+                  const xla::Literal& literal,
+                  const CompilerResources& resources) {
   poplar::Tensor tensor;
 
   std::string type;

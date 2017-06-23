@@ -104,7 +104,8 @@ public:
 
   Status HandleParameter(HloInstruction* inst) {
     poplar::Tensor out;
-    TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, inst->name(), inst->shape()));
+    TF_ASSIGN_OR_RETURN(out,
+                        AddTensor(*graph_, inst, inst->shape(), resources_));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
     graph_->createHostWrite(sep::GetCopyHandle(inst->parameter_number()), out);
@@ -257,7 +258,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   VLOG(2) << "Running tensor allocation tracker";
 
   AllocationFinder finder;
-  finder.CreateAllocationMap(hlo_module.get());
+  TF_RETURN_IF_ERROR(finder.CreateAllocationMap(hlo_module.get()));
   resources.tensor_allocation_map = std::move(finder.tensor_allocation_map);
 
   for (const auto& comp : call_finder.targets) {

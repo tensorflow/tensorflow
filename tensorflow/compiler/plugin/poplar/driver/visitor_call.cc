@@ -43,7 +43,8 @@ CallVisitor::CallVisitor(poplar::Graph* graph,
 
 Status CallVisitor::HandleParameter(HloInstruction* inst) {
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, inst->name(), inst->shape()));
+  TF_ASSIGN_OR_RETURN(out,
+                      AddTensor(*graph_, inst, inst->shape(), resources_));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   inputs_[inst->parameter_number()] = out;
   return Status::OK();

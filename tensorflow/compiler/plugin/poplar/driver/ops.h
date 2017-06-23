@@ -10,6 +10,7 @@
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 #include <poplar/Program.hpp>
+#include <popconv/Convolution.hpp>
 
 namespace poplar {
   class Graph;
@@ -36,6 +37,9 @@ To convert_array(const From& from) {
   }
   return out;
 };
+
+port::StatusOr<popconv::ConvParams>
+GetConvolutionParameters(const HloInstruction* inst);
 
 port::Status
 AddOutputTensor(TensorMap& map,

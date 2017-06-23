@@ -1,6 +1,8 @@
 #ifndef IPU_TENSOR_H_
 #define IPU_TENSOR_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/platform/types.h"
@@ -14,7 +16,10 @@ namespace poplar {
 namespace port = ::perftools::gputools::port;
 
 namespace xla {
+
 namespace poplarplugin {
+
+struct CompilerResources;
 
 port::StatusOr<std::string>
 PoplarDataType(const xla::Shape& shape);
@@ -24,14 +29,16 @@ PoplarShapeFromXlaShape(const xla::Shape &xla_shape);
 
 port::StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
-          const std::string& name,
-          const xla::Shape& shape);
+          const HloInstruction* inst,
+          const xla::Shape& shape,
+          const CompilerResources& resources);
 
 port::StatusOr<poplar::Tensor>
 AddConstantTensor(poplar::Graph& graph,
-                  const std::string& name,
+                  const HloInstruction* inst,
                   const xla::Shape& shape,
-                  const xla::Literal& literal);
+                  const xla::Literal& literal,
+                  const CompilerResources& resources);
 
 template <typename T>
 poplar::Tensor
