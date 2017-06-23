@@ -95,6 +95,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:lookup_table_init_op",
         "//tensorflow/core/kernels:lookup_table_op",
+        "//tensorflow/core/kernels:lookup_util",
         "//third_party/eigen3",
     ],
     alwayslink = 1,

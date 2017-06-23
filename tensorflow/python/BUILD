@@ -80,7 +80,7 @@ py_library(
         ":training",
         ":ops",
         ":saver_test_utils",
-        ":test_ops",  # TODO: Break testing code out into separate rule.
+        #":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
         ":weights_broadcast_ops",
         "//third_party/py/numpy",
@@ -2600,6 +2600,7 @@ tf_proto_library(
         ],
     ),
     go_api_version = 2,
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(
@@ -2613,6 +2614,7 @@ tf_proto_library(
     srcs = ["framework/cpp_shape_inference.proto"],
     cc_api_version = 2,
     protodeps = ["//tensorflow/core:protos_all"],
+    visibility = ["//visibility:public"],
 )
 
 py_test(
