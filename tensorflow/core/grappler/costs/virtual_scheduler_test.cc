@@ -563,8 +563,9 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   CreateGrapplerItemWithMatmulChain();
   InitScheduler();
   auto ops_executed = RunScheduler("");
-  StepStats stepstats;
-  Costs c = scheduler_->Summary(&stepstats);
+  RunMetadata metadata;
+  Costs c = scheduler_->Summary(&metadata);
+  StepStats stepstats = metadata.step_stats();
   EXPECT_EQ(13000000, c.execution_time.asMicroSeconds().count());
 
   // Should only be 1 device!
@@ -574,11 +575,9 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   std::map<string, std::pair<int64, int64>> start_end_times;
   for (const auto& device_step_stats : stepstats.dev_stats()) {
     for (const auto& stats : device_step_stats.node_stats()) {
-      // The node name is actually in the timeline_label.
       int64 start = stats.all_start_micros();
       int64 end = start + stats.all_end_rel_micros();
-      start_end_times[stats.timeline_label()] =
-          std::pair<int64, int64>(start, end);
+      start_end_times[stats.node_name()] = std::pair<int64, int64>(start, end);
     }
   }
 
