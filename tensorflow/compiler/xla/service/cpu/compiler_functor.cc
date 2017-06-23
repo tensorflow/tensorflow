@@ -64,6 +64,10 @@ operator()(llvm::Module& module) const {
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
+  if (pre_optimization_callback_) {
+    TF_CHECK_OK(pre_optimization_callback_(module));
+  }
+
   // Build up optimization pipeline.
   AddOptimizationPasses(&module_passes, &function_passes);
 
@@ -86,6 +90,10 @@ operator()(llvm::Module& module) const {
 
   VLOG(2) << "IR after optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
+
+  if (post_optimization_callback_) {
+    TF_CHECK_OK(post_optimization_callback_(module));
+  }
 
   // Generate code.
   llvm::MCContext* mc_context;

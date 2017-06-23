@@ -27,7 +27,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/Support/CodeGen.h"
 #include "external/llvm/include/llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
@@ -143,7 +142,9 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 }  // namespace
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
-                           llvm::CodeGenOpt::Level opt_level)
+                           llvm::CodeGenOpt::Level opt_level,
+                           OptimizationCallback pre_optimization_callback,
+                           OptimizationCallback post_optimization_callback)
     : target_machine_(
           CHECK_NOTNULL(llvm::EngineBuilder()
                             .setTargetOptions(target_options)
@@ -154,9 +155,11 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      compile_layer_(object_layer_,
-                     CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, GetAvailableIntrinsics())) {
+      compile_layer_(
+          object_layer_,
+          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
+                          GetAvailableIntrinsics(), pre_optimization_callback,
+                          post_optimization_callback)) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }

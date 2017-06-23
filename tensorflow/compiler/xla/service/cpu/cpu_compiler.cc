@@ -364,12 +364,23 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   std::call_once(llvm_command_line_options_initialized,
                  &InitializeLLVMCommandLineOptions, module->config());
 
+  const string dump_ir_to = module->config().debug_options().xla_dump_ir_to();
+
+  auto dump_ir_to_disk = [dump_ir_to](const llvm::Module& module) {
+    if (!dump_ir_to.empty()) {
+      TF_RETURN_IF_ERROR(
+          AppendIRToFile(dump_ir_to, llvm_ir::DumpModuleToString(module)));
+    }
+    return Status::OK();
+  };
+
   // Compile must be thread-safe so create a new LLVM context for the module.
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
   auto jit = MakeUnique<SimpleOrcJIT>(CompilerTargetOptions(module->config()),
-                                      CodeGenOptLevel(module->config()));
+                                      CodeGenOptLevel(module->config()),
+                                      dump_ir_to_disk, dump_ir_to_disk);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
@@ -389,7 +400,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  const string dump_ir_to = module->config().debug_options().xla_dump_ir_to();
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();
 
@@ -474,12 +484,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
 
     string ir_module_string;
-    if (embed_ir_in_executable || !dump_ir_to.empty()) {
+    if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
-
-      if (!dump_ir_to.empty()) {
-        TF_RETURN_IF_ERROR(AppendIRToFile(dump_ir_to, ir_module_string));
-      }
     }
 
     // JIT compile the LLVM IR module to in-memory machine code.
@@ -545,12 +551,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
     string function_name = llvm_ir::AsString(entry_function->getName());
     string ir_module_string;
-    if (embed_ir_in_executable || !dump_ir_to.empty()) {
+    if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
-
-      if (!dump_ir_to.empty()) {
-        TF_RETURN_IF_ERROR(AppendIRToFile(dump_ir_to, ir_module_string));
-      }
     }
 
     // JIT compile the LLVM IR module to in-memory machine code.
