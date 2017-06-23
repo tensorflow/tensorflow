@@ -57,6 +57,7 @@ class LibHDFS {
   std::function<hdfsFS(hdfsBuilder*)> hdfsBuilderConnect;
   std::function<hdfsBuilder*()> hdfsNewBuilder;
   std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
+  std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetUserName;
   std::function<int(const char*, char**)> hdfsConfGetStr;
   std::function<void(hdfsBuilder*, const char* kerbTicketCachePath)>
       hdfsBuilderSetKerbTicketCachePath;
@@ -85,6 +86,7 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsBuilderConnect);
       BIND_HDFS_FUNC(hdfsNewBuilder);
       BIND_HDFS_FUNC(hdfsBuilderSetNameNode);
+      BIND_HDFS_FUNC(hdfsBuilderSetUserName);
       BIND_HDFS_FUNC(hdfsConfGetStr);
       BIND_HDFS_FUNC(hdfsBuilderSetKerbTicketCachePath);
       BIND_HDFS_FUNC(hdfsCloseFile);
@@ -163,6 +165,10 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     hdfs_->hdfsBuilderSetNameNode(builder, "default");
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
+  }
+  char* tf_hdfs_user = getenv("TF_HDFS_USER");
+  if (tf_hdfs_user != nullptr) {
+    hdfs_->hdfsBuilderSetUserName(builder, tf_hdfs_user);
   }
   char* ticket_cache_path = getenv("KERB_TICKET_CACHE_PATH");
   if (ticket_cache_path != nullptr) {
