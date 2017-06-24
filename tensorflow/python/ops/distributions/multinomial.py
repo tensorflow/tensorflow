@@ -156,11 +156,11 @@ class Multinomial(distribution.Distribution):
         to `[N1,..., Nm]` with `m >= 0`. Defines this as a batch of
         `N1 x ... x Nm` different Multinomial distributions. Its components
         should be equal to integer values.
-      logits: Floating point tensor representing the log-odds of a
-        positive event with shape broadcastable to `[N1,..., Nm, K], m >= 0`,
-        and the same dtype as `total_count`. Defines this as a batch of
-        `N1 x ... x Nm` different `K` class Multinomial distributions. Only one
-        of `logits` or `probs` should be passed in.
+      logits: Floating point tensor representing unnormalized log-probabilities
+        of a positive event with shape broadcastable to
+        `[N1,..., Nm, K]` `m >= 0`, and the same dtype as `total_count`. Defines
+        this as a batch of `N1 x ... x Nm` different `K` class Multinomial
+        distributions. Only one of `logits` or `probs` should be passed in.
       probs: Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm, K]` `m >= 0` and same dtype as `total_count`. Defines
         this as a batch of `N1 x ... x Nm` different `K` class Multinomial
