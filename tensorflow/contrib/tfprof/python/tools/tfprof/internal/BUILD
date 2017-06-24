@@ -73,7 +73,12 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/tools/tfprof:protos_all_py",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "manual",
+        "no_pip",
+        "noguitar",
+        "notap",
+    ],
 )
 
 # -----------------------------------------------------------------------------
