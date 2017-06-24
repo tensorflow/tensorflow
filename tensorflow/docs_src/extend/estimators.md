@@ -68,8 +68,7 @@ for abalone:
 | Feature        | Description                                               |
 | -------------- | --------------------------------------------------------- |
 | Length         | Length of abalone (in longest direction; in mm)           |
-| Diameter       | Diameter of abalone (measurement perpendicular to length; |
-:                : in mm)                                                    :
+| Diameter       | Diameter of abalone (measurement perpendicular to length; in mm)|
 | Height         | Height of abalone (with its meat inside shell; in mm)     |
 | Whole Weight   | Weight of entire abalone (in grams)                       |
 | Shucked Weight | Weight of abalone meat only (in grams)                    |
