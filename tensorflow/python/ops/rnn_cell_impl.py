@@ -374,7 +374,20 @@ class BasicLSTMCell(RNNCell):
     return self._num_units
 
   def call(self, inputs, state):
-    """Long short-term memory cell (LSTM)."""
+    """Long short-term memory cell (LSTM).
+
+    Args:
+      inputs: `2-D` tensor with shape `[batch_size x input_size]`.
+      state: An `LSTMStateTuple` of state tensors, each shaped
+        `[batch_size x self.state_size]`, if `state_is_tuple` has been set to
+        `True`.  Otherwise, a `Tensor` shaped
+        `[batch_size x 2 * self.state_size]`.
+
+    Returns:
+      A pair containing the new hidden state, and the new state (either a
+        `LSTMStateTuple` or a concatenated state, depending on
+        `state_is_tuple`).
+    """
     sigmoid = math_ops.sigmoid
     # Parameters of gates are concatenated into one multiply for efficiency.
     if self._state_is_tuple:
