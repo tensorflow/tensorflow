@@ -22,6 +22,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
@@ -46,6 +47,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":system_info_lib",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
     ],
 )
@@ -57,6 +59,7 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":run_and_gather_logs_lib",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],

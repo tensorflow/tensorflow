@@ -14,6 +14,7 @@ cc_library(
     name = "checker",
     hdrs = ["checker.h"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/tools/tfprof/internal:tfprof_stats",
     ],
 )
@@ -23,7 +24,7 @@ cc_library(
     srcs = ["internal_checker_runner_dummy.cc"],
     hdrs = ["internal_checker_runner.h"],
     deps = [
-        ":checker",
+        "//tensorflow/tools/tfprof/internal:tfprof_utils",
     ],
 )
 
