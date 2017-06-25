@@ -79,7 +79,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
   The default non-peephole implementation is based on:
 
-    http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+    http://www.bioinf.jku.at/publications/older/2604.pdf
 
   S. Hochreiter and J. Schmidhuber.
   "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
@@ -918,7 +918,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
         state is clipped by this value prior to the cell output activation.
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
-      num_unit_shards: (optional) int, defualt 1, How to split the weight
+      num_unit_shards: (optional) int, default 1, How to split the weight
         matrix. If > 1,the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning

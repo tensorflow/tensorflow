@@ -327,7 +327,7 @@ class LuongAttention(_BaseAttentionMechanism):
       raise ValueError(
           "Incompatible or unknown inner dimensions between query and keys.  "
           "Query (%s) has units: %s.  Keys (%s) have units: %s.  "
-          "Perhaps you need to set num_units to the the keys' dimension (%s)?"
+          "Perhaps you need to set num_units to the keys' dimension (%s)?"
           % (query, depth, self.keys, key_units, key_units))
     dtype = query.dtype
 
@@ -344,7 +344,7 @@ class LuongAttention(_BaseAttentionMechanism):
       #   [batch_size, 1, depth] . [batch_size, depth, max_time]
       # resulting in an output shape of:
       #   [batch_time, 1, max_time].
-      # we then squeee out the center singleton dimension.
+      # we then squeeze out the center singleton dimension.
       score = math_ops.matmul(query, self.keys, transpose_b=True)
       score = array_ops.squeeze(score, [1])
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/robust_stats.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -100,6 +101,7 @@ Status MeasuringCostEstimator::PredictCosts(const GraphDef& optimized_graph,
   }
 
   // Run "measurement_steps_" and measure the time.
+  VLOG(1) << "Number of measurement steps: " << measurement_steps_;
   if (measurement_threads_ > 0) {
     for (int i = 0; i < measurement_steps_; ++i) {
       thread_pool_->Schedule([i, &measurement_fn]() { measurement_fn(i); });

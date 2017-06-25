@@ -25,6 +25,7 @@ py_library(
 
 py_test(
     name = "evaluation_test",
+    size = "small",
     srcs = ["python/slim/evaluation_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -175,6 +176,7 @@ py_library(
 
 py_test(
     name = "summaries_test",
+    size = "small",
     srcs = ["python/slim/summaries_test.py"],
     srcs_version = "PY2AND3",
     deps = [

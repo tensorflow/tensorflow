@@ -293,6 +293,14 @@ Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
 )doc");
 
+REGISTER_OP("Sinh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic sine of x element-wise.
+)doc");
+
+REGISTER_OP("Cosh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic cosine of x element-wise.
+)doc");
+
 REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
 )doc");

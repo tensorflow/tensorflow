@@ -9,7 +9,7 @@ great for training deep neural networks too, and you might be thinking which one
 you should choose—Well, why not both? Would it be possible to combine the
 strengths of both in one model?
 
-In this tutorial, we'll introduce how to use the TF.Learn API to jointly train a
+In this tutorial, we'll introduce how to use the tf.contrib.learn API to jointly train a
 wide linear model and a deep feed-forward neural network. This approach combines
 the strengths of memorization and generalization. It's useful for generic
 large-scale regression and classification problems with sparse input features
@@ -23,7 +23,7 @@ The figure above shows a comparison of a wide model (logistic regression with
 sparse features and transformations), a deep model (feed-forward neural network
 with an embedding layer and several hidden layers), and a Wide & Deep model
 (joint training of both). At a high level, there are only 3 steps to configure a
-wide, deep, or Wide & Deep model using the TF.Learn API:
+wide, deep, or Wide & Deep model using the tf.contrib.learn API:
 
 1.  Select features for the wide part: Choose the sparse base columns and
     crossed columns you want to use.
@@ -42,7 +42,7 @@ To try the code for this tutorial:
 
 2.  Download [the tutorial code](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
-3.  Install the pandas data analysis library. tf.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
+3.  Install the pandas data analysis library. tf.contrib.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
 
     a. Get `pip`:
 

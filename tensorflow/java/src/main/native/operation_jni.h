@@ -73,6 +73,17 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Operation_shape(JNIEnv *,
 JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_dtype(JNIEnv *, jclass,
                                                            jlong, jlong, jint);
 
+
+/*
+ * Class:     org_tensorflow_Operation
+ * Method:    inputListLength
+ * Signature: (JLjava/lang/String;)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_inputListLength(JNIEnv *,
+                                                                      jclass,
+                                                                      jlong,
+                                                                      jstring);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

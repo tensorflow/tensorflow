@@ -63,6 +63,12 @@ int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
 // any over or underflows.
 template <class T>
 T FloatToQuantized(float input, float range_min, float range_max) {
+  if (std::is_same<T, float>::value) {
+    // Specialization for float. This is used in reference implementation
+    // for float which is useful to compare performance between float
+    // and quantized type.
+    return input;
+  }
   int64 quantized = FloatToQuantizedUnclamped<T>(input, range_min, range_max);
   const int64 lowest_quantized =
       static_cast<int64>(Eigen::NumTraits<T>::lowest());
@@ -75,6 +81,12 @@ T FloatToQuantized(float input, float range_min, float range_max) {
 
 template <class T>
 float QuantizedToFloat(T input, float range_min, float range_max) {
+  if (std::is_same<T, float>::value) {
+    // Specialization for float. This is used in reference implementation
+    // for float which is useful to compare performance between float
+    // and quantized type.
+    return input;
+  }
   if (range_min == range_max) {
     return range_min;
   }
@@ -399,6 +411,132 @@ inline void RequantizeManyInNewRange<qint32, quint8>(
     RequantizeManyInNewRangeNeon(input, count, min_input, max_input, min_output,
                                  max_output, output);
   }
+}
+
+// NEON accelerated 16bit rounded division by 2^n.
+template <int POW>
+inline int16x8_t Divide16x8PowRound(const int16x8_t val) {
+  const int16x8_t val_sign = vshrq_n_s16(val, 15);
+  const int16x8_t val_xor = veorq_s16(val, val_sign);
+  const int16x8_t val_pos = vsubq_s16(val_xor, val_sign);
+  const int16x8_t shifted_val_pos = vrshrq_n_s16(val_pos, POW);
+  const int16x8_t shifted_val_pos_xor = veorq_s16(shifted_val_pos, val_sign);
+  const int16x8_t shifted_val = vsubq_s16(shifted_val_pos_xor, val_sign);
+  return shifted_val;
+}
+
+// NEON accelerated 64bit rounded division by 2^n.
+template <int POW>
+inline int64x2_t Divide64x2PowRound(const int64x2_t val) {
+  const int64x2_t val_sign = vshrq_n_s64(val, 63);
+  const int64x2_t val_xor = veorq_s64(val, val_sign);
+  const int64x2_t val_pos = vsubq_s64(val_xor, val_sign);
+  const int64x2_t shifted_val_pos = vrshrq_n_s64(val_pos, POW);
+  const int64x2_t shifted_val_pos_xor = veorq_s64(shifted_val_pos, val_sign);
+  const int64x2_t shifted_val = vsubq_s64(shifted_val_pos_xor, val_sign);
+  return shifted_val;
+}
+
+// NEON accelerated 16bit division by 2^n.
+// CAVEAT: The input must be greater than min-int16 to avoid underflow.
+template <int POW>
+inline int16x8_t Divide16x8Pow(const int16x8_t val) {
+  static constexpr int16 FIRST_BIT_VAL = 0x0000000000000001;
+  static const int16x8_t FIRST_BIT = vmovq_n_s16(FIRST_BIT_VAL);
+  const int16x8_t val_sign = vshrq_n_s16(val, 15);
+  const int16x8_t neg_offset = vandq_s16(val_sign, FIRST_BIT);
+  const int16x8_t val_with_offset = vsubq_s16(val, neg_offset);
+  const int16x8_t shifted_wo_offset =
+      vsraq_n_s16(neg_offset, val_with_offset, POW);
+  return shifted_wo_offset;
+}
+
+// NEON accelerated 64bit division by 2^n.
+// CAVEAT: The input must be greater than min-int64 to avoid underflow.
+template <int POW>
+inline int64x2_t Divide64x2Pow(const int64x2_t val) {
+  static constexpr int64 FIRST_BIT_VAL = 0x0000000000000001;
+  static const int64x2_t FIRST_BIT = vmovq_n_s64(FIRST_BIT_VAL);
+  const int64x2_t val_sign = vshrq_n_s64(val, 63);
+  const int64x2_t neg_offset = vandq_s64(val_sign, FIRST_BIT);
+  const int64x2_t val_with_offset = vsubq_s64(val, neg_offset);
+  const int64x2_t shifted_wo_offset =
+      vsraq_n_s64(neg_offset, val_with_offset, POW);
+  return shifted_wo_offset;
+}
+
+// 32bit x 2 NEON accelerated lerp computation.
+template <int RESOLUTION>
+inline int32x2_t ComputeLerp32x2(const int32x2_t top_left,
+                                 const int32x2_t top_right,
+                                 const int32x2_t bottom_left,
+                                 const int32x2_t bottom_right,
+                                 const int32x2_t x_lerp,
+                                 const int32x2_t y_lerp) {
+  static_assert(RESOLUTION < 31, "RESOLUTION must be less than 31");
+  constexpr int32 RESOLUTION_MULT32 = (1 << RESOLUTION);
+  static const int32x2_t RESOLUTION_MULT32x2 = vmov_n_s32(RESOLUTION_MULT32);
+
+  const int64x2_t top_left_x_res = vmull_s32(top_left, RESOLUTION_MULT32x2);
+  const int64x2_t bottom_left_x_res =
+      vmull_s32(bottom_left, RESOLUTION_MULT32x2);
+
+  const int32x2_t top_right_sub_top_left = vsub_s32(top_right, top_left);
+  const int64x2_t top_x_res =
+      vmlal_s32(top_left_x_res, top_right_sub_top_left, x_lerp);
+  const int32x2_t bottom_right_sub_bottom_left =
+      vsub_s32(bottom_right, bottom_left);
+  const int64x2_t bottom_x_res =
+      vmlal_s32(bottom_left_x_res, bottom_right_sub_bottom_left, x_lerp);
+
+  const int64x2_t bottom_sub_top_x_res = vsubq_s64(bottom_x_res, top_x_res);
+  const int64x2_t bottom_sub_top =
+      Divide64x2Pow<RESOLUTION>(bottom_sub_top_x_res);
+  const int32x2_t bottom_sub_top_32 = vqmovn_s64(bottom_sub_top);
+  const int64x2_t top_add_bottom_sub_top_mul_ylerp_x_res =
+      vmlal_s32(top_x_res, bottom_sub_top_32, y_lerp);
+  const int64x2_t retval =
+      Divide64x2PowRound<RESOLUTION>(top_add_bottom_sub_top_mul_ylerp_x_res);
+  const int32x2_t retval32 = vqmovn_s64(retval);
+  return retval32;
+}
+
+// 8bit x 8 NEON accelerated lerp computation.
+template <int RESOLUTION>
+inline uint8x8_t ComputeLerp8x8(const uint8x8_t top_left8x8,
+                                const uint8x8_t top_right8x8,
+                                const uint8x8_t bottom_left8x8,
+                                const uint8x8_t bottom_right8x8,
+                                const int16x8_t x_lerp,
+                                const int16x8_t y_lerp) {
+  static_assert(RESOLUTION < 8, "RESOLUTION must be less than 8");
+  constexpr uint8 RESOLUTION_MULT_VAL = (1 << RESOLUTION);
+  static const uint8x8_t RESOLUTION_MULT = vdup_n_u8(RESOLUTION_MULT_VAL);
+
+  const int16x8_t top_left_x_res =
+      vreinterpretq_s16_u16(vmull_u8(top_left8x8, RESOLUTION_MULT));
+  const int16x8_t bottom_left_x_res =
+      vreinterpretq_s16_u16(vmull_u8(bottom_left8x8, RESOLUTION_MULT));
+
+  const int16x8_t top_right_sub_top_left =
+      vreinterpretq_s16_u16(vsubl_u8(top_right8x8, top_left8x8));
+  const int16x8_t top_x_res =
+      vmlaq_s16(top_left_x_res, top_right_sub_top_left, x_lerp);
+
+  const int16x8_t bottom_right_sub_bottom_left =
+      vreinterpretq_s16_u16(vsubl_u8(bottom_right8x8, bottom_left8x8));
+  const int16x8_t bottom_x_res =
+      vmlaq_s16(bottom_left_x_res, bottom_right_sub_bottom_left, x_lerp);
+
+  const int16x8_t bottom_sub_top_x_res = vsubq_s16(bottom_x_res, top_x_res);
+  const int16x8_t bottom_sub_top =
+      Divide16x8Pow<RESOLUTION>(bottom_sub_top_x_res);
+  const int16x8_t top_add_bottom_sub_top_mul_ylerp_x_res =
+      vmlaq_s16(top_x_res, bottom_sub_top, y_lerp);
+  const int16x8_t retval16 =
+      Divide16x8PowRound<RESOLUTION>(top_add_bottom_sub_top_mul_ylerp_x_res);
+  const uint8x8_t retval = vmovn_u16(vreinterpretq_u16_s16(retval16));
+  return retval;
 }
 
 // Requantize 8 x 8 quints to 8 x 32 qints in parallel by neon

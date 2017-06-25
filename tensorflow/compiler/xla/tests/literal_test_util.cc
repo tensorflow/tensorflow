@@ -41,20 +41,25 @@ namespace xla {
 
 /* static */ void LiteralTestUtil::AssertEqualShapes(const Shape& expected,
                                                      const Shape& actual) {
-  ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual));
-  ASSERT_EQ(expected.element_type(), actual.element_type())
-      << PrimitiveType_Name(expected.element_type()) << " vs "
-      << PrimitiveType_Name(actual.element_type());
-  ASSERT_EQ(expected.dimensions_size(), actual.dimensions_size());
-  for (int i = 0; i < expected.dimensions_size(); ++i) {
-    ASSERT_EQ(expected.dimensions(i), actual.dimensions(i))
-        << "mismatch in dimension #" << i
-        << " expected: " << ShapeUtil::HumanString(expected)
-        << " actual: " << ShapeUtil::HumanString(actual);
-  }
-  ASSERT_EQ(expected.tuple_shapes_size(), actual.tuple_shapes_size());
-  for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
-    AssertEqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+  ASSERT_EQ(ShapeUtil::IsTuple(expected), ShapeUtil::IsTuple(actual));
+  if (ShapeUtil::IsTuple(expected)) {
+    ASSERT_EQ(ShapeUtil::TupleElementCount(expected),
+              ShapeUtil::TupleElementCount(actual));
+    for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
+      AssertEqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+    }
+  } else {
+    ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual));
+    ASSERT_EQ(expected.element_type(), actual.element_type())
+        << PrimitiveType_Name(expected.element_type()) << " vs "
+        << PrimitiveType_Name(actual.element_type());
+    ASSERT_EQ(expected.dimensions_size(), actual.dimensions_size());
+    for (int i = 0; i < expected.dimensions_size(); ++i) {
+      ASSERT_EQ(expected.dimensions(i), actual.dimensions(i))
+          << "mismatch in dimension #" << i
+          << " expected: " << ShapeUtil::HumanString(expected)
+          << " actual: " << ShapeUtil::HumanString(actual);
+    }
   }
 }
 
@@ -128,8 +133,8 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
                          tensorflow::gtl::MutableArraySlice<int64> multi_index,
                          int64 dimension) {
   if (dimension == expected.shape().dimensions_size()) {
-    NativeT expected_value = LiteralUtil::Get<NativeT>(expected, multi_index);
-    NativeT actual_value = LiteralUtil::Get<NativeT>(actual, multi_index);
+    NativeT expected_value = expected.Get<NativeT>(multi_index);
+    NativeT actual_value = actual.Get<NativeT>(multi_index);
     ::testing::AssertionResult result =
         CompareEqual<NativeT>(expected_value, actual_value);
     return result;  // Defines implicit coersion to bool.
@@ -148,10 +153,10 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
 
 /* static */ void LiteralTestUtil::ExpectEqual(const Literal& expected,
                                                const Literal& actual) {
-  EXPECT_TRUE(Equal(expected, actual)) << "expected:\n"
-                                       << LiteralUtil::ToString(expected)
-                                       << "\n\tvs actual:\n"
-                                       << LiteralUtil::ToString(actual);
+  EXPECT_TRUE(Equal(expected, actual))
+      << "expected:\n"
+      << expected.ToString() << "\n\tvs actual:\n"
+      << actual.ToString();
 }
 
 /* static */ void LiteralTestUtil::ExpectNotEqual(const Literal& expected,
@@ -161,8 +166,8 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::Equal(
     const Literal& expected, const Literal& actual) {
-  VLOG(1) << "expected: " << LiteralUtil::ToString(expected);
-  VLOG(1) << "actual:   " << LiteralUtil::ToString(actual);
+  VLOG(1) << "expected: " << expected.ToString();
+  VLOG(1) << "actual:   " << actual.ToString();
 
   AssertEqualShapes(expected.shape(), actual.shape());
   std::vector<int64> multi_index(expected.shape().dimensions_size(), 0);
@@ -210,8 +215,8 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
   ::testing::AssertionResult result = ::testing::AssertionSuccess();
   if (!match) {
     result = ::testing::AssertionFailure()
-             << "expected: " << LiteralUtil::ToString(expected)
-             << "\nactual:   " << LiteralUtil::ToString(actual);
+             << "expected: " << expected.ToString()
+             << "\nactual:   " << actual.ToString();
     VLOG(1) << result.message();
   }
   return result;
@@ -219,8 +224,8 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
 
 /* static */ void LiteralTestUtil::ExpectEqualTuple(const Literal& expected,
                                                     const Literal& actual) {
-  VLOG(1) << "expected: " << LiteralUtil::ToString(expected);
-  VLOG(1) << "actual:   " << LiteralUtil::ToString(actual);
+  VLOG(1) << "expected: " << expected.ToString();
+  VLOG(1) << "actual:   " << actual.ToString();
 
   ASSERT_TRUE(ShapeUtil::IsTuple(expected.shape()));
   ASSERT_TRUE(ShapeUtil::IsTuple(actual.shape()));
@@ -247,8 +252,8 @@ class NearComparator {
   // within the error bound. Emits useful log messages and dumps literals to
   // temporary files on failure. Returns true if  literals match.
   bool ExpectNear(const Literal& expected, const Literal& actual) {
-    VLOG(1) << "expected: " << LiteralUtil::ToString(expected);
-    VLOG(1) << "actual:   " << LiteralUtil::ToString(actual);
+    VLOG(1) << "expected: " << expected.ToString();
+    VLOG(1) << "actual:   " << actual.ToString();
 
     LiteralTestUtil::AssertEqualShapes(expected.shape(), actual.shape());
 
@@ -282,9 +287,9 @@ class NearComparator {
     if (num_miscompares_ > 0) {
       if (!VLOG_IS_ON(1)) {
         LOG(INFO) << "expected: " << ShapeUtil::HumanString(expected.shape())
-                  << " " << LiteralUtil::ToString(expected);
+                  << " " << expected.ToString();
         LOG(INFO) << "actual:   " << ShapeUtil::HumanString(actual.shape())
-                  << " " << LiteralUtil::ToString(actual);
+                  << " " << actual.ToString();
       }
       EXPECT_TRUE(num_miscompares_ == 0)
           << "\nmax relative mismatch at index "
@@ -369,10 +374,9 @@ class NearComparator {
   void ExpectLiteralsNear(const Literal& expected, const Literal& actual,
                           int64 dimension) {
     if (dimension == expected.shape().dimensions_size()) {
-      bool near =
-          ExpectValuesNear(LiteralUtil::Get<NativeT>(expected, multi_index_),
-                           LiteralUtil::Get<NativeT>(actual, multi_index_));
-      LiteralUtil::Set<bool>(&miscompares_, multi_index_, !near);
+      bool near = ExpectValuesNear(expected.Get<NativeT>(multi_index_),
+                                   actual.Get<NativeT>(multi_index_));
+      miscompares_.Set<bool>(multi_index_, !near);
     } else {
       for (int64 i = 0; i < expected.shape().dimensions(dimension); ++i) {
         multi_index_[dimension] = i;
@@ -437,8 +441,8 @@ class NearComparator {
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::NearTuple(
     const Literal& expected, const Literal& actual, const ErrorSpec& error) {
-  VLOG(1) << "expected: " << LiteralUtil::ToString(expected);
-  VLOG(1) << "actual:   " << LiteralUtil::ToString(actual);
+  VLOG(1) << "expected: " << expected.ToString();
+  VLOG(1) << "actual:   " << actual.ToString();
 
   if (!ShapeUtil::IsTuple(expected.shape()) ||
       !ShapeUtil::IsTuple(actual.shape())) {
@@ -504,8 +508,7 @@ class NearComparator {
   *shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
 
   // Allocate space in the new literal.
-  LiteralUtil::Reserve(ShapeUtil::ElementsIn(literal.shape()),
-                       new_literal.get());
+  new_literal.get()->Reserve(ShapeUtil::ElementsIn(literal.shape()));
 
   // Copy data into new literal, element-by-element.
   for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
@@ -515,44 +518,36 @@ class NearComparator {
         IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
     switch (literal.shape().element_type()) {
       case PRED:
-        LiteralUtil::Set<bool>(
-            new_literal.get(), to_multi_index,
-            LiteralUtil::Get<bool>(literal, from_multi_index));
+        new_literal.get()->Set<bool>(to_multi_index,
+                                     literal.Get<bool>(from_multi_index));
         break;
       case U8:
-        LiteralUtil::Set<uint8>(
-            new_literal.get(), to_multi_index,
-            LiteralUtil::Get<uint8>(literal, from_multi_index));
+        new_literal.get()->Set<uint8>(to_multi_index,
+                                      literal.Get<uint8>(from_multi_index));
         break;
       case U32:
-        LiteralUtil::Set<uint32>(
-            new_literal.get(), to_multi_index,
-            LiteralUtil::Get<uint32>(literal, from_multi_index));
+        new_literal.get()->Set<uint32>(to_multi_index,
+                                       literal.Get<uint32>(from_multi_index));
         break;
       case S32:
-        LiteralUtil::Set<int32>(
-            new_literal.get(), to_multi_index,
-            LiteralUtil::Get<int32>(literal, from_multi_index));
+        new_literal.get()->Set<int32>(to_multi_index,
+                                      literal.Get<int32>(from_multi_index));
         break;
       case U64:
-        LiteralUtil::Set<uint64>(
-            new_literal.get(), to_multi_index,
-            LiteralUtil::Get<uint64>(literal, from_multi_index));
+        new_literal.get()->Set<uint64>(to_multi_index,
+                                       literal.Get<uint64>(from_multi_index));
         break;
       case S64:
-        LiteralUtil::Set<int64>(
-            new_literal.get(), to_multi_index,
-            LiteralUtil::Get<int64>(literal, from_multi_index));
+        new_literal.get()->Set<int64>(to_multi_index,
+                                      literal.Get<int64>(from_multi_index));
         break;
       case F32:
-        LiteralUtil::Set<float>(
-            new_literal.get(), to_multi_index,
-            LiteralUtil::Get<float>(literal, from_multi_index));
+        new_literal.get()->Set<float>(to_multi_index,
+                                      literal.Get<float>(from_multi_index));
         break;
       case F64:
-        LiteralUtil::Set<double>(
-            new_literal.get(), to_multi_index,
-            LiteralUtil::Get<double>(literal, from_multi_index));
+        new_literal.get()->Set<double>(to_multi_index,
+                                       literal.Get<double>(from_multi_index));
         break;
       default:
         LOG(FATAL) << "Unhandled primitive element type: "

@@ -104,8 +104,8 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
 
   auto result = MakeUnique<Literal>();
   const float fill = std::numeric_limits<float>::quiet_NaN();
-  LiteralUtil::PopulateWithValue<float>(fill, AsInt64Slice(shape.dimensions()),
-                                        result.get());
+  result.get()->PopulateWithValue<float>(fill,
+                                         AsInt64Slice(shape.dimensions()));
   std::vector<tensorflow::StringPiece> pieces;
   std::vector<tensorflow::StringPiece> coordinates;
   std::vector<int64> coordinate_values;
@@ -147,7 +147,7 @@ StatusOr<std::unique_ptr<Literal>> TextLiteralReader::ReadAllLines() {
           "\"%s\"",
           shape.dimensions_size(), coordinate_values.size(), line.c_str());
     }
-    LiteralUtil::Set<float>(result.get(), coordinate_values, value);
+    result.get()->Set<float>(coordinate_values, value);
   }
   return std::move(result);
 }

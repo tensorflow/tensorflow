@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/transform_graph.h"
 
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"

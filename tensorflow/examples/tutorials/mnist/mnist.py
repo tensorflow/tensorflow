@@ -17,7 +17,7 @@
 
 Implements the inference/loss/training pattern for model building.
 
-1. inference() - Builds the model as far as is required for running the network
+1. inference() - Builds the model as far as required for running the network
 forward to make predictions.
 2. loss() - Adds to the inference model the layers required to generate loss.
 3. training() - Adds to the loss model the Ops required to generate and

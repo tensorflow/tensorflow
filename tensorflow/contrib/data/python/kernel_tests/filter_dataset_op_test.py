@@ -30,12 +30,12 @@ from tensorflow.python.platform import test
 class FilterDatasetTest(test.TestCase):
 
   def testFilterDataset(self):
-    components = [
+    components = (
         np.arange(7, dtype=np.int64),
         np.array([[1, 2, 3]], dtype=np.int64) * np.arange(
             7, dtype=np.int64)[:, np.newaxis],
         np.array(37.0, dtype=np.float64) * np.arange(7)
-    ]
+    )
     count = array_ops.placeholder(dtypes.int64, shape=[])
     modulus = array_ops.placeholder(dtypes.int64)
 
@@ -71,6 +71,17 @@ class FilterDatasetTest(test.TestCase):
 
       # Test an empty dataset.
       do_test(0, 1)
+
+  def testFilterRange(self):
+    dataset = dataset_ops.Dataset.range(100).filter(
+        lambda x: math_ops.not_equal(math_ops.mod(x, 3), 2))
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      self.assertEqual(0, sess.run(get_next))
+      self.assertEqual(1, sess.run(get_next))
+      self.assertEqual(3, sess.run(get_next))
 
 
 if __name__ == "__main__":

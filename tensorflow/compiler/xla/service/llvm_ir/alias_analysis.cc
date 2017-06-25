@@ -18,7 +18,6 @@ limitations under the License.
 #include <unordered_set>
 
 #include "external/llvm/include/llvm/IR/MDBuilder.h"
-#include "tensorflow/compiler/xla/legacy_flags/alias_analysis_flags.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -29,7 +28,8 @@ namespace llvm_ir {
 // Sentry allocation used to represent parameters of the entry computation in
 // alias_scope_metadata_ and noalias_metadata_.
 static const BufferAllocation* kParameterAllocation = new BufferAllocation(
-    /*index=*/-1, /*size=*/0, /*is_thread_local=*/false, /*is_reusable=*/false);
+    /*index=*/-1, /*size=*/0, /*is_thread_local=*/false, /*is_reusable=*/false,
+    LogicalBuffer::Color(0));
 
 void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                                     llvm_ir::IrArray* array) {
@@ -86,12 +86,6 @@ llvm::MDNode* AliasAnalysis::GetAliasDomain() {
 
 llvm::MDNode* AliasAnalysis::GetAliasScopeMetadataForBuffer(
     const BufferAllocation::Slice& buffer_slice, llvm::MDNode* domain) {
-  legacy_flags::AliasAnalysisFlags* flags =
-      legacy_flags::GetAliasAnalysisFlags();
-  if (!flags->xla_emit_alias_scope) {
-    return nullptr;
-  }
-
   // While we could synthesize an alias.scope, doing so is not more profitable
   // than LLVM's default behavior.
   if (buffer_slice.allocation() == kParameterAllocation) {
@@ -108,12 +102,6 @@ llvm::MDNode* AliasAnalysis::GetAliasScopeMetadataForBuffer(
 llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
     const BufferAllocation::Slice& buffer_slice, llvm::MDNode* domain,
     const BufferAssignment& assignment, const HloInstruction& hlo) {
-  legacy_flags::AliasAnalysisFlags* flags =
-      legacy_flags::GetAliasAnalysisFlags();
-  if (!flags->xla_emit_alias_scope) {
-    return nullptr;
-  }
-
   // We want to construct a list of buffers which:
   //
   // 1. Do not alias the given buffer.

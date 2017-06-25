@@ -762,6 +762,9 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "shuffle_batch",
                       list(tensor_list) + [keep_input]) as name:
+    if capacity <= min_after_dequeue:
+      raise ValueError("capacity %d must be bigger than min_after_dequeue %d."
+                       % (capacity, min_after_dequeue))
     tensor_list = _validate(tensor_list)
     keep_input = _validate_keep_input(keep_input, enqueue_many)
     tensor_list, sparse_info = _store_sparse_tensors(
@@ -1085,7 +1088,7 @@ def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      corresponding value in `keep_input` is `True`. This tensor essentially acts
       as a filtering mechanism.
     batch_size: An integer. The new batch size pulled from the queue.
     capacity: An integer. The maximum number of elements in the queue.
@@ -1236,7 +1239,7 @@ def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      corresponding value in `keep_input` is `True`. This tensor essentially acts
       as a filtering mechanism.
     num_threads: The number of threads enqueuing `tensor_list`.
     seed: Seed for the random shuffling within the queue.
@@ -1378,7 +1381,7 @@ def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresonding value in `keep_input` is `True`. This tensor essentially acts
+      corresponding value in `keep_input` is `True`. This tensor essentially acts
       as a filtering mechanism.
     seed: Seed for the random shuffling within the queue.
     enqueue_many: Whether each tensor in `tensor_list_list` is a single

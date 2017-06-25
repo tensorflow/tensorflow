@@ -46,6 +46,7 @@ cc_library(
 
 cc_test(
     name = "padding_test",
+    size = "small",
     srcs = ["padding_test.cc"],
     deps = [
         ":padding",
@@ -113,7 +114,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:compile_only_service",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:support",
     ],

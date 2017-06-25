@@ -20,6 +20,7 @@ py_library(
 
 py_test(
     name = "summaries_test",
+    size = "small",
     srcs = ["summaries_test.py"],
     srcs_version = "PY2AND3",
     deps = [

@@ -79,7 +79,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   operator_56 = LinearOperatorFullMatrix(matrix_56)
 
   # Compose to create a [2, 3] batch of 4 x 6 operators.
-  opeartor_46 = LinearOperatorComposition([operator_45, operator_56])
+  operator_46 = LinearOperatorComposition([operator_45, operator_56])
 
   # Create a shape [2, 3, 6, 2] vector.
   x = tf.random_normal(shape=[2, 3, 6, 2])
@@ -97,7 +97,8 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
   for `X = non_singular, self_adjoint, positive_definite, square`.
-  These have the following meaning
+  These have the following meaning:
+
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
     runtime assert.  For example, finite floating point precision may result

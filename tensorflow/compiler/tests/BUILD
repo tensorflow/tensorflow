@@ -40,6 +40,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:variables",
     ],
 )
@@ -184,6 +185,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "ftrl_test",
+    size = "small",
+    srcs = ["ftrl_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
@@ -309,7 +324,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "reverse_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["reverse_ops_test.py"],
     deps = [
         ":xla_test",
@@ -343,6 +358,25 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "tensor_array_ops_test",
+    size = "small",
+    srcs = ["tensor_array_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_array_grad",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -490,8 +524,12 @@ cuda_py_test(
 # --dump_graph_dir, and the config file was written by hand.
 #
 # Run the following to build a minimal benchmark of the computation on Android:
-# $ bazel build -c opt --config=android_arm \
-#       third_party/tensorflow/compiler/tests:lstm_layer_inference_benchmark
+# $ bazel build -c opt --cxxopt='-std=c++11' --linkopt='-lm' \
+#   --cpu=armeabi-v7a \
+#   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+#   --crosstool_top=//external:android/crosstool \
+#   //tensorflow/compiler/tests:lstm_layer_inference_benchmark
+
 #
 # Currently the resulting binary size is ~190KB
 tf_library(

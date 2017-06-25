@@ -82,6 +82,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 
 # For platform specific build config
 load(
@@ -120,7 +121,6 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -143,6 +143,7 @@ CORE_PROTO_SRCS = [
     "framework/log_memory.proto",
     "framework/node_def.proto",
     "framework/op_def.proto",
+    "framework/reader_base.proto",
     "framework/remote_fused_graph_execute_info.proto",
     "framework/resource_handle.proto",
     "framework/step_stats.proto",
@@ -182,15 +183,6 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "util/event.proto",
     "util/test_log.proto",
 ]
-
-tf_proto_library(
-    name = "reader_base_proto",
-    srcs = ["framework/reader_base.proto"],
-    cc_api_version = 2,
-    go_api_version = 2,
-    java_api_version = 2,
-    visibility = ["//visibility:public"],
-)
 
 tf_proto_library(
     name = "protos_all",
@@ -336,6 +328,7 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
     ] + tf_additional_test_deps(),
 )
@@ -412,6 +405,7 @@ tf_cuda_library(
         "util/work_sharder.h",
     ] + select({
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
@@ -428,6 +422,7 @@ cc_library(
     hdrs = ["util/overflow.h"],
     deps = [
         ":framework_lite",
+        ":lib",
     ],
 )
 
@@ -439,7 +434,7 @@ cc_library(
     deps = [
         ":framework",
         ":lib",
-        ":reader_base_proto_cc",
+        ":protos_all_cc",
     ],
 )
 
@@ -459,6 +454,7 @@ cc_library(
     deps = [
         ":lib",
         ":op_gen_overrides_proto_cc",
+        ":protos_all_cc",
     ],
 )
 
@@ -466,6 +462,10 @@ cc_library(
     name = "session_options",
     hdrs = ["public/session_options.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -501,6 +501,7 @@ cc_library(
 tf_gen_op_libs(
     op_lib_names = [
         "array_ops",
+        "bitwise_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
         "ctc_ops",
@@ -579,6 +580,7 @@ cc_library(
     deps = [
         ":array_ops_op_lib",
         ":audio_ops_op_lib",
+        ":bitwise_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
@@ -596,6 +598,7 @@ cc_library(
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
+        ":remote_fused_graph_ops_op_lib",
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
@@ -671,6 +674,7 @@ tf_cuda_library(
     name = "core_cpu",
     hdrs = [
         "common_runtime/device.h",
+        "common_runtime/optimization_registry.h",
         "common_runtime/shape_refiner.h",
         "graph/algorithm.h",
         "graph/default_device.h",
@@ -815,7 +819,7 @@ cc_library(
         ":test",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"])
+        "//tensorflow/core/platform/default/build_config:gtest",
     ],
 )
 
@@ -934,7 +938,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
-        ":reader_base_proto_cc",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -1137,7 +1140,6 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":proto_text",
         ":protos_all_cc",
         ":stream_executor",
     ],
@@ -1206,32 +1208,35 @@ tf_proto_library_cc(
     ],
 )
 
+LIB_INTERNAL_WINDOWS_DEPS = glob(
+    [
+        "lib/**/*.h",
+        "lib/**/*.cc",
+        "platform/*.h",
+        "platform/*.cc",
+        "platform/profile_utils/**/*.h",
+        "platform/profile_utils/**/*.cc",
+    ],
+    exclude = [
+        "**/*test*",
+        "lib/hash/crc32c_accelerate.cc",
+        "lib/gif/**/*",
+        "lib/jpeg/**/*",
+        "platform/gif.h",
+        "platform/jpeg.h",
+        "platform/**/env_time.cc",
+        "platform/**/cuda.h",
+        "platform/**/cuda_libdevice_path.cc",
+        "platform/**/stream_executor.h",
+        "platform/load_library.cc",
+    ],
+)
+
 cc_library(
     name = "lib_internal",
     srcs = select({
-        "//tensorflow:windows": glob(
-            [
-                "lib/**/*.h",
-                "lib/**/*.cc",
-                "platform/*.h",
-                "platform/*.cc",
-                "platform/profile_utils/**/*.h",
-                "platform/profile_utils/**/*.cc",
-            ],
-            exclude = [
-                "**/*test*",
-                "lib/hash/crc32c_accelerate.cc",
-                "lib/gif/**/*",
-                "lib/jpeg/**/*",
-                "platform/gif.h",
-                "platform/jpeg.h",
-                "platform/**/env_time.cc",
-                "platform/**/cuda.h",
-                "platform/**/cuda_libdevice_path.cc",
-                "platform/**/stream_executor.h",
-                "platform/load_library.cc",
-            ],
-        ),
+        "//tensorflow:windows": LIB_INTERNAL_WINDOWS_DEPS,
+        "//tensorflow:windows_msvc": LIB_INTERNAL_WINDOWS_DEPS,
         "//conditions:default": glob(
             [
                 "lib/**/*.h",
@@ -1352,6 +1357,7 @@ cc_library(
     }),
     deps = [
         ":lib",
+        ":lib_internal",
         "//tensorflow/core/platform/default/build_config:gif",
     ],
 )
@@ -1374,6 +1380,7 @@ cc_library(
     }),
     deps = [
         ":lib",
+        ":lib_internal",
         "//tensorflow/core/platform/default/build_config:jpeg",
     ],
 )
@@ -1435,6 +1442,7 @@ tf_cuda_library(
         ],
     ) + select({
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system.cc",
@@ -1580,6 +1588,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
         "//third_party/eigen3",
     ],
@@ -1735,6 +1744,7 @@ cc_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        ":core_cpu",
         ":core_cpu_internal",
         ":framework",
         ":lib",
@@ -1839,7 +1849,7 @@ cc_library(
         "common_runtime/sycl/sycl_device_context.h",
     ]),
     copts = tf_copts(),
-    linkstatic = 1,
+    linkstatic = 0,
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -1847,11 +1857,11 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":proto_text",
         "//third_party/eigen3",
         "@local_config_sycl//sycl:sycl",
     ],
-    alwayslink = 1,
+    alwayslink = 0,
 )
 
 # -----------------------------------------------------------------------------
@@ -1868,7 +1878,10 @@ cc_library(
         "lib/random/philox_random_test_utils.h",
         "platform/snappy.h",
     ],
-    deps = [":lib_internal"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+    ],
 )
 
 cc_library(
@@ -1894,6 +1907,7 @@ cc_library(
         ":framework",
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
     ],
 )
 
@@ -2320,6 +2334,18 @@ tf_cc_test_gpu(
         ":lib",
         ":test",
         ":test_main",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "util_cuda_kernel_helper_test",
+    srcs = [
+        "util/cuda_kernel_helper_test.cu.cc",
+    ],
+    deps = [
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -2823,7 +2849,6 @@ cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:example_parsing_ops",
-        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

@@ -799,7 +799,6 @@ tf_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:summary",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -980,6 +979,7 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/core:lmdb_testdata"],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -1578,7 +1578,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2143,7 +2143,6 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -2185,11 +2184,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:spectral_ops",
     ],
-    tags = [
-        "noasan",
-        "nomsan",
-        "notsan",  # http://b/62067589
-    ],
+    shard_count = 3,
 )
 
 cuda_py_test(
@@ -2387,12 +2382,11 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
-    shard_count = 2,
 )
 
 cuda_py_test(
     name = "map_stage_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_stage_op_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
@@ -2630,7 +2624,6 @@ tf_py_test(
         "//tensorflow/python:sets",
         "//tensorflow/python:sparse_ops",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(

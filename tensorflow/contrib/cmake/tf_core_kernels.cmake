@@ -84,6 +84,12 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/text/kernels/skip_gram_kernels.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/text/ops/skip_gram_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/cross_replica_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/infeed_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/outfeed_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/replication_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/tpu_configuration_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/tpu_sendrecv_ops.cc"
     )
   list(APPEND tf_core_kernels_srcs ${tf_contrib_kernels_srcs})
 endif(tensorflow_BUILD_CONTRIB_KERNELS)
@@ -102,10 +108,11 @@ file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*test*.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.h"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.cc"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/*test_utils.h"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/*test_utils.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*main.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/*"
-   "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_execute*.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_rewriter_transform*.cc"
 )
 list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs})

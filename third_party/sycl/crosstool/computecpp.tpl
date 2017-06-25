@@ -15,7 +15,7 @@ COMPUTECPP_INCLUDE = COMPUTECPP_ROOT + 'include'
 
 def main():
   remove_flags = ('-Wl,--no-undefined', '-Wno-unused-but-set-variable', '-Wignored-attributes')
-    # remove -fsamotoze-coverage from string with g++
+  # remove -fsanitize-coverage from string with g++
   if 'g++' in CPU_CXX_COMPILER:
     remove_flags += ('-fsanitize-coverage',)
   compiler_flags = [flag for flag in sys.argv[1:] if not flag.startswith(remove_flags)]
@@ -43,7 +43,7 @@ def main():
 
   # create a blacklist of folders that will be skipped when compiling with ComputeCpp
   skip_extensions = [".cu.cc"]
-  skip_folders = ["tensorflow/compiler", "tensorflow/docs_src", "tensorflow/tensorboard", "third_party", "external", "hexagon"]
+  skip_folders = ["tensorflow/compiler", "tensorflow/docs_src", "third_party", "external", "hexagon"]
   skip_folders = [(folder + '/') for folder in skip_folders]
   # if compiling external project skip computecpp
   if any(compiled_file_name.endswith(_ext) for _ext in skip_extensions) or any(_folder in output_file_name for _folder in skip_folders):
@@ -79,7 +79,7 @@ def main():
                                       '-Xclang', '-cl-denorms-are-zero', '-Xclang', '-cl-fp32-correctly-rounded-divide-sqrt']
   # disable flags enabling SIMD instructions
   computecpp_device_compiler_flags += [flag for flag in compiler_flags if \
-    not any(x in flag.lower() for x in ('-fsanitize', '=native', '=core2', 'msse', 'vectorize', 'mavx', 'mmmx', 'm3dnow', 'fma'))]
+    not any(x in flag.lower() for x in ('-fsanitize', '-fno-canonical-system-headers', '=native', '=core2', 'msse', 'vectorize', 'mavx', 'mmmx', 'm3dnow', 'fma'))]
 
   x = call([COMPUTECPP_DRIVER] + computecpp_device_compiler_flags)
   if x == 0:

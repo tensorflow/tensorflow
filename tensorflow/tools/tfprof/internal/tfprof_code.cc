@@ -219,9 +219,7 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
     node->ResetTotalStats();
     std::vector<CodeNode*> act_cnodes = Account(node->children, opts);
     node->account = ReAccount(node, opts);
-    // LOG(ERROR) << act_cnodes.size() << " " << node->account;
     if (node->account || !act_cnodes.empty()) {
-      // LOG(ERROR) << node->name();
       node->show_children.clear();
       node->ResetTotalStats();
       node->AddSelfToTotalStats();
@@ -266,15 +264,9 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
     }
     attrs.push_back(memory);
   }
-  if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(node->proto().total_exec_micros());
-    if (node->account) {
-      time = FormatTime(node->proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    attrs.push_back(time);
-  }
+  std::vector<string> time_attrs = FormatTimes(node, opts);
+  attrs.insert(attrs.end(), time_attrs.begin(), time_attrs.end());
+
   if (opts.select.find(kShown[5]) != opts.select.end() &&
       !node->node->devices().empty()) {
     attrs.push_back(str_util::Join(node->node->devices(), "|"));
@@ -282,6 +274,10 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     std::set<string> op_types = node->node->op_types();
     attrs.push_back(str_util::Join(op_types, "|"));
+  }
+
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    attrs.push_back(strings::Printf("%s N/A in code view", kShown[8]));
   }
 
   return strings::Printf("%s%s (%s)\n", string(indent, ' ').c_str(),

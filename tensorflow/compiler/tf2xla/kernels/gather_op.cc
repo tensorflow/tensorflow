@@ -66,10 +66,10 @@ class GatherOp : public XlaOpKernel {
     std::vector<xla::ComputationDataHandle> args;
     args.push_back(tc.GetOrCreateRuntimeContextParameter());
     args.push_back(b.ConstantLiteral(
-        *xla::LiteralUtil::CreateR0<int64>(indices_shape.num_elements())));
+        *xla::Literal::CreateR0<int64>(indices_shape.num_elements())));
     args.push_back(b.ConstantLiteral(
-        *xla::LiteralUtil::CreateR0<int64>(params_shape.dim_size(0))));
-    args.push_back(b.ConstantLiteral(*xla::LiteralUtil::CreateR0<int64>(
+        *xla::Literal::CreateR0<int64>(params_shape.dim_size(0))));
+    args.push_back(b.ConstantLiteral(*xla::Literal::CreateR0<int64>(
         params_shape.num_elements() / params_shape.dim_size(0))));
     args.push_back(ctx->Input(0));
     args.push_back(ctx->Input(1));

@@ -45,6 +45,8 @@ See the @{$python/math_ops} guide.
 @@expm1
 @@log
 @@log1p
+@@sinh
+@@cosh
 @@ceil
 @@floor
 @@maximum
@@ -1681,8 +1683,9 @@ def matmul(a,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must be matrices (or tensors of rank > 2, representing batches of
-  matrices), with matching inner dimensions, possibly after transposition.
+  The inputs must, following any transpositions, be tensors of rank >= 2 
+  where the inner 2 dimensions specify valid matrix multiplication arguments, 
+  and any further outer dimensions match.
 
   Both matrices must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
@@ -2054,12 +2057,11 @@ def tanh(x, name=None):
 
   Args:
     x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
-      `complex64`, `int64`, or `qint32`.
+      `complex64`, or `int64`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor or SparseTensor respectively with the same type as `x` if
-    `x.dtype != qint32` otherwise the return type is `quint8`.
+    A Tensor or SparseTensor respectively with the same type as `x`.
   """
   with ops.name_scope(name, "Tanh", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):

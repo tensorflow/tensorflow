@@ -22,8 +22,19 @@ from tensorflow.python import pywrap_tensorflow as tf_wrap
 from tensorflow.python.framework import errors
 
 
-def GenerateCostReport(metagraph):
-  """Analyze the cost of each TensorFlow operation in the provided metagraph."""
+def GenerateCostReport(metagraph, per_node_report=False):
+  """Analyze the cost of each TensorFlow op and node in the provided metagraph.
+
+  Args:
+    metagraph: An TensorFlow MetaGraphDef.
+    per_node_report: by default the report contains stats aggregated on a per op
+      type basis, setting per_node_report to True adds results for each
+      individual node to the report.
+
+  Returns:
+    A string of cost report.
+  """
   with errors.raise_exception_on_not_ok_status():
-    ret_from_swig = tf_wrap.GenerateCostReport(metagraph.SerializeToString())
+    ret_from_swig = tf_wrap.GenerateCostReport(metagraph.SerializeToString(),
+                                               per_node_report)
   return ret_from_swig

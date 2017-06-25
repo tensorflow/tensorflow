@@ -97,7 +97,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
   Raises:
     ValueError: If `params` is empty.
   """
-  if params in (None, (), []):
+  if params is None or params in ((), []):
     raise ValueError("Need at least one param")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.

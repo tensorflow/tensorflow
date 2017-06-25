@@ -26,14 +26,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-void AddOutputShape(Node* node, const TensorShape& shape) {
-  std::vector<TensorShapeProto> output_shapes;
-  TensorShapeProto shape_proto;
-  shape.AsProto(&shape_proto);
-  output_shapes.push_back(shape_proto);
-  node->AddAttr("_output_shapes", output_shapes);
-}
-
 class LayoutOptimizerTest : public ::testing::Test {
  protected:
   Output SimpleConv2D(tensorflow::Scope* s, int input_size, int filter_size,
@@ -50,7 +42,6 @@ class LayoutOptimizerTest : public ::testing::Test {
     test::FillIota<float>(&input_data, 1.0f);
     Output input =
         ops::Const(s->WithOpName("Input"), Input::Initializer(input_data));
-    AddOutputShape(input.node(), input_shape);
 
     TensorShape filter_shape(
         {filter_size, filter_size, input_depth, filter_count});
@@ -58,11 +49,9 @@ class LayoutOptimizerTest : public ::testing::Test {
     test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
         ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
-    AddOutputShape(filter.node(), filter_shape);
 
     Output conv = ops::Conv2D(s->WithOpName("Conv2D"), input, filter,
                               {1, stride, stride, 1}, padding);
-    AddOutputShape(conv.node(), input_shape);
     return conv;
   }
 
@@ -80,7 +69,6 @@ class LayoutOptimizerTest : public ::testing::Test {
                           {batch_size, input_height, input_width, input_depth});
     Output input_sizes =
         ops::Const(s->WithOpName("InputSizes"), Input::Initializer(input_data));
-    AddOutputShape(input_sizes.node(), input_sizes_shape);
 
     TensorShape filter_shape(
         {filter_size, filter_size, input_depth, filter_count});
@@ -88,7 +76,6 @@ class LayoutOptimizerTest : public ::testing::Test {
     test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
         ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
-    AddOutputShape(filter.node(), filter_shape);
 
     int output_height = input_height;
     int output_width = input_width;
@@ -98,14 +85,12 @@ class LayoutOptimizerTest : public ::testing::Test {
     test::FillIota<float>(&output_data, 1.0f);
     Output output =
         ops::Const(s->WithOpName("Output"), Input::Initializer(output_data));
-    AddOutputShape(output.node(), output_shape);
 
     Output conv_backprop_input = ops::Conv2DBackpropInput(
         s->WithOpName("Conv2DBackpropInput"), input_sizes, filter, output,
         {1, stride, stride, 1}, padding);
     TensorShape input_shape(
         {batch_size, input_height, input_width, input_depth});
-    AddOutputShape(conv_backprop_input.node(), input_shape);
     return conv_backprop_input;
   }
 
@@ -127,9 +112,13 @@ TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   NodeMap node_map(&output);
-  auto input_sizes_node = node_map.GetNode(
-      AddPrefixToNodeName("InputSizes", "LayoutOptimizer", "-"));
+  string input_name = AddPrefixToNodeName("Conv2DBackpropInput-InputSizes",
+                                          "LayoutOptimizer", "-");
+  auto input_sizes_node = node_map.GetNode(input_name);
   CHECK(input_sizes_node);
+  auto conv2d_backprop_node = node_map.GetNode("Conv2DBackpropInput");
+  CHECK(conv2d_backprop_node);
+  EXPECT_EQ(input_name, conv2d_backprop_node->input(0));
   auto input_sizes = GetAttrValue(*input_sizes_node);
   Tensor input_sizes_expected(DT_INT32, {4});
   test::FillValues<int>(&input_sizes_expected, {128, 3, 7, 7});
@@ -198,7 +187,7 @@ TEST_F(LayoutOptimizerTest, EqualSizeWithSamePadding) {
 
 TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2D(&s, 2, 3, "VALID");
+  auto conv = SimpleConv2D(&s, 3, 2, "VALID");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
