@@ -382,16 +382,17 @@ class TensorFlowTestCase(googletest.TestCase):
     `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
 
     Example:
-
-      class MyOperatorTest(test_util.TensorFlowTestCase):
-        def testMyOperator(self):
-          with self.test_session(use_gpu=True):
-            valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
-            result = MyOperator(valid_input).eval()
-            self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
-            invalid_input = [-1.0, 2.0, 7.0]
-            with self.assertRaisesOpError("negative input not supported"):
-              MyOperator(invalid_input).eval()
+    ```python
+    class MyOperatorTest(test_util.TensorFlowTestCase):
+      def testMyOperator(self):
+        with self.test_session(use_gpu=True):
+          valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
+          result = MyOperator(valid_input).eval()
+          self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
+          invalid_input = [-1.0, 2.0, 7.0]
+          with self.assertRaisesOpError("negative input not supported"):
+            MyOperator(invalid_input).eval()
+    ```
 
     Args:
       graph: Optional graph to use during the returned session.
