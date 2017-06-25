@@ -558,7 +558,7 @@ For a full list of optimizers, and other details, see the
 
 Here's the final, complete `model_fn` for the abalone age predictor. The
 following code configures the neural network; defines loss and the training op;
-and returns a `ModelFnOps` object containing `mode`, `predictions_dict`, `loss`,
+and returns a `EstimatorSpec` object containing `mode`, `predictions_dict`, `loss`,
 and `train_op`:
 
 ```python
