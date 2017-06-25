@@ -21,5 +21,5 @@ from __future__ import print_function
 from tensorflow.contrib.util import loader
 from tensorflow.python.platform import resource_loader
 
-_periodic_intersperse_op = loader.load_op_library(
-    resource_loader.get_path_to_datafile('_periodic_intersperse_op.so'))
+_periodic_resample_op = loader.load_op_library(
+    resource_loader.get_path_to_datafile('_periodic_resample_op.so'))

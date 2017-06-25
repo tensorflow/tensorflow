@@ -46,7 +46,7 @@ cc_library(
 )
 
 tf_custom_op_library(
-    name = "python/ops/_periodic_intersperse_op.so",
+    name = "python/ops/_periodic_resample_op.so",
     srcs = [":custom_op_sources", ":custom_op_headers"],
 )
 
@@ -58,14 +58,14 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":periodic_intersperse_op_py",
+        ":periodic_resample_op_py",
     ],
 )
 
 py_library(
-    name = "periodic_intersperse_op_py",
-    srcs = ["python/ops/periodic_intersperse_op.py"],
-    data = ["python/ops/_periodic_intersperse_op.so"],
+    name = "periodic_resample_op_py",
+    srcs = ["python/ops/periodic_resample_op.py"],
+    data = ["python/ops/_periodic_resample_op.so"],
     srcs_version = "PY2AND3",
 )
 

@@ -16,18 +16,18 @@
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.periodic_intersperse import periodic_intersperse as pi
+from tensorflow.contrib.periodic_resample import periodic_resample as ps
 
 
-class PeriodicIntersperseTest(tf.test.TestCase):
-    def testPeriodicIntersperse(self):
+class PeriodicResampleTest(tf.test.TestCase):
+    def testPeriodicResample(self):
 
         # basic 2-D tensor
         input_tensor = np.arange(12).reshape((3, 4))
         desired_shape = np.array([6, -1])
         output_tensor = input_tensor.reshape((6, 2))
         with self.test_session():
-            result = pi(input_tensor, desired_shape)
+            result = ps(input_tensor, desired_shape)
             self.assertAllEqual(result.eval(), output_tensor)
 
         # basic 2-D tensor (truncated)
@@ -35,7 +35,7 @@ class PeriodicIntersperseTest(tf.test.TestCase):
         desired_shape = np.array([5, -1])
         output_tensor = input_tensor.reshape((6, 2))[:-1]
         with self.test_session():
-            result = pi(input_tensor, desired_shape)
+            result = ps(input_tensor, desired_shape)
             self.assertAllEqual(result.eval(), output_tensor)
 
 

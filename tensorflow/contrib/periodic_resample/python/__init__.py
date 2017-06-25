@@ -1,3 +1,4 @@
+
 # =============================================================================
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
@@ -14,15 +15,8 @@
 # limitations under the License.
 # =============================================================================
 
-"""Custom op used by periodic_intersperse."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.periodic_intersperse.python import *
-# pylint: enable=unused-import,wildcard-import
-
-periodic_intersperse =\
-    periodic_intersperse_op._periodic_intersperse_op.periodic_intersperse
+from tensorflow.contrib.periodic_resample.python.ops.periodic_resample_op import _periodic_resample_op

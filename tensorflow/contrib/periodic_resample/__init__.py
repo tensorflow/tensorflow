@@ -1,4 +1,3 @@
-
 # =============================================================================
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
@@ -15,8 +14,13 @@
 # limitations under the License.
 # =============================================================================
 
+"""Custom op used by periodic_resample."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.periodic_intersperse.python.ops import periodic_intersperse_op
+
+from tensorflow.contrib.periodic_resample.python import _periodic_resample_op
+
+periodic_resample =\
+    _periodic_resample_op.periodic_resample

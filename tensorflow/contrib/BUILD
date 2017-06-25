@@ -52,7 +52,7 @@ py_library(
         "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
-        "//tensorflow/contrib/periodic_intersperse:init_py",
+        "//tensorflow/contrib/periodic_resample:init_py",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/rnn:rnn_py",

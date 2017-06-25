@@ -15,29 +15,29 @@
 // =============================================================================
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/contrib/periodic_intersperse/core/kernels/periodic_intersperse_op.h"
+#include "tensorflow/contrib/periodic_resample/core/kernels/periodic_resample_op.h"
 
 namespace tensorflow {
 
-REGISTER_KERNEL_BUILDER(Name("PeriodicIntersperse")
-                            .HostMemory("desired_shape")
-                            .Device(DEVICE_CPU),
-                        PeriodicIntersperseOp);
+REGISTER_KERNEL_BUILDER(Name("PeriodicResample")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("desired_shape"),
+                        PeriodicResampleOp);
 
 #define REGISTER_GPU_KERNEL(type)                          \
-  REGISTER_KERNEL_BUILDER(Name("PeriodicIntersperse")      \
+  REGISTER_KERNEL_BUILDER(Name("PeriodicResample")         \
                               .Device(DEVICE_GPU)          \
                               .HostMemory("desired_shape") \
                               .TypeConstraint<type>("T"),  \
-                          PeriodicIntersperseOp);
+                          PeriodicResampleOp);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("PeriodicIntersperse")
+REGISTER_KERNEL_BUILDER(Name("PeriodicResample")
                             .Device(DEVICE_SYCL)
-                            .HostMemory("output"),
-                        PeriodicIntersperseOp);
+                            .HostMemory("desired_shape"),
+                        PeriodicResampleOp);
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
