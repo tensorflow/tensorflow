@@ -9,7 +9,7 @@ explain a particular aspect of TensorFlow:
   * @{$dims_types$Tensor Ranks, Shapes, and Types}, which explains Tensor
     rank (the number of dimensions), shape (the size of each dimension),
     and datatypes.
-  * @{$variable_scope$Sharing Variables}, which explains how to share and
+  * @{$variables$Sharing Variables}, which explains how to share and
     manage large sets of variables when building complex models.
   * @{$threading_and_queues$Threading and Queues}, which explains TensorFlow's
     rich queuing system.
