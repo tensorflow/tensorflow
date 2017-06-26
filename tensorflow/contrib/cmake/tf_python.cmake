@@ -449,6 +449,11 @@ add_python_module("tensorflow/contrib/quantization/python")
 add_python_module("tensorflow/contrib/remote_fused_graph/pylib")
 add_python_module("tensorflow/contrib/remote_fused_graph/pylib/python")
 add_python_module("tensorflow/contrib/remote_fused_graph/pylib/python/ops")
+add_python_module("tensorflow/contrib/resampler")
+add_python_module("tensorflow/contrib/resampler/kernels")
+add_python_module("tensorflow/contrib/resampler/ops")
+add_python_module("tensorflow/contrib/resampler/python")
+add_python_module("tensorflow/contrib/resampler/python/ops")
 add_python_module("tensorflow/contrib/rnn")
 add_python_module("tensorflow/contrib/rnn/kernels")
 add_python_module("tensorflow/contrib/rnn/ops")
@@ -650,6 +655,8 @@ GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_nccl_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nccl/ops/gen_nccl_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_resampler_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/resampler/ops/gen_resampler_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"
