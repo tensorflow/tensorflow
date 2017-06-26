@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include "tensorflow/core/grappler/optimizers/static_schedule.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -556,8 +557,8 @@ static const NodeDef* FindSwapTrigger(
     // Don't jump over frames, since adding a control dependency from one frame
     // to the next isn't supported. Don't go through branches, since we don't
     // know whether they'll be executed or not.
-    if (input_node->op() == "NextIteration" || input_node->op() == "Switch" ||
-        input_node->op() == "Merge") {
+    if (IsNextIteration(*input_node) || IsSwitch(*input_node) ||
+        IsMerge(*input_node)) {
       continue;
     }
     auto it2 = execution_times.find(input_node);
