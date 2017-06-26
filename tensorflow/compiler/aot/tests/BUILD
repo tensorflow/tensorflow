@@ -43,15 +43,16 @@ genrule(
     testonly = 1,
     outs = [
         "test_graph_tfadd.pb",
-        "test_graph_tfadd_with_ckpt.pb",
         "test_graph_tfadd_with_ckpt.ckpt",
-        "test_graph_tfadd_with_ckpt_saver.pb",
+        "test_graph_tfadd_with_ckpt.pb",
         "test_graph_tfadd_with_ckpt_saver.ckpt",
+        "test_graph_tfadd_with_ckpt_saver.pb",
         "test_graph_tfadd_with_ckpt_saver.saver",
+        "test_graph_tffunction.pb",
         "test_graph_tfgather.pb",
         "test_graph_tfmatmul.pb",
         "test_graph_tfmatmulandadd.pb",
-        "test_graph_tffunction.pb",
+        "test_graph_tfsplits.pb",
     ],
     cmd = "$(location :make_test_graphs) --out_dir $(@D)",
     tags = ["manual"],
@@ -124,6 +125,15 @@ tf_library(
     tags = ["manual"],
 )
 
+tf_library(
+    name = "test_graph_tfsplits",
+    testonly = 1,
+    config = "test_graph_tfsplits.config.pbtxt",
+    cpp_class = "SplitsComp",
+    graph = "test_graph_tfsplits.pb",
+    tags = ["manual"],
+)
+
 cc_test(
     name = "tfcompile_test",
     srcs = ["tfcompile_test.cc"],
@@ -136,6 +146,7 @@ cc_test(
         ":test_graph_tfgather",
         ":test_graph_tfmatmul",
         ":test_graph_tfmatmulandadd",
+        ":test_graph_tfsplits",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",

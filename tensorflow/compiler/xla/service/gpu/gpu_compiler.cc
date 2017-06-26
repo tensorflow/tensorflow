@@ -23,7 +23,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/DiagnosticPrinter.h"
 #include "external/llvm/include/llvm/IR/LLVMContext.h"
 #include "external/llvm/include/llvm/IR/Module.h"
-#include "tensorflow/compiler/xla/legacy_flags/gpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -95,11 +94,9 @@ constexpr int64 kMemoryAlignment = 256;
 // called in GpuCompiler's constructor, so can't return an error. But
 // GpuCompiler::Compile will return an error when the wanted libdevice file
 // doesn't exist in the folder this function returns.
-string GetLibdeviceDir() {
+string GetLibdeviceDir(const HloModuleConfig& config) {
   std::vector<string> potential_libdevice_dirs;
-  // Flag xla_cuda_data_dir specified by the user.
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
-  const string datadir = flags->xla_cuda_data_dir;
+  const string datadir = config.debug_options().xla_gpu_cuda_data_dir();
   if (!datadir.empty()) {
     potential_libdevice_dirs.push_back(datadir);
   }
@@ -230,8 +227,7 @@ void DumpPtxasInfo(const string& ptx) {
 }  // namespace
 
 GpuCompiler::GpuCompiler()
-    : libdevice_dir_(GetLibdeviceDir()),
-      pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
+    : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     std::unique_ptr<HloModule> module, HloDumper dump_hlo,
@@ -273,11 +269,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
                           BufferSizeBytesFunction(), kMemoryAlignment));
 
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
-  if (!flags->xla_gpu_dump_debug_json_to.empty()) {
+  const string dump_debug_json_to =
+      module->config().debug_options().xla_dump_debug_json_to();
+  if (!dump_debug_json_to.empty()) {
     HloProto proto = MakeHloProto(*module, *buffer_assignment);
     TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-        proto, flags->xla_gpu_dump_debug_json_to, module->name()));
+        proto, dump_debug_json_to, module->name()));
   }
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
@@ -292,7 +289,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
       entry_computation->root_instruction()->Accept(&ir_emitter));
 
   string ir_module_string_before_opt;
-  if (VLOG_IS_ON(2) || flags->xla_gpu_embed_ir) {
+  const bool embed_ir_in_executable =
+      module->config().debug_options().xla_embed_ir_in_executable();
+  if (VLOG_IS_ON(2) || embed_ir_in_executable) {
     ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
     VLOG(2) << "LLVM module before optimizations:";
     XLA_VLOG_LINES(2, ir_module_string_before_opt);
@@ -312,6 +311,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
         << "Couldn't get compute capability for device; assuming sm_20.";
     cc_major = 2;
     cc_minor = 0;
+  }
+  if (libdevice_dir_.empty()) {
+    // Compute libdevice_dir_ just once and cache it in this member.
+    libdevice_dir_ = GetLibdeviceDir(module->config());
   }
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                          module->config(), libdevice_dir_));
@@ -333,7 +336,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   auto* gpu_executable =
       new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(module),
                         std::move(buffer_assignment), ShapeSizeBytesFunction());
-  if (flags->xla_gpu_embed_ir) {
+  if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }

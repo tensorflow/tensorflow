@@ -140,7 +140,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(lambda e: e.op == a.op):
         a.eval()
 
-  @test_util.disable_c_api  # Partial runs don't work with C API
   def testErrorCodeWithNoNodeDef(self):
     with session.Session() as s:
       a = array_ops.placeholder(dtypes.float32, shape=[])
@@ -1525,7 +1524,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
 
-  @test_util.disable_c_api  # Partial runs don't work with C API
+  @test_util.disable_c_api  # set_device does not work with C API
   def testRegisterFetchAndFeedConversionFunctions(self):
     class SquaredTensor(object):
       def __init__(self, tensor):

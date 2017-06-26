@@ -64,7 +64,7 @@ set -e
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.5 install --upgrade protobuf==3.2.0
+pip3.5 install --upgrade protobuf==3.3.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -89,6 +89,3 @@ pip3.5 install wheel==0.29.0
 pip3.5 install portpicker
 
 pip3.5 install werkzeug
-
-pip3.5 install backports.weakref==1.0rc1
-

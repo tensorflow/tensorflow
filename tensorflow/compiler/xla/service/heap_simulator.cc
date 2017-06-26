@@ -187,7 +187,7 @@ Status HeapSimulator::RunComputation(
             buffer->instruction()->opcode() != HloOpcode::kCopy &&
             CanShareOperandBufferWithUser(
                 operand_buffer->instruction(), operand_buffer->index(),
-                buffer->instruction(), buffer->index(), points_to_analysis)) {
+                buffer->instruction(), buffer->index(), &points_to_analysis)) {
           ShareBuffer(buffer, operand_buffer, instruction);
           shared = true;
           break;

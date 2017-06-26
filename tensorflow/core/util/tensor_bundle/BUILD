@@ -39,7 +39,6 @@ cc_library(
         ":naming",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -64,6 +63,7 @@ cc_library(
 
 cc_test(
     name = "tensor_bundle_test",
+    size = "small",
     srcs = ["tensor_bundle_test.cc"],
     deps = [
         ":tensor_bundle",

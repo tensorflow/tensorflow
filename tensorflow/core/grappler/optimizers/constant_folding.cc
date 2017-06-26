@@ -18,11 +18,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -53,7 +56,7 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
 
 class DeviceSimple : public DeviceBase {
  public:
-  DeviceSimple() : DeviceBase(nullptr) {
+  DeviceSimple() : DeviceBase(Env::Default()) {
     eigen_worker_threads_.num_threads = 1;
     eigen_worker_threads_.workers = new thread::ThreadPool(
         Env::Default(), "constant_folding", eigen_worker_threads_.num_threads);
@@ -89,27 +92,66 @@ class DeviceSimple : public DeviceBase {
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 
-Status NumOutputs(const NodeDef& node, int* num_outputs) {
-  const OpDef* op_def = nullptr;
-  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node.op(), &op_def));
-  if (node.op() == "ConcatOffset") {
-    *num_outputs = node.attr().at("N").i();
-  } else {
-    *num_outputs = op_def->output_arg_size();
-  }
-  return Status::OK();
+string AsControlDependency(const NodeDef& node) {
+  return strings::StrCat("^", node.name());
 }
+
 }  // namespace
 
 ConstantFolding::ConstantFolding() {
-  ops_to_preserve_ =
-      std::regex("Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader");
+  ops_to_preserve_ = std::regex(
+      "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|Enter|Exit|"
+      "NextIteration");
+}
+
+string ConstantFolding::AddControlDependency(const string& input_name) {
+  const NodeDef* node = node_map_->GetNode(input_name);
+  if (!IsSwitch(*node)) {
+    return AsControlDependency(*node);
+  } else {
+    // We can't anchor control dependencies directly on the switch node: unlike
+    // other nodes only one of the outputs of the switch node will be generated
+    // when the switch node is executed, and we need to make sure the control
+    // dependency is only triggered when the corresponding output is triggered.
+    // We start by looking for an identity node connected to the output of the
+    // switch node, and use it to anchor the control dependency.
+    auto outputs = node_map_->GetOutputs(node->name());
+    for (const NodeDef* node : outputs) {
+      if (IsIdentity(*node)) {
+        CHECK_EQ(1, node->input_size());
+        if (IsSameInput(node->input(0), input_name)) {
+          return AsControlDependency(*node);
+        }
+      }
+    }
+    // We haven't found an existing node where we can anchor the control
+    // dependency: add a new identity node.
+    int position = 0;
+    string ctrl_dep_name = ParseNodeName(input_name, &position);
+    strings::StrAppend(&ctrl_dep_name, "_", position);
+    ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
+    const DataType output_type = node->attr().at("T").type();
+
+    NodeDef* added_node = graph_.add_node();
+    added_node->set_name(ctrl_dep_name);
+    added_node->set_op("Identity");
+    (*added_node->mutable_attr())["T"].set_type(output_type);
+    *added_node->add_input() = input_name;
+    node_map_->AddNode(added_node->name(), added_node);
+    node_map_->AddOutput(node->name(), added_node->name());
+    return AsControlDependency(*added_node);
+  }
 }
 
 Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
   GraphProperties properties(item);
   TF_RETURN_IF_ERROR(properties.InferStatically());
-  for (NodeDef& node : *graph_.mutable_node()) {
+  // We may add some nodes to the graph to encode control dependencies: there is
+  // no need to process these, so only iterate over the nodes of the input
+  // graph.
+  const int node_count = graph_.node_size();
+  for (int i = 0; i < node_count; ++i) {
+    NodeDef& node = *graph_.mutable_node(i);
     const string op = node.op();
     if (op != "Shape" && op != "Size" && op != "Rank") {
       continue;
@@ -179,9 +221,14 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
         value.AsProtoTensorContent(
             (*node.mutable_attr())["value"].mutable_tensor());
 
-        // Turn the inputs into control dependencies.
-        CHECK_EQ(1, node.input_size());
-        node.set_input(0, strings::StrCat("^", NodeName(node.input(0))));
+        // Turn the data input into a control dependency: this is needed to
+        // ensure that the constant value will only be generated in the cases
+        // where the shape/rank/size would have been generated in the original
+        // graph. Additional inputs are extra control dependencies that we
+        // preserve.
+        CHECK_LE(1, node.input_size());
+        string ctrl_dep = AddControlDependency(node.input(0));
+        node.set_input(0, ctrl_dep);
       }
     }
   }
@@ -238,15 +285,32 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     return false;
   }
 
+  // We can only fold nodes if all their inputs are known statically, except in
+  // the case of a merge node that propagate the first inputs that becomes
+  // available, and therefore only requires a single constant input to be
+  // foldable.
+  bool has_constant_input = false;
+  const bool is_merge = IsMerge(node);
   for (const auto& input : node.input()) {
     if (IsControlInput(input)) {
       continue;
     }
-    bool is_const = IsConstant(*node_map_->GetNode(input));
-    if (!is_const) {
+    const NodeDef* input_node = node_map_->GetNode(input);
+    bool is_const = IsConstant(*input_node);
+    if (!is_const && !is_merge) {
       return false;
     }
+    // Don't fold strings constants for now since this causes problems with
+    // checkpointing.
+    if (is_const && input_node->attr().at("dtype").type() == DT_STRING) {
+      return false;
+    }
+    has_constant_input |= is_const;
   }
+  if (is_merge) {
+    return has_constant_input;
+  }
+
   return true;
 }
 
@@ -285,15 +349,16 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op_kernel.get();
-  int num_outputs;
-  TF_RETURN_IF_ERROR(NumOutputs(node, &num_outputs));
+
   gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
+  const int num_outputs = op_kernel->num_outputs();
   for (int i = 0; i < num_outputs; i++) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
     output_attrs.push_back(attr);
   }
   params.output_attr_array = output_attrs.data();
+
   OpKernelContext op_context(&params);
   op_kernel->Compute(&op_context);
   for (int i = 0; i < num_outputs; i++) {
@@ -328,17 +393,106 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     if (output_tensors.size() > 1) {
       node_name = strings::StrCat(node_name, "-", i);
     }
-    outputs->push_back(CreateNodeDef(node_name, output_tensors[i]));
-    delete output_tensors[i].tensor;
+    if (output_tensors[i].tensor) {
+      outputs->push_back(CreateNodeDef(node_name, output_tensors[i]));
+      delete output_tensors[i].tensor;
+    } else {
+      // Create an empty NodeDef to identify dead outputs (e.g. the output of a
+      // switch that's not selected by the switch predicate).
+      outputs->push_back(NodeDef());
+    }
   }
   return Status::OK();
 }
 
 Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
+  if (IsMerge(node)) {
+    // Merge nodes are special, in the sense that they execute as soon as one of
+    // their input is ready. We can therefore fold a merge node iff it has at
+    // least one constant input without control dependency.
+    // We still need to ensure that the nodes in the fanin of the merge node are
+    // scheduled. We'll therefore add a control dependency from the merge node
+    // to the folded constant. We end up with:
+    //  * the merge node and its inputs are preserved as is
+    //  * a new constant node C1, driven by the merge node through a control
+    //  dependency, initialized to the value of the folded input
+    //  * a new constant node C2, driven by the merge node through a control
+    //  dependency, initialized to the index of the folded input
+    //  * the fanout of the merge nodes is rewired to be driven by either C1 or
+    //  C2.
+    for (int input_index = 0; input_index < node.input_size(); ++input_index) {
+      const auto& input = node.input(input_index);
+      if (IsControlInput(input)) {
+        // Try the next input.
+        continue;
+      }
+      NodeDef* input_node = node_map_->GetNode(input);
+      if (!IsConstant(*input_node)) {
+        continue;
+      }
+      bool valid_input = true;
+      for (const string& fanin_of_input : input_node->input()) {
+        if (IsControlInput(fanin_of_input)) {
+          valid_input = false;
+          break;
+        }
+      }
+      if (!valid_input) {
+        // Try the next input
+        continue;
+      }
+      NodeDef* const_out = output->add_node();
+      *const_out = *input_node;
+      const_out->set_name(
+          AddPrefixToNodeName(node.name(), kConstantFoldingConst));
+      *const_out->add_input() = AsControlDependency(node);
+      node_map_->AddNode(const_out->name(), const_out);
+
+      NodeDef* const_index = output->add_node();
+      const_index->set_op("Const");
+      Tensor index(DT_INT32, TensorShape({}));
+      index.flat<int32>()(0) = input_index;
+      (*const_index->mutable_attr())["dtype"].set_type(DT_INT32);
+      index.AsProtoTensorContent(
+          (*const_index->mutable_attr())["value"].mutable_tensor());
+      const_index->set_name(AddPrefixToNodeName(
+          strings::StrCat(node.name(), "_index"), kConstantFoldingConst));
+      *const_index->add_input() = AsControlDependency(node);
+      node_map_->AddNode(const_index->name(), const_index);
+
+      auto outputs = node_map_->GetOutputs(node.name());
+      for (auto& output : outputs) {
+        for (int i = 0; i < output->input_size(); i++) {
+          int position;
+          string node_name = ParseNodeName(output->input(i), &position);
+          if (node_name == node.name()) {
+            if (position == 0) {
+              *output->mutable_input(i) = const_out->name();
+            } else if (position == 1) {
+              *output->mutable_input(i) = const_index->name();
+            } else {
+              // This is a control dependency (or an invalid edge since the
+              // merge node has only 2 inputs): preserve them.
+            }
+          }
+        }
+      }
+      return Status::OK();
+    }
+    return Status::OK();
+  }
+
   std::vector<NodeDef> const_nodes;
   TF_RETURN_IF_ERROR(EvaluateOneFoldable(node, &const_nodes));
 
+  NodeDef* constant_output = nullptr;
   for (const auto& const_node : const_nodes) {
+    if (const_node.name().empty()) {
+      // Dead output: we can't create a constant to encode its value, so we'll
+      // just skip it. We'll preserve the edges that originate from that output
+      // below to preserve the overall behavior of the graph wrt dead edges.
+      continue;
+    }
     NodeDef* added_node = output->add_node();
     *added_node = const_node;
     node_map_->AddNode(added_node->name(), added_node);
@@ -355,6 +509,11 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
         }
       }
     }
+
+    // All the constant nodes encoding output values have the same control
+    // dependencies (since these are the control dependencies of the node we're
+    // trying to fold). Record one such constant node.
+    constant_output = added_node;
   }
 
   auto outputs = node_map_->GetOutputs(node.name());
@@ -364,10 +523,21 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       string node_name = ParseNodeName(output->input(i), &position);
       if (node_name == node.name()) {
         if (position < 0) {
-          *output->mutable_input(i) =
-              strings::StrCat("^", const_nodes[0].name());
-        } else {
+          // Propagate control dependencies if possible. If not, we'll just
+          // preserve the existing control dependencies.
+          if (constant_output != nullptr) {
+            *output->mutable_input(i) = AsControlDependency(*constant_output);
+          }
+
+        } else if (position < const_nodes.size() &&
+                   !const_nodes[position].name().empty()) {
+          // Replace alive outputs with the corresponding constant.
           *output->mutable_input(i) = const_nodes[position].name();
+        } else {
+          // Leave this edge alone.
+          VLOG(1) << "Preserving edge from " << node.name() << ":" << position
+                  << "[" << node.op() << "] to " << output->name() << ":" << i
+                  << "[" << output->op() << "]";
         }
       }
     }
@@ -474,6 +644,10 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   TF_RETURN_IF_ERROR(FoldGraph(output));
   TF_RETURN_IF_ERROR(SimplifyGraph(output));
   LOG(INFO) << "Optimized graph size: " << output->node_size();
+
+  *output->mutable_library() = item.graph.library();
+  *output->mutable_versions() = item.graph.versions();
+
   return Status::OK();
 }
 

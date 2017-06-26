@@ -455,7 +455,7 @@ class Experiment(object):
   def train_and_evaluate(self):
     """Interleaves training and evaluation.
 
-    The frequency of evaluation is controlled by the contructor arg
+    The frequency of evaluation is controlled by the constructor arg
     `min_eval_frequency`. When this parameter is 0, evaluation happens
     only after training has completed. Note that evaluation cannot happen
     more frequently than checkpoints are taken. If no new snapshots are
@@ -515,15 +515,15 @@ class Experiment(object):
 
     This differs from `train_and_evaluate` as follows:
       1. The procedure will have train and evaluation in turns. The model
-      will be trained for a number of steps (usuallly smaller than `train_steps`
+      will be trained for a number of steps (usually smaller than `train_steps`
       if provided) and then be evaluated.  `train_and_evaluate` will train the
-      model for `train_steps` (no small training iteraions).
+      model for `train_steps` (no small training iterations).
 
       2. Due to the different approach this schedule takes, it leads to two
       differences in resource control. First, the resources (e.g., memory) used
       by training will be released before evaluation (`train_and_evaluate` takes
       double resources). Second, more checkpoints will be saved as a checkpoint
-      is generated at the end of each small trainning iteration.
+      is generated at the end of each small training iteration.
 
     Args:
       continuous_eval_predicate_fn: A predicate function determining whether to

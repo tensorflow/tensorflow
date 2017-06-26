@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import platform
 import shutil
 import tempfile
 
@@ -27,7 +28,9 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 class DeviceNamePathConversionTest(test_util.TensorFlowTestCase):
@@ -297,9 +300,10 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     self.assertEqual(3, dump_dir.size)
 
     with self.assertRaisesRegexp(
-        ValueError,
-        r"There are multiple \(3\) devices, but device_name is not specified"):
-      dump_dir.nodes()
+        ValueError, r"Invalid device name: "):
+      dump_dir.nodes("/job:localhost/replica:0/task:0/gpu:2")
+    self.assertItemsEqual(["node_foo_1", "node_foo_1", "node_foo_1"],
+                          dump_dir.nodes())
     self.assertItemsEqual(
         ["node_foo_1"],
         dump_dir.nodes(device_name="/job:localhost/replica:0/task:0/cpu:0"))
@@ -337,6 +341,38 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
 
     self.assertIsNone(dump_dir.t0)
     self.assertEqual([], dump_dir.dumped_tensor_data)
+
+  def testDebugDumpDir_usesGfileGlob(self):
+    if platform.system() == "Windows":
+      self.skipTest("gfile.Glob is not used on Windows.")
+
+    self._makeDataDirWithMultipleDevicesAndDuplicateNodeNames()
+
+    def fake_gfile_glob(glob_pattern):
+      del glob_pattern
+      return []
+
+    with test.mock.patch.object(
+        gfile, "Glob", side_effect=fake_gfile_glob, autospec=True) as fake:
+      debug_data.DebugDumpDir(self._dump_root)
+      expected_calls = [
+          test.mock.call(os.path.join(
+              self._dump_root,
+              (debug_data.METADATA_FILE_PREFIX +
+               debug_data.CORE_METADATA_TAG + "*"))),
+          test.mock.call(os.path.join(
+              self._dump_root,
+              (debug_data.METADATA_FILE_PREFIX +
+               debug_data.FETCHES_INFO_FILE_TAG + "*"))),
+          test.mock.call(os.path.join(
+              self._dump_root,
+              (debug_data.METADATA_FILE_PREFIX +
+               debug_data.FEED_KEYS_INFO_FILE_TAG + "*"))),
+          test.mock.call(os.path.join(
+              self._dump_root,
+              (debug_data.METADATA_FILE_PREFIX +
+               debug_data.DEVICE_TAG + "*")))]
+      fake.assert_has_calls(expected_calls, any_order=True)
 
 
 class GetNodeNameAndOutputSlotTest(test_util.TensorFlowTestCase):

@@ -159,14 +159,12 @@ class _Conv(base.Layer):
 
     if self.bias is not None:
       if self.data_format == 'channels_first':
-        # bias_add only supports NHWC.
-        # TODO(fchollet): remove this when `bias_add` is feature-complete.
         if self.rank == 1:
+          # nn.bias_add does not accept a 1D input tensor.
           bias = array_ops.reshape(self.bias, (1, self.filters, 1))
           outputs += bias
         if self.rank == 2:
-          bias = array_ops.reshape(self.bias, (1, self.filters, 1, 1))
-          outputs += bias
+          outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
         if self.rank == 3:
           # As of Mar 2017, direct addition is significantly slower than
           # bias_add when computing gradients. To use bias_add, we collapse Z
@@ -371,6 +369,7 @@ def conv1d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -389,7 +388,7 @@ class Conv2D(_Conv):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-      width and height of the 2D convolution window.
+      height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
@@ -490,7 +489,7 @@ def conv2d(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-      width and height of the 2D convolution window.
+      height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
@@ -546,6 +545,7 @@ def conv2d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1277,6 +1277,7 @@ def conv2d_transpose(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

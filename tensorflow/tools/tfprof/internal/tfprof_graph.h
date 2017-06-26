@@ -70,7 +70,7 @@ class TFGraph : public TFShow {
                                      int last_ident, std::set<string>* visits);
 
   std::vector<GraphNode*> Account(const std::vector<GraphNode*>& roots,
-                                  const Options& opts, Timeline* timeline,
+                                  const Options& opts,
                                   std::set<string>* visits);
 
   void Format(const std::vector<GraphNode*> roots, string* display_str,

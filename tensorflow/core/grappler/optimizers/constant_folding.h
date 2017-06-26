@@ -26,8 +26,9 @@ namespace tensorflow {
 namespace grappler {
 
 const char kConstantFoldingConst[] = "ConstantFolding";
+const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 
-// Contant folding optimization for a graph.
+// Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
   ConstantFolding();
@@ -43,6 +44,7 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  string AddControlDependency(const string& input_name);
   Status MaterializeShapes(const GrapplerItem& item);
 
   bool IsFoldable(const NodeDef& node) const;

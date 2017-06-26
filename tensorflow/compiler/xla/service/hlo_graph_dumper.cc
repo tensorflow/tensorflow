@@ -214,6 +214,7 @@ string InstructionSequenceGraph(
       case HloOpcode::kCeil:
       case HloOpcode::kClamp:
       case HloOpcode::kConvert:
+      case HloOpcode::kCos:
       case HloOpcode::kDivide:
       case HloOpcode::kEq:
       case HloOpcode::kExp:
@@ -282,6 +283,10 @@ string InstructionSequenceGraph(
         // port for each parameter instruction. No need to emit anything in this
         // case.
         continue;
+      case HloOpcode::kBatchNormTraining:
+        StrAppend(&name, " feature_index=", instruction->feature_index());
+        color = kPurple;
+        break;
       case HloOpcode::kReduce:
         StrAppend(&name, " dims=", Join(instruction->dimensions(), ","));
         color = kPurple;
@@ -313,6 +318,11 @@ string InstructionSequenceGraph(
         StrAppend(&name, "<br/>",
                   "custom_call_target=", instruction->custom_call_target());
         break;
+      case HloOpcode::kReducePrecision:
+        // Make ReducePrecision ops a bit more visible, since typically they
+        // will be inserted as modifications to an existing graph.
+        color = kDarkRed;
+        break;
     }
 
     // Create instruction node with appropriate label, shape, and color.
@@ -325,8 +335,7 @@ string InstructionSequenceGraph(
         ShapeUtil::IsEffectiveScalar(instruction->shape())) {
       auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
           instruction->shape(), /*linear_index=*/0);
-      StrAppend(&label, " = {",
-                LiteralUtil::GetAsString(instruction->literal(), elem_idx),
+      StrAppend(&label, " = {", instruction->literal().GetAsString(elem_idx),
                 "}");
     }
 

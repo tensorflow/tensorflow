@@ -222,7 +222,7 @@ class KMeans(object):
     if (self._distance_metric == COSINE_DISTANCE and
         not self._clusters_l2_normalized()):
       # The cosine distance between normalized vectors x and y is the same as
-      # 2 * squared_euclidian_distance. We are using this fact and reusing the
+      # 2 * squared_euclidean_distance. We are using this fact and reusing the
       # nearest_neighbors op.
       # TODO(ands): Support COSINE distance in nearest_neighbors and remove
       # this.

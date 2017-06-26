@@ -23,13 +23,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
 import json
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops.summary_ops import tensor_summary
+from tensorflow.python.ops.summary_ops import _tensor_summary_v2
 from tensorflow.python.summary import plugin_asset
+from tensorflow.python.util import deprecation
+
+PLUGIN_NAME = "text"
+
+# Contains event-related data specific to the text plugin.
+_TextPluginData = namedtuple("_TextPluginData", [])
 
 
+@deprecation.deprecated_args(
+    "2017-06-13",
+    "collections is deprecated. Instead of using collections to associate "
+    "plugins to events, add a PluginData field to the SummaryMetadata of a "
+    "Value proto.", "collections")
 def text_summary(name, tensor, collections=None):
   """Summarizes textual data.
 
@@ -60,9 +73,16 @@ def text_summary(name, tensor, collections=None):
     raise ValueError("Expected tensor %s to have dtype string, got %s" %
                      (tensor.name, tensor.dtype))
 
-  t_summary = tensor_summary(name, tensor, collections=collections)
-  text_assets = plugin_asset.get_plugin_asset(TextSummaryPluginAsset)
-  text_assets.register_tensor(t_summary.op.name)
+  summary_metadata = summary_pb2.SummaryMetadata()
+  text_plugin_data = _TextPluginData()
+  data_dict = text_plugin_data._asdict()  # pylint: disable=protected-access
+  summary_metadata.plugin_data.add(
+      plugin_name=PLUGIN_NAME, content=json.dumps(data_dict))
+  t_summary = _tensor_summary_v2(
+      name=name,
+      tensor=tensor,
+      summary_metadata=summary_metadata,
+      collections=collections)
   return t_summary
 
 

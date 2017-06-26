@@ -93,6 +93,7 @@ class ShapeUtil {
  public:
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
+  // Precondition: !IsTuple(shape)
   static int64 ElementsIn(const Shape& shape);
 
   // Returns true if 'shape' has zero elements.
@@ -144,7 +145,8 @@ class ShapeUtil {
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
   // Returns the rank (number of dimensions) of the given shape.
-  static int64 Rank(const Shape& shape) { return shape.dimensions_size(); }
+  // Precondition: !IsTuple(shape)
+  static int64 Rank(const Shape& shape);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
@@ -219,6 +221,9 @@ class ShapeUtil {
   // Returns a new shape with major-first layout that has the same layout of
   // elements with a different shape.
   static Shape NormalizeShapeToMonotonicDim0MajorLayout(const Shape& shape);
+
+  // Returns a new shape that has all padding values cleared.
+  static Shape ShapeWithoutPadding(const Shape& shape);
 
   // As MakeShape, but the object to write to is passed in.
   static void PopulateShape(PrimitiveType element_type,
@@ -295,19 +300,31 @@ class ShapeUtil {
   static const Shape& GetSubshape(const Shape& shape, const ShapeIndex& index);
   static Shape* GetMutableSubshape(Shape* shape, const ShapeIndex& index);
 
-  // Calls the given visitor function for each subshape of the given shape.
-  // Returns early if an error status is returned. Subshapes are visited in DFS
-  // pre-order starting with the entire shape (index {}).
-  using VisitorFunction = std::function<Status(const Shape& /*subshape*/,
-                                               const ShapeIndex& /*index*/)>;
-  static Status ForEachSubshape(const Shape& shape,
-                                const VisitorFunction& func);
+  // Returns whether the given index in the given shape is a leaf element of the
+  // shape.
+  static bool IsLeafIndex(const Shape& shape, const ShapeIndex& index);
 
-  // Mutating variant of ForEachSubshape.
+  // Calls the given visitor function for each subshape of the given shape.
+  // Subshapes are visited in DFS pre-order starting with the entire shape
+  // (index {}).
+  using VisitorFunction = std::function<void(const Shape& /*subshape*/,
+                                             const ShapeIndex& /*index*/)>;
+  static void ForEachSubshape(const Shape& shape, const VisitorFunction& func);
   using MutatingVisitorFunction =
+      std::function<void(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
+  static void ForEachMutableSubshape(Shape* shape,
+                                     const MutatingVisitorFunction& func);
+
+  // Variants of ForEach(Mutable)Subshape which propagate Status from the
+  // visitor function.
+  using StatusVisitorFunction = std::function<Status(
+      const Shape& /*subshape*/, const ShapeIndex& /*index*/)>;
+  static Status ForEachSubshapeWithStatus(const Shape& shape,
+                                          const StatusVisitorFunction& func);
+  using MutatingStatusVisitorFunction =
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
-  static Status ForEachMutableSubshape(Shape* shape,
-                                       const MutatingVisitorFunction& func);
+  static Status ForEachMutableSubshapeWithStatus(
+      Shape* shape, const MutatingStatusVisitorFunction& func);
 
   // Removes all degenerate dimensions (size one) from the given shape. The
   // stripped minor_to_major preserves the relative ordering of non-degenerate

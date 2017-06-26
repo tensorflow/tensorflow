@@ -451,6 +451,13 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::BatchDescriptor* output_batch_descriptor);
 
+  bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
+                         dnn::DataType input_type,
+                         const DeviceMemoryBase& input_data,
+                         const dnn::BatchDescriptor& output_desc,
+                         dnn::DataType output_type, float scale,
+                         DeviceMemoryBase* output_data) override;
+
  private:
   // Guards the enqueueing of DNN operations via the dnn_handle_ below.
   mutex dnn_handle_mutex_;

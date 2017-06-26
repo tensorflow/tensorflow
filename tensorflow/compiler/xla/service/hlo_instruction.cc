@@ -122,6 +122,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
@@ -227,6 +228,19 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateReducePrecision(const Shape& shape,
+                                      HloInstruction* operand,
+                                      const int exponent_bits,
+                                      const int mantissa_bits) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kReducePrecision, shape));
+  instruction->AppendOperand(operand);
+  instruction->exponent_bits_ = exponent_bits;
+  instruction->mantissa_bits_ = mantissa_bits;
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCrossReplicaSum(const Shape& shape,
                                       HloInstruction* operand) {
   auto instruction =
@@ -292,11 +306,13 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSlice(
     const Shape& shape, HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices) {
+    tensorflow::gtl::ArraySlice<int64> limit_indices,
+    tensorflow::gtl::ArraySlice<int64> strides) {
   auto instruction = WrapUnique(new HloInstruction(HloOpcode::kSlice, shape));
   instruction->AppendOperand(operand);
   instruction->slice_starts_.assign(start_indices.begin(), start_indices.end());
   instruction->slice_limits_.assign(limit_indices.begin(), limit_indices.end());
+  instruction->slice_strides_.assign(strides.begin(), strides.end());
   return instruction;
 }
 
@@ -366,6 +382,22 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
   instruction->AppendOperand(init_value);
   instruction->called_computations_.push_back(reduce_computation);
   instruction->window_ = MakeUnique<Window>(window);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBatchNormTraining(const Shape& shape,
+                                        HloInstruction* operand,
+                                        HloInstruction* scale,
+                                        HloInstruction* offset, float epsilon,
+                                        int64 feature_index) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBatchNormTraining, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(scale);
+  instruction->AppendOperand(offset);
+  instruction->epsilon_ = epsilon;
+  instruction->feature_index_ = feature_index;
   return instruction;
 }
 
@@ -728,6 +760,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
@@ -778,6 +811,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kConvert:
       CHECK_EQ(new_operands.size(), 1);
       return CreateConvert(shape, new_operands[0]);
+    case HloOpcode::kReducePrecision:
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateReducePrecision(shape, new_operands[0], exponent_bits_,
+                                   mantissa_bits_);
     case HloOpcode::kConvolution:
       CHECK_EQ(new_operands.size(), 2);
       return CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
@@ -817,7 +854,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateReshape(shape, new_operands[0]);
     case HloOpcode::kSlice:
       CHECK_EQ(new_operands.size(), 1);
-      return CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_);
+      return CreateSlice(shape, new_operands[0], slice_starts_, slice_limits_,
+                         slice_strides_);
     case HloOpcode::kDynamicSlice:
       return CreateDynamicSlice(shape, new_operands[0], new_operands[1],
                                 dynamic_slice_sizes_);
@@ -835,12 +873,13 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateWhile(shape, while_condition(), while_body(),
                          new_operands[0]);
     case HloOpcode::kConstant:
-      return CreateConstant(LiteralUtil::CloneToUnique(*literal_));
+      return CreateConstant(literal_->CloneToUnique());
     case HloOpcode::kFusion:
       return CloneFusionWithNewOperands(shape, new_operands);
     case HloOpcode::kParameter:
       return CreateParameter(parameter_number_, shape, parameter_name_);
     // Unsupported ops for cloning.
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:
@@ -1096,6 +1135,7 @@ bool HloInstruction::Identical(
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
@@ -1138,14 +1178,23 @@ bool HloInstruction::Identical(
              // different HloComputations.
              ShapeUtil::Compatible(shape(), other.shape());
 
+    case HloOpcode::kBatchNormTraining:
+      return feature_index() == other.feature_index() &&
+             epsilon() == other.epsilon();
+
     // A constant is defined by the value in the literal.
     case HloOpcode::kConstant:
-      return LiteralUtil::Equal(literal(), other.literal());
+      return literal().Equal(other.literal());
 
     // A convert result is determined by the primitive type that the operand is
     // converted into.
     case HloOpcode::kConvert:
       return shape().element_type() == other.shape().element_type();
+
+    // A reduce-precision operation is determined by the bit sizes.
+    case HloOpcode::kReducePrecision:
+      return exponent_bits() == other.exponent_bits() &&
+             mantissa_bits() == other.mantissa_bits();
 
     // Convolution has a window and dimensions.
     case HloOpcode::kConvolution:
@@ -1306,7 +1355,7 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
 
 void HloInstruction::DetachFromOperands() {
   CHECK_EQ(0, user_count());
-  // An intruction may be repeated as an operand. To avoid calling RemoveUser
+  // An instruction may be repeated as an operand. To avoid calling RemoveUser
   // twice on the same operand, keep a set of already detached operands.
   std::set<HloInstruction*> detached_operands;
   for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
@@ -1436,16 +1485,18 @@ string HloInstruction::ToString(bool compact_operands,
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
     if (ShapeUtil::ElementsIn(shape()) <= 10) {
-      // LiteralUtil::ToString emits multidimensional arrays over multiple
+      // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
-      string tmp = LiteralUtil::ToString(literal());
+      string tmp = literal().ToString();
       std::replace(tmp.begin(), tmp.end(), '\n', ' ');
       std::vector<string> v = tensorflow::str_util::Split(tmp, ' ');
       bool first = true;
       // Concatenate elements in "v" with spaces separating them, but ignoring
       // empty entries.
       for (const auto& s : v) {
-        if (s.empty()) continue;
+        if (s.empty()) {
+          continue;
+        }
         StrAppend(&operands, (first ? "" : " "), s);
         first = false;
       }
@@ -1624,6 +1675,8 @@ string HloInstruction::ToCategory() const {
       case FusionKind::kConvBackwardFilter:
       case FusionKind::kConvBackwardInput:
         return "convolution fusion";
+      case FusionKind::kCustom:
+        return "custom fusion";
     }
   }
 
@@ -1731,6 +1784,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this, operands_[0]);
+    case HloOpcode::kBatchNormTraining:
+      return visitor->HandleBatchNormTraining(this);
     case HloOpcode::kSign:
       return visitor->HandleSign(this, operands_[0]);
     case HloOpcode::kConstant:
@@ -1753,9 +1808,9 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kSubtract:
       return visitor->HandleSubtract(this, operands_[0], operands_[1]);
     case HloOpcode::kMaximum:
-      return visitor->HandleMaximum(this, operands_[0], operands_[1]);
+      return visitor->HandleMaximum(this);
     case HloOpcode::kMinimum:
-      return visitor->HandleMinimum(this, operands_[0], operands_[1]);
+      return visitor->HandleMinimum(this);
     case HloOpcode::kLogicalAnd:
       return visitor->HandleLogicalAnd(this, operands_[0], operands_[1]);
     case HloOpcode::kLogicalOr:
@@ -1763,9 +1818,9 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kConcatenate:
       return visitor->HandleConcatenate(this, operands_);
     case HloOpcode::kConvert:
-      return visitor->HandleConvert(this, operands_[0]);
+      return visitor->HandleConvert(this);
     case HloOpcode::kCopy:
-      return visitor->HandleCopy(this, operands_[0]);
+      return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:
       return visitor->HandleMultiply(this, operands_[0], operands_[1]);
     case HloOpcode::kDot:
@@ -1809,6 +1864,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleLog(this, operands_[0]);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this, operands_[0]);
+    case HloOpcode::kCos:
+      return visitor->HandleCos(this, operands_[0]);
     case HloOpcode::kIsFinite:
       return visitor->HandleIsFinite(this, operands_[0]);
     case HloOpcode::kLogicalNot:
@@ -1825,6 +1882,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleTranspose(this);
     case HloOpcode::kReverse:
       return visitor->HandleReverse(this, operands_[0]);
+    case HloOpcode::kReducePrecision:
+      return visitor->HandleReducePrecision(this, operands_[0]);
     case HloOpcode::kSlice:
       return visitor->HandleSlice(this, operands_[0]);
     case HloOpcode::kDynamicSlice:
@@ -1863,72 +1922,86 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
                        HloOpcodeString(opcode_).c_str());
 }
 
-Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor,
-                                      const CompareFunction* operand_order,
-                                      bool ignore_control_predecessors) {
-  // Do not visit this HLO node again if it is already visited.
-  if (visitor->DidVisit(*this)) {
-    VLOG(3) << "Not visiting HLO " << name() << " as it was already visited.";
-    return Status::OK();
-  }
-
-  // If the instruction is in the visiting state, it means a cycle.
-  if (visitor->IsVisiting(*this)) {
+static Status PushDFSChild(DfsHloVisitor* visitor,
+                           std::vector<HloInstruction*>* dfs_stack,
+                           HloInstruction* parent, HloInstruction* child) {
+  if (visitor->IsVisiting(*child)) {
     return FailedPrecondition(
         "A cycle is detected while visiting instruction %s",
-        ToString().c_str());
-  }
-  visitor->SetVisiting(*this);
-
-  // Sort operands, if an ordering was provided. 'temp_sorted_operands' must
-  // live at this scope, since 'operands' will point to it if the operands are
-  // sorted.  The purpose of the 'operands' pointer is to avoid copying the
-  // operands in the common case where the operands are not sorted.
-  std::vector<HloInstruction*>* operands = &operands_;
-  std::vector<HloInstruction*> temp_sorted_operands;
-  if (operand_order != nullptr) {
-    temp_sorted_operands = operands_;
-    std::sort(temp_sorted_operands.begin(), temp_sorted_operands.end(),
-              *operand_order);
-    operands = &temp_sorted_operands;
-  }
-  for (HloInstruction* operand : *operands) {
-    VLOG(3) << "Going to visit HLO " << operand->name() << " as operand of HLO "
-            << name();
-    TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor, operand_order,
-                                               ignore_control_predecessors));
+        parent->ToString().c_str());
   }
 
-  if (!ignore_control_predecessors) {
-    // This uses the same pointer/vector sorting to avoid extra copies as above.
-    std::vector<HloInstruction*>* predecessors = &control_predecessors_;
-    std::vector<HloInstruction*> temp_sorted_predecessors;
+  if (!visitor->DidVisit(*child)) {
+    dfs_stack->push_back(child);
+  } else {
+    VLOG(3) << "Not visiting HLO " << child->name()
+            << " as it was already visited.";
+  }
+  return Status::OK();
+}
+
+static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
+                           const HloInstruction::CompareFunction* operand_order,
+                           bool ignore_control_predecessors) {
+  std::vector<HloInstruction*> dfs_stack;
+  dfs_stack.push_back(root);
+
+  do {
+    DCHECK(!dfs_stack.empty());
+
+    HloInstruction* current_node = dfs_stack.back();
+    if (visitor->DidVisit(*current_node)) {
+      dfs_stack.pop_back();
+      VLOG(3) << "Not visiting HLO " << current_node->name()
+              << " as it was already visited.";
+      continue;
+    }
+
+    if (visitor->IsVisiting(*current_node)) {
+      dfs_stack.pop_back();
+
+      TF_RETURN_IF_ERROR(visitor->Preprocess(current_node));
+      VLOG(2) << "Visiting HLO " << current_node->name();
+      TF_RETURN_IF_ERROR(current_node->Visit(visitor));
+      visitor->SetVisited(*current_node);
+      TF_RETURN_IF_ERROR(visitor->Postprocess(current_node));
+      continue;
+    }
+
+    visitor->SetVisiting(*current_node);
+
+    const size_t old_dfs_stack_size = dfs_stack.size();
+
+    for (HloInstruction* child : current_node->operands()) {
+      TF_RETURN_IF_ERROR(
+          PushDFSChild(visitor, &dfs_stack, current_node, child));
+    }
+
+    if (!ignore_control_predecessors) {
+      for (HloInstruction* child : current_node->control_predecessors()) {
+        TF_RETURN_IF_ERROR(
+            PushDFSChild(visitor, &dfs_stack, current_node, child));
+      }
+    }
+
     if (operand_order != nullptr) {
-      temp_sorted_predecessors = control_predecessors_;
-      std::sort(temp_sorted_predecessors.begin(),
-                temp_sorted_predecessors.end(), *operand_order);
-      predecessors = &temp_sorted_predecessors;
+      std::sort(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end(),
+                *operand_order);
     }
-    for (HloInstruction* control_predecessor : *predecessors) {
-      VLOG(3) << "Going to visit HLO " << control_predecessor->name()
-              << " as a control predecessor of HLO " << name();
-      TF_RETURN_IF_ERROR(control_predecessor->AcceptInternal(
-          visitor, operand_order, ignore_control_predecessors));
-    }
-  }
 
-  TF_RETURN_IF_ERROR(visitor->Preprocess(this));
-  VLOG(2) << "Visiting HLO " << name();
-  TF_RETURN_IF_ERROR(Visit(visitor));
-  visitor->SetVisited(*this);
-  return visitor->Postprocess(this);
+    // This makes the traversal order the same as what you'd expect
+    // out of a recursive algorithm.
+    std::reverse(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end());
+  } while (!dfs_stack.empty());
+
+  return Status::OK();
 }
 
 Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit,
                               bool ignore_control_predecessors) {
   VLOG(2) << "HloInstruction::Accept(" << name() << ")";
   TF_RETURN_IF_ERROR(
-      AcceptInternal(visitor, nullptr, ignore_control_predecessors));
+      PostOrderDFS(this, visitor, nullptr, ignore_control_predecessors));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -1939,8 +2012,8 @@ Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, const CompareFunction& operand_order,
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(" << name() << ")";
-  TF_RETURN_IF_ERROR(AcceptInternal(visitor, &operand_order,
-                                    /*ignore_control_predecessors=*/false));
+  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, &operand_order,
+                                  /*ignore_control_predecessors=*/false));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -2055,12 +2128,14 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
     case HloOpcode::kTanh:
       return true;
@@ -2160,6 +2235,70 @@ bool HloInstruction::IsElementwiseOnOperand(int64 operand_idx) const {
   return true;
 }
 
+// A helper class for memoized, recursive computation of HloOpcode::kFusion
+// in HloInstruction::OperandElementUse below.
+class HloInstruction::FusionReusesParamElements {
+ public:
+  using UseKind = HloInstruction::UseKind;
+
+  // We could rather iterate backwards thru fused_instructions_ here, as it is
+  // in reverse postorder, and compute whether each fused instruction reuses the
+  // value of this parameter, which would save stack space but not allow us to
+  // finish early if we find a reuse.
+  static UseKind Compute(int64 i, const HloInstruction& hlo) {
+    tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> memoization_cache;
+    return ComputeInternal(i, hlo, &memoization_cache);
+  }
+
+ private:
+  static UseKind ComputeInternal(
+      int64 i, const HloInstruction& hlo,
+      tensorflow::gtl::FlatMap<const HloInstruction*, UseKind>* cache) {
+    if (hlo.opcode_ == HloOpcode::kParameter && hlo.parameter_number_ == i) {
+      return UseKind::kUse;
+    }
+
+    auto p = cache->emplace(&hlo, UseKind{});
+    auto value_it = p.first;
+    const bool key_is_new = p.second;
+
+    if (key_is_new) {
+      for (int64 j = 0; j < hlo.operands_.size(); ++j) {
+        UseKind old_val = value_it->second;
+
+        // The next operation invalidates iterators.
+        UseKind new_val =
+            Plus(old_val, std::min(hlo.OperandElementUse(j),
+                                   ComputeInternal(i, *hlo.operand(j), cache)));
+
+        // Re-acquire the iterator. We could work harder to do this only if
+        // absolutely necessary, but this code is not hot enough to warrant
+        // that.
+        value_it = cache->find(&hlo);
+        value_it->second = new_val;
+      }
+    }
+    return value_it->second;
+  }
+
+  // Fold operation for UseKinds.
+  static UseKind Plus(UseKind a, UseKind b) {
+    if (a == UseKind::kNoUse) {
+      return b;
+    } else if (b == UseKind::kNoUse) {
+      return a;
+    } else if (a == UseKind::kReuse || b == UseKind::kReuse) {
+      return UseKind::kReuse;
+    } else if (a == UseKind::kUsePermutingElements ||
+               b == UseKind::kUsePermutingElements) {
+      return UseKind::kReuse;
+    } else {
+      CHECK(a == UseKind::kUse && b == UseKind::kUse);
+      return UseKind::kUse;
+    }
+  }
+};
+
 HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
   switch (opcode_) {
     case HloOpcode::kBitcast:
@@ -2174,45 +2313,9 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       // Pad reuses the padding value but not the padded array elements.
       // Reduce reuses the init value but not the operand array elements.
       return i > 0 ? UseKind::kReuse : UseKind::kUsePermutingElements;
-    case HloOpcode::kFusion: {
-      tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> cache;
-      // We could rather iterate backwards thru fused_instructions_ here, as it
-      // is in reverse postorder, and compute whether each fused instruction
-      // reuses the value of this parameter, which would save stack space but
-      // not allow us to finish early if we find a reuse.
-      std::function<UseKind(const HloInstruction&)> reuses_parameter_elements =
-          [i, &cache, &reuses_parameter_elements](const HloInstruction& hlo) {
-            auto plus = [](const UseKind& a, const UseKind& b) {
-              if (a == UseKind::kNoUse) return b;
-              if (b == UseKind::kNoUse) return a;
-              if (a == UseKind::kReuse || b == UseKind::kReuse) {
-                return UseKind::kReuse;
-              }
-              if (a == UseKind::kUsePermutingElements ||
-                  b == UseKind::kUsePermutingElements) {
-                return UseKind::kReuse;
-              }
-              CHECK(UseKind::kUse == a && UseKind::kUse == b);
-              return UseKind::kUse;
-            };
-
-            if (hlo.opcode_ == HloOpcode::kParameter &&
-                hlo.parameter_number_ == i) {
-              return UseKind::kUse;
-            }
-            if (!ContainsKey(cache, &hlo)) {
-              for (int64 j = 0; j < hlo.operands_.size(); ++j) {
-                UseKind old = cache[&hlo];
-                UseKind updated = plus(
-                    old, std::min(hlo.OperandElementUse(j),
-                                  reuses_parameter_elements(*hlo.operand(j))));
-                cache[&hlo] = updated;
-              }
-            }
-            return cache[&hlo];
-          };
-      return reuses_parameter_elements(*fused_expression_root());
-    }
+    case HloOpcode::kFusion:
+      // Uses the memoizing, recursive computation defined above.
+      return FusionReusesParamElements::Compute(i, *fused_expression_root());
     default:
       return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
@@ -2241,6 +2344,8 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kConvBackwardFilter";
     case HloInstruction::FusionKind::kConvBackwardInput:
       return "kConvBackwardInput";
+    case HloInstruction::FusionKind::kCustom:
+      return "kCustom";
   }
 }
 
@@ -2313,6 +2418,11 @@ HloModule* HloInstruction::GetModule() const {
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
+}
+
+void HloInstruction::set_outer_dimension_partitions(
+    const std::vector<int64>& outer_dimension_partitions) {
+  outer_dimension_partitions_ = outer_dimension_partitions;
 }
 
 }  // namespace xla

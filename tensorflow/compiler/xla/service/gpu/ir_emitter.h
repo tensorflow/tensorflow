@@ -231,7 +231,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter.
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
   Status HandleDot(HloInstruction* dot, HloInstruction* lhs_instruction,

@@ -589,6 +589,7 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
+      all_hooks.extend(hooks)
       all_hooks.extend([
           training.NanTensorHook(estimator_spec.loss),
           training.LoggingTensorHook(
@@ -598,17 +599,19 @@ class Estimator(object):
               },
               every_n_iter=100)
       ])
-      all_hooks.extend(hooks)
       all_hooks.extend(estimator_spec.training_hooks)
 
       if not (estimator_spec.scaffold.saver or
               ops.get_collection(ops.GraphKeys.SAVERS)):
-        ops.add_to_collection(ops.GraphKeys.SAVERS,
-                              training.Saver(
-                                  sharded=True,
-                                  max_to_keep=self._config.keep_checkpoint_max,
-                                  defer_build=True,
-                                  save_relative_paths=True))
+        ops.add_to_collection(
+            ops.GraphKeys.SAVERS,
+            training.Saver(
+                sharded=True,
+                max_to_keep=self._config.keep_checkpoint_max,
+                keep_checkpoint_every_n_hours=(
+                    self._config.keep_checkpoint_every_n_hours),
+                defer_build=True,
+                save_relative_paths=True))
 
       chief_hooks = []
       if (self._config.save_checkpoints_secs or
@@ -725,7 +728,9 @@ def _get_replica_device_setter(config):
   """
   ps_ops = [
       'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
-      'MutableHashTableOfTensors', 'MutableDenseHashTable'
+      'MutableHashTableV2', 'MutableHashTableOfTensors',
+      'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
+      'MutableDenseHashTableV2'
   ]
 
   if config.task_type:
@@ -860,7 +865,8 @@ def _write_dict_to_summary(output_dir,
       value.simple_value = int(dictionary[key])
     else:
       logging.warn(
-          'Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
+          'Skipping summary for %s, must be a float, np.float32, np.int64, '
+          'np.int32 or int.',
           key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()

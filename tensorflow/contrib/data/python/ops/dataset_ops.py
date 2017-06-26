@@ -22,6 +22,7 @@ import abc
 import numpy as np
 
 from tensorflow.contrib.data.python.framework import function
+from tensorflow.contrib.data.python.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,13 +33,13 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.util import nest
 
 
 class Iterator(object):
@@ -537,9 +538,9 @@ class Dataset(object):
 
     # The `datasets` argument may contain an arbitrary number of
     # datasets.
-    Dataset.zip((a, b, c) == { (1, 4, (7, 8)),
-                               (2, 5, (9, 10)),
-                               (3, 6, (11, 12)) }
+    Dataset.zip((a, b, c)) == { (1, 4, (7, 8)),
+                                (2, 5, (9, 10)),
+                                (3, 6, (11, 12)) }
 
     # The number of elements in the resulting dataset is the same as
     # the size of the smallest dataset in `datasets`.
@@ -600,6 +601,29 @@ class Dataset(object):
     dataset = dataset.batch(batch_size)
     return dataset
 
+  @staticmethod
+  def list_files(file_pattern):
+    """A dataset of all files matching a pattern.
+
+    Example:
+      If we had the following files on our filesystem:
+        - /path/to/dir/a.txt
+        - /path/to/dir/b.py
+        - /path/to/dir/c.py
+      If we pass "/path/to/dir/*.py" as the directory, the dataset would
+      produce:
+        - /path/to/dir/b.py
+        - /path/to/dir/c.py
+
+    Args:
+      file_pattern: A string or scalar string `tf.Tensor`, representing
+        the filename pattern that will be matched.
+
+    Returns:
+     A `Dataset` of strings corresponding to file names.
+    """
+    return Dataset.from_tensor_slices(gen_io_ops.matching_files(file_pattern))
+
   def repeat(self, count=None):
     """Repeats this dataset `count` times.
 
@@ -656,6 +680,19 @@ class Dataset(object):
       A `Dataset`.
     """
     return ShuffleDataset(self, buffer_size, seed)
+
+  def cache(self, filename=""):
+    """Caches the elements in this dataset.
+
+    Args:
+      filename: A `tf.string` scalar `tf.Tensor`, representing the name of a
+        directory on the filesystem to use for caching tensors in this Dataset.
+        If a filename is not provided, the dataset will be cached in memory.
+
+    Returns:
+      A `Dataset`.
+    """
+    return CacheDataset(self, filename)
 
   def take(self, count):
     """Creates a `Dataset` with at most `count` elements from this dataset.
@@ -837,7 +874,8 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
-    return self.flat_map(map_func=Dataset.from_tensor_slices)
+    return self.flat_map(
+      map_func=lambda *args: Dataset.from_tensor_slices(args))
 
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
@@ -1050,6 +1088,32 @@ class RangeDataset(Dataset):
   @property
   def output_types(self):
     return dtypes.int64
+
+
+class CacheDataset(Dataset):
+  """A `Dataset` that caches elements of its input."""
+
+  def __init__(self, input_dataset, filename):
+    """See `Dataset.cache()` for details."""
+    super(CacheDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._filename = ops.convert_to_tensor(
+        filename, dtype=dtypes.string, name="filename")
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.cache_dataset(
+        self._input_dataset.make_dataset_resource(),
+        filename=self._filename,
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
 
 
 class ShuffleDataset(Dataset):
@@ -1870,7 +1934,7 @@ def _parse_example(serialized, features):
       result.extend([val.indices, val.values, val.dense_shape])
     else:
       result.append(val)
-  return result
+  return tuple(result)
 
 
 def _get_file_names(file_pattern, randomize_input):

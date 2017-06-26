@@ -18,7 +18,6 @@ limitations under the License.
 #include <limits>
 #include <unordered_map>
 
-#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
@@ -61,10 +60,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
   }
   std::vector<string> inaccurate_nodes;
-  VirtualPlacer placer(cluster_);
-  VirtualScheduler scheduler(&item, use_static_shapes_,
-                             "CPU" /* default_device_type */, cluster_,
-                             &placer);
+  VirtualScheduler scheduler(&item, use_static_shapes_, cluster_);
   auto status = scheduler.Init();
   if (!status.ok()) {
     costs->execution_time = Costs::Duration::max();

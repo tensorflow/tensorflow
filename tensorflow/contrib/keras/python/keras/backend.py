@@ -269,9 +269,10 @@ def get_uid(prefix=''):
 
 
 def reset_uids():
-  layer_name_uids_collection = ops.get_collection_ref('LAYER_NAME_UIDS')
-  if layer_name_uids_collection:
-    layer_name_uids_collection.pop()
+  per_graph_layer_name_uids = tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS
+  keys = list(per_graph_layer_name_uids.keys())
+  for key in keys:
+    del per_graph_layer_name_uids[key]
 
 
 def clear_session():
@@ -3260,7 +3261,7 @@ def conv2d(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
       dilation_rate: tuple of 2 integers.
 
   Returns:
@@ -3308,7 +3309,7 @@ def conv2d_transpose(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
 
   Returns:
       A tensor, result of transposed 2D convolution.
@@ -3394,7 +3395,7 @@ def conv3d(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
       dilation_rate: tuple of 3 integers.
 
   Returns:

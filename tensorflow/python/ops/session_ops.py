@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor Handle Operations. See the @{python/session_ops} guide.
+"""Tensor Handle Operations. See the @{$python/session_ops} guide.
 
 @@get_session_handle
 @@get_session_handle_v2

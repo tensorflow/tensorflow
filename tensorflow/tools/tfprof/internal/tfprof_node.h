@@ -36,12 +36,18 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+std::vector<int64> ShapeProtoToVec(const TensorShapeProto& shape_pb);
+
+TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec);
+
+class TFGraphNode;
 
 class ExecStep {
  public:
-  ExecStep()
-      : all_start_micros_(0),
-        latest_end_rel_micros_(0),
+  ExecStep(TFGraphNode* node)
+      : node(node),
+        all_start_micros_(0),
+        latest_end_micros_(0),
         mem_initiated_(false),
         requested_bytes_(0),
         host_temp_bytes_(0),
@@ -50,106 +56,24 @@ class ExecStep {
         accelerator_persistent_bytes_(0),
         allocator_bytes_in_use_(0) {}
 
-  void AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
-    devices_.insert(dev);
-    if (step_stat.all_start_micros() > 0) {
-      if (all_start_micros_ > 0) {
-        all_start_micros_ =
-            std::min(all_start_micros_,
-                     static_cast<int64>(step_stat.all_start_micros()));
-      } else {
-        all_start_micros_ = step_stat.all_start_micros();
-      }
-      int64 op_end_rel_micros = step_stat.op_end_rel_micros();
-      // Round quick execution to 1 micro to be semantically robust.
-      if (op_end_rel_micros == 0) {
-        ++op_end_rel_micros;
-      }
-      latest_end_rel_micros_ =
-          std::max(latest_end_rel_micros_, op_end_rel_micros);
+  void AddTimeStats(const string& dev, const NodeExecStats& step_stat);
 
-      op_execs_[dev].push_back(
-          std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
+  void AddMemoryStats(const string& dev, const NodeExecStats& step_stat);
 
-      if (dev.find("stream") != dev.npos &&
-          dev.find("stream:all") == dev.npos) {
-        gpu_kernel_execs_[dev].push_back(
-            std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
-      }
-    }
-  }
-
-  void AddMemoryStats(const string& dev, const NodeExecStats& step_stat) {
-    if (mem_initiated_) {
-      // fprintf(stderr, "Memory initiated twice on %s", dev.c_str());
-      return;
-    }
-    mem_initiated_ = true;
-
-    for (const auto& mem : step_stat.memory()) {
-      // TODO(xpan): Fix this hack. Currently the allocator name seems quite
-      // ad-hoc.
-      if (mem.allocator_name().find("GPU") == mem.allocator_name().npos) {
-        continue;
-      }
-      allocator_bytes_in_use_ =
-          std::max(allocator_bytes_in_use_,
-                   static_cast<int64>(mem.allocator_bytes_in_use()));
-    }
-    int64 total_output_bytes = 0;
-    for (const auto& output : step_stat.output()) {
-      if (output.has_tensor_description() &&
-          output.tensor_description().has_allocation_description()) {
-        // TODO(xpan): Maybe allocated_bytes.
-        int64 output_bytes = std::max(output.tensor_description()
-                                          .allocation_description()
-                                          .allocated_bytes(),
-                                      output.tensor_description()
-                                          .allocation_description()
-                                          .requested_bytes());
-        uint64 output_ptr =
-            output.tensor_description().allocation_description().ptr();
-        total_output_bytes += output_bytes;
-        output_bytes_[output.slot()] = std::make_pair(output_bytes, output_ptr);
-      }
-    }
-    if (step_stat.has_memory_stats()) {
-      host_temp_bytes_ += step_stat.memory_stats().host_temp_memory_size();
-      host_persistent_bytes_ +=
-          step_stat.memory_stats().host_persistent_memory_size();
-      accelerator_temp_bytes_ +=
-          step_stat.memory_stats().device_temp_memory_size();
-      accelerator_persistent_bytes_ +=
-          step_stat.memory_stats().device_persistent_memory_size();
-    }
-    requested_bytes_ = total_output_bytes;
-  }
-
-  int64 exec_micros() const {
-    int64 total = 0;
-    for (const auto& execs : gpu_kernel_execs_) {
-      for (const auto& exec : execs.second) {
-        total += exec.second;
-      }
-    }
-    if (total > 0) return total;
-
-    // If there is no gpu kernel time, fall back to assume it runs on cpu.
-    // TODO(xpan): No way to track CPU async op timing accurately?
-    for (const auto& execs : op_execs_) {
-      for (const auto& exec : execs.second) {
-        total += exec.second;
-      }
-    }
-    return total;
-  }
+  // The execution time of an op. If it runs on accelerator, then it's
+  // accelerator_exec_micros(). Otherwise, it's CPU time.
+  int64 exec_micros() const;
+  // The accelerator execution time of an op. 0 if not run on accelerator.
+  int64 accelerator_exec_micros() const;
+  // The cpu execution time of an op.
+  int64 cpu_exec_micros() const;
 
   const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs()
       const {
     return op_execs_;
   }
   int64 all_start_micros() const { return all_start_micros_; }
-  int64 latest_end_rel_micros() const { return latest_end_rel_micros_; }
+  int64 latest_end_micros() const { return latest_end_micros_; }
 
   int64 requested_bytes() const { return requested_bytes_; }
   int64 accelerator_temp_bytes() const { return accelerator_temp_bytes_; }
@@ -164,11 +88,18 @@ class ExecStep {
   int64 allocator_bytes_in_use() const { return allocator_bytes_in_use_; }
 
  private:
-  // The earliest/latest time including scheduling and kernel execution.
+  TFGraphNode* node;
+  // The earliest/latest time including scheduling and execution.
   int64 all_start_micros_;
-  int64 latest_end_rel_micros_;
-  // device -> vector of {op_start_micros, op_kernel_exec_micros} pairs.
-  std::map<string, std::vector<std::pair<int64, int64>>> gpu_kernel_execs_;
+  int64 latest_end_micros_;
+  // device -> vector of {op_start_micros, op_exec_micros} pairs.
+  // accelerator_execs: gpu:id/stream:all -> {op_start_micros, op_exec_micros}
+  // For accelerator, vector size can be larger than 1, multiple kernel fires.
+  std::map<string, std::vector<std::pair<int64, int64>>> accelerator_execs_;
+  // cpu_execs: cpu/gpu:id -> {op_start_micros, op_exec_micros}
+  // For cpu, normally vector size is 1, that is only one run.
+  std::map<string, std::vector<std::pair<int64, int64>>> cpu_execs_;
+  // combines accelerator_execs_ and cpu_execs_.
   std::map<string, std::vector<std::pair<int64, int64>>> op_execs_;
   // All devices the op is associated with (e.g. gpu:0 (scheduling),
   // gpu:0:stream:xx (kernel exec), cpu:0 host)
@@ -194,30 +125,37 @@ class TFGraphNode {
   TFGraphNode(const NodeDef* node)
       : node_(node), float_ops_(0), op_(node->op()) {
     for (const auto& attr : node->attr()) {
-      // TODO(xpan): Also consider _output_shapes.
-      if (attr.first != "shape" || !attr.second.has_shape()) continue;
-      if (!shape_.empty()) {
-        fprintf(stderr, "Found duplicated shapes!\n");
-        continue;
-      }
-      std::vector<int64> shape_vec;
-      if (attr.second.shape().dim_size() == 0 &&
-          !attr.second.shape().unknown_rank()) {
-        // Scalar parameter with empty shape but known rank.
-        shape_vec.push_back(1);
-      } else {
-        for (const auto& d : attr.second.shape().dim()) {
-          shape_vec.push_back(d.size());
+      op_attrs_[attr.first] = &attr.second;
+      if (attr.first == "shape" && attr.second.has_shape()) {
+        if (!shape_.empty()) {
+          fprintf(stderr, "Found duplicated shapes!\n");
+          continue;
+        }
+        shape_ = ShapeProtoToVec(attr.second.shape());
+      } else if (attr.first == "_output_shapes" && attr.second.has_list()) {
+        if (!output_shapes_.empty()) {
+          fprintf(stderr, "Found duplicated output shapes!\n");
+          continue;
+        }
+        for (int i = 0; i < attr.second.list().shape_size(); ++i) {
+          output_shapes_[i] = ShapeProtoToVec(attr.second.list().shape(i));
         }
       }
-      update_shape(shape_vec);
     }
     op_types_.insert(node->op());
   }
 
-  void AddInput(TFGraphNode* input, int64 output_idx) {
-    inputs_[input->name()] = input;
-    output_idx_[input->name()] = output_idx;
+  void AddInput(TFGraphNode* input, int64 output_idx, int input_idx) {
+    src_output_idx_[input->name()] = output_idx;
+
+    inputs_[input_idx] = input;
+    const auto& output_shape = input->output_shapes().find(output_idx);
+    // Always create an empty vec even if the shape info might be missing.
+    std::vector<int64>& shape_vec = input_shapes_[input_idx];
+    if (output_shape != input->output_shapes().end()) {
+      shape_vec.assign(output_shape->second.begin(),
+                       output_shape->second.end());
+    }
   }
 
   void AddOpType(const string& op_type) { op_types_.insert(op_type); }
@@ -245,11 +183,15 @@ class TFGraphNode {
     return true;
   }
 
-  const std::map<string, TFGraphNode*>& inputs() const { return inputs_; }
-  const std::map<string, int64>& output_idx() const { return output_idx_; }
+  const std::map<int, TFGraphNode*>& inputs() const { return inputs_; }
+  const std::map<string, int64>& src_output_idx() const {
+    return src_output_idx_;
+  }
 
-  // This is time spent in kernel execution.
-  int64 kernel_exec_micros(int64 step) const {
+  // This is overall computation time, including both cpu and accelerator.
+  // Note, cpu and accelerator might or might not run in parallel.
+  int64 exec_micros(int64 step) const {
+    // Empty when no RunMetadata is provided.
     if (execs_.empty()) {
       return 0;
     }
@@ -262,6 +204,46 @@ class TFGraphNode {
     int64 total_micros = 0;
     for (const auto& exec : execs_) {
       total_micros += exec.second.exec_micros();
+    }
+    return total_micros / execs_.size();
+  }
+
+  // This is accelerator computation time of a step, or average of
+  // multiple step, when step < 0.
+  int64 accelerator_exec_micros(int64 step) const {
+    // Empty when no RunMetadata is provided.
+    if (execs_.empty()) {
+      return 0;
+    }
+    if (step >= 0) {
+      auto exec = execs_.find(step);
+      CHECK(exec != execs_.end());
+      return exec->second.accelerator_exec_micros();
+    }
+
+    int64 total_micros = 0;
+    for (const auto& exec : execs_) {
+      total_micros += exec.second.accelerator_exec_micros();
+    }
+    return total_micros / execs_.size();
+  }
+
+  // This is cpu computation time of a step, or average of
+  // multiple step, when step < 0.
+  int64 cpu_exec_micros(int64 step) const {
+    // Empty when no RunMetadata is provided.
+    if (execs_.empty()) {
+      return 0;
+    }
+    if (step >= 0) {
+      auto exec = execs_.find(step);
+      CHECK(exec != execs_.end());
+      return exec->second.cpu_exec_micros();
+    }
+
+    int64 total_micros = 0;
+    for (const auto& exec : execs_) {
+      total_micros += exec.second.cpu_exec_micros();
     }
     return total_micros / execs_.size();
   }
@@ -289,10 +271,10 @@ class TFGraphNode {
     return exec->second.all_start_micros();
   }
 
-  int64 latest_end_rel_micros(int64 step) const {
+  int64 latest_end_micros(int64 step) const {
     auto exec = execs_.find(step);
     CHECK(exec != execs_.end()) << "unknown step " << step;
-    return exec->second.latest_end_rel_micros();
+    return exec->second.latest_end_micros();
   }
 
   const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs(
@@ -301,6 +283,8 @@ class TFGraphNode {
     CHECK(exec != execs_.end()) << "unknown step " << step;
     return exec->second.op_execs();
   }
+
+  const std::map<int64, ExecStep>& all_op_execs() const { return execs_; }
 
   int64 accelerator_temp_bytes(int64 step) const {
     auto exec = execs_.find(step);
@@ -339,20 +323,37 @@ class TFGraphNode {
   string canonical_device() const { return canonical_device_; }
   string host_device() const { return host_device_; }
   const std::set<string>& op_types() const { return op_types_; }
+
+  const std::map<string, const AttrValue*>& op_attrs() const {
+    return op_attrs_;
+  }
+
   const std::vector<int64>& shape() const { return shape_; }
 
- private:
-  void update_shape(const std::vector<int64>& shape) { shape_ = shape; }
+  const std::map<int, std::vector<int64>>& output_shapes() const {
+    return output_shapes_;
+  }
+  const std::map<int, std::vector<int64>>& input_shapes() const {
+    return input_shapes_;
+  }
 
-  std::map<string, TFGraphNode*> inputs_;
-  std::map<string, int64> output_idx_;
+ private:
+  std::map<int, TFGraphNode*> inputs_;
+  std::map<string, int64> src_output_idx_;
 
   const NodeDef* node_;
 
   CodeDef code_;
 
   std::vector<int64> shape_;
+  // Won't missing input_idx. But some shapes might be empty (unknown).
+  std::map<int, std::vector<int64>> input_shapes_;
+  // Could miss output_idx if no _output_shapes attr. some shapes can also
+  // be empty.
+  std::map<int, std::vector<int64>> output_shapes_;
+
   std::set<string> op_types_;
+  std::map<string, const AttrValue*> op_attrs_;
 
   std::map<int64, ExecStep> execs_;
 
@@ -370,12 +371,17 @@ class TFMultiGraphNode {
  public:
   TFMultiGraphNode(const string& name)
       : name_(name),
-        kernel_exec_micros_(0),
+        exec_micros_(0),
+        accelerator_exec_micros_(0),
+        cpu_exec_micros_(0),
         requested_bytes_(0),
         float_ops_(0) {}
 
   bool SnapshotNodes(int64 step, const std::vector<string>& type_regexes) {
-    kernel_exec_micros_ = 0;
+    exec_micros_ = 0;
+    accelerator_exec_micros_ = 0;
+    cpu_exec_micros_ = 0;
+
     requested_bytes_ = 0;
     float_ops_ = 0;
     op_types_.clear();
@@ -392,7 +398,10 @@ class TFMultiGraphNode {
     for (const TFGraphNode* node : nodes) {
       op_types_.insert(node->op_types().begin(), node->op_types().end());
 
-      kernel_exec_micros_ += node->kernel_exec_micros(step);
+      exec_micros_ += node->exec_micros(step);
+      accelerator_exec_micros_ += node->accelerator_exec_micros(step);
+      cpu_exec_micros_ += node->cpu_exec_micros(step);
+
       requested_bytes_ += node->requested_bytes(step);
       float_ops_ += node->float_ops();
       if (node->shape().size() > 0) {
@@ -427,7 +436,9 @@ class TFMultiGraphNode {
 
   const string& name() const { return name_; }
 
-  int64 kernel_exec_micros() const { return kernel_exec_micros_; }
+  int64 exec_micros() const { return exec_micros_; }
+  int64 accelerator_exec_micros() const { return accelerator_exec_micros_; }
+  int64 cpu_exec_micros() const { return cpu_exec_micros_; }
 
   int64 requested_bytes() const { return requested_bytes_; }
 
@@ -469,7 +480,10 @@ class TFMultiGraphNode {
   const string name_;
   // Snapshot based on type_regexes
   std::set<string> op_types_;
-  int64 kernel_exec_micros_;
+  int64 exec_micros_;
+  int64 accelerator_exec_micros_;
+  int64 cpu_exec_micros_;
+
   int64 requested_bytes_;
   int64 float_ops_;
   std::set<string> devices_;
@@ -480,6 +494,8 @@ class TFMultiGraphNode {
   std::map<string, const TFGraphNode*> nodes_;
   std::map<string, std::unique_ptr<TFMultiGraphNode>> children_;
 };
+
+bool IsPlacedOnAccelerator(const string& device);
 }  // namespace tfprof
 }  // namespace tensorflow
 

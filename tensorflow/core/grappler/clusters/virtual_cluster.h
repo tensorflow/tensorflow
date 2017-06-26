@@ -18,18 +18,20 @@ limitations under the License.
 
 #include <unordered_map>
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {
 
 // Create a simple cluster that lists the devices (and their properties)
-// available in a TensorFlow session. This cluster doesn't allow running an
-// actual graph. It is useful however when used in conjusction with costs models
-// that aren't based on the execution of the graph.
+// available in a TensorFlow session. This cluster simulates the execution of
+// actual graphs.
 class VirtualCluster : public Cluster {
  public:
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices);
+  VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
+                 OpLevelCostEstimator* node_estimator);
 
   ~VirtualCluster() override;
 
@@ -38,6 +40,9 @@ class VirtualCluster : public Cluster {
   Status Run(const GraphDef& item,
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override;
+
+ private:
+  std::unique_ptr<OpLevelCostEstimator> node_estimator_;
 };
 
 }  // end namespace grappler

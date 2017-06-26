@@ -26,6 +26,7 @@ cc_library(
 
 cc_test(
     name = "scc_test",
+    size = "small",
     srcs = ["scc_test.cc"],
     deps = [
         ":scc",
@@ -53,6 +54,7 @@ cc_library(
 
 cc_test(
     name = "topological_sort_test",
+    size = "small",
     srcs = ["topological_sort_test.cc"],
     deps = [
         ":topological_sort",

@@ -54,7 +54,7 @@ class HloCostAnalysisTest : public ::testing::Test {
   HloCostAnalysisTest()
       : client_(ClientLibrary::LocalClientOrDie()),
         // Accessing service instance is required for the unit tests to enable
-        // whitebox acccesses to the user computation built from the client,
+        // whitebox accesses to the user computation built from the client,
         // as shown in the BuildHloGraph functions below.
         service_(static_cast<Service*>(ClientLibrary::GetXlaService(
             static_cast<LocalClient*>(client_)->platform()))),
@@ -342,11 +342,11 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
   //   mul = Mul(exp, C3)
   //   sub = Sub(mul, clamp)
   //   tuple = Tuple({sub, sub, mul, C1})
-  auto c1 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+  auto c1 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
       /*from=*/0.0f, /*to=*/1.0f, /*rows=*/2, /*cols=*/2));
-  auto c2 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+  auto c2 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
       /*from=*/1.0f, /*to=*/2.0f, /*rows=*/2, /*cols=*/2));
-  auto c3 = HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
+  auto c3 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
       /*from=*/2.0f, /*to=*/3.0f, /*rows=*/2, /*cols=*/2));
 
   auto add =
@@ -383,9 +383,8 @@ TEST_F(FusionCostAnalysis, NoLayout) {
   shape_without_layout.clear_layout();
 
   auto c1 = HloInstruction::CreateConstant(
-      LiteralUtil::CreateR4FromArray4D(Array4D<float>(2, 3, 4, 5)));
-  auto c2 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3}));
+      Literal::CreateR4FromArray4D(Array4D<float>(2, 3, 4, 5)));
+  auto c2 = HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3}));
 
   auto broadcast =
       HloInstruction::CreateBroadcast(shape_without_layout, c2.get(), {1});

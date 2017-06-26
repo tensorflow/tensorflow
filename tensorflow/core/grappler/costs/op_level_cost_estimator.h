@@ -89,17 +89,26 @@ class OpLevelCostEstimator {
                                             ConvolutionDimensions* conv_info,
                                             bool* found_unknown_shapes) const;
 
-  // Calculate the total size in bytes of a single input to a TensorFlow op.
-  int64 CalculateSingleInputSize(const OpInfo::TensorProperties& input,
-                                 bool* found_unknown_shapes) const;
+  // Calculate the element count of an input/output tensor.
+  int64 CalculateTensorElementCount(const OpInfo::TensorProperties& tensor,
+                                    bool* found_unknown_shapes) const;
+
+  // Calculate the total size in bytes of an input/output tensor.
+  int64 CalculateTensorSize(const OpInfo::TensorProperties& tensor,
+                            bool* found_unknown_shapes) const;
+
+  // Calculate the element count of the largest
+  // input of specified TensorFlow op.
+  int64 CalculateLargestInputCount(const OpInfo& op_features,
+                                   bool* found_unknown_shapes) const;
 
   // Calculate the total size in bytes of the all
-  // the inputs of specified TensorFlow Op
+  // the inputs of specified TensorFlow op.
   int64 CalculateInputSize(const OpInfo& op_features,
                            bool* found_unknown_shapes) const;
 
   // Calculate the total size in bytes of the all
-  // the outputs of specified TensorFlow Op
+  // the outputs of specified TensorFlow op.
   int64 CalculateOutputSize(const OpInfo& op_features,
                             bool* found_unknown_shapes) const;
 
@@ -114,6 +123,7 @@ class OpLevelCostEstimator {
   // execution_time is optional, depending on the
   // device.
   Costs PredictConv2D(const OpInfo& op_features) const;
+  Costs PredictCwiseOp(const OpInfo& op_features) const;
   Costs PredictConv2DBackPropInput(const OpInfo& op_features) const;
   Costs PredictConv2DBackPropFilter(const OpInfo& op_features) const;
   Costs PredictMatMul(const OpInfo& op_features) const;
@@ -136,6 +146,7 @@ class OpLevelCostEstimator {
       bool* found_unknown_shapes);
 
  protected:
+  std::map<string, int> elementwise_ops_;
   typedef std::function<Costs(const OpInfo& op_feature)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
 

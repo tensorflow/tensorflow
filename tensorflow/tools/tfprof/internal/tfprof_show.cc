@@ -156,13 +156,17 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) {
     info.push_back(memory);
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(node->proto().total_exec_micros());
-    if (node->account) {
-      time = FormatTime(node->proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    info.push_back(time);
+    info.push_back(FormatTotalExecTime(node, opts));
+    info.push_back(FormatAcceleratorExecTime(node, opts));
+    info.push_back(FormatCPUExecTime(node, opts));
+  }
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    info.push_back(FormatAcceleratorExecTime(node, opts));
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    info.push_back(FormatCPUExecTime(node, opts));
   }
   if (opts.select.find(kShown[5]) != opts.select.end()) {
     if (node->proto().devices_size() > 0) {
@@ -170,8 +174,20 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) {
     }
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
-    std::set<string> op_types = node->node->op_types();
+    const std::set<string>& op_types = node->node->op_types();
     info.push_back(str_util::Join(op_types, "|"));
+  }
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    std::vector<string> shape_vec;
+    for (const auto& s : node->node->input_shapes()) {
+      if (s.second.empty()) {
+        shape_vec.push_back(strings::Printf("%d:unknown", s.first));
+      } else {
+        shape_vec.push_back(strings::Printf(
+            "%d:%s", s.first, str_util::Join(s.second, "x").c_str()));
+      }
+    }
+    info.push_back(str_util::Join(shape_vec, "|"));
   }
 
   return strings::Printf("%s (%s)", node->name().c_str(),
@@ -190,13 +206,26 @@ string TFShow::FormatLegend(const Options& opts) {
     legends.push_back("output bytes");
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {
-    legends.push_back("execution time");
+    legends.push_back("total execution time");
+    legends.push_back("accelerator execution time");
+    legends.push_back("cpu execution time");
+  }
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    legends.push_back("accelerator execution time");
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    legends.push_back("cpu execution time");
   }
   if (opts.select.find(kShown[5]) != opts.select.end()) {
     legends.push_back("assigned devices");
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     legends.push_back("op types");
+  }
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    legends.push_back("input shapes");
   }
   return strings::Printf("node name | %s\n",
                          str_util::Join(legends, " | ").c_str());

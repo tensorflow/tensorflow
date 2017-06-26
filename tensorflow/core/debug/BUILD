@@ -123,6 +123,7 @@ tf_cuda_library(
     linkstatic = 1,
     deps = [
         ":debug_service_proto_cc",
+        ":debugger_event_metadata_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -144,6 +145,7 @@ tf_cuda_library(
         ":debug_graph_utils",
         ":debug_io_utils",
         ":debug_service_proto_cc",
+        ":debugger_event_metadata_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -194,6 +196,7 @@ tf_cc_test(
     deps = [
         ":debug_grpc_testlib",
         ":debug_io_utils",
+        ":debugger_event_metadata_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -204,6 +207,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -245,6 +249,12 @@ tf_cc_test(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:matmul_op",
     ],
+)
+
+tf_proto_library_cc(
+    name = "debugger_event_metadata_proto",
+    srcs = ["debugger_event_metadata.proto"],
+    cc_api_version = 2,
 )
 
 # TODO(cais): Add the following back in when tfdbg is supported on Android.

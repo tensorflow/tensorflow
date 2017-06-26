@@ -138,8 +138,9 @@ adder_node = a + b  # + provides a shortcut for tf.add(a, b)
 
 The preceding three lines are a bit like a function or a lambda in which we
 define two input parameters (a and b) and then an operation on them. We can
-evaluate this graph with multiple inputs by using the feed_dict parameter to
-specify Tensors that provide concrete values to these placeholders:
+evaluate this graph with multiple inputs by using the feed_dict argument to
+the [run method](https://www.tensorflow.org/api_docs/python/tf/Session#run)
+to feed concrete values to the placeholders:
 
 ```python
 print(sess.run(adder_node, {a: 3, b:4.5}))
@@ -449,7 +450,7 @@ y_train = np.array([0., -1., -2., -3.])
 x_eval = np.array([2., 5., 8., 1.])
 y_eval = np.array([-1.01, -4.1, -7, 0.])
 input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x_train}, y_train, 4, num_epochs=1000)
-
+eval_input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x_eval}, y_eval, 4, num_epochs=1000)
 # train
 estimator.fit(input_fn=input_fn, steps=1000)
 # Here we evaluate how well our model did. 

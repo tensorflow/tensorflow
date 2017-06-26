@@ -193,9 +193,11 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // the result).  We also know how many bytes can be dereferenced in it.
   const llvm::Argument& temp_buffer = *std::prev(kernel->arg_end());
   int64 temp_buffer_arg_no = temp_buffer.getArgNo();
-  if (const BufferAllocation* allocation =
-          ir_emitter_context_->buffer_assignment().GetTempAllocation()) {
-    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1, allocation->size());
+  int64 temp_allocation_total_size =
+      ir_emitter_context_->buffer_assignment().temp_allocation_total_size();
+  if (temp_allocation_total_size != 0) {
+    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1,
+                                   temp_allocation_total_size);
   }
   kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
 
@@ -720,8 +722,7 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
 
 }  // namespace
 
-Status IrEmitterUnnested::HandleCopy(HloInstruction* copy,
-                                     HloInstruction* operand) {
+Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
   if (ImplementedAsMemcpy(*copy)) {
     thunk_sequence_->emplace_back(BuildCopyThunk(copy));
     return Status::OK();
@@ -729,7 +730,7 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy,
   bool is_transpose_021;
   Shape reduced_input_shape, reduced_output_shape;
   std::tie(is_transpose_021, reduced_input_shape, reduced_output_shape) =
-      IsTranspose021(operand->shape(), copy->shape());
+      IsTranspose021(copy->operand(0)->shape(), copy->shape());
   if (is_transpose_021 &&
       reduced_input_shape.dimensions(1) >= kMinDimensionToTransposeTiled &&
       reduced_input_shape.dimensions(2) >= kMinDimensionToTransposeTiled) {
@@ -737,7 +738,8 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy,
     VLOG(3) << "Emitting tiled 0-2-1 transposition";
     constexpr int64 tile_size = 32;
     int64 num_tiles = EmitTranspose021Tiled(
-        GetIrArray(*operand).CastToShape(reduced_input_shape, &ir_builder_),
+        GetIrArray(*(copy->operand(0)))
+            .CastToShape(reduced_input_shape, &ir_builder_),
         GetIrArray(*copy).CastToShape(reduced_output_shape, &ir_builder_),
         tile_size, &ir_builder_);
     UpdateLaunchDimensions(LaunchDimensions(num_tiles, tile_size), LastThunk(),
@@ -745,7 +747,7 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy,
     return Status::OK();
   }
 
-  return IrEmitter::HandleCopy(copy, operand);
+  return IrEmitter::HandleCopy(copy);
 }
 
 Status IrEmitterUnnested::EmitColumnReduction(
@@ -1646,7 +1648,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildCopyThunk(
   const HloInstruction* operand = inst->operand(0);
   CHECK_EQ(HloOpcode::kConstant, operand->opcode());
   return MakeUnique<CopyThunk>(
-      /*source_address=*/LiteralUtil::InternalData(operand->literal()),
+      /*source_address=*/operand->literal().InternalData(),
       /*destination_buffer=*/GetAllocationSlice(*inst),
       /*mem_size=*/
       llvm_ir::ByteSizeOf(operand->shape(),
@@ -1657,12 +1659,18 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildCopyThunk(
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
     const HloInstruction* inst) {
   CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
+
+  std::vector<BufferAllocation::Slice> tuple_element_buffers;
+  for (int64 i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+    BufferAllocation::Slice buffer = ir_emitter_context_->buffer_assignment()
+                                         .GetUniqueSlice(inst, {i})
+                                         .ConsumeValueOrDie();
+    tuple_element_buffers.push_back(buffer);
+  }
+
   return MakeUnique<InfeedThunk>(
-      /*destination_buffer=*/GetAllocationSlice(*inst),
-      /*mem_size=*/
-      llvm_ir::ByteSizeOf(inst->shape(),
-                          ir_emitter_context_->llvm_module()->getDataLayout()),
-      inst);
+      tuple_element_buffers,
+      /*destination_buffer=*/GetAllocationSlice(*inst), inst);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
@@ -1797,7 +1805,7 @@ namespace {
 Status CheckWhileBuffersShareAllocation(
     const HloInstruction* xla_while,
     const BufferAssignment& buffer_assignment) {
-  return ShapeUtil::ForEachSubshape(
+  return ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [&buffer_assignment, &xla_while](const Shape& /*subshape*/,
                                        const ShapeIndex& index) -> Status {

@@ -178,7 +178,6 @@ py_test(
     deps = [
         ":framework_py",
         "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -198,7 +197,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -211,7 +209,6 @@ py_test(
         ":framework_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -223,9 +220,9 @@ py_test(
     deps = [
         ":framework_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -234,18 +231,19 @@ py_test(
 
 py_test(
     name = "experimental_test",
+    size = "small",
     srcs = ["python/framework/experimental_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":framework_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
-        "//third_party/py/numpy",
     ],
 )
 
 py_test(
     name = "tensor_util_test",
+    size = "small",
     srcs = ["python/framework/tensor_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -253,8 +251,8 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -306,6 +304,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":framework_py",
+        ":gen_checkpoint_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -314,6 +313,7 @@ py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
