@@ -152,7 +152,9 @@ class ClusterConfig(object):
       self._is_chief = (self._task_type == TaskType.WORKER and
                         self._task_id == 0)
 
-    self._evaluation_master = evaluation_master or ''
+    self._evaluation_master = (evaluation_master if evaluation_master is not None else
+                    _get_master(self._cluster_spec, self._task_type,
+                                self._task_id) or '')
 
   @property
   def cluster_spec(self):
@@ -230,7 +232,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
                save_checkpoints_steps=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
-               evaluation_master='',
+               evaluation_master=None,
                model_dir=None,
                session_config=None):
     """Constructor.
