@@ -1504,7 +1504,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
 
       # sample_distorted_bounding_box and sample_distorted_bounding_box_v2
       for op in [image_ops.sample_distorted_bounding_box,
-                 image_ops.sample_distorted_bounding_box_v2]:
+                 gen_image_ops._sample_distorted_bounding_box_v2]:
         begin, size, _ = op(
             image_size=image_size_tf,
             bounding_boxes=bounding_box_tf,
@@ -1526,7 +1526,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
 
       # sample_distorted_bounding_box_v2
       min_object_covered_placeholder = array_ops.placeholder(dtypes.float32)
-      begin, size, _ = image_ops.sample_distorted_bounding_box_v2(
+      begin, size, _ = gen_image_ops._sample_distorted_bounding_box_v2(
           image_size=image_size_tf,
           bounding_boxes=bounding_box_tf,
           min_object_covered=min_object_covered_placeholder,
@@ -1631,7 +1631,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
           shape=[4],
           dtype=dtypes.float32,)
       for op in [image_ops.sample_distorted_bounding_box,
-                 image_ops.sample_distorted_bounding_box_v2]:
+                 gen_image_ops._sample_distorted_bounding_box_v2]:
         begin, end, bbox_for_drawing = op(
             image_size=image_size,
             bounding_boxes=bounding_box,
