@@ -62,6 +62,7 @@ See the @{$python/image} guide.
 @@non_max_suppression
 @@non_max_suppression_v2
 @@sample_distorted_bounding_box
+@@sample_distorted_bounding_box_v2
 @@total_variation
 """
 from __future__ import absolute_import

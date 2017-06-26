@@ -47,6 +47,7 @@ ops.NotDifferentiable('RGBToHSV')
 ops.NotDifferentiable('HSVToRGB')
 ops.NotDifferentiable('DrawBoundingBoxes')
 ops.NotDifferentiable('SampleDistortedBoundingBox')
+ops.NotDifferentiable('SampleDistortedBoundingBoxV2')
 # TODO(bsteiner): Implement the gradient function for extract_glimpse
 # TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
