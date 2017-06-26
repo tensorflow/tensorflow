@@ -261,7 +261,9 @@ def _FilterStr(v):
 def _FilterBool(v):
   if isinstance(v, (list, tuple)):
     return _FirstNotNone([_FilterBool(x) for x in v])
-  return None if isinstance(v, bool) else _NotNone(v)
+  return None if (isinstance(v, bool)
+                  or (isinstance(v, compat.integral_types)
+                      and (v == 0 or v == 1))) else _NotNone(v)
 
 
 def _FilterNotTensor(v):

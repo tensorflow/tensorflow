@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -437,6 +438,25 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(tf3_result, expanded_nums)
       # Consistent with desire to get numerator
       self.assertAllEqual(tf_result, expanded_nums)
+
+
+class ConstantEqualTest(test_util.TensorFlowTestCase):
+
+  def testBoolEqual(self):
+    x = constant_op.constant(1, dtype=dtypes.bool)
+    y = np.bool(1)
+    z = True
+    with self.test_session(use_gpu=True):
+      z_tf = math_ops.equal(x, y).eval()
+      self.assertAllEqual(z, z_tf)
+
+  def testBoolArrayEqual(self):
+    x = constant_op.constant(np.array([1, 0, 1]), dtype=dtypes.bool)
+    y = np.array([1, 1, 1], dtype=np.bool)
+    z = np.array([True, False, True])
+    with self.test_session(use_gpu=True):
+      z_tf = math_ops.equal(x, y).eval()
+      self.assertAllEqual(z, z_tf)
 
 
 if __name__ == "__main__":
