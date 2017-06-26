@@ -248,7 +248,7 @@ class QueueBase(object):
     if isinstance(vals, dict):
       if not self._names:
         raise ValueError("Queue must have names to enqueue a dictionary")
-      if sorted(self._names) != sorted(vals.keys()):
+      if sorted(self._names, key=str) != sorted(vals.keys(), key=str):
         raise ValueError("Keys in dictionary to enqueue do not match "
                          "names of Queue.  Dictionary: (%s), Queue: (%s)" %
                          (sorted(vals.keys()), sorted(self._names)))

@@ -99,9 +99,9 @@ class Decoder(object):
       name: Name scope for any created operations.
 
     Returns:
-      `(outputs, next_state, next_inputs, finished)`: `outputs` is an instance
-      of BasicDecoderOutput, `next_state` is a (structure of) state tensors and
-      TensorArrays, `next_inputs` is the tensor that should be used as input for
+      `(outputs, next_state, next_inputs, finished)`: `outputs` is an object
+      containing the decoder output, `next_state` is a (structure of) state tensors
+      and TensorArrays, `next_inputs` is the tensor that should be used as input for
       the next step, `finished` is a boolean tensor telling whether the sequence
       is complete, for each sequence in the batch.
     """

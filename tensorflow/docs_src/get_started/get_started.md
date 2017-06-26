@@ -450,7 +450,7 @@ y_train = np.array([0., -1., -2., -3.])
 x_eval = np.array([2., 5., 8., 1.])
 y_eval = np.array([-1.01, -4.1, -7, 0.])
 input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x_train}, y_train, 4, num_epochs=1000)
-
+eval_input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x_eval}, y_eval, 4, num_epochs=1000)
 # train
 estimator.fit(input_fn=input_fn, steps=1000)
 # Here we evaluate how well our model did. 

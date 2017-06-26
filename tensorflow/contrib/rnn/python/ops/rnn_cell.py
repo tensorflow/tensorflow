@@ -1110,14 +1110,14 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
     if input_size is None:
       input_size = inputs.get_shape().as_list()[1]
     inputs = _linear([inputs, attns], input_size, True)
-    lstm_output, new_state = self._cell(inputs, state)
+    cell_output, new_state = self._cell(inputs, state)
     if self._state_is_tuple:
       new_state_cat = array_ops.concat(nest.flatten(new_state), 1)
     else:
       new_state_cat = new_state
     new_attns, new_attn_states = self._attention(new_state_cat, attn_states)
     with vs.variable_scope("attn_output_projection"):
-      output = _linear([lstm_output, new_attns], self._attn_size, True)
+      output = _linear([cell_output, new_attns], self._attn_size, True)
     new_attn_states = array_ops.concat(
         [new_attn_states, array_ops.expand_dims(output, 1)], 1)
     new_attn_states = array_ops.reshape(
