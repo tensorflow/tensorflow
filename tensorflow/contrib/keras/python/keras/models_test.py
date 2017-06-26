@@ -86,7 +86,7 @@ class TestModelSaving(test.TestCase):
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
-      model.compile(loss=custom_loss, optimizer=keras.optimizers.Adam(), metrics=['acc'])
+      model.compile(loss=custom_loss, optimizer=CustomOp(), metrics=['acc'])
 
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
