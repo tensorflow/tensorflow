@@ -189,7 +189,6 @@ class TpuEstimator(estimator_lib.Estimator):
         raise ValueError(
             'batch size {} must be divisible by number of shards {}'
             .format(params['batch_size'], config.tpu_config.num_shards))
-      params['batch_size'] //= config.tpu_config.num_shards
 
     if use_tpu:
       # config and params need to be copied because we haven't initialized
@@ -233,11 +232,12 @@ class TpuEstimator(estimator_lib.Estimator):
           collections=[ops.GraphKeys.GLOBAL_VARIABLES,
                        ops.GraphKeys.GLOBAL_STEP])
 
-  def _call_input_fn(self, input_fn):
+  def _call_input_fn(self, input_fn, mode):
     """Calls the input function.
 
     Args:
       input_fn: The input function.
+      mode: ModeKeys
 
     Returns:
       Either features or (features, labels) where features and labels are:
@@ -247,17 +247,22 @@ class TpuEstimator(estimator_lib.Estimator):
     Raises:
       ValueError: if input_fn takes invalid arguments.
     """
-    if not self.use_tpu:
-      return super(TpuEstimator, self)._call_input_fn(input_fn)
+    if not self.use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
+      return super(TpuEstimator, self)._call_input_fn(input_fn, mode)
 
     input_fn_args = estimator_lib._fn_args(input_fn)  # pylint: disable=protected-access
+    config = self.config
     kwargs = {}
     if 'params' in input_fn_args:
       kwargs['params'] = self.params
     if 'config' in input_fn_args:
-      kwargs['config'] = self.config
+      kwargs['config'] = config
 
-    job = _tpu_job(self.config)
+    # Now for TPU training.
+    if 'params' in kwargs and 'batch_size' in kwargs['params']:
+      kwargs['params']['batch_size'] //= config.tpu_config.num_shards
+
+    job = _tpu_job(config)
     def placement_function(index):
       if job is None:
         return '/replica:0/task:0/device:CPU:0'
@@ -266,7 +271,7 @@ class TpuEstimator(estimator_lib.Estimator):
 
     features = []
     labels = []
-    for i in range(self.config.tpu_config.num_shards):
+    for i in range(config.tpu_config.num_shards):
       with ops.device(placement_function(i)):
         result = input_fn(**kwargs)
         # input_fn may return either features or (features, labels)
@@ -389,12 +394,12 @@ def wrapped_model_fn(model_fn, run_config, params):
     """model_fn."""
     # TODO(jhseu): Move to EVAL and PREDICT to TPU.
     if mode != model_fn_lib.ModeKeys.TRAIN:
-      if isinstance(features, _PerShardOutput):
-        features = features.as_list()[0]
-      if isinstance(labels, _PerShardOutput):
-        labels = labels.as_list()[0]
       return _call_model_fn(model_fn, features, labels, mode, run_config,
                             params)
+
+    # Now for TPU training.
+    if params is not None and 'batch_size' in params:
+      params['batch_size'] //= run_config.tpu_config.num_shards
 
     assert isinstance(features, _PerShardOutput)
     features = features.as_list()

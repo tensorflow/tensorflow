@@ -334,7 +334,8 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       self._create_and_assert_global_step(g)
-      features = self._get_features_from_input_fn(input_fn)
+      features = self._get_features_from_input_fn(
+          input_fn, model_fn_lib.ModeKeys.PREDICT)
       estimator_spec = self._call_model_fn(features, None,
                                            model_fn_lib.ModeKeys.PREDICT)
       predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
@@ -484,8 +485,8 @@ class Estimator(object):
 
       return export_dir
 
-  def _get_features_from_input_fn(self, input_fn):
-    result = self._call_input_fn(input_fn)
+  def _get_features_from_input_fn(self, input_fn, mode):
+    result = self._call_input_fn(input_fn, mode)
     if not ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
       logging.warning('Input graph does not contain a QueueRunner. '
                       'That means predict yields forever. '
@@ -549,11 +550,12 @@ class Estimator(object):
     assert step.dtype.is_integer
     return step
 
-  def _call_input_fn(self, input_fn):
+  def _call_input_fn(self, input_fn, mode):
     """Calls the input function.
 
     Args:
       input_fn: The input function.
+      mode: ModeKeys
 
     Returns:
       Either features or (features, labels) where features and labels are:
@@ -563,6 +565,7 @@ class Estimator(object):
     Raises:
       ValueError: if input_fn takes invalid arguments.
     """
+    del mode  # unused
     input_fn_args = _fn_args(input_fn)
     kwargs = {}
     if 'params' in input_fn_args:
@@ -607,7 +610,8 @@ class Estimator(object):
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._call_input_fn(input_fn)
+      features, labels = self._call_input_fn(
+          input_fn, model_fn_lib.ModeKeys.TRAIN)
       estimator_spec = self._call_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
@@ -689,7 +693,8 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._call_input_fn(input_fn)
+      features, labels = self._call_input_fn(
+          input_fn, model_fn_lib.ModeKeys.EVAL)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
 
