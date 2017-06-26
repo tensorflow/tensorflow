@@ -77,6 +77,7 @@ class PrintModelAnalysisTest(test.TestCase):
     opts.min_params = TEST_OPTIONS['min_params']
     opts.min_float_ops = TEST_OPTIONS['min_float_ops']
     opts.order_by = TEST_OPTIONS['order_by']
+    opts.step = -1
     for p in TEST_OPTIONS['account_type_regexes']:
       opts.account_type_regexes.append(p)
     for p in TEST_OPTIONS['start_name_regexes']:
