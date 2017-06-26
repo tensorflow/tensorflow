@@ -47,7 +47,7 @@ class SimpleOrcJIT {
       std::function<llvm::object::OwningBinary<llvm::object::ObjectFile>(
           llvm::Module&)>;
   using CompileLayerT = llvm::orc::IRCompileLayer<ObjLayerT, CompileFtor>;
-  using ModuleHandleT = CompileLayerT::ModuleSetHandleT;
+  using ModuleHandleT = CompileLayerT::ModuleHandleT;
   using OptimizationCallback = CompilerFunctor::OptimizationCallback;
 
   // Create a new JIT, targeting the host architecture.

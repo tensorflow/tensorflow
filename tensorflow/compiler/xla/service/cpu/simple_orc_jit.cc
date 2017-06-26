@@ -166,12 +166,8 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
 
 SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
-  // The Orc API adds a whole iterable "set" of modules, so we wrap the module
-  // in a vector.
-  std::vector<std::unique_ptr<llvm::Module>> module_set;
-  module_set.push_back(std::move(module));
-  auto handle = compile_layer_.addModuleSet(
-      std::move(module_set), MakeUnique<llvm::SectionMemoryManager>(),
+  auto handle = compile_layer_.addModule(
+      std::move(module), MakeUnique<llvm::SectionMemoryManager>(),
       MakeUnique<SimpleResolver>());
   module_handles_.push_back(handle);
   return handle;
@@ -181,7 +177,7 @@ void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::ModuleHandleT handle) {
   module_handles_.erase(
       std::remove(module_handles_.begin(), module_handles_.end(), handle),
       module_handles_.end());
-  compile_layer_.removeModuleSet(handle);
+  compile_layer_.removeModule(handle);
 }
 
 llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string &name) {
