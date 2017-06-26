@@ -2464,7 +2464,7 @@ tf_cc_tests(
         ":ops_util",
         ":sparse_add_op",
         ":sparse_dense_binary_op_shared",
-        ":sparse_reduce_op",
+        ":sparse_reduce_sum_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3207,7 +3207,7 @@ cc_library(
         ":sparse_cross_op",
         ":sparse_dense_binary_op_shared",
         ":sparse_fill_empty_rows_op",
-        ":sparse_reduce_op",
+        ":sparse_reduce_sum_op",
         ":sparse_reorder_op",
         ":sparse_reshape_op",
         ":sparse_softmax",
@@ -3263,8 +3263,8 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "sparse_reduce_op",
-    prefix = "sparse_reduce_op",
+    name = "sparse_reduce_sum_op",
+    prefix = "sparse_reduce_sum_op",
     deps = SPARSE_DEPS,
 )
 

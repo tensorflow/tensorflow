@@ -985,7 +985,7 @@ class LSTM(Recurrent):
 
   References:
       - [Long short-term
-        memory](http://www.bioinf.jku.at/publications/older/2604.pdf)
+        memory](http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf)
         (original 1997 paper)
       - [Supervised sequence labeling with recurrent neural
         networks](http://www.cs.toronto.edu/~graves/preprint.pdf)

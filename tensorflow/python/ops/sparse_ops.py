@@ -30,8 +30,6 @@
 @@sparse_reset_shape
 @@sparse_fill_empty_rows
 @@sparse_transpose
-@@sparse_reduce_max
-@@sparse_reduce_max_sparse
 @@sparse_reduce_sum
 @@sparse_reduce_sum_sparse
 @@sparse_add
@@ -710,90 +708,6 @@ def sparse_to_dense(sparse_indices,
       default_value=default_value,
       validate_indices=validate_indices,
       name=name)
-
-
-def sparse_reduce_max(sp_input, axis=None, keep_dims=False,
-                      reduction_axes=None):
-  """Computes the max of elements across dimensions of a SparseTensor.
-
-  This Op takes a SparseTensor and is the sparse counterpart to
-  `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
-  instead of a sparse one.
-
-  Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
-  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
-  with length 1.
-
-  If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
-  with a single element is returned.  Additionally, the axes can be negative,
-  similar to the indexing rules in Python.
-
-  For example:
-
-  ```python
-  # 'x' represents [[1, ?, 2]
-  #                 [?, 3, ?]]
-  # where ? is implicitly-zero.
-  tf.sparse_reduce_max(x) ==> 3
-  tf.sparse_reduce_max(x, 0) ==> [1, 3, 2]
-  tf.sparse_reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
-  tf.sparse_reduce_max(x, 1, keep_dims=True) ==> [[2], [3]]
-  tf.sparse_reduce_max(x, [0, 1]) ==> 3
-  ```
-
-  Args:
-    sp_input: The SparseTensor to reduce. Should have numeric type.
-    axis: The dimensions to reduce; list or scalar. If `None` (the
-      default), reduces all dimensions.
-    keep_dims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
-
-  Returns:
-    The reduced Tensor.
-  """
-  return gen_sparse_ops.sparse_reduce_max(
-      sp_input.indices, sp_input.values,
-      sp_input.dense_shape,
-      math_ops._ReductionDims(sp_input, axis, reduction_axes),
-      keep_dims)
-
-
-def sparse_reduce_max_sparse(sp_input, axis=None, keep_dims=False,
-                             reduction_axes=None):
-  """Computes the max of elements across dimensions of a SparseTensor.
-
-  This Op takes a SparseTensor and is the sparse counterpart to
-  `tf.reduce_max()`.  In contrast to SparseReduceSum, this Op returns a
-  SparseTensor.
-
-  Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
-  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
-  with length 1.
-
-  If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
-  with a single element is returned.  Additionally, the axes can be negative,
-  which are interpreted according to the indexing rules in Python.
-
-  Args:
-    sp_input: The SparseTensor to reduce. Should have numeric type.
-    axis: The dimensions to reduce; list or scalar. If `None` (the
-      default), reduces all dimensions.
-    keep_dims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis
-
-  Returns:
-    The reduced SparseTensor.
-  """
-  output_ind, output_val, output_shape = (
-      gen_sparse_ops.sparse_reduce_max_sparse(
-          sp_input.indices, sp_input.values,
-          sp_input.dense_shape, math_ops._ReductionDims(sp_input, axis,
-                                                        reduction_axes),
-          keep_dims))
-
-  return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
 def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,

@@ -929,7 +929,7 @@ struct TuningConfig {
   // Conv2DBackpropFilter will use a specialized GEMM implementation, which is
   // usually faster than the NCHW implementation. The downside is that this
   // might result in more non-cancellable layout conversion nodes (implemented
-  // by the Transpose op).
+  // by the Tranpose op).
   bool no_gemm;
 };
 

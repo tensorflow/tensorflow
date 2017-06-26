@@ -132,13 +132,6 @@ template <typename Device, typename T, int NDIMS>
 void TransposeUsingEigen(const Device& d, const Tensor& in,
                          const gtl::ArraySlice<int32> perm, Tensor* out);
 
-
-#ifdef TENSORFLOW_USE_SYCL
-// For SYCL lets always go through Eigen
-template <typename Device, typename T>
-void TransposeSYCL(const Device& d, const Tensor& in,
-                   const gtl::ArraySlice<int32> perm, Tensor* out);
-#endif // TENSORFLOW_USE_SYCL
 }  // namespace internal
 
 template <typename Device, typename T>

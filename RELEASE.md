@@ -113,8 +113,6 @@
   checkpoints containing such RNN cells, in which case you can use the
   [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
   to convert the variable names in your old checkpoints.
-* Added `tf.contrib.kernel_methods` module with Ops and estimators for primal
-  (explicit) kernel methods in TensorFlow.
 
 ## Bug Fixes and Other Changes
 * In python, `Operation.get_attr` on type attributes returns the Python DType

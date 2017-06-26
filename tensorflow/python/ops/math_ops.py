@@ -45,8 +45,6 @@ See the @{$python/math_ops} guide.
 @@expm1
 @@log
 @@log1p
-@@sinh
-@@cosh
 @@ceil
 @@floor
 @@maximum
@@ -2065,11 +2063,12 @@ def tanh(x, name=None):
 
   Args:
     x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
-      `complex64`, or `int64`.
+      `complex64`, `int64`, or `qint32`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor or SparseTensor respectively with the same type as `x`.
+    A Tensor or SparseTensor respectively with the same type as `x` if
+    `x.dtype != qint32` otherwise the return type is `quint8`.
   """
   with ops.name_scope(name, "Tanh", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):

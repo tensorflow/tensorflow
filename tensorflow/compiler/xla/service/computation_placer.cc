@@ -49,18 +49,17 @@ Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   return Status::OK();
 }
 
-/* static */ StatusOr<std::unique_ptr<DeviceAssignment>>
-DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
+/* static */ StatusOr<DeviceAssignment> DeviceAssignment::Deserialize(
+    const DeviceAssignmentProto& proto) {
   TF_RET_CHECK(proto.computation_devices_size() == proto.computation_count());
-  auto assignment = MakeUnique<DeviceAssignment>(proto.replica_count(),
-                                                 proto.computation_count());
+  DeviceAssignment assignment(proto.replica_count(), proto.computation_count());
   for (int computation = 0; computation < proto.computation_count();
        ++computation) {
     const auto& computation_device = proto.computation_devices(computation);
     TF_RET_CHECK(computation_device.replica_device_ids_size() ==
                  proto.replica_count());
     for (int replica = 0; replica < proto.replica_count(); ++replica) {
-      (*assignment)(replica, computation) =
+      assignment(replica, computation) =
           computation_device.replica_device_ids(replica);
     }
   }

@@ -171,7 +171,7 @@ message ExecutorOpts {
 };
 
 message RunGraphRequest {
-  // session_handle is the master-generated unique id for this session.
+  // session_handle is the the master-generated unique id for this session.
   // If session_handle is non-empty, it must be the same as used when
   // registering the graph. If it is empty, a single global namespace is used to
   // search for the graph_handle.

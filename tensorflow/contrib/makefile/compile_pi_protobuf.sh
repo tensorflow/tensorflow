@@ -15,15 +15,15 @@
 # ==============================================================================
 # Builds protobuf 3 for iOS.
 
-cd tensorflow/contrib/makefile || exit 1
+cd tensorflow/contrib/makefile
 
-GENDIR=$(pwd)/gen/protobuf_pi/
+GENDIR=`pwd`/gen/protobuf_pi/
 LIBDIR=${GENDIR}
 mkdir -p ${LIBDIR}
 
 CXX=arm-linux-gnueabihf-g++
 
-cd downloads/protobuf || exit 1
+cd downloads/protobuf
 
 ./autogen.sh
 if [ $? -ne 0 ]

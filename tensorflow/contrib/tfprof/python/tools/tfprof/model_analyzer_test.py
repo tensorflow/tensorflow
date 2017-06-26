@@ -126,7 +126,7 @@ class PrintModelAnalysisTest(test.TestCase):
     opts['account_displayed_op_only'] = False
     opts['select'] = ['params', 'float_ops']
 
-    with session.Session() as sess, ops.device('/cpu:0'):
+    with session.Session() as sess:
       x = lib.BuildFullModel()
 
       sess.run(variables.global_variables_initializer())
@@ -176,6 +176,7 @@ class PrintModelAnalysisTest(test.TestCase):
     opts['select'] = [
         'bytes', 'params', 'float_ops', 'device'
     ]
+    opts['output'] = 'none'
 
     with session.Session() as sess:
       x = lib.BuildSmallModel()
@@ -275,6 +276,33 @@ class PrintModelAnalysisTest(test.TestCase):
 
       self.assertEqual(total_children, 15)
       self.assertGreater(input_shapes, 0)
+
+  def testAdvisor(self):
+    ops.reset_default_graph()
+
+    with session.Session() as sess:
+      x = lib.BuildFullModel()
+
+      sess.run(variables.global_variables_initializer())
+      run_meta = config_pb2.RunMetadata()
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
+
+      advice_pb = model_analyzer.advise(sess.graph, run_meta)
+      self.assertTrue('AcceleratorUtilizationChecker' in advice_pb.checkers)
+      self.assertTrue('ExpensiveOperationChecker' in advice_pb.checkers)
+      self.assertTrue('OperationChecker' in advice_pb.checkers)
+
+      checker = advice_pb.checkers['AcceleratorUtilizationChecker']
+      if test.is_gpu_available():
+        self.assertGreater(len(checker.reports), 0)
+      else:
+        self.assertEqual(len(checker.reports), 0)
+      checker = advice_pb.checkers['ExpensiveOperationChecker']
+      self.assertGreater(len(checker.reports), 0)
 
 
 if __name__ == '__main__':

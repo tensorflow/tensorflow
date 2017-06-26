@@ -89,7 +89,7 @@ def _run_loop_model():
 class RunMetadataTest(test.TestCase):
 
   def testGPU(self):
-    if not test.is_gpu_available(cuda_only=True):
+    if not test.is_gpu_available():
       return
 
     ops.reset_default_graph()

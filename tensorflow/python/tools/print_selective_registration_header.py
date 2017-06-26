@@ -16,7 +16,7 @@ r"""Prints a header file to be used with SELECTIVE_REGISTRATION.
 
 An example of command-line usage is:
   bazel build tensorflow/python/tools:print_selective_registration_header && \
-  bazel-bin/tensorflow/python/tools/print_selective_registration_header \
+  bazel-bin/tensorflow/python/tools:print_selective_registration_header \
     --graphs=path/to/graph.pb > ops_to_register.h
 
 Then when compiling tensorflow, include ops_to_register.h in the include search

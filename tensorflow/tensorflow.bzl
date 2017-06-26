@@ -147,7 +147,7 @@ def tf_copts():
       "-Iexternal/gemmlowp",
       "-Wno-sign-compare",
       "-fno-exceptions",
-  ] + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
+  ] + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_android_arm(
       ["-mfpu=neon"]) + if_x86(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
               "-std=c++11",

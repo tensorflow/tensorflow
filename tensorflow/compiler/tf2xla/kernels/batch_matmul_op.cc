@@ -94,14 +94,12 @@ class BatchMatMulOp : public XlaOpKernel {
       // Slice off individual matrices and reshape to 2D tensors.
       auto x_slice = builder->Slice(
           x_flat, {i, 0, 0},
-          {i + 1, x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)},
-          {1, 1, 1});
+          {i + 1, x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)});
       x_slice = builder->Reshape(
           x_slice, {x_shape.dim_size(ndims - 2), x_shape.dim_size(ndims - 1)});
       auto y_slice = builder->Slice(
           y_flat, {i, 0, 0},
-          {i + 1, y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)},
-          {1, 1, 1});
+          {i + 1, y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)});
       y_slice = builder->Reshape(
           y_slice, {y_shape.dim_size(ndims - 2), y_shape.dim_size(ndims - 1)});
 

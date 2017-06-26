@@ -82,7 +82,7 @@ After creating placeholders for the data, the graph is built from the
 `mnist.py` file according to a 3-stage pattern: `inference()`, `loss()`, and
 `training()`.
 
-1.  `inference()` - Builds the graph as far as required for running
+1.  `inference()` - Builds the graph as far as is required for running
 the network forward to make predictions.
 1.  `loss()` - Adds to the inference graph the ops required to generate
 loss.

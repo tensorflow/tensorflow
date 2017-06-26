@@ -9,10 +9,7 @@ load("build_defs", "JAVACOPTS")
 
 java_library(
     name = "tensorflow",
-    srcs = [
-        ":java_op_sources",
-        ":java_sources",
-    ],
+    srcs = [":java_sources"],
     data = [":libtensorflow_jni"],
     javacopts = JAVACOPTS,
     visibility = ["//visibility:public"],
@@ -25,14 +22,6 @@ filegroup(
     srcs = glob(["src/main/java/org/tensorflow/*.java"]),
     visibility = [
         "//tensorflow/contrib/android:__pkg__",
-        "//tensorflow/java:__pkg__",
-    ],
-)
-
-filegroup(
-    name = "java_op_sources",
-    srcs = glob(["src/main/java/org/tensorflow/op/*.java"]),
-    visibility = [
         "//tensorflow/java:__pkg__",
     ],
 )
@@ -142,19 +131,6 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/TensorTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.TensorTest",
-    deps = [
-        ":tensorflow",
-        ":testutil",
-        "@junit",
-    ],
-)
-
-java_test(
-    name = "ScopeTest",
-    size = "small",
-    srcs = ["src/test/java/org/tensorflow/op/ScopeTest.java"],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.op.ScopeTest",
     deps = [
         ":tensorflow",
         ":testutil",

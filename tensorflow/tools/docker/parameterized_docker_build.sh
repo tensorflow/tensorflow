@@ -233,16 +233,13 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
 
   # Modify python/pip version if necessary.
   if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
-    if sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
+    sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
         sed -i -e 's/python-dev/python3-dev/g' "${DOCKERFILE}" && \
         sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
-        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
-    then
-      echo "Modified Dockerfile for python version "\
-"${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}"
-    else
-      die "FAILED to modify ${DOCKERFILE} for python3"
-    fi
+        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}" && \
+        echo "Modified Dockerfile for python version "\
+"${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}" || \
+        die "FAILED to modify ${DOCKERFILE} for python3"
   fi
 else
   DOCKERFILE="${TMP_DIR}/Dockerfile"
@@ -253,17 +250,14 @@ else
 
   # Modify python/pip version if necessary.
   if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]]; then
-    if sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \
+    sed -i -e 's/python-dev/python-dev python3-dev/g' "${DOCKERFILE}" && \
         sed -i -e 's/python /python3 /g' "${DOCKERFILE}" && \
         sed -i -e 's^/tmp/pip^/tmp/pip3^g' "${DOCKERFILE}" && \
         sed -i -e 's/pip /pip3 /g' "${DOCKERFILE}" && \
         sed -i -e 's/ENV CI_BUILD_PYTHON python/ENV CI_BUILD_PYTHON python3/g' "${DOCKERFILE}" && \
-        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}"
-    then
-      echo "Modified Dockerfile further for python version ${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}"
-    else
-      die "FAILED to modify ${DOCKERFILE} for python3"
-    fi
+        sed -i -e 's^# RUN ln -s /usr/bin/python3 /usr/bin/python#^RUN ln -s /usr/bin/python3 /usr/bin/python^' "${DOCKERFILE}" && \
+        echo "Modified Dockerfile further for python version ${TF_DOCKER_BUILD_PYTHON_VERSION} at: ${DOCKERFILE}" || \
+        die "FAILED to modify ${DOCKERFILE} for python3"
   fi
 fi
 
@@ -283,7 +277,7 @@ fi
 
 # Make sure that there is no other containers of the same image running
 # TODO(cais): Move to an earlier place.
-if "${DOCKER_BINARY}" ps | grep -q "${IMG}"; then
+if [[ ! -z $("${DOCKER_BINARY}" ps | grep "${IMG}") ]]; then
   die "ERROR: It appears that there are docker containers of the image "\
 "${IMG} running. Please stop them before proceeding"
 fi
@@ -316,22 +310,16 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
     # on the running docker container
     echo ""
     echo "Performing basic sanity checks on the running container..."
-    if wget -qO- "http://127.0.0.1:${CONTAINER_PORT}/tree" &> /dev/null
-    then
-      echo "  PASS: wget tree"
-    else
-      mark_check_failed "  FAIL: wget tree"
-    fi
+    wget -qO- "http://127.0.0.1:${CONTAINER_PORT}/tree" &> /dev/null && \
+        echo "  PASS: wget tree" || \
+        mark_check_failed "  FAIL: wget tree"
 
     for NB in ${TMP_DIR}/notebooks/*.ipynb; do
       NB_BASENAME=$(basename "${NB}")
       NB_URL="http://127.0.0.1:${CONTAINER_PORT}/notebooks/${NB_BASENAME}"
-      if wget -qO- "${NB_URL}" -o "${TMP_DIR}/${NB_BASENAME}" &> /dev/null
-      then
-        echo "  PASS: wget ${NB_URL}"
-      else
-        mark_check_failed  "  FAIL: wget ${NB_URL}"
-      fi
+      wget -qO- "${NB_URL}" -o "${TMP_DIR}/${NB_BASENAME}" &> /dev/null && \
+          echo "  PASS: wget ${NB_URL}" || \
+          mark_check_failed  "  FAIL: wget ${NB_URL}"
     done
   fi
 

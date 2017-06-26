@@ -200,8 +200,8 @@ echo "  TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA}"
 function get_cuda_capability_version() {
   if [[ ! -z $(which deviceQuery) ]]; then
     # The first listed device is used
-    deviceQuery | grep "CUDA Capability .* version" | \
-        head -1 | awk '{print $NF}'
+    echo $(deviceQuery | grep "CUDA Capability .* version" | \
+        head -1 | awk '{print $NF}')
   fi
 }
 
@@ -532,14 +532,11 @@ if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
   DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
 
   # Replace a line in the Dockerfile
-  if sed -i \
+  sed -i \
       's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
-      "${DOCKERFILE}"
-  then
-    echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}"
-  else
-    die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
-  fi
+      "${DOCKERFILE}" && \
+      echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}" || \
+      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
 
   DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
 fi
@@ -577,7 +574,7 @@ rm -f ${TMP_SCRIPT}
 END_TIME=$(date +'%s')
 echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
-"(Elapsed time: $((END_TIME - START_TIME)) s)"
+"(Elapsed time: $((${END_TIME} - ${START_TIME})) s)"
 
 
 # Clean up temporary directory if it exists

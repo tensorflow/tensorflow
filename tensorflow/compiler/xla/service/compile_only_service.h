@@ -55,7 +55,7 @@ class CompileOnlyService : public Service {
 
   // Override Service methods that require or imply the existence of an
   // execute backend.  Note that this does not include TransferToClient, as
-  // computing constants produces global data that we may wish to transfer.
+  // computing contants produces global data that we may wish to transfer.
   tensorflow::Status Execute(const ExecuteRequest* arg,
                              ExecuteResponse* result) override {
     return Unimplemented("CompileOnlyService does not support execution.");

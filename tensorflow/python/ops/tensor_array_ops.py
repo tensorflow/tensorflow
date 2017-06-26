@@ -87,7 +87,7 @@ class TensorArray(object):
         the shape constraints of each of the elements of the TensorArray.
         Need not be fully defined.
       colocate_with_first_write_call: If `True`, the TensorArray will be
-        colocated on the same device as the Tensor used on its first write
+        colocated on the same device as the the Tensor used on its first write
         (write operations include `write`, `unstack`, and `split`).  If `False`,
         the TensorArray will be placed on the device determined by the
         device context available during its initialization.

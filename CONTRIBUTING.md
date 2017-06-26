@@ -159,12 +159,7 @@ There are two ways to run TensorFlow unit tests.
    bazel test ${flags} //tensorflow/python/...
    ```
 
-2. Using [Docker](www.docker.com) and TensorFlow's CI scripts.
-
-   ```bash
-   # Install Docker first, then this will build and run cpu tests
-   tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
-   ```
+2. Using Docker and TensorFlow's CI scripts.
 
    See
    [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build) for details.

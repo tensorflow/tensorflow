@@ -93,7 +93,7 @@ class TopK : public OpKernel {
       rows_by_one.set(0, num_rows);
 #else
       Eigen::array<int, 1> reduce_on_cols = {1};
-      Eigen::array<int, 2> rows_by_one = {static_cast<int>(num_rows), 1};
+      Eigen::array<int, 1> rows_by_one = {static_cast<int>(num_rows), 1};
 #endif
 
       values.device(d) =

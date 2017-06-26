@@ -8,10 +8,7 @@ some input and generate a meaningful response? For example, could we train
 a neural network to translate from English to French? It turns out that
 the answer is *yes*.
 
-This tutorial will show you how to build and train such a system end-to-end.
-Clone the [TensorFlow main repo](https://github.com/tensorflow/tensorflow) and
-the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub.
-You can then start by running the translate program:
+This tutorial will show you how to build and train such a system end-to-end. Clone the [TensorFlow main repo](https://github.com/tensorflow/tensorflow) and the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub. You can then start by running the translate program:
 
 ```
 cd models/tutorials/rnn/translate
@@ -28,7 +25,7 @@ This tutorial references the following files.
 
 File | What's in it?
 --- | ---
-`tensorflow/tensorflow/contrib/legacy_seq2seq/python/ops/seq2seq.py` | Library for building sequence-to-sequence models.
+`tensorflow/tensorflow/python/ops/seq2seq.py` | Library for building sequence-to-sequence models.
 `models/tutorials/rnn/translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
 `models/tutorials/rnn/translate/data_utils.py` | Helper functions for preparing translation data.
 `models/tutorials/rnn/translate/translate.py` | Binary that trains and runs the translation model.
@@ -151,9 +148,9 @@ have similar interfaces, so we will not describe them in detail. We will use
 ## Neural translation model
 
 While the core of the sequence-to-sequence model is constructed by
-the functions in `tensorflow/tensorflow/contrib/legacy_seq2seq/python/ops/seq2seq.py`,
-there are still a few tricks that are worth mentioning that are used in our
-translation model in `models/tutorials/rnn/translate/seq2seq_model.py`.
+the functions in `tensorflow/tensorflow/python/ops/seq2seq.py`, there are still a few tricks
+that are worth mentioning that are used in our translation model in
+`models/tutorials/rnn/translate/seq2seq_model.py`.
 
 ### Sampled softmax and output projection
 

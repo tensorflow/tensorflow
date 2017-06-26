@@ -5185,31 +5185,6 @@ op {
   summary: "Computes cos of x element-wise."
 }
 op {
-  name: "Cosh"
-  input_arg {
-    name: "x"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "y"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
-      }
-    }
-  }
-  summary: "Computes hyperbolic cosine of x element-wise."
-}
-op {
   name: "CountUpTo"
   input_arg {
     name: "ref"
@@ -6302,7 +6277,7 @@ op {
     }
   }
   summary: "Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors."
-  description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\n```\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n```\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
+  description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
 }
 op {
   name: "DepthwiseConv2dNativeBackpropFilter"
@@ -22818,31 +22793,6 @@ op {
   summary: "Computes sin of x element-wise."
 }
 op {
-  name: "Sinh"
-  input_arg {
-    name: "x"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "y"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_COMPLEX64
-        type: DT_COMPLEX128
-      }
-    }
-  }
-  summary: "Computes hyperbolic sine of x element-wise."
-}
-op {
   name: "Size"
   input_arg {
     name: "input"
@@ -24937,123 +24887,6 @@ op {
   }
   summary: "Multiply matrix \"a\" by matrix \"b\"."
   description: "The inputs must be two-dimensional matrices and the inner dimension of \"a\" must\nmatch the outer dimension of \"b\". This op is optimized for the case where at\nleast one of \"a\" or \"b\" is sparse. The breakeven for using this versus a dense\nmatrix multiply on one platform was 30% zero values in the sparse matrix.\n\nThe gradient computation of this operation will only take advantage of sparsity\nin the input gradient when that gradient comes from a Relu."
-}
-op {
-  name: "SparseReduceMax"
-  input_arg {
-    name: "input_indices"
-    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, possibly not in canonical ordering."
-    type: DT_INT64
-  }
-  input_arg {
-    name: "input_values"
-    description: "1-D.  `N` non-empty values corresponding to `input_indices`."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "input_shape"
-    description: "1-D.  Shape of the input SparseTensor."
-    type: DT_INT64
-  }
-  input_arg {
-    name: "reduction_axes"
-    description: "1-D.  Length-`K` vector containing the reduction axes."
-    type: DT_INT32
-  }
-  output_arg {
-    name: "output"
-    description: "`R-K`-D.  The reduced Tensor."
-    type_attr: "T"
-  }
-  attr {
-    name: "keep_dims"
-    type: "bool"
-    default_value {
-      b: false
-    }
-    description: "If true, retain reduced dimensions with length 1."
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_UINT16
-        type: DT_HALF
-      }
-    }
-  }
-  summary: "Computes the max of elements across dimensions of a SparseTensor."
-  description: "This Op takes a SparseTensor and is the sparse counterpart to\n`tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`\ninstead of a sparse one.\n\nReduces `sp_input` along the dimensions given in `reduction_axes`.  Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained\nwith length 1.\n\nIf `reduction_axes` has no entries, all dimensions are reduced, and a tensor\nwith a single element is returned.  Additionally, the axes can be negative,\nwhich are interpreted according to the indexing rules in Python."
-}
-op {
-  name: "SparseReduceMaxSparse"
-  input_arg {
-    name: "input_indices"
-    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, possibly not in canonical ordering."
-    type: DT_INT64
-  }
-  input_arg {
-    name: "input_values"
-    description: "1-D.  `N` non-empty values corresponding to `input_indices`."
-    type_attr: "T"
-  }
-  input_arg {
-    name: "input_shape"
-    description: "1-D.  Shape of the input SparseTensor."
-    type: DT_INT64
-  }
-  input_arg {
-    name: "reduction_axes"
-    description: "1-D.  Length-`K` vector containing the reduction axes."
-    type: DT_INT32
-  }
-  output_arg {
-    name: "output_indices"
-    type: DT_INT64
-  }
-  output_arg {
-    name: "output_values"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output_shape"
-    type: DT_INT64
-  }
-  attr {
-    name: "keep_dims"
-    type: "bool"
-    default_value {
-      b: false
-    }
-    description: "If true, retain reduced dimensions with length 1."
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_INT64
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_UINT16
-        type: DT_HALF
-      }
-    }
-  }
-  summary: "Computes the max of elements across dimensions of a SparseTensor."
-  description: "This Op takes a SparseTensor and is the sparse counterpart to\n`tf.reduce_max()`.  In contrast to SparseReduceMax, this Op returns a\nSparseTensor.\n\nReduces `sp_input` along the dimensions given in `reduction_axes`.  Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained\nwith length 1.\n\nIf `reduction_axes` has no entries, all dimensions are reduced, and a tensor\nwith a single element is returned.  Additionally, the axes can be negative,\nwhich are interpreted according to the indexing rules in Python."
 }
 op {
   name: "SparseReduceSum"

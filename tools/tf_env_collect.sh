@@ -16,62 +16,49 @@
 
 set -u  # Check for undefined variables
 
-die() {
-  # Print a message and exit with code 1.
-  #
-  # Usage: die <error_message>
-  #   e.g., die "Something bad happened."
-
-  echo $@
-  exit 1
-}
-
 echo "Collecting system information..."
 
 OUTPUT_FILE=tf_env.txt
-python_bin_path=$(which python || which python3 || die "Cannot find Python binary")
 
-{
-  echo
-  echo "== cat /etc/issue ==============================================="
-  uname -a
-  uname=`uname -s`
-  if [ "$(uname)" == "Darwin" ]; then
-    echo Mac OS X `sw_vers -productVersion`
-  elif [ "$(uname)" == "Linux" ]; then
-    cat /etc/*release | grep VERSION
-  fi
-  
-  echo
-  echo '== are we in docker ============================================='
-  num=`cat /proc/1/cgroup | grep docker | wc -l`;
-  if [ $num -ge 1 ]; then
-    echo "Yes"
-  else
-    echo "No"
-  fi
-  
-  echo
-  echo '== compiler ====================================================='
-  c++ --version 2>&1
-  
-  echo
-  echo '== uname -a ====================================================='
-  uname -a
-  
-  echo
-  echo '== check pips ==================================================='
-  pip list 2>&1 | grep "proto\|numpy\|tensorflow"
-  
-  
-  echo
-  echo '== check for virtualenv ========================================='
-  ${python_bin_path} -c "import sys;print(hasattr(sys, \"real_prefix\"))"
-  
-  echo
-  echo '== tensorflow import ============================================'
-} >> ${OUTPUT_FILE}
+echo >> $OUTPUT_FILE
+echo "== cat /etc/issue ===============================================" >> $OUTPUT_FILE
+uname -a >> $OUTPUT_FILE
+uname=`uname -s`
+if [ "$(uname)" == "Darwin" ]; then
+  echo Mac OS X `sw_vers -productVersion` >> $OUTPUT_FILE
+elif [ "$(uname)" == "Linux" ]; then
+  cat /etc/*release | grep VERSION >> $OUTPUT_FILE
+fi
 
+
+echo >> $OUTPUT_FILE
+echo '== are we in docker =============================================' >> $OUTPUT_FILE
+num=`cat /proc/1/cgroup | grep docker | wc -l`;
+if [ $num -ge 1 ]; then
+  echo "Yes" >> $OUTPUT_FILE
+else
+  echo "No" >> $OUTPUT_FILE
+fi
+
+echo >> $OUTPUT_FILE
+echo '== compiler =====================================================' >> $OUTPUT_FILE
+c++ --version 2>&1 >> $OUTPUT_FILE
+
+echo >> $OUTPUT_FILE
+echo '== uname -a =====================================================' >> $OUTPUT_FILE
+uname -a >> $OUTPUT_FILE
+
+echo >> $OUTPUT_FILE
+echo '== check pips ===================================================' >> $OUTPUT_FILE
+pip list 2>&1 | grep "proto\|numpy\|tensorflow" >> $OUTPUT_FILE
+
+
+echo >> $OUTPUT_FILE
+echo '== check for virtualenv =========================================' >> $OUTPUT_FILE
+python -c "import sys;print(hasattr(sys, \"real_prefix\"))" >> $OUTPUT_FILE
+
+echo >> $OUTPUT_FILE
+echo '== tensorflow import ============================================' >> $OUTPUT_FILE
 cat <<EOF > /tmp/check_tf.py
 import tensorflow as tf;
 print("tf.VERSION = %s" % tf.VERSION)
@@ -80,34 +67,32 @@ print("tf.COMPILER_VERSION = %s" % tf.GIT_VERSION)
 with tf.Session() as sess:
   print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
 EOF
-${python_bin_path} /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
+python /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 
-DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
+DEBUG_LD=libs python -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
+grep libcudnn.so /tmp/loadedlibs >> $OUTPUT_FILE
 
-{
-  grep libcudnn.so /tmp/loadedlibs
-  echo
-  echo '== env =========================================================='
-  if [ -z ${LD_LIBRARY_PATH+x} ]; then
-    echo "LD_LIBRARY_PATH is unset";
-  else
-    echo LD_LIBRARY_PATH ${LD_LIBRARY_PATH} ;
-  fi
-  if [ -z ${DYLD_LIBRARY_PATH+x} ]; then
-    echo "DYLD_LIBRARY_PATH is unset";
-  else
-    echo DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH} ;
-  fi
-  
-  
-  echo
-  echo '== nvidia-smi ==================================================='
-  nvidia-smi 2>&1
-  
-  echo
-  echo '== cuda libs  ==================================================='
-} >> ${OUTPUT_FILE}
+echo >> $OUTPUT_FILE
+echo '== env ==========================================================' >> $OUTPUT_FILE
+if [ -z ${LD_LIBRARY_PATH+x} ]; then
+  echo "LD_LIBRARY_PATH is unset" >> $OUTPUT_FILE;
+else
+  echo LD_LIBRARY_PATH ${LD_LIBRARY_PATH}  >> $OUTPUT_FILE;
+fi
+if [ -z ${DYLD_LIBRARY_PATH+x} ]; then
+  echo "DYLD_LIBRARY_PATH is unset" >> $OUTPUT_FILE;
+else
+  echo DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH}  >> $OUTPUT_FILE;
+fi
 
+
+echo >> $OUTPUT_FILE >> $OUTPUT_FILE
+echo '== nvidia-smi ===================================================' >> $OUTPUT_FILE
+nvidia-smi 2>&1 >> $OUTPUT_FILE
+
+echo >> $OUTPUT_FILE
+
+echo '== cuda libs  ===================================================' >> $OUTPUT_FILE
 find /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
 find /usr/local -type f -name 'libudnn*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
 

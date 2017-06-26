@@ -52,8 +52,8 @@ LABEL_DIMENSION = 3  #  Dimensionality of regression labels.
 
 def _train_test_split(features_and_labels):
   features, labels = features_and_labels
-  train_set = (features[:int(len(features) / 2)], labels[:int(len(features) / 2)])
-  test_set = (features[int(len(features) / 2):], labels[int(len(features) / 2):])
+  train_set = (features[:len(features) / 2], labels[:len(features) / 2])
+  test_set = (features[len(features) / 2:], labels[len(features) / 2:])
   return train_set, test_set
 
 

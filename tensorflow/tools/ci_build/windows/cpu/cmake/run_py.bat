@@ -29,6 +29,9 @@ IF DEFINED PIP_EXE (ECHO PIP_EXE is set to %PIP_EXE%) ELSE (SET PIP_EXE="C:\Prog
 CALL %REPO_ROOT%\tensorflow\tools\ci_build\windows\cpu\cmake\run_build.bat
 if %errorlevel% neq 0 exit /b %errorlevel%
 
+:: Attempt to upgrade PIP to work around Anaconda issue #542.
+%PIP_EXE% install --ignore-installed --upgrade pip setuptools -v -v
+
 :: Since there are no wildcards in windows command prompt, use dark magic to get the wheel file name.
 DIR %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\ /S /B > wheel_filename_file
 set /p WHEEL_FILENAME=<wheel_filename_file
@@ -36,7 +39,7 @@ del wheel_filename_file
 
 :: Install the pip package.
 echo Installing PIP package...
-%PIP_EXE% install --upgrade --no-deps %WHEEL_FILENAME% -v -v
+%PIP_EXE% install --upgrade %WHEEL_FILENAME% -v -v
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 :: Run all python tests if the installation succeeded.

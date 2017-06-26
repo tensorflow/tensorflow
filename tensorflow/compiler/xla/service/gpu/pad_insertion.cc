@@ -80,7 +80,6 @@ HloInstruction* MaybePaddedAndSlicedInput(
     std::vector<int64> start_indices(input->shape().dimensions_size(), 0);
     std::vector<int64> limit_indices(input->shape().dimensions().begin(),
                                      input->shape().dimensions().end());
-    std::vector<int64> strides(input->shape().dimensions_size(), 1);
     for (size_t i = 0; i < conv_dnums.spatial_dimensions().size(); ++i) {
       int64 dim = conv_dnums.spatial_dimensions(i);
       // If dimension "dim" has negative padding, increase the start index or
@@ -93,9 +92,9 @@ HloInstruction* MaybePaddedAndSlicedInput(
 
     input = computation->AddInstruction(HloInstruction::CreateSlice(
         ShapeInference::InferSliceShape(input->shape(), start_indices,
-                                        limit_indices, strides)
+                                        limit_indices)
             .ConsumeValueOrDie(),
-        input, start_indices, limit_indices, strides));
+        input, start_indices, limit_indices));
   }
 
   return input;
@@ -355,8 +354,6 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
   std::vector<int64> limit_indices(
       new_backward_conv->shape().dimensions().begin(),
       new_backward_conv->shape().dimensions().end());
-  std::vector<int64> strides(new_backward_conv->shape().dimensions_size(),
-                             1LL);
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
     int64 padding_low = backward_conv->window().dimensions(i).padding_low();
     int64 padding_high = backward_conv->window().dimensions(i).padding_high();
@@ -376,13 +373,13 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
   // Replace the old backward convolution with the slice.
   CHECK(ShapeUtil::Compatible(
       ShapeInference::InferSliceShape(new_backward_conv->shape(), start_indices,
-                                      limit_indices, strides)
+                                      limit_indices)
           .ConsumeValueOrDie(),
       backward_conv->shape()));
   TF_CHECK_OK(computation->ReplaceWithNewInstruction(
       backward_conv,
       HloInstruction::CreateSlice(backward_conv->shape(), new_backward_conv,
-                                  start_indices, limit_indices, strides)));
+                                  start_indices, limit_indices)));
   return true;
 }
 

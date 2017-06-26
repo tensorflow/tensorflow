@@ -26,7 +26,7 @@ usage() {
 [ $# == 0 ] && usage && exit 0
 
 # read the options
-ARGS=$(getopt -o p:v:h --long prefix:,version:,help -n $0 -- "$@")
+ARGS=`getopt -o p:v:h --long prefix:,version:,help -n $0 -- "$@"`
 eval set -- "$ARGS"
 
 # extract options and their arguments into variables.

@@ -205,6 +205,7 @@ class OpDefBuilderWrapper;
 template <>
 class OpDefBuilderWrapper<true> {
  public:
+  typedef OpDefBuilderWrapper<true> WrapperType;
   OpDefBuilderWrapper(const char name[]) : builder_(name) {}
   OpDefBuilderWrapper<true>& Attr(StringPiece spec) {
     builder_.Attr(spec);

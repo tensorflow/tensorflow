@@ -307,7 +307,7 @@ class Tensor {
   /// Returns the data as an Eigen::Tensor with NDIMS dimensions, collapsing the
   /// first 'begin' Tensor dimensions into the first dimension of the result and
   /// the Tensor dimensions of the last dims() - 'begin' - NDIMS into the last
-  /// dimension of the result. If 'begin' < 0 then the |'begin'| leading
+  /// dimension of the result. If 'begin' < 0 then the the |'begin'| leading
   /// dimensions of size 1 will be added. If 'begin' + NDIMS > dims() then
   /// 'begin' + NDIMS - dims() trailing dimensions of size 1 will be added.
   template <typename T, size_t NDIMS = 3>

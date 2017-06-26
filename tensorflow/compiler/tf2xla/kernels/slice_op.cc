@@ -54,9 +54,7 @@ class SliceOp : public XlaOpKernel {
     for (int i = 0; i < begin.size(); ++i) {
       limits.push_back(begin[i] + size[i]);
     }
-    std::vector<int64> strides(begin.size(), 1);
-    ctx->SetOutput(0, ctx->builder()->Slice(ctx->Input(0), begin, limits,
-                                            strides));
+    ctx->SetOutput(0, ctx->builder()->Slice(ctx->Input(0), begin, limits));
   }
 
  private:

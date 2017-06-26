@@ -91,14 +91,11 @@ eight-bit computations:
 ```sh
 curl http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz -o /tmp/inceptionv3.tgz
 tar xzf /tmp/inceptionv3.tgz -C /tmp/
-bazel build tensorflow/tools/graph_transforms:transform_graph
-bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
-  --in_graph=/tmp/classify_image_graph_def.pb \
-  --outputs="softmax" --out_graph=/tmp/quantized_graph.pb \
-  --transforms='add_default_attributes strip_unused_nodes(type=float, shape="1,299,299,3")
-    remove_nodes(op=Identity, op=CheckNumerics) fold_constants(ignore_errors=true)
-    fold_batch_norms fold_old_batch_norms quantize_weights quantize_nodes
-    strip_unused_nodes sort_by_execution_order'
+bazel build tensorflow/tools/quantization:quantize_graph
+bazel-bin/tensorflow/tools/quantization/quantize_graph \
+  --input=/tmp/classify_image_graph_def.pb \
+  --output_node_names="softmax" --output=/tmp/quantized_graph.pb \
+  --mode=eightbit
 ```
 
 This will produce a new model that runs the same operations as the original, but

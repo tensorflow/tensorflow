@@ -17,9 +17,9 @@
 # Install protobuf3.
 
 # Select protobuf version.
-PROTOBUF_VERSION="3.3.0"
+PROTOBUF_VERSION="3.2.0"
 protobuf_ver_flat=$(echo $PROTOBUF_VERSION | sed 's/\.//g' | sed 's/^0*//g')
-local_protobuf_ver=$(protoc --version)
+local_protobuf_ver=$(protoc --version | awk '{print $2}')
 local_protobuf_ver_flat=$(echo $local_protobuf_ver | sed 's/\.//g' | sed 's/^0*//g')
 if [[ -z $local_protobuf_ver_flat ]]; then
   local_protobuf_ver_flat=0
@@ -30,7 +30,7 @@ if (( $local_protobuf_ver_flat < $protobuf_ver_flat )); then
   PROTOBUF_ZIP=$(basename "${PROTOBUF_URL}")
   UNZIP_DEST="google-protobuf"
 
-  wget "${PROTOBUF_URL}"
+  wget -q "${PROTOBUF_URL}"
   unzip "${PROTOBUF_ZIP}" -d "${UNZIP_DEST}"
   cp "${UNZIP_DEST}/bin/protoc" /usr/local/bin/
 

@@ -28,7 +28,7 @@ import java.nio.charset.Charset;
  * <pre>{@code
  * // g is a Graph instance.
  * try (Tensor c1 = Tensor.create(3.0f)) {
- *   g.opBuilder("Const", "MyConst")
+ *   g.opBuilder("Constant", "MyConst")
  *       .setAttr("dtype", c1.dataType())
  *       .setAttr("value", c1)
  *       .build();

@@ -351,7 +351,7 @@ to evaluate embeddings is to directly use them to predict syntactic and semantic
 relationships like `king is to queen as father is to ?`. This is called
 *analogical reasoning* and the task was introduced by
 [Mikolov and colleagues
-](http://www.anthology.aclweb.org/N/N13/N13-1090.pdf).
+](http://msr-waypoint.com/en-us/um/people/gzweig/Pubs/NAACL2013Regularities.pdf).
 Download the dataset for this task from
 [download.tensorflow.org](http://download.tensorflow.org/data/questions-words.txt).
 

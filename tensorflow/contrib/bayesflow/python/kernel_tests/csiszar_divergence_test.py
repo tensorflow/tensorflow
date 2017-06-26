@@ -627,6 +627,11 @@ class MonteCarloCsiszarFDivergenceTest(test.TestCase):
       grad = lambda fs: gradients_impl.gradients(fs, s)[0]
 
       [
+          approx_kl_grad_,
+          approx_kl_self_normalized_grad_,
+          approx_kl_score_trick_grad_,
+          approx_kl_self_normalized_score_trick_grad_,
+          exact_kl_grad_,
           approx_kl_,
           approx_kl_self_normalized_,
           approx_kl_score_trick_,
@@ -638,23 +643,39 @@ class MonteCarloCsiszarFDivergenceTest(test.TestCase):
           grad(approx_kl_score_trick),
           grad(approx_kl_self_normalized_score_trick),
           grad(exact_kl),
+          approx_kl,
+          approx_kl_self_normalized,
+          approx_kl_score_trick,
+          approx_kl_self_normalized_score_trick,
+          exact_kl,
       ])
 
-      self.assertAllClose(
-          approx_kl_, exact_kl_,
-          rtol=0.06, atol=0.)
+      # Test average divergence.
+      self.assertAllClose(approx_kl_, exact_kl_,
+                          rtol=0.02, atol=0.)
+
+      self.assertAllClose(approx_kl_self_normalized_, exact_kl_,
+                          rtol=0.08, atol=0.)
+
+      self.assertAllClose(approx_kl_score_trick_, exact_kl_,
+                          rtol=0.02, atol=0.)
+
+      self.assertAllClose(approx_kl_self_normalized_score_trick_, exact_kl_,
+                          rtol=0.08, atol=0.)
+
+      # Test average gradient-divergence.
+      self.assertAllClose(approx_kl_grad_, exact_kl_grad_,
+                          rtol=0.007, atol=0.)
+
+      self.assertAllClose(approx_kl_self_normalized_grad_, exact_kl_grad_,
+                          rtol=0.011, atol=0.)
+
+      self.assertAllClose(approx_kl_score_trick_grad_, exact_kl_grad_,
+                          rtol=0.018, atol=0.)
 
       self.assertAllClose(
-          approx_kl_self_normalized_, exact_kl_,
-          rtol=0.05, atol=0.)
-
-      self.assertAllClose(
-          approx_kl_score_trick_, exact_kl_,
-          rtol=0.06, atol=0.)
-
-      self.assertAllClose(
-          approx_kl_self_normalized_score_trick_, exact_kl_,
-          rtol=0.05, atol=0.)
+          approx_kl_self_normalized_score_trick_grad_, exact_kl_grad_,
+          rtol=0.017, atol=0.)
 
 
 if __name__ == '__main__':

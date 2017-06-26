@@ -14,7 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-PROTOBUF_VERSION="3.3.1"
+PROTOBUF_VERSION="3.2.0"
 PYTHON_BIN=${PYTHON_BIN:-python}
 DIR=${PWD}/protobuf
 

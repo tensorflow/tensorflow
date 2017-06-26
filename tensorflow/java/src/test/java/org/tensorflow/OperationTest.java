@@ -52,16 +52,6 @@ public class OperationTest {
     assertEquals(3, split(new int[] {0, 1, 2}, 3));
   }
 
-  @Test
-  public void inputListLength() {
-    assertEquals(1, splitWithInputList(new int[] {0, 1}, 1, "split_dim"));
-    try {
-      splitWithInputList(new int[] {0, 1}, 2, "inputs");
-    } catch (IllegalArgumentException iae) {
-      // expected
-    }
-  }
-
   private static int split(int[] values, int num_split) {
     try (Graph g = new Graph()) {
       return g.opBuilder("Split", "Split")
@@ -70,17 +60,6 @@ public class OperationTest {
           .setAttr("num_split", num_split)
           .build()
           .outputListLength("output");
-    }
-  }
-
-  private static int splitWithInputList(int[] values, int num_split, String name) {
-    try (Graph g = new Graph()) {
-      return g.opBuilder("Split", "Split")
-          .addInput(TestUtil.constant(g, "split_dim", 0))
-          .addInput(TestUtil.constant(g, "values", values))
-          .setAttr("num_split", num_split)
-          .build()
-          .inputListLength(name);
     }
   }
 }

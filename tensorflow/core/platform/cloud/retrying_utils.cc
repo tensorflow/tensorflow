@@ -89,7 +89,7 @@ Status RetryingUtils::DeleteWithRetries(
   bool is_retried = false;
   return RetryingUtils::CallWithRetries(
       [delete_func, &is_retried]() {
-        const Status status = delete_func();
+        const auto& status = delete_func();
         if (is_retried && status.code() == error::NOT_FOUND) {
           return Status::OK();
         }

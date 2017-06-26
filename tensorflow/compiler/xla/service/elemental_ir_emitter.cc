@@ -949,20 +949,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         IrArray::Index sliced_index(index.size());
         for (int i = 0; i < index.size(); ++i) {
-          int64 stride = hlo->slice_stride(i);
-          if (stride != 1) {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                ir_builder_->CreateMul(
-                    index[i], llvm::ConstantInt::get(index[i]->getType(),
-                                                     stride)),
-                llvm::ConstantInt::get(index[i]->getType(),
-                                       hlo->slice_starts(i)));
-          } else {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                    index[i],
-                    llvm::ConstantInt::get(index[i]->getType(),
-                                           hlo->slice_starts(i)));
-          }
+          sliced_index[i] = ir_builder_->CreateAdd(
+              index[i], llvm::ConstantInt::get(index[i]->getType(),
+                                               hlo->slice_starts(i)));
         }
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };

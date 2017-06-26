@@ -256,8 +256,7 @@ void ComputationBuilder::CheckSameShape(const ComputationDataHandle& lhs,
 ComputationDataHandle ComputationBuilder::Slice(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices,
-    tensorflow::gtl::ArraySlice<int64> stride) {
+    tensorflow::gtl::ArraySlice<int64> limit_indices) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
@@ -269,9 +268,6 @@ ComputationDataHandle ComputationBuilder::Slice(
   }
   for (int64 index : limit_indices) {
     request.add_limit_indices(index);
-  }
-  for (int64 index : stride) {
-    request.add_stride(index);
   }
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();

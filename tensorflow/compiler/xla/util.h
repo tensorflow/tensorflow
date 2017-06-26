@@ -195,22 +195,14 @@ bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
 // 2. permutation.size() == input.size().
 template <template <typename...> class C, typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       C<T> input) {
-  tensorflow::gtl::ArraySlice<T> data(input);
-  CHECK(IsPermutation(permutation, data.size()));
-  std::vector<T> output(data.size());
+                       C<T> input_) {
+  tensorflow::gtl::ArraySlice<T> input(input_);
+  CHECK(IsPermutation(permutation, input.size()));
+  std::vector<T> output(input.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
-    output[permutation[i]] = data[i];
+    output[permutation[i]] = input[i];
   }
   return output;
-}
-
-// Override of the above that works around compile failures with gcc 7.1.1.
-// For details see https://github.com/tensorflow/tensorflow/issues/10843
-template <typename T>
-std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       const std::vector<T>& input) {
-  return Permute<std::vector, T>(permutation, input);
 }
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.

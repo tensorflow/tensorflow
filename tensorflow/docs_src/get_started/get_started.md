@@ -135,9 +135,8 @@ adder_node = a + b  # + provides a shortcut for tf.add(a, b)
 
 The preceding three lines are a bit like a function or a lambda in which we
 define two input parameters (a and b) and then an operation on them. We can
-evaluate this graph with multiple inputs by using the feed_dict argument to
-the [run method](https://www.tensorflow.org/api_docs/python/tf/Session#run)
-to feed concrete values to the placeholders:
+evaluate this graph with multiple inputs by using the feed_dict parameter to
+specify Tensors that provide concrete values to these placeholders:
 
 ```python
 print(sess.run(adder_node, {a: 3, b:4.5}))

@@ -762,9 +762,6 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   tensor_list = _as_tensor_list(tensors)
   with ops.name_scope(name, "shuffle_batch",
                       list(tensor_list) + [keep_input]) as name:
-    if capacity <= min_after_dequeue:
-      raise ValueError("capacity %d must be bigger than min_after_dequeue %d."
-                       % (capacity, min_after_dequeue))
     tensor_list = _validate(tensor_list)
     keep_input = _validate_keep_input(keep_input, enqueue_many)
     tensor_list, sparse_info = _store_sparse_tensors(

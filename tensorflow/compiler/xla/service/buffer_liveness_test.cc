@@ -588,7 +588,7 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     if (update_uses_tuple_element1) {
       // Create a slice instruction as an additional user of 'gte1'.
       slice = builder.AddInstruction(
-          HloInstruction::CreateSlice(update_shape, gte1, {0}, {3}, {1}));
+          HloInstruction::CreateSlice(update_shape, gte1, {0}, {3}));
       update = builder.AddInstruction(HloInstruction::CreateBinary(
           update_shape, HloOpcode::kAdd, update, slice));
     }

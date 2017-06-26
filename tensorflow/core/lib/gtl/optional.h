@@ -656,7 +656,7 @@ class optional : private internal_optional::optional_data<T>,
   constexpr const T& reference() const { return *this->pointer(); }
   T& reference() { return *(this->pointer()); }
 
-  // T constraint checks.  You can't have an optional of nullopt_t, in_place_t or
+  // T constaint checks.  You can't have an optional of nullopt_t, in_place_t or
   // a reference.
   static_assert(
       !std::is_same<nullopt_t, typename std::remove_cv<T>::type>::value,

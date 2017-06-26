@@ -79,7 +79,7 @@ public final class Operation {
    *
    * @param name identifier of the list of tensors (of which there may
    *        be many) produced by this operation.
-   * @return the size of the list of Tensors produced by this named output.
+   * @returns the size of the list of Tensors produced by this named output.
    * @throws IllegalArgumentException if this operation has no output
    *         with the provided name.
    */
@@ -95,28 +95,6 @@ public final class Operation {
   /** Returns a symbolic handle to one of the tensors produced by this operation. */
   public Output output(int idx) {
     return new Output(this, idx);
-  }
-
-  /**
-   * Returns the size of the given inputs list of Tensors for this operation.
-   *
-   * <p>An Operation has multiple named inputs, each of which contains either
-   * a single tensor or a list of tensors. This method returns the size of
-   * the list of tensors for a specific named input of the operation.
-   *
-   * @param name identifier of the list of tensors (of which there may
-   *        be many) inputs to this operation.
-   * @returns the size of the list of Tensors produced by this named input.
-   * @throws IllegalArgumentException if this operation has no input
-   *         with the provided name.
-   */
-  public int inputListLength(final String name) {
-    Graph.Reference r = graph.ref();
-    try {
-      return inputListLength(unsafeNativeHandle, name);
-    } finally {
-      r.close();
-    }
   }
 
   long getUnsafeNativeHandle() {
@@ -153,8 +131,6 @@ public final class Operation {
   private static native int numOutputs(long handle);
 
   private static native int outputListLength(long handle, String name);
-
-  private static native int inputListLength(long handle, String name);
 
   private static native long[] shape(long graphHandle, long opHandle, int output);
 

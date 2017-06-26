@@ -1,14 +1,5 @@
 # -*- Python -*-
 
-# Pin to Java 1.7 to ensure broader compatibility for the Java bindings on
-# Android. Note also that the android_library bazel rule currently enforces
-# java 7
-# https://github.com/bazelbuild/bazel/blob/6c1106b1a721516d3b3db54d2e1c31b44a76fbb1/src/main/java/com/google/devtools/build/lib/bazel/rules/android/BazelAndroidSemantics.java#L73
-
-JAVA_VERSION_OPTS = [
-    "-source 7 -target 7",
-]
-
 # A more robust set of lint and errorprone checks when building
 # Java source to improve code consistency.
 
@@ -160,4 +151,4 @@ EP_DISABLED_CHECKS = [
 
 EP_OPTS = EP_ENABLED_WARNINGS + EP_DISABLED_CHECKS
 
-JAVACOPTS = JAVA_VERSION_OPTS + XLINT_OPTS + EP_OPTS
+JAVACOPTS = XLINT_OPTS + EP_OPTS
