@@ -101,8 +101,6 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:training",
     ],

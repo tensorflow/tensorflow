@@ -345,6 +345,8 @@ class BasicLSTMCell(RNNCell):
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
+        Must set to `0.0` manually when restoring from CudnnLSTM-trained
+        checkpoints.
       state_is_tuple: If True, accepted and returned states are 2-tuples of
         the `c_state` and `m_state`.  If False, they are concatenated
         along the column axis.  The latter behavior will soon be deprecated.
@@ -401,7 +403,7 @@ class LSTMCell(RNNCell):
 
   The default non-peephole implementation is based on:
 
-    http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+    http://www.bioinf.jku.at/publications/older/2604.pdf
 
   S. Hochreiter and J. Schmidhuber.
   "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
@@ -444,7 +446,8 @@ class LSTMCell(RNNCell):
         Use a variable_scope partitioner instead.
       forget_bias: Biases of the forget gate are initialized by default to 1
         in order to reduce the scale of forgetting at the beginning of
-        the training.
+        the training. Must set it manually to `0.0` when restoring from
+        CudnnLSTM trained checkpoints.
       state_is_tuple: If True, accepted and returned states are 2-tuples of
         the `c_state` and `m_state`.  If False, they are concatenated
         along the column axis.  This latter behavior will soon be deprecated.

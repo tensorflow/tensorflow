@@ -122,7 +122,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
     if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
                                        b.instruction(), b.index(),
-                                       points_to_analysis())) {
+                                       &points_to_analysis())) {
       return false;
     }
   }

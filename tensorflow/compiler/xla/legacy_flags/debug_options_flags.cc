@@ -28,6 +28,12 @@ struct DebugOptionsFlags {
   string xla_disable_hlo_passes;
   bool xla_enable_fast_math;
   int32 xla_backend_optimization_level;
+  bool xla_embed_ir_in_executable;
+  string xla_dump_debug_json_to;
+
+  string xla_gpu_cuda_data_dir;
+  bool xla_gpu_ftz;
+
   string xla_backend_extra_options;
 };
 
@@ -44,7 +50,11 @@ void AllocateFlags() {
   flag_values->xla_generate_hlo_graph = "";
   flag_values->xla_disable_hlo_passes = "";
   flag_values->xla_enable_fast_math = true;
-  flag_values->xla_backend_optimization_level = 2;
+  flag_values->xla_backend_optimization_level = 3;
+  flag_values->xla_embed_ir_in_executable = false;
+  flag_values->xla_dump_debug_json_to = "";
+  flag_values->xla_gpu_cuda_data_dir = "./cuda_sdk_lib";
+  flag_values->xla_gpu_ftz = false;
   flag_values->xla_backend_extra_options = "";
 
   flag_objects = new std::vector<tensorflow::Flag>(
@@ -52,7 +62,6 @@ void AllocateFlags() {
            "xla_generate_hlo_graph", &flag_values->xla_generate_hlo_graph,
            "HLO modules matching this regex will be dumped to a .dot file "
            "throughout various stages in compilation."),
-
        tensorflow::Flag(
            "xla_enable_fast_math", &flag_values->xla_enable_fast_math,
            "Enable unsafe fast-math optimizations in the compiler; "
@@ -61,18 +70,31 @@ void AllocateFlags() {
            "xla_backend_optimization_level",
            &flag_values->xla_backend_optimization_level,
            "Numerical optimization level for the XLA compiler backend."),
-
+       tensorflow::Flag(
+           "xla_disable_hlo_passes", &flag_values->xla_disable_hlo_passes,
+           "Comma-separated list of hlo passes to be disabled. These names "
+           "must exactly match the passes' names; no whitespace around "
+           "commas."),
+       tensorflow::Flag("xla_embed_ir_in_executable",
+                        &flag_values->xla_embed_ir_in_executable,
+                        "Embed the compiler IR as a string in the executable."),
+       tensorflow::Flag("xla_gpu_cuda_data_dir",
+                        &flag_values->xla_gpu_cuda_data_dir,
+                        "If non-empty, speficies a local directory containing "
+                        "ptxas and nvvm libdevice files; otherwise we use "
+                        "those from runfile directories."),
+       tensorflow::Flag("xla_gpu_ftz", &flag_values->xla_gpu_ftz,
+                        "If true, flush-to-zero semantics are enabled in the "
+                        "code generated for GPUs."),
+       tensorflow::Flag(
+           "xla_dump_debug_json_to", &flag_values->xla_dump_debug_json_to,
+           "Dump compilation artifacts as JSON into this directory."),
        tensorflow::Flag("xla_backend_extra_options",
                         &flag_values->xla_backend_extra_options,
                         "Extra options to pass to a backend; "
                         "comma-separated list of 'key=val' strings (=val "
-                        "may be omitted); no whitespace around commas."),
+                        "may be omitted); no whitespace around commas.")});
 
-       tensorflow::Flag(
-           "xla_disable_hlo_passes", &flag_values->xla_disable_hlo_passes,
-           "Comma-separated list of HLO passes to be disabled. These names "
-           "must exactly match the passes' names; "
-           "no whitespace around commas.")});
   ParseFlagsFromEnv(*flag_objects);
 }
 
@@ -99,6 +121,11 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_enable_fast_math(flag_values->xla_enable_fast_math);
   options.set_xla_backend_optimization_level(
       flag_values->xla_backend_optimization_level);
+  options.set_xla_embed_ir_in_executable(
+      flag_values->xla_embed_ir_in_executable);
+  options.set_xla_dump_debug_json_to(flag_values->xla_dump_debug_json_to);
+  options.set_xla_gpu_cuda_data_dir(flag_values->xla_gpu_cuda_data_dir);
+  options.set_xla_gpu_ftz(flag_values->xla_gpu_ftz);
 
   std::vector<string> extra_options_parts =
       tensorflow::str_util::Split(flag_values->xla_backend_extra_options, ',');

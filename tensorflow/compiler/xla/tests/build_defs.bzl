@@ -2,11 +2,25 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 
-def all_backends():
+all_backends = ["cpu", "cpu_parallel", "gpu"]
+
+def filter_backends(backends):
+  """Removes "gpu" from a backend list if CUDA is not enabled.
+
+  This allows us to simply hardcode lists including "gpu" here and in the
+  BUILD file, without causing failures when CUDA isn't enabled.'
+
+  Args:
+    backends: A list of backends to filter.
+
+  Returns:
+    The filtered list of backends.
+  """
   if cuda_is_configured():
-    return ["cpu", "cpu_parallel", "gpu"]
+    return backends
   else:
-    return ["cpu", "cpu_parallel"]
+    return [backend for backend in backends if backend != "gpu"]
+
 
 def xla_test(name,
              srcs,
@@ -81,7 +95,7 @@ def xla_test(name,
   """
   test_names = []
   if not backends:
-    backends = all_backends()
+    backends = all_backends
 
   native.cc_library(
       name="%s_lib" % name,
@@ -91,7 +105,7 @@ def xla_test(name,
       deps=deps + ["//tensorflow/compiler/xla/tests:test_macros_header"],
   )
 
-  for backend in backends:
+  for backend in filter_backends(backends):
     test_name = "%s_%s" % (name, backend)
     this_backend_tags = ["xla_%s" % backend]
     this_backend_copts = []
@@ -127,16 +141,16 @@ def xla_test(name,
 
 def generate_backend_suites(backends=[]):
   if not backends:
-    backends = all_backends()
-  for backend in backends:
+    backends = all_backends
+  for backend in filter_backends(backends):
     native.test_suite(name="%s_tests" % backend,
                       tags = ["xla_%s" % backend])
 
 
 def generate_backend_test_macros(backends=[]):
   if not backends:
-    backends = all_backends()
-  for backend in backends:
+    backends = all_backends
+  for backend in filter_backends(backends):
     native.cc_library(
         name="test_macros_%s" % backend,
         testonly = True,

@@ -58,9 +58,8 @@ bool IsRematerializable(const HloInstruction* instruction) {
     return false;
   }
 
-  // Don't rematerialize instructions with side effects, those with a cost that
-  // might not be captured by HloCostAnalysis, or instructions which cannot be
-  // cloned safely.
+  // Don't rematerialize instructions with side effects or instructions which
+  // cannot be cloned safely.
   switch (instruction->opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConstant:
@@ -802,23 +801,14 @@ bool MemoryUsageTracker::Check() const {
 // Computes and returns the cost of rematerializing the given instruction.
 // Cost per rematerialized instruction is defined as:
 //
-// (flop_count + transcendental_count + element_count) / memory_reduced
+// memory_limit_bytes / memory_reduced
 //
-//   flop_count: from HloCostAnalysis
-//   transcendental_count: from HloCostAnalysis
-//   element_count: number of elements accessed in operands and output of
-//     instruction
-//   memory_reduced: The memory usage reduced by rematerializing the
-//     instruction.
-//
-// This is a rough estimate of the extra execution time per byte saved by
-// rematerializing this instruction for its remaining uses. In general, we
-// want the most memory saving for the least latency penalty which is captured
-// by this heuristic.
+// The idea is to choose the operation that will save the most memory for
+// rematerialization and do not worry about how much the compute costs since
+// running out of memory is more harmful than taking longer to get the answer.
 int64 RematerializationCost(const HloInstruction* instruction,
                             const MemoryUsageTracker& memory_tracker,
-                            const HloCostAnalysis& cost_analysis,
-                            int64 memory_reduced) {
+                            int64 memory_reduced, int64 memory_limit_bytes) {
   // If none of the users of 'instruction' have been placed in the sequence (as
   // tracked by memory_tracker), then rematerialization of 'instruction' is a
   // zero-cost move of 'instruction' in the sequence.
@@ -830,22 +820,8 @@ int64 RematerializationCost(const HloInstruction* instruction,
   }
 
   CHECK_GT(memory_reduced, 0);
-  const int64 bytes_accessed = cost_analysis.bytes_accessed(*instruction);
-  const int64 elements_accessed =
-      ShapeUtil::IsTuple(instruction->shape())
-          ? bytes_accessed
-          : bytes_accessed / ShapeUtil::ByteSizeOfPrimitiveType(
-                                 instruction->shape().element_type());
-
-  // Multiply by 256 to improve precision of cost. Without this factor,
-  // many instructions such as many elementwise instructions would have
-  // zero cost because the bytes reduced can be several times greater than
-  // the element count.
-  return 256 *
-         (cost_analysis.flop_count(*instruction) +
-          cost_analysis.transcendental_count(*instruction) +
-          elements_accessed) /
-         memory_reduced;
+  // Return the inverse of the benefit of rematerialization.
+  return memory_limit_bytes / memory_reduced;
 }
 
 // Selects and returns the best candidate instruction for rematerialization.
@@ -856,8 +832,8 @@ int64 RematerializationCost(const HloInstruction* instruction,
 HloInstruction* PickRematerializationCandidate(
     const MemoryUsageTracker& memory_tracker,
     const InstructionList& instruction_list,
-    const HloCostAnalysis& cost_analysis,
-    const tensorflow::gtl::FlatSet<const HloInstruction*>& blacklist) {
+    const tensorflow::gtl::FlatSet<const HloInstruction*>& blacklist,
+    int64 memory_limit_bytes) {
   HloInstruction* best = nullptr;
   int64 best_cost = 0;
 
@@ -891,12 +867,12 @@ HloInstruction* PickRematerializationCandidate(
 
     if (memory_reduced <= 0) {
       VLOG(5) << "candidate " << candidate->name()
-              << " memory reduced = " << memory_reduced << " <= 0";
+              << " memory reduced = " << memory_reduced << " <=  0";
       continue;
     }
 
     const int cost = RematerializationCost(candidate, memory_tracker,
-                                           cost_analysis, memory_reduced);
+                                           memory_reduced, memory_limit_bytes);
 
     VLOG(5) << "candidate " << candidate->name() << ", memory reduced "
             << memory_reduced << ", cost per byte " << cost;
@@ -1011,7 +987,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
               << ", limit is " << HumanReadableNumBytes(memory_limit_bytes);
 
       HloInstruction* best = PickRematerializationCandidate(
-          memory_tracker, instruction_list, cost_analysis_, blacklist);
+          memory_tracker, instruction_list, blacklist, memory_limit_bytes);
 
       if (best == nullptr) {
         VLOG(3) << "Unable to find rematerialization candidate at program "
@@ -1210,11 +1186,6 @@ StatusOr<bool> HloRematerialization::Run(
       module_output_size;
   VLOG(1) << "Peak memory usage of module (before): "
           << HumanReadableNumBytes(before_peak_memory);
-
-  // Run cost analysis. Operation cost is used in the heuristic for selecting
-  // instructions for rematerialization.
-  TF_RETURN_IF_ERROR(
-      module->entry_computation()->root_instruction()->Accept(&cost_analysis_));
 
   // Subcomputations called by the entry computation will also be
   // rematerialized.

@@ -30,17 +30,6 @@ namespace xla {
 
 bool DoesNotUseOperandBuffer(const HloInstruction* operand,
                              const ShapeIndex& index,
-                             const HloInstruction* user) {
-  CHECK(user->IsUserOf(operand))
-      << "user: " << user->ToString() << " operand: " << operand->ToString();
-
-  // GetTupleElement instructions only access the top-level buffer of their
-  // operand.
-  return (user->opcode() == HloOpcode::kGetTupleElement && !index.empty());
-}
-
-bool DoesNotUseOperandBuffer(const HloInstruction* operand,
-                             const ShapeIndex& index,
                              const HloInstruction* user,
                              const TuplePointsToAnalysis& points_to_analysis) {
   CHECK(user->IsUserOf(operand))
@@ -149,18 +138,22 @@ bool HasUniqueFusedUseOfOperandAt(
 
 // User and operand can share buffers iff both instructions emit the same shape
 // and layout, and 'user' meets one of the following qualifications:
-// *) Is element-wise. Or...
-// *) Is a loop fusion instruction where the only use of 'operand' at 'index'
-//    in the set 'user.fused_instructions' is a DynamicUpdateSlice fused root
-//    at operand 0. Or...
-// *) Is a kDot -> kAdd (or fused kTransposeDot -> kAdd) output fusion
-//    instruction where the only use of 'operand' at 'index' in the set
-//    'user.fused_instructions' is a kAdd fused root at operand 0 or 1. Or...
-// *) The 'user' of 'operand' is DynamicUpdateSlice or While at operand index 0.
+//
+// (1) Is element-wise. Or...
+// (2) Is a loop fusion instruction where the only use of 'operand' at 'index'
+//     in the set 'user.fused_instructions' is a DynamicUpdateSlice fused root
+//     at operand 0. Or...
+// (3) Is a kDot -> kAdd (or fused kTransposeDot -> kAdd) output fusion
+//     instruction where the only use of 'operand' at 'index' in the set
+//     'user.fused_instructions' is a kAdd fused root at operand 0 or 1. Or...
+// (4) The 'user' of 'operand' is DynamicUpdateSlice or While at operand index
+//     0.
+//
+// (2) and (3) can only be determined if points-to analysis is available.
 bool CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
     HloInstruction* user, const ShapeIndex& user_index,
-    const TuplePointsToAnalysis& points_to_analysis) {
+    const TuplePointsToAnalysis* points_to_analysis) {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
   Shape operand_subshape =
@@ -170,7 +163,7 @@ bool CanShareOperandBufferWithUser(
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
     return false;
   }
-  if (user->opcode() == HloOpcode::kFusion) {
+  if (points_to_analysis != nullptr && user->opcode() == HloOpcode::kFusion) {
     if (user->fusion_kind() == HloInstruction::FusionKind::kLoop &&
         user->fused_expression_root()->opcode() ==
             HloOpcode::kDynamicUpdateSlice) {
@@ -180,7 +173,7 @@ bool CanShareOperandBufferWithUser(
       // 'operand_index', and this singleton use is the fused root at operand
       // index 0.
       return HasUniqueFusedUseOfOperandAt(operand, operand_index, user, 0,
-                                          points_to_analysis);
+                                          *points_to_analysis);
     } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
                user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
@@ -208,7 +201,7 @@ bool CanShareOperandBufferWithUser(
       // index 'other_add_operand_index').
       return HasUniqueFusedUseOfOperandAt(operand, operand_index, user,
                                           other_add_operand_index,
-                                          points_to_analysis);
+                                          *points_to_analysis);
     }
   }
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||

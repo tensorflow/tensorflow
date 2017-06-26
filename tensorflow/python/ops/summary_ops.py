@@ -131,7 +131,6 @@ def _tensor_summary_v2(  # pylint: disable=invalid-name
     val = gen_logging_ops._tensor_summary_v2(
         tensor=tensor,
         tag=tag,
-        description="",
         name=scope,
         serialized_summary_metadata=serialized_summary_metadata)
     summary_op_util.collect(val, collections, [ops.GraphKeys.SUMMARIES])

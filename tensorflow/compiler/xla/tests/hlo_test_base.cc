@@ -77,6 +77,7 @@ HloTestBase::~HloTestBase() {
   }
 }
 
+/* static */
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
   HloModuleConfig config;
   config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());

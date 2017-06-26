@@ -23,6 +23,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -81,25 +82,19 @@ class InfeedManager {
   // condition is to call Reset when no computation is taking place.
   void Reset();
 
-  // Adds buffer to the infeed queue. buffer->Done will be called when
-  // the buffer will no longer be accessed by the InfeedManager,
-  // either as a result of a call to Reset or because the runtime has
-  // dequeued and used the buffer.
-  void EnqueueBuffer(InfeedBuffer* buffer);
+  // Adds a set of buffers to the infeed queue atomically. buffer->Done
+  // will be called when the buffer will no longer be accessed by the
+  // InfeedManager, either as a result of a call to Reset or because the
+  // runtime has dequeued and used the buffer.
+  void EnqueueBuffers(std::vector<InfeedBuffer*> buffers);
 
   // Blocks until the infeed queue is non-empty, then returns the
-  // buffer at the head of the queue. Sets the current buffer to be
-  // the returned buffer. It is an error to call BlockingDequeueBuffer
-  // if there is an unreleased current buffer, i.e.,
-  // ReleaseCurrentBuffer must be called between calls to
-  // BlockingDequeueBuffer.
+  // buffer at the head of the queue. Adds the current buffer to the
+  // to-be released set.
   InfeedBuffer* BlockingDequeueBuffer();
 
-  // Releases the current buffer, which is the last buffer returned by
-  // BlockingDequeueBuffer and not yet released. device_memory must
-  // match that of the current buffer.
-  void ReleaseCurrentBuffer(
-      perftools::gputools::DeviceMemoryBase* device_memory);
+  // Releases a set of buffers from the to-be released set.
+  void ReleaseBuffers(std::vector<InfeedBuffer*> buffers);
 
   // Returns a cached stream associated with an executor. Allocates a
   // new stream on the first invocation. On subsequent invocations, if
@@ -109,18 +104,25 @@ class InfeedManager {
       perftools::gputools::StreamExecutor* executor);
 
  private:
+  // TODO(b/30467474): Revisit if this mutex becomes a point of
+  // contention.
   tensorflow::mutex mu_;
+
   // Condition variable that is signaled every time a buffer is
   // enqueued to an empty queue.
   tensorflow::condition_variable cv_;
+
   // InfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.
   std::deque<InfeedBuffer*> enqueued_buffer_;
-  // If non-NULL, the buffer that is currently being processed by the
+
+  // Buffers that are dequeued and currently being processed by the
   // runtime. Not owned.
-  InfeedBuffer* current_buffer_;
+  tensorflow::gtl::FlatSet<const InfeedBuffer*> dequeued_buffer_;
+
   // Cached host to device stream for queuing infeed data.
   std::unique_ptr<perftools::gputools::Stream> host_to_device_stream_;
+
   // Executor that the host_to_device_stream belongs to. Not owned.
   perftools::gputools::StreamExecutor* host_to_device_executor_;
 };

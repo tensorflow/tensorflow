@@ -927,7 +927,7 @@ struct TuningConfig {
   // Conv2DBackpropFilter will use a specialized GEMM implementation, which is
   // usually faster than the NCHW implementation. The downside is that this
   // might result in more non-cancellable layout conversion nodes (implemented
-  // by the Tranpose op).
+  // by the Transpose op).
   bool no_gemm;
 };
 
@@ -1158,7 +1158,7 @@ Status LayoutOptimizer::InferOutputShapes(GrapplerItem* item) {
     for (const auto& tensor_property : tensor_properties) {
       *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
     }
-    node->mutable_attr()->insert({"_output_shapes", attr_output_shape});
+    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
   }
   return Status::OK();
 }

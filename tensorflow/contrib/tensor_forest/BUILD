@@ -21,6 +21,8 @@ filegroup(
         exclude = [
             "**/METADATA",
             "**/OWNERS",
+            "kernels/v4/*",
+            "proto/*",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
