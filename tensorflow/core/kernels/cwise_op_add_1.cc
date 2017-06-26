@@ -36,7 +36,12 @@ REGISTER_KERNEL_BUILDER(Name("Add")
 
 
 #if TENSORFLOW_USE_SYCL
-REGISTER2(BinaryOp, SYCL, "Add", functor::add, float, double);
+REGISTER(BinaryOp, SYCL, "Add", functor::add, float);
+
+#ifndef SYCL_NO_DOUBLE
+REGISTER(BinaryOp, SYCL, "Add", functor::add, double);
+#endif
+
 REGISTER_KERNEL_BUILDER(Name("Add")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")
