@@ -547,14 +547,14 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapStage")
                             .HostMemory("indices")
                             .Device(DEVICE_GPU),
                         MapStageOp<true>);
-#endif
+#endif // GOOGLE_CUDA
+
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("MapStage").HostMemory("key").Device(DEVICE_SYCL),
                         MapStageOp<false>);
 REGISTER_KERNEL_BUILDER(
     Name("OrderedMapStage").HostMemory("key").Device(DEVICE_SYCL),
     MapStageOp<true>);
-
 #endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
@@ -661,6 +661,7 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek")
                             .Device(DEVICE_GPU),
                         MapPeekOp<true>);
 #endif
+
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(
     Name("MapPeek").HostMemory("key").HostMemory("indices").Device(DEVICE_SYCL),
@@ -724,8 +725,8 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey")
                             .HostMemory("indices")
                             .Device(DEVICE_GPU),
                         MapUnstageNoKeyOp<true>);
-
 #endif
+
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey")
                             .HostMemory("key")

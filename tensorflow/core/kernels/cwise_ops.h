@@ -484,6 +484,12 @@ template <typename T>
 struct sign : base<T, Eigen::internal::scalar_sign_op<T> > {};
 
 template <typename T>
+struct sinh : base<T, Eigen::internal::scalar_sinh_op<T> > {};
+
+template <typename T>
+struct cosh : base<T, Eigen::internal::scalar_cosh_op<T> > {};
+
+template <typename T>
 struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
 
 template <typename T>

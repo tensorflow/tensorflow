@@ -769,6 +769,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "cosh"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "count_nonzero"
     argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'dtype\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \"<dtype: \'int64\'>\", \'None\', \'None\'], "
   }
@@ -1641,6 +1645,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "sinh"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "size"
     argspec: "args=[\'input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int32\'>\"], "
   }
@@ -1695,6 +1703,14 @@ tf_module {
   member_method {
     name: "sparse_placeholder"
     argspec: "args=[\'dtype\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "sparse_reduce_max"
+    argspec: "args=[\'sp_input\', \'axis\', \'keep_dims\', \'reduction_axes\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "sparse_reduce_max_sparse"
+    argspec: "args=[\'sp_input\', \'axis\', \'keep_dims\', \'reduction_axes\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "sparse_reduce_sum"

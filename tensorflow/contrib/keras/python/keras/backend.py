@@ -3261,7 +3261,7 @@ def conv2d(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
       dilation_rate: tuple of 2 integers.
 
   Returns:
@@ -3309,7 +3309,7 @@ def conv2d_transpose(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
 
   Returns:
       A tensor, result of transposed 2D convolution.
@@ -3395,7 +3395,7 @@ def conv3d(x,
       padding: string, `"same"` or `"valid"`.
       data_format: `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow data format
-          for inputs/kernels/ouputs.
+          for inputs/kernels/outputs.
       dilation_rate: tuple of 3 integers.
 
   Returns:

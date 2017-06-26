@@ -365,9 +365,9 @@ XLA_TEST_F(DotOperationTest, BatchMatMul) {
   std::vector<xla::ComputationDataHandle> out_slices;
   for (int i = 0; i < 4; ++i) {
     // Slice off individual matrices and reshape to 2D tensors.
-    auto x_slice = builder.Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2});
+    auto x_slice = builder.Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
     x_slice = builder.Reshape(x_slice, {0, 1, 2}, {2, 2});
-    auto y_slice = builder.Slice(y_flat, {i, 0, 0}, {i + 1, 2, 2});
+    auto y_slice = builder.Slice(y_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
     y_slice = builder.Reshape(y_slice, {0, 1, 2}, {2, 2});
 
     auto out = builder.Dot(x_slice, y_slice);

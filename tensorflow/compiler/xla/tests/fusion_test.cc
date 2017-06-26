@@ -210,7 +210,7 @@ XLA_TEST_F(FusionTest, Test) {
       HloInstruction::CreateTernary(ShapeUtil::MakeShape(F32, {2, 3}),
                                     HloOpcode::kSelect, const10, add8, const9));
   auto slice12 = builder.AddInstruction(HloInstruction::CreateSlice(
-      ShapeUtil::MakeShape(F32, {2, 1}), select11, {0, 1}, {2, 2}));
+      ShapeUtil::MakeShape(F32, {2, 1}), select11, {0, 1}, {2, 2}, {1, 1}));
   // CreateFusionInstruction needs the `instructions_to_fuse` argument in
   // reverse topological order, so the first element in `instructions_to_fuse`
   // must be the root.

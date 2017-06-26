@@ -155,6 +155,26 @@ Status Log1pGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Log1p", Log1pGrad);
 
+Status SinhGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"cosh"}, "Cosh", {"x"}, {}, {"dy"}},
+      {{"dx"}, "Mul", {"dy", "cosh"}},  // dy * cosh(x)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Sinh", SinhGrad);
+
+Status CoshGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"sinh"}, "Sinh", {"x"}, {}, {"dy"}},
+      {{"dx"}, "Mul", {"dy", "sinh"}},  // dy * sinh(x)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Cosh", CoshGrad);
+
 Status TanhGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {

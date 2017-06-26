@@ -18,33 +18,27 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_stats.h"
-#include "tensorflow/tools/tfprof/tfprof_options.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
 
-// Append only.
-static const char* const kCheckers[] = {
-    "AcceleratorUtilizationChecker", "OperationChecker",
-    "ExpensiveOperationChecker",
-    "JobChecker",  // Internal checker.
+static const char* const kLevel[] = {
+    "NOTE",     // Good to know.
+    "SUGGEST",  // Might get better.
+    "WARN",     // Please do it for better.
 };
 
 class Checker {
  public:
-  virtual ~Checker() {}
+  virtual ~Checker(){};
 
-  virtual string name() const = 0;
+  virtual string name() = 0;
 
-  AdviceProto::Checker Run(const AdvisorOptionsProto::CheckerOption& options,
-                           const TFStats* stats) {
-    return Check(options, stats);
-  }
+  std::vector<string> Run(const TFStats* stats) { return Check(stats); }
 
  protected:
-  virtual AdviceProto::Checker Check(
-      const AdvisorOptionsProto::CheckerOption& options,
-      const TFStats* stats) = 0;
+  // Returns a vector of string, each one being an advice.
+  virtual std::vector<string> Check(const TFStats* stats) = 0;
 };
 }  // namespace tfprof
 }  // namespace tensorflow

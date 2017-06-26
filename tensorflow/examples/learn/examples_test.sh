@@ -32,7 +32,7 @@ TFLEARN_EXAMPLE_BASE_DIR=$DIR/tensorflow/examples/learn
 
 
 function test() {
-  echo "Test "$1":"
+  echo "Test $1:"
   $TFLEARN_EXAMPLE_BASE_DIR/$1 $2
   if [ $? -eq 0 ]
   then

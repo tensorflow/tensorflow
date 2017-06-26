@@ -174,7 +174,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateSlice(
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> start_indices,
-      tensorflow::gtl::ArraySlice<int64> limit_indices);
+      tensorflow::gtl::ArraySlice<int64> limit_indices,
+      tensorflow::gtl::ArraySlice<int64> strides);
 
   // Creates a slice instruction, where the first operand is sliced by
   // start indices specified in the second operand, and by size specfied in
@@ -662,6 +663,15 @@ class HloInstruction {
     return slice_limits_;
   }
 
+  // Returns the stride in the given dimension for a slice node.
+  //
+  // Precondition: opcode() == HloOpcode::kSlice
+  int64 slice_stride(int64 dimension) const {
+    CHECK_EQ(HloOpcode::kSlice, opcode_);
+    return slice_strides_[dimension];
+  }
+  const std::vector<int64>& slice_strides() const { return slice_strides_; }
+
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
   //
@@ -907,6 +917,7 @@ class HloInstruction {
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
+  std::vector<int64> slice_strides_;
 
   // The bit sizes for a reduce-precision operation.
   int32 exponent_bits_;

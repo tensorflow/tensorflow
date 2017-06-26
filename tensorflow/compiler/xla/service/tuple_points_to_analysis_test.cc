@@ -584,7 +584,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     if (add_additional_gte0_user) {
       // Create 'slice' as an additional user of 'input'.
       auto slice = builder.AddInstruction(
-          HloInstruction::CreateSlice(update_shape, input, {0}, {3}));
+          HloInstruction::CreateSlice(update_shape, input, {0}, {3}, {1}));
       // Modify 'update' to take 'slice' output.
       update = builder.AddInstruction(HloInstruction::CreateBinary(
           update_shape, HloOpcode::kAdd, update, slice));

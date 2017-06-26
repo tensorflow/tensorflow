@@ -39,6 +39,8 @@ void AddStep(int64 step, const string* run_meta, const string* op_log);
 
 string Profile(const string* command, const string* options);
 
+void Advise();
+
 // Single-step Profiler.
 //
 // Interface defined for Python API swig. Calls the tfprof core API.

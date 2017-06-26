@@ -472,7 +472,7 @@ public class TensorTest {
   @Test
   public void fromHandle() {
     // fromHandle is a package-visible method intended for use when the C TF_Tensor object has been
-    // created indepdently of the Java code. In practice, two Tensor instances MUST NOT have the
+    // created independently of the Java code. In practice, two Tensor instances MUST NOT have the
     // same native handle.
     //
     // An exception is made for this test, where the pitfalls of this is avoided by not calling

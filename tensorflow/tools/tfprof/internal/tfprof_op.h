@@ -56,15 +56,15 @@ class TFOp : public TFMultiShow {
   int64 SearchRoot(const std::vector<OpNode*> nodes,
                    const std::vector<string>& regexes);
 
-  bool ShouldShowIfExtra(const ShowMultiNode* node, const Options& opts,
-                         int depth) const override {
+  bool ShouldShowIfExtra(ShowMultiNode* node, const Options& opts,
+                         int depth) override {
     if (opts.min_occurrence > node->node->graph_nodes().size()) {
       return false;
     }
     return true;
   }
 
-  string FormatNode(OpNode* node, OpNode* root, const Options& opts) const;
+  string FormatNode(OpNode* node, OpNode* root, const Options& opts);
 
   std::unique_ptr<OpNode> root_;
   std::map<string, std::unique_ptr<OpNode>> cnodes_map_;

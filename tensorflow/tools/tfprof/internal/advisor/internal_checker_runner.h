@@ -17,16 +17,13 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_ADVISOR_INTERNAL_CHECKER_RUNNER_H_
 
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
-#include "tensorflow/tools/tfprof/tfprof_options.pb.h"
-#include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
 
 class TFStats;
 
-AdviceProto RunInternalCheckers(const AdvisorOptionsProto& options,
-                                const TFStats* stats);
+std::map<string, std::vector<string>> RunInternalCheckers(const TFStats* stats);
 
 }  // namespace tfprof
 }  // namespace tensorflow

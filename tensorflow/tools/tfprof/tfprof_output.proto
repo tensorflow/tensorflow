@@ -102,11 +102,3 @@ message TFMultiGraphNodeProto {
   // structure used.
   repeated TFMultiGraphNodeProto children = 11;
 }
-
-message AdviceProto {
-  // checker name -> a list of reports from the checker.
-  map<string, Checker> checkers = 1;
-  message Checker {
-    repeated string reports = 2;
-  }
-}

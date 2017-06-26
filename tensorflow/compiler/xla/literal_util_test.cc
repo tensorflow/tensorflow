@@ -939,5 +939,62 @@ TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
   }
 }
 
+// Note that f16 is currently stored in a byte array in little endian byte order
+TEST_F(LiteralUtilTest, ToProto_f16) {
+  half h1(1.0f);
+  half h2(2.0f);
+
+  auto m = Literal::CreateR2<half>({{h1, h2}, {h2, h1}});
+  Literal* l = m.get();
+  EXPECT_EQ(4, ShapeUtil::ElementsIn(l->shape()));
+  EXPECT_EQ(4, l->f16s().size());
+  EXPECT_EQ(4, l->f16s_size());
+
+  LiteralProto p = l->ToProto();
+  EXPECT_EQ(4, ShapeUtil::ElementsIn(p.shape()));
+  EXPECT_EQ(8, p.f16s().size());
+  const char* d = p.f16s().data();
+  EXPECT_EQ(d[0], 0);
+  EXPECT_EQ(d[1], 0x3C);
+  EXPECT_EQ(d[2], 0);
+  EXPECT_EQ(d[3], 0x40);
+  EXPECT_EQ(d[4], 0);
+  EXPECT_EQ(d[5], 0x40);
+  EXPECT_EQ(d[6], 0);
+  EXPECT_EQ(d[7], 0x3C);
+}
+
+// Note that f16 is currently stored in a byte array in little endian byte order
+TEST_F(LiteralUtilTest, CopyFromProto_f16) {
+  half h1(1.0f);
+  half h2(2.0f);
+
+  const char half_vals[8] = {
+    0x00, 0x3C, 0x00, 0x40, 0x00, 0x40, 0x00, 0x3C
+  };
+  LiteralProto p;
+  p.mutable_shape()->set_element_type(F16);
+  p.mutable_shape()->clear_dimensions();
+  p.mutable_shape()->add_dimensions(4);
+  p.clear_f16s();
+  p.set_f16s(half_vals, 8);
+
+
+  Literal literal(p);
+  ASSERT_EQ(4, literal.f16s_size());
+  ASSERT_EQ(h1, literal.f16s(0));
+  ASSERT_EQ(h2, literal.f16s(1));
+  ASSERT_EQ(h2, literal.f16s(2));
+  ASSERT_EQ(h1, literal.f16s(3));
+
+  const std::vector<half>& r = literal.f16s();
+  ASSERT_EQ(4, r.size());
+  ASSERT_EQ(h1, r[0]);
+  ASSERT_EQ(h2, r[1]);
+  ASSERT_EQ(h2, r[2]);
+  ASSERT_EQ(h1, r[3]);
+}
+
+
 }  // namespace
 }  // namespace xla

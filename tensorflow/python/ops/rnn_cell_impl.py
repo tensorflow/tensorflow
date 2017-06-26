@@ -416,7 +416,7 @@ class LSTMCell(RNNCell):
 
   The default non-peephole implementation is based on:
 
-    http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+    http://www.bioinf.jku.at/publications/older/2604.pdf
 
   S. Hochreiter and J. Schmidhuber.
   "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
@@ -622,7 +622,7 @@ class DropoutWrapper(RNNCell):
     """Create a cell with added input, state, and/or output dropout.
 
     If `variational_recurrent` is set to `True` (**NOT** the default behavior),
-    then the the same dropout mask is applied at every step, as described in:
+    then the same dropout mask is applied at every step, as described in:
 
     Y. Gal, Z Ghahramani.  "A Theoretically Grounded Application of Dropout in
     Recurrent Neural Networks".  https://arxiv.org/abs/1512.05287

@@ -446,7 +446,7 @@ class Transformer(object):
       # TODO(fkp): return a subgraph?
       op_, op_outputs_ = self.transform_op_handler(info, op)
       if op is op_:
-        raise ValueError("In-place tranformation not allowed.")
+        raise ValueError("In-place transformation not allowed.")
 
       # Process op.
       info.transformed_ops[op] = op_

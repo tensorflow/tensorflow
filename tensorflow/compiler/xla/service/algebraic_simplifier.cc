@@ -855,6 +855,7 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     // Second, construct the slice instruction to perform the negative padding.
     std::vector<int64> start_indices;
     std::vector<int64> end_indices;
+    std::vector<int64> strides;
     for (int64 i = 0; i < pad->padding_config().dimensions_size(); ++i) {
       const PaddingConfig::PaddingConfigDimension& padding_dimension =
           pad->padding_config().dimensions(i);
@@ -868,16 +869,18 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
       }
       start_indices.push_back(start);
       end_indices.push_back(end);
+      strides.push_back(1);
     }
 
     // Verify that the slice shape matches the pad shape.
     TF_ASSIGN_OR_RETURN(Shape inferred_slice_shape,
                         ShapeInference::InferSliceShape(
-                            nonzero_pad_shape, start_indices, end_indices));
+                            nonzero_pad_shape, start_indices, end_indices,
+                            strides));
     TF_RET_CHECK(ShapeUtil::Compatible(inferred_slice_shape, pad->shape()));
 
     std::unique_ptr<HloInstruction> slice = HloInstruction::CreateSlice(
-        pad->shape(), nonzero_pad, start_indices, end_indices);
+        pad->shape(), nonzero_pad, start_indices, end_indices, strides);
     return ReplaceWithNewInstruction(pad, std::move(slice));
   }
 

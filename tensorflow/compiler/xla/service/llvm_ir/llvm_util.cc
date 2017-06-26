@@ -356,9 +356,26 @@ void EmitLogging(const char* tag, llvm::Value* value,
 
 void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
                            bool is_pointer_to) {
-  // TODO(b/62903316): TBAA metadata causes LLVM to miscompile generated code,
-  // most likely because the generated metadata is incorrect.  Disable TBAA
-  // metadata while we resolve this.
+  llvm::MDBuilder metadata_builder(instruction->getContext());
+  llvm::MDNode* root = metadata_builder.createTBAARoot("XLA TBAA");
+  string type_name;
+  if (is_pointer_to) {
+    type_name += "pointer-to ";
+  }
+  // Scalars do not have layout which makes it permissible to omit an explicit
+  // layout.  To make sure that equivalent scalar shapes have the same TBAA,
+  // remove the (meaningless) explicit layout if one is present.
+  if (!ShapeUtil::IsArray(shape) || ShapeUtil::IsScalar(shape)) {
+    LayoutUtil::ClearLayout(&shape);
+  } else {
+    CHECK(shape.has_layout());
+  }
+  type_name += shape.ShortDebugString();
+  llvm::MDNode* tbaa_node =
+      metadata_builder.createTBAANode(llvm_ir::AsStringRef(type_name), root);
+  instruction->setMetadata(llvm::LLVMContext::MD_tbaa,
+                           metadata_builder.createTBAAStructTagNode(
+                               tbaa_node, tbaa_node, /*Offset=*/0));
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {

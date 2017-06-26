@@ -215,7 +215,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
       wrapper_sess.partial_run_setup(self._p)
 
   def testInteractiveSessionInit(self):
-    """The wrapper should work also on other subclassses of session.Session."""
+    """The wrapper should work also on other subclasses of session.Session."""
 
     TestDebugWrapperSession(
         session.InteractiveSession(), self._dump_root, self._observer)
