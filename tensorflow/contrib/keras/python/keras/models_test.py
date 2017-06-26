@@ -86,7 +86,7 @@ class TestModelSaving(test.TestCase):
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
-      model.compile(loss=custom_loss, optimizer=CustomOp(), metrics=['acc'])
+      model.compile(loss=custom_loss, optimizer=keras.optimizers.Adam(), metrics=['acc'])
 
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
@@ -130,6 +130,42 @@ class TestModelSaving(test.TestCase):
       os.remove(fname)
 
       out2 = model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
+  def test_saving_cnn(self):
+    if h5py is None:
+      return
+    with self.test_session():
+      input_shape = (64, 64, 3)
+      X = np.random.random((128, 64, 64, 3))
+      Y = np.random.randint(0, 2, size=(128, 2))
+      model = keras.models.Sequential()
+      model.add(keras.layers.Conv2D(filters=64, kernel_size=(3,3), padding='same', input_shape=input_shape))
+      model.add(keras.layers.Conv2D(filters=64, kernel_size=(3,3), padding='same'))
+      model.add(keras.layers.MaxPooling2D(pool_size=(2,2), strides=2))
+      model.add(keras.layers.Conv2D(filters=128, kernel_size=(3,3), padding='same'))
+      model.add(keras.layers.Conv2D(filters=128, kernel_size=(3,3), kernel_initializer='he_normal', padding='same'))
+      model.add(keras.layers.MaxPooling2D(pool_size=(2,2), strides=2))
+      model.add(keras.layers.Conv2D(filters=256, kernel_size=(3,3), padding='same'))
+      model.add(keras.layers.Conv2D(filters=256, kernel_size=(3,3), padding='same'))
+      model.add(keras.layers.Conv2D(filters=256, kernel_size=(3,3), padding='same'))
+      model.add(keras.layers.MaxPooling2D(pool_size=(2,2), strides=2))
+      model.add(keras.layers.Conv2D(filters=512, kernel_size=(3,3), padding='same'))
+      model.add(keras.layers.Conv2D(filters=512, kernel_size=(3,3), padding='same'))
+      model.add(keras.layers.Conv2D(filters=512, kernel_size=(3,3), padding='same'))
+      model.add(keras.layers.MaxPooling2D(pool_size=(2,2), strides=2))
+      model.add(keras.layers.Flatten())
+      model.add(keras.layers.Dense(128))
+      model.add(keras.layers.Dense(128))
+      model.add(keras.layers.Dense(2, activation='sigmoid'))
+      model.compile(loss=keras.losses.binary_crossentropy, optimizer='adam')
+      model.train_on_batch(X, Y)
+      out = model.predict(X)
+      _, fname = tempfile.mkstemp('.h5')
+      keras.models.save_model(model, fname)
+      model = keras.models.load_model(fname)
+      os.remove(fname)
+      out2 = model.predict(X)
       self.assertAllClose(out, out2, atol=1e-05)
 
   def test_saving_without_compilation(self):
