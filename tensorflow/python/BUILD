@@ -3056,7 +3056,6 @@ py_test(
     srcs = ["client/session_clusterspec_prop_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_gpu",
         "no_pip_gpu",
     ],
     deps = [
@@ -3081,7 +3080,6 @@ py_test(
     srcs = ["client/session_list_devices_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_gpu",
         "no_pip_gpu",
     ],
     deps = [
