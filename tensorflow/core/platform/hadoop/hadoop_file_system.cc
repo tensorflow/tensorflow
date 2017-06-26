@@ -166,7 +166,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
   }
-  char* tf_hdfs_user = getenv("TF_HDFS_USER");
+  const char* tf_hdfs_user = getenv("TF_HDFS_USER");
   if (tf_hdfs_user != nullptr) {
     hdfs_->hdfsBuilderSetUserName(builder, tf_hdfs_user);
   }
