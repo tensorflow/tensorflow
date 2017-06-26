@@ -523,7 +523,12 @@ class Experiment(object):
       differences in resource control. First, the resources (e.g., memory) used
       by training will be released before evaluation (`train_and_evaluate` takes
       double resources). Second, more checkpoints will be saved as a checkpoint
-      is generated at the end of each small trainning iteration.
+      is generated at the end of each trainning iteration.
+
+      3. As the estimator.train starts from scratch (new graph, new states for
+      input, etc) at each iteration, it is recommended to have the
+      `train_steps_per_iteration` larger. It is also recommended to shuffle your
+      input.
 
     Args:
       continuous_eval_predicate_fn: A predicate function determining whether to
