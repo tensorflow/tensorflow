@@ -177,6 +177,20 @@ cc_library(
 )
 
 cc_library(
+    name = "model_analyzer_lib",
+    srcs = ["grappler/model_analyzer.cc"],
+    hdrs = ["grappler/model_analyzer.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/costs:utils",
+    ],
+)
+
+cc_library(
     name = "numpy_lib",
     srcs = ["lib/core/numpy.cc"],
     hdrs = ["lib/core/numpy.h"],
@@ -2742,6 +2756,7 @@ tf_py_wrap_cc(
         "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
         "grappler/cost_analyzer.i",
+        "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
@@ -2759,6 +2774,7 @@ tf_py_wrap_cc(
     ],
     deps = [
         ":cost_analyzer_lib",
+        ":model_analyzer_lib",
         ":cpp_shape_inference",
         ":kernel_registry",
         ":numpy_lib",
@@ -3947,6 +3963,33 @@ py_test(
         ":state_ops",
         ":training",
         ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "model_analyzer",
+    srcs = [
+        "grappler/model_analyzer.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [":pywrap_tensorflow_internal"],
+)
+
+py_test(
+    name = "model_analyzer_test",
+    size = "small",
+    srcs = ["grappler/model_analyzer_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":model_analyzer",
+        ":state_ops",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
     ],
