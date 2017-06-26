@@ -25,6 +25,11 @@ namespace legacy_flags {
 
 struct DebugOptionsFlags {
   string xla_generate_hlo_graph;
+  bool xla_hlo_graph_addresses;
+  bool xla_hlo_graph_layout;
+  string xla_log_hlo_text;
+  string xla_generate_hlo_text_to;
+
   string xla_disable_hlo_passes;
   bool xla_enable_fast_math;
   bool xla_llvm_enable_alias_scope_metadata;
@@ -54,6 +59,10 @@ std::once_flag flags_init;
 void AllocateFlags() {
   flag_values = new DebugOptionsFlags;
   flag_values->xla_generate_hlo_graph = "";
+  flag_values->xla_hlo_graph_addresses = false;
+  flag_values->xla_hlo_graph_layout = false;
+  flag_values->xla_log_hlo_text = "";
+  flag_values->xla_generate_hlo_text_to = "";
   flag_values->xla_disable_hlo_passes = "";
   flag_values->xla_enable_fast_math = true;
   flag_values->xla_llvm_enable_alias_scope_metadata = true;
@@ -73,6 +82,20 @@ void AllocateFlags() {
            "xla_generate_hlo_graph", &flag_values->xla_generate_hlo_graph,
            "HLO modules matching this regex will be dumped to a .dot file "
            "throughout various stages in compilation."),
+       tensorflow::Flag(
+           "xla_hlo_graph_addresses", &flag_values->xla_hlo_graph_addresses,
+           "With xla_generate_hlo_graph, show addresses of HLO ops in "
+           "graph dump."),
+       tensorflow::Flag(
+           "xla_hlo_graph_layout", &flag_values->xla_hlo_graph_layout,
+           "With xla_generate_hlo_graph, show layout of HLO ops in "
+           "graph dump."),
+       tensorflow::Flag(
+           "xla_log_hlo_text", &flag_values->xla_log_hlo_text,
+           "HLO modules matching this regex will be dumped to LOG(INFO). "),
+       tensorflow::Flag(
+           "xla_generate_hlo_text_to", &flag_values->xla_generate_hlo_text_to,
+           "Dump all HLO modules as text into the provided directory path."),
        tensorflow::Flag(
            "xla_enable_fast_math", &flag_values->xla_enable_fast_math,
            "Enable unsafe fast-math optimizations in the compiler; "
@@ -141,6 +164,10 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
 
   DebugOptions options;
   options.set_xla_generate_hlo_graph(flag_values->xla_generate_hlo_graph);
+  options.set_xla_hlo_graph_addresses(flag_values->xla_hlo_graph_addresses);
+  options.set_xla_hlo_graph_layout(flag_values->xla_hlo_graph_layout);
+  options.set_xla_log_hlo_text(flag_values->xla_log_hlo_text);
+  options.set_xla_generate_hlo_text_to(flag_values->xla_generate_hlo_text_to);
 
   std::vector<string> disabled_passes =
       tensorflow::str_util::Split(flag_values->xla_disable_hlo_passes, ',');

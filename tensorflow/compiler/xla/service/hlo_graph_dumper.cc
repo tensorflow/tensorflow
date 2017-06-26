@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/regexp.h"
 
 using ::tensorflow::Env;
 using ::tensorflow::WriteStringToFile;
@@ -593,6 +594,31 @@ void DumpText(const HloModule& module, const string& label,
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
   TF_CHECK_OK(WriteStringToFile(env, path, module.ToString()));
+  LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
+}
+
+string MaybeDumpHloModule(const HloModule& module, const string& label,
+                          const HloExecutionProfile* profile) {
+  VLOG(2) << "MaybeDumpHloModule called on module " << module.name();
+  string graph_url;
+  const DebugOptions& debug_options = module.config().debug_options();
+  if (!debug_options.xla_generate_hlo_graph().empty() &&
+      RE2::PartialMatch(module.name(),
+                        debug_options.xla_generate_hlo_graph())) {
+    graph_url = DumpGraph(*module.entry_computation(), label,
+                          debug_options.xla_hlo_graph_addresses(),
+                          debug_options.xla_hlo_graph_layout(), profile);
+  }
+  if (!debug_options.xla_log_hlo_text().empty() &&
+      RE2::PartialMatch(module.name(), debug_options.xla_log_hlo_text())) {
+    LOG(INFO) << "HLO for module " << module.name();
+    LOG(INFO) << "Label: " << label;
+    XLA_LOG_LINES(2, module.ToString());
+  }
+  if (!debug_options.xla_generate_hlo_text_to().empty()) {
+    DumpText(module, label, debug_options.xla_generate_hlo_text_to());
+  }
+  return graph_url;
 }
 
 }  // namespace hlo_graph_dumper

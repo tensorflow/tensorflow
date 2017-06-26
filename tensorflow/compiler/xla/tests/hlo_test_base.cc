@@ -56,7 +56,7 @@ struct HloTestBase::EigenThreadPoolWrapper {
 HloTestBase::HloTestBase()
     : backend_(Backend::CreateDefaultBackend().ConsumeValueOrDie()) {
   test_hlo_dumper_ = [](const HloModule& module, const string& label) {
-    return Executable::DumpExecutedHlo(module, label, /*profile=*/nullptr);
+    hlo_graph_dumper::MaybeDumpHloModule(module, label, /*profile=*/nullptr);
   };
   VLOG(1) << "executing on platform " << backend_->platform()->Name();
 }

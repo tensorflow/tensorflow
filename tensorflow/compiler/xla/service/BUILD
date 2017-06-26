@@ -1813,6 +1813,7 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
         "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
     ],
     alwayslink = 1,
 )

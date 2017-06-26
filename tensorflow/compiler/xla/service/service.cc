@@ -168,7 +168,8 @@ Service::CreateComputeConstantBackend() {
 
 /* static */ Compiler::HloDumper Service::MakeHloDumper() {
   return [](const HloModule& module, const string& label) {
-    return Executable::DumpExecutedHlo(module, label, /*profile=*/nullptr);
+    hlo_graph_dumper::MaybeDumpHloModule(module, label,
+                                         /*profile=*/nullptr);
   };
 }
 
