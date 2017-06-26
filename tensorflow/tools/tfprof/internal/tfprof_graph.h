@@ -54,8 +54,8 @@ class TFGraph : public TFShow {
   const ShowNode* ShowInternal(const Options& opts,
                                Timeline* timeline) override;
 
-  bool ShouldShowIfExtra(const ShowNode* node, const Options& opts,
-                         int depth) const override {
+  bool ShouldShowIfExtra(ShowNode* node, const Options& opts,
+                         int depth) override {
     return true;
   }
 

@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_stats.h"
 #include "tensorflow/tools/tfprof/tfprof_log.pb.h"
-#include "tensorflow/tools/tfprof/tfprof_options.pb.h"
 #include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -37,18 +36,6 @@ TFStats* tf_stat = nullptr;
 
 string RunProfile(const string& command, const string& options,
                   TFStats* tf_stats) {
-  if (command == kCmds[4]) {
-    AdvisorOptionsProto option_pb;
-    if (!option_pb.ParseFromString(options)) {
-      fprintf(stderr, "Cannot parse AdvisorOptionsProto\n");
-      return "";
-    }
-    tf_stats->BuildAllViews();
-    return Advisor(tf_stats).Advise(option_pb).SerializeAsString();
-  } else {
-    tf_stats->BuildView(command);
-  }
-
   Options opts;
   tensorflow::Status s = Options::FromProtoStr(options, &opts);
   if (!s.ok()) {
@@ -110,14 +97,14 @@ void AddStep(int64 step, const string* run_meta, const string* op_log) {
   // TODO(xpan): Better error handling.
   std::unique_ptr<RunMetadata> run_meta_ptr(new RunMetadata());
   run_meta_ptr->ParseFromString(*run_meta);
-  tf_stat->AddRunMeta(step, std::move(run_meta_ptr));
+  tf_stat->ParseRunMeta(step, std::move(run_meta_ptr));
 
   std::unique_ptr<OpLog> op_log_ptr;
   if (op_log && !op_log->empty()) {
     op_log_ptr.reset(new OpLog());
     op_log_ptr->ParseFromString(*op_log);
   }
-  tf_stat->AddOpLog(std::move(op_log_ptr));
+  tf_stat->ParseOpLog(std::move(op_log_ptr));
 }
 
 string Profile(const string* command, const string* options) {
@@ -156,6 +143,8 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
 
   return RunProfile(*command, *options, &tf_stats);
 }
+
+void Advise() { Advisor(tf_stat).Advise(); }
 
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -24,11 +24,3 @@ message OptionsProto {
   string output = 15;
   string dump_to_file = 16;
 }
-
-message AdvisorOptionsProto {
-  // checker name -> a dict of key-value options.
-  map<string, CheckerOption> checkers = 1;
-  message CheckerOption {
-    map<string, string> options = 1;
-  }
-}

@@ -33,11 +33,10 @@ struct ExecStats {
 
 class AcceleratorUtilizationChecker : public Checker {
  public:
-  string name() const override { return kCheckers[0]; }
+  string name() override { return "AcceleratorUtilizationChecker"; }
 
  private:
-  AdviceProto::Checker Check(const AdvisorOptionsProto::CheckerOption& options,
-                             const TFStats* stats) override {
+  std::vector<string> Check(const TFStats* stats) override {
     if (!stats) {
       fprintf(stderr, "Missing profiles (e.g. graph, run_meta). Skip %s\n",
               name().c_str());
@@ -49,21 +48,24 @@ class AcceleratorUtilizationChecker : public Checker {
     return CheckInternal();
   }
 
-  AdviceProto::Checker CheckInternal() {
+  std::vector<string> CheckInternal() {
     for (const auto& s : accelerator_exec_stats_) {
       const ExecStats& stat = s.second;
       int64 total_micros = stat.end_micros - stat.start_micros;
       if (total_micros <= 0) continue;
       double utilization = 1.0 * stat.exec_micros / total_micros;
       if (utilization >= 0.5) {
-        reports_.add_reports(strings::Printf("device: %s utilization: %.2f",
-                                             s.first.c_str(), utilization));
+        reports_.push_back(strings::Printf("%s: device: %s utilization: %.2f",
+                                           kLevel[0], s.first.c_str(),
+                                           utilization));
       } else if (utilization < 0.5 && utilization > 0.2) {
-        reports_.add_reports(strings::Printf("device: %s low utilization: %.2f",
-                                             s.first.c_str(), utilization));
+        reports_.push_back(
+            strings::Printf("%s: device: %s low utilization: %.2f", kLevel[1],
+                            s.first.c_str(), utilization));
       } else if (utilization <= 0.2) {
-        reports_.add_reports(strings::Printf("device: %s low utilization: %.2f",
-                                             s.first.c_str(), utilization));
+        reports_.push_back(
+            strings::Printf("%s: device: %s low utilization: %.2f", kLevel[2],
+                            s.first.c_str(), utilization));
       }
     }
     return reports_;
@@ -100,7 +102,7 @@ class AcceleratorUtilizationChecker : public Checker {
 
   std::map<string, ExecStats> accelerator_exec_stats_;
   std::map<string, int64> ps_placement_;
-  AdviceProto::Checker reports_;
+  std::vector<string> reports_;
 };
 
 }  // namespace tfprof

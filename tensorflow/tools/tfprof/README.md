@@ -7,11 +7,7 @@
 * Profile model performance
   * execution time, memory consumption
   * Profile multiple steps.
-* Auto profile and advise.
-  * accelerator utilization check
-  * expensive operation check
-  * operation configuration check
-  * distributed runtime check (Not OSS)
+* Auto detect and advise. (Experimental)
 
 ###Interfaces
 

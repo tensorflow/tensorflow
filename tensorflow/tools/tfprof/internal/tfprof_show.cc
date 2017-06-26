@@ -26,9 +26,7 @@ namespace tensorflow {
 namespace tfprof {
 
 const TFGraphNodeProto& TFShow::Show(const Options& opts) {
-  if (opts.output_type == kOutput[3]) {
-    return ShowInternal(opts, nullptr)->proto();
-  } else if (opts.output_type == kOutput[0]) {
+  if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else if (opts.output_type == kOutput[2]) {
@@ -66,8 +64,7 @@ bool TFShow::LookUpCheckPoint(const string& name,
   return true;
 }
 
-bool TFShow::ShouldShow(const ShowNode* node, const Options& opts,
-                        int depth) const {
+bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
@@ -100,8 +97,7 @@ bool TFShow::ShouldShow(const ShowNode* node, const Options& opts,
   return true;
 }
 
-bool TFShow::ShouldTrim(const ShowNode* node,
-                        const std::vector<string>& regexes) const {
+bool TFShow::ShouldTrim(ShowNode* node, const std::vector<string>& regexes) {
   for (const string& regex : regexes) {
     if (RE2::FullMatch(node->name(), regex)) {
       return true;
@@ -126,7 +122,7 @@ bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
   return false;
 }
 
-string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
+string TFShow::FormatNode(ShowNode* node, const Options& opts) {
   std::vector<string> info;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     const string shape = FormatShapes(node->node->shape());
@@ -214,7 +210,7 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
                          str_util::Join(info, ", ").c_str());
 }
 
-string TFShow::FormatLegend(const Options& opts) const {
+string TFShow::FormatLegend(const Options& opts) {
   std::vector<string> legends;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     legends.push_back("# parameters");
