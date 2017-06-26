@@ -764,10 +764,10 @@ def parallel_stack(values, name="parallel_stack"):
   The difference between `stack` and `parallel_stack` is that `stack` requires
   all the inputs be computed before the operation will begin but doesn't require
   that the input shapes be known during graph construction.
-  
+
   `parallel_stack` will copy pieces of the input into the output as they become
   available, in some situations this can provide a performance benefit.
-  
+
   Unlike `stack`, `parallel_stack` does NOT support backpropagation.
 
   This is the opposite of unstack.  The numpy equivalent is
@@ -1373,7 +1373,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   ```
 
   Args:
-    shape: Either a list of integers, or a 1-D `Tensor` of type `int32`.
+    shape: A list of integers, a tuple of integers, or a 1-D `Tensor` of type `int32`.
     dtype: The type of an element in the resulting `Tensor`.
     name: A name for the operation (optional).
 
@@ -1487,7 +1487,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   ```
 
   Args:
-    shape: Either a list of integers, or a 1-D `Tensor` of type `int32`.
+    shape: A list of integers, a tuple of integers, or a 1-D `Tensor` of type `int32`.
     dtype: The type of an element in the resulting `Tensor`.
     name: A name for the operation (optional).
 
