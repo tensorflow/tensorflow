@@ -2284,21 +2284,17 @@ REGISTER_OP("StridedSlice")
       const Tensor* begin_value = c->input_tensor(1);
       const Tensor* end_value = c->input_tensor(2);
 
-      TensorShapeProto processing_shape, final_shape;
-      ShapeReadWriteFromTensorShapeProto wrapped_processing_shape(
-          &processing_shape);
-      ShapeReadWriteFromTensorShapeProto wrapped_final_shape(&final_shape);
+      PartialTensorShape processing_shape, final_shape;
       bool is_identity, is_simple_slice, slice_dim0;
       gtl::InlinedVector<int64, 4> begin, end, strides;
       TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
-          begin_value, end_value, *strides_value,
-          ShapeReadWriteFromTensorShapeProto(&input_shape_proto), begin_mask,
+          begin_value, end_value, *strides_value, input_shape_proto, begin_mask,
           end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
-          &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
-          &is_simple_slice, &slice_dim0, &begin, &end, &strides));
+          &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+          &slice_dim0, &begin, &end, &strides));
 
       ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(final_shape, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(final_shape, &out));
       c->set_output(0, out);
 
       return Status::OK();

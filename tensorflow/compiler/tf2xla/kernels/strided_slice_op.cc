@@ -63,17 +63,13 @@ class StridedSliceOp : public XlaOpKernel {
                                             &strides_tensor));
 
     TensorShape dummy_processing_shape;
-    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
-    ShapeReadWriteFromTensorShape wrapped_dummy_processing_shape(
-        &dummy_processing_shape);
     bool dummy = false;
-    OP_REQUIRES_OK(
-        ctx, ValidateStridedSliceOp(
-                 &begin_tensor, &end_tensor, strides_tensor,
-                 ShapeReadWriteFromTensorShape(&input_shape), begin_mask_,
-                 end_mask_, ellipsis_mask_, new_axis_mask_, shrink_axis_mask_,
-                 &wrapped_dummy_processing_shape, &wrapped_final_shape, &dummy,
-                 &dummy, &dummy, &begin, &end, &strides));
+    OP_REQUIRES_OK(ctx,
+                   ValidateStridedSliceOp(
+                       &begin_tensor, &end_tensor, strides_tensor, input_shape,
+                       begin_mask_, end_mask_, ellipsis_mask_, new_axis_mask_,
+                       shrink_axis_mask_, &dummy_processing_shape, &final_shape,
+                       &dummy, &dummy, &dummy, &begin, &end, &strides));
 
     gtl::InlinedVector<int64, 4> dimensions_to_reverse;
     gtl::InlinedVector<int64, 4> slice_begin, slice_end;
@@ -172,14 +168,11 @@ class StridedSliceGradOp : public XlaOpKernel {
                                             &strides_tensor));
 
     bool dummy = false;
-    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
-    ShapeReadWriteFromTensorShape wrapped_processing_shape(&processing_shape);
     OP_REQUIRES_OK(
         ctx, ValidateStridedSliceOp(
-                 &begin_tensor, &end_tensor, strides_tensor,
-                 ShapeReadWriteFromTensorShape(&input_shape), begin_mask_,
-                 end_mask_, ellipsis_mask_, new_axis_mask_, shrink_axis_mask_,
-                 &wrapped_processing_shape, &wrapped_final_shape, &dummy,
+                 &begin_tensor, &end_tensor, strides_tensor, input_shape,
+                 begin_mask_, end_mask_, ellipsis_mask_, new_axis_mask_,
+                 shrink_axis_mask_, &processing_shape, &final_shape, &dummy,
                  &dummy, &dummy, &begin, &end, &strides));
 
     // Check to make sure dy is consistent with the original slice
@@ -283,17 +276,13 @@ class StridedSliceAssignOp : public XlaOpKernel {
     const TensorShape rhs_shape = ctx->InputShape(4);
 
     TensorShape dummy_processing_shape;
-    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
-    ShapeReadWriteFromTensorShape wrapped_dummy_processing_shape(
-        &dummy_processing_shape);
     bool dummy = false;
-    OP_REQUIRES_OK(
-        ctx, ValidateStridedSliceOp(
-                 &begin_tensor, &end_tensor, strides_tensor,
-                 ShapeReadWriteFromTensorShape(&lhs_shape), begin_mask_,
-                 end_mask_, ellipsis_mask_, new_axis_mask_, shrink_axis_mask_,
-                 &wrapped_dummy_processing_shape, &wrapped_final_shape, &dummy,
-                 &dummy, &dummy, &begin, &end, &strides));
+    OP_REQUIRES_OK(ctx,
+                   ValidateStridedSliceOp(
+                       &begin_tensor, &end_tensor, strides_tensor, lhs_shape,
+                       begin_mask_, end_mask_, ellipsis_mask_, new_axis_mask_,
+                       shrink_axis_mask_, &dummy_processing_shape, &final_shape,
+                       &dummy, &dummy, &dummy, &begin, &end, &strides));
 
     if (final_shape.num_elements() == 0 && rhs_shape.num_elements() == 0) {
       // DynamicUpdateSlice does not allow 0-element updates. We should probably
