@@ -15,7 +15,10 @@ package_group(
 )
 
 package(
-    default_visibility = [":internal"],
+    default_visibility = [
+        ":internal",
+        "//tensorflow/compiler/plugin/executor:__pkg__",
+    ],
 )
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")

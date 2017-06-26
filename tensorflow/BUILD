@@ -208,6 +208,7 @@ filegroup(
         "//tensorflow/compiler/jit/kernels:all_files",
         "//tensorflow/compiler/jit/legacy_flags:all_files",
         "//tensorflow/compiler/jit/ops:all_files",
+        "//tensorflow/compiler/plugin/executor:all_files",
         "//tensorflow/compiler/tests:all_files",
         "//tensorflow/compiler/tf2xla:all_files",
         "//tensorflow/compiler/tf2xla/cc:all_files",
