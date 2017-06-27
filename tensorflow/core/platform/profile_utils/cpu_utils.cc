@@ -60,7 +60,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
                                        GetCycleCounterFrequency());
 }
 
-/* static */ uint64 CpuUtils::GetCycleCounterFrequencyImpl() {
+/* static */ int64 CpuUtils::GetCycleCounterFrequencyImpl() {
 // TODO(satok): do not switch by macro here
 #if defined(__ANDROID__)
   return GetCpuUtilsHelperSingletonInstance().CalculateCpuFrequency();

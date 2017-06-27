@@ -138,7 +138,7 @@ class CpuUtils {
   // CAVEAT: as this method calls system call and parse the mssage,
   // this call may be slow. This is why this class caches the value by
   // StaticVariableInitializer.
-  static uint64 GetCycleCounterFrequencyImpl();
+  static int64 GetCycleCounterFrequencyImpl();
 
   // Return a singleton of ICpuUtilsHelper
   // ICpuUtilsHelper is declared as a function-local static variable
