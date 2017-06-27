@@ -371,7 +371,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
-        cell = core_rnn_cell_impl.LSTMCell(
+        cell = rnn_cell_impl.LSTMCell(
           num_units=num_units,
           num_proj=num_proj,
           forget_bias=1.0,

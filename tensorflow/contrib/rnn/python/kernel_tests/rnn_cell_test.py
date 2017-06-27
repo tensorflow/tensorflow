@@ -37,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -1285,12 +1286,12 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         x = array_ops.zeros([1, 2])
         c0 = array_ops.zeros([1, 2])
         h0 = array_ops.zeros([1, 2])
-        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
+        state0 = rnn_cell_impl.LSTMStateTuple(c0, h0)
         c1 = array_ops.zeros([1, 2])
         h1 = array_ops.zeros([1, 2])
-        state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
-        cell = core_rnn_cell_impl.MultiRNNCell(
-          [core_rnn_cell_impl.LSTMCell(2,
+        state1 = rnn_cell_impl.LSTMStateTuple(c1, h1)
+        cell = rnn_cell_impl.MultiRNNCell(
+          [rnn_cell_impl.LSTMCell(2,
                                        state_is_tuple=True,
                                        layer_norm=True,
                                        norm_gain=1.0,
