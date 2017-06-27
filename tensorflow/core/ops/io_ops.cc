@@ -475,6 +475,7 @@ REGISTER_OP("FixedLengthRecordReaderV2")
     .Attr("hop_bytes: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("encoding: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
@@ -490,6 +491,8 @@ container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
 shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
+encoding: The type of encoding for the file. Currently ZLIB and GZIP
+        are supported. Defaults to none.
 )doc");
 
 // TODO(cwhipkey): mark this deprecated in favor of V2.
