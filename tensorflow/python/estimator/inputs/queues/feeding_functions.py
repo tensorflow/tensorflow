@@ -169,10 +169,17 @@ class _OrderedDictNumpyFeedFn(object):
         current_epoch=self._epoch,
         total_epochs=self._num_epochs)
 
+    # Get sorted indices and remember how to reorder output
+    sorted_integer_indexes, reorder_indexes = zip(
+        *sorted([(value, index)
+                 for index, value in enumerate(integer_indexes)]))
+    sorted_integer_indexes = list(sorted_integer_indexes)
+    reorder_indexes = list(reorder_indexes)
+
     self._trav = (integer_indexes[-1] + 1) % self._max
     feed_dict = {self._index_placeholder: integer_indexes}
     cols = [
-        column[sorted(integer_indexes)]
+        column[sorted_integer_indexes][reorder_indexes]
         for column in self._ordered_dict_of_arrays.values()
     ]
     feed_dict.update(dict(zip(self._col_placeholders, cols)))
