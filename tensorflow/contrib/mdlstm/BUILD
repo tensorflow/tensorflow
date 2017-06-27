@@ -19,8 +19,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib:rnn",
-        "//tensorflow/contrib/rnn/python/ops/rnn_cell:_linear",
+        "//tensorflow/contrib:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
