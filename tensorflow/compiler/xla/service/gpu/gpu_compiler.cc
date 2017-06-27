@@ -119,14 +119,13 @@ string GetLibdeviceDir(const HloModuleConfig& config) {
 
 // Runs optimization passes on the given HLO module.
 tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
-                                     const Compiler::HloDumper& dump_hlo,
                                      const se::DeviceDescription& device_desc) {
   {
-    HloPassPipeline pipeline("optimization", dump_hlo);
+    HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
     {
-      auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-          "simplification", dump_hlo);
+      auto& pass =
+          pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
@@ -146,7 +145,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   {
-    HloPassFix<HloPassPipeline> fusion("fusion", dump_hlo);
+    HloPassFix<HloPassPipeline> fusion("fusion");
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
@@ -156,14 +155,13 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(
-    const Compiler::HloDumper& dump_hlo, HloModule* hlo_module) {
+tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
-  HloPassPipeline pipeline("GPU-ir-emit-prepare", dump_hlo);
+  HloPassPipeline pipeline("GPU-ir-emit-prepare");
   pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
@@ -230,13 +228,12 @@ GpuCompiler::GpuCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
-    std::unique_ptr<HloModule> module, HloDumper dump_hlo,
-    se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), dump_hlo,
-                                       stream_exec->GetDeviceDescription()));
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(dump_hlo, module.get()));
+  TF_RETURN_IF_ERROR(
+      OptimizeHloModule(module.get(), stream_exec->GetDeviceDescription()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -344,16 +341,15 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlos,
+    std::vector<std::unique_ptr<HloModule>> modules,
     std::vector<se::StreamExecutor*> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-GpuCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> module,
-    HloDumper dump_hlo, const AotCompilationOptions& options) {
+GpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
+                                const AotCompilationOptions& options) {
   return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
 }
 

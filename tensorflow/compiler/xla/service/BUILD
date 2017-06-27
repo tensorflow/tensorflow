@@ -1603,8 +1603,8 @@ cc_library(
         "hlo_pass_pipeline.h",
     ],
     deps = [
-        ":compiler",
         ":hlo",
+        ":hlo_graph_dumper",
         ":hlo_pass",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

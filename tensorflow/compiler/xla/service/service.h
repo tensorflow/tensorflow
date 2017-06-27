@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 #include "tensorflow/compiler/xla/service/compilation_cache.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -321,10 +320,6 @@ class Service : public ServiceInterface {
       Backend* backend,
       tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
       tensorflow::gtl::ArraySlice<string> result_tags);
-
-  // Returns an HLO dumper for use in the compiler (it refers to flags
-  // associated with the service).
-  static Compiler::HloDumper MakeHloDumper();
 
   // Convenience function for adding a function to a user computation.
   template <typename RequestT, typename ResponseT>

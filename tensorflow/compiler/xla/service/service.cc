@@ -166,13 +166,6 @@ Service::CreateComputeConstantBackend() {
   return NotFound("CPU platform not found");
 }
 
-/* static */ Compiler::HloDumper Service::MakeHloDumper() {
-  return [](const HloModule& module, const string& label) {
-    hlo_graph_dumper::MaybeDumpHloModule(module, label,
-                                         /*profile=*/nullptr);
-  };
-}
-
 Service::Service(const ServiceOptions& options,
                  std::unique_ptr<Backend> execute_backend,
                  std::unique_ptr<Backend> compute_constant_backend)
@@ -393,11 +386,9 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     modules.push_back(std::move(module));
   }
 
-  Compiler::HloDumper hlo_dumper = MakeHloDumper();
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      backend->compiler()->Compile(std::move(modules), hlo_dumper,
-                                   std::move(executors)));
+      backend->compiler()->Compile(std::move(modules), std::move(executors)));
 
   if (!other_directory_path.empty()) {
     for (size_t i = 0; i < versioned_handles.size(); ++i) {
@@ -444,15 +435,9 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                           /*include_unreachable_instructions=*/
                                           !executable_for_compute_constant));
 
-  Compiler::HloDumper hlo_dumper = MakeHloDumper();
-  if (executable_for_compute_constant &&
-      !flags->xla_hlo_graph_for_compute_constant) {
-    hlo_dumper = [](const HloModule&, const string&) {};
-  }
-
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), hlo_dumper, executor));
+      backend->compiler()->Compile(std::move(module), executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -1192,7 +1177,8 @@ tensorflow::Status Service::GetComputationStats(
       std::unique_ptr<HloModule> module,
       computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig()));
 
-  MakeHloDumper()(*module, "computation statistics subject");
+  hlo_graph_dumper::MaybeDumpHloModule(*module,
+                                       "computation statistics subject");
 
   // Run HLO analysis to get the computation statistics.
   HloCostAnalysis analysis(

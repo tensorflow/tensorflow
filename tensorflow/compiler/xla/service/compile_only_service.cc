@@ -122,8 +122,7 @@ CompileOnlyService::CompileAheadOfTime(
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules),
-                                       MakeHloDumper(), options);
+  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
 }
 
 }  // namespace xla

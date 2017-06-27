@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
@@ -55,9 +54,6 @@ struct HloTestBase::EigenThreadPoolWrapper {
 
 HloTestBase::HloTestBase()
     : backend_(Backend::CreateDefaultBackend().ConsumeValueOrDie()) {
-  test_hlo_dumper_ = [](const HloModule& module, const string& label) {
-    hlo_graph_dumper::MaybeDumpHloModule(module, label, /*profile=*/nullptr);
-  };
   VLOG(1) << "executing on platform " << backend_->platform()->Name();
 }
 
@@ -83,7 +79,7 @@ StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
     Shape* result_shape) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend_->compiler()->Compile(std::move(module), test_hlo_dumper_,
+      backend_->compiler()->Compile(std::move(module),
                                     backend_->default_stream_executor()));
 
   se::Stream stream(backend_->default_stream_executor());

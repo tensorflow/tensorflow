@@ -246,9 +246,9 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 };
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
+Status CpuCompiler::RunHloPasses(HloModule* module) {
   // Optimization pipeline.
-  HloPassPipeline pipeline("CPU", dump_hlo);
+  HloPassPipeline pipeline("CPU");
   pipeline.AddInvariantChecker<HloVerifier>();
 
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
@@ -257,8 +257,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
 
   pipeline.AddPass<ConvCanonicalization>();
   {
-    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification",
-                                                               dump_hlo);
+    auto& pass =
+        pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
@@ -357,8 +357,7 @@ Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
 }  // namespace
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
-    std::unique_ptr<HloModule> module, HloDumper dump_hlo,
-    se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
@@ -384,7 +383,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
-  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), dump_hlo));
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get()));
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
@@ -572,7 +571,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlos,
+    std::vector<std::unique_ptr<HloModule>> modules,
     std::vector<se::StreamExecutor*> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on CPU.");
@@ -580,7 +579,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
-                                HloDumper dump_hlo,
                                 const AotCompilationOptions& aot_options) {
   TF_RET_CHECK(!modules.empty());
   std::call_once(llvm_command_line_options_initialized,
@@ -671,7 +669,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     HloModule* module = modules[i].get();
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
-    TF_RETURN_IF_ERROR(RunHloPasses(module, dump_hlo));
+    TF_RETURN_IF_ERROR(RunHloPasses(module));
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
