@@ -120,8 +120,8 @@ class Conv2DBenchmark(test.Benchmark):
   def benchmark_conv2d(self):
     print("conv2d benchmark:")
 
-    h = 1000
-    w = 1000
+    h = 500
+    w = 500
     fh = 3
     fw = 3
     input_shapes = []
