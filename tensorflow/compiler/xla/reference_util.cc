@@ -491,6 +491,26 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
       }
     }
   }
+  if (samples == 0 || kx == 0 || ky == 0 || ox == 0 || oy == 0 || oz == 0 ||
+      iz == 0) {
+    LOG(INFO) << "Output will be trivially empty because one of these "
+                 "dimensions is 0: samples: "
+              << samples << " kx: " << kx << " ky: " << ky << " ox: " << ox
+              << " oy: " << oy << " oz: " << oz << " iz: " << iz;
+    return result;
+  }
+  bool trivial = true;
+  auto check_trivial = [&trivial](tensorflow::gtl::ArraySlice<int64> indices,
+                                  float value) {
+    if (value != 0.0) {
+      trivial = false;
+    }
+  };
+  lhs.Each(check_trivial);
+  LOG_IF(FATAL, trivial) << "LHS is all 0.0.";
+  trivial = true;
+  rhs.Each(check_trivial);
+  LOG_IF(FATAL, trivial) << "RHS is all 0.0.";
   return result;
 }
 
