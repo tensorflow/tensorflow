@@ -868,10 +868,15 @@ xla_test(
     ],
 )
 
-xla_test(
-    name = "reduce_window_test",
-    timeout = "long",
+filegroup(
+    name = "reduce_window_test_srcs",
+    testonly = 1,
     srcs = ["reduce_window_test.cc"],
+)
+
+cc_library(
+    name = "reduce_window_test_deps",
+    testonly = 1,
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
@@ -888,6 +893,15 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "reduce_window_test",
+    timeout = "long",
+    srcs = ["reduce_window_test_srcs"],
+    deps = [
+        ":reduce_window_test_deps",
     ],
 )
 
