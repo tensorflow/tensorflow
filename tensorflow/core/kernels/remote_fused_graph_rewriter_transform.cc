@@ -66,6 +66,7 @@ static Status ParseArguments(const TransformFuncContext& context,
                              string* input_types_str, string* input_shapes_str,
                              string* fused_nodes_str, string* border_inputs_str,
                              string* border_outputs_str,
+                             string* fused_op_types_str,
                              string* remote_fused_graph_node_name,
                              string* remote_graph_executor_name) {
   TF_RETURN_IF_ERROR(context.GetOneStringParameter(
@@ -83,6 +84,9 @@ static Status ParseArguments(const TransformFuncContext& context,
   TF_RETURN_IF_ERROR(context.GetOneStringParameter(
       RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_BORDER_OUTPUTS, "",
       border_outputs_str));
+  TF_RETURN_IF_ERROR(context.GetOneStringParameter(
+      RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSED_OP_TYPES, "",
+      fused_op_types_str));
   TF_RETURN_IF_ERROR(context.GetOneStringParameter(
       RemoteFusedGraphExecuteUtils::
           TRANSFORM_ARG_REMOTE_FUSED_GRAPH_EXECUTOR_NAME,
@@ -135,12 +139,13 @@ Status FuseRemoteGraph(const GraphDef& input_graph_def,
   string fused_nodes_str;
   string border_inputs_str;
   string border_outputs_str;
+  string fused_op_types_str;
   string remote_fused_graph_node_name;
   string remote_graph_executor_name;
   TF_RETURN_IF_ERROR(ParseArguments(
       context, &input_types_str, &input_shapes_str, &fused_nodes_str,
-      &border_inputs_str, &border_outputs_str, &remote_fused_graph_node_name,
-      &remote_graph_executor_name));
+      &border_inputs_str, &border_outputs_str, &fused_op_types_str,
+      &remote_fused_graph_node_name, &remote_graph_executor_name));
 
   if (!input_types_str.empty()) {
     TF_RETURN_IF_ERROR(PlaceShapeType(inputs, outputs, input_types_str,
@@ -173,6 +178,15 @@ Status FuseRemoteGraph(const GraphDef& input_graph_def,
         mutable_input_graph_def, inputs, outputs, remote_fused_graph_node_name,
         border_inputs, border_outputs, remote_graph_executor_name,
         require_shape_type, output_graph_def));
+  } else if (!fused_op_types_str.empty()) {
+    const std::vector<string> fused_op_type_vector =
+        str_util::Split(fused_op_types_str, ",");
+    const std::unordered_set<string> fused_op_types(
+        fused_op_type_vector.begin(), fused_op_type_vector.end());
+    TF_RETURN_IF_ERROR(RemoteFusedGraphExecuteUtils::FuseRemoteGraphByOpTypes(
+        mutable_input_graph_def, inputs, outputs, remote_fused_graph_node_name,
+        fused_op_types, remote_graph_executor_name, require_shape_type,
+        output_graph_def));
   } else {
     CHECK(false) << "Fuse targets are not specified.";
   }
@@ -191,14 +205,15 @@ Status PlaceRemoteGraphArguments(const GraphDef& input_graph_def,
   string input_types_str;
   string input_shapes_str;
   string fused_nodes_str;
+  string fused_op_types_str;
   string border_inputs_str;
   string border_outputs_str;
   string remote_fused_graph_node_name;
   string remote_graph_executor_name;
   TF_RETURN_IF_ERROR(ParseArguments(
       context, &input_types_str, &input_shapes_str, &fused_nodes_str,
-      &border_inputs_str, &border_outputs_str, &remote_fused_graph_node_name,
-      &remote_graph_executor_name));
+      &border_inputs_str, &border_outputs_str, &fused_op_types_str,
+      &remote_fused_graph_node_name, &remote_graph_executor_name));
 
   if (!input_types_str.empty()) {
     TF_RETURN_IF_ERROR(PlaceShapeType(inputs, outputs, input_types_str,
@@ -213,9 +228,14 @@ Status PlaceRemoteGraphArguments(const GraphDef& input_graph_def,
       str_util::Split(border_inputs_str, ",");
   const std::vector<string> border_outputs =
       str_util::Split(border_outputs_str, ",");
+  const std::vector<string> fused_op_type_vector =
+      str_util::Split(fused_op_types_str, ",");
+  const std::unordered_set<string> fused_op_types(fused_op_type_vector.begin(),
+                                                  fused_op_type_vector.end());
+
   TF_RETURN_IF_ERROR(RemoteFusedGraphExecuteUtils::PlaceRemoteGraphArguments(
       inputs, outputs, fused_node_names, border_inputs, border_outputs,
-      remote_fused_graph_node_name, remote_graph_executor_name,
+      fused_op_types, remote_fused_graph_node_name, remote_graph_executor_name,
       output_graph_def));
 
   return Status::OK();
