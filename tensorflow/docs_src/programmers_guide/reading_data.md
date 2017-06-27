@@ -476,4 +476,4 @@ This is what is done in
 
 You can have the train and eval in the same graph in the same process, and share
 their trained variables.  See
-@{$variables$the shared variables tutorial}.
+@{$variable_scope$the shared variables tutorial}.

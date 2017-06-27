@@ -417,7 +417,7 @@ scope indicating that they should be run on the first GPU.
 All variables are pinned to the CPU and accessed via
 @{tf.get_variable}
 in order to share them in a multi-GPU version.
-See how-to on @{$variables$Sharing Variables}.
+See how-to on @{$variable_scope$Sharing Variables}.
 
 ### Launching and Training the Model on Multiple GPU cards
 
