@@ -2294,10 +2294,10 @@ cc_library(
         ":cwise_op",
         ":fft_ops",
         ":matmul_op",
+        ":reduce_slice_ops",
         ":reduction_ops",
         ":scan_ops",
         ":segment_reduction_ops",
-        ":reduce_slice_ops",
         ":sequence_ops",
     ],
 )
