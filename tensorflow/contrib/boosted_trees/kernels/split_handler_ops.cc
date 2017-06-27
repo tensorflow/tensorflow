@@ -20,7 +20,6 @@
 #include "tensorflow/contrib/boosted_trees/proto/split_info.pb.h"
 #include "tensorflow/contrib/boosted_trees/proto/tree_config.pb.h"
 #include "tensorflow/core/framework/device_base.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"

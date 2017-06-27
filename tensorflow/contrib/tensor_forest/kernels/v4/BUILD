@@ -76,7 +76,6 @@ cc_library(
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
     ],
 )
 

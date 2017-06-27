@@ -335,7 +335,6 @@ cc_library(
         ":feature-stats-accumulator",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
     ],
 )
 
