@@ -97,12 +97,12 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
     computing = true;
     Camera.Size previewSize = camera.getParameters().getPreviewSize();
-    yuvBytes[0]=bytes;
+    yuvBytes[0] = bytes;
     try {
       // Initialize the storage bitmaps once when the resolution is known.
-      if (previewSize.width!=0 ||  previewSize.height!=0) {
-        previewHeight=previewSize.height;
-        previewWidth=previewSize.width;
+      if (previewSize.width !=0 ||  previewSize.height !=0) {
+        previewHeight = previewSize.height;
+        previewWidth = previewSize.width;
         rgbBytes = new int[previewWidth * previewHeight];
         onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
         ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
@@ -126,6 +126,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   @Override
   public void onImageAvailable(final ImageReader reader) {
     Image image = null;
+    rgbBytes = new int[previewWidth * previewHeight];
     try {
       image = reader.acquireLatestImage();
 
