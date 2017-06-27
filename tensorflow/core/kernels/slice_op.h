@@ -28,30 +28,30 @@ namespace internal {
 
 template <typename Device, typename T>
 void SliceSimple(const Device& d, Tensor* out, const Tensor& in,
-                 const gtl::ArraySlice<int64>& slice_indices,
-                 const gtl::ArraySlice<int64>& slice_sizes);
+                 const gtl::ArraySlice<int64>& slice_indices);
 
 template <typename Device, typename T, int NDIMS>
 void SliceUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                  const gtl::ArraySlice<int64>& slice_indices,
                  const gtl::ArraySlice<int64>& slice_sizes) {
-    bool use_64bit = (input.size() > Eigen::NumTraits<int>::highest());
-    if (!use_64bit &&
-        Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
-      typename TTypes<T, NDIMS>::ConstTensor input = in.tensor<T, NDIMS>();
-      typename TTypes<T, NDIMS>::Tensor output = out->tensor<T, NDIMS>();
-      Eigen::DSizes<int, NDIMS> indices;
-      for (int i = 0; i < NDIMS; ++i) {
-        indices[i] = slice_indices[i];
-      }
-      Eigen::DSizes<int, NDIMS> sizes;
-      for (int i = 0; i < NDIMS; ++i) {
-        sizes[i] = slice_sizes[i];
-      }
-      To32Bit(output).device(d) = To32Bit(input).slice(indices, sizes);
-    } else {
-      output.device(d) = input.slice(slice_indices, slice_sizes);
-    }
+
+  auto input = in.tensor<T, NDIMS>();
+  auto output = out->tensor<T, NDIMS>();
+  Eigen::DSizes<int, NDIMS> indices;
+  for (int i = 0; i < NDIMS; ++i) {
+    indices[i] = slice_indices[i];
+  }
+  Eigen::DSizes<int, NDIMS> sizes;
+  for (int i = 0; i < NDIMS; ++i) {
+    sizes[i] = slice_sizes[i];
+  }
+  bool use_64bit = (input.size() > Eigen::NumTraits<int>::highest());
+  if (!use_64bit &&
+      Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+    To32Bit(output).device(d) = To32Bit(input).slice(indices, sizes);
+  } else {
+    output.device(d) = input.slice(indices, sizes);
+  }
 }
 
 } // namespace internal
@@ -65,28 +65,28 @@ struct Slice {
                   const gtl::ArraySlice<int64>& slice_sizes) {
     switch (in.dims()) {
       case 1:
-        internal::SliceUsingEigen<d, T, 1>(d, out, in, slice_indices, slice_sizes);
+        internal::SliceUsingEigen<Device, T, 1>(d, out, in, slice_indices, slice_sizes);
         break;
       case 2:
-        internal::SliceUsingEigen<d, T, 2>(d, out, in, slice_indices, slice_sizes);
+        internal::SliceUsingEigen<Device, T, 2>(d, out, in, slice_indices, slice_sizes);
         break;
       case 3:
-        internal::SliceUsingEigen<d, T, 3>(d, out, in, slice_indices, slice_sizes);
+        internal::SliceUsingEigen<Device, T, 3>(d, out, in, slice_indices, slice_sizes);
         break;
       case 4:
-        internal::SliceUsingEigen<d, T, 4>(d, out, in, slice_indices, slice_sizes);
+        internal::SliceUsingEigen<Device, T, 4>(d, out, in, slice_indices, slice_sizes);
         break;
       case 5:
-        internal::SliceUsingEigen<d, T, 5>(d, out, in, slice_indices, slice_sizes);
+        internal::SliceUsingEigen<Device, T, 5>(d, out, in, slice_indices, slice_sizes);
         break;
       case 6:
-        internal::SliceUsingEigen<d, T, 6>(d, out, in, slice_indices, slice_sizes);
+        internal::SliceUsingEigen<Device, T, 6>(d, out, in, slice_indices, slice_sizes);
         break;
       case 7:
-        internal::SliceUsingEigen<d, T, 7>(d, out, in, slice_indices, slice_sizes);
+        internal::SliceUsingEigen<Device, T, 7>(d, out, in, slice_indices, slice_sizes);
         break;
       default:
-        internal::SliceSimple<d, T>(d, out, in, slice_indices);
+        internal::SliceSimple<Device, T>(d, out, in, slice_indices);
         break;
     }
   }
