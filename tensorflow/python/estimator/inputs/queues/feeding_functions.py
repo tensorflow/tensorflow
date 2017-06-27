@@ -23,6 +23,7 @@ import random
 import types as tp
 import numpy as np
 import six
+from six.moves import zip_longest
 
 from tensorflow.python.estimator.inputs.queues import feeding_queue_runner as fqr
 from tensorflow.python.framework import dtypes
@@ -34,11 +35,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
-
-try:
-  from itertools import zip_longest
-except ImportError:
-  from itertools import izip_longest as zip_longest
 
 try:
   # pylint: disable=g-import-not-at-top
