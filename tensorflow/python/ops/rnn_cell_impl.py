@@ -1026,7 +1026,7 @@ def _linear(args,
     else:
       weights = vs.get_variable(
         _WEIGHTS_VARIABLE_NAME,
-        [num_args, input_size, output_size / num_args], dtype=dtype)
+        [num_args, input_size, output_size // num_args], dtype=dtype)
 
       """
       Below, we'll reshape our output such that:
