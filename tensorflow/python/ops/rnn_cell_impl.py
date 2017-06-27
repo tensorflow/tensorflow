@@ -354,6 +354,9 @@ class BasicLSTMCell(RNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+
+      When restoring from CudnnLSTM-trained checkpoints, must use
+      CudnnCompatibleLSTMCell instead.
     """
     super(BasicLSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
@@ -468,6 +471,9 @@ class LSTMCell(RNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+
+      When restoring from CudnnLSTM-trained checkpoints, must use
+      CudnnCompatibleLSTMCell instead.
     """
     super(LSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
