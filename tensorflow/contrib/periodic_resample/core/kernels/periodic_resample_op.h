@@ -30,65 +30,63 @@ namespace {
 
   template <class IndexVecT, class IndexT>
   IndexT compute_input_index(
-      IndexVecT& Y, const IndexT& i, const IndexVecT& X, const int& q,
-      const std::vector<tensorflow::int64>& g,
-      const std::vector<tensorflow::int64>& G, IndexT& result,
-      std::vector<IndexT>& output_indices,
-      const typename std::decay<decltype(Y.size())>::type& rank) {
-    result = 0;
-    output_indices.clear();
+      IndexVecT* target_dimensions, const IndexT& output_index,
+      const IndexVecT& original_dimensions, const int& adjustable_dimension,
+      const std::vector<tensorflow::int64>& dimension_ceiling,
+      const std::vector<tensorflow::int64>& cumulative_dimensions,
+      IndexT* result,
+      std::vector<IndexT>* output_indices,
+      const int& rank) {
+
+    *result = 0;
+    output_indices->clear();
 
     // un-rasterize the output index
-    {
-      auto last_reduced_i = i;
-      auto r = rank;
-      do {
-        --r;
-        output_indices[r] = last_reduced_i % Y[r];
-        last_reduced_i = (last_reduced_i - output_indices[r]) / Y[r];
-      } while (r > 0);
+    auto last_reduced_i = output_index;
+    for (auto r = rank - 1; r >= 0; --r) {
+      (*output_indices)[r] = last_reduced_i % (*target_dimensions)[r];
+      last_reduced_i = (last_reduced_i - (*output_indices)[r]) / (*target_dimensions)[r];
     }
 
     // rasterize the input index
-    {
-      IndexT last_index_factor = 1;
-      for (auto r = rank - 1;; --r) {
-        IndexT index = 0;
-        if (r != q)
-          index = output_indices[r] / g[r];
-        else {
-          for (int qi = 0; qi < rank; ++qi) {
-            if (qi == q) continue;
-            index += G[qi] * (output_indices[qi] % g[qi]);
-          }
-          index *= Y[q];
-          index += output_indices[r];
+    IndexT last_index_factor = 1;
+    for (auto r = rank - 1; r >= 0; --r) {
+      IndexT index = 0;
+      if (r != adjustable_dimension)
+        index = (*output_indices)[r] / dimension_ceiling[r];
+      else {
+        for (int qi = 0; qi < rank; ++qi) {
+          if (qi == adjustable_dimension) continue;
+          index += cumulative_dimensions[qi] * ((*output_indices)[qi] % dimension_ceiling[qi]);
         }
-        result += last_index_factor * index;
-        last_index_factor *= X[r];
-        if (r == 0) break;
+        index *= (*target_dimensions)[adjustable_dimension];
+        index += (*output_indices)[r];
       }
+      *result += last_index_factor * index;
+      last_index_factor *= original_dimensions[r];
     }
 
-    return result;
+    return *result;
   }
 
-  template <class T, class VecT>
-  void main_logic(tensorflow::OpKernelContext* context, const VecT& desired_shape,
-                  const tensorflow::Tensor& input_tensor) {
+  template <class InputDataT, class IndexVecT> // both types are needed here b/c IndexVecT and InputDataT are not related
+  void fill_periodic_tensor(tensorflow::OpKernelContext* context,
+                            const IndexVecT& desired_shape,
+                            const tensorflow::Tensor& input_tensor) {
     // input is a strided array (last index is fastest, C-ordered)
-    auto input = input_tensor.flat<T>();
+    auto input = input_tensor.flat<InputDataT>();
     const int rank = input_tensor.dims();
     const auto original_size = input.size();
     // original and target dimensions
-    std::vector<tensorflow::int64> X(rank), Y(rank);
-    tensorflow::int64 total_size = 1, new_sliced_size = 1;
-    // factor by which X increases/decreases w.r.t. Y
-    std::vector<float> f(rank);
-    // helper arrays related to f
-    std::vector<tensorflow::int64> g(rank), G(rank);
+    std::vector<tensorflow::int64> original_dimensions(rank),
+                                   target_dimensions(rank);
+    tensorflow::int64 total_size(input_tensor.NumElements()),
+                      new_sliced_size(1);
+    // factors by which original_dimensions increases/decreases w.r.t. target_dimensions
+    std::vector<tensorflow::int64> dimension_ceiling(rank),
+                                   cumulative_dimensions(rank);
     // index of adjustable dimension
-    int q;
+    int adjustable_dimension;
     tensorflow::TensorShape output_shape;
 
     // requires that the rank of the input tensor and length of the desired shape
@@ -99,101 +97,101 @@ namespace {
                     rank, ", to be the same as the length of the desired shape, ",
                     desired_shape.size(), "."));
 
-    {
-      bool found = false;
-      for (int i = 0; i < rank; ++i) {
-        if (desired_shape(i) < 1) {
-          // only one index can be adjustable
-          OP_REQUIRES(context, !found,
-                      tensorflow::errors::InvalidArgument(
-                          "periodic_resample expects only "
-                          "one index to be marked as adjustable."));
-          q = i;
-          found = true;
-        } else {
-          Y[i] = desired_shape(i);
-          new_sliced_size *= Y[i];
-        }
+    bool found = false;
+    for (int i = 0; i < rank; ++i) {
+      if (desired_shape(i) < 1) {
+        // only one index can be adjustable
+        OP_REQUIRES(context, !found,
+                    tensorflow::errors::InvalidArgument(
+                        "periodic_resample expects only "
+                        "one index to be marked as adjustable."));
+        adjustable_dimension = i;
+        found = true;
+      } else {
+        target_dimensions[i] = desired_shape(i);
+        new_sliced_size *= target_dimensions[i];
       }
-      // at least one index needs to be adjustable
-      OP_REQUIRES(context, found, tensorflow::errors::InvalidArgument(
-                                      "periodic_resample expects at least "
-                                      "one index to be marked as adjustable."));
+    }
+    // at least one index needs to be adjustable
+    OP_REQUIRES(context, found, tensorflow::errors::InvalidArgument(
+                                    "periodic_resample expects at least "
+                                    "one index to be marked as adjustable."));
 
-      int count = 0;
-      for (const auto dim_info : input_tensor.shape()) {
-        X[count] = dim_info.size;
-        total_size *= X[count];
-        ++count;
-      }
+    int count = 0;
+    for (const auto dim_info : input_tensor.shape()) {
+      original_dimensions[count] = dim_info.size;
+      ++count;
+    }
 
-      Y[q] = tensorflow::int64(
-          std::floor(float(total_size) / float(new_sliced_size)));
+    target_dimensions[adjustable_dimension] = total_size / new_sliced_size;
 
-      count = 0;
-      for (const auto dim_info : input_tensor.shape()) {
-        f[count] = float(Y[count]) / float(X[count]);
-        g[count] = tensorflow::int64(std::ceil(f[count]));
-        if (count == 0)
-          G[count] = 1;
-        else
-          G[count] = G[count - 1] * g[count - 1];
-        ++count;
-      }
+    count = 0;
+    for (const auto dim_info : input_tensor.shape()) {
+      dimension_ceiling[count] = tensorflow::int64(
+        std::ceil(float(target_dimensions[count]) / float(original_dimensions[count]))
+      );
+      if (count == 0)
+        cumulative_dimensions[count] = 1;
+      else
+        cumulative_dimensions[count] = cumulative_dimensions[count - 1] * dimension_ceiling[count - 1];
+      ++count;
     }
 
     // ensure that the new dimension is greater than zero
-    OP_REQUIRES(context, Y[q] > 0,
+    OP_REQUIRES(context, target_dimensions[adjustable_dimension] > 0,
                 tensorflow::errors::InvalidArgument(
                     "periodic_resample found that the "
                     "adjustable dimension, ",
-                    q, ", isn't greater than zero, ", Y[q], "."));
+                    adjustable_dimension,
+                    ", isn't greater than zero, ",
+                    target_dimensions[adjustable_dimension], "."));
     for (int i = 0; i < rank; ++i) {
-      output_shape.AddDim(Y[i]);
+      output_shape.AddDim(target_dimensions[i]);
     }
-    const auto new_size = new_sliced_size * Y[q];
+    const auto new_size = new_sliced_size * target_dimensions[adjustable_dimension];
 
     // Create an output tensor and attach it to the current context
     tensorflow::Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, output_shape, &output_tensor));
-    auto output = output_tensor->flat<T>();
+    auto output = output_tensor->flat<InputDataT>();
 
-    {
-      // memory is allocated for these variables outside the inner loop for
-      // efficiency (yes, I know I could create a separate class scope for
-      // this purpose instead)
-      typename std::decay<decltype(new_size)>::type result = 0;
-      std::vector<decltype(result)> output_indices(Y.size());
-      const auto rank = Y.size();
+    // memory is allocated for these variables outside the inner loop for
+    // efficiency (yes, I know, I could create a separate class scope for
+    // this purpose instead)
+    tensorflow::int64 result = 0;
+    std::vector<tensorflow::int64> output_indices(target_dimensions.size());
 
-      // Fill output tensor with shuffled input tensor values
-      for (typename std::decay<decltype(new_size)>::type i = 0; i < new_size;
-           ++i) {
-        output(i) = input(
-            compute_input_index(Y, i, X, q, g, G, result, output_indices, rank));
-      }
+    // Fill output tensor with periodically resampled input tensor values
+    for (tensorflow::int64 output_index = 0;
+         output_index < new_size; ++output_index) {
+      output(output_index) = input(
+          compute_input_index(&target_dimensions, output_index,
+                              original_dimensions, adjustable_dimension,
+                              dimension_ceiling, cumulative_dimensions,
+                              &result, &output_indices, rank));
     }
   }
 
-  template <class T>
+  template <class IndexDataT>
   void create_output_tensor(tensorflow::OpKernelContext* context,
                             const tensorflow::Tensor& input_tensor,
                             const tensorflow::DataType& input_tensor_type,
                             const tensorflow::Tensor& desired_shape_tensor) {
-    auto desired_shape = desired_shape_tensor.flat<T>();
+    auto desired_shape = desired_shape_tensor.flat<IndexDataT>();
 
     // obligatory type switch
-    if (input_tensor_type == tensorflow::DataTypeToEnum<float>::value) {
-      main_logic<float>(context, desired_shape, input_tensor);
-    } else if (input_tensor_type == tensorflow::DataTypeToEnum<double>::value) {
-      main_logic<double>(context, desired_shape, input_tensor);
-    } else if (input_tensor_type ==
-               tensorflow::DataTypeToEnum<tensorflow::int32>::value) {
-      main_logic<tensorflow::int32>(context, desired_shape, input_tensor);
-    } else if (input_tensor_type ==
-               tensorflow::DataTypeToEnum<tensorflow::int64>::value) {
-      main_logic<tensorflow::int64>(context, desired_shape, input_tensor);
+    switch (input_tensor_type) {
+      case tensorflow::DataTypeToEnum<float>::value:
+        fill_periodic_tensor<float>(context, desired_shape, input_tensor);
+      case tensorflow::DataTypeToEnum<double>::value:
+        fill_periodic_tensor<double>(context, desired_shape, input_tensor);
+      case tensorflow::DataTypeToEnum<tensorflow::int32>::value:
+        fill_periodic_tensor<tensorflow::int32>(context, desired_shape, input_tensor);
+      case tensorflow::DataTypeToEnum<tensorflow::int64>::value:
+        fill_periodic_tensor<tensorflow::int64>(context, desired_shape, input_tensor);
+      default:
+        ;
     }
   }
 
@@ -221,14 +219,15 @@ class PeriodicResampleOp : public tensorflow::OpKernel {
             "periodic_resample expects a 1D vector for the desired shape."));
 
     // obligatory type switch
-    if (desired_shape_tensor_type ==
-        tensorflow::DataTypeToEnum<tensorflow::int32>::value) {
-      create_output_tensor<tensorflow::int32>(
-          context, input_tensor, input_tensor_type, desired_shape_tensor);
-    } else if (desired_shape_tensor_type ==
-               tensorflow::DataTypeToEnum<tensorflow::int64>::value) {
-      create_output_tensor<tensorflow::int64>(
-          context, input_tensor, input_tensor_type, desired_shape_tensor);
+    switch (desired_shape_tensor_type) {
+      case tensorflow::DataTypeToEnum<tensorflow::int32>::value:
+        create_output_tensor<tensorflow::int32>(
+            context, input_tensor, input_tensor_type, desired_shape_tensor);
+      case tensorflow::DataTypeToEnum<tensorflow::int64>::value:
+        create_output_tensor<tensorflow::int64>(
+            context, input_tensor, input_tensor_type, desired_shape_tensor);
+      default:
+        ;
     }
   }
 };

@@ -14,30 +14,30 @@
 # limitations under the License.
 # =============================================================================
 
-import numpy as np
-import tensorflow as tf
-from tensorflow.contrib.periodic_resample import periodic_resample as ps
+import numpy
+import tensorflow
+from tensorflow.contrib.periodic_resample import periodic_resample
 
 
-class PeriodicResampleTest(tf.test.TestCase):
+class PeriodicResampleTest(tensorflow.test.TestCase):
     def testPeriodicResample(self):
 
         # basic 2-D tensor
-        input_tensor = np.arange(12).reshape((3, 4))
-        desired_shape = np.array([6, -1])
+        input_tensor = numpy.arange(12).reshape((3, 4))
+        desired_shape = numpy.array([6, -1])
         output_tensor = input_tensor.reshape((6, 2))
         with self.test_session():
-            result = ps(input_tensor, desired_shape)
+            result = periodic_resample(input_tensor, desired_shape)
             self.assertAllEqual(result.eval(), output_tensor)
 
         # basic 2-D tensor (truncated)
-        input_tensor = np.arange(12).reshape((3, 4))
-        desired_shape = np.array([5, -1])
+        input_tensor = numpy.arange(12).reshape((3, 4))
+        desired_shape = numpy.array([5, -1])
         output_tensor = input_tensor.reshape((6, 2))[:-1]
         with self.test_session():
-            result = ps(input_tensor, desired_shape)
+            result = periodic_resample(input_tensor, desired_shape)
             self.assertAllEqual(result.eval(), output_tensor)
 
 
 if __name__ == "__main__":
-    tf.test.main()
+    tensorflow.test.main()
