@@ -147,11 +147,11 @@ bool EffectivelyUnary(HloInstruction* hlo) {
 bool InstructionFusion::CanFuseOnAllPaths(
     const HloComputation::ReachabilityMap& reachability_map,
     HloInstruction* producer, HloInstruction* consumer,
-    DoNotFuseMap* do_not_fuse) {
+    DoNotFuseSet* do_not_fuse) {
   auto could_fuse_on_all_paths = [&] {
     // First check to see if we have already marked this producer as infeasible
     // to fuse into consumer.
-    if ((*do_not_fuse)[consumer].count(producer) > 0) {
+    if (do_not_fuse->count(producer) > 0) {
       return false;
     }
     // Make sure it is possible for producer and consumer to exist in a fusion
@@ -176,7 +176,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
 
         // First check if we have already ruled out fusing producer into
         // consumer_operand.
-        if ((*do_not_fuse)[consumer_operand].count(producer) > 0) {
+        if (do_not_fuse->count(consumer_operand) > 0) {
           return false;
         }
         // Make sure it is possible for consumer_operand to exist in a fusion
@@ -204,7 +204,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
     return true;
   }
   // We couldn't fuse on all paths, record this result.
-  (*do_not_fuse)[consumer].insert(producer);
+  do_not_fuse->insert(producer);
   return false;
 }
 
@@ -229,22 +229,8 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       InsertOrDie(&post_order_index, post_order[i], i);
     }
 
-    DoNotFuseMap do_not_fuse;
+    DoNotFuseSet do_not_fuse;
     auto transitive_operands = computation->ComputeTransitiveOperands();
-
-    auto producer_cannot_fuse_into_consumer = [this](HloInstruction* producer,
-                                                     HloInstruction* consumer) {
-      // Make sure it is possible for producer and consumer to exist in a fusion
-      // node.
-      if (!producer->IsFusable() || !consumer->IsFusable()) {
-        return true;
-      }
-      auto operand_indices = consumer->OperandIndices(producer);
-      return std::any_of(operand_indices.begin(), operand_indices.end(),
-                         [&](const int64 operand_index) {
-                           return !ShouldFuse(consumer, operand_index);
-                         });
-    };
 
     auto cheap_to_duplicate = [](HloInstruction* producer) {
       if (producer->opcode() == HloOpcode::kBroadcast) {
@@ -260,33 +246,16 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
       return false;
     };
 
-    for (HloInstruction* producer : post_order) {
-      if (cheap_to_duplicate(producer)) {
-        continue;
-      }
-      if (std::any_of(producer->users().begin(), producer->users().end(),
-                      [&](HloInstruction* consumer) {
-                        return producer_cannot_fuse_into_consumer(producer,
-                                                                  consumer);
-                      })) {
-        for (HloInstruction* consumer : producer->users()) {
-          do_not_fuse[consumer].insert(producer);
-        }
-      }
-    }
     for (HloInstruction* consumer : post_order) {
       for (HloInstruction* producer : consumer->operands()) {
         if (cheap_to_duplicate(producer)) {
           continue;
         }
-        if (do_not_fuse[consumer].count(producer) > 0) {
-          continue;
-        }
         if (CanFuseOnAllPaths(*transitive_operands, producer, consumer,
                               &do_not_fuse)) {
-          CHECK_EQ(do_not_fuse[consumer].count(producer), 0);
+          CHECK_EQ(do_not_fuse.count(producer), 0);
         } else {
-          CHECK_GT(do_not_fuse[consumer].count(producer), 0);
+          CHECK_GT(do_not_fuse.count(producer), 0);
         }
       }
     }
@@ -379,24 +348,10 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         if (!ShouldFuse(instruction, i)) {
           continue;
         }
-        const std::unordered_set<HloInstruction*>&
-            do_not_fuse_into_instruction = do_not_fuse[instruction];
-        if (do_not_fuse_into_instruction.count(operand) > 0) {
+        if (do_not_fuse.count(operand) > 0) {
           continue;
         }
         HloInstruction* fusion_instruction = Fuse(operand, instruction);
-        std::unordered_set<HloInstruction*>&
-            do_not_fuse_into_fusion_instruction =
-                do_not_fuse[fusion_instruction];
-        if (instruction != fusion_instruction) {
-          do_not_fuse_into_fusion_instruction.insert(
-              do_not_fuse_into_instruction.begin(),
-              do_not_fuse_into_instruction.end());
-        }
-        const std::unordered_set<HloInstruction*>& do_not_fuse_into_operand =
-            do_not_fuse[operand];
-        do_not_fuse_into_fusion_instruction.insert(
-            do_not_fuse_into_operand.begin(), do_not_fuse_into_operand.end());
 
         // Fusing an instruction into a fusion instruction can change the
         // operand set of the fusion instruction. For simplicity just push the
