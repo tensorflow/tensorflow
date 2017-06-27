@@ -507,10 +507,14 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
     }
   };
   lhs.Each(check_trivial);
-  LOG_IF(FATAL, trivial) << "LHS is all 0.0.";
+  if (trivial) {
+    LOG(FATAL) << "LHS is all 0.0.";
+  }
   trivial = true;
   rhs.Each(check_trivial);
-  LOG_IF(FATAL, trivial) << "RHS is all 0.0.";
+  if (trivial) {
+    LOG(FATAL) << "RHS is all 0.0.";
+  }
   return result;
 }
 
