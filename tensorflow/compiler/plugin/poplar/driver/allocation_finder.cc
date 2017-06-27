@@ -152,15 +152,16 @@ AllocationFinder::FindConsumers(HloInstruction* inst) {
 }
 
 Status AllocationFinder::CreateAllocationMap(HloModule* module) {
-  FindAllocatingInstructions finder;
+  for (const auto& comp : module->computations()) {
 
-  auto entry = module->entry_computation();
-  TF_RETURN_IF_ERROR(entry->Accept(&finder));
+    FindAllocatingInstructions finder;
+    TF_RETURN_IF_ERROR(comp->Accept(&finder));
 
-  for (auto inst : finder.allocating_instructions) {
-    TensorTarget target = FindConsumers(inst);
-    if (target.first != nullptr) {
-      tensor_allocation_map.insert(std::make_pair(inst, target));
+    for (auto inst : finder.allocating_instructions) {
+      TensorTarget target = FindConsumers(inst);
+      if (target.first != nullptr) {
+        tensor_allocation_map.insert(std::make_pair(inst, target));
+      }
     }
   }
 

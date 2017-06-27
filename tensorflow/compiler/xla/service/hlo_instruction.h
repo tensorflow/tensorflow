@@ -64,7 +64,8 @@ class HloInstruction {
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.
 
-    kCustom,              // Custom fusions.
+    kCustom,              // Custom category for backend-specific fusions that
+                          // do not match any of the more specific ones.
   };
 
   ~HloInstruction();
