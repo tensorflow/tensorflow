@@ -60,7 +60,7 @@ class BigQueryReader : public ReaderBase {
     BigQueryTablePartition partition;
     if (!partition.ParseFromString(current_work())) {
       return errors::InvalidArgument(
-          "Could not parse work as as valid partition.");
+          "Could not parse work as valid partition.");
     }
     TF_RETURN_IF_ERROR(bigquery_table_accessor_->SetPartition(partition));
     return Status::OK();
