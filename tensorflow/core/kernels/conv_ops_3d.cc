@@ -383,41 +383,45 @@ struct LaunchConvOp<GPUDevice, T> {
     };
 
     using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::AlgorithmDesc;
     using perftools::gputools::dnn::ProfileResult;
-    using perftools::gputools::dnn::kDefaultAlgorithm;
 
     AlgorithmConfig algorithm_config;
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
-      std::vector<AlgorithmType> algorithms;
+      std::vector<AlgorithmDesc::Index> algorithms;
       CHECK(stream->parent()->GetConvolveAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
-      for (auto profile_algorithm : algorithms) {
-        // TODO(zhengxq): profile each algorithm multiple times to better
-        // accuracy.
-        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-        ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
-          if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
+      // TODO(benbarsdell): Ideally this should not attempt using tensor op math
+      // if it's not enabled.
+      for (bool use_tensor_ops : {false, true}) {
+        for (auto algo_index : algorithms) {
+          AlgorithmDesc profile_algorithm(algo_index, use_tensor_ops);
+          // TODO(zhengxq): profile each algorithm multiple times to better
+          // accuracy.
+          CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+          ProfileResult profile_result;
+          bool cudnn_launch_status =
+              stream
+                  ->ThenConvolveWithAlgorithm(
+                      input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                      output_desc, &output_ptr, &scratch_allocator,
+                      AlgorithmConfig(profile_algorithm), &profile_result)
+                  .ok();
+          if (cudnn_launch_status) {
+            if (profile_result.is_valid()) {
+              if (profile_result.elapsed_time_in_ms() <
+                  best_result.elapsed_time_in_ms()) {
+                best_result = profile_result;
+              }
+              if (scratch_allocator.TotalByteSize() == 0 &&
+                  profile_result.elapsed_time_in_ms() <
+                      best_result_no_scratch.elapsed_time_in_ms()) {
+                best_result_no_scratch = profile_result;
+              }
             }
           }
         }
