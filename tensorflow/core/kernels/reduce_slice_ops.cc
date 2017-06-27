@@ -117,7 +117,7 @@ TF_CALL_REAL_NUMBER_TYPES(DEFINE_CPU_MINMAX_SPECS)
 
 template <typename Device, typename T, typename Index,
           template <typename Device2, typename T2, typename Index2>
-          typename Functor>
+          class Functor>
 class ReduceSliceKernel : public OpKernel {
  public:
   explicit ReduceSliceKernel(OpKernelConstruction* context)
