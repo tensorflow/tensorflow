@@ -116,7 +116,8 @@ class ShapeInference {
   // e.g. slice f32[32x32] 0:16 0:16 -> f32[16x16]
   static StatusOr<Shape> InferSliceShape(
       const Shape& arg, tensorflow::gtl::ArraySlice<int64> starts,
-      tensorflow::gtl::ArraySlice<int64> limits);
+      tensorflow::gtl::ArraySlice<int64> limits,
+      tensorflow::gtl::ArraySlice<int64> strides);
 
   // Infers the shape produced by a dynamic slice operation of size specified
   // in 'slice_sizes', with dynamic start indices shape 'start_indices_shape'.

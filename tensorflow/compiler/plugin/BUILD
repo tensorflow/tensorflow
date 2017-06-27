@@ -32,5 +32,7 @@ package(
 
 cc_library(
     name = "plugin",
-    deps = [],
+    deps = [
+        "//tensorflow/compiler/plugin/executor:plugin_lib",
+    ],
 )

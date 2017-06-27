@@ -68,8 +68,7 @@ for abalone:
 | Feature        | Description                                               |
 | -------------- | --------------------------------------------------------- |
 | Length         | Length of abalone (in longest direction; in mm)           |
-| Diameter       | Diameter of abalone (measurement perpendicular to length; |
-:                : in mm)                                                    :
+| Diameter       | Diameter of abalone (measurement perpendicular to length; in mm)|
 | Height         | Height of abalone (with its meat inside shell; in mm)     |
 | Whole Weight   | Weight of entire abalone (in grams)                       |
 | Shucked Weight | Weight of abalone meat only (in grams)                    |
@@ -559,7 +558,7 @@ For a full list of optimizers, and other details, see the
 
 Here's the final, complete `model_fn` for the abalone age predictor. The
 following code configures the neural network; defines loss and the training op;
-and returns a `ModelFnOps` object containing `mode`, `predictions_dict`, `loss`,
+and returns a `EstimatorSpec` object containing `mode`, `predictions_dict`, `loss`,
 and `train_op`:
 
 ```python

@@ -121,7 +121,6 @@ cuda_py_test(
         ":layers_py",
         "//third_party/py/numpy",
         "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -141,6 +140,7 @@ cuda_py_test(
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/ops/losses:losses",
     ],
 )
 

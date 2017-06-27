@@ -395,7 +395,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
 
 
 class DNNLinearCombinedRegressor(estimator.Estimator):
-  """An estimator for TensorFlow Linear and DNN joined models for regresssion.
+  """An estimator for TensorFlow Linear and DNN joined models for regression.
 
   Note: This estimator is also known as wide-n-deep.
 

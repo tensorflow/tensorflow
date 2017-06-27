@@ -200,7 +200,7 @@ message OpMetadata {
   string op_name = 2;
   // Indicate a file and line that this op is associated to in a user's program.
   //
-  // e.g. it could be be the file and line of user code that generated the op.
+  // e.g. it could be the file and line of user code that generated the op.
   string source_file = 3;
   int32 source_line = 4;
 }
@@ -369,6 +369,7 @@ message SliceRequest {
   ComputationDataHandle operand = 2;
   repeated int64 start_indices = 3;
   repeated int64 limit_indices = 4;
+  repeated int64 stride = 5;
 }
 
 message DynamicSliceRequest {

@@ -728,7 +728,7 @@ TEST_F(VirtualSchedulerTest, ComplexDependency) {
            1 /* control dependency */);
   EXPECT_EQ(expected_size, cpu_state.memory_usage);
 
-  // Nodes currrently in memory: bn's port -1, 0, and 2, and x's port 0.
+  // Nodes currently in memory: bn's port -1, 0, and 2, and x's port 0.
   std::set<std::pair<string, int>> nodes_in_memory;
   std::transform(
       cpu_state.nodes_in_memory.begin(), cpu_state.nodes_in_memory.end(),

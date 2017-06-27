@@ -147,6 +147,7 @@ TEST_F(HloConstantFoldingTest, Slice) {
   const int64 dimensions[] = {11, 8, 7, 5, 9};
   const int64 slice_start[] = {4, 2, 3, 1, 5};
   const int64 slice_limits[] = {10, 8, 6, 5, 9};
+  const int64 slice_strides[] = {1, 1, 1, 1, 1};
   TF_ASSIGN_OR_ASSERT_OK(auto literal,
                          LiteralTestUtil::CreateRandomLiteral<F32>(
                              ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
@@ -154,7 +155,7 @@ TEST_F(HloConstantFoldingTest, Slice) {
       HloInstruction::CreateConstant(std::move(literal)));
   Shape shape = ShapeUtil::MakeShape(F32, {6, 6, 3, 4, 4});
   builder.AddInstruction(HloInstruction::CreateSlice(
-      shape, literal_instruction, slice_start, slice_limits));
+      shape, literal_instruction, slice_start, slice_limits, slice_strides));
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 

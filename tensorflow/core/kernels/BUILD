@@ -725,6 +725,12 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "tile_ops",
+    srcs = ["tile_functor_cpu.cc"],
+    hdrs = ["tile_functor.h"],
+    gpu_srcs = [
+        "tile_functor.h",
+        "tile_functor_gpu.cu.cc",
+    ],
     prefix = "tile_ops",
     deps = ARRAY_DEPS,
 )
@@ -2464,7 +2470,7 @@ tf_cc_tests(
         ":ops_util",
         ":sparse_add_op",
         ":sparse_dense_binary_op_shared",
-        ":sparse_reduce_sum_op",
+        ":sparse_reduce_op",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3207,7 +3213,7 @@ cc_library(
         ":sparse_cross_op",
         ":sparse_dense_binary_op_shared",
         ":sparse_fill_empty_rows_op",
-        ":sparse_reduce_sum_op",
+        ":sparse_reduce_op",
         ":sparse_reorder_op",
         ":sparse_reshape_op",
         ":sparse_softmax",
@@ -3263,8 +3269,8 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "sparse_reduce_sum_op",
-    prefix = "sparse_reduce_sum_op",
+    name = "sparse_reduce_op",
+    prefix = "sparse_reduce_op",
     deps = SPARSE_DEPS,
 )
 
@@ -4152,6 +4158,7 @@ filegroup(
         "spacetobatch_functor.h",
         "spacetodepth_op.h",
         "tensor_array.h",
+        "tile_functor.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
         "training_op_helpers.h",
@@ -4290,6 +4297,7 @@ filegroup(
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
+        "tile_functor_cpu.cc",
         "tile_ops.cc",
         "tile_ops_cpu_impl_1.cc",
         "tile_ops_cpu_impl_2.cc",

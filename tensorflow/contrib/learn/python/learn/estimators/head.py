@@ -438,7 +438,7 @@ def loss_only_head(loss_fn, head_name=None):
   Args:
     loss_fn: a function that takes no argument and returns a list of
         scalar tensors.
-    head_name: a name for for the head.
+    head_name: a name for the head.
 
   Returns:
     An instance of `Head` to hold the additional losses.

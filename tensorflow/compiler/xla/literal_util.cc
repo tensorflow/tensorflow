@@ -1215,11 +1215,7 @@ void Literal::Resize<double>(int64 num_elements, double value) {
 template <>
 void Literal::Resize<half>(int64 num_elements, half value) {
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
-  mutable_f16s()->resize(num_elements * sizeof(half));
-  auto data = GetMutableArraySlice<half>();
-  for (int i = 0; i < num_elements; i++) {
-    data[i] = value;
-  }
+  mutable_f16s()->resize(num_elements, value);
 }
 
 template <typename RepeatedFieldT, typename NativeT>
@@ -1262,7 +1258,7 @@ LiteralProto Literal::ToProto() const {
     case F16:
       *proto.mutable_f16s() =
           string(reinterpret_cast<const char*>(f16s_.data()),
-                 f16s_.size() / sizeof(half));
+                 f16s_.size() * sizeof(half));
       break;
     case F32:
       CopyToRepeatedField(proto.mutable_f32s(), f32s());
@@ -1318,7 +1314,7 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
       const string& s(literal_proto.f16s());
       CHECK_EQ(0, s.size() % sizeof(half));
       f16s_ = std::vector<half>(s.size() / sizeof(half));
-      memcpy(f16s_.data(), s.data(), s.size() / sizeof(half));
+      memcpy(f16s_.data(), s.data(), s.size());
       break;
     }
     case F32:
