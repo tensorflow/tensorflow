@@ -197,17 +197,20 @@ class ArcSinhTest(test.TestCase):
       arcsinh_x_, sinh_arcsinh_x_, arcsinh_sinh_arcsinh_x_ = sess.run(
           [arcsinh_x, sinh_arcsinh_x, arcsinh_sinh_arcsinh_x])
 
+    self._assert_all_finite(arcsinh_x_)
+    self._assert_all_finite(sinh_arcsinh_x_)
+    self._assert_all_finite(arcsinh_sinh_arcsinh_x_)
     self.assertAllClose(x, sinh_arcsinh_x_, rtol=1e-5)
     self.assertAllClose(arcsinh_x_, arcsinh_sinh_arcsinh_x_)
 
   def test_arcsinh_is_inverse_to_sinh_where_x_is_very_big(self):
     sinh = trig.sinh
     arcsinh = trig.arcsinh
-    very_big_cutoff = np.sqrt(np.finfo(np.float32).max)
+    maxfloat = np.finfo(np.float32).max  # Maximum representable float.
     with self.test_session() as sess:
       x = np.logspace(
-          np.log(very_big_cutoff),
-          5 + np.log(very_big_cutoff), num=1000).astype(np.float32)
+          0.5 * np.log(maxfloat),
+          0.95 * np.log(maxfloat), num=1000, base=np.e).astype(np.float32)
       arcsinh_x = arcsinh(x)
       sinh_arcsinh_x = sinh(arcsinh_x)
       arcsinh_sinh_arcsinh_x = arcsinh(sinh_arcsinh_x)
@@ -215,6 +218,9 @@ class ArcSinhTest(test.TestCase):
       arcsinh_x_, sinh_arcsinh_x_, arcsinh_sinh_arcsinh_x_ = sess.run(
           [arcsinh_x, sinh_arcsinh_x, arcsinh_sinh_arcsinh_x])
 
+    self._assert_all_finite(arcsinh_x_)
+    self._assert_all_finite(sinh_arcsinh_x_)
+    self._assert_all_finite(arcsinh_sinh_arcsinh_x_)
     self.assertAllClose(x, sinh_arcsinh_x_, rtol=1e-5)
     self.assertAllClose(arcsinh_x_, arcsinh_sinh_arcsinh_x_)
 
