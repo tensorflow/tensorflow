@@ -42,6 +42,9 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 
 
+_BATCH_SIZE_KEY = 'batch_size'
+
+
 def _tpu_job(run_config):
   # The tpu job is determined by the run_config. Right now, this method is
   # required as tpu_config is not part of the RunConfig.
@@ -175,26 +178,30 @@ class TpuEstimator(estimator_lib.Estimator):
                config=None,
                params=None,
                use_tpu=True):
-    if not isinstance(config, tpu_config.RunConfig):
-      raise ValueError('`config` must be `tpu_config.RunConfig`')
+    if config is None or not isinstance(config, tpu_config.RunConfig):
+      raise ValueError(
+          '`config` must be provided with type `tpu_config.RunConfig`')
 
-    if use_tpu and params is not None and 'batch_size' in params:
-      if not isinstance(params['batch_size'], int):
-        raise ValueError('`batch_size` in params must be an int')
+    if use_tpu and params is not None and _BATCH_SIZE_KEY in params:
+      if not isinstance(params[_BATCH_SIZE_KEY], int):
+        raise ValueError(
+            '`{}` in params must be an int'.format(_BATCH_SIZE_KEY))
       params = copy.deepcopy(params)
       # The specified batch size is the batch size for the entire computation.
       # The input_fn is called per-shard, so we want to calculate the per-shard
       # batch size and pass that.
-      if params['batch_size'] % config.tpu_config.num_shards != 0:
+      if params[_BATCH_SIZE_KEY] % config.tpu_config.num_shards != 0:
         raise ValueError(
             'batch size {} must be divisible by number of shards {}'
-            .format(params['batch_size'], config.tpu_config.num_shards))
+            .format(params[_BATCH_SIZE_KEY], config.tpu_config.num_shards))
 
     if use_tpu:
-      # config and params need to be copied because we haven't initialized
-      # Estimator yet.
-      model_function = wrapped_model_fn(model_fn, copy.deepcopy(config),
-                                        copy.deepcopy(params))
+      # Verifies the model_fn signature according to Estimator framework.
+      estimator_lib._verify_model_fn_args(model_fn, params)  # pylint: disable=protected-access
+      # We cannot store config and params in this constructor as parent
+      # constructor might change them, such as assigning a temp dir for
+      # config.model_dir.
+      model_function = wrapped_model_fn(model_fn)
     else:
       model_function = model_fn
 
@@ -251,16 +258,16 @@ class TpuEstimator(estimator_lib.Estimator):
       return super(TpuEstimator, self)._call_input_fn(input_fn, mode)
 
     input_fn_args = estimator_lib._fn_args(input_fn)  # pylint: disable=protected-access
-    config = self.config
+    config = self.config  # a deep copy.
     kwargs = {}
     if 'params' in input_fn_args:
-      kwargs['params'] = self.params
+      kwargs['params'] = self.params  # a deep copy.
     if 'config' in input_fn_args:
       kwargs['config'] = config
 
     # Now for TPU training.
-    if 'params' in kwargs and 'batch_size' in kwargs['params']:
-      kwargs['params']['batch_size'] //= config.tpu_config.num_shards
+    if 'params' in kwargs and _BATCH_SIZE_KEY in kwargs['params']:
+      kwargs['params'][_BATCH_SIZE_KEY] //= config.tpu_config.num_shards
 
     job = _tpu_job(config)
     def placement_function(index):
@@ -285,6 +292,16 @@ class TpuEstimator(estimator_lib.Estimator):
     return _PerShardOutput(features), _PerShardOutput(labels)
 
 
+def _verify_estimator_spec(estimator_spec):
+  """Validates the estimator_spec."""
+  err_msg = '{} returned by EstimatorSpec is not supported in TPUEstimator.'
+  if estimator_spec.training_chief_hooks:
+    raise ValueError(err_msg.format('training_chief_hooks'))
+  if estimator_spec.training_hooks:
+    raise ValueError(err_msg.format('training_hooks'))
+  return estimator_spec
+
+
 def _call_model_fn(model_fn, features, labels, mode, config, params):
   """Calls the model_fn with required parameters."""
   model_fn_args = estimator_lib._fn_args(model_fn)  # pylint: disable=protected-access
@@ -296,6 +313,21 @@ def _call_model_fn(model_fn, features, labels, mode, config, params):
   if 'config' in model_fn_args:
     kwargs['config'] = config
   return model_fn(features=features, labels=labels, **kwargs)
+
+
+def _call_model_fn_with_tpu(model_fn, features, labels, mode, config, params):
+  """Calls user provided `model_fn` and verifies the estimator_spec."""
+  # Makes deep copy with `config` and params` in case user mutates them.
+  config = copy.deepcopy(config)
+  params = copy.deepcopy(params)
+  return _verify_estimator_spec(_call_model_fn(
+      model_fn, features, labels, mode, config, params))
+
+
+def _call_model_fn_without_tpu(
+    model_fn, features, labels, mode, config, params):
+  # Deepcopy of config and params is not required in this branch.
+  return _call_model_fn(model_fn, features, labels, mode, config, params)
 
 
 # TODO(xiejw): Improve the structure of this input_fn to infeed converion.
@@ -384,22 +416,20 @@ def _create_infeed_enqueue_ops_and_dequeue_fn(run_config, features, labels):
   return (dequeue_fn, enqueue_fn)
 
 
-def wrapped_model_fn(model_fn, run_config, params):
+def wrapped_model_fn(model_fn):
   """Returns a new model_fn, which wraps the TPU support."""
 
-  # Verifies the model_fn signature according to Estimator framework.
-  estimator_lib._verify_model_fn_args(model_fn, params)  # pylint: disable=protected-access
-
-  def _model_fn(features, labels, mode, params=None):
+  def _model_fn(features, labels, mode, config, params=None):
     """model_fn."""
+
     # TODO(jhseu): Move to EVAL and PREDICT to TPU.
     if mode != model_fn_lib.ModeKeys.TRAIN:
-      return _call_model_fn(model_fn, features, labels, mode, run_config,
-                            params)
+      return _call_model_fn_without_tpu(
+          model_fn, features, labels, mode, config, params)
 
     # Now for TPU training.
-    if params is not None and 'batch_size' in params:
-      params['batch_size'] //= run_config.tpu_config.num_shards
+    if params is not None and _BATCH_SIZE_KEY in params:
+      params[_BATCH_SIZE_KEY] //= config.tpu_config.num_shards
 
     assert isinstance(features, _PerShardOutput)
     features = features.as_list()
@@ -408,12 +438,12 @@ def wrapped_model_fn(model_fn, run_config, params):
       labels = labels.as_list()
 
     dequeue_fn, enqueue_fn = (
-        _create_infeed_enqueue_ops_and_dequeue_fn(run_config, features, labels))
+        _create_infeed_enqueue_ops_and_dequeue_fn(config, features, labels))
 
     loss = _train_on_tpu_shards(
-        run_config,
+        config,
         train_step=_convert_model_fn_to_train_step(
-            model_fn, dequeue_fn, mode, run_config, params))
+            model_fn, dequeue_fn, mode, config, params))
 
     # Gets the variables back from TPU nodes. This means the variables updated
     # by TPU will now be *synced* to host memory.
@@ -424,7 +454,7 @@ def wrapped_model_fn(model_fn, run_config, params):
     ]
 
     hooks = [
-        TpuInfeedSessionHook(run_config, enqueue_fn),
+        TpuInfeedSessionHook(config, enqueue_fn),
         training.LoggingTensorHook(
             {'loss': array_ops.identity(loss),
              'step': training.get_global_step()},
@@ -443,15 +473,6 @@ def _convert_model_fn_to_train_step(model_fn, dequeue_fn, mode, run_config,
                                     params):
   """Generates a train step based on the model_fn."""
 
-  def _verify_estimator_spec(estimator_spec):
-    """Validates the estimator_spec."""
-    err_msg = '{} returned by EstimatorSpec is not supported in TPUEstimator.'
-    if estimator_spec.training_chief_hooks:
-      raise ValueError(err_msg.format('training_chief_hooks'))
-    if estimator_spec.training_hooks:
-      raise ValueError(err_msg.format('training_hooks'))
-    return estimator_spec
-
   def train_step(loss):
     """Training step function for use inside a while loop."""
     del loss  # unused; required in function signature.
@@ -464,8 +485,8 @@ def _convert_model_fn_to_train_step(model_fn, dequeue_fn, mode, run_config,
     # the graph construction part in the model_fn should be separated from the
     # control part (such as hooks and savers). By that the graph construction
     # could de defered on TPU chip, while the control logic can stay in host.
-    estimator_spec = _verify_estimator_spec(
-        _call_model_fn(model_fn, features, labels, mode, run_config, params))
+    estimator_spec = _call_model_fn_with_tpu(
+        model_fn, features, labels, mode, run_config, params)
     loss, train_op = estimator_spec.loss, estimator_spec.train_op
     with ops.control_dependencies([train_op]):
       return array_ops.identity(loss)
