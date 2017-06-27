@@ -172,7 +172,7 @@ class Estimator(object):
       raise ValueError('model_fn must be provided to Estimator.')
     _verify_model_fn_args(model_fn, params)
     self._model_fn = model_fn
-    self._params = params or {}
+    self._params = copy.deepcopy(params or {})
 
   @property
   def model_dir(self):

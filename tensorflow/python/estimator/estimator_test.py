@@ -255,6 +255,17 @@ class EstimatorConstructorTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'params'):
       estimator.Estimator(model_fn=model_fn, params={'hidden_layers': 4})
 
+  def test_internal_params_is_a_deepcopy(self):
+
+    def model_fn(features, labels, params):
+      _, _, _ = features, labels, params
+
+    params = {'hidden_layers': 4}
+    est = estimator.Estimator(model_fn=model_fn, params=params)
+
+    params['hidden_layers'] = 5
+    self.assertEqual(4, est.params['hidden_layers'])
+
   def test_not_known_model_fn_args(self):
 
     def model_fn(features, labels, something):
