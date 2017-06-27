@@ -117,3 +117,16 @@ struct TF_ImportGraphDefOptions {
 struct TF_DeviceList {
   std::vector<tensorflow::DeviceAttributes> response;
 };
+
+namespace tensorflow {
+
+class TensorCApi {
+ public:
+  static TensorBuffer* Buffer(const Tensor& tensor) { return tensor.buf_; }
+  static Tensor MakeTensor(TF_DataType type, const TensorShape& shape,
+                           TensorBuffer* buf) {
+    return Tensor(static_cast<DataType>(type), shape, buf);
+  }
+};
+
+}  // end namespace tensorflow

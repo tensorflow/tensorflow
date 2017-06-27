@@ -466,15 +466,6 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
                       dimvec.size(), base, size, DeleteArray, base);
 }
 
-class TensorCApi {
- public:
-  static TensorBuffer* Buffer(const Tensor& tensor) { return tensor.buf_; }
-  static Tensor MakeTensor(TF_DataType type, const TensorShape& shape,
-                           TensorBuffer* buf) {
-    return Tensor(static_cast<DataType>(type), shape, buf);
-  }
-};
-
 // Create an empty tensor of type 'dtype'. 'shape' can be arbitrary, but has to
 // result in a zero-sized tensor.
 static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
