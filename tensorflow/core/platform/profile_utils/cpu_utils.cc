@@ -28,7 +28,7 @@ namespace profile_utils {
 
 static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 
-#if defined(__powerpc__) || defined(__ppc__)
+#if defined(__powerpc__) || defined(__ppc__) && ( __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
    /* static */ uint64 CpuUtils::GetCycleCounterFrequency() {
      static const uint64 cpu_frequency = GetCycleCounterFrequencyImpl();
      return cpu_frequency;
