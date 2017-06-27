@@ -1246,6 +1246,9 @@ cc_library(
                 "platform/*.cc",
                 "platform/profile_utils/**/*.h",
                 "platform/profile_utils/**/*.cc",
+            ] + [
+                "framework/resource_handle.h",
+                "framework/resource_handle.cc",
             ],
             exclude = [
                 "**/*test*",
@@ -1437,6 +1440,7 @@ tf_cuda_library(
             "framework/fake_input.*",
             "framework/op_gen_lib.*",
             "framework/reader_base.*",
+            "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
             "util/version_info.cc",
