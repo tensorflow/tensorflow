@@ -581,8 +581,9 @@ Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
   // Avoid problems where default reconnect backoff is too long (e.g., 20 s).
   args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
-  channel_ = ::grpc::CreateCustomChannel(
-      server_stream_addr_, ::grpc::InsecureChannelCredentials(), args);
+  channel_ =
+      ::grpc::CreateCustomChannel("dns:///" + server_stream_addr_,
+                                  ::grpc::InsecureChannelCredentials(), args);
   if (!channel_->WaitForConnected(
           gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
                        gpr_time_from_micros(timeout_micros, GPR_TIMESPAN)))) {
