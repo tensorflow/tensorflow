@@ -145,6 +145,7 @@ def main(unused_argv):
   train_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={WORDS_FEATURE: x_train},
       y=y_train,
+      batch_size=len(x_train),
       num_epochs=None,
       shuffle=True)
   classifier.train(input_fn=train_input_fn, steps=100)
