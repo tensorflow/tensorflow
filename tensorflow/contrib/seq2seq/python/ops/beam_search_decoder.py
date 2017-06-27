@@ -301,13 +301,14 @@ class BeamSearchDecoder(decoder.Decoder):
         array_ops.zeros([self._batch_size], dtype=dtypes.int32),
         depth=self._beam_width, on_value=True,
         off_value=False, dtype=dtypes.bool)
-    
+
     log_prob_zeros = array_ops.zeros([self._batch_size, self._beam_width],
-                                    dtype=nest.flatten(
-                                    self._initial_cell_state)[0].dtype)
+                                     dtype=nest.flatten(
+                                         self._initial_cell_state)[0].dtype)
     log_prob_neg_inf = array_ops.ones([self._batch_size, self._beam_width],
-                                    dtype=nest.flatten(
-                                    self._initial_cell_state)[0].dtype) * -float('inf')
+                                      dtype=nest.flatten(
+                                          self._initial_cell_state)[0].dtype
+                                     ) * -float('inf')
 
     log_probs = array_ops.where(log_prob_mask, log_prob_zeros, log_prob_neg_inf)
 
@@ -577,7 +578,8 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   scores_flat = array_ops.reshape(scores, [batch_size, -1])
 
   # Pick the next beams according to the specified successors function
-  next_beam_size = ops.convert_to_tensor(beam_width, dtype=dtypes.int32, name="beam_width")
+  next_beam_size = ops.convert_to_tensor(beam_width, dtype=dtypes.int32,
+                                         name="beam_width")
   next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=next_beam_size)
 
   next_beam_scores.set_shape([static_batch_size, beam_width])
@@ -628,7 +630,8 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   next_prediction_len += lengths_to_add
   next_prediction_len = array_ops.where(next_beam_probs > -float('inf'),
                                         next_prediction_len,
-                                        array_ops.zeros_like(next_prediction_len))
+                                        array_ops.zeros_like(
+                                            next_prediction_len))
 
   # Pick out the cell_states according to the next_beam_ids. We use a
   # different gather_shape here because the cell_state tensors, i.e.
