@@ -79,16 +79,12 @@ static xla::ComputationDataHandle Round(xla::ComputationBuilder* b,
                    b->Add(round_val, one), round_val);
 }
 
+// Expresses sigmoid as a rescaled tanh: sigmoid(x) == (tanh(x/2) + 1) / 2.
 static xla::ComputationDataHandle Sigmoid(xla::ComputationBuilder* b,
                                           DataType dtype,
                                           const xla::ComputationDataHandle& x) {
-  // Clamp the inputs to the range [-18, 18] since anything outside this range
-  // is 0.0f or 1.0f in single-precision. We must clamp the range of x to avoid
-  // incorrect outputs due to fast-math optimizations for large negative x.
-  auto clamped = b->Clamp(XlaHelpers::IntegerLiteral(b, dtype, -18), x,
-                          XlaHelpers::IntegerLiteral(b, dtype, 18));
-  auto one = XlaHelpers::One(b, dtype);
-  return b->Div(one, b->Add(b->Exp(b->Neg(clamped)), one));
+  auto half = XlaHelpers::FloatLiteral(b, dtype, 0.5);
+  return b->Add(half, b->Mul(half, b->Tanh(b->Mul(half, x))));
 }
 
 XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
