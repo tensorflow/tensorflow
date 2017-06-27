@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -30,6 +29,9 @@ limitations under the License.
 namespace tensorflow {
 
 class Node;
+
+// We forward declare NodeDef so that kernels don't need to depend on protos
+class NodeDef;
 
 // Name of the attribute used to encode node colocation constraints.
 //
@@ -50,32 +52,61 @@ typedef protobuf::Map<string, AttrValue> AttrValueMap;
 
 // Adds an attr with name <name> and value <value> to *node_def.
 // The type of the attr is based on the type of value.
-template <class T>
-void AddNodeAttr(StringPiece name, T&& value, NodeDef* node_def) {
-  AttrValue attr_value;
-  SetAttrValue(std::forward<T>(value), &attr_value);
-  node_def->mutable_attr()->insert(
-      AttrValueMap::value_type(name.ToString(), attr_value));
-}
+void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, StringPiece value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const char* value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int32 value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, int64 value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, float value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, double value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, bool value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, DataType value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const PartialTensorShape& value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const Tensor& value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const TensorProto& value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const NameAttrList& value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<StringPiece> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<const char*> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<string> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<int32> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<int64> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<float> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<bool> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, const std::vector<bool>& value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<DataType> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<TensorShape> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<PartialTensorShape> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<TensorShapeProto> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<Tensor> value,
+                 NodeDef* node_def);
+void AddNodeAttr(StringPiece name, gtl::ArraySlice<NameAttrList> value,
+                 NodeDef* node_def);
 
 // Version to workaround C++'s "perfect" forwarding not being able to
 // forward {...} initialization.
 template <class T>
 void AddNodeAttr(StringPiece name, std::initializer_list<T> value,
                  NodeDef* node_def) {
-  AttrValue attr_value;
-  SetAttrValue(value, &attr_value);
-  node_def->mutable_attr()->insert(
-      AttrValueMap::value_type(name.ToString(), attr_value));
+  AddNodeAttr(name, gtl::ArraySlice<T>(value), node_def);
 }
 
 // Adds an attr to an attr value map.
-template <class T>
-void AddAttr(StringPiece name, T&& value, AttrValueMap* map) {
-  AttrValue attr_value;
-  SetAttrValue(value, &attr_value);
-  map->insert(AttrValueMap::value_type(name.ToString(), attr_value));
-}
+void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map);
+void AddAttr(StringPiece name, bool value, AttrValueMap* map);
 
 class AttrSlice {
  public:
