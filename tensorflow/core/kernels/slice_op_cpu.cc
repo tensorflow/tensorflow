@@ -23,6 +23,10 @@ limitations under the License.
 namespace tensorflow {
 namespace internal {
 
+// Forward declaration
+template <typename Index>
+gtl::InlinedVector<Index, 8> ComputeStride(const TensorShape& shape);
+
 template <typename Device, typename T>
 void SliceSimple(const Device& d, Tensor* out, const Tensor& in,
                  const gtl::ArraySlice<int64>& slice_indices) {
@@ -46,9 +50,11 @@ void SliceSimple(const Device& d, Tensor* out, const Tensor& in,
 
 } // namespace internel
 
+namespace functor {
+
 using CpuDevice = Eigen::ThreadPoolDevice;
 
-#define DEFINE_CPU_KERNELS(T) template struct functor::Slice<CpuDevice, T>;
+#define DEFINE_CPU_KERNELS(T) template struct Slice<CpuDevice, T>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS);
 DEFINE_CPU_KERNELS(bfloat16);
@@ -58,7 +64,7 @@ DEFINE_CPU_KERNELS(bfloat16);
 #ifdef TENSORFLOW_USE_SYCL
 using SyclDevice = Eigen::SyclDevice;
 
-#define DEFINE_SYCL_KERNELS(T) template struct functor::Slice<SyclDevice, T>;
+#define DEFINE_SYCL_KERNELS(T) template struct Slice<SyclDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SYCL_KERNELS);
 DEFINE_SYCL_KERNELS(int32);
@@ -66,4 +72,5 @@ DEFINE_SYCL_KERNELS(int32);
 #undef DEFINE_SYCL_KERNELS
 #endif // TENSORFLOW_USE_SYCL
 
+} // namespace functor
 } // namespace tensorflow

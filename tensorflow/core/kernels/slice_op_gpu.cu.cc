@@ -26,9 +26,13 @@ limitations under the License.
 namespace tensorflow {
 namespace internal {
 
+// Forward declaration
+template <typename Index>
+gtl::InlinedVector<Index, 8> ComputeStride(const TensorShape& shape);
+
 template <typename T>
 __global__ void SliceKernel(int nthreads, const T* src, const int32* buf,
-                           const int32 ndims, T* dst) {
+                            const int32 ndims, T* dst) {
   const int32* in_strides = buf;
   const int32* out_strides = buf + ndims;
   const int32* slice_indices = buf + ndims * 2;
