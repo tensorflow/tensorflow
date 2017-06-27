@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Random forest implementation in tensorflow."""
-
+"""Shared representations for tree-based models in tensorflow."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tensor_forest.python import constants
-from tensorflow.contrib.tensor_forest.python import tensor_forest
-from tensorflow.contrib.tensor_forest.python import tensor_forest_v4
-from tensorflow.contrib.tensor_forest.python.ops import data_ops
-from tensorflow.contrib.tensor_forest.python.ops import model_ops
-from tensorflow.contrib.tensor_forest.python.ops import stats_ops
-from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
+# pylint: disable=unused-import,wildcard-import
+from tensorflow.contrib.decision_trees.proto import *
+# pylint: enable=unused-import,wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+
+remove_undocumented(__name__)

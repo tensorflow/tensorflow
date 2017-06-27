@@ -26,6 +26,7 @@ from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
 from tensorflow.contrib.tensor_forest.python import tensor_forest
+from tensorflow.contrib.tensor_forest.python import tensor_forest_v4
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,6 +42,9 @@ from tensorflow.python.training import session_run_hook
 
 KEYS_NAME = 'keys'
 LOSS_NAME = 'rf_training_loss'
+
+VERSION_BUILDERS = {'v2': tensor_forest.RandomForestGraphs,
+                    'v4': tensor_forest_v4.RandomForestGraphsV4}
 
 
 def _assert_float32(tensors):
@@ -272,7 +276,7 @@ class TensorForestEstimator(estimator.Estimator):
                early_stopping_rounds=100,
                num_trainers=1, trainer_id=0,
                report_feature_importances=False,
-               local_eval=False):
+               local_eval=False, version=None):
     """Initializes a TensorForestEstimator instance.
 
     Args:
@@ -286,7 +290,8 @@ class TensorForestEstimator(estimator.Estimator):
         directory into an estimator.
       graph_builder_class: An `object` instance that defines how TF graphs for
         random forest training and inference are built. By default will use
-        `tensor_forest.RandomForestGraphs`.
+        `tensor_forest.RandomForestGraphs`. Can be overridden by version
+        kwarg.
       config: `RunConfig` object to configure the runtime settings.
       weights_name: A string defining feature column name representing
         weights. Will be multiplied by the loss of the example. Used to
@@ -308,10 +313,19 @@ class TensorForestEstimator(estimator.Estimator):
       local_eval: If True, don't use a device assigner for eval. This is to
         support some common setups where eval is done on a single machine, even
         though training might be distributed.
+      version: String indicating TensorForest version to use, for backward
+        compatibility. Either 'v2', 'v4', or None to let system pick.
+        Overrides grpah_builder_class.
 
     Returns:
       A `TensorForestEstimator` instance.
     """
+    if version:
+      if version not in VERSION_BUILDERS:
+        logging.error('Unknown version %s. Specify either v2 or v4', version)
+      else:
+        logging.info('Setting graph_builder_class to %s', version)
+        graph_builder_class = VERSION_BUILDERS[version]
     super(TensorForestEstimator, self).__init__(
         model_fn=get_model_fn(
             params.fill(),

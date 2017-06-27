@@ -123,7 +123,9 @@ endfunction()
 file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/decision_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
@@ -272,6 +274,8 @@ add_python_module("tensorflow/contrib/data/python/framework")
 add_python_module("tensorflow/contrib/data/python/kernel_tests")
 add_python_module("tensorflow/contrib/data/python/ops")
 add_python_module("tensorflow/contrib/data/python/util")
+add_python_module("tensorflow/contrib/decision_trees")
+add_python_module("tensorflow/contrib/decision_trees/proto")
 add_python_module("tensorflow/contrib/deprecated")
 add_python_module("tensorflow/contrib/distributions")
 add_python_module("tensorflow/contrib/distributions/python")

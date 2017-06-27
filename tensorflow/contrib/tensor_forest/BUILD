@@ -248,6 +248,9 @@ tf_kernel_library(
 
 tf_custom_op_library(
     name = "python/ops/_model_ops.so",
+    srcs = [
+        "ops/model_ops.cc",
+    ],
     deps = [
         ":model_ops_lib",
     ],
@@ -311,6 +314,9 @@ tf_kernel_library(
 
 tf_custom_op_library(
     name = "python/ops/_stats_ops.so",
+    srcs = [
+        "ops/stats_ops.cc",
+    ],
     deps = [
         ":stats_ops_lib",
     ],
@@ -385,6 +391,8 @@ py_library(
         ":eval_metrics",
         ":tensor_forest_ops_py",
         ":tensor_forest_py",
+        ":tensor_forest_v4_ops_py",
+        ":tensor_forest_v4_py",
     ],
 )
 
@@ -517,6 +525,21 @@ py_library(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "tensor_forest_v4_py",
+    srcs = ["python/tensor_forest_v4.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor_forest_v4_ops_py",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_py",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
     ],
 )
 
