@@ -341,6 +341,16 @@ TEST_F(LiteralUtilTest, IsAllTuple) {
   EXPECT_FALSE(tuple->IsAll(1));
 }
 
+// Verifies that CreateFromShape works for tuples.
+TEST_F(LiteralUtilTest, CreateFromShapeTuple) {
+  auto scalar = Literal::CreateR0<float>(0.0);
+  auto matrix = Literal::CreateR2<int32>({{0, 0}, {0, 0}});
+  auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
+
+  auto x = Literal::CreateFromShape(tuple->shape());
+  EXPECT_TRUE(tuple->Equal(*x));
+}
+
 TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_TRUE(Literal::CreateR0<bool>(false)->IsAll(0));
   EXPECT_TRUE(Literal::CreateR0<bool>(true)->IsAll(1));

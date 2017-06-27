@@ -62,7 +62,17 @@ Literal::StrideConfig::StrideConfig(
 std::unique_ptr<Literal> Literal::CreateFromShape(const Shape& shape) {
   auto literal = MakeUnique<Literal>();
   *literal->mutable_shape() = shape;
-  literal->Reserve(ShapeUtil::ElementsIn(literal->shape()));
+  if (ShapeUtil::IsTuple(shape)) {
+    int64 num_elements = ShapeUtil::TupleElementCount(shape);
+    literal->tuple_literals_.resize(num_elements);
+    for (int i = 0; i < num_elements; ++i) {
+      std::unique_ptr<Literal> elem =
+          CreateFromShape(ShapeUtil::GetTupleElementShape(shape, i));
+      literal->tuple_literals_[i] = std::move(*elem);
+    }
+  } else {
+    literal->Reserve(ShapeUtil::ElementsIn(literal->shape()));
+  }
   return literal;
 }
 
