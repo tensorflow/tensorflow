@@ -252,6 +252,20 @@ ReferenceUtil::ReduceWindow4DGeneric(
                                padding);
 }
 
+/* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::BatchNorm4D(
+    const Array4D<float>& input, const Array4D<float>& mean,
+    const Array4D<float>& var, const Array4D<float>& scale,
+    const Array4D<float>& offset, float epsilon) {
+  auto normalized =
+      *MapArray4D(input, mean, [](float a, float b) { return a - b; });
+  normalized = *MapArray4D(normalized, var, [&](float a, float b) {
+    return a / std::sqrt(b + epsilon);
+  });
+  normalized =
+      *MapArray4D(normalized, scale, [](float a, float b) { return a * b; });
+  return MapArray4D(normalized, offset, [](float a, float b) { return a + b; });
+}
+
 /* static  */ std::unique_ptr<Array4D<float>>
 ReferenceUtil::SelectAndScatter4DGePlus(
     const Array4D<float>& operand, const Array4D<float>& source, float init,
@@ -583,6 +597,38 @@ ReferenceUtil::ReduceToRowArray2D(
             }
           }
           result.push_back(accumulator);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+/* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::Broadcast1DTo4D(
+    const std::vector<float>& array, const std::vector<int64>& bounds,
+    int64 broadcast_from_dim) {
+  auto result =
+      MakeUnique<Array4D<float>>(bounds[0], bounds[1], bounds[2], bounds[3]);
+  for (int64 i = 0; i < result->n1(); ++i) {
+    for (int64 j = 0; j < result->n2(); ++j) {
+      for (int64 k = 0; k < result->n3(); ++k) {
+        for (int64 l = 0; l < result->n4(); ++l) {
+          switch (broadcast_from_dim) {
+            case 0:
+              (*result)(i, j, k, l) = array[i];
+              break;
+            case 1:
+              (*result)(i, j, k, l) = array[j];
+              break;
+            case 2:
+              (*result)(i, j, k, l) = array[k];
+              break;
+            case 3:
+              (*result)(i, j, k, l) = array[l];
+              break;
+            default:
+              break;
+          }
         }
       }
     }

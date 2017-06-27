@@ -549,7 +549,7 @@ class HloInstruction {
   // number added to the variance to avoid divide-by-zero error.
   //
   // Precondition: opcode() == HloOpcode::kBatchNormTraining
-  int64 epsilon() const { return epsilon_; }
+  float epsilon() const { return epsilon_; }
 
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
