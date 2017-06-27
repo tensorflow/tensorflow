@@ -95,10 +95,10 @@ class Estimator(object):
         * Args:
 
           * `features`: This is the first item returned from the `input_fn`
-                 passed to `train`, 'evaluate`, and `predict`. This should be a
+                 passed to `train`, `evaluate`, and `predict`. This should be a
                  single `Tensor` or `dict` of same.
           * `labels`: This is the second item returned from the `input_fn`
-                 passed to `train`, 'evaluate`, and `predict`. This should be a
+                 passed to `train`, `evaluate`, and `predict`. This should be a
                  single `Tensor` or `dict` of same (for multi-head models). If
                  mode is `ModeKeys.PREDICT`, `labels=None` will be passed. If
                  the `model_fn`'s signature does not accept `mode`, the
