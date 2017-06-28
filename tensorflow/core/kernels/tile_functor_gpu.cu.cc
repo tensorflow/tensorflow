@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/tile_functor.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/framework/register_types.h"
 
