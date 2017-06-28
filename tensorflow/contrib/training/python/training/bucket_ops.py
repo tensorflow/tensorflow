@@ -88,7 +88,7 @@ def bucket(tensors,
   This function is implemented using several queues. A `QueueRunner` for the
   queues is added to the current `Graph`'s `QUEUE_RUNNER` collection.
 
-  As the returned tensors are the result of of a dequeue operation, evaluating
+  As the returned tensors are the result of a dequeue operation, evaluating
   them will throw a `tf.errors.OutOfRangeError` when the input queue is
   exhausted.  If these tensors are feeding another input queue, its queue runner
   will catch this exception, however, if they are used in your main thread
