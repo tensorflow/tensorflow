@@ -55,13 +55,6 @@ py_binary(
 )
 
 py_binary(
-    name = "iris_with_pipeline",
-    srcs = ["iris_with_pipeline.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
-)
-
-py_binary(
     name = "random_forest_mnist",
     srcs = ["random_forest_mnist.py"],
     srcs_version = "PY2AND3",
@@ -154,7 +147,6 @@ sh_test(
         ":iris_custom_decay_dnn",
         ":iris_custom_model",
         ":iris_run_config",
-        ":iris_with_pipeline",
         ":random_forest_mnist",
         ":resnet",
         ":text_classification",
