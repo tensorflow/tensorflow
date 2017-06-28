@@ -631,6 +631,14 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
       for (const auto& node_def : device.second.nodes_executed) {
         const NodeState& nodestate = node_map_.at(node_def);
         NodeExecStats* node_stats = device_stepstats->add_node_stats();
+        for (int slot = 0; slot < nodestate.output_properties.size(); slot++) {
+          const auto& properties = nodestate.output_properties[slot];
+          NodeOutput* no = node_stats->add_output();
+          no->set_slot(slot);
+          TensorDescription* tensor_descr = no->mutable_tensor_description();
+          tensor_descr->set_dtype(properties.dtype());
+          *tensor_descr->mutable_shape() = properties.shape();
+        }
         node_stats->set_timeline_label(node_def->op());
         node_stats->set_node_name(node_def->name());
         node_stats->set_op_start_rel_micros(0);
