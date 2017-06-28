@@ -120,7 +120,7 @@ public:
       num_outputs = 1;
     }
 
-    for (int64 i=0; i<num_outputs; i++) {
+    for (size_t i=0; i<num_outputs; i++) {
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
       graph_->createHostRead(sep::GetCopyHandle(i), out);
@@ -137,7 +137,7 @@ public:
 
     // For each output, see if there is an identical input and put it into the map
     const HloComputation* comp = inst->parent();
-    for (int64 o=0; o<num_outputs; o++) {
+    for (size_t o=0; o<num_outputs; o++) {
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, o));
 
@@ -161,7 +161,7 @@ public:
     }
 
     if (ShapeUtil::IsTuple(inst->shape())) {
-      for (int64 o=0; o<num_outputs; o++) {
+      for (size_t o=0; o<num_outputs; o++) {
         output_convertors[o] = GetOutputConversionFunction(
                 ShapeUtil::GetTupleElementShape(inst->shape(), o));
       }
