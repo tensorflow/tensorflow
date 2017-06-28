@@ -31,13 +31,14 @@ void ShowNode::ReInit(int64 step) {
   if (!node->canonical_device().empty()) {
     mutable_proto()->add_devices(node->canonical_device());
   }
+  mutable_proto()->set_run_count(node->run_count(step));
   mutable_proto()->set_exec_micros(node->exec_micros(step));
   mutable_proto()->set_accelerator_exec_micros(
       node->accelerator_exec_micros(step));
   mutable_proto()->set_cpu_exec_micros(node->cpu_exec_micros(step));
 
   mutable_proto()->set_requested_bytes(node->requested_bytes(step));
-  mutable_proto()->set_float_ops(node->float_ops());
+  mutable_proto()->set_float_ops(node->float_ops(step));
 
   mutable_proto()->clear_input_shapes();
   for (const auto& inp : node->input_shapes()) {
@@ -71,6 +72,10 @@ const TFGraphNodeProto& ShowNode::proto() const { return proto_; }
 
 void ShowNode::AggregateTotalStats(ShowNode* node) {
   TFGraphNodeProto* node_pb = node->mutable_proto();
+  mutable_proto()->set_total_run_count(proto().total_run_count() +
+                                       node_pb->total_run_count());
+  mutable_proto()->set_total_definition_count(
+      proto().total_definition_count() + node_pb->total_definition_count());
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          node_pb->total_exec_micros());
   mutable_proto()->set_total_accelerator_exec_micros(
@@ -88,6 +93,10 @@ void ShowNode::AggregateTotalStats(ShowNode* node) {
 }
 
 void ShowNode::AddSelfToTotalStats() {
+  mutable_proto()->set_total_definition_count(proto().total_definition_count() +
+                                              1);
+  mutable_proto()->set_total_run_count(proto().total_run_count() +
+                                       proto().run_count());
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          proto().exec_micros());
   mutable_proto()->set_total_accelerator_exec_micros(
@@ -105,6 +114,8 @@ void ShowNode::AddSelfToTotalStats() {
 }
 
 void ShowNode::ResetTotalStats() {
+  mutable_proto()->set_total_definition_count(0);
+  mutable_proto()->set_total_run_count(0);
   mutable_proto()->set_total_exec_micros(0);
   mutable_proto()->set_total_accelerator_exec_micros(0);
   mutable_proto()->set_total_cpu_exec_micros(0);

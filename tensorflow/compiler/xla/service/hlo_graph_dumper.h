@@ -41,6 +41,13 @@ class GraphRendererInterface {
   virtual string RenderGraph(const string& graph, GraphKind graph_kind) = 0;
 };
 
+// Dump the given HLO module if a dump is requested in its debug options. Based
+// on the debug options, either a graph dump, a text dump or both may be
+// generated. If a graph dump is generated, the description (e.g. an URL) is
+// returned; otherwise an empty string is returned.
+string MaybeDumpHloModule(const HloModule& module, const string& label,
+                          const HloExecutionProfile* profile = nullptr);
+
 // Dumps a graph of the computation and returns a description of the rendered
 // graph (e.g., a URL) based on the renderer. The "best" renderer in the
 // registry is used.

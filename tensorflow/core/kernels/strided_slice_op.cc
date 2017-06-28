@@ -96,17 +96,13 @@ class StridedSliceOp : public OpKernel {
     gtl::InlinedVector<int64, 4> end;
     gtl::InlinedVector<int64, 4> strides;
 
-    ShapeReadWriteFromTensorShape wrapped_processing_shape(&processing_shape);
-    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
     OP_REQUIRES_OK(
         context, ValidateStridedSliceOp(
                      &context->input(1), &context->input(2), context->input(3),
-                     ShapeReadWriteFromTensorShape(&context->input(0).shape()),
-                     begin_mask, end_mask, ellipsis_mask, new_axis_mask,
-                     shrink_axis_mask, &wrapped_processing_shape,
-                     &wrapped_final_shape, &is_identity, &is_simple_slice,
-                     &slice_dim0, &begin, &end, &strides));
-
+                     context->input(0).shape(), begin_mask, end_mask,
+                     ellipsis_mask, new_axis_mask, shrink_axis_mask,
+                     &processing_shape, &final_shape, &is_identity,
+                     &is_simple_slice, &slice_dim0, &begin, &end, &strides));
     const Tensor& input = context->input(0);
 
     // Optimization #1, slice is a no-op plus reshape
@@ -218,15 +214,12 @@ class StridedSliceGradOp : public OpKernel {
       LOG(FATAL) << "shape must have type int32 or int64.";
     }
 
-    ShapeReadWriteFromTensorShape wrapped_processing_shape(&processing_shape);
-    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
     OP_REQUIRES_OK(
         context,
         ValidateStridedSliceOp(
             &context->input(1), &context->input(2), context->input(3),
-            ShapeReadWriteFromTensorShape(&input_shape), begin_mask, end_mask,
-            ellipsis_mask, new_axis_mask, shrink_axis_mask,
-            &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
+            input_shape, begin_mask, end_mask, ellipsis_mask, new_axis_mask,
+            shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
             &is_simple_slice, &slice_dim0, &begin, &end, &strides));
 
     // Check to make sure dy is consistent with the original slice
@@ -306,15 +299,12 @@ class StridedSliceAssignOp : public OpKernel {
       old_lhs = context->mutable_input(0, true);
     }
 
-    ShapeReadWriteFromTensorShape wrapped_processing_shape(&processing_shape);
-    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
     OP_REQUIRES_OK(
         context,
         ValidateStridedSliceOp(
             &context->input(1), &context->input(2), context->input(3),
-            ShapeReadWriteFromTensorShape(&old_lhs.shape()), begin_mask,
-            end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
-            &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
+            old_lhs.shape(), begin_mask, end_mask, ellipsis_mask, new_axis_mask,
+            shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
             &is_simple_slice, &slice_dim0, &begin, &end, &strides));
 
     if (processing_shape.num_elements()) {

@@ -34,6 +34,16 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "split_info_proto",
+    srcs = ["split_info.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":tree_config_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
     name = "tree_config_proto",
     srcs = ["tree_config.proto"],
     cc_api_version = 2,

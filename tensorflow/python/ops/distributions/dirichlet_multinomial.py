@@ -36,7 +36,7 @@ __all__ = [
 
 
 _dirichlet_multinomial_sample_note = """For each batch of counts,
-`value = [n_0, ..., n_{k-1}]`, `P[value]` is the probability that after
+`value = [n_0, ..., n_{K-1}]`, `P[value]` is the probability that after
 sampling `self.total_count` draws from this Dirichlet-Multinomial distribution,
 the number of draws falling in class `j` is `n_j`. Since this definition is
 [exchangeable](https://en.wikipedia.org/wiki/Exchangeable_random_variables);
@@ -53,16 +53,16 @@ class DirichletMultinomial(distribution.Distribution):
   """Dirichlet-Multinomial compound distribution.
 
   The Dirichlet-Multinomial distribution is parameterized by a (batch of)
-  length-`k` `concentration` vectors (`k > 1`) and a `total_count` number of
+  length-`K` `concentration` vectors (`K > 1`) and a `total_count` number of
   trials, i.e., the number of trials per draw from the DirichletMultinomial. It
-  is defined over a (batch of) length-`k` vector `counts` such that
+  is defined over a (batch of) length-`K` vector `counts` such that
   `tf.reduce_sum(counts, -1) = total_count`. The Dirichlet-Multinomial is
-  identically the Beta-Binomial distribution when `k = 2`.
+  identically the Beta-Binomial distribution when `K = 2`.
 
   #### Mathematical Details
 
-  The Dirichlet-Multinomial is a distribution over `k`-class counts, i.e., a
-  length-`k` vector of non-negative integer `counts = n = [n_0, ..., n_{k-1}]`.
+  The Dirichlet-Multinomial is a distribution over `K`-class counts, i.e., a
+  length-`K` vector of non-negative integer `counts = n = [n_0, ..., n_{K-1}]`.
 
   The probability mass function (pmf) is,
 
@@ -73,7 +73,7 @@ class DirichletMultinomial(distribution.Distribution):
 
   where:
 
-  * `concentration = alpha = [alpha_0, ..., alpha_{k-1}]`, `alpha_j > 0`,
+  * `concentration = alpha = [alpha_0, ..., alpha_{K-1}]`, `alpha_j > 0`,
   * `total_count = N`, `N` a positive integer,
   * `N!` is `N` factorial, and,
   * `Beta(x) = prod_j Gamma(x_j) / Gamma(sum_j x_j)` is the
@@ -88,9 +88,9 @@ class DirichletMultinomial(distribution.Distribution):
   samples are generated as follows.
 
     1. Choose class probabilities:
-       `probs = [p_0,...,p_{k-1}] ~ Dir(concentration)`
+       `probs = [p_0,...,p_{K-1}] ~ Dir(concentration)`
     2. Draw integers:
-       `counts = [n_0,...,n_{k-1}] ~ Multinomial(total_count, probs)`
+       `counts = [n_0,...,n_{K-1}] ~ Multinomial(total_count, probs)`
 
   The last `concentration` dimension parametrizes a single Dirichlet-Multinomial
   distribution. When calling distribution functions (e.g., `dist.prob(counts)`),
@@ -100,6 +100,24 @@ class DirichletMultinomial(distribution.Distribution):
 
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
+
+  #### Pitfalls
+
+  The number of classes, `K`, must not exceed:
+  - the largest integer representable by `self.dtype`, i.e.,
+    `2**(mantissa_bits+1)` (IEE754),
+  - the maximum `Tensor` index, i.e., `2**31-1`.
+
+  In other words,
+
+  ```python
+  K <= min(2**31-1, {
+    tf.float16: 2**11,
+    tf.float32: 2**24,
+    tf.float64: 2**53 }[param.dtype])
+  ```
+
+  Note: This condition is validated only when `self.validate_args = True`.
 
   #### Examples
 
@@ -157,8 +175,8 @@ class DirichletMultinomial(distribution.Distribution):
         Dirichlet multinomial distributions. Its components should be equal to
         integer values.
       concentration: Positive floating point tensor, whose dtype is the
-        same as `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.
-        Defines this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
+        same as `n` with shape broadcastable to `[N1,..., Nm, K]` `m >= 0`.
+        Defines this as a batch of `N1 x ... x Nm` different `K` class Dirichlet
         multinomial distributions.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
@@ -180,9 +198,11 @@ class DirichletMultinomial(distribution.Distribution):
       #   created automatically by prepending). This forces enough explicitness.
       # * All calls involving `counts` eventually require a broadcast between
       #  `counts` and concentration.
-      self._total_count = self._maybe_assert_valid_total_count(
-          ops.convert_to_tensor(total_count, name="total_count"),
-          validate_args)
+      self._total_count = ops.convert_to_tensor(total_count, name="total_count")
+      if validate_args:
+        self._total_count = (
+            distribution_util.embed_check_nonnegative_integer_form(
+                self._total_count))
       self._concentration = self._maybe_assert_valid_concentration(
           ops.convert_to_tensor(concentration,
                                 name="concentration"),
@@ -242,7 +262,8 @@ class DirichletMultinomial(distribution.Distribution):
         seed=distribution_util.gen_new_seed(seed, salt="dirichlet_multinomial"))
     x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k), -2)
     final_shape = array_ops.concat([[n], self.batch_shape_tensor(), [k]], 0)
-    return array_ops.reshape(x, final_shape)
+    x = array_ops.reshape(x, final_shape)
+    return math_ops.cast(x, self.dtype)
 
   @distribution_util.AppendDocstring(_dirichlet_multinomial_sample_note)
   def _log_prob(self, counts):
@@ -302,42 +323,21 @@ class DirichletMultinomial(distribution.Distribution):
     """Checks the validity of the concentration parameter."""
     if not validate_args:
       return concentration
+    concentration = distribution_util.embed_check_categorical_event_shape(
+        concentration)
     return control_flow_ops.with_dependencies([
         check_ops.assert_positive(
             concentration,
             message="Concentration parameter must be positive."),
-        check_ops.assert_rank_at_least(
-            concentration, 1,
-            message="Concentration parameter must have >=1 dimensions."),
-        check_ops.assert_less(
-            1, array_ops.shape(concentration)[-1],
-            message="Concentration parameter must have event_size >= 2."),
     ], concentration)
-
-  def _maybe_assert_valid_total_count(self, total_count, validate_args):
-    if not validate_args:
-      return total_count
-    return control_flow_ops.with_dependencies([
-        check_ops.assert_non_negative(
-            total_count,
-            message="total_count must be non-negative."),
-        distribution_util.assert_integer_form(
-            total_count,
-            message="total_count cannot contain fractional values."),
-    ], total_count)
 
   def _maybe_assert_valid_sample(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
+    counts = distribution_util.embed_check_nonnegative_integer_form(counts)
     return control_flow_ops.with_dependencies([
-        check_ops.assert_non_negative(
-            counts,
-            message="counts must be non-negative."),
         check_ops.assert_equal(
             self.total_count, math_ops.reduce_sum(counts, -1),
             message="counts last-dimension must sum to `self.total_count`"),
-        distribution_util.assert_integer_form(
-            counts,
-            message="counts cannot contain fractional components."),
     ], counts)

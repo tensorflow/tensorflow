@@ -233,6 +233,28 @@ TEST_F(ArrayGradTest, ScatterNdGrad_SliceIndexing) {
   RunTest(updates, updates_shape, y, y_shape);
 }
 
+TEST_F(ArrayGradTest, ScatterNdNonAliasingAddGrad_SimpleIndexing) {
+  TensorShape updates_shape({4});
+  TensorShape input_shape({8});
+  auto input = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(input_shape));
+  auto updates =
+      Placeholder(scope_, DT_FLOAT, Placeholder::Shape(updates_shape));
+  auto indices = Const(scope_, {{4}, {3}, {1}, {7}});
+  auto y = ScatterNdNonAliasingAdd(scope_, input, indices, updates);
+  RunTest({input, updates}, {input_shape, updates_shape}, {y}, {input_shape});
+}
+
+TEST_F(ArrayGradTest, ScatterNdNonAliasingAddGrad_SliceIndexing) {
+  TensorShape updates_shape({2, 4, 4});
+  TensorShape input_shape({4, 4, 4});
+  auto input = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(input_shape));
+  auto updates =
+      Placeholder(scope_, DT_FLOAT, Placeholder::Shape(updates_shape));
+  auto indices = Const(scope_, {{0}, {2}});
+  auto y = ScatterNdNonAliasingAdd(scope_, input, indices, updates);
+  RunTest({input, updates}, {input_shape, updates_shape}, {y}, {input_shape});
+}
+
 TEST_F(ArrayGradTest, PadGrad) {
   TensorShape x_shape({2, 3});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -100,8 +101,9 @@ string AsControlDependency(const NodeDef& node) {
 
 ConstantFolding::ConstantFolding() {
   ops_to_preserve_ = std::regex(
-      "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|Enter|Exit|"
-      "NextIteration");
+      "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|"
+      "Enter|RefEnter|Exit|RefExit|NextIteration|RefNextIteration|"
+      ".*Quantized.*");
 }
 
 string ConstantFolding::AddControlDependency(const string& input_name) {
@@ -267,9 +269,10 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     return false;
   }
   // Only fold ops with a CPU implementation available.
-  if (device_types[0] != DeviceType(DEVICE_CPU)) {
+  if (device_types.empty()) {
     return false;
   }
+  DCHECK_EQ(DeviceType(DEVICE_CPU), device_types[0]);
 
   // Folding not applicable to ops with no inputs.
   if (node.input().empty()) {
@@ -370,6 +373,12 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                                             std::vector<NodeDef>* outputs) {
   TensorVector inputs;
+  auto inputs_cleanup = gtl::MakeCleanup([&inputs] {
+    for (const auto& input : inputs) {
+      delete input.tensor;
+    }
+  });
+
   for (const auto& input : node.input()) {
     if (IsControlInput(input)) {
       break;
@@ -382,9 +391,6 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 
   TensorVector output_tensors;
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
-  for (const auto& input : inputs) {
-    delete input.tensor;
-  }
   if (output_tensors.empty()) {
     Status(error::INVALID_ARGUMENT, "Expected at least one output.");
   }
@@ -441,10 +447,22 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
         // Try the next input
         continue;
       }
+
+      string const_out_name =
+          AddPrefixToNodeName(node.name(), kConstantFoldingConst);
+      string const_index_name = AddPrefixToNodeName(
+          strings::StrCat(node.name(), "_index"), kConstantFoldingConst);
+      if (node_map_->GetNode(const_out_name) ||
+          node_map_->GetNode(const_index_name)) {
+        // Intended name already exists.
+        return errors::AlreadyExists(
+            strings::StrCat(const_out_name, " or ", const_index_name,
+                            "already present in the graph"));
+      }
+
       NodeDef* const_out = output->add_node();
       *const_out = *input_node;
-      const_out->set_name(
-          AddPrefixToNodeName(node.name(), kConstantFoldingConst));
+      const_out->set_name(const_out_name);
       *const_out->add_input() = AsControlDependency(node);
       node_map_->AddNode(const_out->name(), const_out);
 
@@ -455,8 +473,7 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       (*const_index->mutable_attr())["dtype"].set_type(DT_INT32);
       index.AsProtoTensorContent(
           (*const_index->mutable_attr())["value"].mutable_tensor());
-      const_index->set_name(AddPrefixToNodeName(
-          strings::StrCat(node.name(), "_index"), kConstantFoldingConst));
+      const_index->set_name(const_index_name);
       *const_index->add_input() = AsControlDependency(node);
       node_map_->AddNode(const_index->name(), const_index);
 
@@ -492,6 +509,12 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       // just skip it. We'll preserve the edges that originate from that output
       // below to preserve the overall behavior of the graph wrt dead edges.
       continue;
+    }
+
+    if (node_map_->GetNode(const_node.name())) {
+      // Intended name already exists.
+      return errors::AlreadyExists(
+          strings::StrCat(const_node.name(), "already present in the graph"));
     }
     NodeDef* added_node = output->add_node();
     *added_node = const_node;
@@ -546,23 +569,25 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
 }
 
 Status ConstantFolding::FoldGraph(GraphDef* output) {
-  std::set<string> processed_nodes;
-  while (1) {
-    int previous_processed = processed_nodes.size();
+  std::unordered_set<string> processed_nodes;
+  int previously_processed = 0;
+  do {
+    previously_processed = processed_nodes.size();
     for (const auto& node : graph_.node()) {
       if (IsFoldable(node) &&
           processed_nodes.find(node.name()) == processed_nodes.end()) {
-        TF_RETURN_IF_ERROR(FoldNode(node, output));
+        Status s = FoldNode(node, output);
+        if (!s.ok()) {
+          VLOG(1) << "Failed to fold node " << node.name() << ": " << s;
+        }
         processed_nodes.insert(node.name());
       }
     }
-    int current_processed = processed_nodes.size();
-    LOG(INFO) << "Previous number of processed nodes: " << previous_processed
-              << "; Current number of processed nodes: " << current_processed;
-    if (current_processed == previous_processed) {
-      break;
-    }
-  }
+    // Try again as long as we find new constants. In most cases, this loop will
+    // only run once since the graph is already in topological order.
+    VLOG(1) << "Folded " << processed_nodes.size() - previously_processed
+            << " nodes in this pass";
+  } while (previously_processed != processed_nodes.size());
 
   // Build the graph after constant folding. Note that we keep all processed
   // nodes in the graph in case users need to fetch their values.

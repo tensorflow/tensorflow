@@ -27,7 +27,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/Support/CodeGen.h"
 #include "external/llvm/include/llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
@@ -143,7 +142,9 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 }  // namespace
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
-                           llvm::CodeGenOpt::Level opt_level)
+                           llvm::CodeGenOpt::Level opt_level,
+                           OptimizationCallback pre_optimization_callback,
+                           OptimizationCallback post_optimization_callback)
     : target_machine_(
           CHECK_NOTNULL(llvm::EngineBuilder()
                             .setTargetOptions(target_options)
@@ -154,21 +155,19 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      compile_layer_(object_layer_,
-                     CompilerFunctor(target_machine_.get(), &disassembler_,
-                                     opt_level, GetAvailableIntrinsics())) {
+      compile_layer_(
+          object_layer_,
+          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
+                          GetAvailableIntrinsics(), pre_optimization_callback,
+                          post_optimization_callback)) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
 
 SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
-  // The Orc API adds a whole iterable "set" of modules, so we wrap the module
-  // in a vector.
-  std::vector<std::unique_ptr<llvm::Module>> module_set;
-  module_set.push_back(std::move(module));
-  auto handle = compile_layer_.addModuleSet(
-      std::move(module_set), MakeUnique<llvm::SectionMemoryManager>(),
+  auto handle = compile_layer_.addModule(
+      std::move(module), MakeUnique<llvm::SectionMemoryManager>(),
       MakeUnique<SimpleResolver>());
   module_handles_.push_back(handle);
   return handle;
@@ -176,8 +175,9 @@ SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
 
 void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::ModuleHandleT handle) {
   module_handles_.erase(
-      std::remove(module_handles_.begin(), module_handles_.end(), handle));
-  compile_layer_.removeModuleSet(handle);
+      std::remove(module_handles_.begin(), module_handles_.end(), handle),
+      module_handles_.end());
+  compile_layer_.removeModule(handle);
 }
 
 llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string &name) {

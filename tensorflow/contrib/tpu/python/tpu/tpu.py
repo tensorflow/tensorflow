@@ -480,8 +480,11 @@ def shard(computation,
   for (axis, all_shards, x) in zip(output_shard_axes, outputs_from_all_shards,
                                    zip(*outputs)):
     if all_shards:
-      # Concatenate all of the outputs together.
-      results.append(array_ops.concat(list(x), axis=axis))
+      # Concatenate all of the outputs together (use stack for scalars).
+      shape = x[0].shape
+      is_scalar = shape is not None and (shape.ndims == 0)
+      results.append((array_ops.stack(list(x)) if is_scalar
+                      else array_ops.concat(list(x), axis=axis)))
     else:
       # TODO(phawkins): use a smarter policy, e.g., round-robin across shards.
       results.append(x[0])

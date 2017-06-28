@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"

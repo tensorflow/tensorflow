@@ -136,9 +136,8 @@ class LogPoissonLossTest(test_lib.TestCase):
           z_np, x_tf, compute_full_loss=True)
       err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
                                                     x_shape)
-      err_stirling = gradient_checker.compute_gradient_error(x_tf, x_shape,
-                                                             y_tf_stirling,
-                                                             x_shape)
+      err_stirling = gradient_checker.compute_gradient_error(
+          x_tf, x_shape, y_tf_stirling, x_shape)
     eps = 1e-6
     self.assertLess(err, eps)
     self.assertLess(err_stirling, eps)
@@ -404,273 +403,362 @@ class DropoutTest(test_lib.TestCase):
 class ComputeSampledLogitsTest(test_lib.TestCase):
 
   def setUp(self):
-    self._num_classes = 5
-    self._dim = 10
-    self._batch_size = 3
-    self._num_shards = 3
+    self._eps = 1e-3
 
-  def _GenerateTestInputs(self):
-    np.random.seed(0)
-    weights = np.random.randn(self._num_classes, self._dim).astype(np.float32)
-    biases = np.random.randn(self._num_classes).astype(np.float32)
-    hidden_acts = np.random.randn(self._batch_size,
-                                  self._dim).astype(np.float32)
+  def _GenerateTestData(self, num_classes, dim, batch_size, num_true, labels,
+                        sampled, subtract_log_q):
+    """Randomly generates input/output data for a single test case.
 
-    with ops.Graph().as_default() as g:
-      sharded_weights = variable_scope.get_variable(
-          "w",
-          partitioner=partitioned_variables.fixed_size_partitioner(
-              self._num_shards),
-          initializer=constant_op.constant(weights))
-      sharded_biases = variable_scope.get_variable(
-          "b",
-          partitioner=partitioned_variables.fixed_size_partitioner(
-              self._num_shards),
-          initializer=constant_op.constant(biases))
-      with self.test_session(graph=g) as sess:
-        variables.global_variables_initializer().run()
+    This function returns numpy constants for use in a test case.
 
-        sharded_weights_v, sharded_biases_v = sess.run(
-            [list(sharded_weights), list(sharded_biases)])
+    Args:
+      num_classes: An int. The number of embedding classes in the test case.
+      dim: An int. The dimension of the embedding.
+      batch_size: An int. The batch size.
+      num_true: An int. The number of target classes per training example.
+      labels: A list of batch_size * num_true ints. The target classes.
+      sampled: A list of indices in [0, num_classes).
+      subtract_log_q: A bool corresponding to the parameter in
+          _compute_sampled_logits().
 
-    return weights, biases, hidden_acts, sharded_weights_v, sharded_biases_v
+    Returns:
+      weights: Embedding weights to use as test input. It is a numpy array
+          of shape [num_classes, dim]
+      biases: Embedding biases to use as test input. It is a numpy array
+          of shape [num_classes].
+      hidden_acts: Forward activations of the network to use as test input.
+          It is a numpy array of shape [batch_size, dim].
+      sampled_vals: A tuple based on `sampled` to use as test input in the
+          format returned by a *_candidate_sampler function.
+      exp_logits: The output logits expected from _compute_sampled_logits().
+          It is a numpy array of shape [batch_size, num_true + len(sampled)].
+      exp_labels: The output labels expected from _compute_sampled_logits().
+          It is a numpy array of shape [batch_size, num_true + len(sampled)].
+    """
+    weights = np.random.randn(num_classes, dim).astype(np.float32)
+    biases = np.random.randn(num_classes).astype(np.float32)
+    hidden_acts = np.random.randn(batch_size, dim).astype(np.float32)
 
-  def _ComputeSampledLogitsNP(self,
-                              true_w,
-                              true_b,
-                              sampled_w,
-                              sampled_b,
-                              hidden_acts,
-                              num_true=1,
-                              true_expected=None,
-                              sampled_expected=None):
+    true_exp = np.full([batch_size, 1], fill_value=0.5, dtype=np.float32)
+    sampled_exp = np.full([len(sampled)], fill_value=0.5, dtype=np.float32)
+    sampled_vals = (sampled, true_exp, sampled_exp)
 
-    batch_size, dim = hidden_acts.shape
-    true_logits = np.sum(hidden_acts.reshape(
-        (batch_size, 1, dim)) * true_w.reshape((batch_size, num_true, dim)),
-                         axis=2)
+    sampled_w, sampled_b = weights[sampled], biases[sampled]
+    true_w, true_b = weights[labels], biases[labels]
+
+    true_logits = np.sum(
+        hidden_acts.reshape((batch_size, 1, dim)) * true_w.reshape(
+            (batch_size, num_true, dim)),
+        axis=2)
     true_b = true_b.reshape((batch_size, num_true))
     true_logits += true_b
     sampled_logits = np.dot(hidden_acts, sampled_w.T) + sampled_b
 
-    if true_expected is not None:
-      true_logits -= np.log(true_expected)
-    if sampled_expected is not None:
-      sampled_logits -= np.log(sampled_expected[np.newaxis, :])
+    if subtract_log_q:
+      true_logits -= np.log(true_exp)
+      sampled_logits -= np.log(sampled_exp[np.newaxis, :])
 
-    out_logits = np.concatenate([true_logits, sampled_logits], axis=1)
-    out_labels = np.hstack((np.ones_like(true_logits) / num_true,
+    exp_logits = np.concatenate([true_logits, sampled_logits], axis=1)
+    exp_labels = np.hstack((np.ones_like(true_logits) / num_true,
                             np.zeros_like(sampled_logits)))
 
-    return out_logits, out_labels
+    return weights, biases, hidden_acts, sampled_vals, exp_logits, exp_labels
 
-  def _ComputeSampledLogitsTF(self,
-                              weights,
-                              biases,
-                              hidden_acts,
-                              labels,
-                              num_sampled,
-                              num_classes,
-                              num_true,
-                              sampled_vals,
-                              subtract_log_q,
-                              remove_accidental_hits,
-                              name="sampled_loss_TF"):
-    # Should be called from within a `with test_session():` block
-    if isinstance(weights, list):
-      weights_tf = [constant_op.constant(shard) for shard in weights]
-    else:
-      weights_tf = constant_op.constant(weights)
-    if isinstance(biases, list):
-      biases_tf = [constant_op.constant(shard) for shard in biases]
-    else:
-      biases_tf = constant_op.constant(biases)
-    hidden_acts_tf = constant_op.constant(
-        hidden_acts, shape=(self._batch_size, self._dim))
-    labels_tf = constant_op.constant(
-        labels, dtype=dtypes.int64, shape=(self._batch_size, num_true))
+  def _ShardTestEmbeddings(self, weights, biases, num_shards):
+    """Shards the weights and biases returned by _GenerateTestData.
 
-    pred_logits_tf, pred_labels_tf = _compute_sampled_logits(
-        weights_tf,
-        biases_tf,
-        labels_tf,
-        hidden_acts_tf,
-        num_sampled,
-        num_classes,
-        num_true,
-        sampled_vals,
-        subtract_log_q=subtract_log_q,
-        remove_accidental_hits=remove_accidental_hits,
-        name=name,
-        partition_strategy="div")
-    return pred_logits_tf, pred_labels_tf
+    Args:
+      weights: The weights returned by _GenerateTestData.
+      biases: The biases returned by _GenerateTestData.
+      num_shards: The number of shards to create.
 
-  def testComputeSampledLogitsShapes(self):
-    # We just check that the shapes of the returned values are correct.
-    weights, biases, hidden_acts, _, _ = self._GenerateTestInputs()
-    sampled = [1, 0, 2, 3]
-    num_sampled = len(sampled)
-    true_exp = sampled_exp = [1., 1., 1., 1.]
-    test_sampled_vals = (sampled, true_exp, sampled_exp)
-    sampled_w, sampled_b = weights[sampled], biases[sampled]
+    Returns:
+      sharded_weights: A list of size `num_shards` containing all the weights.
+      sharded_biases: A list of size `num_shards` containing all the biases.
+    """
+    with ops.Graph().as_default() as g:
+      sharded_weights = variable_scope.get_variable(
+          "w",
+          partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
+          initializer=constant_op.constant(weights))
+      sharded_biases = variable_scope.get_variable(
+          "b",
+          partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
+          initializer=constant_op.constant(biases))
+      with self.test_session(graph=g) as sess:
+        variables.global_variables_initializer().run()
+        return sess.run([list(sharded_weights), list(sharded_biases)])
 
+  def testShapes(self):
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
     with self.test_session() as sess:
-      for num_true_test in range(1, 5):
+      for num_true in range(1, 5):
         labels = np.random.randint(
-            low=0,
-            high=self._num_classes,
-            size=self._batch_size * num_true_test)
-        true_w, true_b = weights[labels], biases[labels]
-
-        logits_np, labels_np = self._ComputeSampledLogitsNP(
-            true_w,
-            true_b,
-            sampled_w,
-            sampled_b,
-            hidden_acts,
-            num_true=num_true_test)
-
-        logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-            weights,
-            biases,
-            hidden_acts,
-            labels,
-            num_sampled,
-            self._num_classes,
-            num_true=num_true_test,
-            sampled_vals=test_sampled_vals,
-            remove_accidental_hits=True,
-            subtract_log_q=False)
-
-      logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-      self.assertEqual(logits_np.shape, logits_tf_val.shape)
-      self.assertEqual(labels_np.shape, labels_tf_val.shape)
-
-  def testComputeSampledLogitsValues(self):
-    # Here we check the actual numerics.
-    weights, biases, hidden_acts, sharded_weights, sharded_biases = (
-        self._GenerateTestInputs())
-    eps = 1e-3
-    sampled = [1, 0, 2, 3]
-    num_sampled = len(sampled)
-    true_exp = np.empty([self._batch_size, 1], dtype=np.float32)
-    true_exp.fill(0.5)
-    sampled_exp = np.empty([num_sampled], dtype=np.float32)
-    sampled_exp.fill(0.5)
-    sampled_w, sampled_b = weights[sampled], biases[sampled]
-    test_sampled_vals = (sampled, true_exp, sampled_exp)
-
-    with self.test_session() as sess:
-      for num_true_test in range(1, 5):
-        # Generate test data for this run
-        labels = np.random.randint(
-            low=0,
-            high=self._num_classes,
-            size=self._batch_size * num_true_test)
-        true_w, true_b = weights[labels], biases[labels]
-
-        # Test 1: Without accidental hit removal or subtract_log_q
-        logits_np, labels_np = self._ComputeSampledLogitsNP(
-            true_w,
-            true_b,
-            sampled_w,
-            sampled_b,
-            hidden_acts,
-            num_true=num_true_test)
-        logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-            weights,
-            biases,
-            hidden_acts,
-            labels,
-            num_sampled,
-            self._num_classes,
-            num_true=num_true_test,
-            sampled_vals=test_sampled_vals,
+            low=0, high=num_classes, size=batch_size * num_true)
+        (weights, biases, hidden_acts, sampled_vals, exp_logits,
+         exp_labels) = self._GenerateTestData(
+             num_classes=num_classes,
+             dim=10,
+             batch_size=batch_size,
+             num_true=num_true,
+             labels=labels,
+             sampled=[1, 0, 2, 3],
+             subtract_log_q=False)
+        logits_tensor, labels_tensor = _compute_sampled_logits(
+            weights=constant_op.constant(weights),
+            biases=constant_op.constant(biases),
+            labels=constant_op.constant(
+                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
+            inputs=constant_op.constant(hidden_acts),
+            num_sampled=4,
+            num_classes=num_classes,
+            num_true=num_true,
+            sampled_values=sampled_vals,
             subtract_log_q=False,
             remove_accidental_hits=False,
-            name="sampled_loss_test1_num_true%d" % num_true_test)
+            partition_strategy="div",
+            colocate_logits=False,
+            name="sampled_logits_basic_num_true_%d" % num_true)
+        got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
+        self.assertEqual(exp_logits.shape, got_logits.shape, self._eps)
+        self.assertEqual(exp_labels.shape, got_labels.shape, self._eps)
 
-        logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-        self.assertAllClose(logits_np, logits_tf_val, eps)
-        self.assertAllClose(labels_np, labels_tf_val, eps)
+  def testBasic(self):
+    """Without accidental hit removal or subtract_log_q."""
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
+    with self.test_session() as sess:
+      for num_true in range(1, 5):
+        labels = np.random.randint(
+            low=0, high=num_classes, size=batch_size * num_true)
+        (weights, biases, hidden_acts, sampled_vals, exp_logits,
+         exp_labels) = self._GenerateTestData(
+             num_classes=num_classes,
+             dim=10,
+             batch_size=batch_size,
+             num_true=num_true,
+             labels=labels,
+             sampled=[1, 0, 2, 3],
+             subtract_log_q=False)
+        logits_tensor, labels_tensor = _compute_sampled_logits(
+            weights=constant_op.constant(weights),
+            biases=constant_op.constant(biases),
+            labels=constant_op.constant(
+                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
+            inputs=constant_op.constant(hidden_acts),
+            num_sampled=4,
+            num_classes=num_classes,
+            num_true=num_true,
+            sampled_values=sampled_vals,
+            subtract_log_q=False,
+            remove_accidental_hits=False,
+            partition_strategy="div",
+            colocate_logits=False,
+            name="sampled_logits_basic_num_true_%d" % num_true)
+        got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
+        self.assertAllClose(exp_logits, got_logits, self._eps)
+        self.assertAllClose(exp_labels, got_labels, self._eps)
 
-        # Test 2: With accidental hit removal, no subtract_log_q
-        logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-            weights,
-            biases,
-            hidden_acts,
-            labels,
-            num_sampled,
-            self._num_classes,
-            num_true=num_true_test,
-            sampled_vals=test_sampled_vals,
+  def testAccidentalHitRemoval(self):
+    """With accidental hit removal, no subtract_log_q."""
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
+    sampled = [1, 0, 2, 3]
+    with self.test_session():
+      for num_true in range(1, 5):
+        labels = np.random.randint(
+            low=0, high=num_classes, size=batch_size * num_true)
+        (weights, biases, hidden_acts, sampled_vals, _,
+         _) = self._GenerateTestData(
+             num_classes=num_classes,
+             dim=10,
+             batch_size=batch_size,
+             num_true=num_true,
+             labels=labels,
+             sampled=sampled,
+             subtract_log_q=False)
+        logits_tensor, _ = _compute_sampled_logits(
+            weights=constant_op.constant(weights),
+            biases=constant_op.constant(biases),
+            labels=constant_op.constant(
+                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
+            inputs=constant_op.constant(hidden_acts),
+            num_sampled=len(sampled),
+            num_classes=num_classes,
+            num_true=num_true,
+            sampled_values=sampled_vals,
             subtract_log_q=False,
             remove_accidental_hits=True,
-            name="sampled_loss_test2_num_true%d" % num_true_test)
-
+            partition_strategy="div",
+            colocate_logits=False,
+            name="sampled_logits_accidental_hit_removal_num_true_%d" % num_true)
         # Test that the exponentiated logits of accidental hits are near 0.
         # First we need to find the hits in this random test run:
-        labels_reshape = labels.reshape((self._batch_size, num_true_test))
-        logits_tf_np = logits_tf.eval()
-        for row in xrange(self._batch_size):
+        labels_reshape = labels.reshape((batch_size, num_true))
+        got_logits = logits_tensor.eval()
+        for row in xrange(batch_size):
           row_labels = labels_reshape[row, :]
-          for col in xrange(num_sampled):
+          for col in xrange(len(sampled)):
             if sampled[col] in row_labels:
               # We need to add the num_true_test offset into logits_*
               self.assertNear(
-                  np.exp(logits_tf_np[row, col + num_true_test]), 0., eps)
+                  np.exp(got_logits[row, col + num_true]), 0., self._eps)
 
-        # Test 3: With subtract_log_q, no accidental hit removal
-        logits_np, labels_np = self._ComputeSampledLogitsNP(
-            true_w,
-            true_b,
-            sampled_w,
-            sampled_b,
-            hidden_acts,
-            num_true=num_true_test,
-            true_expected=true_exp,
-            sampled_expected=sampled_exp)
-        logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-            weights,
-            biases,
-            hidden_acts,
-            labels,
-            num_sampled,
-            self._num_classes,
-            num_true=num_true_test,
-            sampled_vals=test_sampled_vals,
+  def testSubtractLogQ(self):
+    """With subtract_log_q, no accidental hit removal."""
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
+    with self.test_session() as sess:
+      for num_true in range(1, 5):
+        labels = np.random.randint(
+            low=0, high=num_classes, size=batch_size * num_true)
+        (weights, biases, hidden_acts, sampled_vals, exp_logits,
+         exp_labels) = self._GenerateTestData(
+             num_classes=num_classes,
+             dim=10,
+             batch_size=batch_size,
+             num_true=num_true,
+             labels=labels,
+             sampled=[1, 0, 2, 3],
+             subtract_log_q=True)
+        logits_tensor, labels_tensor = _compute_sampled_logits(
+            weights=constant_op.constant(weights),
+            biases=constant_op.constant(biases),
+            labels=constant_op.constant(
+                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
+            inputs=constant_op.constant(hidden_acts),
+            num_sampled=4,
+            num_classes=num_classes,
+            num_true=num_true,
+            sampled_values=sampled_vals,
             subtract_log_q=True,
             remove_accidental_hits=False,
-            name="sampled_loss_test3_num_true%d" % num_true_test)
+            partition_strategy="div",
+            colocate_logits=False,
+            name="sampled_logits_subtract_log_q_num_true_%d" % num_true)
+        got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
+        self.assertAllClose(exp_logits, got_logits, self._eps)
+        self.assertAllClose(exp_labels, got_labels, self._eps)
 
-        logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-        self.assertAllClose(logits_np, logits_tf_val, eps)
-        self.assertAllClose(labels_np, labels_tf_val, eps)
-
-        # Test 4: Test 1, with sharded weights and sharded biases.
-        logits_np, labels_np = self._ComputeSampledLogitsNP(
-            true_w,
-            true_b,
-            sampled_w,
-            sampled_b,
-            hidden_acts,
-            num_true=num_true_test)
-        logits_tf, labels_tf = self._ComputeSampledLogitsTF(
-            sharded_weights,
-            sharded_biases,
-            hidden_acts,
-            labels,
-            num_sampled,
-            self._num_classes,
-            num_true=num_true_test,
-            sampled_vals=test_sampled_vals,
+  def testSharded(self):
+    """With sharded weights and sharded biases."""
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
+    with self.test_session() as sess:
+      for num_true in range(1, 5):
+        labels = np.random.randint(
+            low=0, high=num_classes, size=batch_size * num_true)
+        (weights, biases, hidden_acts, sampled_vals, exp_logits,
+         exp_labels) = self._GenerateTestData(
+             num_classes=num_classes,
+             dim=10,
+             batch_size=batch_size,
+             num_true=num_true,
+             labels=labels,
+             sampled=[1, 0, 2, 3],
+             subtract_log_q=False)
+        weight_shards, bias_shards = self._ShardTestEmbeddings(
+            weights, biases, num_shards=3)
+        logits_tensor, labels_tensor = _compute_sampled_logits(
+            weights=[constant_op.constant(shard) for shard in weight_shards],
+            biases=[constant_op.constant(shard) for shard in bias_shards],
+            labels=constant_op.constant(
+                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
+            inputs=constant_op.constant(hidden_acts),
+            num_sampled=4,
+            num_classes=num_classes,
+            num_true=num_true,
+            sampled_values=sampled_vals,
             subtract_log_q=False,
             remove_accidental_hits=False,
-            name="sampled_loss_test1_num_true%d" % num_true_test)
+            partition_strategy="div",
+            colocate_logits=False,
+            name="sampled_logits_sharded_num_true_%d" % num_true)
+        got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
+        self.assertAllClose(exp_logits, got_logits, self._eps)
+        self.assertAllClose(exp_labels, got_labels, self._eps)
 
-        logits_tf_val, labels_tf_val = sess.run([logits_tf, labels_tf])
-        self.assertAllClose(logits_np, logits_tf_val, eps)
-        self.assertAllClose(labels_np, labels_tf_val, eps)
+  def testColocatedLogits(self):
+    """With colocated logit computation."""
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
+    with self.test_session() as sess:
+      for num_true in range(1, 5):
+        labels = np.random.randint(
+            low=0, high=num_classes, size=batch_size * num_true)
+        (weights, biases, hidden_acts, sampled_vals, exp_logits,
+         exp_labels) = self._GenerateTestData(
+             num_classes=num_classes,
+             dim=10,
+             batch_size=batch_size,
+             num_true=num_true,
+             labels=labels,
+             sampled=[1, 0, 2, 3],
+             subtract_log_q=False)
+        logits_tensor, labels_tensor = _compute_sampled_logits(
+            weights=constant_op.constant(weights),
+            biases=constant_op.constant(biases),
+            labels=constant_op.constant(
+                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
+            inputs=constant_op.constant(hidden_acts),
+            num_sampled=4,
+            num_classes=num_classes,
+            num_true=num_true,
+            sampled_values=sampled_vals,
+            subtract_log_q=False,
+            remove_accidental_hits=False,
+            partition_strategy="div",
+            colocate_logits=True,
+            name="sampled_logits_colocated_num_true_%d" % num_true)
+        got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
+        self.assertAllClose(exp_logits, got_logits, self._eps)
+        self.assertAllClose(exp_labels, got_labels, self._eps)
+
+  def testShardedColocatedLogits(self):
+    """Sharded weights and biases and with colocated logit computation."""
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
+    with self.test_session() as sess:
+      for num_true in range(1, 5):
+        labels = np.random.randint(
+            low=0, high=num_classes, size=batch_size * num_true)
+        (weights, biases, hidden_acts, sampled_vals, exp_logits,
+         exp_labels) = self._GenerateTestData(
+             num_classes=num_classes,
+             dim=10,
+             batch_size=batch_size,
+             num_true=num_true,
+             labels=labels,
+             sampled=[1, 0, 2, 3],
+             subtract_log_q=False)
+        weight_shards, bias_shards = self._ShardTestEmbeddings(
+            weights, biases, num_shards=3)
+        logits_tensor, labels_tensor = _compute_sampled_logits(
+            weights=[constant_op.constant(shard) for shard in weight_shards],
+            biases=[constant_op.constant(shard) for shard in bias_shards],
+            labels=constant_op.constant(
+                labels, dtype=dtypes.int64, shape=(batch_size, num_true)),
+            inputs=constant_op.constant(hidden_acts),
+            num_sampled=4,
+            num_classes=num_classes,
+            num_true=num_true,
+            sampled_values=sampled_vals,
+            subtract_log_q=False,
+            remove_accidental_hits=False,
+            partition_strategy="div",
+            colocate_logits=True,
+            name="sampled_logits_sharded_colocated_num_true_%d" % num_true)
+        got_logits, got_labels = sess.run([logits_tensor, labels_tensor])
+        self.assertAllClose(exp_logits, got_logits, self._eps)
+        self.assertAllClose(exp_labels, got_labels, self._eps)
 
   def testNCELoss(self):
     # A simple test to verify the numerics.
@@ -683,62 +771,51 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       pred = np.minimum(np.maximum(pred, eps), 1 - eps)
       return -targets * np.log(pred) - (1. - targets) * np.log(1. - pred)
 
-    weights, biases, hidden_acts, sharded_weights, sharded_biases = (
-        self._GenerateTestInputs())
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
     labels = [0, 1, 2]
-    true_w, true_b = weights[labels], biases[labels]
-    sampled = [1, 0, 2, 3]
-    num_sampled = len(sampled)
-    true_exp = np.empty([self._batch_size, 1], dtype=np.float32)
-    true_exp.fill(0.5)
-    sampled_exp = np.empty([num_sampled], dtype=np.float32)
-    sampled_exp.fill(0.5)
-    sampled_w, sampled_b = weights[sampled], biases[sampled]
-    test_sampled_vals = (sampled, true_exp, sampled_exp)
+    (weights, biases, hidden_acts, sampled_vals, exp_logits,
+     exp_labels) = self._GenerateTestData(
+         num_classes=num_classes,
+         dim=10,
+         batch_size=batch_size,
+         num_true=1,
+         labels=labels,
+         sampled=[1, 0, 2, 3],
+         subtract_log_q=True)
+    exp_nce_loss = np.sum(
+        _SigmoidCrossEntropyWithLogits(exp_logits, exp_labels), 1)
 
     with self.test_session():
-      logits_np, labels_np = self._ComputeSampledLogitsNP(
-          true_w,
-          true_b,
-          sampled_w,
-          sampled_b,
-          hidden_acts,
-          true_expected=true_exp,
-          sampled_expected=sampled_exp)
-      nce_loss_np = np.sum(
-          _SigmoidCrossEntropyWithLogits(logits_np, labels_np), 1)
-
-      labels_tf = constant_op.constant(labels, shape=(self._batch_size, 1))
-      weights_tf = constant_op.constant(weights)
-      biases_tf = constant_op.constant(biases)
-      inputs_tf = constant_op.constant(hidden_acts)
-
-      nce_loss_tf = nn_impl.nce_loss(
-          weights_tf,
-          biases_tf,
-          labels_tf,
-          inputs_tf,
-          num_sampled=num_sampled,
-          num_classes=self._num_classes,
+      got_nce_loss = nn_impl.nce_loss(
+          weights=constant_op.constant(weights),
+          biases=constant_op.constant(biases),
+          labels=constant_op.constant(labels, shape=(batch_size, 1)),
+          inputs=constant_op.constant(hidden_acts),
+          num_sampled=4,
+          num_classes=num_classes,
           num_true=1,
-          sampled_values=test_sampled_vals,
+          sampled_values=sampled_vals,
           partition_strategy="div")
 
-      self.assertAllClose(nce_loss_np, nce_loss_tf.eval(), 1e-4)
+      self.assertAllClose(exp_nce_loss, got_nce_loss.eval(), 1e-4)
 
       # Test with sharded weights and sharded biases.
-      nce_loss_tf = nn_impl.nce_loss(
-          sharded_weights,
-          sharded_biases,
-          labels_tf,
-          inputs_tf,
-          num_sampled=num_sampled,
-          num_classes=self._num_classes,
+      weight_shards, bias_shards = self._ShardTestEmbeddings(
+          weights, biases, num_shards=3)
+      got_nce_loss = nn_impl.nce_loss(
+          weights=[constant_op.constant(shard) for shard in weight_shards],
+          biases=[constant_op.constant(shard) for shard in bias_shards],
+          labels=constant_op.constant(labels, shape=(batch_size, 1)),
+          inputs=constant_op.constant(hidden_acts),
+          num_sampled=4,
+          num_classes=num_classes,
           num_true=1,
-          sampled_values=test_sampled_vals,
+          sampled_values=sampled_vals,
           partition_strategy="div")
 
-      self.assertAllClose(nce_loss_np, nce_loss_tf.eval(), 1e-4)
+      self.assertAllClose(exp_nce_loss, got_nce_loss.eval(), 1e-4)
 
   def testSampledSoftmaxLoss(self):
     # A simple test to verify the numerics.
@@ -751,64 +828,55 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
       return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
-    weights, biases, hidden_acts, sharded_weights, sharded_biases = (
-        self._GenerateTestInputs())
+    np.random.seed(0)
+    num_classes = 5
+    batch_size = 3
     labels = [0, 1, 2]
-    true_w, true_b = weights[labels], biases[labels]
-    sampled = [1, 0, 2, 3]
-    num_sampled = len(sampled)
-    true_exp = np.full([self._batch_size, 1], fill_value=0.5, dtype=np.float32)
-    sampled_exp = np.full([num_sampled], fill_value=0.5, dtype=np.float32)
-    sampled_w, sampled_b = weights[sampled], biases[sampled]
-    test_sampled_vals = (sampled, true_exp, sampled_exp)
+    (weights, biases, hidden_acts, sampled_vals, exp_logits,
+     exp_labels) = self._GenerateTestData(
+         num_classes=num_classes,
+         dim=10,
+         batch_size=batch_size,
+         num_true=1,
+         labels=labels,
+         sampled=[1, 0, 2, 3],
+         subtract_log_q=True)
+    exp_sampled_softmax_loss = _SoftmaxCrossEntropyWithLogits(
+        exp_logits, exp_labels)
 
     with self.test_session():
-      logits_np, labels_np = self._ComputeSampledLogitsNP(
-          true_w,
-          true_b,
-          sampled_w,
-          sampled_b,
-          hidden_acts,
-          true_expected=true_exp,
-          sampled_expected=sampled_exp)
-      sampled_softmax_loss_np = _SoftmaxCrossEntropyWithLogits(logits_np,
-                                                               labels_np)
-
-      labels_tf = constant_op.constant(labels, shape=(self._batch_size, 1))
-      weights_tf = constant_op.constant(weights)
-      biases_tf = constant_op.constant(biases)
-      inputs_tf = constant_op.constant(hidden_acts)
-
-      sampled_softmax_loss_tf = nn_impl.sampled_softmax_loss(
-          weights=weights_tf,
-          biases=biases_tf,
-          labels=labels_tf,
-          inputs=inputs_tf,
-          num_sampled=num_sampled,
-          num_classes=self._num_classes,
+      got_sampled_softmax_loss = nn_impl.sampled_softmax_loss(
+          weights=constant_op.constant(weights),
+          biases=constant_op.constant(biases),
+          labels=constant_op.constant(labels, shape=(batch_size, 1)),
+          inputs=constant_op.constant(hidden_acts),
+          num_sampled=4,
+          num_classes=num_classes,
           num_true=1,
-          sampled_values=test_sampled_vals,
+          sampled_values=sampled_vals,
           remove_accidental_hits=False,
           partition_strategy="div")
 
-      self.assertAllClose(sampled_softmax_loss_np,
-                          sampled_softmax_loss_tf.eval(), 1e-4)
+      self.assertAllClose(exp_sampled_softmax_loss,
+                          got_sampled_softmax_loss.eval(), 1e-4)
 
       # Test with sharded weights and sharded biases.
-      sampled_softmax_loss_tf = nn_impl.sampled_softmax_loss(
-          weights=sharded_weights,
-          biases=sharded_biases,
-          labels=labels_tf,
-          inputs=inputs_tf,
-          num_sampled=num_sampled,
-          num_classes=self._num_classes,
+      weight_shards, bias_shards = self._ShardTestEmbeddings(
+          weights, biases, num_shards=3)
+      got_sampled_softmax_loss = nn_impl.sampled_softmax_loss(
+          weights=[constant_op.constant(shard) for shard in weight_shards],
+          biases=[constant_op.constant(shard) for shard in bias_shards],
+          labels=constant_op.constant(labels, shape=(batch_size, 1)),
+          inputs=constant_op.constant(hidden_acts),
+          num_sampled=4,
+          num_classes=num_classes,
           num_true=1,
-          sampled_values=test_sampled_vals,
+          sampled_values=sampled_vals,
           remove_accidental_hits=False,
           partition_strategy="div")
 
-      self.assertAllClose(sampled_softmax_loss_np,
-                          sampled_softmax_loss_tf.eval(), 1e-4)
+      self.assertAllClose(exp_sampled_softmax_loss,
+                          got_sampled_softmax_loss.eval(), 1e-4)
 
 
 class CReluTest(test_lib.TestCase):
@@ -848,18 +916,16 @@ class MomentsTest(test_lib.TestCase):
       for sigma in [1.0, 0.1]:
         for keep_dims in [True, False]:
           input_values = np.random.rand(*input_shape) * sigma + mu
-          expected_mean = np.mean(input_values, axis=moments_axes,
-                                  keepdims=keep_dims)
-          expected_var = np.var(input_values, axis=moments_axes,
-                                keepdims=keep_dims)
+          expected_mean = np.mean(
+              input_values, axis=moments_axes, keepdims=keep_dims)
+          expected_var = np.var(
+              input_values, axis=moments_axes, keepdims=keep_dims)
           with ops.Graph().as_default() as g:
             with self.test_session(graph=g) as sess:
-              inputs = constant_op.constant(input_values,
-                                            shape=input_shape,
-                                            dtype=dtypes.float32)
-              mean, variance = nn_impl.moments(inputs,
-                                               moments_axes,
-                                               keep_dims=keep_dims)
+              inputs = constant_op.constant(
+                  input_values, shape=input_shape, dtype=dtypes.float32)
+              mean, variance = nn_impl.moments(
+                  inputs, moments_axes, keep_dims=keep_dims)
 
               [mean, variance] = sess.run([mean, variance])
               # Make sure that there are no NaNs
@@ -902,8 +968,8 @@ class MomentsTest(test_lib.TestCase):
     expected_var = np.var(input_values, axis=moments_axes)
 
     with self.test_session() as sess:
-      inputs = constant_op.constant(input_values, shape=input_shape,
-                                    dtype=dtypes.float32)
+      inputs = constant_op.constant(
+          input_values, shape=input_shape, dtype=dtypes.float32)
       mean, variance = nn_impl.moments(inputs, moments_axes, shift=0.0)
 
       [mean, variance] = sess.run([mean, variance])
@@ -913,6 +979,7 @@ class MomentsTest(test_lib.TestCase):
       self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
       # The variance is unstable
       self.assertGreater(np.abs(variance - expected_var), 0.1)
+
 
 if __name__ == "__main__":
   test_lib.main()

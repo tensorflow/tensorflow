@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -85,17 +86,48 @@ thread::ThreadPool* NewThreadPoolFromSessionOptions(
   return new thread::ThreadPool(options.env, "Compute", num_threads);
 }
 
-thread::ThreadPool* NewThreadPoolFromThreadPoolOptions(
+Status NewThreadPoolFromThreadPoolOptions(
     const SessionOptions& options,
-    const ThreadPoolOptionProto& thread_pool_options, int pool_number) {
+    const ThreadPoolOptionProto& thread_pool_options, int pool_number,
+    thread::ThreadPool** pool, bool* owned) {
   int32 num_threads = thread_pool_options.num_threads();
   if (num_threads == 0) {
     num_threads = NumInterOpThreadsFromSessionOptions(options);
   }
-  VLOG(1) << "Direct session inter op parallelism threads for pool "
-          << pool_number << ": " << num_threads;
-  return new thread::ThreadPool(
-      options.env, strings::StrCat("Compute", pool_number), num_threads);
+  const string& name = thread_pool_options.global_name();
+  if (name.empty()) {
+    // Session-local threadpool.
+    VLOG(1) << "Direct session inter op parallelism threads for pool "
+            << pool_number << ": " << num_threads;
+    *pool = new thread::ThreadPool(
+        options.env, strings::StrCat("Compute", pool_number), num_threads);
+    *owned = true;
+    return Status::OK();
+  }
+
+  // Global, named threadpool.
+  typedef std::pair<int32, thread::ThreadPool*> MapValue;
+  static std::map<string, MapValue>* global_pool_map =
+      new std::map<string, MapValue>;
+  static mutex* mu = new mutex();
+  mutex_lock l(*mu);
+  MapValue* mvalue = &(*global_pool_map)[name];
+  if (mvalue->second == nullptr) {
+    mvalue->first = thread_pool_options.num_threads();
+    mvalue->second = new thread::ThreadPool(
+        options.env, strings::StrCat("Compute", pool_number), num_threads);
+  } else {
+    if (mvalue->first != thread_pool_options.num_threads()) {
+      return errors::InvalidArgument(
+          "Pool ", name,
+          " configured previously with num_threads=", mvalue->first,
+          "; cannot re-configure with num_threads=",
+          thread_pool_options.num_threads());
+    }
+  }
+  *owned = false;
+  *pool = mvalue->second;
+  return Status::OK();
 }
 
 thread::ThreadPool* GlobalThreadPool(const SessionOptions& options) {
@@ -232,16 +264,18 @@ DirectSession::DirectSession(const SessionOptions& options,
   if (options_.config.session_inter_op_thread_pool_size() > 0) {
     for (int i = 0; i < options_.config.session_inter_op_thread_pool_size();
          ++i) {
-      thread_pools_.push_back(NewThreadPoolFromThreadPoolOptions(
-          options_, options_.config.session_inter_op_thread_pool(i), i));
+      thread::ThreadPool* pool = nullptr;
+      bool owned = false;
+      init_error_.Update(NewThreadPoolFromThreadPoolOptions(
+          options_, options_.config.session_inter_op_thread_pool(i), i, &pool,
+          &owned));
+      thread_pools_.emplace_back(pool, owned);
     }
-    owns_thread_pools_ = true;
   } else if (options_.config.use_per_session_threads()) {
-    thread_pools_.push_back(NewThreadPoolFromSessionOptions(options_));
-    owns_thread_pools_ = true;
+    thread_pools_.emplace_back(NewThreadPoolFromSessionOptions(options_),
+                               true /* owned */);
   } else {
-    thread_pools_.push_back(GlobalThreadPool(options));
-    owns_thread_pools_ = false;
+    thread_pools_.emplace_back(GlobalThreadPool(options), false /* owned */);
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
@@ -290,8 +324,8 @@ DirectSession::~DirectSession() {
     d->op_segment()->RemoveHold(session_handle_);
   }
   delete cancellation_manager_;
-  if (owns_thread_pools_) {
-    for (auto* p : thread_pools_) delete p;
+  for (const auto& p_and_owned : thread_pools_) {
+    if (p_and_owned.second) delete p_and_owned.first;
   }
 
   execution_state_.reset(nullptr);
@@ -330,6 +364,7 @@ Status DirectSession::MaybeInitializeExecutionState(
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
+  TF_RETURN_IF_ERROR(init_error_);
   if (graph.node_size() > 0) {
     mutex_lock l(graph_def_lock_);
     if (graph_created_) {
@@ -423,7 +458,8 @@ Status DirectSession::Run(const RunOptions& run_options,
     return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
                                    run_options.inter_op_thread_pool());
   }
-  thread::ThreadPool* pool = thread_pools_[run_options.inter_op_thread_pool()];
+  thread::ThreadPool* pool =
+      thread_pools_[run_options.inter_op_thread_pool()].first;
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
@@ -644,7 +680,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   // RunOptions is not available in PRunSetup, so use thread pool 0.
-  thread::ThreadPool* pool = thread_pools_[0];
+  thread::ThreadPool* pool = thread_pools_[0].first;
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;

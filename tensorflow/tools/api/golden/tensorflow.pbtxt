@@ -530,19 +530,19 @@ tf_module {
   }
   member_method {
     name: "arg_max"
-    argspec: "args=[\'input\', \'dimension\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "arg_min"
-    argspec: "args=[\'input\', \'dimension\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "argmax"
-    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\', \'output_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "argmin"
-    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\', \'output_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "as_dtype"
