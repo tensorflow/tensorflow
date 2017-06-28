@@ -107,7 +107,7 @@ static Status PlaceShapeType(const std::vector<string>& inputs,
   CHECK_EQ(inputs.size(), input_types_strs.size());
   CHECK_EQ(inputs.size(), input_shapes_strs.size());
   std::vector<std::pair<string, Tensor>> input_tensors;
-  for (int i = 0; i < inputs.size(); ++i) {
+  for (size_t i = 0; i < inputs.size(); ++i) {
     const string& name = inputs.at(i);
     std::vector<int64> dims;
     CHECK(str_util::SplitAndParseAsInts(input_shapes_strs.at(i), ',', &dims));
@@ -163,10 +163,10 @@ Status FuseRemoteGraph(const GraphDef& input_graph_def,
         str_util::Split(border_inputs_str, ",");
     const std::vector<string> border_outputs =
         str_util::Split(border_outputs_str, ",");
-    for (int i = 0; i < border_inputs.size(); ++i) {
+    for (size_t i = 0; i < border_inputs.size(); ++i) {
       VLOG(2) << "Border Input(" << i << "): " << border_inputs.at(i);
     }
-    for (int i = 0; i < border_outputs.size(); ++i) {
+    for (size_t i = 0; i < border_outputs.size(); ++i) {
       VLOG(2) << "Border Output(" << i << "): " << border_outputs.at(i);
     }
     TF_RETURN_IF_ERROR(RemoteFusedGraphExecuteUtils::FuseRemoteGraphByBorder(
