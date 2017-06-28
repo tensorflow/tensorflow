@@ -84,13 +84,13 @@ void HandleStridedSliceCase(OpKernelContext* context,
 
   gtl::InlinedVector<int64, 4> processing_dims = processing_shape.dim_sizes();
   if (is_simple_slice) {
-    gtl::InlinedVector<int64, 4> sizes;
+    gtl::InlinedVector<int64, 4> sizes(begin.size());
     for (int i = 0; i < NDIM; ++i) {
       sizes[i] = end[i] - begin[i];
     }
     CHECK(result->CopyFrom(*result, processing_shape));
     const Tensor input = context->input(0);
-    functor::Slice<Device, Proxy>()(
+    functor::Slice<Device, T>()(
         context->eigen_device<Device>(), result, input, begin, sizes);
   } else {
     Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
@@ -193,12 +193,11 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
   extern template struct StridedSlice<GPUDevice, T, NDIM>;         \
   template <>                                                      \
-  void Slice<GPUDevice, T, NDIM>::operator()(                      \
-      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \
-      typename TTypes<T, NDIM>::ConstTensor input,                 \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,       \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);        \
-  extern template struct Slice<GPUDevice, T, NDIM>;                \
+  void Slice<GPUDevice, T>::operator()(                            \
+      const GPUDevice& d, Tensor* output, const Tensor& input,     \
+      const gtl::ArraySlice<int64>& slice_indices,                 \
+      const gtl::ArraySlice<int64>& slice_sizes);                  \
+  extern template struct Slice<GPUDevice, T>;                      \
   template <>                                                      \
   void StridedSliceGrad<GPUDevice, T, NDIM>::operator()(           \
       const GPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \

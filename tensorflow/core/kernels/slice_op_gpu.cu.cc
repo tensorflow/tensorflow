@@ -22,13 +22,10 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 namespace internal {
-
-// Forward declaration
-template <typename Index>
-gtl::InlinedVector<Index, 8> ComputeStride(const TensorShape& shape);
 
 template <typename T>
 __global__ void SliceKernel(int nthreads, const T* src, const int32* buf,

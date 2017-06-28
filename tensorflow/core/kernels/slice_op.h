@@ -26,6 +26,20 @@ namespace tensorflow {
 
 namespace internal {
 
+// Helper to compute 'strides' given a tensor 'shape'. I.e.,
+// strides[i] = prod(shape.dim_size[(i+1):])
+template <typename T>
+gtl::InlinedVector<T, 8> ComputeStride(const TensorShape& shape) {
+  const int ndims = shape.dims();
+  gtl::InlinedVector<T, 8> strides(ndims);
+  T stride = 1;
+  for (int i = ndims - 1; i >= 0; --i) {
+    strides[i] = stride;
+    stride *= static_cast<T>(shape.dim_size(i));
+  }
+  return strides;
+}
+
 template <typename Device, typename T>
 void SliceSimple(const Device& d, Tensor* out, const Tensor& in,
                  const gtl::ArraySlice<int64>& slice_indices);
