@@ -159,7 +159,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
     if (!producer->IsFusable() || !consumer->IsFusable()) {
       return false;
     }
-    // We do an upword walk of the graph from consumer towards all paths which
+    // We do an upward walk of the graph from consumer towards all paths which
     // lead to producer to find any unfusable paths.
     for (int64 i = 0, e = consumer->operand_count(); i < e; ++i) {
       auto* consumer_operand = consumer->mutable_operand(i);
@@ -169,7 +169,7 @@ bool InstructionFusion::CanFuseOnAllPaths(
         if (!ShouldFuse(consumer, i)) {
           return false;
         }
-      } else if (reachability_map.IsReachable(consumer_operand, producer)) {
+      } else if (reachability_map.IsReachable(producer, consumer_operand)) {
         // The reachability map told us that consumer_operand is a node on the
         // path to producer. We need to further investigate from
         // consumer_operand.
@@ -230,7 +230,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     }
 
     DoNotFuseSet do_not_fuse;
-    auto transitive_operands = computation->ComputeTransitiveOperands();
+    auto reachability = computation->ComputeReachability();
 
     auto cheap_to_duplicate = [](HloInstruction* producer) {
       if (producer->opcode() == HloOpcode::kBroadcast) {
@@ -251,7 +251,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         if (cheap_to_duplicate(producer)) {
           continue;
         }
-        if (CanFuseOnAllPaths(*transitive_operands, producer, consumer,
+        if (CanFuseOnAllPaths(*reachability, producer, consumer,
                               &do_not_fuse)) {
           CHECK_EQ(do_not_fuse.count(producer), 0);
         } else {
