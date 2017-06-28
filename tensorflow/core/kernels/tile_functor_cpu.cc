@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/tile_functor.h"
+#include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {
 
