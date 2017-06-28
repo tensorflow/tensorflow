@@ -362,7 +362,7 @@ NodeState& VirtualScheduler::GetNodeStateOrCreateIt(const NodeDef* node) {
     // Initialize output port related data:
     // Assume the size of OutputProperties represents the number of output ports
     // of this node.
-    for (int i = 0; i < node_state.output_properties.size(); ++i) {
+    for (size_t i = 0; i < node_state.output_properties.size(); ++i) {
       node_state.time_no_references[i] = Costs::Duration::max();
       node_state.num_outputs_executed[i] = 0;
       // Populate an empty vector for each port. The caller will add nodes
