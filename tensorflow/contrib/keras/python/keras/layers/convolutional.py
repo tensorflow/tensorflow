@@ -324,7 +324,7 @@ class Conv3D(tf_convolutional_layers.Conv3D, Layer):
       filters: Integer, the dimensionality of the output space
           (i.e. the number output of filters in the convolution).
       kernel_size: An integer or tuple/list of 3 integers, specifying the
-          depth, width and height of the 3D convolution window.
+          depth, height and width of the 3D convolution window.
           Can be a single integer to specify the same value for
           all spatial dimensions.
       strides: An integer or tuple/list of 3 integers,
