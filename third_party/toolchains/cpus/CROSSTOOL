@@ -696,7 +696,6 @@ toolchain {
           }
           iterate_over: 'libraries_to_link.object_files'
           flag_group {
-            iterate_over: 'libraries_to_link.object_files'
             flag: '%{libraries_to_link.object_files}'
           }
         }
