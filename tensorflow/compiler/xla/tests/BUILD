@@ -874,16 +874,14 @@ xla_test(
     ],
 )
 
-filegroup(
-    name = "reduce_window_test_srcs",
+# Note that the backend-specific macros (e.g. DISABLED_ON_CPU) would not work here, because the
+# library does not get recompiled for each backend.
+cc_library(
+    name = "reduce_window_test_library",
     testonly = 1,
     srcs = ["reduce_window_test.cc"],
-)
-
-cc_library(
-    name = "reduce_window_test_deps",
-    testonly = 1,
     deps = [
+        ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
@@ -905,9 +903,9 @@ cc_library(
 xla_test(
     name = "reduce_window_test",
     timeout = "long",
-    srcs = ["reduce_window_test_srcs"],
+    srcs = [],
     deps = [
-        ":reduce_window_test_deps",
+        ":reduce_window_test_library",
     ],
 )
 
