@@ -43,7 +43,8 @@ public:
 };
 
 port::StatusOr<bool>
-IsComputationParallelMap(HloComputation* computation) {
+IsParallelMap(const HloInstruction* inst,
+              const HloComputation* computation) {
   HloInstruction* root(computation->root_instruction());
 
   ParallelMapTester tester;

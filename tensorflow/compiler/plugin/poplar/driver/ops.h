@@ -125,6 +125,13 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
                             TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
+CreatePoplibsWindowReduction(poplar::Graph &graph,
+                             CompilerResources& res,
+                             const HloInstruction *inst,
+                             const xla::Shape& output_shape,
+                             TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
 CreateParallelMap(poplar::Graph &graph,
                   CompilerResources& res,
                   const HloInstruction *inst,
@@ -175,14 +182,17 @@ CreateSliceUpdateOp(poplar::Graph &graph,
 
 /* Optimization tests */
 
-port::StatusOr<bool>
-IsComputationSimpleSelection(HloComputation* computation);
+bool
+IsPoplibsPool(const HloInstruction*, const HloComputation*);
+
+bool
+IsSimpleSelection(const HloInstruction*, const HloComputation*);
+
+bool
+IsReducableArtithmetic(const HloInstruction*, const HloComputation*);
 
 port::StatusOr<bool>
-IsComputationReducableArtithmetic(HloComputation* computation);
-
-port::StatusOr<bool>
-IsComputationParallelMap(HloComputation* computation);
+IsParallelMap(const HloInstruction*, const HloComputation*);
 
 }
 }
