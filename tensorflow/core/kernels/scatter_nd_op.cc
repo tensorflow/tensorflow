@@ -334,6 +334,8 @@ class ScatterNdUpdateOp : public OpKernel {
         functor::DenseUpdate<Device, T, ASSIGN> copy;
         const Tensor& input_copy = c->input(0);
         copy(c->eigen_device<Device>(), params.flat<T>(), input_copy.flat<T>());
+      } else {
+        params = *params_ptr;
       }
     }
 
