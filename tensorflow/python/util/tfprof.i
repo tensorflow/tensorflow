@@ -29,7 +29,11 @@ using tensorflow::int64;
   $1 = &temp;
 }
 %typemap(out) const string& {
+%#if PY_MAJOR_VERSION >= 3
+  $result = PyUnicode_FromStringAndSize($1->data(), $1->size());
+%#else
   $result = PyString_FromStringAndSize($1->data(), $1->size());
+%#endif
 }
 %apply const string & {string &};
 %apply const string & {string *};
@@ -43,6 +47,7 @@ using tensorflow::int64;
 %unignore tensorflow::tfprof::DeleteProfiler;
 %unignore tensorflow::tfprof::AddStep;
 %unignore tensorflow::tfprof::Profile;
+%unignore tensorflow::tfprof::Advise;
 
 %include "tensorflow/tools/tfprof/internal/print_model_analysis.h"
 

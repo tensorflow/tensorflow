@@ -2770,6 +2770,7 @@ tf_py_wrap_cc(
         "util/port.i",
         "util/py_checkpoint_reader.i",
         "util/stat_summarizer.i",
+        "util/tfprof.i",
         "util/transform_graph.i",
     ],
     deps = [
