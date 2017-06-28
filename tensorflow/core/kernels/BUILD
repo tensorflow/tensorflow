@@ -722,6 +722,12 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "tile_ops",
+    srcs = ["tile_functor_cpu.cc"],
+    hdrs = ["tile_functor.h"],
+    gpu_srcs = [
+        "tile_functor.h",
+        "tile_functor_gpu.cu.cc",
+    ],
     prefix = "tile_ops",
     deps = ARRAY_DEPS,
 )
@@ -4128,6 +4134,7 @@ filegroup(
         "spacetobatch_functor.h",
         "spacetodepth_op.h",
         "tensor_array.h",
+        "tile_functor.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
         "training_op_helpers.h",
@@ -4265,6 +4272,7 @@ filegroup(
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
+        "tile_functor_cpu.cc",
         "tile_ops.cc",
         "tile_ops_cpu_impl_1.cc",
         "tile_ops_cpu_impl_2.cc",

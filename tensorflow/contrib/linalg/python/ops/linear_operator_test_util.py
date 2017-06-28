@@ -462,7 +462,7 @@ def random_tril_matrix(shape,
     remove_upper:  Python `bool`.
       If `True`, zero out the strictly upper triangle.
       If `False`, the lower triangle of returned matrix will have desired
-      properties, but will not not have the strictly upper triangle zero'd out.
+      properties, but will not have the strictly upper triangle zero'd out.
 
   Returns:
     `Tensor` with desired shape and dtype.

@@ -122,8 +122,10 @@ def _ProdGrad(op, grad):
   # so we need to cast here.  We put all the shape-related ops on CPU to avoid
   # copying back and forth, and since listdiff is CPU only.
   with ops.device("/cpu:0"):
+    rank = array_ops.rank(op.inputs[0])
+    reduction_indices = (reduction_indices + rank) % rank
     reduced = math_ops.cast(reduction_indices, dtypes.int32)
-    idx = math_ops.range(0, array_ops.rank(op.inputs[0]))
+    idx = math_ops.range(0, rank)
     other, _ = array_ops.setdiff1d(idx, reduced)
     perm = array_ops.concat([reduced, other], 0)
     reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
