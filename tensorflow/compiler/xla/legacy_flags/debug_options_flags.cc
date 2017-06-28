@@ -27,6 +27,8 @@ struct DebugOptionsFlags {
   string xla_generate_hlo_graph;
   bool xla_hlo_graph_addresses;
   bool xla_hlo_graph_layout;
+  string xla_hlo_graph_path;
+  bool xla_hlo_dump_as_graphdef;
   string xla_log_hlo_text;
   string xla_generate_hlo_text_to;
 
@@ -61,6 +63,8 @@ void AllocateFlags() {
   flag_values->xla_generate_hlo_graph = "";
   flag_values->xla_hlo_graph_addresses = false;
   flag_values->xla_hlo_graph_layout = false;
+  flag_values->xla_hlo_graph_path = "/tmp/";
+  flag_values->xla_hlo_dump_as_graphdef = false;
   flag_values->xla_log_hlo_text = "";
   flag_values->xla_generate_hlo_text_to = "";
   flag_values->xla_disable_hlo_passes = "";
@@ -90,6 +94,12 @@ void AllocateFlags() {
            "xla_hlo_graph_layout", &flag_values->xla_hlo_graph_layout,
            "With xla_generate_hlo_graph, show layout of HLO ops in "
            "graph dump."),
+       tensorflow::Flag(
+           "xla_hlo_graph_path", &flag_values->xla_hlo_graph_path,
+           "With xla_generate_hlo_graph, dump the graphs into this path."),
+       tensorflow::Flag("xla_hlo_dump_as_graphdef",
+                        &flag_values->xla_hlo_dump_as_graphdef,
+                        "Dump HLO graphs as TensorFlow GraphDefs."),
        tensorflow::Flag(
            "xla_log_hlo_text", &flag_values->xla_log_hlo_text,
            "HLO modules matching this regex will be dumped to LOG(INFO). "),
@@ -166,6 +176,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_generate_hlo_graph(flag_values->xla_generate_hlo_graph);
   options.set_xla_hlo_graph_addresses(flag_values->xla_hlo_graph_addresses);
   options.set_xla_hlo_graph_layout(flag_values->xla_hlo_graph_layout);
+  options.set_xla_hlo_graph_path(flag_values->xla_hlo_graph_path);
   options.set_xla_log_hlo_text(flag_values->xla_log_hlo_text);
   options.set_xla_generate_hlo_text_to(flag_values->xla_generate_hlo_text_to);
 
