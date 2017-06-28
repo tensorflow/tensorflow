@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -274,7 +275,8 @@ class Image(ItemHandler):
                format_key=None,
                shape=None,
                channels=3,
-               dtype=dtypes.uint8):
+               dtype=dtypes.uint8,
+               repeated=False):
     """Initializes the image.
 
     Args:
@@ -289,9 +291,10 @@ class Image(ItemHandler):
       channels: the number of channels in the image.
       dtype: images will be decoded at this bit depth. Different formats
         support different bit depths.
-          See tf.image.decode_png,
+          See tf.image.decode_image,
               tf.decode_raw,
-              tf.image.decode_jpeg: only supports tf.uint8
+      repeated: if False, decodes a single image. If True, decodes a
+        variable number of image strings from a 1D tensor of strings.
     """
     if not image_key:
       image_key = 'image/encoded'
@@ -304,61 +307,47 @@ class Image(ItemHandler):
     self._shape = shape
     self._channels = channels
     self._dtype = dtype
+    self._repeated = repeated
 
   def tensors_to_item(self, keys_to_tensors):
     """See base class."""
     image_buffer = keys_to_tensors[self._image_key]
     image_format = keys_to_tensors[self._format_key]
 
-    return self._decode(image_buffer, image_format)
+    if self._repeated:
+      return functional_ops.map_fn(lambda x: self._decode(x, image_format),
+                                   image_buffer, dtype=self._dtype)
+    else:
+      return self._decode(image_buffer, image_format)
 
   def _decode(self, image_buffer, image_format):
     """Decodes the image buffer.
 
     Args:
       image_buffer: The tensor representing the encoded image tensor.
-      image_format: The image format for the image in `image_buffer`.
+      image_format: The image format for the image in `image_buffer`. If image
+        format is `raw`, all images are expected to be in this format, otherwise
+        this op can decode a mix of `jpg` and `png` formats.
 
     Returns:
       A tensor that represents decoded image of self._shape, or
       (?, ?, self._channels) if self._shape is not specified.
     """
-
-    def decode_png():
-      return image_ops.decode_png(
-          image_buffer, self._channels, dtype=self._dtype)
+    def decode_image():
+      """Decodes a png or jpg based on the headers."""
+      return image_ops.decode_image(image_buffer, self._channels)
 
     def decode_raw():
+      """Decodes a raw image."""
       return parsing_ops.decode_raw(image_buffer, out_type=self._dtype)
 
-    def decode_jpg():
-      if self._dtype != dtypes.uint8:
-        raise ValueError(
-            'jpeg decoder can only be used to decode to tf.uint8 but %s was '
-            'requested for a jpeg image.' % self._dtype)
-      return image_ops.decode_jpeg(image_buffer, self._channels)
-
-    # For RGBA images JPEG is not a valid decoder option.
-    if self._channels > 3:
-      pred_fn_pairs = {
-          math_ops.logical_or(
-              math_ops.equal(image_format, 'raw'),
-              math_ops.equal(image_format, 'RAW')): decode_raw,
-      }
-      default_decoder = decode_png
-    else:
-      pred_fn_pairs = {
-          math_ops.logical_or(
-              math_ops.equal(image_format, 'png'),
-              math_ops.equal(image_format, 'PNG')): decode_png,
-          math_ops.logical_or(
-              math_ops.equal(image_format, 'raw'),
-              math_ops.equal(image_format, 'RAW')): decode_raw,
-      }
-      default_decoder = decode_jpg
-
+    pred_fn_pairs = {
+        math_ops.logical_or(
+            math_ops.equal(image_format, 'raw'),
+            math_ops.equal(image_format, 'RAW')): decode_raw,
+    }
     image = control_flow_ops.case(
-        pred_fn_pairs, default=default_decoder, exclusive=True)
+        pred_fn_pairs, default=decode_image, exclusive=True)
 
     image.set_shape([None, None, self._channels])
     if self._shape is not None:
@@ -418,8 +407,9 @@ class TFExampleDecoder(data_decoder.DataDecoder):
     example = parsing_ops.parse_single_example(serialized_example,
                                                self._keys_to_features)
 
-    # Reshape non-sparse elements just once:
-    for k in self._keys_to_features:
+    # Reshape non-sparse elements just once, adding the reshape ops in
+    # deterministic order.
+    for k in sorted(self._keys_to_features):
       v = self._keys_to_features[k]
       if isinstance(v, parsing_ops.FixedLenFeature):
         example[k] = array_ops.reshape(example[k], v.shape)

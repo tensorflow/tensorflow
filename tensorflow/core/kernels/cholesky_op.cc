@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
-// TODO(konstantinos): Enable complex inputs. This will require additional tests
-//                     and OP_REQUIRES.
+
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
@@ -65,11 +64,11 @@ class CholeskyOp : public LinearAlgebraOp<Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         llt_decomposition(input);
 
-    // Output the lower triangular in a dense form.
-    outputs->at(0) = llt_decomposition.matrixL();
-
     OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
                 errors::InvalidArgument(kErrMsg));
+
+    // Output the lower triangular in a dense form.
+    outputs->at(0) = llt_decomposition.matrixL();
   }
 };
 
@@ -85,60 +84,103 @@ namespace functor {
       typename TTypes<T, 3>::Tensor output);                                 \
   extern template struct MatrixBandPart<GPUDevice, T>;
 
-TF_CALL_float(DECLARE_GPU_SPEC);
-TF_CALL_double(DECLARE_GPU_SPEC);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_complex64(DECLARE_GPU_SPEC);
+TF_CALL_complex128(DECLARE_GPU_SPEC);
+
 }  // namespace functor
 
 template <class Scalar>
-class CholeskyOpGpu : public LinearAlgebraOp<Scalar> {
+class CholeskyOpGpu : public AsyncOpKernel {
  public:
-  INHERIT_LINALG_TYPEDEFS(Scalar);
+  explicit CholeskyOpGpu(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
 
-  explicit CholeskyOpGpu(OpKernelConstruction* context) : Base(context) {}
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
+    const Tensor& input = context->input(0);
+    const int ndims = input.dims();
+    const int64 n = input.dim_size(ndims - 1);
+    // Validate inputs.
+    OP_REQUIRES_ASYNC(
+        context, ndims >= 2,
+        errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
+        done);
+    OP_REQUIRES_ASYNC(
+        context, input.dim_size(ndims - 2) == n,
+        errors::InvalidArgument("Input matrices must be squares, got",
+                                input.dim_size(ndims - 2), " != ", n),
+        done);
 
-  // Copy the lower triangular part of the input matrices to the output and
-  // set the strictly upper triangular part to zero. We use a pre-existing
-  // kernel MatrixBandPart to do this for all matrices in the batch at once,
-  // before we launch each of the Cholesky factorization kernels in parallel.
-  void BatchPreCompute(OpKernelContext* context, const TensorInputs& inputs,
-                       const TensorShapes& input_matrix_shapes,
-                       const TensorOutputs& outputs,
-                       const TensorShapes& output_matrix_shapes) final {
-    const int n = input_matrix_shapes[0].dim_size(0);
-    auto input_reshaped = inputs[0]->template flat_inner_dims<Scalar, 3>();
-    auto output_reshaped = outputs[0]->template flat_inner_dims<Scalar, 3>();
-    functor::MatrixBandPart<GPUDevice, Scalar>::Compute(
-        context->eigen_device<GPUDevice>(), n, 0, input_reshaped,
-        output_reshaped);
-  }
+    // Allocate output.
+    Tensor* output;
+    OP_REQUIRES_OK_ASYNC(context,
+                         context->forward_input_or_allocate_output(
+                             {0}, 0, input.shape(), &output),
+                         done);
 
-  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
-                     MatrixMaps* outputs) final {
-    const ConstMatrixMap& input = inputs[0];
-    const int n = input.rows();
     if (n == 0) {
       // If X is an empty matrix (0 rows, 0 col), X * X' == X.
       // Therefore, we return X.
+      done();
       return;
     }
-    // Launch the Cholesky kernel.
-    CudaSolverDN cusolver(context);
-    const Status status = cusolver.potrf(CUBLAS_FILL_MODE_UPPER, n,
-                                         outputs->at(0).data(), n, nullptr);
-    if (!status.ok()) {
-      LOG(ERROR) << status.ToString();
+
+    // Copy the lower triangular part of the input matrices to the output and
+    // set the strictly upper triangular part to zero. We use a pre-existing
+    // kernel MatrixBandPart to do this for all matrices in the batch at once,
+    // before we launch each of the Cholesky factorization kernels in paralle.
+    auto input_reshaped = input.template flat_inner_dims<Scalar, 3>();
+    auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
+    functor::MatrixBandPart<GPUDevice, Scalar>::Compute(
+        context->eigen_device<GPUDevice>(), n, 0, input_reshaped,
+        output_reshaped);
+
+    // Launch a Cholesky kernel for each matrix in the batch.
+    const int64 batch_size = input_reshaped.dimension(0);
+    std::vector<DeviceLapackInfo> dev_info;
+    dev_info.emplace_back(context, batch_size, "potrf");
+    // TODO(rmlarsen): Parallelize over batches if it turns out to be
+    // an important use case.
+    CudaSolver solver(context);
+    for (int64 i = 0; i < batch_size; ++i) {
+      Scalar* output_ptr = output_reshaped.data() + i * n * n;
+      int* dev_info_ptr = dev_info.back().mutable_data() + i;
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          solver.Potrf(CUBLAS_FILL_MODE_UPPER, n, output_ptr, n, dev_info_ptr),
+          done);
     }
-    OP_REQUIRES(context, status.ok(), errors::InvalidArgument(kErrMsg));
+
+    // Register callback to check info after kernels finish.
+    auto info_checker = [context, dev_info, done](
+                            const Status& status,
+                            const std::vector<HostLapackInfo>& /* unused */) {
+      Status full_status = status;
+      if (!full_status.ok()) {
+        full_status.Update(errors::InvalidArgument(kErrMsg));
+      }
+      OP_REQUIRES_OK_ASYNC(context, full_status, done);
+      done();
+    };
+
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
+        done);
   }
 };
 
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<double>), double);
+REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex64>), complex64);
+REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex128>), complex128);
 
 #endif  // GOOGLE_CUDA
 
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<float>), float);
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<double>), double);
+REGISTER_LINALG_OP("Cholesky", (CholeskyOp<complex64>), complex64);
+REGISTER_LINALG_OP("Cholesky", (CholeskyOp<complex128>), complex128);
 REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<float>), float);
 REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<double>), double);
 

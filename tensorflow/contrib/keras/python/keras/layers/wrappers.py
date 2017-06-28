@@ -20,12 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.engine import InputSpec
 from tensorflow.contrib.keras.python.keras.engine import Layer
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import tf_inspect
 
 
 class Wrapper(Layer):
@@ -132,13 +132,18 @@ class TimeDistributed(Wrapper):
       model = Sequential()
       model.add(TimeDistributed(Dense(8), input_shape=(10, 16)))
       # now model.output_shape == (None, 10, 8)
+  ```
 
-      # subsequent layers: no need for input_shape
+  The output will then have shape `(32, 10, 8)`.
+
+  In subsequent layers, there is no need for the `input_shape`:
+
+  ```python
       model.add(TimeDistributed(Dense(32)))
       # now model.output_shape == (None, 10, 32)
   ```
 
-  The output will then have shape `(32, 10, 8)`.
+  The output will then have shape `(32, 10, 32)`.
 
   `TimeDistributed` can be used with arbitrary layers, not just `Dense`,
   for instance with a `Conv2D` layer:
@@ -166,6 +171,7 @@ class TimeDistributed(Wrapper):
       self.layer.build(child_input_shape)
       self.layer.built = True
     super(TimeDistributed, self).build()
+    self.built = True
 
   def _compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -185,12 +191,7 @@ class TimeDistributed(Wrapper):
         output = self.layer.call(x)
         return output, []
 
-      _, outputs, _ = K.rnn(
-          step,
-          inputs,
-          initial_states=[],
-          input_length=input_shape[1],
-          unroll=False)
+      _, outputs, _ = K.rnn(step, inputs, initial_states=[], unroll=False)
       y = outputs
     else:
       # No batch size specified, therefore the layer will be able
@@ -284,7 +285,7 @@ class Bidirectional(Wrapper):
 
   def call(self, inputs, training=None, mask=None):
     kwargs = {}
-    func_args = inspect.getargspec(self.layer.call).args
+    func_args = tf_inspect.getargspec(self.layer.call).args
     if 'training' in func_args:
       kwargs['training'] = training
     if 'mask' in func_args:

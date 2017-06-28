@@ -119,6 +119,7 @@ cc_library(
     hdrs = ["grpc_call.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "@grpc//:grpc++_unsecure",
     ],
 )
@@ -248,7 +249,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_interface",
-        "//tensorflow/core/distributed_runtime:worker_session",
     ],
 )
 
@@ -299,7 +299,6 @@ cc_binary(
     ],
     deps = [
         ":grpc_server_lib",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -334,6 +333,7 @@ cc_binary(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:cwise_op",
@@ -382,6 +382,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:local_master",
         "//tensorflow/core/distributed_runtime:master_interface",
+        "//tensorflow/core/distributed_runtime:message_wrappers",
     ],
     alwayslink = 1,
 )

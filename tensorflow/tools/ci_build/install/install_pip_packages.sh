@@ -44,8 +44,8 @@ pip2 install --upgrade markdown==2.6.8
 pip3 install --upgrade markdown==2.6.8
 
 # Install protobuf.
-pip2 install --upgrade protobuf==3.2.0
-pip3 install --upgrade protobuf==3.2.0
+pip2 install --upgrade protobuf==3.3.0
+pip3 install --upgrade protobuf==3.3.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -73,8 +73,8 @@ pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
 # pylint tests require the following:
-pip2 install pylint
-pip3 install pylint
+pip2 install pylint==1.6.4
+pip3 install pylint==1.6.4
 
 # pep8 tests require the following:
 pip2 install pep8

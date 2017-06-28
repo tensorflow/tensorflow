@@ -18,9 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import logistic
-from tensorflow.contrib.distributions.python.ops import transformed_distribution
 # Bijectors must be directly imported because `remove_undocumented` prevents
 # individual file imports.
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import Sigmoid
@@ -28,6 +26,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
@@ -52,7 +52,7 @@ class RelaxedBernoulli(transformed_distribution.TransformedDistribution):
   the RelaxedBernoulli can suffer from underflow issues. In many case loss
   functions such as these are invariant under invertible transformations of
   the random variables. The KL divergence, found in the variational autoencoder
-  loss, is an example. Because RelaxedBernoullis are sampled by by a Logistic
+  loss, is an example. Because RelaxedBernoullis are sampled by a Logistic
   random variable followed by a `tf.sigmoid` op, one solution is to treat
   the Logistic as the random variable and `tf.sigmoid` as downstream. The
   KL divergences of two Logistics, which are always followed by a `tf.sigmoid`

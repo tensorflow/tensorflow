@@ -18,7 +18,9 @@ package(
     default_visibility = [":internal"],
 )
 
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
@@ -29,6 +31,7 @@ cc_library(
         ":xla_cpu_jit",
         ":xla_gpu_device",
         ":xla_gpu_jit",
+        "//tensorflow/compiler/plugin",
     ],
     alwayslink = 1,
 )
@@ -48,12 +51,12 @@ cc_library(
 cc_library(
     name = "xla_gpu_jit",
     visibility = [":friends"],
-    deps = [
+    deps = if_cuda([
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-    ],
+    ]),
     alwayslink = 1,
 )
 
@@ -67,7 +70,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_device_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
     ],
@@ -84,7 +87,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_device_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
     ],
@@ -154,7 +157,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -176,21 +178,33 @@ cc_library(
 )
 
 cc_library(
+    name = "graph_to_functiondef",
+    srcs = ["graph_to_functiondef.cc"],
+    hdrs = ["graph_to_functiondef.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_launch_ops_pass.cc",
         "encapsulate_subgraphs_pass.cc",
-        "graph_to_functiondef.cc",
         "mark_for_compilation_pass.cc",
     ],
     hdrs = [
         "build_xla_launch_ops_pass.h",
         "encapsulate_subgraphs_pass.h",
-        "graph_to_functiondef.h",
         "mark_for_compilation_pass.h",
     ],
     deps = [
         ":common",
+        ":graph_to_functiondef",
+        ":union_find",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
@@ -210,6 +224,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "union_find",
+    hdrs = ["union_find.h"],
+)
+
 cc_test(
     name = "compilation_passes_test",
     size = "small",
@@ -221,6 +240,7 @@ cc_test(
     deps = [
         ":common",
         ":compilation_passes",
+        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
@@ -248,4 +268,16 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
+cc_header_only_library(
+    name = "xla_jit_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
+    ],
 )

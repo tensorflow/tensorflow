@@ -63,6 +63,36 @@ public class SessionTest {
   }
 
   @Test
+  public void runUsingColonSeparatedNames() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+      Operation split =
+          g.opBuilder("Split", "Split")
+              .addInput(TestUtil.constant(g, "split_dim", 0))
+              .addInput(TestUtil.constant(g, "value", new int[] {1, 2, 3, 4}))
+              .setAttr("num_split", 2)
+              .build();
+      g.opBuilder("Add", "Add")
+          .addInput(split.output(0))
+          .addInput(split.output(1))
+          .build()
+          .output(0);
+      // Fetch using colon separated names.
+      try (Tensor fetched = s.runner().fetch("Split:1").run().get(0)) {
+        final int[] expected = {3, 4};
+        assertArrayEquals(expected, fetched.copyTo(new int[2]));
+      }
+      // Feed using colon separated names.
+      try (Tensor fed = Tensor.create(new int[] {4, 3, 2, 1});
+          Tensor fetched =
+              s.runner().feed("Split:0", fed).feed("Split:1", fed).fetch("Add").run().get(0)) {
+        final int[] expected = {8, 6, 4, 2};
+        assertArrayEquals(expected, fetched.copyTo(new int[4]));
+      }
+    }
+  }
+
+  @Test
   public void runWithMetadata() {
     try (Graph g = new Graph();
         Session s = new Session(g)) {
@@ -79,7 +109,7 @@ public class SessionTest {
         assertEquals(1, outputs.size());
         final int[][] expected = {{31}};
         assertArrayEquals(expected, outputs.get(0).copyTo(new int[1][1]));
-        // Sanity check on metadatar
+        // Sanity check on metadata
         // See comments in fullTraceRunOptions() for an explanation about
         // why this check is really silly. Ideally, this would be:
         /*
@@ -157,7 +187,7 @@ public class SessionTest {
     // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251515362
     // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251692558
     //
-    // For this test, for now, the use of specific bytes sufficies.
+    // For this test, for now, the use of specific bytes suffices.
     return new byte[] {0x08, 0x03};
     /*
     return org.tensorflow.framework.RunOptions.newBuilder()
@@ -177,7 +207,7 @@ public class SessionTest {
     // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251515362
     // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251692558
     //
-    // For this test, for now, the use of specific bytes sufficies.
+    // For this test, for now, the use of specific bytes suffices.
     return new byte[] {0x10, 0x01, 0x28, 0x01};
     /*
     return org.tensorflow.framework.ConfigProto.newBuilder()

@@ -31,7 +31,7 @@ struct GatherTree {
   void operator()(OpKernelContext* ctx, const Device& d,
                   typename TTypes<T, 3>::ConstTensor step_ids,
                   typename TTypes<T, 3>::ConstTensor parent_ids,
-                  typename TTypes<T>::ConstVec sequence_length,
+                  typename TTypes<T>::ConstMatrix sequence_length,
                   typename TTypes<T, 3>::Tensor beams);
 };
 

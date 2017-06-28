@@ -27,11 +27,14 @@ See the @{$python/test} guide.
 @@gpu_device_name
 @@compute_gradient
 @@compute_gradient_error
+@@create_local_cluster
+
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python.client import device_lib as _device_lib
@@ -41,6 +44,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
 from tensorflow.python.framework.test_util import assert_equal_graph_def
+from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import gpu_device_name
 
@@ -56,6 +60,9 @@ else:
 
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
+
+# Import StubOutForTesting class
+StubOutForTesting = _googletest.StubOutForTesting  # pylint: disable=invalid-name
 
 
 def main(argv=None):
@@ -108,10 +115,12 @@ def is_gpu_available(cuda_only=False):
     return any((x.device_type == 'GPU' or x.device_type == 'SYCL')
                for x in _device_lib.list_local_devices())
 
+
 _allowed_symbols = [
     # We piggy-back googletest documentation.
     'Benchmark',
     'mock',
+    'StubOutForTesting',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

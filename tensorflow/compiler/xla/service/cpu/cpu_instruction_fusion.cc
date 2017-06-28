@@ -24,6 +24,11 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
+  // Output fusion is not currently supported on CPUs.
+  if (producer->opcode() == HloOpcode::kFusion) {
+    return false;
+  }
+
   // Condition for consumer: must be elementwise or a fusion op
   // (which necessarily only contains elementwise operations)
   if (!(consumer->opcode() == HloOpcode::kFusion ||

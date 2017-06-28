@@ -59,6 +59,7 @@ py_library(
 
 py_test(
     name = "dataset_data_provider_test",
+    size = "small",
     srcs = ["dataset_data_provider_test.py"],
     srcs_version = "PY2AND3",
     deps = [

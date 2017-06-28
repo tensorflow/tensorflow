@@ -21,6 +21,8 @@ filegroup(
         exclude = [
             "**/METADATA",
             "**/OWNERS",
+            "kernels/v4/*",
+            "proto/*",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
@@ -35,6 +37,7 @@ filegroup(
         ],
         exclude = [
             "kernels/*_test.cc",
+            "kernels/tree_utils.cc",
         ],
     ),
 )
@@ -45,6 +48,10 @@ filegroup(
         [
             "kernels/*.h",
         ],
+        exclude = [
+            "kernels/data_spec.h",
+            "kernels/tree_utils.h",
+        ],
     ),
 )
 
@@ -53,6 +60,7 @@ cc_library(
     srcs = [":custom_op_sources"],
     hdrs = [":custom_op_headers"],
     deps = [
+        ":tree_utils",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf//:protobuf_headers",

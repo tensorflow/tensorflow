@@ -232,7 +232,7 @@ TEST_F(HloInstructionTest, MultipleUsersAndOperands) {
   //                 -------
   auto param0 = HloInstruction::CreateParameter(0, r0f32_, "param0");
   auto param1 = HloInstruction::CreateParameter(1, r0f32_, "param1");
-  auto c0 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+  auto c0 = HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
   auto addleft = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
                                               param0.get(), c0.get());
   auto addright = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
@@ -271,7 +271,7 @@ TEST_F(HloInstructionTest, MultipleUsersAndOperandsWithUnaryOps) {
   //                 -------
   auto param0 = HloInstruction::CreateParameter(0, r0f32_, "param0");
   auto param1 = HloInstruction::CreateParameter(1, r0f32_, "param1");
-  auto c0 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+  auto c0 = HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
   auto neg1 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, c0.get());
   auto addleft = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
                                               param0.get(), neg1.get());
@@ -307,7 +307,7 @@ TEST_F(HloInstructionTest, TrivialMap) {
   auto param =
       builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32, "x"));
   auto value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, param, value));
   auto add_f32 = builder.Build();
@@ -349,9 +349,8 @@ TEST_F(HloInstructionTest, TrivialReduce) {
 
   // Builds a parameter and an initial value and feeds them to the reduce.
   auto param0 = HloInstruction::CreateParameter(0, f32a100x10, "");
-  auto const0 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f));
-  auto c0 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+  auto const0 = HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f));
+  auto c0 = HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
   auto reduce =
       HloInstruction::CreateReduce(f32v100, param0.get(), const0.get(),
                                    /*dimensions_to_reduce=*/{1}, add_f32.get());
@@ -560,7 +559,7 @@ TEST_F(HloInstructionTest, PostProcessAllVisitedNodes) {
 TEST_F(HloInstructionTest, SingletonFusionOp) {
   // Create a fusion instruction containing a single unary operation.
   auto constant =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
   auto exp =
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
 
@@ -574,9 +573,9 @@ TEST_F(HloInstructionTest, SingletonFusionOp) {
 TEST_F(HloInstructionTest, BinaryFusionOp) {
   // Create a fusion instruction containing a single binary operation.
   auto constant1 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
   auto constant2 =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.1f));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.1f));
   auto add = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
                                           constant1.get(), constant2.get());
 
@@ -594,7 +593,7 @@ TEST_F(HloInstructionTest, BinaryFusionOp) {
 TEST_F(HloInstructionTest, ChainFusionOp) {
   // Create a chain of fused unary ops.
   auto constant =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
   auto exp1 =
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
   auto exp2 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1.get());
@@ -613,7 +612,7 @@ TEST_F(HloInstructionTest, ChainFusionOp) {
 TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
   // Create a chain of fused unary ops.
   auto constant =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
   auto exp1 =
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
   auto exp2 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1.get());
@@ -644,7 +643,7 @@ TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   std::unique_ptr<HloComputation> computation_y = make_map_computation();
 
   auto constant =
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
   auto map_1_x =
       HloInstruction::CreateMap(scalar_shape, {constant.get()},
                                 computation_x.get(), /*static_operands=*/{});
@@ -681,9 +680,9 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
   //
   // Notable complexities are repeated operands in a same instruction, different
   // shapes, use of value in different expressions.
-  auto c1 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f));
-  auto c2 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.1f));
-  auto c3 = HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(9.0f));
+  auto c1 = HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
+  auto c2 = HloInstruction::CreateConstant(Literal::CreateR0<float>(2.1f));
+  auto c3 = HloInstruction::CreateConstant(Literal::CreateR0<float>(9.0f));
 
   auto add =
       HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, c1.get(), c2.get());
@@ -732,11 +731,11 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
   // Create a set of random constant operands to use below. Make them matrices
   // so dimensions are interesting.
   auto operand1 = HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
   auto operand2 = HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{10.0, 20.0}, {30.0, 40.0}}));
-  auto vector_operand = HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({42.0, 123.0}));
+      Literal::CreateR2<float>({{10.0, 20.0}, {30.0, 40.0}}));
+  auto vector_operand =
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({42.0, 123.0}));
   Shape shape = operand1->shape();
 
   // Convenient short names for the operands.
@@ -962,5 +961,48 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
                                root2->operand(1)->operand(0)->shape()));
 }
 
+TEST_F(HloInstructionTest, CloneSuffixNames) {
+  // Test that the suffix string added to cloned instructions is not
+  // duplicated. Rather a numeric incrementing value should be appended. That
+  // is, we want "foo.clone2", not "foo.clone.clone".
+
+  // Test cloning the same instruction multiple times.
+  auto foo =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "foo");
+  EXPECT_EQ(foo->Clone()->name(), "%foo.clone");
+  EXPECT_EQ(foo->Clone()->Clone()->name(), "%foo.clone2");
+  EXPECT_EQ(foo->Clone()->Clone()->Clone()->name(), "%foo.clone3");
+
+  // Test custom suffixes.
+  EXPECT_EQ(foo->Clone("bar")->name(), "%foo.bar");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->name(), "%foo.bar2");
+  EXPECT_EQ(foo->Clone("bar")->Clone("bar")->Clone()->name(),
+            "%foo.bar2.clone");
+
+  // Test instruction name with a dot.
+  auto foo_baz = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.baz");
+  EXPECT_EQ(foo_baz->Clone()->name(), "%foo.baz.clone");
+
+  // Test incrementing a large number after the suffix.
+  auto foo_clone234 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clone234");
+  EXPECT_EQ(foo_clone234->Clone()->name(), "%foo.clone235");
+
+  // Test a non-numeric string after the cloning suffix.
+  auto foo_clonexyz = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clonexyz");
+  EXPECT_EQ(foo_clonexyz->Clone()->name(), "%foo.clonexyz.clone");
+
+  // Test a name with multiple appearances of the suffix.
+  auto foo_clone_clone3 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {}), "foo.clone.clone3");
+  EXPECT_EQ(foo_clone_clone3->Clone()->name(), "%foo.clone.clone4");
+}
+
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

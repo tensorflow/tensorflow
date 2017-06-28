@@ -96,6 +96,8 @@ REGISTER_XLA_OP(Name("DummyReadResource"), DummyReadResourceOp);
 
 class XlaCompilerTest : public ::testing::Test {
  protected:
+  XlaCompilerTest() : cpu_device_type_(DEVICE_CPU_XLA_JIT) {}
+
   void SetUp() override {
     client_ = xla::ClientLibrary::LocalClientOrDie();
 
@@ -107,19 +109,13 @@ class XlaCompilerTest : public ::testing::Test {
 
   XlaCompiler::Options DefaultOptions() {
     XlaCompiler::Options options;
-    options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+    options.device_type = &cpu_device_type_;
     options.client = client_;
+    options.flib_def = flib_def_.get();
     return options;
   }
 
-  std::unique_ptr<FunctionLibraryRuntime> BuildFunctionLibraryRuntime(
-      const XlaCompiler& compiler) {
-    return std::unique_ptr<FunctionLibraryRuntime>(NewFunctionLibraryRuntime(
-        compiler.device_mgr(), /*env=*/nullptr, compiler.device(),
-        TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
-        /*custom_kernel_creator=*/nullptr));
-  }
-
+  DeviceType cpu_device_type_;
   xla::Client* client_;
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 };
@@ -127,15 +123,15 @@ class XlaCompilerTest : public ::testing::Test {
 // Tests compilation of an empty graph.
 TEST_F(XlaCompilerTest, EmptyReturnValues) {
   XlaCompiler compiler(DefaultOptions());
-  auto flr = BuildFunctionLibraryRuntime(compiler);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph("add", std::move(graph), flr.get(),
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph),
                                      /*args=*/{}, &result));
 
   // No computation should be generated.
-  EXPECT_EQ(0, result.computation.handle().handle());
+  EXPECT_EQ(0, result.computation->handle().handle());
 }
 
 // Tests compilation and execution of a graph that adds two tensors.
@@ -160,17 +156,16 @@ TEST_F(XlaCompilerTest, Simple) {
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
-  auto flr = BuildFunctionLibraryRuntime(compiler);
 
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(
-      compiler.CompileGraph("add", std::move(graph), flr.get(), args, &result));
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), args, &result));
 
   // Tests that the generated computation works.
   std::unique_ptr<xla::Literal> param0_literal =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
+      xla::Literal::CreateR1<int32>({7, 42});
   std::unique_ptr<xla::Literal> param1_literal =
-      xla::LiteralUtil::CreateR1<int32>({-3, 101});
+      xla::Literal::CreateR1<int32>({-3, 101});
   std::unique_ptr<xla::GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   std::unique_ptr<xla::GlobalData> param1_data =
@@ -178,13 +173,13 @@ TEST_F(XlaCompilerTest, Simple) {
 
   std::unique_ptr<xla::GlobalData> actual =
       client_
-          ->Execute(result.computation, {param0_data.get(), param1_data.get()})
+          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
           .ConsumeValueOrDie();
   std::unique_ptr<xla::Literal> actual_literal =
       client_->Transfer(*actual).ConsumeValueOrDie();
 
   std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::CreateR1<int32>({4, 143});
+      xla::Literal::CreateR1<int32>({4, 143});
   xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
 }
 
@@ -213,14 +208,14 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     XlaCompiler::Options options = DefaultOptions();
     options.resolve_compile_time_constants = true;
     XlaCompiler compiler(options);
-    auto flr = BuildFunctionLibraryRuntime(compiler);
 
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph("constants", std::move(graph_copy),
-                                       flr.get(), args, &result));
+    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
+                                       "constants", std::move(graph_copy), args,
+                                       &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_TRUE(result.outputs[0].is_constant);
@@ -230,18 +225,18 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
     // Tests that the generated computation works.
     std::unique_ptr<xla::Literal> param0_literal =
-        xla::LiteralUtil::CreateR1<int32>({7, 42});
+        xla::Literal::CreateR1<int32>({7, 42});
     std::unique_ptr<xla::GlobalData> param0_data =
         client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
     std::unique_ptr<xla::GlobalData> actual =
-        client_->Execute(result.computation, {param0_data.get()})
+        client_->Execute(*result.computation, {param0_data.get()})
             .ConsumeValueOrDie();
     std::unique_ptr<xla::Literal> actual_literal =
         client_->Transfer(*actual).ConsumeValueOrDie();
 
     std::unique_ptr<xla::Literal> expected_literal =
-        xla::LiteralUtil::CreateR1<int32>({-7, -42});
+        xla::Literal::CreateR1<int32>({-7, -42});
     xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
   }
 
@@ -250,14 +245,14 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     XlaCompiler::Options options = DefaultOptions();
     options.resolve_compile_time_constants = false;
     XlaCompiler compiler(options);
-    auto flr = BuildFunctionLibraryRuntime(compiler);
 
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph("constants", std::move(graph_copy),
-                                       flr.get(), args, &result));
+    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
+                                       "constants", std::move(graph_copy), args,
+                                       &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_FALSE(result.outputs[0].is_constant);
@@ -265,22 +260,21 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
     // Tests that the generated computation works.
     std::unique_ptr<xla::Literal> param0_literal =
-        xla::LiteralUtil::CreateR1<int32>({7, 42});
+        xla::Literal::CreateR1<int32>({7, 42});
     std::unique_ptr<xla::GlobalData> param0_data =
         client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
     std::unique_ptr<xla::GlobalData> actual =
-        client_->Execute(result.computation, {param0_data.get()})
+        client_->Execute(*result.computation, {param0_data.get()})
             .ConsumeValueOrDie();
     std::unique_ptr<xla::Literal> actual_literal =
         client_->Transfer(*actual).ConsumeValueOrDie();
 
-    std::unique_ptr<xla::Literal> expected0 =
-        xla::LiteralUtil::CreateR0<int32>(7);
+    std::unique_ptr<xla::Literal> expected0 = xla::Literal::CreateR0<int32>(7);
     std::unique_ptr<xla::Literal> expected1 =
-        xla::LiteralUtil::CreateR1<int32>({-7, -42});
+        xla::Literal::CreateR1<int32>({-7, -42});
     std::unique_ptr<xla::Literal> expected =
-        xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
+        xla::Literal::MakeTuple({expected0.get(), expected1.get()});
     xla::LiteralTestUtil::ExpectEqual(*expected, *actual_literal);
   }
 }
@@ -312,13 +306,12 @@ TEST_F(XlaCompilerTest, ResourceManager) {
       };
   options.populate_resource_manager = &populate_function;
   XlaCompiler compiler(options);
-  auto flr = BuildFunctionLibraryRuntime(compiler);
 
   EXPECT_EQ(0, resource->Get());
 
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph("dummy", std::move(graph), flr.get(), args,
-                                     &result));
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "dummy",
+                                     std::move(graph), args, &result));
 
   EXPECT_EQ(1, resource->Get());
 

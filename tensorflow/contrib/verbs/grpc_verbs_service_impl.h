@@ -48,16 +48,16 @@ class VerbsService GRPC_FINAL {
   class StubInterface {
    public:
     virtual ~StubInterface() {}
-    virtual ::grpc::Status GetRemoteAddress(::grpc::ClientContext* context,
-                                       const GetRemoteAddressRequest& request,
-                                       GetRemoteAddressResponse* response) = 0;
+    virtual ::grpc::Status GetRemoteAddress(
+        ::grpc::ClientContext* context, const GetRemoteAddressRequest& request,
+        GetRemoteAddressResponse* response) = 0;
   };
   class Stub GRPC_FINAL : public StubInterface {
    public:
     Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel);
-    ::grpc::Status GetRemoteAddress(::grpc::ClientContext* context,
-                              const GetRemoteAddressRequest& request,
-                              GetRemoteAddressResponse* response) GRPC_OVERRIDE;
+    ::grpc::Status GetRemoteAddress(
+        ::grpc::ClientContext* context, const GetRemoteAddressRequest& request,
+        GetRemoteAddressResponse* response) GRPC_OVERRIDE;
 
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;

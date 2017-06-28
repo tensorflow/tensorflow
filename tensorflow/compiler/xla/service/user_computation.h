@@ -84,6 +84,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddUnaryInstruction(
       const UnaryOpRequest& unary_request);
 
+  // Enqueues a batch norm training instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddBatchNormTrainingInstruction(
+      const BatchNormTrainingRequest& batch_norm_training_request);
+
   // Enqueues a binary instruction onto this user computation.
   // Returns an error status if the operand indices are out of bounds.
   StatusOr<ComputationDataHandle> AddBinaryInstruction(
@@ -111,6 +115,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddMapInstruction(
       const MapRequest& map_request,
       const UserComputation& to_apply_computation);
+
+  // Enqueues a reduce-precision instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddReducePrecisionInstruction(
+      const ReducePrecisionRequest& reduce_precision_request);
 
   // Enqueues a convolution instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddConvolveInstruction(

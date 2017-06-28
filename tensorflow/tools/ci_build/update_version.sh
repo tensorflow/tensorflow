@@ -73,8 +73,11 @@ OLD_MAJOR=$(cat ${VERSION_H} | grep -E "^#define TF_MAJOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
 OLD_MINOR=$(cat ${VERSION_H} | grep -E "^#define TF_MINOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
-OLD_PATCH=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]-]+" | \
+OLD_PATCH_NUM=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]-]+" | \
 cut -d ' ' -f 3)
+OLD_EXTENSION=$(cat ${VERSION_H} | grep -E "^#define TF_VERSION_SUFFIX \"[[:alnum:]-]+\"" | \
+cut -d ' ' -f 3)
+OLD_PATCH="$OLD_PATCH_NUM${OLD_EXTENSION//\"}"
 OLD_PIP_PATCH="${OLD_PATCH//-}"
 
 sed -i -e "s/^#define TF_MAJOR_VERSION ${OLD_MAJOR}/#define TF_MAJOR_VERSION ${MAJOR}/g" ${VERSION_H}
@@ -126,12 +129,6 @@ if [[ ${OLD_MAJOR} != ${MAJOR} ]] || [[ ${OLD_MINOR} != ${MINOR} ]]; then
 
   echo "Detected Major.Minor change. "\
 "Updating pattern ${OLD_R_MAJOR_MINOR} to ${R_MAJOR_MINOR} in additional files"
-
-  # Update tensorflow/tensorboard/README.md
-  TENSORBOARD_README_MD="${TF_SRC_DIR}/tensorboard/README.md"
-  check_existence file "${TENSORBOARD_README_MD}"
-  sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" \
-      "${TENSORBOARD_README_MD}"
 
   # Update dockerfiles
   DEVEL_DOCKERFILE="${TF_SRC_DIR}/tools/docker/Dockerfile.devel"

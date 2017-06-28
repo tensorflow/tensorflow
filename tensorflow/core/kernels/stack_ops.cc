@@ -40,6 +40,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 class Stack : public ResourceBase {
  public:
@@ -147,7 +150,7 @@ class StackOp : public OpKernel {
   explicit StackOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("elem_type", &elem_type_));
     OP_REQUIRES_OK(context, context->GetAttr("stack_name", &stack_name_));
-    if (stack_name_ == "") stack_name_ = name();
+    if (stack_name_.empty()) stack_name_ = name();
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -182,6 +185,10 @@ class StackOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("Stack").Device(DEVICE_CPU), StackOp);
 REGISTER_KERNEL_BUILDER(Name("Stack").Device(DEVICE_GPU).HostMemory("handle"),
                         StackOp);
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Stack").Device(DEVICE_SYCL).HostMemory("handle"),
+                        StackOp);
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device>
 class StackPushOp : public AsyncOpKernel {
@@ -213,7 +220,11 @@ class StackPushOp : public AsyncOpKernel {
     static constexpr int kCopyThreshold = 2048;
     static constexpr double kOccupancy = 0.7;
     if (swap_memory_ && !alloc_attrs.on_host() &&
-        std::is_same<Device, GPUDevice>::value &&
+        ( std::is_same<Device, GPUDevice>::value
+#ifdef TENSORFLOW_USE_SYCL
+          || std::is_same<Device, SYCLDevice>::value
+#endif // TENSORFLOW_USE_SYCL
+        ) &&
         tensor.TotalBytes() > kCopyThreshold && stack->IsUsefulToSwap(tensor)) {
       DeviceContext* device_ctxt = ctx->op_device_context();
       auto device = static_cast<tensorflow::Device*>(ctx->device());
@@ -289,6 +300,31 @@ REGISTER_GPU_HOST_KERNEL(bool);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("StackPush")               \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("handle")       \
+                              .TypeConstraint<type>("T"), \
+                          StackPushOp<SYCLDevice>);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+
+#define REGISTER_SYCL_HOST_KERNEL(type)                   \
+  REGISTER_KERNEL_BUILDER(Name("StackPush")               \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("handle")       \
+                              .HostMemory("elem")         \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          StackPushOp<SYCLDevice>)
+
+REGISTER_SYCL_HOST_KERNEL(int32);
+REGISTER_SYCL_HOST_KERNEL(bool);
+#undef REGISTER_SYCL_KERNEL
+#undef REGISTER_SYCL_HOST_KERNEL
+#endif // TENSORFLOW_USE_SYCL
+
 class StackPopOp : public AsyncOpKernel {
  public:
   explicit StackPopOp(OpKernelConstruction* context) : AsyncOpKernel(context) {}
@@ -359,6 +395,31 @@ REGISTER_GPU_HOST_KERNEL(bool);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                                \
+  REGISTER_KERNEL_BUILDER(Name("StackPop")                        \
+                              .Device(DEVICE_SYCL)                \
+                              .HostMemory("handle")               \
+                              .TypeConstraint<type>("elem_type"), \
+                          StackPopOp)
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL_KERNEL);
+
+#define REGISTER_SYCL_HOST_KERNEL(type)                           \
+  REGISTER_KERNEL_BUILDER(Name("StackPop")                        \
+                              .Device(DEVICE_SYCL)                \
+                              .HostMemory("handle")               \
+                              .HostMemory("elem")                 \
+                              .TypeConstraint<type>("elem_type"), \
+                          StackPopOp)
+
+REGISTER_SYCL_HOST_KERNEL(int32);
+REGISTER_SYCL_HOST_KERNEL(bool);
+
+#undef REGISTER_SYCL_KERNEL
+#undef REGISTER_SYCL_HOST_KERNEL
+#endif // TENSORFLOW_USE_SYCL
+
 class StackCloseOp : public OpKernel {
  public:
   explicit StackCloseOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -376,5 +437,8 @@ class StackCloseOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("StackClose").Device(DEVICE_CPU), StackCloseOp);
 REGISTER_KERNEL_BUILDER(
     Name("StackClose").Device(DEVICE_GPU).HostMemory("handle"), StackCloseOp);
-
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("StackClose").Device(DEVICE_SYCL).HostMemory("handle"), StackCloseOp);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

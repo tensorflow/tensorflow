@@ -24,6 +24,8 @@ from __future__ import print_function
 import os
 import uuid
 
+import six
+
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
@@ -144,7 +146,7 @@ class FileIO(object):
     # This check exists so that we can convert back to having offset be a
     # positional argument.
     # TODO(jhseu): Make `offset` a positional argument after `position` is
-    # deprecated.
+    # deleted.
     if offset is None and position is None:
       raise TypeError("seek(): offset argument required")
     if offset is not None and position is not None:
@@ -304,23 +306,33 @@ def write_string_to_file(filename, file_content):
 
 
 def get_matching_files(filename):
-  """Returns a list of files that match the given pattern.
+  """Returns a list of files that match the given pattern(s).
 
   Args:
-    filename: string, the pattern
+    filename: string or iterable of strings. The glob pattern(s).
 
   Returns:
-    Returns a list of strings containing filenames that match the given pattern.
+    A list of strings containing filenames that match the given pattern(s).
 
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
   """
   with errors.raise_exception_on_not_ok_status() as status:
-    # Convert each element to string, since the return values of the
-    # vector of string should be interpreted as strings, not bytes.
-    return [compat.as_str_any(matching_filename)
-            for matching_filename in pywrap_tensorflow.GetMatchingFiles(
-                compat.as_bytes(filename), status)]
+    if isinstance(filename, six.string_types):
+      return [
+          # Convert the filenames to string from bytes.
+          compat.as_str_any(matching_filename)
+          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+              compat.as_bytes(filename), status)
+      ]
+    else:
+      return [
+          # Convert the filenames to string from bytes.
+          compat.as_str_any(matching_filename)
+          for single_filename in filename
+          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+              compat.as_bytes(single_filename), status)
+      ]
 
 
 def create_dir(dirname):

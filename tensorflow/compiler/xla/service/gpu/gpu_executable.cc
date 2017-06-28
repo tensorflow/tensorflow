@@ -107,12 +107,12 @@ class HloExecutionProfiler {
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
-GpuExecutable::GpuExecutable(tensorflow::StringPiece ptx,
-                             std::unique_ptr<ThunkSchedule> thunk_schedule,
-                             std::unique_ptr<HloModule> hlo_module,
-                             std::unique_ptr<HloModuleConfig> module_config,
-                             std::unique_ptr<BufferAssignment> assignment)
-    : Executable(std::move(hlo_module), std::move(module_config)),
+GpuExecutable::GpuExecutable(
+    tensorflow::StringPiece ptx, std::unique_ptr<ThunkSchedule> thunk_schedule,
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<BufferAssignment> assignment,
+    HloCostAnalysis::ShapeSizeFunction shape_size_function)
+    : Executable(std::move(hlo_module), std::move(shape_size_function)),
       ptx_(ptx),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {}
@@ -228,9 +228,9 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteOnStream(
       // The points-to set of the root is unambiguous so it's known statically
       // which buffers are in the result. Gather these buffers using the root's
       // points-to set.
-      TF_RETURN_IF_ERROR(GetRootPointsToSet().ForEachElement(
+      TF_RETURN_IF_ERROR(GetRootPointsToSet().ForEachElementWithStatus(
           [&referred_by_output, &buffer_allocations, this](
-              const ShapeIndex& /*index*/, bool /*is_leaf*/,
+              const ShapeIndex& /*index*/,
               const std::vector<const LogicalBuffer*>& buffers) {
             // The points to set is unambiguous so the set should be a
             // singleton. That is, we know exactly which instruction produced
@@ -306,10 +306,10 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
   std::set<se::DeviceMemoryBase> buffers_in_result;
   TF_RETURN_IF_ERROR(
       shaped_buffer->mutable_shape_index_to_buffer_entry()
-          ->ForEachMutableElement(
+          ->ForEachMutableElementWithStatus(
               [&buffer_allocations, &buffers_in_result, &shaped_buffer, this](
-                  const ShapeIndex& index, bool is_leaf, size_t* buffer_entry) {
-                if (is_leaf) {
+                  const ShapeIndex& index, size_t* buffer_entry) {
+                if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
                   const std::vector<const LogicalBuffer*>& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a

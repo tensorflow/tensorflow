@@ -14,7 +14,7 @@ that takes an item off the queue, adds one to that item, and puts it back on the
 end of the queue. Slowly, the numbers on the queue increase.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/IncremeterFifoQueue.gif">
+<img style="width:100%" src="https://www.tensorflow.org/images/IncremeterFifoQueue.gif">
 </div>
 
 `Enqueue`, `EnqueueMany`, and `Dequeue` are special nodes. They take a pointer
@@ -121,7 +121,7 @@ example = ...ops to create one example...
 # Create a queue, and an op that enqueues examples one at a time in the queue.
 queue = tf.RandomShuffleQueue(...)
 enqueue_op = queue.enqueue(example)
-# Create a training graph that starts by dequeuing a batch of examples.
+# Create a training graph that starts by dequeueing a batch of examples.
 inputs = queue.dequeue_many(batch_size)
 train_op = ...use 'inputs' to build the training part of the graph...
 ```

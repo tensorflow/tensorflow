@@ -110,7 +110,7 @@ class CPUIDInfo {
 
   static void Initialize() {
     // Initialize cpuid struct
-    CHECK(cpuid == NULL) << __func__ << " ran more than once";
+    CHECK(cpuid == nullptr) << __func__ << " ran more than once";
     cpuid = new CPUIDInfo;
 
     uint32 eax, ebx, ecx, edx;

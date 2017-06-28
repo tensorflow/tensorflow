@@ -218,7 +218,8 @@ def read_data_sets(train_dir,
   if fake_data:
 
     def fake():
-      return DataSet([], [], fake_data=True, one_hot=one_hot, dtype=dtype, seed=seed)
+      return DataSet(
+          [], [], fake_data=True, one_hot=one_hot, dtype=dtype, seed=seed)
 
     train = fake()
     validation = fake()
@@ -260,14 +261,13 @@ def read_data_sets(train_dir,
   train_images = train_images[validation_size:]
   train_labels = train_labels[validation_size:]
 
-  train = DataSet(train_images, train_labels, dtype=dtype, reshape=reshape, seed=seed)
-  validation = DataSet(validation_images,
-                       validation_labels,
-                       dtype=dtype,
-                       reshape=reshape,
-                       seed=seed)
-  test = DataSet(test_images, test_labels, dtype=dtype, reshape=reshape, seed=seed)
-
+  
+  options = dict(dtype=dtype, reshape=reshape, seed=seed)
+  
+  train = DataSet(train_images, train_labels, **options)
+  validation = DataSet(validation_images, validation_labels, **options)
+  test = DataSet(test_images, test_labels, **options)
+  
   return base.Datasets(train=train, validation=validation, test=test)
 
 

@@ -41,7 +41,11 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
     return sparse_tensor.SparseTensor(
         indices=x_indices, values=x_values, dense_shape=x_shape), len(x_values)
 
-  def _randomTensor(self, size, values_dtype, adjoint=False, sparse=False,
+  def _randomTensor(self,
+                    size,
+                    values_dtype,
+                    adjoint=False,
+                    sparse=False,
                     indices_dtype=np.int64):
     n, m = size
     x = np.random.randn(n, m).astype(values_dtype)
@@ -58,8 +62,11 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
                      indices_dtype):
     n, k, m = np.random.randint(1, 10, size=3)
     sp_t, nnz = self._randomTensor(
-        [n, k], values_dtype, adjoint=adjoint_a, sparse=True,
-      indices_dtype=indices_dtype)
+        [n, k],
+        values_dtype,
+        adjoint=adjoint_a,
+        sparse=True,
+        indices_dtype=indices_dtype)
     dense_t = self._randomTensor([k, m], values_dtype, adjoint=adjoint_b)
 
     matmul = sparse_ops.sparse_tensor_dense_matmul(
@@ -78,7 +85,7 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
     for adjoint_a in [True, False]:
       for adjoint_b in [True, False]:
         name = "sparse_tensor_dense_matmul_%s_%s_%s_%s" % (
-          adjoint_a, adjoint_b, values_dtype.__name__, indices_dtype.__name__)
+            adjoint_a, adjoint_b, values_dtype.__name__, indices_dtype.__name__)
         self._testGradients(adjoint_a, adjoint_b, name, values_dtype,
                             indices_dtype)
 

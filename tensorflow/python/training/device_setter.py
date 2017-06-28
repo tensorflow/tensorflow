@@ -94,31 +94,31 @@ class _ReplicaDeviceChooser(object):
     Returns:
       The device to use for the `Operation`.
     """
+    # If we don't return early here, either merge_devices is True, or op.device
+    # is empty (in which case merging is a no-op). So we can always merge below.
     if not self._merge_devices and op.device:
       return op.device
+
     current_device = pydev.DeviceSpec.from_string(op.device or "")
-    spec = pydev.DeviceSpec()
-    if self._ps_tasks and self._ps_device:
-      node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
-      if node_def.op in self._ps_ops:
-        device_string = "%s/task:%d" % (
-            self._ps_device, self._ps_strategy(op))
-        if self._merge_devices:
-          spec = pydev.DeviceSpec.from_string(device_string)
-          spec.merge_from(current_device)
-          return spec.to_string()
-        else:
-          return device_string
-    if self._worker_device:
-      if not self._merge_devices:
-        return self._worker_device
-      spec = pydev.DeviceSpec.from_string(self._worker_device)
 
-    if not self._merge_devices:
-      return ""
+    # The ps_device will be used for specified ops (ps_ops) whenever it is
+    # present and ps_tasks is non-zero. However, its task number will only be
+    # set (using ps_strategy) if there is a job field in ps_device that won't be
+    # changed by the job field (if present) in current_device.
+    node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
+    if self._ps_tasks and self._ps_device and node_def.op in self._ps_ops:
+      ps_device = pydev.DeviceSpec.from_string(self._ps_device)
 
-    spec.merge_from(current_device)
-    return spec.to_string()
+      current_job, ps_job = current_device.job, ps_device.job
+      if ps_job and (not current_job or current_job == ps_job):
+        ps_device.task = self._ps_strategy(op)
+
+      ps_device.merge_from(current_device)
+      return ps_device.to_string()
+
+    worker_device = pydev.DeviceSpec.from_string(self._worker_device or "")
+    worker_device.merge_from(current_device)
+    return worker_device.to_string()
 
 
 def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
@@ -186,7 +186,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
       cluster_spec = cluster.as_dict()
     else:
       cluster_spec = server_lib.ClusterSpec(cluster).as_dict()
-    # Get ps_job_name from ps_device by striping "/job:".
+    # Get ps_job_name from ps_device by stripping "/job:".
     ps_job_name = pydev.DeviceSpec.from_string(ps_device).job
     if ps_job_name not in cluster_spec or cluster_spec[ps_job_name] is None:
       return None

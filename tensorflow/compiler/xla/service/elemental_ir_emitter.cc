@@ -172,6 +172,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::log, {operand_value},
                                           {operand_value->getType()},
                                           ir_builder_);
+    case HloOpcode::kCos:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {operand_value},
+                                          {operand_value->getType()},
+                                          ir_builder_);
     case HloOpcode::kFloor:
       return llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::floor, {operand_value}, {operand_value->getType()},
@@ -240,14 +244,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
       return ir_builder_->CreateFDiv(lhs_value, rhs_value);
     case HloOpcode::kRemainder:
       return ir_builder_->CreateFRem(lhs_value, rhs_value);
-
-    // The 'O' prefix on the LLVM ops means "ordered" compare where comparisons
-    // with NAN always return false.
+    // LLVM comparisons can be "unordered" (U) or "ordered" (O) -- ordered
+    // comparisons always return false when one of the operands is NaN, whereas
+    // unordered comparisons return true.
+    //
+    // We use ordered comparisons for everything except kNe, where we use an
+    // unordered comparison.  This makes x != y equivalent to !(x == y), and
+    // matches C++'s semantics.
     case HloOpcode::kEq:
       return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
                                      rhs_value, ir_builder_);
     case HloOpcode::kNe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ONE, lhs_value,
+      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, lhs_value,
                                      rhs_value, ir_builder_);
     case HloOpcode::kLt:
       return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, lhs_value,
@@ -375,6 +383,24 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfcInv(
   auto type = llvm_ir::PrimitiveTypeToIrType(prim_type, ir_builder_);
   auto one = llvm::ConstantFP::get(type, 1.0);
   return EmitErfInv(prim_type, ir_builder_->CreateFSub(one, value));
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
+    const HloInstruction* hlo, llvm::Value* x) const {
+  if (hlo->operand(0)->shape().element_type() != F32) {
+    return Unimplemented("reduce-precision only implemented for F32");
+  }
+  // As a preliminary implementation, we only implement this for the case
+  // where it is a no-op -- that is, where the exponent and mantissa bit
+  // counts are equal to the (IEEE f32) bit counts for the input values.
+  if (hlo->exponent_bits() != 8) {
+    return Unimplemented("reduce-precision requires 8 exponent bits");
+  }
+  if (hlo->mantissa_bits() != 23) {
+    return Unimplemented("reduce-precision requires 23 mantissa bits");
+  }
+
+  return x;
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
@@ -584,20 +610,37 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
               llvm::Intrinsic::ctlz, {r, ir_builder_->getInt1(1)},
               {param_ir_type}, ir_builder_);
           auto in_block = ir_builder_->GetInsertBlock();
-          auto body_block = in_block->splitBasicBlock(
-              ir_builder_->GetInsertPoint(), "rng_body");
-          SetToFirstInsertPoint(body_block, ir_builder_);
-          auto out_block = body_block->splitBasicBlock(
-              ir_builder_->GetInsertPoint(), "rng_out");
+
+          // A terminator should be present iff we're emitting code
+          // into the middle (as opposed to the end) of a basic block.
+          CHECK_EQ(ir_builder_->GetInsertPoint() == in_block->end(),
+                   in_block->getTerminator() == nullptr);
+
+          llvm::BasicBlock* body_block;
+          llvm::BasicBlock* out_block;
+
+          if (ir_builder_->GetInsertPoint() == in_block->end()) {
+            body_block =
+                llvm_ir::CreateBasicBlock(nullptr, "rng_body", ir_builder_);
+            out_block =
+                llvm_ir::CreateBasicBlock(nullptr, "rng_out", ir_builder_);
+            llvm::BranchInst::Create(body_block, in_block);
+          } else {
+            body_block = in_block->splitBasicBlock(
+                ir_builder_->GetInsertPoint(), "rng_body");
+            out_block = body_block->splitBasicBlock(
+                ir_builder_->GetInsertPoint(), "rng_out");
+            body_block->getTerminator()->eraseFromParent();
+          }
+
           SetToFirstInsertPoint(body_block, ir_builder_);
           auto random = ir_builder_->CreateAnd(
               ir_builder_->CreateZExtOrTrunc(get_next_i64(), param_ir_type),
               ir_builder_->CreateLShr(llvm::ConstantInt::get(param_ir_type, ~0),
                                       leading_zeros));
-          llvm::ReplaceInstWithInst(
-              body_block->getTerminator(),
-              llvm::BranchInst::Create(out_block, body_block,
-                                       ir_builder_->CreateICmpULT(random, r)));
+          llvm::BranchInst::Create(out_block, body_block,
+                                   ir_builder_->CreateICmpULT(random, r),
+                                   body_block);
           SetToFirstInsertPoint(out_block, ir_builder_);
           return ir_builder_->CreateAdd(
               p, ir_builder_->CreateSelect(
@@ -643,6 +686,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
@@ -716,6 +760,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                                 ElementwiseSourceIndex(index, *hlo, 2)));
         return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
       };
+    case HloOpcode::kReducePrecision:
+      return [this, hlo, &operand_to_generator](
+                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                            operand_to_generator.at(hlo->operand(0))(
+                                ElementwiseSourceIndex(index, *hlo, 0)));
+        return EmitReducePrecision(hlo, operand_value);
+      };
     case HloOpcode::kConcatenate:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index target_index) -> StatusOr<llvm::Value*> {
@@ -739,11 +791,11 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
           const HloInstruction* operand = hlo->operand(operand_idx);
           auto true_block = llvm_ir::CreateBasicBlock(
               exit_block, tensorflow::strings::StrCat(
-                              "concat_index_from_operand", operand_idx),
+                      "concat_index_from_operand", operand_idx),
               ir_builder_);
           auto false_block = llvm_ir::CreateBasicBlock(
               exit_block, tensorflow::strings::StrCat(
-                              "concat_index_not_from_operand", operand_idx),
+                      "concat_index_not_from_operand", operand_idx),
               ir_builder_);
           auto concat_dim_size =
               llvm::ConstantInt::get(source_index[concat_dim]->getType(),
@@ -803,9 +855,20 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         IrArray::Index sliced_index(index.size());
         for (int i = 0; i < index.size(); ++i) {
-          sliced_index[i] = ir_builder_->CreateAdd(
-              index[i], llvm::ConstantInt::get(index[i]->getType(),
-                                               hlo->slice_starts(i)));
+          int64 stride = hlo->slice_stride(i);
+          if (stride != 1) {
+            sliced_index[i] = ir_builder_->CreateAdd(
+                ir_builder_->CreateMul(
+                    index[i], llvm::ConstantInt::get(index[i]->getType(),
+                                                     stride)),
+                llvm::ConstantInt::get(index[i]->getType(),
+                                       hlo->slice_starts(i)));
+          } else {
+            sliced_index[i] = ir_builder_->CreateAdd(
+                    index[i],
+                    llvm::ConstantInt::get(index[i]->getType(),
+                                           hlo->slice_starts(i)));
+          }
         }
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };

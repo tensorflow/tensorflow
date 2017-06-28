@@ -21,13 +21,13 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base as layers_base
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.util import nest
 
 
@@ -60,12 +60,12 @@ class BasicDecoder(decoder.Decoder):
     Raises:
       TypeError: if `cell`, `helper` or `output_layer` have an incorrect type.
     """
-    if not isinstance(cell, core_rnn_cell.RNNCell):
+    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
     if not isinstance(helper, helper_py.Helper):
       raise TypeError("helper must be a Helper, received: %s" % type(helper))
     if (output_layer is not None
-        and not isinstance(output_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(output_layer, layers_base.Layer)):
       raise TypeError(
           "output_layer must be a Layer, received: %s" % type(output_layer))
     self._cell = cell

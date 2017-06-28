@@ -29,11 +29,18 @@ class LayoutOptimizer : public GraphOptimizer {
 
   string name() const override { return "layout"; };
 
+  // This is for testing only.
+  void set_num_gpus(int num_gpus) { num_gpus_ = num_gpus; };
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
+
+ private:
+  Status InferOutputShapes(GrapplerItem* item);
+  int num_gpus_ = 0;
 };
 
 }  // end namespace grappler

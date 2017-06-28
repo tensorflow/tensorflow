@@ -102,6 +102,13 @@ backward incompatible ways between minor releases. These include:
     optimizer. This may break code relying on the wrong behavior for
     convergence. We will note such changes in the release notes.
 
+*   **Error messages:** We reserve the right to change the text of error
+    messages. In addition, the type of an error may change unless the type is
+    specified in the documentation. For example, a function that says in some
+    condition it will raise an `InvalidArgument` exception, it will continue to
+    raise `InvalidArgument`, but the human-readable message contents can change.
+
+
 Furthermore, any API methods marked "deprecated" in the 1.0 release can
 be deleted in any subsequent minor release.
 
@@ -111,7 +118,7 @@ Many users of TensorFlow will be saving graphs and trained models to disk for
 later evaluation or more training, often changing versions of TensorFlow in the
 process.  First, following semver, any graph or checkpoint written out with one
 version of TensorFlow can be loaded and evaluated with a later version of
-TensorFlow with the same major release.  However, we will endeavour to preserve
+TensorFlow with the same major release.  However, we will endeavor to preserve
 backwards compatibility even across major releases when possible, so that the
 serialized files are usable over long periods of time.
 

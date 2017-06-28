@@ -31,7 +31,8 @@ message TreeNodeMetadata {
 // Leaves can either hold dense or sparse information.
 message Leaf {
   oneof leaf {
-    // See learning/decision_trees/proto/generic_tree_model.proto?l=133
+    // See third_party/tensorflow/contrib/decision_trees/
+    // proto/generic_tree_model.proto
     // for a description of how vector and sparse_vector might be used.
     Vector vector = 1;
     SparseVector sparse_vector = 2;
@@ -117,9 +118,21 @@ message DecisionTreeMetadata {
   bool is_finalized = 3;
 }
 
+message GrowingMetadata {
+  // Number of trees that we have attempted to build. After pruning, these
+  // trees might have been removed.
+  int64 num_trees_attempted = 1;
+  // Number of layers that we have attempted to build. After pruning, these
+  // layers might have been removed.
+  int64 num_layers_attempted = 2;
+}
+
 // DecisionTreeEnsembleConfig describes an ensemble of decision trees.
 message DecisionTreeEnsembleConfig {
   repeated DecisionTreeConfig trees = 1;
   repeated float tree_weights = 2;
   repeated DecisionTreeMetadata tree_metadata = 3;
+
+  // Metadata that is used during the training.
+  GrowingMetadata growing_metadata = 4;
 }

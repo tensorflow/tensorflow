@@ -1,6 +1,6 @@
 path: "tensorflow.train.ClusterDef"
 tf_class {
-  is_instance: "<class \'tensorflow.core.protobuf.tensorflow_server_pb2.ClusterDef\'>"
+  is_instance: "<class \'tensorflow.core.protobuf.cluster_pb2.ClusterDef\'>"
   is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
   member {
     name: "DESCRIPTOR"

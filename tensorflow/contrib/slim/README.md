@@ -352,7 +352,7 @@ we can both ensure that each layer uses the same values and simplify the code:
 ```
 
 As the example illustrates, the use of arg_scope makes the code cleaner,
-simpler and easier to maintain. Notice that while argument values are specifed
+simpler and easier to maintain. Notice that while argument values are specified
 in the arg_scope, they can be overwritten locally. In particular, while
 the padding argument has been set to 'SAME', the second convolution overrides
 it with the value of 'VALID'.
@@ -836,7 +836,7 @@ with tf.Session() as sess:
   for batch_id in range(num_batches):
     sess.run(names_to_updates.values())
 
-  metric_values = sess.run(name_to_values.values())
+  metric_values = sess.run(names_to_values.values())
   for metric, value in zip(names_to_values.keys(), metric_values):
     print('Metric %s has value: %f' % (metric, value))
 ```

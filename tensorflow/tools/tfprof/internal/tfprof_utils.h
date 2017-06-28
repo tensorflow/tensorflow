@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 
 namespace tensorflow {
@@ -40,7 +41,28 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
 string StringReplace(const string& str, const string& oldsub,
                      const string& newsub);
 
-Status ReadGraphDef(Env* env, const string& fname, GraphDef* graph_def);
+template <typename T>
+Status ReadProtoFile(Env* env, const string& fname, T* proto,
+                     bool binary_first) {
+  string out;
+  Status s = ReadFileToString(env, fname, &out);
+  if (!s.ok()) return s;
+
+  if (binary_first) {
+    if (ReadBinaryProto(tensorflow::Env::Default(), fname, proto).ok()) {
+      return Status();
+    } else if (protobuf::TextFormat::ParseFromString(out, proto)) {
+      return Status();
+    }
+  } else {
+    if (protobuf::TextFormat::ParseFromString(out, proto)) {
+      return Status();
+    } else if (ReadBinaryProto(tensorflow::Env::Default(), fname, proto).ok()) {
+      return Status();
+    }
+  }
+  return errors::InvalidArgument("Cannot parse proto file.");
+}
 
 void PrintHelp();
 

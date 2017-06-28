@@ -30,7 +30,7 @@ using ::testing::HasSubstr;
 class WhileTransformerTest : public HloTestBase {
  protected:
   WhileTransformerTest()
-      : module_(TestName()),
+      : module_(CreateNewModule()),
         induction_variable_shape_(ShapeUtil::MakeShape(S32, {})),
         data_shape_(ShapeUtil::MakeShape(F32, {8})),
         loop_state_shape_(ShapeUtil::MakeTupleShape(
@@ -41,7 +41,7 @@ class WhileTransformerTest : public HloTestBase {
       const int64 tuple_index, const int64 limit) {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(limit)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(limit)));
     auto loop_state = builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
     auto induction_variable =
@@ -64,8 +64,8 @@ class WhileTransformerTest : public HloTestBase {
     auto induction_variable =
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, ind_var_tuple_index));
-    auto inc = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(increment)));
+    auto inc = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(increment)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
     // Update data GTE(data_tuple_index).
@@ -88,12 +88,10 @@ class WhileTransformerTest : public HloTestBase {
                                         const int64 ind_var_tuple_index,
                                         const int64 ind_var_init) {
     auto builder = HloComputation::Builder(TestName() + ".While");
-    auto induction_var_init =
-        builder.AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(ind_var_init)));
-    auto data_init = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
-            {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
+    auto induction_var_init = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(ind_var_init)));
+    auto data_init = builder.AddInstruction(HloInstruction::CreateConstant(
+        Literal::CreateR1<float>({0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
     auto loop_state_init =
         ind_var_tuple_index == 0
             ? builder.AddInstruction(
@@ -102,26 +100,26 @@ class WhileTransformerTest : public HloTestBase {
                   HloInstruction::CreateTuple({data_init, induction_var_init}));
     auto while_hlo = builder.AddInstruction(HloInstruction::CreateWhile(
         loop_state_shape_, condition, body, loop_state_init));
-    module_.AddEntryComputation(builder.Build());
+    module_->AddEntryComputation(builder.Build());
     return while_hlo;
   }
 
   void RunFusionPasses() {
     // Run standard fusion passes.
     EXPECT_TRUE(gpu::GpuInstructionFusion(/*may_duplicate=*/false)
-                    .Run(&module_)
+                    .Run(module_.get())
                     .ValueOrDie());
     EXPECT_TRUE(gpu::GpuInstructionFusion(/*may_duplicate=*/true)
-                    .Run(&module_)
+                    .Run(module_.get())
                     .ValueOrDie());
   }
 
   void RunCopyInsertionPass() {
     CopyInsertion copy_insertion;
-    EXPECT_IS_OK(copy_insertion.Run(&module_).status());
+    EXPECT_IS_OK(copy_insertion.Run(module_.get()).status());
   }
 
-  HloModule module_;
+  std::unique_ptr<HloModule> module_;
   Shape induction_variable_shape_;
   Shape data_shape_;
   Shape loop_state_shape_;
@@ -131,15 +129,15 @@ class WhileTransformerTest : public HloTestBase {
 TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
   // Build computation with induction variable at tuple element 0.
   auto condition =
-      module_.AddEmbeddedComputation(BuildConditionComputation(0, 10));
-  auto body = module_.AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
+      module_->AddEmbeddedComputation(BuildConditionComputation(0, 10));
+  auto body = module_->AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
   auto while_hlo = BuildWhileInstruction(condition, body, 0, 0);
   // Run HLO Optimization passes.
   RunFusionPasses();
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  EXPECT_TRUE(result.ok());
+  ASSERT_TRUE(result.ok());
   // Check results.
   EXPECT_THAT(result.ConsumeValueOrDie(),
               Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
@@ -148,15 +146,15 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
 TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
   // Build computation with induction variable at tuple element 1.
   auto condition =
-      module_.AddEmbeddedComputation(BuildConditionComputation(1, 10));
-  auto body = module_.AddEmbeddedComputation(BuildBodyComputation(1, 0, 1));
+      module_->AddEmbeddedComputation(BuildConditionComputation(1, 10));
+  auto body = module_->AddEmbeddedComputation(BuildBodyComputation(1, 0, 1));
   auto while_hlo = BuildWhileInstruction(condition, body, 1, 0);
   // Run HLO Optimization passes.
   RunFusionPasses();
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  EXPECT_TRUE(result.ok());
+  ASSERT_TRUE(result.ok());
   // Check results.
   EXPECT_THAT(result.ConsumeValueOrDie(),
               Eq(std::tuple<int64, int64, int64>(0, 10, 1)));
@@ -165,15 +163,15 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
 TEST_F(WhileTransformerTest, InvalidLoopLimit) {
   // Build computation with invalid loop limit.
   auto condition =
-      module_.AddEmbeddedComputation(BuildConditionComputation(0, 5));
-  auto body = module_.AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
+      module_->AddEmbeddedComputation(BuildConditionComputation(0, 5));
+  auto body = module_->AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
   auto while_hlo = BuildWhileInstruction(condition, body, 0, 10);
   // Run HLO Optimization passes.
   RunFusionPasses();
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  EXPECT_FALSE(result.ok());
+  ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("Loop start must be less than loop limit."));
 }
@@ -181,18 +179,22 @@ TEST_F(WhileTransformerTest, InvalidLoopLimit) {
 TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
   // Build computation with invalid loop increment.
   auto condition =
-      module_.AddEmbeddedComputation(BuildConditionComputation(0, 10));
-  auto body = module_.AddEmbeddedComputation(BuildBodyComputation(0, 1, -1));
+      module_->AddEmbeddedComputation(BuildConditionComputation(0, 10));
+  auto body = module_->AddEmbeddedComputation(BuildBodyComputation(0, 1, -1));
   auto while_hlo = BuildWhileInstruction(condition, body, 0, 0);
   // Run HLO Optimization passes.
   RunFusionPasses();
   RunCopyInsertionPass();
   // Run WhileTransformer.
   auto result = gpu::CanTransformWhileToFor(while_hlo);
-  EXPECT_FALSE(result.ok());
+  ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().error_message(),
               HasSubstr("Loop increment must greater than zero."));
 }
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

@@ -3,21 +3,31 @@
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
+    "tf_copts",
+)
 
-# To be exported to tensorflow/core:android_srcs.
+# To be exported to tensorflow/core:mobile_srcs.
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         "naming.cc",
         "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
     ],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
 )
 
 cc_library(
@@ -29,12 +39,18 @@ cc_library(
         ":naming",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_header_only_library(
+    name = "tensor_bundle_headers_lib",
+    deps = [
+        ":tensor_bundle",
     ],
 )
 
@@ -47,6 +63,7 @@ cc_library(
 
 cc_test(
     name = "tensor_bundle_test",
+    size = "small",
     srcs = ["tensor_bundle_test.cc"],
     deps = [
         ":tensor_bundle",

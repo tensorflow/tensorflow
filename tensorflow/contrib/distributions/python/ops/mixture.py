@@ -20,9 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import categorical
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -31,6 +28,9 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import categorical
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class Mixture(distribution.Distribution):
@@ -42,6 +42,27 @@ class Mixture(distribution.Distribution):
 
   Methods supported include `log_prob`, `prob`, `mean`, `sample`, and
   `entropy_lower_bound`.
+
+
+  #### Examples
+
+  ```python
+  # Create a mixture of two Gaussians:
+  ds = tf.contrib.distributions
+  mix = 0.3
+  bimix_gauss = ds.Mixture(
+    cat=ds.Categorical(probs=[mix, 1.-mix]),
+    components=[
+      ds.Normal(loc=-1., scale=0.1),
+      ds.Normal(loc=+1., scale=0.5),
+  ])
+
+  # Plot the PDF.
+  import matplotlib.pyplot as plt
+  x = tf.linspace(-2., 3., int(1e4)).eval()
+  plt.plot(x, bimix_gauss.prob(x).eval());
+  ```
+
   """
 
   def __init__(self,

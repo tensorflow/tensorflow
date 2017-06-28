@@ -25,16 +25,13 @@ namespace tensorflow {
 
 namespace functor {
 
-template <typename Device, typename T, typename Tindices, bool ADJ_A,   \
+template <typename Device, typename T, typename Tindices, bool ADJ_A,
           bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor {
   static EIGEN_ALWAYS_INLINE Status Compute(
-      const Device& d,
-      typename TTypes<T>::Matrix out,
+      const Device& d, typename TTypes<T>::Matrix out,
       typename TTypes<Tindices>::ConstMatrix a_indices,
-      typename TTypes<T>::ConstVec a_values,
-      typename TTypes<T>::ConstMatrix b,
-      typename TTypes<T>::Vec scratch);
+      typename TTypes<T>::ConstVec a_values, typename TTypes<T>::ConstMatrix b);
 };
 
 template <typename MATRIX, bool ADJ>

@@ -140,9 +140,9 @@ class ReverseOp : public OpKernel {
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, input.shape(), &output));
 
-#define HANDLE_REVERSE(NDIMS)                                               \
-  case NDIMS:                                                               \
-    HandleReverseCase<Device, T, NDIMS>(context, dims.vec<bool>(), output); \
+#define HANDLE_REVERSE(NDIMS)                                                 \
+  case NDIMS:                                                                 \
+    HandleReverseCase<Device, T, NDIMS>(context, dims.vec<bool>(), output);   \
     return;
 
       switch (input_dims) {
@@ -266,6 +266,7 @@ class ReverseV2Op : public OpKernel {
                               .HostMemory("axis"),           \
                           ReverseV2Op<CPUDevice, T>)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
+TF_CALL_string(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA
@@ -360,7 +361,10 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                               .TypeConstraint<int32>("Tidx") \
                               .HostMemory("axis"),           \
                           ReverseV2Op<SYCLDevice, T>)
+TF_CALL_uint8(REGISTER_SYCL_KERNELS);
+TF_CALL_int8(REGISTER_SYCL_KERNELS);
 TF_CALL_float(REGISTER_SYCL_KERNELS);
+TF_CALL_double(REGISTER_SYCL_KERNELS);
 
 REGISTER_KERNEL_BUILDER(Name("Reverse")
                             .Device(DEVICE_SYCL)
@@ -378,5 +382,4 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .HostMemory("output"),
                         ReverseV2Op<CPUDevice, int32>);
 #endif // TENSORFLOW_USE_SYCL
-
 }  // namespace tensorflow

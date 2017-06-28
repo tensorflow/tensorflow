@@ -43,7 +43,7 @@ VerbsService::Stub::Stub(
     const std::shared_ptr< ::grpc::ChannelInterface>& channel)
     : channel_(channel),
       rpcmethod_GetRemoteAddress_(grpcVerbsService_method_names[0],
-                               ::grpc::RpcMethod::NORMAL_RPC, channel) {}
+                                  ::grpc::RpcMethod::NORMAL_RPC, channel) {}
 
 ::grpc::Status VerbsService::Stub::GetRemoteAddress(
     ::grpc::ClientContext* context, const GetRemoteAddressRequest& request,

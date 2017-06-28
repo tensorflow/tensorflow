@@ -22,6 +22,9 @@ load(
     "if_mkl",)
 
 
+def full_path(relative_paths):
+  return [PACKAGE_NAME + "/" + relative for relative in relative_paths]
+
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
   return [
@@ -109,6 +112,7 @@ def if_not_mobile(a):
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": a,
   })
 
@@ -117,9 +121,24 @@ def if_x86(a):
   return select({
       clean_dep("//tensorflow:linux_x86_64"): a,
       clean_dep("//tensorflow:windows"): a,
+      clean_dep("//tensorflow:windows_msvc"): a,
       "//conditions:default": [],
   })
 
+def if_darwin(a):
+  return select({
+      clean_dep("//tensorflow:darwin"): a,
+      "//conditions:default": [],
+  })
+
+WIN_COPTS = [
+    "/DLANG_CXX11",
+    "/D__VERSION__=\\\"MSVC\\\"",
+    "/DPLATFORM_WINDOWS",
+    "/DTF_COMPILE_LIBRARY",
+    "/DEIGEN_HAS_C99_MATH",
+    "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
+]
 
 # LINT.IfChange
 def tf_copts():
@@ -128,7 +147,7 @@ def tf_copts():
       "-Iexternal/gemmlowp",
       "-Wno-sign-compare",
       "-fno-exceptions",
-  ] + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_android_arm(
+  ] + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
       ["-mfpu=neon"]) + if_x86(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
               "-std=c++11",
@@ -136,14 +155,8 @@ def tf_copts():
               "-O2",
           ],
           clean_dep("//tensorflow:darwin"): [],
-          clean_dep("//tensorflow:windows"): [
-              "/DLANG_CXX11",
-              "/D__VERSION__=\\\"MSVC\\\"",
-              "/DPLATFORM_WINDOWS",
-              "/DTF_COMPILE_LIBRARY",
-              "/DEIGEN_HAS_C99_MATH",
-              "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-          ],
+          clean_dep("//tensorflow:windows"): WIN_COPTS,
+          clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,
           clean_dep("//tensorflow:ios"): ["-std=c++11"],
           "//conditions:default": ["-pthread"]
       }))
@@ -241,7 +254,7 @@ def tf_gen_op_wrapper_cc(name,
 #            hdrs = [ "ops/array_ops_internal.h",
 #                     "ops/math_ops_internal.h" ],
 #            deps = [ ... ])
-# TODO(josh11b): Cleaner approach for hidden ops.
+# TODO(joshl): Cleaner approach for hidden ops.
 def tf_gen_op_wrappers_cc(name,
                           op_lib_names=[],
                           other_srcs=[],
@@ -453,6 +466,29 @@ def tf_cuda_cc_test(name,
       linkopts=linkopts,
       args=args)
 
+def tf_cuda_only_cc_test(name,
+                    srcs=[],
+                    deps=[],
+                    tags=[],
+                    data=[],
+                    size="medium",
+                    linkstatic=0,
+                    args=[],
+                    linkopts=[]):
+  native.cc_test(
+    name="%s%s" % (name, "_gpu"),
+    srcs=srcs,
+    size=size,
+    args=args,
+    copts= _cuda_copts() + tf_copts(),
+    data=data,
+    deps=deps + if_cuda([
+        clean_dep("//tensorflow/core:cuda"),
+        clean_dep("//tensorflow/core:gpu_lib"),
+    ]),
+    linkopts=["-lpthread", "-lm"] + linkopts,
+    linkstatic=linkstatic,
+    tags=tags)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
@@ -965,6 +1001,7 @@ def tf_py_wrap_cc(name,
           clean_dep("//tensorflow:tf_exported_symbols.lds")
       ],
       clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
           clean_dep("//tensorflow:tf_version_script.lds")
@@ -975,6 +1012,7 @@ def tf_py_wrap_cc(name,
           clean_dep("//tensorflow:tf_exported_symbols.lds")
       ],
       clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           clean_dep("//tensorflow:tf_version_script.lds")
       ]

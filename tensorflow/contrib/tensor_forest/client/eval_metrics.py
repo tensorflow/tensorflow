@@ -27,8 +27,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
-INFERENCE_PROB_NAME = prediction_key.PredictionKey.CLASSES
-INFERENCE_PRED_NAME = prediction_key.PredictionKey.PROBABILITIES
+INFERENCE_PROB_NAME = prediction_key.PredictionKey.PROBABILITIES
+INFERENCE_PRED_NAME = prediction_key.PredictionKey.CLASSES
 
 FEATURE_IMPORTANCE_NAME = 'global_feature_importance'
 
@@ -117,7 +117,13 @@ def _recall_at_thresholds(predictions, targets, weights=None):
       weights=weights)
 
 
+def _auc(probs, targets, weights=None):
+  return metric_ops.streaming_auc(array_ops.slice(probs, [0, 1], [-1, 1]),
+                                  targets, weights=weights)
+
+
 _EVAL_METRICS = {
+    'auc': _auc,
     'sigmoid_entropy': _sigmoid_entropy,
     'softmax_entropy': _softmax_entropy,
     'accuracy': _accuracy,
@@ -132,6 +138,7 @@ _EVAL_METRICS = {
 }
 
 _PREDICTION_KEYS = {
+    'auc': INFERENCE_PROB_NAME,
     'sigmoid_entropy': INFERENCE_PROB_NAME,
     'softmax_entropy': INFERENCE_PROB_NAME,
     'accuracy': INFERENCE_PRED_NAME,

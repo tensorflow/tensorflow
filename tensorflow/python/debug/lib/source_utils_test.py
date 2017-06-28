@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import os
 import shutil
 import tempfile
@@ -35,12 +34,15 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+# Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import tf_inspect
 
 
 def line_number_above():
-  return inspect.stack()[1][2] - 1
+  return tf_inspect.stack()[1][2] - 1
 
 
 class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
@@ -52,25 +54,25 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
 
   def testGuessedBaseDirIsProbablyCorrect(self):
-    self.assertEqual(
-        "tensorflow", os.path.basename(source_utils._TENSORFLOW_BASEDIR))
+    self.assertEqual("tensorflow",
+                     os.path.basename(source_utils._TENSORFLOW_BASEDIR))
 
   def testUnitTestFileReturnsFalse(self):
-    self.assertFalse(source_utils._guess_is_tensorflow_py_library(
-        self.curr_file_path))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(self.curr_file_path))
 
   def testSourceUtilModuleReturnsTrue(self):
-    self.assertTrue(source_utils._guess_is_tensorflow_py_library(
-        source_utils.__file__))
+    self.assertTrue(
+        source_utils.guess_is_tensorflow_py_library(source_utils.__file__))
 
   def testFileInPythonKernelsPathReturnsTrue(self):
     x = constant_op.constant(42.0, name="x")
-    self.assertTrue(source_utils._guess_is_tensorflow_py_library(
-        x.op.traceback[-1][0]))
+    self.assertTrue(
+        source_utils.guess_is_tensorflow_py_library(x.op.traceback[-1][0]))
 
   def testNonPythonFileRaisesException(self):
     with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
-      source_utils._guess_is_tensorflow_py_library(
+      source_utils.guess_is_tensorflow_py_library(
           os.path.join(os.path.dirname(self.curr_file_path), "foo.cc"))
 
 
@@ -85,7 +87,7 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
     self.dump_root = self.get_temp_dir()
     self.curr_file_path = os.path.abspath(
-        inspect.getfile(inspect.currentframe()))
+        tf_inspect.getfile(tf_inspect.currentframe()))
 
     # Run a simple TF graph to generate some debug dumps that can be used in
     # source annotation.
@@ -135,27 +137,21 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
     self.assertIn(self.u_init.op.name,
                   source_annotation[self.u_init_line_number])
-    self.assertIn(self.u.op.name,
-                  source_annotation[self.u_line_number])
+    self.assertIn(self.u.op.name, source_annotation[self.u_line_number])
     self.assertIn(self.v_init.op.name,
                   source_annotation[self.v_init_line_number])
-    self.assertIn(self.v.op.name,
-                  source_annotation[self.v_line_number])
-    self.assertIn(self.w.op.name,
-                  source_annotation[self.w_line_number])
+    self.assertIn(self.v.op.name, source_annotation[self.v_line_number])
+    self.assertIn(self.w.op.name, source_annotation[self.w_line_number])
 
     # In the non-stack-top (default) mode, the helper line should be annotated
     # with all the ops as well.
     self.assertIn(self.u_init.op.name,
                   source_annotation[self.helper_line_number])
-    self.assertIn(self.u.op.name,
-                  source_annotation[self.helper_line_number])
+    self.assertIn(self.u.op.name, source_annotation[self.helper_line_number])
     self.assertIn(self.v_init.op.name,
                   source_annotation[self.helper_line_number])
-    self.assertIn(self.v.op.name,
-                  source_annotation[self.helper_line_number])
-    self.assertIn(self.w.op.name,
-                  source_annotation[self.helper_line_number])
+    self.assertIn(self.v.op.name, source_annotation[self.helper_line_number])
+    self.assertIn(self.w.op.name, source_annotation[self.helper_line_number])
 
   def testAnnotateWithStackTopGivesCorrectResult(self):
     source_annotation = source_utils.annotate_source(
@@ -163,14 +159,11 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
     self.assertIn(self.u_init.op.name,
                   source_annotation[self.u_init_line_number])
-    self.assertIn(self.u.op.name,
-                  source_annotation[self.u_line_number])
+    self.assertIn(self.u.op.name, source_annotation[self.u_line_number])
     self.assertIn(self.v_init.op.name,
                   source_annotation[self.v_init_line_number])
-    self.assertIn(self.v.op.name,
-                  source_annotation[self.v_line_number])
-    self.assertIn(self.w.op.name,
-                  source_annotation[self.w_line_number])
+    self.assertIn(self.v.op.name, source_annotation[self.v_line_number])
+    self.assertIn(self.w.op.name, source_annotation[self.w_line_number])
 
     # In the stack-top mode, the helper line should not have been annotated.
     self.assertNotIn(self.helper_line_number, source_annotation)
@@ -182,8 +175,7 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
         min_line=self.u_line_number,
         max_line=self.u_line_number + 1)
 
-    self.assertIn(self.u.op.name,
-                  source_annotation[self.u_line_number])
+    self.assertIn(self.u.op.name, source_annotation[self.u_line_number])
     self.assertNotIn(self.v_line_number, source_annotation)
 
   def testAnnotateDumpedTensorsGivesCorrectResult(self):
@@ -192,26 +184,17 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
     # Note: Constant Tensors u_init and v_init may not get dumped due to
     #   constant-folding.
-    self.assertIn(self.u.name,
-                  source_annotation[self.u_line_number])
-    self.assertIn(self.v.name,
-                  source_annotation[self.v_line_number])
-    self.assertIn(self.w.name,
-                  source_annotation[self.w_line_number])
+    self.assertIn(self.u.name, source_annotation[self.u_line_number])
+    self.assertIn(self.v.name, source_annotation[self.v_line_number])
+    self.assertIn(self.w.name, source_annotation[self.w_line_number])
 
-    self.assertNotIn(self.u.op.name,
-                     source_annotation[self.u_line_number])
-    self.assertNotIn(self.v.op.name,
-                     source_annotation[self.v_line_number])
-    self.assertNotIn(self.w.op.name,
-                     source_annotation[self.w_line_number])
+    self.assertNotIn(self.u.op.name, source_annotation[self.u_line_number])
+    self.assertNotIn(self.v.op.name, source_annotation[self.v_line_number])
+    self.assertNotIn(self.w.op.name, source_annotation[self.w_line_number])
 
-    self.assertIn(self.u.name,
-                  source_annotation[self.helper_line_number])
-    self.assertIn(self.v.name,
-                  source_annotation[self.helper_line_number])
-    self.assertIn(self.w.name,
-                  source_annotation[self.helper_line_number])
+    self.assertIn(self.u.name, source_annotation[self.helper_line_number])
+    self.assertIn(self.v.name, source_annotation[self.helper_line_number])
+    self.assertIn(self.w.name, source_annotation[self.helper_line_number])
 
   def testCallingAnnotateSourceWithoutPythonGraphRaisesException(self):
     self.dump.set_python_graph(None)
@@ -224,8 +207,9 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
     with open(unrelated_source_path, "wt") as source_file:
       source_file.write("print('hello, world')\n")
 
-    self.assertEqual(
-        {}, source_utils.annotate_source(self.dump, unrelated_source_path))
+    self.assertEqual({},
+                     source_utils.annotate_source(self.dump,
+                                                  unrelated_source_path))
 
     # Clean up unrelated source file.
     os.remove(unrelated_source_path)
@@ -238,7 +222,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
     self.dump_root = self.get_temp_dir()
     self.curr_file_path = os.path.abspath(
-        inspect.getfile(inspect.currentframe()))
+        tf_inspect.getfile(tf_inspect.currentframe()))
 
     # Run a simple TF graph to generate some debug dumps that can be used in
     # source annotation.

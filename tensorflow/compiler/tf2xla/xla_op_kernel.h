@@ -148,6 +148,12 @@ class XlaOpKernelContext {
 
   // Variables
 
+  // Sets '*resource' to the resource associated with input `index`.
+  Status GetResourceInput(int index, XlaResource** resource);
+
+  // Sets output 'index' to be a reference to resource 'resource'.
+  void SetResourceOutput(int index, XlaResource* resource);
+
   // Sets `*type` and `*shape` to the current type and shape of a variable's
   // value.
   Status GetVariableTypeAndShape(int index, DataType* type,
@@ -157,17 +163,10 @@ class XlaOpKernelContext {
   // 'index'.
   Status ReadVariableInput(int index, xla::ComputationDataHandle* value);
 
-  // Sets output 'index' to be a reference to variable 'variable_id'. Used
-  // to propagate resource variables through the compilation.
-  void SetVariableOutput(int index, int variable_id);
-
   // Assigns the value `handle` to the variable referenced by input
-  // `variable_index`. Marks the operator as having side effects.
-  Status AssignVariable(int variable_index, DataType type,
+  // `input_index`. Marks the operator as having side effects.
+  Status AssignVariable(int input_index, DataType type,
                         const xla::ComputationDataHandle& handle);
-
-  // Returns a human-readable debug string describing 'variable_index'.
-  string VariableDebugString(int variable_index);
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);
@@ -186,10 +185,9 @@ class XlaOpKernelContext {
   // Returns the underlying OpKernelContext. Use rarely.
   OpKernelContext* op_kernel_context() const { return context_; }
 
-  // Returns the options passed to the XlaCompiler that is being
-  // run. Used for, e.g., While to inherit options needed for nested
-  // computation.
-  const XlaCompiler::Options& GetCompilerOptions() const;
+  // Returns the XlaCompiler that is performing the compilation. Used for, e.g.,
+  // While to compile nested computations.
+  XlaCompiler* compiler() const;
 
   // TODO(phawkins): find a better home for these helpers.
 

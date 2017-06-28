@@ -23,6 +23,8 @@ import collections
 import os
 import time
 
+import six
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -56,7 +58,7 @@ class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
     if not isinstance(features, dict):
       features = {_SINGLE_FEATURE_DEFAULT_NAME: features}
     for name, tensor in features.items():
-      if not isinstance(name, str):
+      if not isinstance(name, six.string_types):
         raise ValueError('feature keys must be strings: {}.'.format(name))
       if not (isinstance(tensor, ops.Tensor)
               or isinstance(tensor, sparse_tensor.SparseTensor)):
@@ -68,7 +70,7 @@ class ServingInputReceiver(collections.namedtuple('ServingInputReceiver',
     if not isinstance(receiver_tensors, dict):
       receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
     for name, tensor in receiver_tensors.items():
-      if not isinstance(name, str):
+      if not isinstance(name, six.string_types):
         raise ValueError(
             'receiver_tensors keys must be strings: {}.'.format(name))
       if not isinstance(tensor, ops.Tensor):
@@ -83,10 +85,9 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
 
-  Creates an input_fn that expects a serialized tf.Example fed into a string
-  placeholder.  The function parses the tf.Example according to the provided
-  feature_spec, and returns all parsed Tensors as features.  This input_fn is
-  for use at serving time, so the labels return value is always None.
+  Creates a serving_input_receiver_fn that expects a serialized tf.Example fed
+  into a string placeholder.  The function parses the tf.Example according to
+  the provided feature_spec, and returns all parsed Tensors as features.
 
   Args:
     feature_spec: a dict of string to `VarLenFeature`/`FixedLenFeature`.

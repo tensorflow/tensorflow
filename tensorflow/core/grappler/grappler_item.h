@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
@@ -42,6 +43,8 @@ struct GrapplerItem {
 
   // Initialization op(s).
   std::vector<string> init_ops;
+  // Expected initialization time in seconds, or 0 if unknown
+  int64 expected_init_time = 0;
 
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;

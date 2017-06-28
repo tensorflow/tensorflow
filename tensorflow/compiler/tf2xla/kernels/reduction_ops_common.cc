@@ -66,13 +66,13 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
                      1, {axes_tensor_shape.num_elements()}, &axes_literal));
 
   VLOG(1) << "data shape: " << data_shape.DebugString();
-  VLOG(1) << "axes      : " << xla::LiteralUtil::ToString(axes_literal);
+  VLOG(1) << "axes      : " << axes_literal.ToString();
 
   gtl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
   std::vector<int64> xla_axes;
   int64 num_elements_reduced = 1LL;
   for (int64 i = 0; i < axes_tensor_shape.num_elements(); ++i) {
-    int32 index = xla::LiteralUtil::Get<int>(axes_literal, {i});
+    int32 index = axes_literal.Get<int>({i});
     OP_REQUIRES(ctx,
                 !(index < -data_shape.dims() || index >= data_shape.dims()),
                 errors::InvalidArgument("Invalid reduction dimension (", index,

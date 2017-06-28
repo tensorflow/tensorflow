@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -60,36 +61,25 @@ namespace xla {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Backend> backend,
-      Backend::CreateBackend(platform, options.number_of_replicas()));
+  BackendOptions backend_options;
+  backend_options.set_platform(platform)
+      .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
+                      Backend::CreateBackend(backend_options));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
   std::unique_ptr<LocalService> service(new LocalService(
-      std::move(backend), std::move(compute_constant_backend)));
+      options, std::move(backend), std::move(compute_constant_backend)));
   return std::move(service);
 }
 
-LocalService::LocalService(std::unique_ptr<Backend> execute_backend,
+LocalService::LocalService(const ServiceOptions& options,
+                           std::unique_ptr<Backend> execute_backend,
                            std::unique_ptr<Backend> compute_constant_backend)
-    : Service(std::move(execute_backend), std::move(compute_constant_backend)) {
+    : Service(options, std::move(execute_backend),
+              std::move(compute_constant_backend)) {
   runs_in_client_process_ = true;
-}
-
-tensorflow::Status LocalService::ResolveArguments(
-    const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs) {
-  TF_ASSIGN_OR_RETURN(std::vector<const Allocation*> arg_allocations,
-                      ResolveAndValidateArguments(
-                          arguments, execute_backend_.get(), device_ordinal));
-  argument_ptrs->resize(arg_allocations.size());
-  for (int i = 0; i < arguments.size(); ++i) {
-    const Allocation& allocation = *arg_allocations[i];
-    (*argument_ptrs)[i] = allocation.device_memory();
-  }
-  return tensorflow::Status::OK();
 }
 
 namespace {
@@ -102,12 +92,11 @@ int64 RequiredSpace(const Shape& shape, bool allocate_space_for_deep_copy,
   // TODO(b/33492279) remove once no devices represent result tuples as
   // contiguous buffers.
   if (allocate_space_for_deep_copy) {
-    TF_CHECK_OK(ShapeUtil::ForEachSubshape(
+    ShapeUtil::ForEachSubshape(
         shape, [&size, transfer_manager](const Shape& subshape,
                                          const ShapeIndex& /*index*/) {
           size += transfer_manager->GetByteSizeRequirement(subshape);
-          return tensorflow::Status::OK();
-        }));
+        });
   }
   return size;
 }
@@ -126,70 +115,6 @@ StatusOr<GlobalDataHandle> LocalService::AllocateBufferOnDevice(
       execute_backend_.get(), device_ordinal, allocation, shape,
       tensorflow::strings::StrCat("AllocateBufferOnDevice of size ",
                                   allocation_size));
-}
-
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-LocalService::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
-        computations,
-    const AotCompilationOptions& options) {
-  std::vector<std::unique_ptr<HloModule>> hlo_modules;
-  std::vector<std::unique_ptr<HloModuleConfig>> module_configs;
-  for (const AheadOfTimeComputationInstance& instance : computations) {
-    TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
-                        computation_tracker_.Resolve(instance.computation));
-    VersionedComputationHandle versioned_handle =
-        user_computation->GetVersionedHandle();
-
-    // Dump computation proto state if flag is set.
-    legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-    const string& directory_path = flags->xla_dump_computations_to;
-    if (!directory_path.empty()) {
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<SessionModule> session_module,
-          computation_tracker_.SnapshotComputation(versioned_handle.handle));
-      string filename = tensorflow::strings::StrCat(
-          "computation_", versioned_handle.handle.handle(), "__",
-          session_module->entry().name(), "__version_",
-          versioned_handle.version);
-      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
-                                                     *session_module));
-    }
-
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                        computation_tracker_.BuildHloModule(
-                            versioned_handle,
-                            /*include_unreachable_instructions=*/true));
-    hlo_modules.push_back(std::move(hlo_module));
-
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<const ProgramShape> program_shape,
-        user_computation->ComputeProgramShape(versioned_handle.version));
-
-    module_configs.push_back(MakeUnique<HloModuleConfig>(*program_shape));
-    HloModuleConfig* module_config = module_configs.back().get();
-    auto* computation_layout =
-        module_config->mutable_entry_computation_layout();
-    if (flags->xla_hlo_profile) {
-      module_config->enable_hlo_profiling(true);
-    }
-    for (int i = 0; i < instance.argument_layouts.size(); ++i) {
-      const Shape& argument_layout = *instance.argument_layouts[i];
-      if (ShapeUtil::IsTuple(argument_layout)) {
-        return Unimplemented("tuple arguments not supported yet");
-      }
-      TF_RETURN_IF_ERROR(
-          computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-              argument_layout));
-    }
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            *instance.result_layout));
-  }
-
-  return execute_backend_->compiler()->CompileAheadOfTime(
-      std::move(hlo_modules), std::move(module_configs), MakeHloDumper(),
-      options);
 }
 
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
@@ -229,7 +154,12 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   // Construct computation layout from the argument layouts.
   auto module_config = MakeUnique<HloModuleConfig>(*program_shape);
   module_config->set_has_hybrid_result(has_hybrid_result);
-  module_config->set_replica_count(execute_backend_->Replicas().size());
+  module_config->set_replica_count(options_.number_of_replicas());
+  module_config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  if (execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
+    module_config->set_intra_op_parallelism_threads(
+        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+  }
   legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
   if (flags->xla_hlo_profile) {
     module_config->enable_hlo_profiling(true);

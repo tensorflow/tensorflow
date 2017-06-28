@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/compiler/xla/legacy_flags/hlo_pass_pipeline_flags.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -42,11 +41,16 @@ void DumpModule(const Compiler::HloDumper& dumper_, const HloModule& module,
 StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   run_called_ = true;
 
-  legacy_flags::HloPassPipelineFlags* flags =
-      legacy_flags::GetHloPassPipelineFlags();
-  std::vector<string> tmp =
-      tensorflow::str_util::Split(flags->xla_disable_hlo_passes, ',');
-  tensorflow::gtl::FlatSet<string> disabled_passes(tmp.begin(), tmp.end());
+  VLOG(1) << "Running HLO pass pipeline " << name();
+
+  auto repeated_field =
+      module->config().debug_options().xla_disable_hlo_passes();
+  tensorflow::gtl::FlatSet<string> disabled_passes(repeated_field.begin(),
+                                                   repeated_field.end());
+  if (!disabled_passes.empty()) {
+    VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
+            << tensorflow::str_util::Join(disabled_passes, ", ");
+  }
 
   auto run_invariant_checkers = [this, module]() -> Status {
     for (auto& invariant_checker : invariant_checkers_) {
@@ -60,10 +64,13 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   bool changed = false;
   string message;
   for (auto& pass : passes_) {
-    if (!disabled_passes.empty() &&
-        disabled_passes.count(pass->name().ToString()) > 0) {
+    if (disabled_passes.count(pass->name().ToString()) > 0) {
+      VLOG(1) << "  Skipping HLO pass " << pass->name()
+              << ", disabled by --xla_disable_hlo_passes";
       continue;
     }
+
+    VLOG(1) << "  HLO pass " << pass->name();
 
     // Emit label containing: "after foo-pass, before bar-pass".
     message.clear();

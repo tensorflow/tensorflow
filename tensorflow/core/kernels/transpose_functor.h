@@ -101,6 +101,27 @@ inline void ReduceTransposeDimensions(const TensorShape& shape,
   }
 }
 
+// If all non-singleton dimensions remain in ascending order, the shuffled
+// singletons can be transposed by a reshape, saving a memory allocation & copy.
+// |permutation| must be a permutation of {0, .., input_shape.dims() - 1}.
+// That is, for all i, 0 <= perm[i] < input_shape.dims().
+// In practice, this is checked in TransposeOp::Compute prior to calling this
+// function, and the function sits here to facilitate unit testing.
+inline bool NonSingletonDimensionsAlign(const TensorShape& input_shape,
+                                        const std::vector<int32>& permutation) {
+  int last_nonsingleton_perm_dim = -1;
+  for (int perm_dim : permutation) {
+    if (input_shape.dim_size(perm_dim) == 1) {
+      continue;
+    }
+    if (perm_dim < last_nonsingleton_perm_dim) {
+      return false;
+    }
+    last_nonsingleton_perm_dim = perm_dim;
+  }
+  return true;
+}
+
 // Device-specific naive implementation for transpose.
 template <typename Device, typename T>
 void TransposeSimple(const Device& d, const Tensor& in,
@@ -111,6 +132,13 @@ template <typename Device, typename T, int NDIMS>
 void TransposeUsingEigen(const Device& d, const Tensor& in,
                          const gtl::ArraySlice<int32> perm, Tensor* out);
 
+
+#ifdef TENSORFLOW_USE_SYCL
+// For SYCL lets always go through Eigen
+template <typename Device, typename T>
+void TransposeSYCL(const Device& d, const Tensor& in,
+                   const gtl::ArraySlice<int32> perm, Tensor* out);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace internal
 
 template <typename Device, typename T>

@@ -19,11 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 from tensorflow.tools.api.lib import api_objects_pb2
-
 
 # Following object need to be handled individually.
 _CORNER_CASES = {
@@ -47,7 +46,7 @@ def _SanitizedArgSpec(obj):
     string, a string representation of the argspec.
   """
   output_string = ''
-  unsanitized_arg_spec = inspect.getargspec(obj)
+  unsanitized_arg_spec = tf_inspect.getargspec(obj)
 
   for clean_attr in ('args', 'varargs', 'keywords'):
     output_string += '%s=%s, ' % (clean_attr,
@@ -57,7 +56,8 @@ def _SanitizedArgSpec(obj):
     sanitized_defaults = []
     for val in unsanitized_arg_spec.defaults:
       str_val = str(val)
-      if ' object at 0x' in str_val:
+      # Sanitize argspecs that have hex code in them.
+      if ' at 0x' in str_val:
         sanitized_defaults.append('%s instance>' % str_val.split(' at ')[0])
       else:
         sanitized_defaults.append(str_val)
@@ -76,7 +76,7 @@ def _SanitizedMRO(obj):
   Based on many parameters like python version, OS, protobuf implementation
   or changes in google core libraries the list of superclasses of a class
   can change. We only return the first non-TF class to be robust to non API
-  affecting changes. The Method Resolution Order returned by inspect.getmro
+  affecting changes. The Method Resolution Order returned by `tf_inspect.getmro`
   is still maintained in the return value.
 
   Args:
@@ -86,10 +86,16 @@ def _SanitizedMRO(obj):
     list of strings, string representation of the class names.
   """
   return_list = []
-  for cls in inspect.getmro(obj):
+  for cls in tf_inspect.getmro(obj):
     str_repr = str(cls)
     return_list.append(str_repr)
     if 'tensorflow' not in str_repr:
+      break
+
+    # Hack - tensorflow.test.StubOutForTesting may or may not be type <object>
+    # depending on the environment. To avoid inconsistency, break after we add
+    # StubOutForTesting to the return_list.
+    if 'StubOutForTesting' in str_repr:
       break
 
   return return_list
@@ -114,8 +120,9 @@ class PythonObjectToProtoVisitor(object):
     # A small helper method to construct members(children) protos.
     def _AddMember(member_name, member_obj, proto):
       """Add the child object to the object being constructed."""
+      _, member_obj = tf_decorator.unwrap(member_obj)
       if member_name == '__init__' or not member_name.startswith('_'):
-        if inspect.isroutine(member_obj):
+        if tf_inspect.isroutine(member_obj):
           new_method = proto.member_method.add()
           new_method.name = member_name
           # If member_obj is a python builtin, there is no way to get its
@@ -132,7 +139,7 @@ class PythonObjectToProtoVisitor(object):
 
     if path not in _CORNER_CASES or parent_corner_cases:
       # Decide if we have a module or a class.
-      if inspect.ismodule(parent):
+      if tf_inspect.ismodule(parent):
         # Create a module object.
         module_obj = api_objects_pb2.TFAPIModule()
         for name, child in children:
@@ -146,7 +153,7 @@ class PythonObjectToProtoVisitor(object):
         # Store the constructed module object.
         self._protos[lib_path] = api_objects_pb2.TFAPIObject(
             path=lib_path, tf_module=module_obj)
-      elif inspect.isclass(parent):
+      elif tf_inspect.isclass(parent):
         # Construct a class.
         class_obj = api_objects_pb2.TFAPIClass()
         class_obj.is_instance.extend(_SanitizedMRO(parent))

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -27,7 +28,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver
-from tensorflow.python.training import training as train
+
 
 __all__ = [
     "load_checkpoint", "load_variable", "list_variables", "init_from_checkpoint"
@@ -55,18 +56,18 @@ def load_checkpoint(ckpt_dir_or_file):
   if filename is None:
     raise ValueError("Couldn't find 'checkpoint' file or checkpoints in "
                      "given directory %s" % ckpt_dir_or_file)
-  return train.NewCheckpointReader(filename)
+  return pywrap_tensorflow.NewCheckpointReader(filename)
 
 
 def load_variable(ckpt_dir_or_file, name):
-  """Returns a tensor with the contents of the given variable in the checkpoint.
+  """Returns the tensor value of the given variable in the checkpoint.
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
-    name: Name of the tensor to return.
+    name: Name of the variable to return.
 
   Returns:
-    `Tensor` object.
+    A numpy `ndarray` with a copy of the value of this variable.
   """
   # TODO(b/29227106): Fix this in the right place and remove this.
   if name.endswith(":0"):
@@ -210,9 +211,8 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
       else:
         var_name = ",".join([v.name for v in var])
       _set_variable_or_list_initializer(var, ckpt_file, tensor_name_in_ckpt)
-      logging.info("Initialize variable %s from checkpoint %s with %s" % (
-          var_name, ckpt_dir_or_file, tensor_name_in_ckpt
-      ))
+      logging.info("Initialize variable %s from checkpoint %s with %s",
+                   var_name, ckpt_dir_or_file, tensor_name_in_ckpt)
     else:
       scopes = ""
       # TODO(vihanjain): Support list of 'current_var_or_name' here.
@@ -227,7 +227,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
       # and create variable to variable mapping.
       scope_variables = set()
       for var_name in store_vars:
-        if var_name.startswith(scopes):
+        if not scopes or var_name.startswith(scopes + "/"):
           # Consume /part_ if partitioned variable.
           if "/part_" in var_name:
             var_name = var_name[:var_name.index("/part_")]
@@ -250,9 +250,8 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
         if var is None:
           var = _collect_partitioned_variable(var_name, store_vars)
         _set_variable_or_list_initializer(var, ckpt_file, full_tensor_name)
-        logging.info("Initialize variable %s from checkpoint %s with %s" % (
-            var_name, ckpt_dir_or_file, full_tensor_name
-        ))
+        logging.info("Initialize variable %s from checkpoint %s with %s",
+                     var_name, ckpt_dir_or_file, full_tensor_name)
 
 
 def _get_checkpoint_filename(ckpt_dir_or_file):

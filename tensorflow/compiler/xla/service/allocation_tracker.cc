@@ -64,8 +64,9 @@ GlobalDataHandle AllocationTracker::RegisterInternal(
     auto& allocation = FindOrDie(handle_to_allocation_, handle);
     int ref_count = allocation->ref_count();
     CHECK_GT(ref_count, 0);
-    VLOG(2) << "ref_count: " << ref_count << " -> " << ref_count + 1;
-    allocation->increment_ref_count();
+    VLOG(2) << "ref_count: " << ref_count << " -> " <<
+            (ref_count + initial_ref_count);
+    allocation->increment_ref_count(initial_ref_count);
   } else {
     handle = next_handle_++;
     VLOG(2) << "ref_count: " << initial_ref_count;
@@ -170,6 +171,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
           executor, allocation->device_memory(), allocation->shape()));
 
   std::vector<GlobalDataHandle> element_handles;
+  element_handles.reserve(element_bases.size());
   for (int i = 0; i < element_bases.size(); ++i) {
     element_handles.push_back(RegisterInternal(
         allocation->backend(), allocation->device_ordinal(), element_bases[i],

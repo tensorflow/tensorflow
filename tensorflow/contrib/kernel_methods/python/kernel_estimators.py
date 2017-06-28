@@ -176,7 +176,7 @@ class _KernelEstimator(estimator.Estimator):
         "head": head,
         _FEATURE_COLUMNS: feature_columns or [],
         _OPTIMIZER: optimizer,
-        _KERNEL_MAPPERS: kernel_mappers
+        _KERNEL_MAPPERS: kernel_mappers,
     }
     super(_KernelEstimator, self).__init__(
         model_fn=_kernel_model_fn,
@@ -303,6 +303,7 @@ class KernelLinearClassifier(_KernelEstimator):
         weight_column_name=weight_column_name,
         head=head_lib.multi_class_head(
             n_classes=n_classes, weight_column_name=weight_column_name),
+        optimizer=optimizer,
         kernel_mappers=kernel_mappers,
         config=config)
 

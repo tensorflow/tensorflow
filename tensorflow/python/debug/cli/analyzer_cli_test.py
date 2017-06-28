@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import os
 import shutil
 import tempfile
@@ -41,10 +40,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
+from tensorflow.python.util import tf_inspect
 
 
 def line_number_above():
-  return inspect.stack()[1][2] - 1
+  return tf_inspect.stack()[1][2] - 1
 
 
 def parse_op_and_node(line):
@@ -498,12 +498,13 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
     cls._curr_file_path = os.path.abspath(
-        inspect.getfile(inspect.currentframe()))
+        tf_inspect.getfile(tf_inspect.currentframe()))
 
     cls._sess = session.Session()
     with cls._sess as sess:
@@ -1461,7 +1462,8 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 

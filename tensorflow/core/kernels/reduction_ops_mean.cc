@@ -54,6 +54,7 @@ TF_CALL_complex128(REGISTER_GPU_KERNELS);
           .HostMemory("reduction_indices"), \
       ReductionOp<SYCLDevice, type, Eigen::internal::MeanReducer<type>>);
 REGISTER_SYCL_KERNELS(float);
+REGISTER_SYCL_KERNELS(double);
 #undef REGISTER_SYCL_KERNELS
 #endif // TENSORFLOW_USE_SYCL
 

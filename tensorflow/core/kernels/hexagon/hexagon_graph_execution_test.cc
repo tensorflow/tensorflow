@@ -35,6 +35,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -45,8 +46,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 
 namespace tensorflow {
 
-using ByteArray = IRemoteFusedGraphExecutor::ByteArray;
-using ConstByteArray = IRemoteFusedGraphExecutor::ConstByteArray;
+using ByteArray = HexagonControlWrapper::ByteArray;
 
 constexpr const char* const IMAGE_FILENAME = "/data/local/tmp/img_299x299.bmp";
 constexpr const char* const MODEL_FILENAME =
@@ -86,8 +86,7 @@ static void DumpTop10Results(const int byte_size,
       10 /* show top_n results */);
 }
 
-static void DumpTop10Results(
-    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs) {
+static void DumpTop10Results(const std::vector<ByteArray>& outputs) {
   CHECK(outputs.size() == 1);
   const int byte_size = std::get<1>(outputs.at(0));
   const float* float_array =
@@ -95,9 +94,8 @@ static void DumpTop10Results(
   DumpTop10Results(byte_size, float_array);
 }
 
-static void CheckFirstResult(
-    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs,
-    const int expected_first_id) {
+static void CheckFirstResult(const std::vector<ByteArray>& outputs,
+                             const int expected_first_id) {
   EXPECT_GE(outputs.size(), 1);
   const int byte_size = std::get<1>(outputs.at(0));
   const int element_count = byte_size / sizeof(float);
@@ -239,7 +237,7 @@ static void RunInferenceByHexagonControlWrapper(
   }
 
   // 5-1. Read output node's outputs
-  std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
+  std::vector<ByteArray> outputs;
   hexagon_control_wrapper.ReadOutputNode("softmax", &outputs);
 
   // 5-2. Dump results
@@ -268,8 +266,7 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
   session_options.env = Env::Default();
   std::unique_ptr<Session> session =
       std::unique_ptr<Session>(NewSession(session_options));
-  Status status = session->Create(fused_graph_def);
-  ASSERT_TRUE(status.ok());
+  TF_ASSERT_OK(session->Create(fused_graph_def));
 
   // Setup session arguments
   RunOptions run_options;
@@ -283,9 +280,8 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
 
   LOG(INFO) << "Run graph";
   // Run inference with all node as output
-  status = session->Run(run_options, input_tensors, output_node_names, {},
-                        &output_tensors, &run_metadata);
-  ASSERT_TRUE(status.ok());
+  TF_ASSERT_OK(session->Run(run_options, input_tensors, output_node_names, {},
+                            &output_tensors, &run_metadata));
   ASSERT_EQ(1, output_tensors.size());
   const Tensor& output_tensor = output_tensors.at(0);
   LOG(INFO) << "Output byte size = " << output_tensor.TotalBytes();

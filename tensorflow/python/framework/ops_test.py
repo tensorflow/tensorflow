@@ -18,7 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+import weakref
+
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import types_pb2
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -31,6 +37,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_ops_2
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resources
@@ -350,6 +357,32 @@ class OperationTest(test_util.TensorFlowTestCase):
     op = ops.Operation(
         ops._NodeDef("noop", "op1"), ops.Graph(), [], [dtypes.float32])
     self.assertEqual("<tf.Operation 'op1' type=noop>", repr(op))
+
+  def testGetAttr(self):
+    list_value = attr_value_pb2.AttrValue.ListValue()
+    list_value.type.append(types_pb2.DT_STRING)
+    list_value.type.append(types_pb2.DT_DOUBLE)
+    op = ops.Operation(
+        ops._NodeDef(
+            "noop",
+            "op1",
+            attrs={
+                "value": attr_value_pb2.AttrValue(i=32),
+                "dtype": attr_value_pb2.AttrValue(type=types_pb2.DT_INT32),
+                "list": attr_value_pb2.AttrValue(list=list_value)
+            }), ops.Graph(), [], [dtypes.int32])
+    self.assertEqual(32, op.get_attr("value"))
+
+    d = op.get_attr("dtype")
+    # First check that d is a DType, because the assertEquals will
+    # work no matter what since DType overrides __eq__
+    self.assertIsInstance(d, dtypes.DType)
+    self.assertEqual(dtypes.int32, d)
+
+    l = op.get_attr("list")
+    for x in l:
+      self.assertIsInstance(x, dtypes.DType)
+    self.assertEqual([dtypes.string, dtypes.double], l)
 
 
 class CreateOpTest(test_util.TensorFlowTestCase):
@@ -860,6 +893,15 @@ class ObjectWithName(object):
 
 class CollectionTest(test_util.TensorFlowTestCase):
 
+  def test_get_collections(self):
+    g = ops.Graph()
+    self.assertSequenceEqual(g.collections, [])
+    g.add_to_collection("key", 12)
+    g.add_to_collection("key", 15)
+    self.assertSequenceEqual(g.collections, ["key"])
+    g.add_to_collection("other", "foo")
+    self.assertSequenceEqual(sorted(g.collections), ["key", "other"])
+
   def test_add_to_collection(self):
     g = ops.Graph()
     g.add_to_collection("key", 12)
@@ -1021,18 +1063,28 @@ class ComparisonTest(test_util.TensorFlowTestCase):
 class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
-    g = ops.Graph()
-    a = _apply_op(g, "const", [], [dtypes.float32])
-    b = _apply_op(g, "const", [], [dtypes.float32])
-    with g.control_dependencies([a]):
-      c = _apply_op(g, "const", [], [dtypes.float32])
-      d = _apply_op(g, "identity", [b], [dtypes.float32])
-      e = _apply_op(g, "identity", [c], [dtypes.float32])
+    ops._USE_C_API = True
+    try:
+      g = ops.Graph()
+      with g.as_default():
+        # Creating unregistered ops with _apply_op() doesn't work with the C API
+        # TODO(skyewm): address this more consistently. Possible solutions are
+        # to use registered ops in all tests, create a way to register ops in
+        # Python tests, or conditionally disable the op registration check in
+        # the C API.
+        a = constant_op.constant(1.0)
+        b = constant_op.constant(1.0)
+        with g.control_dependencies([a]):
+          c = constant_op.constant(1.0)
+          d = array_ops.identity(b)
+          e = array_ops.identity(c)
 
-    self.assertEqual(c.op.control_inputs, [a.op])
-    self.assertEqual(d.op.control_inputs, [a.op])
-    # e should be dominated by c.
-    self.assertEqual(e.op.control_inputs, [])
+      self.assertEqual(c.op.control_inputs, [a.op])
+      self.assertEqual(d.op.control_inputs, [a.op])
+      # e should be dominated by c.
+      self.assertEqual(e.op.control_inputs, [])
+    finally:
+      ops._USE_C_API = False
 
   def testBasicWithConversion(self):
     g = ops.Graph()
@@ -1297,6 +1349,32 @@ class GraphTest(test_util.TensorFlowTestCase):
     self.assertEqual(a, g.as_graph_element(ConvertibleObj()))
     with self.assertRaises(TypeError):
       g.as_graph_element(NonConvertibleObj())
+
+  # Regression test against creating custom __del__ functions in classes
+  # involved in cyclic references, e.g. Graph and Operation. (Python won't gc
+  # cycles that require calling a __del__ method, because the __del__ method can
+  # theoretically increase the object's refcount to "save" it from gc, and any
+  # already-deleted objects in the cycle would have be to restored.)
+  def testGarbageCollected(self):
+    # Create a graph we can delete and a weak reference to monitor if it's gc'd
+    g = ops.Graph()
+    g_ref = weakref.ref(g)
+    # Create some ops
+    with g.as_default():
+      a = constant_op.constant(2.0)
+      b = constant_op.constant(3.0)
+      c = math_ops.add(a, b)
+    # Create a session we can delete
+    with session.Session(graph=g) as sess:
+      sess.run(c)
+    # Delete all references and trigger gc
+    del g
+    del a
+    del b
+    del c
+    del sess
+    gc.collect()
+    self.assertIsNone(g_ref())
 
 
 class AttrScopeTest(test_util.TensorFlowTestCase):
@@ -1671,6 +1749,27 @@ class NameScopeTest(test_util.TensorFlowTestCase):
           self.assertEqual("scope1/scope2", g.get_name_scope())
         self.assertEqual("scope1", g.get_name_scope())
       self.assertEqual("", g.get_name_scope())
+
+
+class TracebackTest(test_util.TensorFlowTestCase):
+
+  def testTracebackWithStartLines(self):
+    with self.test_session() as sess:
+      a = constant_op.constant(2.0)
+      sess.run(
+          a,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE))
+      self.assertTrue(sess.graph.get_operations())
+
+      # Tests that traceback_with_start_lines is the same as traceback
+      # but includes one more element at the end.
+      for op in sess.graph.get_operations():
+        self.assertEquals(len(op.traceback), len(op.traceback_with_start_lines))
+        for frame, frame_with_start_line in zip(
+            op.traceback, op.traceback_with_start_lines):
+          self.assertEquals(5, len(frame_with_start_line))
+          self.assertEquals(frame, frame_with_start_line[:-1])
 
 
 if __name__ == "__main__":

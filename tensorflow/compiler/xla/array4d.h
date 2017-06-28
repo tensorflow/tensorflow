@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <string>
@@ -54,21 +55,21 @@ namespace xla {
 template <typename T>
 class Array4D {
  public:
-  // Creates a 4D array, unitialized values.
+  // Creates a 4D array, uninitialized values.
   Array4D(int64 planes, int64 depth, int64 height, int64 width)
       : planes_(planes),
         depth_(depth),
         height_(height),
         width_(width),
-        values_(planes * depth * height * width) {}
+        values_(new T[planes * depth * height * width]) {
+    Fill(T());
+  }
 
-  // Creates a 4D array, initalized to value.
+  // Creates a 4D array, initialized to value.
   Array4D(int64 planes, int64 depth, int64 height, int64 width, T value)
-      : planes_(planes),
-        depth_(depth),
-        height_(height),
-        width_(width),
-        values_(planes * depth * height * width, value) {}
+      : Array4D(planes, depth, height, width) {
+    Fill(value);
+  }
 
   // Creates a 4D array, filled with values.
   //
@@ -111,6 +112,23 @@ class Array4D {
     }
   }
 
+  Array4D(const Array4D<T>& other)
+      : Array4D(other.planes(), other.depth(), other.height(), other.width()) {
+    std::copy(&other.values_[0], &other.values_[0] + num_elements(),
+              &values_[0]);
+  }
+
+  Array4D<T>& operator=(const Array4D<T>& other) {
+    planes_ = other.planes();
+    depth_ = other.depth();
+    height_ = other.height();
+    width_ = other.width();
+    values_.reset(new T[num_elements()]);
+    std::copy(&other.values_[0], &other.values_[0] + num_elements(),
+              &values_[0]);
+    return *this;
+  }
+
   T& operator()(int64 plane, int64 depth, int64 height, int64 width) {
     CHECK_LT(plane, planes_);
     CHECK_LT(depth, depth_);
@@ -135,24 +153,24 @@ class Array4D {
   int64 n3() const { return height_; }
   int64 n2() const { return depth_; }
   int64 n1() const { return planes_; }
-  int64 num_elements() const { return values_.size(); }
+  int64 num_elements() const { return width_ * height_ * depth_ * planes_; }
 
   // Sets all the values in the array to values.
   template <typename Container = std::initializer_list<T>>
   void SetValues(const Container& container) {
     CHECK_EQ(std::distance(std::begin(container), std::end(container)),
              num_elements());
-    values_.assign(std::begin(container), std::end(container));
+    std::copy(std::begin(container), std::end(container), &values_[0]);
   }
 
   // Fills the array with the given value.
   void Fill(const T& value) {
-    std::fill(values_.begin(), values_.end(), value);
+    std::fill(&values_[0], &values_[0] + num_elements(), value);
   }
 
   // Fills the array with iota.
   void FillIota(const T& value) {
-    std::iota(values_.begin(), values_.end(), value);
+    std::iota(&values_[0], &values_[0] + num_elements(), value);
   }
 
   // Fills the array with random variable with a deviation of value and a mean
@@ -162,8 +180,8 @@ class Array4D {
     std::mt19937 g(seed);
     std::normal_distribution<double> distribution(mean,
                                                   static_cast<double>(value));
-    for (auto& v : values_) {
-      v = static_cast<T>(distribution(g));
+    for (int64 i = 0; i < num_elements(); ++i) {
+      values_[i] = static_cast<T>(distribution(g));
     }
   }
 
@@ -268,7 +286,7 @@ class Array4D {
   int64 depth_;
   int64 height_;
   int64 width_;
-  std::vector<T> values_;
+  std::unique_ptr<T[]> values_;
 };
 
 }  // namespace xla

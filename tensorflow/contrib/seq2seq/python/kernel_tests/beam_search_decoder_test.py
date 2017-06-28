@@ -21,9 +21,9 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import attention_wrapper
 from tensorflow.contrib.seq2seq.python.ops import beam_search_decoder
+from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -41,24 +42,32 @@ class TestGatherTree(test.TestCase):
   """Tests the gather_tree function."""
 
   def test_gather_tree(self):
-    predicted_ids = np.array([[[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-                              [[2, 3, 4], [5, 6, 7],
-                               [8, 9, 10]]]).transpose([1, 0, 2])
-    parent_ids = np.array([
-        [[0, 0, 0], [0, 1, 1], [2, 1, 2]],
-        [[0, 0, 0], [1, 2, 0], [2, 1, 1]],
-    ]).transpose([1, 0, 2])
-    expected_result = np.array([[[2, 2, 2], [6, 5, 6], [7, 8, 9]],
-                                [[2, 4, 4], [7, 6, 6],
-                                 [8, 9, 10]]]).transpose([1, 0, 2])
+    # (max_time = 3, batch_size = 2, beam_width = 3)
 
-    res = beam_search_decoder._gather_tree(
-        ops.convert_to_tensor(predicted_ids), ops.convert_to_tensor(parent_ids))
+    # create (batch_size, max_time, beam_width) matrix and transpose it
+    predicted_ids = np.array(
+        [[[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+         [[2, 3, 4], [5, 6, 7], [8, 9, 10]]],
+        dtype=np.int32).transpose([1, 0, 2])
+    parent_ids = np.array(
+        [[[0, 0, 0], [0, 1, 1], [2, 1, 2]],
+         [[0, 0, 0], [1, 2, 0], [2, 1, 1]]],
+        dtype=np.int32).transpose([1, 0, 2])
+
+    # sequence_lengths is shaped (batch_size = 2, beam_width = 3)
+    sequence_lengths = [[3, 3, 3], [3, 3, 3]]
+
+    expected_result = np.array(
+        [[[2, 2, 2], [6, 5, 6], [7, 8, 9]],
+         [[2, 4, 4], [7, 6, 6], [8, 9, 10]]]).transpose([1, 0, 2])
+
+    res = beam_search_ops.gather_tree(
+        predicted_ids, parent_ids, sequence_lengths)
 
     with self.test_session() as sess:
       res_ = sess.run(res)
 
-    np.testing.assert_array_equal(expected_result, res_)
+    self.assertAllEqual(expected_result, res_)
 
 
 class TestEosMasking(test.TestCase):
@@ -80,18 +89,18 @@ class TestEosMasking(test.TestCase):
       probs = sess.run(probs)
       masked = sess.run(masked)
 
-      np.testing.assert_array_equal(probs[0][0], masked[0][0])
-      np.testing.assert_array_equal(probs[0][2], masked[0][2])
-      np.testing.assert_array_equal(probs[1][0], masked[1][0])
+      self.assertAllEqual(probs[0][0], masked[0][0])
+      self.assertAllEqual(probs[0][2], masked[0][2])
+      self.assertAllEqual(probs[1][0], masked[1][0])
 
-      np.testing.assert_equal(masked[0][1][0], 0)
-      np.testing.assert_equal(masked[1][1][0], 0)
-      np.testing.assert_equal(masked[1][2][0], 0)
+      self.assertEqual(masked[0][1][0], 0)
+      self.assertEqual(masked[1][1][0], 0)
+      self.assertEqual(masked[1][2][0], 0)
 
       for i in range(1, 5):
-        np.testing.assert_approx_equal(masked[0][1][i], np.finfo('float32').min)
-        np.testing.assert_approx_equal(masked[1][1][i], np.finfo('float32').min)
-        np.testing.assert_approx_equal(masked[1][2][i], np.finfo('float32').min)
+        self.assertAllClose(masked[0][1][i], np.finfo('float32').min)
+        self.assertAllClose(masked[1][1][i], np.finfo('float32').min)
+        self.assertAllClose(masked[1][2][i], np.finfo('float32').min)
 
 
 class TestBeamStep(test.TestCase):
@@ -132,6 +141,7 @@ class TestBeamStep(test.TestCase):
     outputs, next_beam_state = beam_search_decoder._beam_search_step(
         time=2,
         logits=logits,
+        next_cell_state=dummy_cell_state,
         beam_state=beam_state,
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
@@ -142,12 +152,11 @@ class TestBeamStep(test.TestCase):
       outputs_, next_state_, state_, log_probs_ = sess.run(
           [outputs, next_beam_state, beam_state, log_probs])
 
-    np.testing.assert_array_equal(outputs_.predicted_ids, [[3, 3, 2], [2, 2,
-                                                                       1]])
-    np.testing.assert_array_equal(outputs_.parent_ids, [[1, 0, 0], [2, 1, 0]])
-    np.testing.assert_array_equal(next_state_.lengths, [[3, 3, 3], [3, 3, 3]])
-    np.testing.assert_array_equal(next_state_.finished, [[False, False, False],
-                                                         [False, False, False]])
+    self.assertAllEqual(outputs_.predicted_ids, [[3, 3, 2], [2, 2, 1]])
+    self.assertAllEqual(outputs_.parent_ids, [[1, 0, 0], [2, 1, 0]])
+    self.assertAllEqual(next_state_.lengths, [[3, 3, 3], [3, 3, 3]])
+    self.assertAllEqual(next_state_.finished, [[False, False, False],
+                                               [False, False, False]])
 
     expected_log_probs = []
     expected_log_probs.append(state_.log_probs[0][[1, 0, 0]])
@@ -158,7 +167,7 @@ class TestBeamStep(test.TestCase):
     expected_log_probs[1][0] += log_probs_[1, 2, 2]
     expected_log_probs[1][1] += log_probs_[1, 1, 2]
     expected_log_probs[1][2] += log_probs_[1, 0, 1]
-    np.testing.assert_array_equal(next_state_.log_probs, expected_log_probs)
+    self.assertAllEqual(next_state_.log_probs, expected_log_probs)
 
   def test_step_with_eos(self):
     dummy_cell_state = array_ops.zeros([self.batch_size, self.beam_width])
@@ -187,6 +196,7 @@ class TestBeamStep(test.TestCase):
     outputs, next_beam_state = beam_search_decoder._beam_search_step(
         time=2,
         logits=logits,
+        next_cell_state=dummy_cell_state,
         beam_state=beam_state,
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
@@ -197,12 +207,11 @@ class TestBeamStep(test.TestCase):
       outputs_, next_state_, state_, log_probs_ = sess.run(
           [outputs, next_beam_state, beam_state, log_probs])
 
-    np.testing.assert_array_equal(outputs_.parent_ids, [[1, 0, 0], [1, 2, 0]])
-    np.testing.assert_array_equal(outputs_.predicted_ids, [[0, 3, 2], [2, 0,
-                                                                       1]])
-    np.testing.assert_array_equal(next_state_.lengths, [[1, 3, 3], [3, 1, 3]])
-    np.testing.assert_array_equal(next_state_.finished, [[True, False, False],
-                                                         [False, True, False]])
+    self.assertAllEqual(outputs_.parent_ids, [[1, 0, 0], [1, 2, 0]])
+    self.assertAllEqual(outputs_.predicted_ids, [[0, 3, 2], [2, 0, 1]])
+    self.assertAllEqual(next_state_.lengths, [[1, 3, 3], [3, 1, 3]])
+    self.assertAllEqual(next_state_.finished, [[True, False, False],
+                                               [False, True, False]])
 
     expected_log_probs = []
     expected_log_probs.append(state_.log_probs[0][[1, 0, 0]])
@@ -211,14 +220,14 @@ class TestBeamStep(test.TestCase):
     expected_log_probs[0][2] += log_probs_[0, 0, 2]
     expected_log_probs[1][0] += log_probs_[1, 1, 2]
     expected_log_probs[1][2] += log_probs_[1, 0, 1]
-    np.testing.assert_array_equal(next_state_.log_probs, expected_log_probs)
+    self.assertAllEqual(next_state_.log_probs, expected_log_probs)
 
 
 class BeamSearchDecoderTest(test.TestCase):
 
   def _testDynamicDecodeRNN(self, time_major, has_attention):
-    encoder_sequence_length = [3, 2, 3, 1, 0]
-    decoder_sequence_length = [2, 0, 1, 2, 3]
+    encoder_sequence_length = np.array([3, 2, 3, 1, 1])
+    decoder_sequence_length = np.array([2, 0, 1, 2, 3])
     batch_size = 5
     decoder_max_time = 4
     input_depth = 7
@@ -233,34 +242,48 @@ class BeamSearchDecoderTest(test.TestCase):
     beam_width = 3
 
     with self.test_session() as sess:
+      batch_size_tensor = constant_op.constant(batch_size)
       embedding = np.random.randn(vocab_size, embedding_dim).astype(np.float32)
-      cell = core_rnn_cell.LSTMCell(cell_depth)
+      cell = rnn_cell.LSTMCell(cell_depth)
+      initial_state = cell.zero_state(batch_size, dtypes.float32)
       if has_attention:
-        inputs = np.random.randn(batch_size, decoder_max_time,
-                                 input_depth).astype(np.float32)
+        inputs = array_ops.placeholder_with_default(
+            np.random.randn(batch_size, decoder_max_time,
+                            input_depth).astype(np.float32),
+            shape=(None, None, input_depth))
+        tiled_inputs = beam_search_decoder.tile_batch(
+            inputs, multiplier=beam_width)
+        tiled_sequence_length = beam_search_decoder.tile_batch(
+            encoder_sequence_length, multiplier=beam_width)
         attention_mechanism = attention_wrapper.BahdanauAttention(
             num_units=attention_depth,
-            memory=inputs,
-            memory_sequence_length=encoder_sequence_length)
+            memory=tiled_inputs,
+            memory_sequence_length=tiled_sequence_length)
+        initial_state = beam_search_decoder.tile_batch(
+            initial_state, multiplier=beam_width)
         cell = attention_wrapper.AttentionWrapper(
             cell=cell,
             attention_mechanism=attention_mechanism,
-            attention_size=attention_depth,
+            attention_layer_size=attention_depth,
             alignment_history=False)
       cell_state = cell.zero_state(
-          dtype=dtypes.float32, batch_size=batch_size * beam_width)
+          dtype=dtypes.float32, batch_size=batch_size_tensor * beam_width)
+      if has_attention:
+        cell_state = cell_state.clone(
+            cell_state=initial_state)
       bsd = beam_search_decoder.BeamSearchDecoder(
           cell=cell,
           embedding=embedding,
-          start_tokens=batch_size * [start_token],
+          start_tokens=array_ops.fill([batch_size_tensor], start_token),
           end_token=end_token,
           initial_state=cell_state,
           beam_width=beam_width,
           output_layer=output_layer,
           length_penalty_weight=0.0)
 
-      final_outputs, final_state = decoder.dynamic_decode(
-          bsd, output_time_major=time_major, maximum_iterations=max_out)
+      final_outputs, final_state, final_sequence_lengths = (
+          decoder.dynamic_decode(
+              bsd, output_time_major=time_major, maximum_iterations=max_out))
 
       def _t(shape):
         if time_major:
@@ -284,16 +307,18 @@ class BeamSearchDecoderTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
           'final_outputs': final_outputs,
-          'final_state': final_state
+          'final_state': final_state,
+          'final_sequence_lengths': final_sequence_lengths
       })
 
-      # Mostly a smoke test
-      time_steps = max_out
+      max_sequence_length = np.max(sess_results['final_sequence_lengths'])
+
+      # A smoke test
       self.assertEqual(
-          _t((batch_size, time_steps, beam_width)),
+          _t((batch_size, max_sequence_length, beam_width)),
           sess_results['final_outputs'].beam_search_decoder_output.scores.shape)
       self.assertEqual(
-          _t((batch_size, time_steps, beam_width)), sess_results[
+          _t((batch_size, max_sequence_length, beam_width)), sess_results[
               'final_outputs'].beam_search_decoder_output.predicted_ids.shape)
 
   def testDynamicDecodeRNNBatchMajorNoAttention(self):

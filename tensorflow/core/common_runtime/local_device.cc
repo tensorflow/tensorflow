@@ -31,7 +31,7 @@ namespace tensorflow {
 bool LocalDevice::use_global_threadpool_ = true;
 
 struct LocalDevice::EigenThreadPoolInfo {
-  EigenThreadPoolInfo(const SessionOptions& options) {
+  explicit EigenThreadPoolInfo(const SessionOptions& options) {
     int32 intra_op_parallelism_threads =
         options.config.intra_op_parallelism_threads();
     if (intra_op_parallelism_threads == 0) {
@@ -60,10 +60,8 @@ struct LocalDevice::EigenThreadPoolInfo {
 };
 
 LocalDevice::LocalDevice(const SessionOptions& options,
-                         const DeviceAttributes& attributes,
-                         Allocator* device_allocator)
-    : Device(options.env, attributes, device_allocator),
-      owned_tp_info_(nullptr) {
+                         const DeviceAttributes& attributes)
+    : Device(options.env, attributes), owned_tp_info_(nullptr) {
   // If we're running on the CPU, log warnings if we're not compiled using the
   // best flags for performance.
   port::WarnAboutUnusedCPUFeatures();

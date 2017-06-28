@@ -30,6 +30,14 @@ extern "C" {
 JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv*,
                                                                  jclass);
 
+/*
+ * Class:     org_tensorflow_TensorFlow
+ * Method:    registeredOpList
+ * Signature: ()[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_tensorflow_TensorFlow_registeredOpList(JNIEnv*, jclass);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -63,16 +63,27 @@ GetSessionHandle
 GetSessionHandleV2
 GetSessionTensor
 HashTable
+HashTableV2
 InitializeTable
+InitializeTableV2
 InitializeTableFromTextFile
+InitializeTableFromTextFileV2
 LookupTableExport
+LookupTableExportV2
 LookupTableFind
+LookupTableFindV2
 LookupTableImport
+LookupTableImportV2
 LookupTableInsert
+LookupTableInsertV2
 LookupTableSize
+LookupTableSizeV2
 MutableDenseHashTable
+MutableDenseHashTableV2
 MutableHashTable
+MutableHashTableV2
 MutableHashTableOfTensors
+MutableHashTableOfTensorsV2
 Mutex
 MutexAcquire
 MutexRelease
@@ -180,6 +191,7 @@ WholeFileReader
 TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
+LMDBReader
 
 # linalg_ops
 BatchCholesky
@@ -207,6 +219,7 @@ MergeSummary
 Print
 ScalarSummary
 TensorSummary
+TensorSummaryV2
 
 # math_ops
 Abs
@@ -220,6 +233,7 @@ BatchFFT3D
 BatchIFFT
 BatchIFFT2D
 BatchIFFT3D
+Bucketize
 Complex
 ComplexAbs
 Conj
@@ -318,6 +332,9 @@ SerializeSparse
 SparseAdd
 SparseAddGrad
 SparseConcat
+SparseCross
+SparseFillEmptyRows
+SparseFillEmptyRowsGrad
 SparseSplit
 SparseSelectLastK
 SparseReorder

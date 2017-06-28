@@ -20,20 +20,19 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib import rnn as rnn_cell
-from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import rnn_common
-from tensorflow.contrib.rnn.python.ops import core_rnn
 from tensorflow.contrib.training.python.training import sequence_queueing_state_saver as sqss
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.training import momentum as momentum_opt
 from tensorflow.python.util import nest
 
@@ -65,7 +64,7 @@ def construct_state_saving_rnn(cell,
     final_state: The final state output by the RNN
   """
   with ops.name_scope(scope):
-    rnn_outputs, final_state = core_rnn.static_state_saving_rnn(
+    rnn_outputs, final_state = rnn.static_state_saving_rnn(
         cell=cell,
         inputs=inputs,
         state_saver=state_saver,
@@ -145,7 +144,7 @@ def _prepare_features_for_sqss(features, labels, mode,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
 
@@ -262,7 +261,7 @@ def _read_batch(cell,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     num_threads: The Python integer number of threads enqueuing input examples
@@ -421,7 +420,7 @@ def _get_rnn_model_fn(cell_type,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     predict_probabilities: A boolean indicating whether to predict probabilities
@@ -564,7 +563,7 @@ class StateSavingRnnEstimator(estimator.Estimator):
         describing sequence features. All items in the set should be instances
         of classes derived from `FeatureColumn`.
       context_feature_columns: An iterable containing all the feature columns
-        describing context features, i.e., features that apply accross all time
+        describing context features, i.e., features that apply across all time
         steps. All items in the set should be instances of classes derived from
         `FeatureColumn`.
       num_classes: The number of classes for categorization. Used only and
@@ -652,180 +651,3 @@ class StateSavingRnnEstimator(estimator.Estimator):
         model_dir=model_dir,
         config=config,
         feature_engineering_fn=feature_engineering_fn)
-
-
-@deprecated('2017-04-01', 'multi_value_rnn_regressor is deprecated. '
-            'Please construct a StateSavingRnnEstimator directly.')
-def multi_value_rnn_regressor(num_units,
-                              num_unroll,
-                              batch_size,
-                              sequence_feature_columns,
-                              context_feature_columns=None,
-                              num_rnn_layers=1,
-                              optimizer_type='SGD',
-                              learning_rate=0.1,
-                              momentum=None,
-                              gradient_clipping_norm=5.0,
-                              dropout_keep_probabilities=None,
-                              model_dir=None,
-                              config=None,
-                              feature_engineering_fn=None,
-                              num_threads=3,
-                              queue_capacity=1000,
-                              seed=None):
-  """Creates a RNN `Estimator` that predicts sequences of values.
-
-  Args:
-    num_units: The size of the RNN cells.
-    num_unroll: Python integer, how many time steps to unroll at a time.
-      The input sequences of length `k` are then split into `k / num_unroll`
-      many segments.
-    batch_size: Python integer, the size of the minibatch.
-    sequence_feature_columns: An iterable containing all the feature columns
-      describing sequence features. All items in the set should be instances
-      of classes derived from `FeatureColumn`.
-    context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
-      steps. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    num_rnn_layers: Number of RNN layers.
-    optimizer_type: The type of optimizer to use. Either a subclass of
-      `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
-      one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate. This argument has no effect if `optimizer`
-      is an instance of an `Optimizer`.
-    momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
-    gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
-      then no clipping is performed.
-    dropout_keep_probabilities: a list of dropout keep probabilities or `None`.
-        If given a list, it must have length `num_rnn_layers + 1`.
-    model_dir: The directory in which to save and restore the model graph,
-      parameters, etc.
-    config: A `RunConfig` instance.
-    feature_engineering_fn: Takes features and labels which are the output of
-      `input_fn` and returns features and labels which will be fed into
-      `model_fn`. Please check `model_fn` for a definition of features and
-      labels.
-    num_threads: The Python integer number of threads enqueuing input examples
-      into a queue. Defaults to 3.
-    queue_capacity: The max capacity of the queue in number of examples.
-      Needs to be at least `batch_size`. Defaults to 1000. When iterating
-      over the same input example multiple times reusing their keys the
-      `queue_capacity` must be smaller than the number of examples.
-    seed: Fixes the random seed used for generating input keys by the SQSS.
-  Returns:
-    An initialized `Estimator`.
-  """
-  num_units = [num_units for _ in range(num_rnn_layers)]
-  return StateSavingRnnEstimator(
-      constants.ProblemType.LINEAR_REGRESSION,
-      num_unroll,
-      batch_size,
-      sequence_feature_columns,
-      context_feature_columns=context_feature_columns,
-      num_classes=None,
-      num_units=num_units,
-      cell_type='lstm',
-      optimizer_type=optimizer_type,
-      learning_rate=learning_rate,
-      predict_probabilities=False,
-      momentum=momentum,
-      gradient_clipping_norm=gradient_clipping_norm,
-      dropout_keep_probabilities=dropout_keep_probabilities,
-      model_dir=model_dir,
-      config=config,
-      feature_engineering_fn=feature_engineering_fn,
-      num_threads=num_threads,
-      queue_capacity=queue_capacity,
-      seed=seed)
-
-
-@deprecated('2017-04-01', 'multi_value_rnn_classifier is deprecated. '
-            'Please construct a StateSavingRnnEstimator directly.')
-def multi_value_rnn_classifier(num_classes,
-                               num_units,
-                               num_unroll,
-                               batch_size,
-                               sequence_feature_columns,
-                               context_feature_columns=None,
-                               num_rnn_layers=1,
-                               optimizer_type='SGD',
-                               learning_rate=0.1,
-                               predict_probabilities=False,
-                               momentum=None,
-                               gradient_clipping_norm=5.0,
-                               dropout_keep_probabilities=None,
-                               model_dir=None,
-                               config=None,
-                               feature_engineering_fn=None,
-                               num_threads=3,
-                               queue_capacity=1000,
-                               seed=None):
-  """Creates a RNN `Estimator` that predicts sequences of labels.
-
-  Args:
-    num_classes: The number of classes for categorization.
-    num_units: The size of the RNN cells.
-    num_unroll: Python integer, how many time steps to unroll at a time.
-      The input sequences of length `k` are then split into `k / num_unroll`
-      many segments.
-    batch_size: Python integer, the size of the minibatch.
-    sequence_feature_columns: An iterable containing all the feature columns
-      describing sequence features. All items in the set should be instances
-      of classes derived from `FeatureColumn`.
-    context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
-      steps. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    num_rnn_layers: Number of RNN layers.
-    optimizer_type: The type of optimizer to use. Either a subclass of
-      `Optimizer`, an instance of an `Optimizer` or a string. Strings must be
-      one of 'Adagrad', 'Momentum' or 'SGD'.
-    learning_rate: Learning rate. This argument has no effect if `optimizer`
-      is an instance of an `Optimizer`.
-    predict_probabilities: A boolean indicating whether to predict probabilities
-      for all classes.
-    momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
-    gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
-      then no clipping is performed.
-    dropout_keep_probabilities: a list of dropout keep probabilities or `None`.
-        If given a list, it must have length `num_rnn_layers + 1`.
-    model_dir: The directory in which to save and restore the model graph,
-      parameters, etc.
-    config: A `RunConfig` instance.
-    feature_engineering_fn: Takes features and labels which are the output of
-      `input_fn` and returns features and labels which will be fed into
-      `model_fn`. Please check `model_fn` for a definition of features and
-      labels.
-    num_threads: The Python integer number of threads enqueuing input examples
-      into a queue. Defaults to 3.
-    queue_capacity: The max capacity of the queue in number of examples.
-      Needs to be at least `batch_size`. Defaults to 1000. When iterating
-      over the same input example multiple times reusing their keys the
-      `queue_capacity` must be smaller than the number of examples.
-    seed: Fixes the random seed used for generating input keys by the SQSS.
-  Returns:
-    An initialized `Estimator`.
-  """
-  num_units = [num_units for _ in range(num_rnn_layers)]
-  return StateSavingRnnEstimator(
-      constants.ProblemType.CLASSIFICATION,
-      num_unroll,
-      batch_size,
-      sequence_feature_columns,
-      context_feature_columns=context_feature_columns,
-      num_classes=num_classes,
-      num_units=num_units,
-      cell_type='lstm',
-      optimizer_type=optimizer_type,
-      learning_rate=learning_rate,
-      predict_probabilities=predict_probabilities,
-      momentum=momentum,
-      gradient_clipping_norm=gradient_clipping_norm,
-      dropout_keep_probabilities=dropout_keep_probabilities,
-      model_dir=model_dir,
-      config=config,
-      feature_engineering_fn=feature_engineering_fn,
-      num_threads=num_threads,
-      queue_capacity=queue_capacity,
-      seed=seed)
