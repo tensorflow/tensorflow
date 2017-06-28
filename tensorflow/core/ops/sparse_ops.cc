@@ -597,6 +597,60 @@ output_shape: A list of 1-D tensors represents the shape of the output sparse
   tensors.
 )doc");
 
+REGISTER_OP("SparseSlice")
+    .Input("indices: int64")
+    .Input("values: T")
+    .Input("shape: int64")
+    .Input("start: int64")
+    .Input("size: int64")
+    .Output("output_indices: int64")
+    .Output("output_values: T")
+    .Output("output_shape: int64")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input_shape = c->input(2);
+      ShapeHandle output_indices =
+          c->Matrix(InferenceContext::kUnknownDim, c->NumElements(input_shape));
+      ShapeHandle output_values = c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle output_shape = input_shape;
+
+      c->set_output(0, output_indices);
+      c->set_output(1, output_values);
+      c->set_output(2, output_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Slice a `SparseTensor` based on the `start` and `size`.
+
+For example, if the input is
+
+    input_tensor = shape = [2, 7]
+    [    a   d e  ]
+    [b c          ]
+
+Graphically the output tensors are:
+
+    sparse_slice([0, 0], [2, 4]) = shape = [2, 4]
+    [    a  ]
+    [b c    ]
+
+    sparse_slice([0, 4], [2, 3]) = shape = [2, 3]
+    [ d e  ]
+    [      ]
+
+indices: 2-D tensor represents the indices of the sparse tensor.
+values: 1-D tensor represents the values of the sparse tensor.
+shape: 1-D. tensor represents the shape of the sparse tensor.
+start: 1-D. tensor represents the start of the slice.
+size: 1-D. tensor represents the size of the slice.
+output indices: A list of 1-D tensors represents the indices of the output
+sparse tensors.
+output_values: A list of 1-D tensors represents the values of the output sparse
+  tensors.
+output_shape: A list of 1-D tensors represents the shape of the output sparse
+  tensors.
+)doc");
+
 REGISTER_OP("SparseReorder")
     .Input("input_indices: int64")
     .Input("input_values: T")
@@ -862,7 +916,9 @@ keep_dims: If true, retain reduced dimensions with length 1.
         return Status::OK();                                     \
       })
 
-REGISTER_OP("SparseDenseCwiseMul").SPARSE_DENSE_CWISE_SIGNATURE().Doc(R"doc(
+REGISTER_OP("SparseDenseCwiseMul")
+    .SPARSE_DENSE_CWISE_SIGNATURE()
+    .Doc(R"doc(
 Component-wise multiplies a SparseTensor by a dense Tensor.
 
 The output locations corresponding to the implicitly zero elements in the sparse
@@ -880,7 +936,9 @@ dense: `R`-D.  The dense Tensor operand.
 output: 1-D.  The `N` values that are operated on.
 )doc");
 
-REGISTER_OP("SparseDenseCwiseDiv").SPARSE_DENSE_CWISE_SIGNATURE().Doc(R"doc(
+REGISTER_OP("SparseDenseCwiseDiv")
+    .SPARSE_DENSE_CWISE_SIGNATURE()
+    .Doc(R"doc(
 Component-wise divides a SparseTensor by a dense Tensor.
 
 *Limitation*: this Op only broadcasts the dense side to the sparse side, but not
@@ -894,7 +952,9 @@ dense: `R`-D.  The dense Tensor operand.
 output: 1-D.  The `N` values that are operated on.
 )doc");
 
-REGISTER_OP("SparseDenseCwiseAdd").SPARSE_DENSE_CWISE_SIGNATURE().Doc(R"doc(
+REGISTER_OP("SparseDenseCwiseAdd")
+    .SPARSE_DENSE_CWISE_SIGNATURE()
+    .Doc(R"doc(
 Adds up a SparseTensor and a dense Tensor, using these special rules:
 
 (1) Broadcasts the dense side to have the same shape as the sparse side, if
