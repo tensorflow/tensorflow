@@ -20,16 +20,21 @@ building with SYCL support.
 
 #ifndef TENSORFLOW_CORE_UTIL_SYCL_UTIL_H_
 #define TENSORFLOW_CORE_UTIL_SYCL_UTIL_H_
-#define ConvertToGlobalTypeSycl(Scalar, dev_pointer) static_cast<typename cl::sycl::global_ptr<Scalar>::pointer_t>(static_cast<void*>((dev_pointer)))
+
+#define ConvertToGlobalTypeSycl(Scalar, dev_pointer)             \
+  static_cast<typename cl::sycl::global_ptr<Scalar>::pointer_t>( \
+      static_cast<void*>((dev_pointer)))
 
 namespace tensorflow {
-#if defined(__SYCL_DEVICE_ONLY__)
 template <class T>
-struct SYCLDevicePointer
-typedef typename cl::sycl::global_ptr<T>::pointer_t PointerType;
+struct SYCLDevicePointer {
+#if defined(__SYCL_DEVICE_ONLY__)
+  typedef typename cl::sycl::global_ptr<T>::pointer_t PointerType;
 #else
-typedef T* PointerType;
+  typedef T* PointerType;
 #endif
+};
+
 // Need an atomic add for the MaxPoolGrad and MaxPool3DGrad kernels.
 //
 // For the device, this needs a pointer to global memory which isn't understood
@@ -37,7 +42,8 @@ typedef T* PointerType;
 // the header so that the host compiler can compile the functor.
 
 template <typename T>
-void SyclAtomicAdd(typename SYCLDevicePointer<T>::PointerType address, const T increment);
+inline void SyclAtomicAdd(typename SYCLDevicePointer<T>::PointerType address,
+                   const T increment);
 
 // Use the OpenCL atomic uint operations to provide a floating point atomic add.
 // For the device we use the atomic compare-exchange builtin to keep trying to
@@ -51,14 +57,15 @@ void SyclAtomicAdd(typename SYCLDevicePointer<T>::PointerType address, const T i
 // accessor and remove this.
 #ifdef __SYCL_DEVICE_ONLY__
 template <>
-inline void SyclAtomicAdd<float>(typename SYCLDevicePointer<float>::PointerType address,
-                          const float increment) {
+inline void SyclAtomicAdd<float>(
+    typename SYCLDevicePointer<float>::PointerType address,
+    const float increment) {
   union {
     uint32_t u32;
     float f32;
   } next, expected, current;
   current.f32 = *address;
-  auto uint_addr =ConvertToGlobalTypeSycl(uint32_t, address);
+  auto uint_addr = ConvertToGlobalTypeSycl(uint32_t, address);
   do {
     expected.f32 = current.f32;
     next.f32 = expected.f32 + increment;
@@ -67,14 +74,15 @@ inline void SyclAtomicAdd<float>(typename SYCLDevicePointer<float>::PointerType 
   } while (current.u32 != expected.u32);
 }
 template <>
-inline void SyclAtomicAdd<double>(typename SYCLDevicePointer<double>::PointerType address,
-                           const double increment) {
+inline void SyclAtomicAdd<double>(
+    typename SYCLDevicePointer<double>::PointerType address,
+    const double increment) {
   union {
     uint64_t u64;
     double d64;
   } next, expected, current;
   current.d64 = *address;
-  auto uint_addr =ConvertToGlobalTypeSycl(uint64_t, address);
+  auto uint_addr = ConvertToGlobalTypeSycl(uint64_t, address);
   do {
     expected.d64 = current.d64;
     next.d64 = expected.d64 + increment;
@@ -85,13 +93,14 @@ inline void SyclAtomicAdd<double>(typename SYCLDevicePointer<double>::PointerTyp
 // Provide a dummy implementation for the host compiler. This code will not be
 // seen by the SYCL device, and so should not be run.
 template <>
-void SyclAtomicAdd<float>(float* address, const float increment) {
+inline void SyclAtomicAdd<float>(float* address, const float increment) {
   LOG(FATAL) << "MaxPool3DGradSYCL should only be run on a SYCL device";
 }
 template <>
-void SyclAtomicAdd<double>(double* address, const double increment) {
+inline void SyclAtomicAdd<double>(double* address, const double increment) {
   LOG(FATAL) << "MaxPool3DGradSYCL should only be run on a SYCL device";
 }
 #endif  // __SYCL_DEVICE_ONLY__
+
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_UTIL_SYCL_UTIL_H_
