@@ -262,7 +262,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
         JNIEnv* env, jclass object, jlong handle, jstring name, jobjectArray values) {
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return;
-  const char *cname = env->GetStringUTFChars(name, nullptr);
+  const char* cname = env->GetStringUTFChars(name, nullptr);
   int num_values = env->GetArrayLength(values);
   static_assert(sizeof(jbyte) == 1,
                 "Require Java byte to be represented as a single byte");
