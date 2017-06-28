@@ -29,7 +29,7 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:ops",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/framework:dtypes"
+        "//tensorflow/python:dtypes"
         
     ],
 )
