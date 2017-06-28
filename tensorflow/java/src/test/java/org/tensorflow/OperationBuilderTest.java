@@ -99,6 +99,12 @@ public class OperationBuilderTest {
           .setAttr("exit_without_error", false)
           .build();
       assertTrue(hasNode(g, "StringAndBool"));
+      // string[], bool attributes.
+      g.opBuilder("Abort", "StringAndBool")
+          .setAttr("error_msg", "SomeErrorMessage")
+          .setAttr("exit_without_error", false)
+          .build();
+      assertTrue(hasNode(g, "StringAndBool"));
       // int (TF "int" attributes are 64-bit signed, so a Java long).
       g.opBuilder("RandomUniform", "Int")
           .addInput(TestUtil.constant(g, "RandomUniformShape", new int[]{1}))
