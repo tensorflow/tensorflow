@@ -54,12 +54,12 @@ def main(unused_argv):
   feature_cols = [tf.feature_column.numeric_column(k) for k in FEATURES]
 
   # Build 2 layer fully connected DNN with 10, 10 units respectively.
-  regressor = tf.estimator.DNNRegressor(feature_columns=feature_cols,
+  regressor = tf.contrib.learn.DNNRegressor(feature_columns=feature_cols,
                                         hidden_units=[10, 10],
                                         model_dir="/tmp/boston_model")
 
   # Train
-  regressor.train(input_fn=get_input_fn(training_set), steps=5000)
+  regressor.fit(input_fn=get_input_fn(training_set), steps=5000)
 
   # Evaluate loss over one epoch of test_set.
   ev = regressor.evaluate(
@@ -72,7 +72,7 @@ def main(unused_argv):
       input_fn=get_input_fn(prediction_set, num_epochs=1, shuffle=False))
   # .predict() returns an iterator of dicts; convert to a list and print
   # predictions
-  predictions = list(p["predictions"] for p in itertools.islice(y, 6))
+  predictions = list(p for p in itertools.islice(y, 6))
   print("Predictions: {}".format(str(predictions)))
 
 if __name__ == "__main__":
