@@ -101,7 +101,7 @@ AddConvolutionInput(poplar::Graph& graph,
   opts.cache = &resources.convolution_cache;
 
   poplar::Tensor out = popconv::createInput(graph, params, inst->name(), opts);
-  return out;
+  return ShuffleConvolutionInput(target, out);
 }
 
 static port::StatusOr<poplar::Tensor>
@@ -117,9 +117,7 @@ AddConvolutionWeights(poplar::Graph& graph,
 
   poplar::Tensor out = popconv::createWeights(graph, params, inst->name(),
                                               opts);
-
-  out = out.dimShuffle({0, 1, 3, 2});
-  return out;
+  return ShuffleConvolutionWeights(target, out);
 }
 
 
