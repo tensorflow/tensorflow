@@ -200,8 +200,12 @@ Status GraphProperties::InferStatically() {
     }
     if (node->IsEnter()) {
       enter_nodes.insert(node);
-    } else if (node->IsMerge()) {
-      merge_nodes.insert(node);
+    } else if (node->IsNextIteration()) {
+      for (const Node* output : node->out_nodes()) {
+        if (output->IsMerge()) {
+          merge_nodes.insert(output);
+        }
+      }
     }
   }
 
