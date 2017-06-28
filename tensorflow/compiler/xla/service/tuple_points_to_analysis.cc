@@ -125,16 +125,11 @@ void PointsToSet::add_tuple_source(const ShapeIndex& index,
 }
 
 /* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
-TuplePointsToAnalysis::Run(const HloModule* module, Colorer colorer) {
+TuplePointsToAnalysis::Run(const HloModule* module) {
   std::unique_ptr<TuplePointsToAnalysis> analysis(
-      new TuplePointsToAnalysis(module, std::move(colorer)));
+      new TuplePointsToAnalysis(module));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
-}
-
-/* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
-TuplePointsToAnalysis::Run(const HloModule* module) {
-  return Run(module, DefaultColorer());
 }
 
 Status TuplePointsToAnalysis::Analyze() {
@@ -184,8 +179,8 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
 const LogicalBuffer& TuplePointsToAnalysis::NewLogicalBuffer(
     HloInstruction* instruction, const ShapeIndex& index) {
   CHECK_EQ(logical_buffers_.size(), next_buffer_id_);
-  logical_buffers_.push_back(MakeUnique<LogicalBuffer>(
-      instruction, index, next_buffer_id_, colorer_(instruction, index)));
+  logical_buffers_.push_back(
+      MakeUnique<LogicalBuffer>(instruction, index, next_buffer_id_));
   ++next_buffer_id_;
   return *logical_buffers_.back();
 }
