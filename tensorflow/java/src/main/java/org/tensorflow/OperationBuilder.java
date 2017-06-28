@@ -256,7 +256,7 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder setAttrList(String name,  String... value) {
+  public OperationBuilder setAttr(String name,  String[] value) {
     Graph.Reference r = graph.ref();
     try {
       Object[] objects = new Object[value.length];
@@ -289,8 +289,6 @@ public final class OperationBuilder {
   // Java library types. Roughly, setAttrFoo calls the TensorFlow C library function: TF_SetAttrFoo.
   //
   // TODO(ashankar):
-  // - setAttrStringList: Which would take in an array of byte[] (java Strings will need to be UTF-8
-  //   encoded?)
   // - setAttrShapeList: Which would take in a long[][]
 
   private static native void setAttrString(long handle, String name, byte[] value);
