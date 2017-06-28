@@ -59,10 +59,10 @@ static const char* const kShown[] = {
     "cpu_micros"};
 
 static const char* const kCmds[] = {
-    "scope", "graph", "code", "op", "set", "help",
+    "scope", "graph", "code", "op", "advise", "set", "help",
 };
 
-static const char* const kOutput[] = {"timeline", "stdout", "file"};
+static const char* const kOutput[] = {"timeline", "stdout", "file", "none"};
 
 static const char* const kTimelineOpts[] = {
     "outfile",

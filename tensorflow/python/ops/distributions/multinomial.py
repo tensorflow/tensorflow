@@ -52,17 +52,17 @@ class Multinomial(distribution.Distribution):
   """Multinomial distribution.
 
   This Multinomial distribution is parameterized by `probs`, a (batch of)
-  length-`k` `prob` (probability) vectors (`k > 1`) such that
+  length-`K` `prob` (probability) vectors (`K > 1`) such that
   `tf.reduce_sum(probs, -1) = 1`, and a `total_count` number of trials, i.e.,
   the number of trials per draw from the Multinomial. It is defined over a
-  (batch of) length-`k` vector `counts` such that
+  (batch of) length-`K` vector `counts` such that
   `tf.reduce_sum(counts, -1) = total_count`. The Multinomial is identically the
-  Binomial distribution when `k = 2`.
+  Binomial distribution when `K = 2`.
 
   #### Mathematical Details
 
-  The Multinomial is a distribution over `k`-class counts, i.e., a length-`k`
-  vector of non-negative integer `counts = n = [n_0, ..., n_{k-1}]`.
+  The Multinomial is a distribution over `K`-class counts, i.e., a length-`K`
+  vector of non-negative integer `counts = n = [n_0, ..., n_{K-1}]`.
 
   The probability mass function (pmf) is,
 
@@ -72,13 +72,31 @@ class Multinomial(distribution.Distribution):
   ```
 
   where:
-  * `probs = pi = [pi_0, ..., pi_{k-1}]`, `pi_j > 0`, `sum_j pi_j = 1`,
+  * `probs = pi = [pi_0, ..., pi_{K-1}]`, `pi_j > 0`, `sum_j pi_j = 1`,
   * `total_count = N`, `N` a positive integer,
   * `Z` is the normalization constant, and,
   * `N!` denotes `N` factorial.
 
   Distribution parameters are automatically broadcast in all functions; see
   examples for details.
+
+  #### Pitfalls
+
+  The number of classes, `K`, must not exceed:
+  - the largest integer representable by `self.dtype`, i.e.,
+    `2**(mantissa_bits+1)` (IEE754),
+  - the maximum `Tensor` index, i.e., `2**31-1`.
+
+  In other words,
+
+  ```python
+  K <= min(2**31-1, {
+    tf.float16: 2**11,
+    tf.float32: 2**24,
+    tf.float64: 2**53 }[param.dtype])
+  ```
+
+  Note: This condition is validated only when `self.validate_args = True`.
 
   #### Examples
 
@@ -138,14 +156,14 @@ class Multinomial(distribution.Distribution):
         to `[N1,..., Nm]` with `m >= 0`. Defines this as a batch of
         `N1 x ... x Nm` different Multinomial distributions. Its components
         should be equal to integer values.
-      logits: Floating point tensor representing the log-odds of a
-        positive event with shape broadcastable to `[N1,..., Nm, k], m >= 0`,
-        and the same dtype as `total_count`. Defines this as a batch of
-        `N1 x ... x Nm` different `k` class Multinomial distributions. Only one
-        of `logits` or `probs` should be passed in.
+      logits: Floating point tensor representing unnormalized log-probabilities
+        of a positive event with shape broadcastable to
+        `[N1,..., Nm, K]` `m >= 0`, and the same dtype as `total_count`. Defines
+        this as a batch of `N1 x ... x Nm` different `K` class Multinomial
+        distributions. Only one of `logits` or `probs` should be passed in.
       probs: Positive floating point tensor with shape broadcastable to
-        `[N1,..., Nm, k]` `m >= 0` and same dtype as `total_count`. Defines
-        this as a batch of `N1 x ... x Nm` different `k` class Multinomial
+        `[N1,..., Nm, K]` `m >= 0` and same dtype as `total_count`. Defines
+        this as a batch of `N1 x ... x Nm` different `K` class Multinomial
         distributions. `probs`'s components in the last portion of its shape
         should sum to `1`. Only one of `logits` or `probs` should be passed in.
       validate_args: Python `bool`, default `False`. When `True` distribution
@@ -160,9 +178,11 @@ class Multinomial(distribution.Distribution):
     """
     parameters = locals()
     with ops.name_scope(name, values=[total_count, logits, probs]):
-      self._total_count = self._maybe_assert_valid_total_count(
-          ops.convert_to_tensor(total_count, name="total_count"),
-          validate_args)
+      self._total_count = ops.convert_to_tensor(total_count, name="total_count")
+      if validate_args:
+        self._total_count = (
+            distribution_util.embed_check_nonnegative_integer_form(
+                self._total_count))
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,
           probs=probs,
@@ -222,24 +242,21 @@ class Multinomial(distribution.Distribution):
     k = self.event_shape_tensor()[0]
     # Flatten batch dims so logits has shape [B, k],
     # where B = reduce_prod(self.batch_shape_tensor()).
-    draws = random_ops.multinomial(
+    x = random_ops.multinomial(
         logits=array_ops.reshape(self.logits, [-1, k]),
         num_samples=n * n_draws,
         seed=seed)
-    draws = array_ops.reshape(draws, shape=[-1, n, n_draws])
-    x = math_ops.reduce_sum(array_ops.one_hot(draws, depth=k),
+    x = array_ops.reshape(x, shape=[-1, n, n_draws])
+    x = math_ops.reduce_sum(array_ops.one_hot(x, depth=k),
                             axis=-2)  # shape: [B, n, k]
     x = array_ops.transpose(x, perm=[1, 0, 2])
     final_shape = array_ops.concat([[n], self.batch_shape_tensor(), [k]], 0)
-    return array_ops.reshape(x, final_shape)
+    x = array_ops.reshape(x, final_shape)
+    return math_ops.cast(x, self.dtype)
 
   @distribution_util.AppendDocstring(_multinomial_sample_note)
   def _log_prob(self, counts):
     return self._log_unnormalized_prob(counts) - self._log_normalization(counts)
-
-  @distribution_util.AppendDocstring(_multinomial_sample_note)
-  def _prob(self, counts):
-    return math_ops.exp(self._log_prob(counts))
 
   def _log_unnormalized_prob(self, counts):
     counts = self._maybe_assert_valid_sample(counts)
@@ -265,25 +282,11 @@ class Multinomial(distribution.Distribution):
         self.total_count)[..., array_ops.newaxis]
     return self._mean_val - self._mean_val * p
 
-  def _maybe_assert_valid_total_count(self, total_count, validate_args):
-    if not validate_args:
-      return total_count
-    return control_flow_ops.with_dependencies([
-        check_ops.assert_non_negative(
-            total_count,
-            message="total_count must be non-negative."),
-        distribution_util.assert_integer_form(
-            total_count,
-            message="total_count cannot contain fractional values."),
-    ], total_count)
-
   def _maybe_assert_valid_sample(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
     if not self.validate_args:
       return counts
-
-    counts = distribution_util.embed_check_nonnegative_discrete(
-        counts, check_integer=True)
+    counts = distribution_util.embed_check_nonnegative_integer_form(counts)
     return control_flow_ops.with_dependencies([
         check_ops.assert_equal(
             self.total_count, math_ops.reduce_sum(counts, -1),

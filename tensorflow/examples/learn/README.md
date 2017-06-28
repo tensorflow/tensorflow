@@ -19,7 +19,6 @@ processing (`sudo pip install pandas`).
 
 ## Techniques
 
-* [Improving Performance Using Early Stopping with Iris Data]( https://www.tensorflow.org/code/tensorflow/examples/learn/iris_val_based_early_stopping.py)
 * [Using skflow with Pipeline]( https://www.tensorflow.org/code/tensorflow/examples/learn/iris_with_pipeline.py)
 * [Deep Neural Network with Customized Decay Function]( https://www.tensorflow.org/code/tensorflow/examples/learn/iris_custom_decay_dnn.py)
 

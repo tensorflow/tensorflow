@@ -75,6 +75,9 @@ class HloModule {
 
   const string& name() const { return name_; }
 
+  // Returns a deep copy of this module including all computations.
+  std::unique_ptr<HloModule> Clone(const string& suffix = "clone");
+
   // Return a pointer to the entry computation of the module..
   HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);

@@ -158,6 +158,8 @@ string DumpCluster(const RemoteFusedGraphExecuteUtils::ClusterInfo& cluster) {
 /* static */ constexpr const char* const
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_BORDER_OUTPUTS;
 /* static */ constexpr const char* const
+    RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSED_OP_TYPES;
+/* static */ constexpr const char* const
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_INPUT_TYPES;
 /* static */ constexpr const char* const
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_INPUT_SHAPES;
@@ -782,7 +784,9 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
           ++input_count;
         }
       }
-      CHECK(input_count == 0 || input_count == node->in_edges().size());
+      CHECK(input_count == 0 || input_count == node->in_edges().size())
+          << "Invalid input_count(" << input_count << ", "
+          << node->in_edges().size() << ") " << node_name;
 
       for (const Edge* out_edge : node->out_edges()) {
         const Node* dst_node = out_edge->dst();
@@ -1063,14 +1067,35 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       remote_graph_executor_name, require_shape_type, output_graph_def);
 }
 
+/* static */ Status RemoteFusedGraphExecuteUtils::FuseRemoteGraphByOpTypes(
+    const GraphDef& input_graph_def, const std::vector<string>& inputs,
+    const std::vector<string>& outputs,
+    const string& remote_fused_graph_node_name_prefix,
+    const std::unordered_set<string>& fused_op_types,
+    const string& remote_fused_graph_executor_name,
+    const bool require_shape_type, GraphDef* output_graph_def) {
+  const std::unordered_set<string> fused_nodes_filtered_by_op_types =
+      BuildNodeMapFromOpTypes(input_graph_def, fused_op_types);
+
+  return FuseRemoteGraphByNodeNames(
+      input_graph_def, inputs, outputs, remote_fused_graph_node_name_prefix,
+      fused_nodes_filtered_by_op_types, remote_fused_graph_executor_name,
+      require_shape_type, output_graph_def);
+}
+
 /* static */ Status RemoteFusedGraphExecuteUtils::PlaceRemoteGraphArguments(
     const std::vector<string>& inputs, const std::vector<string>& outputs,
     const std::unordered_set<string>& fused_node_names,
     const std::vector<string>& border_inputs,
     const std::vector<string>& border_outputs,
+    const std::unordered_set<string>& fused_op_types,
     const string& remote_fused_graph_node_name,
     const string& remote_graph_executor_name, GraphDef* graph_def) {
   CHECK_NOTNULL(graph_def);
+
+  const std::unordered_set<string> fused_nodes_filtered_by_op_types =
+      BuildNodeMapFromOpTypes(*graph_def, fused_op_types);
+
   for (NodeDef& node_def : *graph_def->mutable_node()) {
     string attr_str;
     TensorId tid;
@@ -1090,6 +1115,12 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       }
     }
     for (const string& fused_node_name : fused_node_names) {
+      if (fused_node_name == node_def.name()) {
+        AppendDeliminator(&attr_str);
+        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::FUSED_NODE);
+      }
+    }
+    for (const string& fused_node_name : fused_nodes_filtered_by_op_types) {
       if (fused_node_name == node_def.name()) {
         AppendDeliminator(&attr_str);
         attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::FUSED_NODE);
@@ -1341,6 +1372,18 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
   CHECK_NOTNULL(dst_ptr);
   std::memcpy(dst_ptr, src_ptr, src_size);
   return Status::OK();
+}
+
+/* static */ std::unordered_set<string>
+RemoteFusedGraphExecuteUtils::BuildNodeMapFromOpTypes(
+    const GraphDef& graph_def, const std::unordered_set<string>& op_types) {
+  std::unordered_set<string> retval;
+  for (const NodeDef& node_def : graph_def.node()) {
+    if (op_types.count(node_def.op()) > 0) {
+      retval.emplace(node_def.name());
+    }
+  }
+  return retval;
 }
 
 /* static */ Status RemoteFusedGraphExecuteUtils::ReplaceInputNodeByPlaceHolder(

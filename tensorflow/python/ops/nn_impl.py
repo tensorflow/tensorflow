@@ -97,9 +97,11 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
     return result
 
 
-def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid-name
-                                      labels=None, logits=None,
-                                      name=None):
+def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
+    _sentinel=None,
+    labels=None,
+    logits=None,
+    name=None):
   """Computes sigmoid cross entropy given `logits`.
 
   Measures the probability error in discrete classification tasks in which each
@@ -143,8 +145,8 @@ def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
     ValueError: If `logits` and `labels` do not have the same shape.
   """
   # pylint: disable=protected-access
-  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits",
-                           _sentinel, labels, logits)
+  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits", _sentinel,
+                           labels, logits)
   # pylint: enable=protected-access
 
   with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
@@ -153,8 +155,8 @@ def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
     try:
       labels.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and labels must have the same shape (%s vs %s)"
-                       % (logits.get_shape(), labels.get_shape()))
+      raise ValueError("logits and labels must have the same shape (%s vs %s)" %
+                       (logits.get_shape(), labels.get_shape()))
 
     # The logistic loss formula from above is
     #   x - x * z + log(1 + exp(-x))
@@ -168,9 +170,10 @@ def sigmoid_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
     cond = (logits >= zeros)
     relu_logits = array_ops.where(cond, logits, zeros)
     neg_abs_logits = array_ops.where(cond, -logits, logits)
-    return math_ops.add(relu_logits - logits * labels,
-                        math_ops.log1p(math_ops.exp(neg_abs_logits)),
-                        name=name)
+    return math_ops.add(
+        relu_logits - logits * labels,
+        math_ops.log1p(math_ops.exp(neg_abs_logits)),
+        name=name)
 
 
 def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
@@ -226,8 +229,9 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
     try:
       targets.get_shape().merge_with(logits.get_shape())
     except ValueError:
-      raise ValueError("logits and targets must have the same shape (%s vs %s)"
-                       % (logits.get_shape(), targets.get_shape()))
+      raise ValueError(
+          "logits and targets must have the same shape (%s vs %s)" %
+          (logits.get_shape(), targets.get_shape()))
 
     # The logistic loss formula from above is
     #   (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
@@ -569,9 +573,10 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
     else:  # no shift.
       shifted_mean = math_ops.multiply(mean_ss, divisor, name="mean")
       mean = shifted_mean
-    variance = math_ops.subtract(math_ops.multiply(variance_ss, divisor),
-                                 math_ops.square(shifted_mean),
-                                 name="variance")
+    variance = math_ops.subtract(
+        math_ops.multiply(variance_ss, divisor),
+        math_ops.square(shifted_mean),
+        name="variance")
   return (mean, variance)
 
 
@@ -876,6 +881,70 @@ def _sum_rows(x):
   return array_ops.reshape(math_ops.matmul(x, ones), [-1])
 
 
+def _retrieve_weights(weights, inputs, labels_flat, sampled, all_ids,
+                      partition_strategy, colocate_logits):
+  """Helper function for _compute_sampled_logits.
+
+  Retrieves the true weights and the logits of the sampled weights.
+
+  Args:
+    weights: See _compute_sampled_logits.
+    inputs: See _compute_sampled_logits.
+    labels_flat: A [batch_size * num_true] tensor.
+    sampled: A [num_sampled] tensor.
+    all_ids: The concatenation of labels_flat and sampled.
+    partition_strategy: See _compute_sampled_logits.
+    colocate_logits: See _compute_sampled_logits.
+
+  Returns:
+    A pair of a [batch_size * num_true, dim] tensor of the true weights
+    and a [batch_size, num_sampled] tensor of the sampled logits.
+  """
+  if len(weights) > 1 and colocate_logits:
+    # This codepath makes two calls to lookup the embeddings, one for the true
+    # weights and one to compute the sampled logits. Because we take this
+    # codepath only if len(weights) > 1, we will only incur the double-lookup
+    # cost if we can benefit from the co-located logit computation.
+
+    true_w = embedding_ops.embedding_lookup(
+        weights, labels_flat, partition_strategy=partition_strategy)
+
+    def logit(embeddings):
+      return math_ops.matmul(embeddings, inputs, transpose_b=True)
+
+    # pylint: disable=protected-access
+    sampled_logits = embedding_ops._embedding_lookup_and_transform(
+        weights,
+        sampled,
+        partition_strategy=partition_strategy,
+        transform_fn=logit)
+    # pylint: enable=protected-access
+    sampled_logits = array_ops.transpose(sampled_logits)
+
+  else:
+    # This codepath retrieves the weights by performing a single call to
+    # embedding_lookup and slicing out the true weights and sampled weights.
+    # Because the call to embedding_lookup is shared, the sampled logit
+    # computation is done here after the slice.
+
+    # weights shape is [num_classes, dim]
+    all_w = embedding_ops.embedding_lookup(
+        weights, all_ids, partition_strategy=partition_strategy)
+
+    true_w = array_ops.slice(all_w, [0, 0],
+                             array_ops.stack(
+                                 [array_ops.shape(labels_flat)[0], -1]))
+
+    sampled_w = array_ops.slice(
+        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
+    # inputs has shape [batch_size, dim]
+    # sampled_w has shape [num_sampled, dim]
+    # Apply X*W', which yields [batch_size, num_sampled]
+    sampled_logits = math_ops.matmul(inputs, sampled_w, transpose_b=True)
+
+  return true_w, sampled_logits
+
+
 def _compute_sampled_logits(weights,
                             biases,
                             labels,
@@ -887,6 +956,7 @@ def _compute_sampled_logits(weights,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
                             partition_strategy="mod",
+                            colocate_logits=False,
                             name=None):
   """Helper function for nce_loss and sampled_softmax_loss functions.
 
@@ -924,6 +994,9 @@ def _compute_sampled_logits(weights,
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
+    colocate_logits: A `bool`, relevant if `len(weights) > 1`, specifying
+        whether to colocate the computation of the sampled logits with the
+        weights.
     name: A name for the operation (optional).
   Returns:
     out_logits, out_labels: `Tensor` objects each with shape
@@ -965,16 +1038,21 @@ def _compute_sampled_logits(weights,
     # sampled is a [num_sampled] int tensor
     all_ids = array_ops.concat([labels_flat, sampled], 0)
 
-    # weights shape is [num_classes, dim]
-    all_w = embedding_ops.embedding_lookup(
-        weights, all_ids, partition_strategy=partition_strategy)
+    # Retrieve the true weights and the logits of the sampled weights.
+    # - true_w shape is [batch_size * num_true, dim]
+    # - sampled_logits shape is [batch_size, num_sampled]
+    true_w, sampled_logits = _retrieve_weights(
+        weights, inputs, labels_flat, sampled, all_ids, partition_strategy,
+        colocate_logits)
+
+    # Retrieve the true and sampled biases, compute the true logits, and
+    # add the biases to the true and sampled logits.
     all_b = embedding_ops.embedding_lookup(
         biases, all_ids, partition_strategy=partition_strategy)
-    # true_w shape is [batch_size * num_true, dim]
     # true_b is a [batch_size * num_true] tensor
-    true_w = array_ops.slice(
-        all_w, [0, 0], array_ops.stack([array_ops.shape(labels_flat)[0], -1]))
+    # sampled_b is a [num_sampled] float tensor
     true_b = array_ops.slice(all_b, [0], array_ops.shape(labels_flat))
+    sampled_b = array_ops.slice(all_b, array_ops.shape(labels_flat), [-1])
 
     # inputs shape is [batch_size, dim]
     # true_w shape is [batch_size * num_true, dim]
@@ -991,20 +1069,7 @@ def _compute_sampled_logits(weights,
     true_logits = array_ops.reshape(_sum_rows(dots_as_matrix), [-1, num_true])
     true_b = array_ops.reshape(true_b, [-1, num_true])
     true_logits += true_b
-
-    # Lookup weights and biases for sampled labels.
-    #   sampled_w shape is [num_sampled, dim]
-    #   sampled_b is a [num_sampled] float tensor
-    sampled_w = array_ops.slice(
-        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
-    sampled_b = array_ops.slice(all_b, array_ops.shape(labels_flat), [-1])
-
-    # inputs has shape [batch_size, dim]
-    # sampled_w has shape [num_sampled, dim]
-    # sampled_b has shape [num_sampled]
-    # Apply X*W'+B, which yields [batch_size, num_sampled]
-    sampled_logits = math_ops.matmul(
-        inputs, sampled_w, transpose_b=True) + sampled_b
+    sampled_logits += sampled_b
 
     if remove_accidental_hits:
       acc_hits = candidate_sampling_ops.compute_accidental_hits(
@@ -1019,8 +1084,8 @@ def _compute_sampled_logits(weights,
                                         "sparse_indices")
       # Create sampled_logits_shape = [batch_size, num_sampled]
       sampled_logits_shape = array_ops.concat(
-          [array_ops.shape(labels)[:1], array_ops.expand_dims(num_sampled, 0)],
-          0)
+          [array_ops.shape(labels)[:1],
+           array_ops.expand_dims(num_sampled, 0)], 0)
       if sampled_logits.dtype != acc_weights.dtype:
         acc_weights = math_ops.cast(acc_weights, sampled_logits.dtype)
       sampled_logits += sparse_ops.sparse_to_dense(
@@ -1148,6 +1213,7 @@ def nce_loss(weights,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
+      colocate_logits=False,
       name=name)
   sampled_losses = sigmoid_cross_entropy_with_logits(
       labels=labels, logits=logits, name="sampled_losses")
@@ -1244,8 +1310,9 @@ def sampled_softmax_loss(weights,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
+      colocate_logits=False,
       name=name)
-  sampled_losses = nn_ops.softmax_cross_entropy_with_logits(labels=labels,
-                                                            logits=logits)
+  sampled_losses = nn_ops.softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits)
   # sampled_losses is a [batch_size] tensor.
   return sampled_losses

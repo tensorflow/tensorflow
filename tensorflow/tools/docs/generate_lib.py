@@ -182,7 +182,7 @@ def add_dict_to_dict(add_from, add_to):
 
 # Exclude some libaries in contrib from the documentation altogether.
 def _get_default_private_map():
-  return {}
+  return {'tf.test': ['mock']}
 
 
 # Exclude members of some libaries.

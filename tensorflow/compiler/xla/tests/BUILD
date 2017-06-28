@@ -94,7 +94,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/legacy_flags:hlo_test_base_flags",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:compiler",
@@ -487,6 +486,28 @@ xla_test(
 )
 
 xla_test(
+    name = "reduce_precision_test",
+    srcs = ["reduce_precision_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla/legacy_flags:user_computation_flags",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
     deps = [
@@ -496,7 +517,6 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
@@ -513,10 +533,6 @@ xla_test(
 xla_test(
     name = "dot_operation_runtime_test",
     srcs = ["dot_operation_test.cc"],
-    backend_args = {
-        "cpu": ["--xla_cpu_use_eigen"],
-        "cpu_parallel": ["--xla_cpu_use_eigen"],
-    },
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
@@ -524,7 +540,6 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
@@ -542,11 +557,9 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     backend_args = {
         "cpu": [
-            "--xla_cpu_use_eigen",
             "--xla_cpu_multi_thread_eigen=false",
         ],
         "cpu_parallel": [
-            "--xla_cpu_use_eigen",
             "--xla_cpu_multi_thread_eigen=false",
         ],
     },
@@ -557,7 +570,6 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
@@ -574,11 +586,9 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     backend_args = {
         "cpu": [
-            "--xla_cpu_use_eigen",
             "--xla_default_layout=major2minor",
         ],
         "cpu_parallel": [
-            "--xla_cpu_use_eigen",
             "--xla_default_layout=major2minor",
         ],
     },
@@ -589,7 +599,6 @@ xla_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
@@ -717,19 +726,25 @@ xla_test(
 xla_test(
     name = "batch_normalization_test",
     srcs = ["batch_normalization_test.cc"],
+    shard_count = 40,
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -859,10 +874,15 @@ xla_test(
     ],
 )
 
-xla_test(
-    name = "reduce_window_test",
-    timeout = "long",
+filegroup(
+    name = "reduce_window_test_srcs",
+    testonly = 1,
     srcs = ["reduce_window_test.cc"],
+)
+
+cc_library(
+    name = "reduce_window_test_deps",
+    testonly = 1,
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
@@ -879,6 +899,15 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "reduce_window_test",
+    timeout = "long",
+    srcs = ["reduce_window_test_srcs"],
+    deps = [
+        ":reduce_window_test_deps",
     ],
 )
 

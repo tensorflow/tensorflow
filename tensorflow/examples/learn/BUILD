@@ -70,16 +70,6 @@ py_binary(
 )
 
 py_binary(
-    name = "iris_val_based_early_stopping",
-    srcs = ["iris_val_based_early_stopping.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/learn",
-    ],
-)
-
-py_binary(
     name = "iris_with_pipeline",
     srcs = ["iris_with_pipeline.py"],
     srcs_version = "PY2AND3",
@@ -201,7 +191,6 @@ sh_test(
         ":iris_custom_decay_dnn",
         ":iris_custom_model",
         ":iris_run_config",
-        ":iris_val_based_early_stopping",
         ":iris_with_pipeline",
         ":random_forest_mnist",
         ":resnet",

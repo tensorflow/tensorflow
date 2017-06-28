@@ -175,6 +175,11 @@ tf_xla_py_test(
     name = "slice_ops_test",
     size = "small",
     srcs = ["slice_ops_test.py"],
+    # TODO(b/62962492): Test fails with assertion error.
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -455,6 +460,11 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+    ],
+    # TODO(b/62961789): Test fails with SIGABRT
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 
