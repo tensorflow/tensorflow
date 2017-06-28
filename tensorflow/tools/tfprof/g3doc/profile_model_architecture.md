@@ -52,9 +52,14 @@ use the definition to calculate float operations. Contributes are welcome.
 to calculate the statistics. It is suggested to pass in `-run_meta_path` if
 shape is only known during runtime. tfprof can fill in the missing shape with
 the runtime shape information from RunMetadata.
-
 Hence, it is suggested to use `-account_displayed_name_only`
 option so that you know the statistics are only for the operations printed out.
+
+* If no RunMetadata provided, tfprof count float_ops of each graph node once,
+even if it is defined in tf.while_loop. This is because tfprof doesn't know
+how many times are run statically. If RunMetadata provided, tfprof calculate
+float_ops as float_ops * run_count.
+
 
 
 ```python

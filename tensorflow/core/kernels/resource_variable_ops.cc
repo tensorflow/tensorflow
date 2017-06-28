@@ -395,6 +395,7 @@ class ResourceScatterUpdateOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     Var* v = nullptr;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    core::ScopedUnref unref_v(v);
     mutex_lock ml(*v->mu());
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);

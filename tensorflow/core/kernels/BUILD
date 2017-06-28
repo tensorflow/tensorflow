@@ -300,6 +300,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -322,6 +323,7 @@ cc_library(
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -413,6 +415,7 @@ cc_library(
     hdrs = ["warn_about_ints.h"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -1419,7 +1422,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "random_shuffle_queue_op",
     prefix = "random_shuffle_queue_op",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + ["//tensorflow/core:protos_all_cc"],
 )
 
 tf_kernel_library(
@@ -1520,6 +1523,7 @@ cc_library(
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -1534,6 +1538,7 @@ cc_library(
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -3476,8 +3481,26 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "scatter_nd_op",
-    prefix = "scatter_nd_op",
-    deps = STATE_DEPS,
+    srcs = [
+        "scatter_nd_op.cc",
+        "scatter_nd_op_cpu_impl_0.cc",
+        "scatter_nd_op_cpu_impl_1.cc",
+        "scatter_nd_op_cpu_impl_2.cc",
+        "scatter_nd_op_cpu_impl_3.cc",
+        "scatter_nd_op_cpu_impl_4.cc",
+        "scatter_nd_op_cpu_impl_5.cc",
+    ],
+    hdrs = [
+        "dense_update_ops.h",
+        "scatter_nd_op.h",
+        "scatter_nd_op_cpu_impl.h",
+    ],
+    gpu_srcs = [
+        "dense_update_ops.h",
+        "scatter_nd_op.h",
+        "scatter_nd_op_gpu.cu.cc",
+    ],
+    deps = STATE_DEPS + [":dense_update_ops"],
 )
 
 tf_kernel_library(
@@ -4107,6 +4130,7 @@ filegroup(
     srcs = [
         "argmax_op.h",
         "avgpooling_op.h",
+        "batch_matmul_op_impl.h",
         "batch_norm_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
@@ -4152,6 +4176,7 @@ filegroup(
     srcs = [
         "argmax_op.cc",
         "avgpooling_op.cc",
+        "batch_matmul_op_real.cc",
         "batch_norm_op.cc",
         "bcast_ops.cc",
         "check_numerics_op.cc",

@@ -35,6 +35,7 @@ _DEFAULT_REPLACEABLE_LIST = [
     'session_config',
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
+    'log_step_count_steps'
 ]
 
 _SAVE_CKPT_ERR = (
@@ -89,6 +90,8 @@ def _validate_properties(run_config):
             message='keep_checkpoint_max should be >= 0')
   _validate('keep_checkpoint_every_n_hours', lambda keep_hours: keep_hours > 0,
             message='keep_checkpoint_every_n_hours should be > 0')
+  _validate('log_step_count_steps', lambda num_steps: num_steps > 0,
+            message='log_step_count_steps should be > 0')
 
   _validate('tf_random_seed', lambda seed: isinstance(seed, six.integer_types),
             message='tf_random_seed must be integer.')
@@ -112,6 +115,7 @@ class RunConfig(object):
     self._session_config = None
     self._keep_checkpoint_max = 5
     self._keep_checkpoint_every_n_hours = 10000
+    self._log_step_count_steps = 100
     _validate_properties(self)
 
   @property
@@ -175,6 +179,10 @@ class RunConfig(object):
     return self._keep_checkpoint_every_n_hours
 
   @property
+  def log_step_count_steps(self):
+    return self._log_step_count_steps
+
+  @property
   def model_dir(self):
     return self._model_dir
 
@@ -190,6 +198,7 @@ class RunConfig(object):
       - `session_config`,
       - `keep_checkpoint_max`,
       - `keep_checkpoint_every_n_hours`,
+      - `log_step_count_steps`,
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

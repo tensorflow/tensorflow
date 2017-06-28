@@ -18,20 +18,15 @@ py_library(
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:data_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -47,14 +42,14 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -406,6 +401,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "vector_exponential_diag_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/vector_exponential_diag_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "vector_laplace_diag_test",
     size = "medium",
     srcs = ["python/kernel_tests/vector_laplace_diag_test.py"],
@@ -610,6 +621,23 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "trig_test",
+    size = "small",
+    srcs = ["python/kernel_tests/trig_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -823,6 +851,25 @@ cuda_py_test(
     name = "sigmoid_centered_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/sigmoid_centered_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "sinh_arcsinh_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/sinh_arcsinh_test.py"],
     additional_deps = [
         ":bijectors_py",
         ":distributions_py",

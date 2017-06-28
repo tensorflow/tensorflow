@@ -39,6 +39,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variable_scope
@@ -1063,7 +1064,7 @@ class ComparisonTest(test_util.TensorFlowTestCase):
 class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
-    ops._USE_C_API = True
+    ops._USE_C_API = True  # pylint: disable=protected-access
     try:
       g = ops.Graph()
       with g.as_default():
@@ -1084,7 +1085,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
       # e should be dominated by c.
       self.assertEqual(e.op.control_inputs, [])
     finally:
-      ops._USE_C_API = False
+      ops._USE_C_API = False  # pylint: disable=protected-access
 
   def testBasicWithConversion(self):
     g = ops.Graph()
@@ -1770,6 +1771,55 @@ class TracebackTest(test_util.TensorFlowTestCase):
             op.traceback, op.traceback_with_start_lines):
           self.assertEquals(5, len(frame_with_start_line))
           self.assertEquals(frame, frame_with_start_line[:-1])
+
+
+class OutputTypesTest(test_util.TensorFlowTestCase):
+  """Tests Operation._output_types property.
+
+  This test should not exist as _output_types is a private property.
+  This property is used by util.copy_elements and its tests would normally
+  cover Operation._output_types. However, we can't yet run these tests in C
+  API mode because their use _set_device method. This test will be deleted
+  once we port _set_device and run the copy tests with C API on.
+  """
+  # TODO(iga): Remove this test
+
+  def setUp(self):
+    self.prev_use_c_api = ops._USE_C_API  # pylint: disable=protected-access
+    ops._USE_C_API = True  # pylint: disable=protected-access
+
+  def tearDown(self):
+    ops._USE_C_API = self.prev_use_c_api  # pylint: disable=protected-access
+
+  def testOneOutput(self):
+    g = ops.Graph()
+    with g.as_default():
+      # Using a constant because creating unregistered ops
+      # doesn't work with the C API.
+      op = constant_op.constant(12, dtype=dtypes.uint16).op
+      # pylint: disable=protected-access
+      self.assertEqual([types_pb2.DT_UINT16], op._output_types)
+      # pylint: enable=protected-access
+
+  def testTwoDifferentOutputs(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant([1, 1, 2, 4, 4, 4, 7, 8, 8],
+                               dtype=dtypes.double)
+      y, _ = gen_array_ops.unique(x)
+      self.assertEqual([types_pb2.DT_DOUBLE, types_pb2.DT_INT32],
+                       y.op._output_types)  # pylint: disable=protected-access
+
+  def testThreeOutputs(self):
+    g = ops.Graph()
+    with g.as_default():
+      # Using a split operationt because creating unregistered ops
+      # doesn't work with the C API.
+      a = constant_op.constant("abc", dtype=dtypes.string, shape=[5, 30])
+      split0, _, _ = array_ops.split(a, [4, 15, 11], 1)
+      # pylint: disable=protected-access
+      self.assertEqual([types_pb2.DT_STRING] * 3, split0.op._output_types)
+      # pylint: enable=protected-access
 
 
 if __name__ == "__main__":

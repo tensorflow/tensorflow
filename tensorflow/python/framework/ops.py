@@ -27,6 +27,7 @@ import sys
 import threading
 
 import six
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
@@ -1169,7 +1170,7 @@ class Operation(object):
       a._add_consumer(self)  # pylint: disable=protected-access
     if output_types is None:
       output_types = []
-    self._output_types = output_types
+    self._output_types_val = output_types
     self._outputs = [Tensor(self, i, output_type)
                      for i, output_type in enumerate(output_types)]
     if input_types is None:
@@ -1372,7 +1373,48 @@ class Operation(object):
       assigned, or an empty string if it has not been assigned to a
       device.
     """
-    return self._node_def.device
+    if _USE_C_API:
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._node_def.device == c_api.TF_OperationDevice(self._c_op)
+      return c_api.TF_OperationDevice(self._c_op)
+    else:
+      return self._node_def.device
+
+  @property
+  def _output_types(self):
+    """List this operation's output types.
+
+    Returns:
+      List of the types of the Tensors computed by this operation.
+      Each element in the list is an integer whose value is one of
+      the TF_DataType enums defined in c_api.h
+      The length of this list indicates the number of output endpoints
+      of the operation.
+    """
+    if _USE_C_API:
+      num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
+      output_types = [c_api.TF_OperationOutputType(self._tf_output(i)) for
+                      i in xrange(num_outputs)]
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._output_types_val == output_types
+      # In all the tests we have output_types that are passed into
+      # Operation.__init__ are a list of ints (which is illegal according
+      # to the docstring), but input_types are instances of DType.
+      # This extra assert is to catch if we ever use DType for output_types.
+      if output_types:
+        assert isinstance(output_types[0], int)
+      return output_types
+    else:
+      return self._output_types_val
+
+  def _tf_output(self, output_idx):
+    """Create and return a new TF_Output for output_idx'th output of this op."""
+    tf_output = c_api.TF_Output()
+    tf_output.oper = self._c_op
+    tf_output.index = output_idx
+    return tf_output
 
   def _set_device(self, device):
     """Set the device of this operation.

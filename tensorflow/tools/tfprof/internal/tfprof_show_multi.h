@@ -55,21 +55,23 @@ class TFMultiShow {
                         std::unique_ptr<TFProfTensor>* tensor);
 
   // Overridden by subclass if extra requirements need to be met.
-  virtual bool ShouldShowIfExtra(ShowMultiNode* node, const Options& opts,
-                                 int depth) {
+  virtual bool ShouldShowIfExtra(const ShowMultiNode* node, const Options& opts,
+                                 int depth) const {
     return true;
   }
 
-  bool ShouldShow(ShowMultiNode* node, const Options& opts, int depth);
+  bool ShouldShow(const ShowMultiNode* node, const Options& opts,
+                  int depth) const;
 
-  bool ShouldTrim(ShowMultiNode* node, const std::vector<string>& regexes);
+  bool ShouldTrim(const ShowMultiNode* node,
+                  const std::vector<string>& regexes) const;
 
   bool ReAccount(ShowMultiNode* node, const Options& opts);
 
-  string FormatLegend(const Options& opts);
-  string FormatInputShapes(const TFMultiGraphNodeProto& proto);
+  string FormatLegend(const Options& opts) const;
+  string FormatInputShapes(const TFMultiGraphNodeProto& proto) const;
   std::vector<string> FormatTimes(const ShowMultiNode* node,
-                                  const Options& opts);
+                                  const Options& opts) const;
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {

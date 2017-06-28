@@ -78,12 +78,19 @@ static xla::ComputationDataHandle Round(xla::ComputationBuilder* b,
                                 b->LogicalAnd(b->Eq(fraction, half), is_odd)),
                    b->Add(round_val, one), round_val);
 }
-XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
 
+// Expresses sigmoid as a rescaled tanh: sigmoid(x) == (tanh(x/2) + 1) / 2.
+static xla::ComputationDataHandle Sigmoid(xla::ComputationBuilder* b,
+                                          DataType dtype,
+                                          const xla::ComputationDataHandle& x) {
+  auto half = XlaHelpers::FloatLiteral(b, dtype, 0.5);
+  return b->Add(half, b->Mul(half, b->Tanh(b->Mul(half, x))));
+}
+
+XLAJIT_MAKE_UNARY(Round, Round(b, input_type(0), x));
 XLAJIT_MAKE_UNARY(Rsqrt,
                   b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
-XLAJIT_MAKE_UNARY(Sigmoid,
-                  b->Map({x}, *ctx->GetOrCreateSigmoid(input_type(0))));
+XLAJIT_MAKE_UNARY(Sigmoid, Sigmoid(b, input_type(0), x));
 XLAJIT_MAKE_UNARY(Softplus,
                   b->Log(b->Add(b->Exp(x), XlaHelpers::One(b, input_type(0)))));
 XLAJIT_MAKE_UNARY(Sqrt,

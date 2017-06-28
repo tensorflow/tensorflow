@@ -172,14 +172,18 @@ linspace = gen_math_ops.lin_space
 
 # pylint: disable=redefined-builtin
 # TODO(aselle): deprecate arg_max
-def argmax(input, axis=None, name=None, dimension=None):
+def argmax(input,
+           axis=None,
+           name=None,
+           dimension=None,
+           output_type=dtypes.int64):
   if dimension is not None:
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
   elif axis is None:
     axis = 0
-  return gen_math_ops.arg_max(input, axis, name)
+  return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
 argmax.__doc__ = (gen_math_ops.arg_max.__doc__.replace("dimensions",
@@ -188,14 +192,18 @@ argmax.__doc__ = (gen_math_ops.arg_max.__doc__.replace("dimensions",
 
 
 # TODO(aselle:deprecate arg_min)
-def argmin(input, axis=None, name=None, dimension=None):
+def argmin(input,
+           axis=None,
+           name=None,
+           dimension=None,
+           output_type=dtypes.int64):
   if dimension is not None:
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
   elif axis is None:
     axis = 0
-  return gen_math_ops.arg_min(input, axis, name)
+  return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
 
 argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",

@@ -168,7 +168,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
         thread_pool_(new thread::ThreadPool(
             ctx->env(), ThreadOptions(),
             strings::StrCat("one_shot_iterator_initialization_thread_",
-                            SanitizeThreadSuffix(def().name())),
+                            SanitizeThreadSuffix(name())),
             1 /* num_threads */, false /* low_latency_hint */))
 
   {
@@ -359,7 +359,7 @@ class IteratorGetNextOp : public AsyncOpKernel {
         thread_pool_(new thread::ThreadPool(
             ctx->env(), ThreadOptions(),
             strings::StrCat("iterator_get_next_thread_",
-                            SanitizeThreadSuffix(def().name())),
+                            SanitizeThreadSuffix(name())),
             1 /* num_threads */, false /* low_latency_hint */)) {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {

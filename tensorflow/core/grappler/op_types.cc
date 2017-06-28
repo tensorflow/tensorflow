@@ -50,6 +50,11 @@ bool IsNoOp(const NodeDef& node) {
   return op == "NoOp";
 }
 
+bool IsNextIteration(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "NextIteration" || op == "RefNextIteration";
+}
+
 bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||

@@ -16994,6 +16994,68 @@ func MatrixSolveLs(scope *Scope, matrix tf.Output, rhs tf.Output, l2_regularizer
 	return op.Output(0)
 }
 
+// Applies sparse addition to `input` using individual values or slices
+//
+// from `updates` according to indices `indices`.  The updates are non-aliasing:
+// `input` is only modified in-place if no other operations will use it.
+// Otherwise, a copy of `input` is made.  This operation has a gradient with
+// respect to both `input` and `updates`.
+//
+// `input` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+//
+// `indices` must be integer tensor, containing indices into `input`.
+// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+//
+// The innermost dimension of `indices` (with length `K`) corresponds to
+// indices into elements (if `K = P`) or `(P-K)`-dimensional slices
+// (if `K < P`) along the `K`th dimension of `input`.
+//
+// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+//
+// ```
+// [d_0, ..., d_{Q-2}, input.shape[K], ..., input.shape[P-1]].
+// ```
+//
+// For example, say we want to add 4 scattered elements to a rank-1 tensor to 8
+// elements. In Python, that addition would look like this:
+//
+//     input = tf.constant([1, 2, 3, 4, 5, 6, 7, 8])
+//     indices = tf.constant([[4], [3], [1], [7]])
+//     updates = tf.constant([9, 10, 11, 12])
+//     output = tf.scatter_nd_non_aliasing_add(input, indices, updates)
+//     with tf.Session() as sess:
+//       print(sess.run(output))
+//
+// The resulting value `output` would look like this:
+//
+//     [1, 13, 3, 14, 14, 6, 7, 20]
+//
+// See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+// slices.
+//
+// Arguments:
+//	input: A Tensor.
+//	indices: A Tensor. Must be one of the following types: `int32`, `int64`.
+// A tensor of indices into `input`.
+//	updates: A Tensor. Must have the same type as ref. A tensor of updated values
+// to add to `input`.
+//
+// Returns A `Tensor` with the same shape as `input`, containing values of `input`
+// updated with `updates`.
+func ScatterNdNonAliasingAdd(scope *Scope, input tf.Output, indices tf.Output, updates tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ScatterNdNonAliasingAdd",
+		Input: []tf.Input{
+			input, indices, updates,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // QuantizedReluXAttr is an optional argument to QuantizedReluX.
 type QuantizedReluXAttr func(optionalAttr)
 
@@ -20574,23 +20636,40 @@ func Requantize(scope *Scope, input tf.Output, input_min tf.Output, input_max tf
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// ArgMinAttr is an optional argument to ArgMin.
+type ArgMinAttr func(optionalAttr)
+
+// ArgMinOutputType sets the optional output_type attribute to value.
+// If not specified, defaults to DT_INT64
+func ArgMinOutputType(value tf.DataType) ArgMinAttr {
+	return func(m optionalAttr) {
+		m["output_type"] = value
+	}
+}
+
 // Returns the index with the smallest value across dimensions of a tensor.
 //
 // Note that in case of ties the identity of the return value is not guaranteed.
 //
 // Arguments:
 //
-//	dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
-// of the input Tensor to reduce across. For vectors, use dimension = 0.
-func ArgMin(scope *Scope, input tf.Output, dimension tf.Output) (output tf.Output) {
+//	dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
+// which dimension of the input Tensor to reduce across. For vectors,
+// use dimension = 0.
+func ArgMin(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMinAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "ArgMin",
 		Input: []tf.Input{
 			input, dimension,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -21848,23 +21927,40 @@ func IsFinite(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// ArgMaxAttr is an optional argument to ArgMax.
+type ArgMaxAttr func(optionalAttr)
+
+// ArgMaxOutputType sets the optional output_type attribute to value.
+// If not specified, defaults to DT_INT64
+func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
+	return func(m optionalAttr) {
+		m["output_type"] = value
+	}
+}
+
 // Returns the index with the largest value across dimensions of a tensor.
 //
 // Note that in case of ties the identity of the return value is not guaranteed.
 //
 // Arguments:
 //
-//	dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
-// of the input Tensor to reduce across. For vectors, use dimension = 0.
-func ArgMax(scope *Scope, input tf.Output, dimension tf.Output) (output tf.Output) {
+//	dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
+// which dimension of the input Tensor to reduce across. For vectors,
+// use dimension = 0.
+func ArgMax(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMaxAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "ArgMax",
 		Input: []tf.Input{
 			input, dimension,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

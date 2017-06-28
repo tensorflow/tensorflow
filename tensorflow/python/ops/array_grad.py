@@ -670,3 +670,10 @@ def _ScatterNdGrad(op, grad):
   indices = op.inputs[0]
   updates_grad = array_ops.gather_nd(grad, indices)
   return [None, updates_grad, None]
+
+
+@ops.RegisterGradient("ScatterNdNonAliasingAdd")
+def _ScatterNdNonAliasingAddGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  return [grad, None, updates_grad]

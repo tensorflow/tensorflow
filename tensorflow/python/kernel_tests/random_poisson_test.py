@@ -131,8 +131,14 @@ class RandomPoissonTest(test.TestCase):
         # be at least 1 if they are different.
         self.assertGreaterEqual(np.linalg.norm(diff.eval()), 1)
 
+  def testZeroShape(self):
+    with self.test_session():
+      rnd = random_ops.random_poisson([], [], seed=12345)
+      self.assertEqual([0], rnd.get_shape().as_list())
+      self.assertAllClose(np.array([], dtype=np.float32), rnd.eval())
+
   def testShape(self):
-    # Fully known shape.
+    # Fully known shape
     rnd = random_ops.random_poisson(2.0, [150], seed=12345)
     self.assertEqual([150], rnd.get_shape().as_list())
     rnd = random_ops.random_poisson(

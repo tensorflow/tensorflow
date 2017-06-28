@@ -63,14 +63,15 @@ class Node;
 
 class NeighborIter;  // Declared below
 class NodeIter;      // Declared below
+class NodeProperties;  // Defined in .cc
 
 class Node {
  public:
   string DebugString() const;
   int id() const { return id_; }
   int cost_id() const { return cost_id_; }
-  const string& name() const { return props_->node_def_.name(); }
-  const string& type_string() const { return props_->node_def_.op(); }
+  const string& name() const;
+  const string& type_string() const;
 
   // def() provides the NodeDef the user supplied, but the specifics
   // of this Node may have changed due to placement, optimization, etc.
@@ -82,21 +83,21 @@ class Node {
   //   the actual assigned device, see assigned_device_name() below;
   // * def().attr() is authoritative.
   // TODO(irving): Replace with NodeInfo.
-  const NodeDef& def() const { return props_->node_def_; }
-  const OpDef& op_def() const { return *props_->op_def_; }
+  const NodeDef& def() const;
+  const OpDef& op_def() const;
 
   // input and output types
-  int32 num_inputs() const { return props_->input_types_.size(); }
-  DataType input_type(int32 i) const { return props_->input_types_[i]; }
-  const DataTypeVector& input_types() const { return props_->input_types_; }
+  int32 num_inputs() const;
+  DataType input_type(int32 i) const;
+  const DataTypeVector& input_types() const;
 
-  int32 num_outputs() const { return props_->output_types_.size(); }
-  DataType output_type(int32 o) const { return props_->output_types_[o]; }
-  const DataTypeVector& output_types() const { return props_->output_types_; }
+  int32 num_outputs() const;
+  DataType output_type(int32 o) const;
+  const DataTypeVector& output_types() const;
 
   // The device requested by the user.  For the actual assigned device,
   // use assigned_device_name() below.
-  const string& requested_device() const { return def().device(); }
+  const string& requested_device() const;
 
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
@@ -113,12 +114,10 @@ class Node {
   void set_assigned_device_name_index(int index);
 
   // Read only access to attributes
-  AttrSlice attrs() const { return AttrSlice(def()); }
+  AttrSlice attrs() const;
 
   // Inputs requested by the NodeDef.  For the actual inputs, use in_edges.
-  const protobuf::RepeatedPtrField<string>& requested_inputs() const {
-    return def().input();
-  }
+  const protobuf::RepeatedPtrField<string>& requested_inputs() const;
 
   // Get the neighboring nodes via edges either in or out of this node.
   gtl::iterator_range<NeighborIter> in_nodes() const;
@@ -162,8 +161,7 @@ class Node {
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
-    MaybeCopyOnWrite();
-    SetAttrValue(val, &((*props_->node_def_.mutable_attr())[name]));
+    SetAttrValue(val, AddAttrHelper(name));
   }
 
   void ClearAttr(const string& name);
@@ -183,37 +181,21 @@ class Node {
  private:
   friend class Graph;
   Node();
-  ~Node();
 
-  class Properties : public core::RefCounted {
-   public:
-    Properties(const OpDef* op_def, const NodeDef& node_def,
-               const DataTypeSlice inputs, const DataTypeSlice outputs);
+  NodeProperties* properties() const { return props_.get(); }
 
-    const OpDef* op_def_;  // not owned
-    NodeDef node_def_;
-    const DataTypeVector input_types_;
-    const DataTypeVector output_types_;
+  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props);
 
-   private:
-    // Destructor invoked when last reference goes away via Unref()
-    virtual ~Properties();
-    TF_DISALLOW_COPY_AND_ASSIGN(Properties);
-  };
-
-  Properties* properties() const { return props_; }
-
-  // Initialize() adopts a reference to props, and so is suitable if props was
-  // just allocated or you call props->Ref() to increment the reference
-  // count for a props being held by another Node.
-  void Initialize(int id, int cost_id, Properties* props);
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
   void Clear();
+
   // Make a copy of the Node's props_ if props_ is shared with
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
+
+  AttrValue* AddAttrHelper(const string& name);
 
   // A set of mutually exclusive classes for different kinds of nodes,
   // class_ is initialized in the Node::Initialize routine based on the
@@ -252,7 +234,10 @@ class Node {
   EdgeSet in_edges_;
   EdgeSet out_edges_;
 
-  Properties* props_;
+  // NOTE(skyewm): inheriting from core::RefCounted may have a slight
+  // performance benefit over using shared_ptr, at the cost of manual ref
+  // counting
+  std::shared_ptr<NodeProperties> props_;
 
   // Index within Graph::device_names_ of the name of device assigned
   // to perform this computation.
@@ -519,7 +504,10 @@ class Graph {
   // If cost_node is non-null, then cost accounting (in CostModel)
   // will be associated with that node rather than the new one being
   // created.
-  Node* AllocateNode(Node::Properties* props, const Node* cost_node);
+  //
+  // Ownership of the returned Node is not transferred to caller.
+  Node* AllocateNode(std::shared_ptr<NodeProperties> props,
+                     const Node* cost_node);
   void ReleaseNode(Node* node);
 
   // Registry of all known ops, including functions.

@@ -107,6 +107,12 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
            {border_outputs_str_}}));
     }
 
+    if (!fused_op_types_str_.empty()) {
+      context.params.insert(std::pair<string, std::vector<string>>(
+          {RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSED_OP_TYPES,
+           {fused_op_types_str_}}));
+    }
+
     context.params.insert(std::pair<string, std::vector<string>>(
         {RemoteFusedGraphExecuteUtils::
              TRANSFORM_ARG_REMOTE_FUSED_GRAPH_EXECUTOR_NAME,
@@ -127,6 +133,15 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
   void SetInputShapeType() {
     input_types_ = "float";
     input_shapes_ = "1,1,1,1";
+  }
+
+  void ReplaceOpType(const std::unordered_set<string>& op_name,
+                     const string& new_op_type) {
+    for (NodeDef& node_def : *input_graph_def_.mutable_node()) {
+      if (op_name.count(node_def.name()) > 0) {
+        node_def.set_op(new_op_type);
+      }
+    }
   }
 
   void CheckGraph(int expected_node_count, int expected_cluster_count) {
@@ -162,6 +177,7 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
   string fused_node_names_str_;
   string border_inputs_str_;
   string border_outputs_str_;
+  string fused_op_types_str_;
 };
 
 TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
@@ -228,6 +244,22 @@ TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
   CheckGraph(7, 1);
 }
 
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
+       FuseRemoteGraphByOpTypes_HIJ) {
+  ReplaceOpType({"H", "I", "J"}, "Mul");
+  fused_op_types_str_ = "Mul";
+  TF_ASSERT_OK(Fuse());
+  CheckGraph(9, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
+       FuseRemoteGraphByOpTypes_FGHIJ) {
+  ReplaceOpType({"F", "G", "H", "I", "J"}, "Mul");
+  fused_op_types_str_ = "Const,Mul";
+  TF_ASSERT_OK(Fuse());
+  CheckGraph(3, 1);
+}
+
 TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest, PlaceAndFuse_HIJ) {
   fused_node_names_str_ = "H,I,J";
   TF_ASSERT_OK(PlaceFuseArgs());
@@ -257,6 +289,27 @@ TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest, PlaceAndFuse_ABCDE_K) {
   TF_ASSERT_OK(PlaceFuseArgs());
   TF_ASSERT_OK(FuseWithPlacedArgs());
   CheckGraph(7, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest, PlaceAndFuse_MUL_HIJ) {
+  SetInputShapeType();
+  ReplaceOpType({"H", "I", "J"}, "Mul");
+  fused_op_types_str_ = "Mul";
+
+  TF_ASSERT_OK(PlaceFuseArgs());
+  TF_ASSERT_OK(FuseWithPlacedArgs());
+  CheckGraph(9, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
+       PlaceAndFuse_CONST_MUL_FGHIJ) {
+  SetInputShapeType();
+  ReplaceOpType({"F", "G", "H", "I", "J"}, "Mul");
+  fused_op_types_str_ = "Const,Mul";
+
+  TF_ASSERT_OK(PlaceFuseArgs());
+  TF_ASSERT_OK(FuseWithPlacedArgs());
+  CheckGraph(3, 1);
 }
 
 }  // namespace

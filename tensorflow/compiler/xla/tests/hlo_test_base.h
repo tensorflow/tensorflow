@@ -104,8 +104,6 @@ class HloTestBase : public ::testing::Test {
 
   std::unique_ptr<Backend> backend_;
 
-  Compiler::HloDumper test_hlo_dumper_;
-
   // This vector contains handles of all the device memory allocations performed
   // by the test. These are deallocated on destruction of the test object.
   std::vector<perftools::gputools::DeviceMemoryBase> allocations_;
