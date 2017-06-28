@@ -84,16 +84,14 @@ void HandleStridedSliceCase(OpKernelContext* context,
 
   gtl::InlinedVector<int64, 4> processing_dims = processing_shape.dim_sizes();
   if (is_simple_slice) {
-    Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
-    Eigen::DSizes<Eigen::DenseIndex, NDIM> sizes_di;
+    gtl::InlinedVector<int64, 4> sizes;
     for (int i = 0; i < NDIM; ++i) {
-      begin_di[i] = begin[i];
-      sizes_di[i] = end[i] - begin[i];
+      sizes[i] = end[i] - begin[i];
     }
-    functor::Slice<Device, Proxy, NDIM>()(
-        context->eigen_device<Device>(),
-        result->bit_casted_shaped<Proxy, NDIM>(processing_dims),
-        context->input(0).bit_casted_tensor<Proxy, NDIM>(), begin_di, sizes_di);
+    CHECK(result->CopyFrom(*result, processing_shape));
+    const Tensor input = context->input(0);
+    functor::Slice<Device, Proxy>()(
+        context->eigen_device<Device>(), result, input, begin, sizes);
   } else {
     Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
     Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;
