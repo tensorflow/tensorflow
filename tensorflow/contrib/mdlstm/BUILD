@@ -21,7 +21,6 @@ py_library(
     deps = [
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python/core:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:nn",
