@@ -41,7 +41,6 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tools/tfprof:protos_all_cc",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -56,6 +55,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",
+        "//tensorflow/tools/tfprof:protos_all_cc",
     ],
 )
 
@@ -92,6 +92,7 @@ cc_library(
         ":tfprof_tensor",
         ":tfprof_utils",
         "//tensorflow/c:c_api",
+        "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -264,9 +265,7 @@ cc_library(
 
 cc_library(
     name = "print_model_analysis_hdr",
-    hdrs = [
-        "print_model_analysis.h",
-    ],
+    hdrs = ["print_model_analysis.h"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",

@@ -18,7 +18,7 @@ limitations under the License.
 // This file is used by cuda code and must remain compilable by nvcc.
 
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/platform/types.h"
 
 // Two sets of macros:

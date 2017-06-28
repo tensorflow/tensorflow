@@ -50,6 +50,7 @@ class TFProfTensorTest : public ::testing::Test {
 
     tf_stats_.reset(new TFStats(std::move(graph_pb), std::move(run_meta_pb),
                                 std::move(op_log_pb), std::move(ckpt_reader)));
+    tf_stats_->BuildAllViews();
   }
 
   std::unique_ptr<TFStats> tf_stats_;
@@ -75,7 +76,8 @@ TEST_F(TFProfTensorTest, Basics) {
       "value_double: 0\n      value_double: 0\n      value_double: 0\n      "
       "value_double: 0\n    }\n    accelerator_exec_micros: 0\n    "
       "cpu_exec_micros: 0\n    total_accelerator_exec_micros: 0\n    "
-      "total_cpu_exec_micros: 0\n  }\n  children {\n    name: "
+      "total_cpu_exec_micros: 0\n    run_count: 0\n    total_run_count: 0\n    "
+      "total_definition_count: 1\n  }\n  children {\n    name: "
       "\"conv2d/kernel\"\n    exec_micros: 0\n    requested_bytes: 0\n    "
       "parameters: 135\n    total_exec_micros: 0\n    total_requested_bytes: "
       "0\n    total_parameters: 135\n    float_ops: 0\n    total_float_ops: "
@@ -148,10 +150,12 @@ TEST_F(TFProfTensorTest, Basics) {
       "value_double: 0.146625\n      value_double: 0.167754\n      "
       "value_double: 0.249554\n    }\n    accelerator_exec_micros: 0\n    "
       "cpu_exec_micros: 0\n    total_accelerator_exec_micros: 0\n    "
-      "total_cpu_exec_micros: 0\n  }\n  float_ops: 0\n  total_float_ops: 0\n  "
+      "total_cpu_exec_micros: 0\n    run_count: 0\n    total_run_count: 0\n    "
+      "total_definition_count: 1\n  }\n  float_ops: 0\n  total_float_ops: 0\n  "
       "accelerator_exec_micros: 0\n  cpu_exec_micros: 0\n  "
-      "total_accelerator_exec_micros: 0\n  total_cpu_exec_micros: "
-      "0\n}\nchildren {\n  name: \"conv2d_1\"\n  exec_micros: 0\n  "
+      "total_accelerator_exec_micros: 0\n  total_cpu_exec_micros: 0\n  "
+      "run_count: 0\n  total_run_count: 0\n  total_definition_count: "
+      "3\n}\nchildren {\n  name: \"conv2d_1\"\n  exec_micros: 0\n  "
       "requested_bytes: 0\n  total_exec_micros: 0\n  total_requested_bytes: "
       "0\n  total_parameters: 230\n  children {\n    name: \"conv2d_1/bias\"\n "
       "   exec_micros: 0\n    requested_bytes: 0\n    parameters: 5\n    "
@@ -161,7 +165,8 @@ TEST_F(TFProfTensorTest, Basics) {
       "value_double: 0\n      value_double: 0\n      value_double: 0\n      "
       "value_double: 0\n    }\n    accelerator_exec_micros: 0\n    "
       "cpu_exec_micros: 0\n    total_accelerator_exec_micros: 0\n    "
-      "total_cpu_exec_micros: 0\n  }\n  children {\n    name: "
+      "total_cpu_exec_micros: 0\n    run_count: 0\n    total_run_count: 0\n    "
+      "total_definition_count: 1\n  }\n  children {\n    name: "
       "\"conv2d_1/kernel\"\n    exec_micros: 0\n    requested_bytes: 0\n    "
       "parameters: 225\n    total_exec_micros: 0\n    total_requested_bytes: "
       "0\n    total_parameters: 225\n    float_ops: 0\n    total_float_ops: "
@@ -279,12 +284,15 @@ TEST_F(TFProfTensorTest, Basics) {
       "value_double: -0.123842\n      value_double: 0.0858642\n      "
       "value_double: 0.23111\n      value_double: 0.0491742\n    }\n    "
       "accelerator_exec_micros: 0\n    cpu_exec_micros: 0\n    "
-      "total_accelerator_exec_micros: 0\n    total_cpu_exec_micros: 0\n  }\n  "
-      "float_ops: 0\n  total_float_ops: 0\n  accelerator_exec_micros: 0\n  "
-      "cpu_exec_micros: 0\n  total_accelerator_exec_micros: 0\n  "
-      "total_cpu_exec_micros: 0\n}\nfloat_ops: 0\ntotal_float_ops: "
+      "total_accelerator_exec_micros: 0\n    total_cpu_exec_micros: 0\n    "
+      "run_count: 0\n    total_run_count: 0\n    total_definition_count: 1\n  "
+      "}\n  float_ops: 0\n  total_float_ops: 0\n  accelerator_exec_micros: 0\n "
+      " cpu_exec_micros: 0\n  total_accelerator_exec_micros: 0\n  "
+      "total_cpu_exec_micros: 0\n  run_count: 0\n  total_run_count: 0\n  "
+      "total_definition_count: 3\n}\nfloat_ops: 0\ntotal_float_ops: "
       "0\naccelerator_exec_micros: 0\ncpu_exec_micros: "
-      "0\ntotal_accelerator_exec_micros: 0\ntotal_cpu_exec_micros: 0\n",
+      "0\ntotal_accelerator_exec_micros: 0\ntotal_cpu_exec_micros: "
+      "0\nrun_count: 0\ntotal_run_count: 0\ntotal_definition_count: 6\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());
 }

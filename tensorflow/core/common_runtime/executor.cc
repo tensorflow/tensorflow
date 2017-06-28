@@ -1743,7 +1743,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
           return AttachDef(errors::FailedPrecondition(
                                "Attempting to use uninitialized value ",
-                               item.kernel->def().input(i)),
+                               item.kernel->requested_input(i)),
                            item.kernel->def());
         }
       }

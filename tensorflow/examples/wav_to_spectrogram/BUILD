@@ -19,7 +19,10 @@ cc_library(
     hdrs = ["wav_to_spectrogram.h"],
     deps = [
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
     ],
 )
@@ -30,6 +33,7 @@ cc_binary(
     deps = [
         ":wav_to_spectrogram_lib",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
     ],
 )
 

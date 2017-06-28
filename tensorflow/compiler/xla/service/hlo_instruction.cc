@@ -1883,7 +1883,7 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kReverse:
       return visitor->HandleReverse(this, operands_[0]);
     case HloOpcode::kReducePrecision:
-      return visitor->HandleReducePrecision(this, operands_[0]);
+      return visitor->HandleReducePrecision(this);
     case HloOpcode::kSlice:
       return visitor->HandleSlice(this, operands_[0]);
     case HloOpcode::kDynamicSlice:

@@ -14,7 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // DO NOT EDIT: automatically generated file
-#ifndef THIRD_PARTY_TENSORFLOW_OPENSOURCE_ONLY_TOOLCHAINS_GPUS_CUDA_CUDA_CONFIG_H_
-#define THIRD_PARTY_TENSORFLOW_OPENSOURCE_ONLY_TOOLCHAINS_GPUS_CUDA_CUDA_CONFIG_H_
+#ifndef CUDA_CUDA_CONFIG_H_
+#define CUDA_CUDA_CONFIG_H_
 
-#endif  // THIRD_PARTY_TENSORFLOW_OPENSOURCE_ONLY_TOOLCHAINS_GPUS_CUDA_CUDA_CONFIG_H_
+#define TF_CUDA_CAPABILITIES CudaVersion("3.0")
+
+#define TF_CUDA_VERSION "8.0"
+#define TF_CUDNN_VERSION "5"
+
+#define TF_CUDA_TOOLKIT_PATH "/usr/local/cuda-8.0"
+
+#endif  // CUDA_CUDA_CONFIG_H_

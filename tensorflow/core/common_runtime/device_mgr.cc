@@ -33,6 +33,7 @@ DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
     string full_name = d->name();
     device_map_[CopyToBackingStore(full_name)] = d;
 
+    // TODO(b/62909072): Upgrade device_map_ to a better data structure.
     DeviceNameUtils::ParsedName parsed_name = d->parsed_name();
     if (parsed_name.has_job && parsed_name.has_replica &&
         parsed_name.has_task && parsed_name.has_type && parsed_name.has_id) {
@@ -40,6 +41,11 @@ DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
           parsed_name.job, parsed_name.replica, parsed_name.task,
           parsed_name.type, parsed_name.id);
       device_map_[CopyToBackingStore(canonical_name)] = d;
+
+      string legacy_name = DeviceNameUtils::LegacyName(
+          parsed_name.job, parsed_name.replica, parsed_name.task,
+          parsed_name.type, parsed_name.id);
+      device_map_[CopyToBackingStore(legacy_name)] = d;
     }
     string lname = DeviceNameUtils::LocalName(d->name());
     device_map_[CopyToBackingStore(lname)] = d;

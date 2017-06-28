@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -30,9 +31,10 @@ using ::tensorflow::strings::StrAppend;
 namespace xla {
 
 namespace {
-void DumpModule(const Compiler::HloDumper& dumper_, const HloModule& module,
+void DumpModule(const HloModule& module,
+
                 const string& message) {
-  dumper_(module, message);
+  hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(2) << "HLO " << message << ":";
   XLA_VLOG_LINES(2, module.ToString());
 }
@@ -75,7 +77,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     // Emit label containing: "after foo-pass, before bar-pass".
     message.clear();
     StrAppend(&message, prefix, ", before ", pass->name());
-    DumpModule(dumper_, *module, message);
+    DumpModule(*module, message);
 
     TF_RETURN_IF_ERROR(run_invariant_checkers());
     TF_ASSIGN_OR_RETURN(bool changed_this_pass, pass->Run(module));
@@ -85,7 +87,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
     StrAppend(&prefix, name(), ": after ", pass->name());
   }
   TF_RETURN_IF_ERROR(run_invariant_checkers());
-  DumpModule(dumper_, *module, prefix + ", pipeline end");
+  DumpModule(*module, prefix + ", pipeline end");
   return changed;
 }
 

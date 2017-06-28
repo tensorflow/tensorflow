@@ -120,6 +120,11 @@ class ReferenceUtil {
       tensorflow::gtl::ArraySlice<int64> dims,
       std::function<float(float, float)> reduce_function);
 
+  // Broadcast 1D dimension to 4D, from the dimension `broadcast_from_dim`.
+  static std::unique_ptr<Array4D<float>> Broadcast1DTo4D(
+      const std::vector<float>& array, const std::vector<int64>& bounds,
+      int64 broadcast_from_dim);
+
   // Returns the result of reducing the 3D array to a 2D array, reducing away
   // the dimensions specified in dims.
   static std::unique_ptr<Array2D<float>> Reduce3DTo2D(
@@ -168,6 +173,12 @@ class ReferenceUtil {
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride,
       const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+
+  // Batch normalize data.
+  static std::unique_ptr<Array4D<float>> BatchNorm4D(
+      const Array4D<float>& input, const Array4D<float>& mean,
+      const Array4D<float>& var, const Array4D<float>& scale,
+      const Array4D<float>& offset, float epsilon);
 
   // Performs select and scatter with Greater Than or equal as the select, plus
   // as the scatter, and Same Padding.
@@ -389,6 +400,41 @@ class ReferenceUtil {
             (*result)(plane, depth, height, width) =
                 map_function(input(plane, depth, height, width), plane, depth,
                              height, width);
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  // Applies map_function to each pair of elements in the input lhs and rhs
+  // (4D array) and returns the result.
+  template <typename F>
+  static std::unique_ptr<Array4D<float>> MapArray4D(const Array4D<float>& lhs,
+                                                    const Array4D<float>& rhs,
+                                                    F&& map_function) {
+    return MapWithIndexArray4D(
+        lhs, rhs, [&](float lhs, float rhs, int64, int64, int64, int64) {
+          return map_function(lhs, rhs);
+        });
+  }
+
+  // Applies map_function to each pair of element in lhs and rhs (4D array) and
+  // returns the result.
+  // (plane, depth, height, width) index of each element is also provided as
+  // arguments to map_function.
+  template <typename F>
+  static std::unique_ptr<Array4D<float>> MapWithIndexArray4D(
+      const Array4D<float>& lhs, const Array4D<float>& rhs, F&& map_function) {
+    auto result = MakeUnique<Array4D<float>>(lhs.planes(), lhs.depth(),
+                                             lhs.height(), lhs.width());
+    for (int64 plane = 0; plane < lhs.planes(); ++plane) {
+      for (int64 depth = 0; depth < lhs.depth(); ++depth) {
+        for (int64 height = 0; height < lhs.height(); ++height) {
+          for (int64 width = 0; width < lhs.width(); ++width) {
+            (*result)(plane, depth, height, width) = map_function(
+                lhs(plane, depth, height, width),
+                rhs(plane, depth, height, width), plane, depth, height, width);
           }
         }
       }

@@ -33,6 +33,7 @@ cc_binary(
         "//tensorflow/tools/tfprof/internal:tfprof_options",
         "//tensorflow/tools/tfprof/internal:tfprof_stats",
         "//tensorflow/tools/tfprof/internal:tfprof_utils",
+        "//tensorflow/tools/tfprof/internal/advisor:tfprof_advisor",
         "@linenoise//:linenoise",
     ],
 )

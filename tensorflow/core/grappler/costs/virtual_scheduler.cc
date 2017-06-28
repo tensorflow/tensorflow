@@ -620,16 +620,19 @@ Costs VirtualScheduler::Summary() const {
   return critical_path_costs;
 }
 
-Costs VirtualScheduler::Summary(StepStats* stepstats) {
-  if (stepstats != nullptr) {
+Costs VirtualScheduler::Summary(RunMetadata* metadata) {
+  if (metadata != nullptr) {
+    StepStats* stepstats = metadata->mutable_step_stats();
     for (const auto& device : device_) {
+      GraphDef* device_partition_graph =
+          metadata->mutable_partition_graphs()->Add();
       DeviceStepStats* device_stepstats = stepstats->add_dev_stats();
       device_stepstats->set_device(device.first);
       for (const auto& node_def : device.second.nodes_executed) {
         const NodeState& nodestate = node_map_.at(node_def);
         NodeExecStats* node_stats = device_stepstats->add_node_stats();
-        node_stats->set_node_name(node_def->op());
-        node_stats->set_timeline_label(node_def->name());
+        node_stats->set_timeline_label(node_def->op());
+        node_stats->set_node_name(node_def->name());
         node_stats->set_op_start_rel_micros(0);
         node_stats->set_all_start_micros(
             nodestate.time_scheduled.asMicroSeconds().count());
@@ -639,6 +642,7 @@ Costs VirtualScheduler::Summary(StepStats* stepstats) {
         node_stats->set_all_end_rel_micros(
             nodestate.time_finished.asMicroSeconds().count() -
             nodestate.time_scheduled.asMicroSeconds().count());
+        *device_partition_graph->mutable_node()->Add() = *node_def;
       }
     }
   }

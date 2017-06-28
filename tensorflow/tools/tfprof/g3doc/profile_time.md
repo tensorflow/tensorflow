@@ -1,9 +1,41 @@
 ##Profile Time
 
+* [Times in TensorFlow and tfprof](#times-in-tensorflow-and-tfprof)
 * [Profile by Python Code](#profile-by-python-code)
 * [Profile by Operation Type](#profile-by-operation-type)
 * [Profile by Graph](#profile-by-graph)
 * [Profile by Name Scope](#profile-by-name-scope)
+
+
+###Times in TensorFlow and tfprof
+When we run a model, Tensorflow schedules and runs the nodes (operations)
+in the graph. An operation can be placed on an accelerator or on CPU.
+
+
+#### On Accelerator
+When an operation is placed on accelerator, it will first be scheduled
+by TensorFlow on CPU. Normally, it's the code in OpKernel::Compute.
+OpKernel::Compute can decide to dispatch some of the computations on the
+accelerator. While some computation (e.g. pre-processing) is still done
+in CPU. OpKernel::Compute can dispatch computation on accelerator
+and return, or it can also wait for the accelerator to finish.
+
+tfprof reports 3 execution times:
+
+  * <b>accelerator_micros</b>, which is the part of computation time spent on accelerator.
+  * <b>cpu_micros</b>, which is the part of computation time spent on cpu, including
+    any wait times that might happen if OpKernel::Compute decides to wait.
+  * <b>exec_micros</b>, which is the sum of accelerator_micros and cpu_micros.
+
+Since accelerator, such as GPU, usually runs operation asynchronously, you
+might notice an operation finishes on cpu before it starts running on
+accelerator.
+
+#### On CPU
+When an operation is placed on CPU, it will completely run on CPU. Hence,
+<b>exec_micros</b> is equal to <b>cpu_micros</b> and <b>accelerator_micros</b>
+should be 0.
+
 
 ###Profile by Python Code
 ```python

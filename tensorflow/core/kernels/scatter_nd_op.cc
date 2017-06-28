@@ -16,12 +16,17 @@ limitations under the License.
 // See docs in ../ops/state_ops.cc.
 #define EIGEN_USE_THREADS
 
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA
+
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/dense_update_ops.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -29,7 +34,7 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
@@ -37,7 +42,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Check whether updates.shape = indices.shape[:batch_dim] +
 // params_shape[slice_dim:]
@@ -91,11 +96,13 @@ static void PrepareAndValidateInputs(OpKernelContext* c,
       errors::InvalidArgument("Output must be at least 1-D, ",
                               "got shape: ", params_shape.DebugString()));
 
-  OP_REQUIRES(c,
-              params_shape.num_elements() >= 0 ||
-                  (indices.NumElements() == 0 && updates.NumElements() == 0),
-              errors::InvalidArgument(
-                  "Indices and updates specified for empty output", " shape"));
+  OP_REQUIRES(
+      c,
+      params_shape.num_elements() > 0 ||
+          (indices.NumElements() == 0 && updates.NumElements() == 0),
+      errors::InvalidArgument(
+          "Indices and updates specified for empty output.  indices shape: ",
+          indices.shape().DebugString()));
 
   OP_REQUIRES(c, updates.dim_size(0) == indices.dim_size(0),
               errors::InvalidArgument(
@@ -147,9 +154,9 @@ static void PrepareAndValidateInputs(OpKernelContext* c,
 
 template <typename Device, typename Index>
 class IndexFlattener {
-public:
-  inline typename TTypes<Index, 2>::ConstTensor
-  operator()(OpKernelContext*, const Tensor& indices) {
+ public:
+  inline typename TTypes<Index, 2>::ConstTensor operator()(
+      OpKernelContext*, const Tensor& indices) {
     return indices.flat_inner_dims<Index>();
   }
 };
@@ -157,12 +164,12 @@ public:
 #ifdef TENSORFLOW_USE_SYCL
 template <typename Index>
 class IndexFlattener<SYCLDevice, Index> {
-public:
+ public:
   IndexFlattener() { indices_host_ = nullptr; }
   ~IndexFlattener() { delete[] indices_host_; }
 
-  inline typename TTypes<Index, 2>::ConstTensor
-  operator()(OpKernelContext* c, const Tensor& indices) {
+  inline typename TTypes<Index, 2>::ConstTensor operator()(
+      OpKernelContext* c, const Tensor& indices) {
     size_t num_indices = indices.NumElements();
     indices_host_ = new Index[num_indices];
     auto device = c->eigen_sycl_device();
@@ -170,11 +177,11 @@ public:
     auto src_ptr = GetBase(&indices);
     device.memcpyDeviceToHost(indices_host_, static_cast<const Index*>(src_ptr),
                               size);
-    return typename TTypes<Index, 2>::ConstTensor(indices_host_,
-           indices.shape().AsEigenDSizes<2>());
+    return typename TTypes<Index, 2>::ConstTensor(
+        indices_host_, indices.shape().AsEigenDSizes<2>());
   }
 
-private:
+ private:
   Index* indices_host_;
 };
 #endif
@@ -213,6 +220,9 @@ class ScatterNdOp : public OpKernel {
 
     Tensor* out = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, shape, &out));
+
+    if (shape.num_elements() == 0) return;
+
     functor::SetZeroFunctor<Device, T> fill;
     fill(c->eigen_device<Device>(), out->flat<T>());
     auto output_matrix = out->template shaped<T, 2>(
@@ -271,12 +281,19 @@ class ScatterNdUpdateOp : public OpKernel {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType dt_ref = DataTypeToEnum<T>::ref();
     const DataType index_t = DataTypeToEnum<Index>::v();
-    OP_REQUIRES_OK(c, c->MatchSignature({dt_ref, index_t, dt}, {dt_ref}));
-    OP_REQUIRES_OK(c, c->GetAttr("use_locking", &use_exclusive_lock_));
+    if (IsRefType(c->input_type(0))) {
+      OP_REQUIRES_OK(c, c->MatchSignature({dt_ref, index_t, dt}, {dt_ref}));
+      OP_REQUIRES_OK(c, c->GetAttr("use_locking", &use_exclusive_lock_));
+    } else {
+      OP_REQUIRES_OK(c, c->MatchSignature({dt, index_t, dt}, {dt}));
+      use_exclusive_lock_ = false;
+    }
   }
 
   void Compute(OpKernelContext* c) override {
     if (use_exclusive_lock_) {
+      // If we're here, it means the input type is a ref.
+      DCHECK(IsRefType(c->input_dtype(0)));
       // Hold mutex while we apply updates
       mutex_lock l(*c->input_ref_mutex(0));
       DoCompute(c);
@@ -289,20 +306,41 @@ class ScatterNdUpdateOp : public OpKernel {
   bool use_exclusive_lock_;
 
   void DoCompute(OpKernelContext* c) {
-    Tensor params = c->mutable_input(0, use_exclusive_lock_);
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
-    const TensorShape& params_shape(params.shape());
 
     int64 slice_dim;
     Index num_updates;
     Index slice_size;
 
-    OP_REQUIRES(c, params.IsInitialized(),
-                errors::FailedPrecondition("Null ref for params"));
+    Tensor params;
+    TensorShape params_shape;
+
+    if (IsRefType(c->input_dtype(0))) {
+      params = c->mutable_input(0, use_exclusive_lock_);
+      params_shape = params.shape();
+      c->forward_ref_input_to_ref_output(0, 0);
+      OP_REQUIRES(c, params.IsInitialized(),
+                  errors::FailedPrecondition("Null ref for params"));
+    } else {
+      Tensor* params_ptr;
+      params_shape = c->input(0).shape();
+      if (!c->forward_input_to_output_with_shape(0, 0, params_shape,
+                                                 &params_ptr)) {
+        // We weren't able to forward the input to output, so just
+        // allocate a new output tensor and copy the values over.
+        OP_REQUIRES_OK(c, c->allocate_output(0, params_shape, &params_ptr));
+        params = *params_ptr;
+        functor::DenseUpdate<Device, T, ASSIGN> copy;
+        const Tensor& input_copy = c->input(0);
+        copy(c->eigen_device<Device>(), params.flat<T>(), input_copy.flat<T>());
+      }
+    }
+
     PrepareAndValidateInputs<Index>(c, params_shape, indices, updates,
                                     &slice_dim, &num_updates, &slice_size);
     if (!c->status().ok()) return;
+    if (params_shape.num_elements() == 0) return;
 
     IndexFlattener<Device, Index> index_flattener;
     auto indices_flat = index_flattener(c, indices);
@@ -310,7 +348,6 @@ class ScatterNdUpdateOp : public OpKernel {
     auto params_matrix = params.template shaped<T, 2>(
         {params_shape.num_elements() / slice_size, slice_size});
     Index bad_i = -1;
-    c->forward_ref_input_to_ref_output(0, 0);
 
     switch (slice_dim) {
 #define PARAMS_CASE(IXDIM)                                                  \
@@ -376,10 +413,12 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX(type, int32, dev, name, op); \
   REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX(type, int64, dev, name, op)
 
-#define REGISTER_SCATTER_ND_ADD_SUB(type, dev)                     \
-  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdAdd",     \
-                                    scatter_nd_op::UpdateOp::ADD); \
-  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdSub",     \
+#define REGISTER_SCATTER_ND_ADD_SUB(type, dev)                            \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdAdd",            \
+                                    scatter_nd_op::UpdateOp::ADD);        \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdNonAliasingAdd", \
+                                    scatter_nd_op::UpdateOp::ADD);        \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdSub",            \
                                     scatter_nd_op::UpdateOp::SUB);
 // TODO(simister): Find a way to reduce amount of templated generated code
 // to reduce build size, then re-enable these additional operations.
@@ -421,8 +460,30 @@ TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_GPU);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_GPU);
-
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_GPU);
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SCATTER_ND_ADD_SUB_SYCL(type) \
+  REGISTER_SCATTER_ND_ADD_SUB(type, SYCL);
+
+#define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
+  REGISTER_SCATTER_ND_UPDATE(type, SYCL);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
+#undef REGISTER_SCATTER_ND_ADD_SUB_SYCL
+#undef REGISTER_SCATTER_ND_UPDATE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
+
+#undef REGISTER_SCATTER_ND_ADD
+#undef REGISTER_SCATTER_ND_ADD_SUB
+#undef REGISTER_SCATTER_ND_ADD_SUB_CPU
+#undef REGISTER_SCATTER_ND_ADD_SUB_GPU
+#undef REGISTER_SCATTER_ND_UPDATE
+#undef REGISTER_SCATTER_ND_UPDATE_CPU
+#undef REGISTER_SCATTER_ND_UPDATE_GPU
+#undef REGISTER_SCATTER_ND_KERNEL
+#undef REGISTER_SCATTER_ND_KERNEL_INDEX
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -458,31 +519,19 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPECS_INDEX
 #undef DECLARE_GPU_SPECS_INDEX_OP
+
+#define REGISTER_GPU_KERNELS(type)                         \
+  template <>                                              \
+  void DenseUpdate<GPUDevice, type, ASSIGN>::operator()(   \
+      const GPUDevice& d, typename TTypes<type>::Flat lhs, \
+      typename TTypes<type>::ConstFlat rhs);               \
+  extern template struct DenseUpdate<GPUDevice, type, ASSIGN>;
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+#undef REGISTER_GPU_KERNELS
+
 }  // namespace functor
 
 #endif  // GOOGLE_CUDA
-
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SCATTER_ND_ADD_SUB_SYCL(type) \
-  REGISTER_SCATTER_ND_ADD_SUB(type, SYCL);
-
-#define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
-  REGISTER_SCATTER_ND_UPDATE(type, SYCL);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
-#undef REGISTER_SCATTER_ND_ADD_SUB_SYCL
-#undef REGISTER_SCATTER_ND_UPDATE_SYCL
-#endif // TENSORFLOW_USE_SYCL
-
-#undef REGISTER_SCATTER_ND_ADD
-#undef REGISTER_SCATTER_ND_ADD_SUB
-#undef REGISTER_SCATTER_ND_ADD_SUB_CPU
-#undef REGISTER_SCATTER_ND_ADD_SUB_GPU
-#undef REGISTER_SCATTER_ND_UPDATE
-#undef REGISTER_SCATTER_ND_UPDATE_CPU
-#undef REGISTER_SCATTER_ND_UPDATE_GPU
-#undef REGISTER_SCATTER_ND_KERNEL
-#undef REGISTER_SCATTER_ND_KERNEL_INDEX
 
 }  // namespace tensorflow

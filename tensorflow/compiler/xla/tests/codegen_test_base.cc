@@ -55,8 +55,7 @@ void CodegenTestBase::CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
 std::unique_ptr<Executable> CodegenTestBase::CompileToExecutable(
     std::unique_ptr<HloModule> hlo_module) {
   return backend_->compiler()
-      ->Compile(std::move(hlo_module), test_hlo_dumper_,
-                backend_->default_stream_executor())
+      ->Compile(std::move(hlo_module), backend_->default_stream_executor())
       .ConsumeValueOrDie();
 }
 
