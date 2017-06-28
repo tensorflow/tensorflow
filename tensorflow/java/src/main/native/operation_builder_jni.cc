@@ -257,3 +257,32 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShape(
   TF_SetAttrShape(d, cname, cvalue.get(), static_cast<int>(num_dims));
   env->ReleaseStringUTFChars(name, cname);
 }
+
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
+        JNIEnv* env, jclass object, jlong handle, jstring name, jobjectArray values) {
+ static_assert(sizeof(jbyte) == 1,
+                "Require Java byte to be represented as a single byte");
+  TF_OperationDescription* d = requireHandle(env, handle);
+  if (d == nullptr) return;
+  const char *cname = env->GetStringUTFChars(name, nullptr);
+  int num_strings = env->GetArrayLength(values);
+  size_t *lengths = new size_t[num_strings];
+  jbyte **strings = new jbyte *[num_strings];
+  for (int i = 0; i < num_strings; i++) {
+    jbyteArray value = (jbyteArray) env->GetObjectArrayElement(values, i);
+    lengths[i] = static_cast<size_t>(env->GetArrayLength(value));
+    strings[i] = env->GetByteArrayElements(value, nullptr);
+  }
+  if (num_strings > 0) {
+    TF_SetAttrStringList(d, cname, reinterpret_cast<const void *const *>(strings), lengths, num_strings);
+  } else {
+    TF_SetAttrStringList(d, cname, nullptr, nullptr, 0);
+  }
+  for (int i = 0; i < num_strings; i++) {
+    jbyteArray value = (jbyteArray) env->GetObjectArrayElement(values, i);
+    strings[i] = env->GetByteArrayElements(value, nullptr);
+    env->ReleaseByteArrayElements(value, strings[i], JNI_ABORT);
+    env->DeleteLocalRef(value);
+  }
+  env->ReleaseStringUTFChars(name, cname);
+}
