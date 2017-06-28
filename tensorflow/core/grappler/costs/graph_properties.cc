@@ -432,26 +432,30 @@ Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
   return Status::OK();
 }
 
+bool GraphProperties::HasInputProperties(const string& name) const {
+  return input_properties_.find(name) != input_properties_.end();
+}
+
 bool GraphProperties::HasOutputProperties(const string& name) const {
   return output_properties_.find(name) != output_properties_.end();
 }
 
-std::vector<OpInfo::TensorProperties> GraphProperties::GetInputProperties(
-    const string& node_name) const {
+const std::vector<OpInfo::TensorProperties>&
+GraphProperties::GetInputProperties(const string& node_name) const {
   auto it = input_properties_.find(node_name);
   if (it != input_properties_.end()) {
     return it->second;
   }
-  return std::vector<OpInfo::TensorProperties>();
+  return missing_properties_;
 }
 
-std::vector<OpInfo::TensorProperties> GraphProperties::GetOutputProperties(
-    const string& node_name) const {
+const std::vector<OpInfo::TensorProperties>&
+GraphProperties::GetOutputProperties(const string& node_name) const {
   auto it = output_properties_.find(node_name);
   if (it != output_properties_.end()) {
     return it->second;
   }
-  return std::vector<OpInfo::TensorProperties>();
+  return missing_properties_;
 }
 
 }  // end namespace grappler

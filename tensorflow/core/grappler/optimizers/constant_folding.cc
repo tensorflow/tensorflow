@@ -145,9 +145,8 @@ string ConstantFolding::AddControlDependency(const string& input_name) {
   }
 }
 
-Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
-  GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
+Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
+                                          const GraphProperties& properties) {
   // We may add some nodes to the graph to encode control dependencies: there is
   // no need to process these, so only iterate over the nodes of the input
   // graph.
@@ -622,7 +621,65 @@ bool ConstantFolding::IsSimplifiableReduction(const NodeDef& node) const {
   return false;
 }
 
-Status ConstantFolding::SimplifyGraph(GraphDef* output) {
+bool ConstantFolding::IsSimplifiableReshape(
+    const NodeDef& node, const GraphProperties& properties) const {
+  if (!IsReshape(node)) {
+    return false;
+  }
+  CHECK_LE(2, node.input_size());
+  const NodeDef* new_shape = node_map_->GetNode(node.input(1));
+  if (!IsConstant(*new_shape)) {
+    return false;
+  }
+  TensorVector outputs;
+  auto outputs_cleanup = gtl::MakeCleanup([&outputs] {
+    for (const auto& output : outputs) {
+      delete output.tensor;
+    }
+  });
+
+  Status s = EvaluateNode(*new_shape, TensorVector(), &outputs);
+  if (!s.ok()) {
+    return false;
+  }
+  CHECK_EQ(1, outputs.size());
+
+  const std::vector<OpInfo::TensorProperties>& props =
+      properties.GetInputProperties(node.name());
+  if (props.empty()) {
+    return false;
+  }
+  const OpInfo::TensorProperties& prop = props[0];
+  if (prop.dtype() == DT_INVALID) {
+    return false;
+  }
+  const PartialTensorShape shape(prop.shape());
+  if (!shape.IsFullyDefined()) {
+    return false;
+  }
+
+  PartialTensorShape new_dims;
+  if (outputs[0]->dtype() == DT_INT32) {
+    std::vector<int32> shp;
+    for (int i = 0; i < outputs[0]->NumElements(); ++i) {
+      int32 dim = outputs[0]->flat<int32>()(i);
+      shp.push_back(dim);
+    }
+    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+  } else {
+    std::vector<int64> shp;
+    for (int i = 0; i < outputs[0]->NumElements(); ++i) {
+      int64 dim = outputs[0]->flat<int64>()(i);
+      shp.push_back(dim);
+    }
+    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+  }
+
+  return shape.IsCompatibleWith(new_dims);
+}
+
+Status ConstantFolding::SimplifyGraph(GraphDef* output,
+                                      const GraphProperties& properties) {
   for (auto& node : *output->mutable_node()) {
     if (IsSimplifiableReduction(node)) {
       // Replace the reduction node with an identity node, that can be further
@@ -643,9 +700,23 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output) {
       }
       node.mutable_input()->RemoveLast();
       for (const auto& input : reductions_indices->input()) {
-        if (IsControlInput(input)) {
-          *node.add_input() = input;
-        }
+        DCHECK(IsControlInput(input));
+        *node.add_input() = input;
+      }
+    }
+    if (IsSimplifiableReshape(node, properties)) {
+      const NodeDef* new_shape = node_map_->GetNode(node.input(1));
+      DataType output_type = node.attr().at("T").type();
+      node.set_op("Identity");
+      node.clear_attr();
+      (*node.mutable_attr())["T"].set_type(output_type);
+      if (node.input_size() > 2) {
+        node.mutable_input()->SwapElements(1, node.input_size() - 1);
+      }
+      node.mutable_input()->RemoveLast();
+      for (const auto& input : new_shape->input()) {
+        DCHECK(IsControlInput(input));
+        *node.add_input() = input;
       }
     }
   }
@@ -665,9 +736,17 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   device_.reset(new DeviceSimple());
   *output = GraphDef();
-  TF_RETURN_IF_ERROR(MaterializeShapes(item));
+
+  GraphProperties properties(item);
+  Status s = properties.InferStatically();
+  if (!s.ok()) {
+    VLOG(1) << "Failed to infer graph shapes: " << s;
+  } else {
+    TF_RETURN_IF_ERROR(MaterializeShapes(item, properties));
+  }
+
   TF_RETURN_IF_ERROR(FoldGraph(output));
-  TF_RETURN_IF_ERROR(SimplifyGraph(output));
+  TF_RETURN_IF_ERROR(SimplifyGraph(output, properties));
   LOG(INFO) << "Optimized graph size: " << output->node_size();
 
   *output->mutable_library() = item.graph.library();
