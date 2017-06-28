@@ -223,9 +223,7 @@ template class NAME<int>;
 REDUCTION_ELEMENTWISE(ReductionMax, std::numeric_limits<T>::lowest(), std::max(a[i], v))
 REDUCTION_ELEMENTWISE(ReductionMin, std::numeric_limits<T>::max(),    std::min(a[i], v))
 REDUCTION_ELEMENTWISE(ReductionAdd, 0.0, v + a[i])
-REDUCTION_ELEMENTWISE(ReductionSub, 0.0, v - a[i])
 REDUCTION_ELEMENTWISE(ReductionMul, 1.0, v * a[i])
-REDUCTION_ELEMENTWISE(ReductionDiv, 1.0, v / a[i])
 
 #define LOGICAL_REDUCTION_ELEMENTWISE(NAME, INIT, EXP) \
 template<typename T> \

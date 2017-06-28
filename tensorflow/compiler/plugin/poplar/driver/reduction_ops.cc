@@ -29,9 +29,7 @@ static const std::string b_conn("b");
 static const std::string out_conn("out");
 
 static const std::string reduction_add("ReductionAdd");
-static const std::string reduction_sub("ReductionSub");
 static const std::string reduction_mul("ReductionMul");
-static const std::string reduction_div("ReductionDiv");
 static const std::string reduction_max("ReductionMax");
 static const std::string reduction_min("ReductionMin");
 static const std::string reduction_and("ReductionAnd");
@@ -54,9 +52,7 @@ IsComputationReducableArtithmetic(HloComputation* computation) {
 
   switch (root->opcode()) {
     case HloOpcode::kAdd:
-    case HloOpcode::kSubtract:
     case HloOpcode::kMultiply:
-    case HloOpcode::kDivide:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kLogicalAnd:
@@ -91,12 +87,8 @@ ReductionVertexBaseName(const HloInstruction* inst) {
   switch (inst->opcode()) {
     case HloOpcode::kAdd:
       return reduction_add;
-    case HloOpcode::kSubtract:
-      return reduction_sub;
     case HloOpcode::kMultiply:
       return reduction_mul;
-    case HloOpcode::kDivide:
-      return reduction_div;
     case HloOpcode::kMaximum:
       return reduction_max;
     case HloOpcode::kMinimum:
