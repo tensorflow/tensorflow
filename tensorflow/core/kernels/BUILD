@@ -3216,6 +3216,7 @@ cc_library(
         ":sparse_reduce_op",
         ":sparse_reorder_op",
         ":sparse_reshape_op",
+        ":sparse_slice_op",
         ":sparse_softmax",
         ":sparse_sparse_binary_op_shared",
         ":sparse_split_op",
@@ -3295,6 +3296,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reshape_op",
     prefix = "sparse_reshape_op",
+    deps = SPARSE_DEPS,
+)
+
+tf_kernel_library(
+    name = "sparse_slice_op",
+    prefix = "sparse_slice_op",
     deps = SPARSE_DEPS,
 )
 
