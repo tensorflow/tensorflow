@@ -37,7 +37,7 @@ from tensorflow.python.ops import nn
 
 def assert_close(
     x, y, data=None, summarize=None, message=None, name="assert_close"):
-  """Assert that that x and y are within machine epsilon of each other.
+  """Assert that x and y are within machine epsilon of each other.
 
   Args:
     x: Floating-point `Tensor`
