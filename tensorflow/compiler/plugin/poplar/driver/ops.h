@@ -41,6 +41,14 @@ To convert_array(const From& from) {
 port::StatusOr<popconv::ConvParams>
 GetConvolutionParameters(const HloInstruction* inst);
 
+port::StatusOr<poplar::Tensor>
+ShuffleConvolutionInput(const HloInstruction* inst,
+                        const poplar::Tensor& tensor);
+
+port::StatusOr<poplar::Tensor>
+ShuffleConvolutionWeights(const HloInstruction* inst,
+                          const poplar::Tensor& tensor);
+
 port::Status
 AddOutputTensor(TensorMap& map,
                 const HloInstruction* inst,
