@@ -73,6 +73,10 @@ message DebugOptions {
   // Dump the compiler IR into this file/path.
   string xla_dump_ir_to = 34;
 
+  // Eliminate implicit broadcasts when lowering user computations to HLO
+  // instructions; use explicit broadcast instead.
+  bool xla_eliminate_hlo_implicit_broadcast = 35;
+
   // When generating calls to Eigen in the CPU backend, use multi-threaded Eigen
   // mode.
   bool xla_cpu_multi_thread_eigen = 60;

@@ -125,18 +125,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "user_computation_flags",
-    srcs = ["user_computation_flags.cc"],
-    hdrs = ["user_computation_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
 # -----------------------------------------------------------------------------
 
 filegroup(
