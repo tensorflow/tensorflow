@@ -141,7 +141,7 @@ Status GraphProperties::MergeEnqueueShapesAndTypes(
         "Enqueue nodes mixed number of tensors: ", shapes_and_types.size(),
         "  vs ", queue_shapes_and_types->size());
   }
-  for (int i = 0; i < shapes_and_types.size(); ++i) {
+  for (size_t i = 0; i < shapes_and_types.size(); ++i) {
     const ShapeAndType& a = shapes_and_types[i];
     ShapeAndType& b = (*queue_shapes_and_types)[i];
     if (a.dtype != b.dtype) {
@@ -163,7 +163,7 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
         "Enqueue nodes mixed number of tensors: ", shapes_and_types.size(),
         "  vs ", queue_shapes_and_types->size());
   }
-  for (int i = 0; i < shapes_and_types.size(); ++i) {
+  for (size_t i = 0; i < shapes_and_types.size(); ++i) {
     const ShapeAndType& a = shapes_and_types[i];
     ShapeAndType& b = (*queue_shapes_and_types)[i];
     if (a.dtype != b.dtype) {
