@@ -128,6 +128,7 @@ int main(int argc, char** argv) {
   flags.target_triple = "x86_64-pc-linux";
   flags.out_object = "out.o";
   flags.out_header = "out.h";
+  flags.entry_point = "entry";
 
   std::vector<tensorflow::Flag> flag_list;
   AppendMainFlags(&flag_list, &flags);
