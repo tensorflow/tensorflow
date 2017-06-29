@@ -45,8 +45,6 @@ struct DebugOptionsFlags {
 
   bool xla_cpu_multi_thread_eigen;
 
-  bool xla_cpu_multi_thread_eigen;
-
   string xla_gpu_cuda_data_dir;
   bool xla_gpu_ftz;
 
