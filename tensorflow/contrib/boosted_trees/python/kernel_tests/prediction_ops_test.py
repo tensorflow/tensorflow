@@ -1149,7 +1149,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       adjusted_tree_ensemble_config = (
           tree_config_pb2.DecisionTreeEnsembleConfig())
       # When we say to average over more trees than possible, it is averaging
-      # accross all trees.
+      # across all trees.
       total_num = 100
       for i in range(0, total_num):
         tree = tree_ensemble_config.trees.add()
