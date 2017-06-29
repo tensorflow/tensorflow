@@ -90,21 +90,8 @@ void HandleStridedSliceCase(OpKernelContext* context,
     }
     CHECK(result->CopyFrom(*result, processing_shape));
     const Tensor input = context->input(0);
-    switch (input.dtype()) {
-      case DT_QINT8:
-      case DT_QUINT8:
-        functor::Slice<Device, int8>()(
-            context->eigen_device<Device>(), result, input, begin, sizes);
-        break;
-      case DT_QINT32:
-        functor::Slice<Device, int32>()(
-            context->eigen_device<Device>(), result, input, begin, sizes);
-        break;
-      default:
-        functor::Slice<Device, Proxy>()(
-            context->eigen_device<Device>(), result, input, begin, sizes);
-        break;
-    }
+    functor::Slice<Device, Proxy>()(
+        context->eigen_device<Device>(), result, input, begin, sizes);
   } else {
     Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
     Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;

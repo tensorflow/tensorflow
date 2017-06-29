@@ -25,7 +25,7 @@ import types
 
 import six  # pylint: disable=unused-import
 
-#from backports import weakref  # pylint: disable=g-bad-import-order
+from backports import weakref  # pylint: disable=g-bad-import-order
 
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import tf_decorator
