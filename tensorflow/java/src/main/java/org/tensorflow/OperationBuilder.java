@@ -256,6 +256,21 @@ public final class OperationBuilder {
     return this;
   }
 
+  public OperationBuilder setAttr(String name,  String[] value) {
+    Charset utf8 = Charset.forName("UTF-8");
+    Object[] objects = new Object[value.length];
+    for (int i = 0; i < value.length; ++i) {
+      objects[i] = value[i].getBytes(utf8);
+    }
+    Graph.Reference r = graph.ref();
+    try {
+      setAttrStringList(unsafeNativeHandle, name, objects);
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
   private long unsafeNativeHandle;
   private Graph graph;
 
@@ -275,8 +290,6 @@ public final class OperationBuilder {
   // Java library types. Roughly, setAttrFoo calls the TensorFlow C library function: TF_SetAttrFoo.
   //
   // TODO(ashankar):
-  // - setAttrStringList: Which would take in an array of byte[] (java Strings will need to be UTF-8
-  //   encoded?)
   // - setAttrShapeList: Which would take in a long[][]
 
   private static native void setAttrString(long handle, String name, byte[] value);
@@ -302,4 +315,7 @@ public final class OperationBuilder {
   private static native void setAttrTensorList(long handle, String name, long[] tensorHandle);
 
   private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
+
+  private static native void setAttrStringList(long handle, String name, Object[] value);
+
 }
