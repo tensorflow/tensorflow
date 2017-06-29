@@ -16,6 +16,9 @@
 
 #include <popstd/Cast.hpp>
 #include <popstd/Operations.hpp>
+#include <popstd/Add.hpp>
+#include <popstd/SubtractFrom.hpp>
+#include <popstd/HadamardProduct.hpp>
 #include <poplin/MatMul.hpp>
 
 namespace xla {
@@ -39,6 +42,11 @@ typedef poplar::Tensor (*popstd_binary_fn)(poplar::Graph &graph,
                                            poplar::program::Sequence &prog,
                                            const std::string &debugPrefix);
 
+typedef void (*popstd_inplace_binary_fn)(poplar::Graph &graph,
+                                         poplar::Tensor A, poplar::Tensor B,
+                                         poplar::program::Sequence &prog,
+                                         const std::string &debugPrefix);
+
 static port::StatusOr<popstd_unary_fn>
 LookupUnaryFn(HloOpcode opcode) {
   switch (opcode) {
@@ -52,7 +60,7 @@ LookupUnaryFn(HloOpcode opcode) {
     case HloOpcode::kNegate: return popstd::neg;
     case HloOpcode::kSign: return popstd::signum;
     case HloOpcode::kTanh: return popstd::tanh;
-    
+
     case HloOpcode::kIsFinite:
     default:
       break;
@@ -81,6 +89,20 @@ LookupBinaryFn(HloOpcode opcode) {
     case HloOpcode::kPower: return popstd::pow;
     case HloOpcode::kRemainder: return popstd::rem;
     case HloOpcode::kSubtract: return popstd::sub;
+    default:
+      break;
+  }
+  return port::Status(port::error::UNKNOWN,
+                      port::StrCat("[Poplar] Invalid opcode lookup ",
+                                   HloOpcodeString(opcode)));
+}
+
+static port::StatusOr<popstd_inplace_binary_fn>
+LookupBinaryInPlaceFn(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAdd: return popstd::addTo;
+    case HloOpcode::kMultiply: return popstd::hadamardProduct;
+    case HloOpcode::kSubtract: return popstd::subtractFrom;
     default:
       break;
   }
@@ -165,47 +187,15 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
 
   if (IsInPlaceUpdate(inst) && (in0.shape() == in1.shape())) {
 
-    const std::string& poplar_data_type(in0.elementType());
+    popstd_inplace_binary_fn fn;
+    TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst->opcode()));
 
-    std::string vertex_name;
-    switch (inst->opcode()) {
-      case HloOpcode::kAdd:
-        vertex_name = templateVertex("AddInPlace", poplar_data_type);
-        break;
-      case HloOpcode::kSubtract:
-        vertex_name = templateVertex("SubInPlace", poplar_data_type);
-        break;
-      case HloOpcode::kMultiply:
-        vertex_name = templateVertex("MulInPlace", poplar_data_type);
-        break;
-      default:
-        break;
-    }
+    poplar::program::Sequence seq;
+    fn(graph, in0, in1, seq, inst->name());
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
 
-    // And now flatten
-    in0 = in0.flatten();
-    in1 = in1.flatten();
-
-    auto cs = graph.addComputeSet(inst->name());
-    const auto &device_info = graph.getDevice().getDeviceInfo();
-
-    const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-    unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-    num_workers = std::min(num_workers, N);
-
-    for (unsigned i = 0; i < num_workers; ++i) {
-      const auto begin = i * N / num_workers;
-      const auto end = (i + 1) * N / num_workers;
-      auto v = graph.addVertex(cs, vertex_name,
-                               {{a_conn, in0.slice(begin, end)},
-                                {b_conn, in1.slice(begin, end)}});
-      graph.setTileMapping(v, i / device_info.numWorkerContexts);
-    }
-
-    return poplar::program::Execute(cs);
+    return seq;
 
   } else {
 
