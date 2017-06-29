@@ -169,7 +169,7 @@ class _OrderedDictNumpyFeedFn(object):
         current_epoch=self._epoch,
         total_epochs=self._num_epochs)
 
-    # Get sorted indices and remember how to reorder output
+    # Get sorted indices and remember how to reorder output.
     sorted_integer_indexes, reorder_indexes = zip(
         *sorted([(value, index)
                  for index, value in enumerate(integer_indexes)]))
