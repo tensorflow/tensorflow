@@ -463,8 +463,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib",
-        ":op_gen_overrides_proto_cc_impl",
-        ":protos_all_cc_impl",
+        ":op_gen_overrides_proto_cc",
+        ":protos_all_cc",
     ],
 )
 
@@ -1505,30 +1505,6 @@ cc_header_only_library(
     ],
 )
 
-# Contains the implementations (.cc) for all protocol buffers which are used in
-# core TensorFlow (whether they have their own build rule or are grouped with
-# protos_all). Should never be referenced outside of the framework shared
-# object, since having implementations in two different shared objects will
-# cause corrupted protocol buffers.
-cc_library(
-    name = "all_proto_impls",
-    deps = [
-        ":master_proto_cc_impl",
-        ":master_service_proto_cc_impl",
-        ":op_gen_overrides_proto_cc_impl",
-        ":protos_all_cc_impl",
-        ":protos_test_cc_impl",
-        ":worker_proto_cc_impl",
-        ":worker_service_proto_cc_impl",
-        "//tensorflow/core/debug:debug_service_proto_cc_impl",
-        "//tensorflow/core/debug:debugger_event_metadata_proto_cc_impl",
-        "//tensorflow/core/grappler/costs:op_performance_data_cc_impl",
-        "//tensorflow/python:cpp_shape_inference_proto_cc_impl",
-        "//tensorflow/python:protos_all_cc_impl",
-        "//tensorflow/tools/tfprof:protos_all_cc_impl",
-    ],
-)
-
 tf_cuda_library(
     name = "framework_internal_impl",
     srcs = glob(
@@ -1594,7 +1570,6 @@ tf_cuda_library(
         ":lib_internal",
         #":framework_internal_headers_lib",
         "@protobuf//:protobuf",
-        ":all_proto_impls",
         ":proto_text",
         ":version_lib",
         "//tensorflow/core/kernels:lookup_util",
