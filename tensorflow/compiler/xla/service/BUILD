@@ -141,6 +141,7 @@ cc_library(
     deps = [
         ":hlo_module_config",
         ":hlo_proto",
+        ":hlo_reachability",
         ":name_uniquer",
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:literal_util",
@@ -155,6 +156,37 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "hlo_reachability",
+    srcs = [
+        "hlo_reachability.cc",
+    ],
+    hdrs = [
+        "hlo_reachability.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_test(
+    name = "hlo_reachability_test",
+    srcs = ["hlo_reachability_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_reachability",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
     ],
 )
 

@@ -1081,7 +1081,7 @@ Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
   auto pred_it = std::find(instruction->control_predecessors_.begin(),
                            instruction->control_predecessors_.end(), this);
   TF_RET_CHECK(pred_it != instruction->control_predecessors_.end());
-  instruction->control_predecessors_.erase(succ_it);
+  instruction->control_predecessors_.erase(pred_it);
 
   return Status::OK();
 }

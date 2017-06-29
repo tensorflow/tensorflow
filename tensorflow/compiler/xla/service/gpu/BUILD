@@ -70,6 +70,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/legacy_flags:stream_assignment_flags",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/core:lib",
     ],
 )
@@ -499,6 +500,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_ordering",
+        "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/compiler/xla/service:hlo_scheduling",
     ],
 )
