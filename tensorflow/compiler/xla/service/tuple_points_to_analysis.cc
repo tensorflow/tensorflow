@@ -166,9 +166,6 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
             const ShapeIndex& index,
             const std::vector<const LogicalBuffer*>& pointed_to_buffers) {
           for (const LogicalBuffer* buffer : pointed_to_buffers) {
-            if (buffer_aliases_.count(buffer) == 0) {
-              buffer_aliases_.insert({buffer, std::vector<BufferAlias>()});
-            }
             buffer_aliases_[buffer].emplace_back(instruction.get(), index);
           }
         });
@@ -337,9 +334,11 @@ const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
 
 PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
     const HloInstruction* instruction) {
-  CHECK_EQ(0, points_to_.count(instruction));
-  points_to_[instruction] = MakeUnique<PointsToSet>(instruction->shape());
-  return *FindOrDie(points_to_, instruction);
+  auto set = MakeUnique<PointsToSet>(&instruction->shape());
+  auto res = points_to_.emplace(instruction, std::move(set));
+  CHECK(res.second) << "instruction should not have been present in the map.";
+  // Return *set using the iterator returned by emplace.
+  return *res.first->second;
 }
 
 bool TuplePointsToAnalysis::InstructionDefinesBufferAtIndex(

@@ -48,7 +48,10 @@ namespace xla {
 // the corresponding buffer.
 class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
  public:
-  explicit PointsToSet(const Shape& shape)
+  // Construct our ShapeTree with a pointer rather than a reference to a Shape
+  // because this is very hot code, and copying (and then destroying) all these
+  // Shapes is slow.
+  explicit PointsToSet(const Shape* shape)
       : ShapeTree<std::vector<const LogicalBuffer*>>(shape),
         tuple_sources_(shape) {}
 
