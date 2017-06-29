@@ -4431,6 +4431,7 @@ REGISTER_OP("QuantizeAndDequantize")
 Use QuantizeAndDequantizeV2 instead.
 )doc");
 
+// TODO(suharshs): Deprecate QuantizeAndDequantizeV2.
 REGISTER_OP("QuantizeAndDequantizeV2")
     .Input("input: T")
     .Input("input_min: T")
@@ -4508,6 +4509,30 @@ input_min: If range_given, this is the min of the range, otherwise this input
            will be ignored.
 input_max: If range_given, this is the max of the range, otherwise this input
            will be ignored.
+)doc");
+
+REGISTER_OP("QuantizeAndDequantizeV3")
+    .Input("input: T")
+    .Input("input_min: T")
+    .Input("input_max: T")
+    .Input("num_bits: int32")
+    .Attr("signed_input: bool = true")
+    .Attr("range_given: bool = true")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Quantizes then dequantizes a tensor.
+
+This is almost identical to QuantizeAndDequantizeV2, except that num_bits is a
+tensor, so its value can change during training.
 )doc");
 
 REGISTER_OP("QuantizeV2")
