@@ -171,6 +171,7 @@ class TpuEstimator(estimator_lib.Estimator):
   Note: TpuEstimator transforms a global batch size in params to a per-shard
         batch size when calling the input_fn.
   """
+
   def __init__(self,
                model_fn=None,
                model_dir=None,
@@ -195,8 +196,6 @@ class TpuEstimator(estimator_lib.Estimator):
             .format(params[_BATCH_SIZE_KEY], config.tpu_config.num_shards))
 
     if use_tpu:
-      if not isinstance(config, tpu_config.RunConfig):
-        raise ValueError('`config` must be `tpu_config.RunConfig`')
       # Verifies the model_fn signature according to Estimator framework.
       estimator_lib._verify_model_fn_args(model_fn, params)  # pylint: disable=protected-access
       # We cannot store config and params in this constructor as parent
@@ -205,6 +204,7 @@ class TpuEstimator(estimator_lib.Estimator):
       model_function = wrapped_model_fn(model_fn)
     else:
       model_function = model_fn
+
     super(TpuEstimator, self).__init__(
         model_fn=model_function,
         model_dir=model_dir,
