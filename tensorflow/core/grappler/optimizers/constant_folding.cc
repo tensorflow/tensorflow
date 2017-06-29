@@ -137,6 +137,8 @@ string ConstantFolding::AddControlDependency(const string& input_name) {
     NodeDef* added_node = graph_.add_node();
     added_node->set_name(ctrl_dep_name);
     added_node->set_op("Identity");
+    added_node->set_device(node->device());
+
     (*added_node->mutable_attr())["T"].set_type(output_type);
     *added_node->add_input() = input_name;
     node_map_->AddNode(added_node->name(), added_node);
@@ -462,6 +464,7 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       NodeDef* const_out = output->add_node();
       *const_out = *input_node;
       const_out->set_name(const_out_name);
+      const_out->set_device(node.device());
       *const_out->add_input() = AsControlDependency(node);
       node_map_->AddNode(const_out->name(), const_out);
 
@@ -473,6 +476,7 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       index.AsProtoTensorContent(
           (*const_index->mutable_attr())["value"].mutable_tensor());
       const_index->set_name(const_index_name);
+      const_index->set_device(node.device());
       *const_index->add_input() = AsControlDependency(node);
       node_map_->AddNode(const_index->name(), const_index);
 
@@ -517,6 +521,7 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
     }
     NodeDef* added_node = output->add_node();
     *added_node = const_node;
+    added_node->set_device(node.device());
     node_map_->AddNode(added_node->name(), added_node);
 
     for (const auto& input : node.input()) {

@@ -50,7 +50,7 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
 
   Output a = ops::Const(s.WithOpName("a"), 1.0f, {1});
   Output b = ops::Const(s.WithOpName("b"), 2.0f, {1});
-  Output c = ops::AddN(s.WithOpName("c"), {a, b});
+  Output c = ops::AddN(s.WithOpName("c").WithDevice("/CPU:0"), {a, b});
   Output d = ops::AddN(s.WithOpName("d"), {b, c});
 
   GrapplerItem item;
@@ -67,6 +67,7 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   const NodeDef& new_c = output.node(0);
   EXPECT_EQ("ConstantFolding/c", new_c.name());
   EXPECT_EQ("Const", new_c.op());
+  EXPECT_EQ("/CPU:0", new_c.device());
 
   const NodeDef& new_a = output.node(1);
   EXPECT_EQ("a", new_a.name());
@@ -80,6 +81,7 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
   const NodeDef& new_d = output.node(4);
   EXPECT_EQ("d", new_d.name());
   EXPECT_EQ("ConstantFolding/c", new_d.input(1));
+  EXPECT_EQ("", new_d.device());
 
   std::vector<string> fetch = {"a", "b", "c", "d"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
