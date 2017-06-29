@@ -324,5 +324,21 @@ class MapDatasetTest(test.TestCase):
       # Randomness is repeatable given same seed
       self.assertAllClose(random_values, random_values_2)
 
+  def testMapDict(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
+                .map(lambda d: d["foo"] + d["bar"])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+
 if __name__ == "__main__":
   test.main()
