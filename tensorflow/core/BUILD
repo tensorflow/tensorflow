@@ -500,7 +500,6 @@ cc_library(
 # Generates library per group of ops.
 tf_gen_op_libs(
     op_lib_names = [
-        "array_ops",
         "bitwise_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
@@ -532,6 +531,13 @@ tf_gen_op_libs(
         "string_ops",
         "training_ops",
     ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = [
+        "array_ops",
+    ],
+    deps = [":protos_all_cc"],
 )
 
 tf_gen_op_libs(

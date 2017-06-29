@@ -30,11 +30,11 @@ REGISTER_OP("VariableV2")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      TensorShapeProto shape_proto;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(
-          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
       c->set_output(0, output_shape);
       return Status::OK();
     })
@@ -72,10 +72,8 @@ REGISTER_OP("Variable")
         return shape_inference::UnknownShape(c);
       }
 
-      TensorShapeProto shape_proto;
-      shape.AsProto(&shape_proto);
       ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);
       return Status::OK();
     })
@@ -103,10 +101,10 @@ REGISTER_OP("TemporaryVariable")
     .Attr("var_name: string = ''")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      TensorShapeProto shape_proto;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &output));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
       c->set_output(0, output);
       return Status::OK();
     })

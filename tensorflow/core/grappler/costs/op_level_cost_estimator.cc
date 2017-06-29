@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 
 namespace tensorflow {

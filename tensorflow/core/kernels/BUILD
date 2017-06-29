@@ -3337,7 +3337,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "serialize_sparse_op",
     prefix = "serialize_sparse_op",
-    deps = SPARSE_DEPS,
+    deps = SPARSE_DEPS + ["//tensorflow/core:protos_all_cc"],
 )
 
 tf_kernel_library(
