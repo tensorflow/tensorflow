@@ -249,8 +249,8 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
           &mem_desc_map_, cuda_host_allocators_.back(), md, &mu_));
     }
   }
-  if (FLAGS_brain_gpu_record_mem_types) return cuda_al_[0];
-  return cuda_host_allocators_[0];
+  if (FLAGS_brain_gpu_record_mem_types) return cuda_al_[numa_node];
+  return cuda_host_allocators_[numa_node];
 }
 
 void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {

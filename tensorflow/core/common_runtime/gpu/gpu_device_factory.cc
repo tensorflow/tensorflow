@@ -42,7 +42,8 @@ class GPUDevice : public BaseGPUDevice {
     if (attr.on_host()) {
       if (attr.gpu_compatible() || force_gpu_compatible_) {
         ProcessState* ps = ProcessState::singleton();
-        return ps->GetCUDAHostAllocator(0);
+        int numa_node = executor()->GetDeviceDescription().numa_node();
+        return ps->GetCUDAHostAllocator(numa_node);
       } else {
         return cpu_allocator_;
       }
