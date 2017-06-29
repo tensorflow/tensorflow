@@ -44,6 +44,7 @@ LookupUnaryFn(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAbs: return popstd::abs;
     case HloOpcode::kCeil: return popstd::ceil;
+    case HloOpcode::kCos: return popstd::cos;
     case HloOpcode::kExp: return popstd::exp;
     case HloOpcode::kFloor: return popstd::floor;
     case HloOpcode::kLog: return popstd::log;
@@ -51,8 +52,7 @@ LookupUnaryFn(HloOpcode opcode) {
     case HloOpcode::kNegate: return popstd::neg;
     case HloOpcode::kSign: return popstd::signum;
     case HloOpcode::kTanh: return popstd::tanh;
-
-    case HloOpcode::kCos:
+    
     case HloOpcode::kIsFinite:
     default:
       break;
