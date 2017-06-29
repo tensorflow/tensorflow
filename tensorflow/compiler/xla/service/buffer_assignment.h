@@ -450,7 +450,8 @@ class BufferAssigner {
   // true, then all assigned buffers have the is_thread_local flag set to
   // true.
   Status AssignBuffersForComputation(
-      const HloComputation* computation, bool is_thread_local,
+      const HloComputation* computation, const DebugOptions& debug_options,
+      bool is_thread_local,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
       const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
           colocated_allocations,

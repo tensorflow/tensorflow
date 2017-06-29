@@ -99,6 +99,9 @@ message DebugOptions {
   // the generated IR.
   bool xla_llvm_enable_invariant_load_metadata = 65;
 
+  // Enable reuse of buffers between HLO operations.
+  bool xla_enable_buffer_reuse = 66;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
