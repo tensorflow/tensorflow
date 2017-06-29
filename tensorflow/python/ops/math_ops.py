@@ -47,6 +47,9 @@ See the @{$python/math_ops} guide.
 @@log1p
 @@sinh
 @@cosh
+@@asinh
+@@acosh
+@@atanh
 @@ceil
 @@floor
 @@maximum
@@ -1691,8 +1694,8 @@ def matmul(a,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must, following any transpositions, be tensors of rank >= 2 
-  where the inner 2 dimensions specify valid matrix multiplication arguments, 
+  The inputs must, following any transpositions, be tensors of rank >= 2
+  where the inner 2 dimensions specify valid matrix multiplication arguments,
   and any further outer dimensions match.
 
   Both matrices must be of the same type. The supported types are:

@@ -124,7 +124,7 @@ void SparseQuantizedFeatureColumnHandler::GenerateFeatureSplitCandidates(
 
     // Determine if we need a backward pass by checking if the residual gradient
     // after forward aggregation is almost the same as the aggregated gradient.
-    // for the current root. This helps avoid unecessary computation as well
+    // for the current root. This helps avoid unnecessary computation as well
     // as consistency due to floating point precision.
     if (!right_gradient_stats.IsAlmostZero()) {
       // Backward pass with left default direction.

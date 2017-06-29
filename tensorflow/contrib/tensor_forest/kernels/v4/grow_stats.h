@@ -104,7 +104,7 @@ class GrowStats {
 
   const TensorForestParams& params_;
 
-  // We cache these beacuse they're used often.
+  // We cache these because they're used often.
   const int split_after_samples_;
   const int num_splits_to_consider_;
 
