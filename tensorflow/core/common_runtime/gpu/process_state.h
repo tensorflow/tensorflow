@@ -71,7 +71,6 @@ class ProcessState {
   MemDesc PtrType(const void* ptr);
 
   // Returns the one CPUAllocator used for the given numa_node.
-  // TEMPORARY: ignores numa_node.
   Allocator* GetCPUAllocator(int numa_node);
 
   // Returns the one GPU allocator used for the indexed GPU.

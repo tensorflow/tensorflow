@@ -152,11 +152,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
 }
 
 Allocator* ProcessState::GetCPUAllocator(int numa_node) {
-  // Although we're temporarily ignoring numa_node, check for legality.
   CHECK_GE(numa_node, 0);
-  // TODO(tucker): actually maintain separate CPUAllocators for
-  // different numa_nodes.  For now, just one.
-  numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
     bool use_bfc_allocator = false;
@@ -196,18 +192,14 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     }
     cpu_allocators_.push_back(allocator);
   }
-  return cpu_allocators_[0];
+  return cpu_allocators_[numa_node];
 }
 
 Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   if (!HasGPUDevice() || !FLAGS_brain_mem_reg_cuda_dma) {
     return cpu_allocator();
   }
-  // Although we're temporarily ignoring numa_node, check for legality.
   CHECK_GE(numa_node, 0);
-  // TODO(tucker): actually maintain separate CPUAllocators for
-  // different numa_nodes.  For now, just one.
-  numa_node = 0;
   mutex_lock lock(mu_);
 
   // Find the first valid StreamExecutor to request CUDA host memory
@@ -257,8 +249,8 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
           &mem_desc_map_, cuda_host_allocators_.back(), md, &mu_));
     }
   }
-  if (FLAGS_brain_gpu_record_mem_types) return cuda_al_[0];
-  return cuda_host_allocators_[0];
+  if (FLAGS_brain_gpu_record_mem_types) return cuda_al_[numa_node];
+  return cuda_host_allocators_[numa_node];
 }
 
 void ProcessState::AddGPUAllocVisitor(int bus_id, AllocVisitor visitor) {
