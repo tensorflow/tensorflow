@@ -308,6 +308,7 @@ if is_windows; then
   TF_NEED_JEMALLOC=0
   TF_NEED_OPENCL=0
   TF_CUDA_CLANG=0
+  TF_NEED_ROCM=0
 fi
 
 if is_linux; then
@@ -702,6 +703,7 @@ EOF
   TF_CUDA_COMPUTE_CAPABILITIES=""
 done
 
+
 if is_windows; then
   # The following three variables are needed for MSVC toolchain configuration in Bazel
   export CUDA_PATH="$CUDA_TOOLKIT_PATH"
@@ -886,5 +888,41 @@ if [ "$TF_NEED_MPI" == "1" ]; then
   fi
 fi
 
+
+# Check for ROCm
+
+if is_linux; then
+  if [[ "$TF_ENABLE_XLA" == "1" ]]; then
+    while [[ "$TF_NEED_ROCM" == "" ]]; do
+      read -p "Do you wish to build TensorFlow with ROCm Support? [y/N] " INPUT
+      case $INPUT in
+        [Yy]* ) echo "ROCm support will be enabled for TensorFlow"; TF_NEED_ROCM=1;;
+        [Nn]* ) echo "No ROCm support will be enabled for TensorFlow"; TF_NEED_ROCM=0;;
+        "" ) echo "No ROCm support will be enabled for TensorFlow"; TF_NEED_ROCM=0;;
+        * ) echo "Invalid selection: " $INPUT;;
+      esac
+    done
+    while true; do
+      fromuser=""
+      if [ -z "$ROCM_INSTALL_PATH" ]; then
+        rocm_path=/opt/rocm
+        read -p "Please specify the location where ROCm is installed. Refer to README.md for more details. [Default is $rocm_path]: " ROCM_INSTALL_PATH
+        fromuser="1"
+        if [ -z "$ROCM_INSTALL_PATH" ]; then
+          ROCM_INSTALL_PATH="$rocm_path"
+        fi
+
+        ROCM_HIP_LIB_PATH="lib/libhip_hcc.so"
+
+        if [ -e "${ROCM_INSTALL_PATH}/${ROCM_HIP_LIB_PATH}" ]; then
+          export ROCM_INSTALL_PATH
+          write_action_env_to_bazelrc "ROCM_INSTALL_PATH" "$ROCM_INSTALL_PATH"
+          break
+        fi
+      fi
+      ROCM_INSTALL_PATH=""
+    done
+  fi
+fi
 
 echo "Configuration finished"
