@@ -49,7 +49,6 @@ message DebugOptions {
 
   // Dump compilation artifacts as JSON into this directory.
   string xla_dump_debug_json_to = 8;
->>>>>>> d0360669091554fbafe532bc33768e572b0f01f8
 
   // List of HLO passes to disable. These names must exactly match the pass
   // names as specified by the HloPassInterface::name() method.
