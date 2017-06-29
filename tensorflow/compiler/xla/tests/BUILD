@@ -878,11 +878,6 @@ cc_library(
     name = "reduce_window_test_library",
     testonly = 1,
     srcs = ["reduce_window_test.cc"],
-)
-
-cc_library(
-    name = "reduce_window_test_deps",
-    testonly = 1,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
