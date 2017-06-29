@@ -502,7 +502,11 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
-        node_def->add_input(node->requested_inputs()[i]);
+        if (i < node->requested_inputs().size()) {
+          node_def->add_input(node->requested_inputs()[i]);
+        } else {
+          node_def->add_input("");
+        }
       } else {
         const Node* src = edge->src();
         if (!src->IsOp()) continue;
