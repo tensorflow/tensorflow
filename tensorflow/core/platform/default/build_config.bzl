@@ -190,6 +190,9 @@ def tf_additional_test_srcs():
       "//tensorflow:windows" : [
           "platform/windows/test.cc"
         ],
+      "//tensorflow:windows_msvc" : [
+          "platform/windows/test.cc"
+        ],
       "//conditions:default" : [
           "platform/posix/test.cc",
         ],
