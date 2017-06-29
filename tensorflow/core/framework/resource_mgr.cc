@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"

@@ -121,7 +121,6 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -830,7 +829,7 @@ cc_library(
         ":test",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"])
+        "//tensorflow/core/platform/default/build_config:gtest",
     ],
 )
 
@@ -1256,6 +1255,9 @@ cc_library(
                 "platform/*.cc",
                 "platform/profile_utils/**/*.h",
                 "platform/profile_utils/**/*.cc",
+            ] + [
+                "framework/resource_handle.h",
+                "framework/resource_handle.cc",
             ],
             exclude = [
                 "**/*test*",
@@ -1552,6 +1554,7 @@ tf_cuda_library(
             "framework/fake_input.*",
             "framework/op_gen_lib.*",
             "framework/reader_base.*",
+            "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
             "util/version_info.cc",
@@ -1969,7 +1972,7 @@ cc_library(
         "common_runtime/sycl/sycl_device_context.h",
     ]),
     copts = tf_copts(),
-    linkstatic = 1,
+    linkstatic = 0,
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -1981,7 +1984,7 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_sycl//sycl:sycl",
     ],
-    alwayslink = 1,
+    alwayslink = 0,
 )
 
 # -----------------------------------------------------------------------------

@@ -34,7 +34,7 @@ class RecomputeSubgraphTest : public ::testing::Test {};
 TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("a"), 1.f, {2, 3, 4});
+  Output a = ops::Variable(s.WithOpName("a"), {2, 3, 4}, DT_FLOAT);
   Output b = ops::Identity(s.WithOpName("b"), a);  // Recomputed
   Output c = ops::Identity(s.WithOpName("c"), b);
   Output d = ops::AddN(s.WithOpName("gradients/d"), {c});
@@ -69,10 +69,40 @@ TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   EXPECT_EQ("^gradients/d", recompute_trigger->input(0));
 }
 
+TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Variable(s.WithOpName("a"), {2, 3, 4}, DT_FLOAT);
+  Output b = ops::Variable(s.WithOpName("b"), {2, 3, 4}, DT_FLOAT);
+  Output d = ops::AddN(s.WithOpName("gradients/two_subgraph_inputs"), {a, b});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  EXPECT_EQ(3, item.graph.node_size());
+  NodeMap pre_transform_node_map(&item.graph);
+  (*pre_transform_node_map.GetNode("a")->mutable_attr())["_recompute_hint"]
+      .set_i(0);
+  (*pre_transform_node_map.GetNode("b")->mutable_attr())["_recompute_hint"]
+      .set_i(0);
+
+  MemoryOptimizer optimizer(RewriterConfig::MANUAL);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+
+  TF_EXPECT_OK(status);
+  NodeMap post_transform_node_map(&output);
+  // Mostly checking that this case does not crash.
+  EXPECT_EQ(7, output.node_size());
+  EXPECT_NE(post_transform_node_map.GetNode("Recomputed/a"), nullptr);
+  EXPECT_NE(post_transform_node_map.GetNode("Recomputed/b"), nullptr);
+  EXPECT_NE(post_transform_node_map.GetNode("RecomputeTrigger/a"), nullptr);
+  EXPECT_NE(post_transform_node_map.GetNode("RecomputeTrigger/b"), nullptr);
+}
+
 TEST_F(RecomputeSubgraphTest, MultiNode) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("Conv"), 1.f, {2, 3, 4});
+  Output a = ops::Variable(s.WithOpName("Conv"), {2, 3, 4}, DT_FLOAT);
   Output b = ops::Identity(s.WithOpName("BN"), a);    // Recomputed
   Output c = ops::Identity(s.WithOpName("ReLU"), b);  // Recomputed
   Output d = ops::Identity(s.WithOpName("Conv1"), c);
@@ -152,7 +182,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   // Build a simple graph with an op that's marked for swapping.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  Output a = ops::Variable(s.WithOpName("a"), {10, 10}, DT_FLOAT);
   Output b = ops::AddN(s.WithOpName("b"), {a});
   Output c = ops::AddN(s.WithOpName("c"), {b});
   Output d = ops::AddN(s.WithOpName("d"), {c});

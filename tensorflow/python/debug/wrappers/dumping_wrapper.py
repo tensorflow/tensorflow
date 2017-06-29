@@ -77,6 +77,8 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
         raise ValueError(
             "session_root path points to a non-empty directory: %s" %
             session_root)
+    else:
+      gfile.MakeDirs(session_root)
     self._session_root = session_root
 
     self._run_counter = 0

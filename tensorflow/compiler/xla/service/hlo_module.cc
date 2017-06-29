@@ -301,6 +301,36 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
+std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) {
+  VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
+  auto module = MakeUnique<HloModule>(name_ + "-" + suffix);
+  module->config_ = config_;
+  module->entry_computation_handle_ = entry_computation_handle_;
+  module->has_entry_computation_handle_ = has_entry_computation_handle_;
+
+  std::unordered_map<HloComputation*, HloComputation*> clone_map;
+  for (auto& computation : computations_) {
+    auto cloned_computation = computation->Clone(suffix);
+    InsertOrDie(&clone_map, computation.get(), cloned_computation.get());
+
+    if (entry_computation_ == computation.get()) {
+      module->AddEntryComputation(std::move(cloned_computation));
+    } else {
+      module->AddEmbeddedComputation(std::move(cloned_computation));
+    }
+  }
+
+  for (auto& cloned_computation : module->computations_) {
+    for (auto& instruction : cloned_computation->instructions()) {
+      // Rewrite instruction's called_computation to point to the cloned
+      // computations.
+      instruction->ReplaceCalledComputations(
+          [&](HloComputation* hlo) { return FindOrDie(clone_map, hlo); });
+    }
+  }
+  return module;
+}
+
 uint64 HloModule::RandomNew64() const {
   tensorflow::mutex_lock l(rng_mutex_);
   return rng_();

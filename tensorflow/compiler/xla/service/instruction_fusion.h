@@ -72,6 +72,16 @@ class InstructionFusion : public HloPassInterface {
  private:
   HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer);
 
+  // The set of producers whose consumers we cannot fuse into.
+  using DoNotFuseSet = std::unordered_set<HloInstruction*>;
+
+  // Whether or not we can fuse consumer into original_producer on all paths
+  // from the producer to the consumer where nodes are HLOs and edges are uses.
+  bool CanFuseOnAllPaths(
+      const HloComputation::ReachabilityMap& reachability_map,
+      HloInstruction* producer, HloInstruction* consumer,
+      DoNotFuseSet* do_not_fuse);
+
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.
   std::function<bool(const HloInstruction& instruction)> is_expensive_;

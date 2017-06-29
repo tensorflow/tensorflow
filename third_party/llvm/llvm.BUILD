@@ -453,6 +453,7 @@ llvm_target_list = [
             "include/llvm/IR/Intrinsics*.td",
             "include/llvm/TableGen/*.td",
             "include/llvm/Target/*.td",
+            "include/llvm/Target/GlobalISel/*.td",
         ]),
     )
     for target in llvm_target_list
@@ -1067,6 +1068,8 @@ cc_library(
         "include/llvm/BinaryFormat/*.h",
         "include/llvm/BinaryFormat/*.def",
         "include/llvm/BinaryFormat/*.inc",
+        "include/llvm/BinaryFormat/ELFRelocs/*.def",
+        "include/llvm/BinaryFormat/WasmRelocs/*.def",
     ]),
     deps = [
         ":config",
@@ -1194,6 +1197,7 @@ cc_library(
         "include/llvm/DebugInfo/CodeView/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_msf",
         ":support",
@@ -1426,6 +1430,7 @@ cc_library(
         "include/llvm/MC/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_code_view",
         ":support",
@@ -1921,6 +1926,8 @@ cc_library(
         "lib/Support/Unix/*.h",
         "include/llvm-c/*.h",
         "include/llvm/CodeGen/MachineValueType.h",
+        "include/llvm/BinaryFormat/COFF.h",
+        "include/llvm/BinaryFormat/MachO.h",
         "lib/Support/*.h",
     ]),
     hdrs = glob([
@@ -1931,6 +1938,7 @@ cc_library(
         "include/llvm/Support/ELFRelocs/*.def",
         "include/llvm/Support/WasmRelocs/*.def",
     ]) + [
+        "include/llvm/BinaryFormat/MachO.def",
         "include/llvm/Support/DataTypes.h",
         "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],

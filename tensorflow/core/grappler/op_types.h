@@ -26,6 +26,7 @@ bool IsConstant(const NodeDef& node);
 bool IsDequeueOp(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsMerge(const NodeDef& node);
+bool IsNextIteration(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
 bool IsRecv(const NodeDef& node);

@@ -1,4 +1,4 @@
-# Building Input Functions with tf.contrib.learn
+# Building Input Functions with tf.estimator
 
 This tutorial introduces you to creating input functions in tf.estimator.
 You'll get an overview of how to construct an `input_fn` to preprocess and feed

@@ -42,8 +42,9 @@ then gets stuck at a low (near-chance) level:
 > Accuracy at step 4: 0.098
 
 Wondering what might have gone wrong, you suspect that certain nodes in the
-training graph generated bad numeric values such as `inf`s and `nan`s. Let's
-use tfdbg to debug this issue and pinpoint the exact graph node where this
+training graph generated bad numeric values such as `inf`s and `nan`s, because
+this is a common cause of this type of training failure.
+Let's use tfdbg to debug this issue and pinpoint the exact graph node where this
 numeric problem first surfaced.
 
 ## Wrapping TensorFlow Sessions with tfdbg
@@ -68,8 +69,8 @@ This wrapper has the same interface as Session, so enabling debugging requires
 no other changes to the code. The wrapper provides additional features,
 including:
 
-* Bringing up a CLI before and after `run()` calls, to let you control the
-execution and inspect the graph's internal state.
+* Bringing up a CLI before and after `Session.run()` calls, to let you
+control the execution and inspect the graph's internal state.
 * Allowing you to register special `filters` for tensor values, to facilitate
 the diagnosis of issues.
 
@@ -97,7 +98,7 @@ python -m tensorflow.python.debug.examples.debug_mnist --debug
 ```
 
 The debug wrapper session will prompt you when it is about to execute the first
-`run()` call, with information regarding the fetched tensor and feed
+`Session.run()` call, with information regarding the fetched tensor and feed
 dictionaries displayed on the screen.
 
 ![tfdbg run-start UI](https://www.tensorflow.org/images/tfdbg_screenshot_run_start.png)
@@ -113,8 +114,11 @@ Enter the `run` command (or just `r`) at the command prompt:
 tfdbg> run
 ```
 
-tfdbg calculates the accuracy using a test data set and then displays all dumped
-intermediate tensors from the run in the *run-end CLI*. For example:
+The `run` command causes tfdbg to execute until the end of the next
+`Session.run()` call, which calculates the model's accuracy using a test data
+set. tfdbg augments the runtime Graph to dump all intermediate tensors.
+After the run ends, tfdbg displays all the dumped tensors values in the
+*run-end CLI*. For example:
 
 ![tfdbg run-end UI: accuracy](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_accuracy.png)
 
@@ -172,6 +176,11 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | **`help`** | | **Print general help information** | `help` |
 | | `help <command>` | Print help for given command. | `help lt` |
 
+Note that each time you enter a command, a new screen output
+will appear. This is somewhat analogous to web pages in a browser. You can
+navigate between these screens by clicking the `<--` and
+`-->` text arrows near the top-left corner of the CLI.
+
 ### Other Features of the tfdbg CLI
 
 In addition to the commands listed above, the tfdbg CLI provides the following
@@ -197,25 +206,27 @@ addditional features:
 
 ### Finding `nan`s and `inf`s
 
-In this first `run()` call, there happen to be no problematic numerical values.
-You can move on to the next run by using the command `run` or its shorthand `r`.
+In this first `Session.run()` call, there happen to be no problematic numerical
+values. You can move on to the next run by using the command `run` or its
+shorthand `r`.
 
-> TIP: If you enter `run` or `r` repeatedly, you will be able to move through the
-> `run()` calls in a sequential manner.
+> TIP: If you enter `run` or `r` repeatedly, you will be able to move through
+> the `Session.run()` calls in a sequential manner.
 >
-> You can also use the `-t` flag to move ahead a number of `run()` calls at a time, for example:
+> You can also use the `-t` flag to move ahead a number of `Session.run()` calls
+> at a time, for example:
 >
 > ```
 > tfdbg> run -t 10
 > ```
 
 Instead of entering `run` repeatedly and manually searching for `nan`s and
-`inf`s in the run-end UI after every `run()` call (for example, by using the `pt`
-command shown in the table above) , you can use the following
-command to let the debugger repeatedly execute `run()` calls without stopping at
-the run-start or run-end prompt, until the first `nan` or `inf` value shows up
-in the graph. This is analogous to *conditional breakpoints* in some
-procedural-language debuggers:
+`inf`s in the run-end UI after every `Session.run()` call (for example, by using
+the `pt` command shown in the table above) , you can use the following
+command to let the debugger repeatedly execute `Session.run()` calls without
+stopping at the run-start or run-end prompt, until the first `nan` or `inf`
+value shows up in the graph. This is analogous to *conditional breakpoints* in
+some procedural-language debuggers:
 
 ```none
 tfdbg> run -f has_inf_or_nan
@@ -224,8 +235,8 @@ tfdbg> run -f has_inf_or_nan
 > NOTE: The preceding command works properly because we have registered a filter
 > for `nan`s and `inf`s called `has_inf_or_nan` (as explained previously).
 > If you have registered any other filters, you can
-> let tfdbg run till any tensors pass that filter (cause the filter to return True)
-> as well, for example,
+> use "run -f" to have tfdbg run until any tensor triggers that filter (cause
+> the filter to return True).
 >
 > ```
 > # In python code:
@@ -235,10 +246,15 @@ tfdbg> run -f has_inf_or_nan
 > tfdbg> run -f my_filter
 > ```
 
+See [this API document](https://www.tensorflow.org/api_docs/python/tfdbg/DebugDumpDir#find)
+for more information on the expected signature and return value of the predicate
+`Callable` used with `add_tensor_filter()`.
+
 ![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_inf_nan.png)
 
 As the screen display indicates, the `has_inf_or_nan` filter is first passed
-during the fourth `run()` call: an [Adam optimizer](https://arxiv.org/abs/1412.6980)
+during the fourth `Session.run()` call: an
+[Adam optimizer](https://www.tensorflow.org/api_docs/python/tf/train/AdamOptimizer)
 forward-backward training pass on the graph. In this run, 36 (out of the total
 95) intermediate tensors contain `nan` or `inf` values. These tensors are listed
 in chronological order, with their timestamps displayed on the left. At the top
@@ -268,7 +284,7 @@ tfdbg> /(inf|nan)
 
 Why did these infinities appear? To further debug, display more information
 about the node `cross_entropy/Log` by clicking the underlined `node_info` menu
-item on the top or entering the equivalent command:
+item on the top or entering the equivalent node_info (`ni`) command:
 
 ```none
 tfdbg> ni cross_entropy/Log
@@ -310,7 +326,7 @@ line:
 diff = y_ * tf.log(y)
 ```
 
-***tfdbg** has a feature that makes it ease to trace Tensors and ops back to
+***tfdbg** has a feature that makes it easy to trace Tensors and ops back to
 lines in Python source files. It can annotate lines of a Python file with
 the ops or Tensors created by them. To use this feature,
 simply click the underlined line numbers in the stack trace output of the
@@ -351,7 +367,7 @@ accuracy now continues to rise rather than getting stuck. Success!
 
 ## Debugging tf-learn Estimators and Experiments
 
-This section explains how to debug TensorFlow programs that use the `Estimators`
+This section explains how to debug TensorFlow programs that use the `Estimator`
 and `Experiment` APIs. Part of the convenience provided by these APIs is that
 they manage `Session`s internally. This makes the `LocalCLIDebugWrapperSession`
 described in the preceding sections inapplicable. Fortunately, you can still
@@ -363,7 +379,7 @@ Currently, `tfdbg` can debug the
 @{tf.contrib.learn.BaseEstimator.fit$`fit()`}
 @{tf.contrib.learn.BaseEstimator.evaluate$`evaluate()`}
 methods of tf-learn `Estimator`s. To debug `Estimator.fit()`,
-create a `LocalCLIDebugHook` and supply it as the `monitors` argument. For example:
+create a `LocalCLIDebugHook` and supply it in the `monitors` argument. For example:
 
 ```python
 # First, let your BUILD target depend on "//tensorflow/python/debug:debug_py"
@@ -371,9 +387,9 @@ create a `LocalCLIDebugHook` and supply it as the `monitors` argument. For examp
 #  install of open-source TensorFlow.)
 from tensorflow.python import debug as tf_debug
 
+# Create a LocalCLIDebugHook and use it as a monitor when calling fit().
 hooks = [tf_debug.LocalCLIDebugHook()]
 
-# Create a local CLI debug hook and use it as a monitor when calling fit().
 classifier.fit(x=training_set.data,
                y=training_set.target,
                steps=1000,
@@ -441,22 +457,38 @@ calls, as a function of the `fetches` and `feed_dict` and other states. See
 @{tfdbg.DumpingDebugWrapperSession.__init__$this API doc}
 for more details.
 
+## Debugging Keras Models with TFDBG
+
+To use TFDBG with [Keras](https://keras.io/), let the Keras backend use
+a TFDBG-wrapped Session object. For example, to use the CLI wrapper:
+
+``` python
+import tensorflow as tf
+from keras import backend as keras_backend
+from tensorflow.python import debug as tf_debug
+
+keras_backend.set_session(tf_debug.LocalCLIDebugWrapperSession(tf.Session()))
+
+# Define your keras model, called "model".
+model.fit(...)  # This will break into the TFDBG CLI.
+```
+
 ## Offline Debugging of Remotely-Running Sessions
 
-Oftentimes, your model is running in a remote machine or process that you don't
+Often, your model is running on a remote machine or a process that you don't
 have terminal access to. To perform model debugging in such cases, you can use
-the `offline_analyzer` binary of `tfdbg`. It operates on dumped data
-directories. This can be done to both the lower-level `Session` API and the
-higher-level `Estimator` and `Experiment` APIs.
+the `offline_analyzer` binary of `tfdbg` (described below). It operates on
+dumped data directories. This can be done to both the lower-level `Session` API
+and the higher-level `Estimator` and `Experiment` APIs.
 
-### Debugging Remotely-Running tf.Sessions
+### Debugging Remote tf.Sessions
 
 If you interact directly with the `tf.Session` API in `python`, you can
 configure the `RunOptions` proto that you call your `Session.run()` method
 with, by using the method @{tfdbg.watch_graph}.
 This will cause the intermediate tensors and runtime graphs to be dumped to a
-shared storage location of your choice when the `Session.run()` call occurs.
-For example:
+shared storage location of your choice when the `Session.run()` call occurs
+(at the cost of slower performance). For example:
 
 ```python
 from tensorflow.python import debug as tf_debug
@@ -547,7 +579,7 @@ python -m tensorflow.python.debug.cli.offline_analyzer \
        performance in a non-debugging session?_
 
 **A**: No. The debugger inserts additional special-purpose debug nodes to the
-       graph to record the values of intermediate tensors. These nodes certainly
+       graph to record the values of intermediate tensors. These nodes
        slow down the graph execution. If you are interested in profiling your
        model, check out
        [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tfprof)
@@ -591,7 +623,7 @@ only from the main thread?_
 **A**:
 This is a common use case, in which the `Session` object is used from multiple
 threads concurrently. Typically, the child threads take care of background tasks
-such as running enqueue operations. Oftentimes, you want to debug only the main
+such as running enqueue operations. Often, you want to debug only the main
 thread (or less frequently, only one of the child threads). You can use the
 `thread_name_filter` keyword argument of `LocalCLIDebugWrapperSession` to
 achieve this type of thread-selective debugging. For example, to debug from the
@@ -640,6 +672,12 @@ There are three possible workarounds or solutions:
    tfdbg> run --tensor_dtype_filter int.*
    ```
 
+   The first command above watches only nodes whose name match the
+   regular-expression pattern `.*hidden.*`. The second command watches only
+   operations whose name match the pattern `Variable.*`. The third one watches
+   only the tensors whose dtype match the pattern `int.*` (e.g., `int32`).
+
+
 **Q**: _Why can't I select text in the tfdbg CLI?_
 
 **A**: This is because the tfdbg CLI enables mouse events in the terminal by
@@ -664,9 +702,8 @@ sess.run(b)
        tensor `b` is effectively also a constant tensor. TensorFlow's graph
        optimization folds the graph that contains `a` and `b` into a single
        node to speed up future runs of the graph, which is why `tfdbg` does
-       not generate any intermedate-tensor dumps. If `a` were a
-       @{tf.Variable}, the constant-folding would not occur and `tfdbg`
-       should show the intermeidate-tensor dumps. For example:
+       not generate any intermediate tensor dumps. However, if `a` were a
+       @{tf.Variable}, as in the following example:
 
 ``` python
 import numpy as np
@@ -678,3 +715,6 @@ sess.run(tf.global_variables_initializer())
 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
 sess.run(b)
 ```
+
+the constant-folding would not occur and `tfdbg` should show the intermediate
+tensor dumps.

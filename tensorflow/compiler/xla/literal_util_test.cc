@@ -291,20 +291,20 @@ TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   auto colmajor = MakeUnique<Literal>();
   *colmajor->mutable_shape() = ShapeUtil::MakeShape(F32, {2, 2});
   *colmajor->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  colmajor.get()->Reserve(4);
-  colmajor.get()->Set<float>({0, 0}, 1.0);
-  colmajor.get()->Set<float>({0, 1}, 2.0);
-  colmajor.get()->Set<float>({1, 0}, 3.0);
-  colmajor.get()->Set<float>({1, 1}, 4.0);
+  colmajor->Reserve(4);
+  colmajor->Set<float>({0, 0}, 1.0);
+  colmajor->Set<float>({0, 1}, 2.0);
+  colmajor->Set<float>({1, 0}, 3.0);
+  colmajor->Set<float>({1, 1}, 4.0);
 
   auto rowmajor = MakeUnique<Literal>();
   *rowmajor->mutable_shape() = ShapeUtil::MakeShape(F32, {2, 2});
   *rowmajor->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({1, 0});
-  rowmajor.get()->Reserve(4);
-  rowmajor.get()->Set<float>({0, 0}, 1.0);
-  rowmajor.get()->Set<float>({0, 1}, 2.0);
-  rowmajor.get()->Set<float>({1, 0}, 3.0);
-  rowmajor.get()->Set<float>({1, 1}, 4.0);
+  rowmajor->Reserve(4);
+  rowmajor->Set<float>({0, 0}, 1.0);
+  rowmajor->Set<float>({0, 1}, 2.0);
+  rowmajor->Set<float>({1, 0}, 3.0);
+  rowmajor->Set<float>({1, 1}, 4.0);
 
   EXPECT_TRUE(rowmajor->Equal(*colmajor));
 }
@@ -339,6 +339,16 @@ TEST_F(LiteralUtilTest, IsAllTuple) {
   // Tuples should always return false for IsAll.
   EXPECT_FALSE(tuple->IsAll(0));
   EXPECT_FALSE(tuple->IsAll(1));
+}
+
+// Verifies that CreateFromShape works for tuples.
+TEST_F(LiteralUtilTest, CreateFromShapeTuple) {
+  auto scalar = Literal::CreateR0<float>(0.0);
+  auto matrix = Literal::CreateR2<int32>({{0, 0}, {0, 0}});
+  auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
+
+  auto x = Literal::CreateFromShape(tuple->shape());
+  EXPECT_TRUE(tuple->Equal(*x));
 }
 
 TEST_F(LiteralUtilTest, IsAll) {
@@ -694,7 +704,7 @@ TEST_F(LiteralUtilTest, Copy) {
     const int64 step[] = {1, 1, 1, 1};
     uint32 seqnr = 0;
     auto init_proc = [&](const std::vector<int64>& indexes) {
-      source.get()->Set(indexes, ++seqnr);
+      source->Set(indexes, ++seqnr);
       return true;
     };
 
@@ -705,7 +715,7 @@ TEST_F(LiteralUtilTest, Copy) {
     const int64 dest_base[] = {6, 4, 12, 2};
     const int64 copy_size[] = {7, 8, 11, 9};
 
-    TF_EXPECT_OK(blank.get()->Copy(*source, src_base, dest_base, copy_size));
+    TF_EXPECT_OK(blank->Copy(*source, src_base, dest_base, copy_size));
     std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
     bool matched = true;
@@ -729,13 +739,13 @@ TEST_F(LiteralUtilTest, Copy) {
 TEST_F(LiteralUtilTest, CopyScalars) {
   auto zero = Literal::CreateR0<uint32>(0);
   auto nine = Literal::CreateR0<uint32>(9);
-  TF_EXPECT_OK(zero.get()->Copy(*nine, {}, {}, {}));
+  TF_EXPECT_OK(zero->Copy(*nine, {}, {}, {}));
   EXPECT_TRUE(zero->Equal(*nine));
 
   auto vect = Literal::CreateR1<uint32>({3, 4, 9, 12, 5, 17, 21});
-  TF_EXPECT_OK(zero.get()->Copy(*vect, {5}, {}, {}));
+  TF_EXPECT_OK(zero->Copy(*vect, {5}, {}, {}));
   EXPECT_EQ(zero->Get<uint32>({}), 17);
-  TF_EXPECT_OK(vect.get()->Copy(*zero, {}, {4}, {}));
+  TF_EXPECT_OK(vect->Copy(*zero, {}, {4}, {}));
   EXPECT_EQ(vect->Get<uint32>({4}), 17);
 }
 
@@ -796,7 +806,7 @@ TEST_F(LiteralUtilTest, Populate) {
       // with zero.
       return literal->LinearIndex(indexes) + 17;
     };
-    TF_EXPECT_OK(literal.get()->Populate<uint32>(generator));
+    TF_EXPECT_OK(literal->Populate<uint32>(generator));
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);

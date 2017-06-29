@@ -109,9 +109,10 @@ class OpKernel {
   virtual bool IsExpensive() { return expensive_; }
 
   // Accessors.
-  const NodeDef& def() const { return def_; }
-  const string& name() const { return def_.name(); }
-  const string& type_string() const { return def_.op(); }
+  const NodeDef& def() const { return *def_; }
+  const string& name() const;              // Same as def().name()
+  const string& type_string() const;       // Same as def().op()
+  const string& requested_device() const;  // Same as def().device()
   bool is_internal() const { return is_internal_; }
 
   int num_inputs() const { return input_types_.size(); }
@@ -120,6 +121,7 @@ class OpKernel {
   const MemoryTypeVector& input_memory_types() const {
     return input_memory_types_;
   }
+  const string& requested_input(int i) const;  // Same as def().input(i)
 
   int num_outputs() const { return output_types_.size(); }
   DataType output_type(int o) const { return output_types_[o]; }
@@ -157,7 +159,7 @@ class OpKernel {
   Status MakeShape(const Tensor& shape, TensorShape* out) const;
 
  private:
-  const NodeDef def_;
+  const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;
   const MemoryTypeVector input_memory_types_;
   const DataTypeVector output_types_;
@@ -227,19 +229,7 @@ class OpKernelConstruction {
                        const MemoryTypeSlice& input_memory_types,
                        const DataTypeSlice& output_types,
                        const MemoryTypeSlice& output_memory_types,
-                       int graph_def_version, Status* status)
-      : device_type_(std::move(device_type)),
-        device_(device),
-        allocator_(allocator),
-        def_(node_def),
-        op_def_(op_def),
-        flib_(flib),
-        input_types_(input_types),
-        input_memory_types_(input_memory_types),
-        output_types_(output_types),
-        output_memory_types_(output_memory_types),
-        graph_def_version_(graph_def_version),
-        status_(status) {}
+                       int graph_def_version, Status* status);
 
   Env* env() const { return device_->env(); }
 
@@ -682,7 +672,7 @@ class OpKernelContext {
   void forward_ref_input_to_ref_output(int input_index, int output_index);
 
   // Returns true when an alias to input[input_index], reshaped to output_shape,
-  // which is is safe to use for in-place computation was written to *output.
+  // which is safe to use for in-place computation was written to *output.
   // Returns false if input[input_index] has a refcount greater than one, or if
   // its type does not match the expected output type of output[output_index],
   // or the number of elements in input[input_index] does not equal the number
@@ -722,7 +712,7 @@ class OpKernelContext {
       StringPiece output_name, const TensorShape& output_shape,
       Tensor** output) TF_MUST_USE_RESULT;
 
-  // Tries to reuse one of of the inputs given in input_indices as a temporary.
+  // Tries to reuse one of the inputs given in input_indices as a temporary.
   // If none of the given inputs can be forwarded, calls
   // allocate_temp() to allocate a new temporary buffer.
   Status forward_input_or_allocate_temp(

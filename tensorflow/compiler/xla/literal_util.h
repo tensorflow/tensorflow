@@ -68,11 +68,13 @@ class BoolVector {
   }
 
   BoolVector(const BoolVector& other) { CopyFrom(other); }
+  BoolVector(BoolVector&&) = default;
 
   BoolVector& operator=(const BoolVector& other) {
     CopyFrom(other);
     return *this;
   }
+  BoolVector& operator=(BoolVector&&) = default;
 
   void push_back(const bool& value) {
     resize(size_ + 1);
@@ -147,10 +149,12 @@ class Literal {
   Literal() {}
 
   Literal(const Literal& other) = default;
+  Literal(Literal&&) = default;
 
   explicit Literal(const LiteralProto& other) { CopyFromProto(other); }
 
   Literal& operator=(const Literal& other) = default;
+  Literal& operator=(Literal&&) = default;
 
   LiteralProto ToProto() const;
 

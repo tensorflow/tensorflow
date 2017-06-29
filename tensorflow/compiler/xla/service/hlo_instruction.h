@@ -63,6 +63,9 @@ class HloInstruction {
     kTransposeDot,        // Fused into a dot with transposed operands.
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.
+
+    kCustom,              // Custom category for backend-specific fusions that
+                          // do not match any of the more specific ones.
   };
 
   ~HloInstruction();
@@ -550,7 +553,7 @@ class HloInstruction {
   // number added to the variance to avoid divide-by-zero error.
   //
   // Precondition: opcode() == HloOpcode::kBatchNormTraining
-  int64 epsilon() const { return epsilon_; }
+  float epsilon() const { return epsilon_; }
 
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
@@ -746,6 +749,16 @@ class HloInstruction {
   // computations called by fused instructions inside of a fusion instruction.
   const std::vector<HloComputation*>& called_computations() const {
     return called_computations_;
+  }
+
+  // Replaces all called computations based on a map function. This is needed
+  // when we clone hlo_computations and want to let the instructions to point
+  // to the newly cloned nodes.
+  void ReplaceCalledComputations(
+      std::function<HloComputation*(HloComputation*)> map_function) {
+    for (int64 i = 0; i < called_computations_.size(); ++i) {
+      called_computations_[i] = map_function(called_computations_[i]);
+    }
   }
 
   // Returns true if this instruction performs an elementwise operation on

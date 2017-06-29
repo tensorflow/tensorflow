@@ -33,6 +33,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:rnn",
+        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",

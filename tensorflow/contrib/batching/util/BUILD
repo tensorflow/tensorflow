@@ -7,8 +7,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_files",
     srcs = glob(

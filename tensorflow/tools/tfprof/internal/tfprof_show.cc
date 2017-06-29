@@ -26,7 +26,9 @@ namespace tensorflow {
 namespace tfprof {
 
 const TFGraphNodeProto& TFShow::Show(const Options& opts) {
-  if (opts.output_type == kOutput[0]) {
+  if (opts.output_type == kOutput[3]) {
+    return ShowInternal(opts, nullptr)->proto();
+  } else if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else if (opts.output_type == kOutput[2]) {
@@ -64,7 +66,8 @@ bool TFShow::LookUpCheckPoint(const string& name,
   return true;
 }
 
-bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
+bool TFShow::ShouldShow(const ShowNode* node, const Options& opts,
+                        int depth) const {
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
@@ -72,6 +75,7 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
       node->proto().exec_micros() < opts.min_micros ||
       node->proto().parameters() < opts.min_params ||
       node->proto().float_ops() < opts.min_float_ops ||
+      node->proto().run_count() < opts.min_occurrence ||
       depth > opts.max_depth || !ShouldShowIfExtra(node, opts, depth)) {
     return false;
   }
@@ -96,7 +100,8 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
   return true;
 }
 
-bool TFShow::ShouldTrim(ShowNode* node, const std::vector<string>& regexes) {
+bool TFShow::ShouldTrim(const ShowNode* node,
+                        const std::vector<string>& regexes) const {
   for (const string& regex : regexes) {
     if (RE2::FullMatch(node->name(), regex)) {
       return true;
@@ -121,7 +126,7 @@ bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
   return false;
 }
 
-string TFShow::FormatNode(ShowNode* node, const Options& opts) {
+string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
   std::vector<string> info;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     const string shape = FormatShapes(node->node->shape());
@@ -177,6 +182,21 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) {
     const std::set<string>& op_types = node->node->op_types();
     info.push_back(str_util::Join(op_types, "|"));
   }
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    string run = FormatNumber(node->proto().total_run_count());
+    if (node->account) {
+      run = FormatNumber(node->proto().run_count()) + "/" + run;
+    } else {
+      run = "--/" + run;
+    }
+    string definition = FormatNumber(node->proto().total_definition_count());
+    if (node->account) {
+      definition = "1/" + definition;
+    } else {
+      definition = "--/" + definition;
+    }
+    info.push_back(run + "|" + definition);
+  }
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     std::vector<string> shape_vec;
     for (const auto& s : node->node->input_shapes()) {
@@ -194,7 +214,7 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) {
                          str_util::Join(info, ", ").c_str());
 }
 
-string TFShow::FormatLegend(const Options& opts) {
+string TFShow::FormatLegend(const Options& opts) const {
   std::vector<string> legends;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     legends.push_back("# parameters");
@@ -223,6 +243,9 @@ string TFShow::FormatLegend(const Options& opts) {
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     legends.push_back("op types");
+  }
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    legends.push_back("op count (run|defined)");
   }
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     legends.push_back("input shapes");

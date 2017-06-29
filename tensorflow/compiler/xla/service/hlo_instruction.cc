@@ -1675,6 +1675,8 @@ string HloInstruction::ToCategory() const {
       case FusionKind::kConvBackwardFilter:
       case FusionKind::kConvBackwardInput:
         return "convolution fusion";
+      case FusionKind::kCustom:
+        return "custom fusion";
     }
   }
 
@@ -1881,7 +1883,7 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kReverse:
       return visitor->HandleReverse(this, operands_[0]);
     case HloOpcode::kReducePrecision:
-      return visitor->HandleReducePrecision(this, operands_[0]);
+      return visitor->HandleReducePrecision(this);
     case HloOpcode::kSlice:
       return visitor->HandleSlice(this, operands_[0]);
     case HloOpcode::kDynamicSlice:
@@ -2342,6 +2344,8 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kConvBackwardFilter";
     case HloInstruction::FusionKind::kConvBackwardInput:
       return "kConvBackwardInput";
+    case HloInstruction::FusionKind::kCustom:
+      return "kCustom";
   }
 }
 

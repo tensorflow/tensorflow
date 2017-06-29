@@ -1,5 +1,12 @@
 # Description:
 #   Python Client Code of the TensorFlow Debugger (tfdbg).
+#
+# Public target(s):
+#
+# ":debug_py": Public Python methods and classes of tfdbg.
+#   For API documentation, see https://www.tensorflow.org/api_docs/python/tfdbg
+#   For a user interface walkthrough, see https://www.tensorflow.org/programmers_guide/debugger
+# (Omitted internal-only public target)
 
 package(
     default_visibility = ["//tensorflow:internal"],

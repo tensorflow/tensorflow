@@ -109,8 +109,7 @@ REGISTER_OP("RestoreV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &shape1));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &shape2));
       TF_RETURN_IF_ERROR(c->Merge(shape1, shape2, &shape0));
-      c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return UnknownShape(c);
     })
     .Doc(R"doc(
 Restores tensors from a V2 checkpoint.
@@ -475,6 +474,7 @@ REGISTER_OP("FixedLengthRecordReaderV2")
     .Attr("hop_bytes: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("encoding: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
@@ -490,6 +490,8 @@ container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
 shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
+encoding: The type of encoding for the file. Currently ZLIB and GZIP
+        are supported. Defaults to none.
 )doc");
 
 // TODO(cwhipkey): mark this deprecated in favor of V2.

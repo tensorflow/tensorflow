@@ -15,6 +15,7 @@ py_library(
     name = "public_api",
     srcs = ["public_api.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:util"],
 )
 
 py_test(
@@ -32,6 +33,7 @@ py_library(
     name = "traverse",
     srcs = ["traverse.py"],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python:util"],
 )
 
 py_test(

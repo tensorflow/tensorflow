@@ -391,7 +391,7 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
 
   if (vlog_1) {
     VLOG(1) << "GpuDevice::Compute " << op_kernel->name() << " op "
-            << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
+            << op_kernel->type_string() << " on GPU" << gpu_id_ << " stream["
             << stream_id << "]";
   }
 
@@ -465,7 +465,7 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   const auto stream_id = gpu_device_context->stream_id();
 
   VLOG(1) << "GpuDevice::ComputeAsync " << op_kernel->name() << " op "
-          << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
+          << op_kernel->type_string() << " on GPU" << gpu_id_ << " stream["
           << stream_id << "]";
 
   // When TraceMe profiling is off (which is the default), the
