@@ -1039,6 +1039,7 @@ def tf_py_wrap_cc(name,
       srcs_version="PY2AND3",
       data=select({
           clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
+          clean_dep("//tensorflow:windows_msvc"): [":" + cc_library_pyd_name],
           "//conditions:default": [":" + cc_library_name],
       }))
 
