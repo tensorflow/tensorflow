@@ -900,7 +900,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
