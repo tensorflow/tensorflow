@@ -878,8 +878,12 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CloneFusionWithNewOperands(shape, new_operands);
     case HloOpcode::kParameter:
       return CreateParameter(parameter_number_, shape, parameter_name_);
-    // Unsupported ops for cloning.
     case HloOpcode::kBatchNormTraining:
+      CHECK_EQ(new_operands.size(), 3);
+      return CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
+                                     new_operands[2], epsilon(),
+                                     feature_index());
+    // Unsupported ops for cloning.
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:
