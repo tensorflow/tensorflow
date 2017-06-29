@@ -239,6 +239,14 @@ class DfsHloVisitor {
     kVisited,
   };
 
+  VisitState GetVisitState(const HloInstruction& instruction) {
+    auto it = visit_state_.find(&instruction);
+    if (it == visit_state_.end()) {
+      return kNotVisited;
+    }
+    return it->second;
+  }
+
   // Sets the visitation state of the given instruction as kVisiting.
   //
   // Precondition: current state must be kNotVisited.
@@ -250,13 +258,19 @@ class DfsHloVisitor {
   void SetVisited(const HloInstruction& instruction);
 
   // Returns whether the state of the given instruction is kVisiting.
-  bool IsVisiting(const HloInstruction& instruction);
+  bool IsVisiting(const HloInstruction& instruction) {
+    return GetVisitState(instruction) == kVisiting;
+  }
 
   // Returns whether the state of the given instruction is kVisited.
-  bool DidVisit(const HloInstruction& instruction);
+  bool DidVisit(const HloInstruction& instruction) {
+    return GetVisitState(instruction) == kVisited;
+  }
 
   // Returns whether the state of the given instruction is kNotVisited.
-  bool NotVisited(const HloInstruction& instruction);
+  bool NotVisited(const HloInstruction& instruction) {
+    return GetVisitState(instruction) == kNotVisited;
+  }
 
   // This method should be overridden by subclasses that wish to run some
   // operation on an op before its Handle* visitor method is called.
@@ -281,7 +295,7 @@ class DfsHloVisitor {
 
  private:
   // Tracks the visitation state of each instruction. Any instructions that are
-  // not found from the map are considered as VisitState::kNotVisited.
+  // not found in the map are considered as VisitState::kNotVisited.
   tensorflow::gtl::FlatMap<const HloInstruction*, VisitState> visit_state_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitor);

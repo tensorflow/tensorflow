@@ -152,7 +152,7 @@ bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
   CHECK_EQ(a->parent(), b->parent());
 
   // 'a' executes before 'b' if 'a' is in the strict predecessor set of 'b'.
-  return strict_predecessors_.at(b->parent())->IsReachable(b, a);
+  return a != b && predecessors_.at(a->parent())->IsReachable(a, b);
 }
 
 string PredecessorHloOrdering::ToStringHelper(const string& name) const {
@@ -164,10 +164,10 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
     const auto all = computation->MakeInstructionPostOrder();
     for (auto instruction : all) {
       pieces.push_back(tensorflow::strings::Printf(
-          "  %s strict predecessors:", instruction->name().c_str()));
+          "  %s predecessors:", instruction->name().c_str()));
       for (auto predecessor : all) {
-        if (strict_predecessors_.at(computation.get())
-                ->IsReachable(instruction, predecessor)) {
+        if (predecessors_.at(computation.get())
+                ->IsReachable(predecessor, instruction)) {
           pieces.push_back(
               tensorflow::strings::Printf("  %s", predecessor->name().c_str()));
         }
@@ -183,8 +183,8 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
   for (auto& computation : module->computations()) {
-    strict_predecessors_.emplace(computation.get(),
-                                 computation->ComputeTransitiveOperands());
+    predecessors_.emplace(computation.get(),
+                          computation->ComputeReachability());
   }
 }
 

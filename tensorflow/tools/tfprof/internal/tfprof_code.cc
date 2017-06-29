@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -31,12 +32,7 @@ namespace tfprof {
 namespace {
 // Convert to Trace proto into a short readable string.
 string GetTraceString(const CodeDef::Trace& trace) {
-  string ntrace = "";
-  if (trace.file().find_last_of('/') != trace.file().npos) {
-    ntrace += trace.file().substr(trace.file().find_last_of('/') + 1);
-  } else {
-    ntrace += trace.file();
-  }
+  string ntrace = io::Basename(trace.file()).ToString();
   ntrace += strings::StrCat(":", trace.lineno());
   if (trace.function().length() < 20) {
     ntrace += ":" + trace.function();
