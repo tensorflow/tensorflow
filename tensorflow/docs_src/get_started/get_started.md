@@ -476,5 +476,5 @@ to our manual model training loop from the lower level API.
 
 Now you have a working knowledge of the basics of TensorFlow. We have several
 more tutorials that you can look at to learn more. If you are a beginner in
-machine learning see @{$beginners$MNIST for beginners},
+machine learning see @{$beginners$MNIST for beginners};
 otherwise see @{$pros$Deep MNIST for experts}.
