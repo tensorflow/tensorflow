@@ -23,7 +23,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib.tfprof.python.tools.tfprof import tfprof_logger
-from tensorflow.contrib.tfprof.python.tools.tfprof.internal import pywrap_tensorflow_print_model_analysis_lib as print_mdl
+from tensorflow.python import pywrap_tensorflow as print_mdl
 from tensorflow.python.framework import errors
 from tensorflow.tools.tfprof import tfprof_options_pb2
 from tensorflow.tools.tfprof import tfprof_output_pb2

@@ -1925,19 +1925,21 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
 static Status PushDFSChild(DfsHloVisitor* visitor,
                            std::vector<HloInstruction*>* dfs_stack,
                            HloInstruction* parent, HloInstruction* child) {
-  if (visitor->IsVisiting(*child)) {
-    return FailedPrecondition(
-        "A cycle is detected while visiting instruction %s",
-        parent->ToString().c_str());
-  }
+  switch (visitor->GetVisitState(*child)) {
+    case DfsHloVisitor::kVisiting:
+      return FailedPrecondition(
+          "A cycle is detected while visiting instruction %s",
+          parent->ToString().c_str());
 
-  if (!visitor->DidVisit(*child)) {
-    dfs_stack->push_back(child);
-  } else {
-    VLOG(3) << "Not visiting HLO " << child->name()
-            << " as it was already visited.";
+    case DfsHloVisitor::kVisited:
+      VLOG(3) << "Not visiting HLO " << child->name()
+              << " as it was already visited.";
+      return Status::OK();
+
+    case DfsHloVisitor::kNotVisited:
+      dfs_stack->push_back(child);
+      return Status::OK();
   }
-  return Status::OK();
 }
 
 static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
@@ -1950,14 +1952,16 @@ static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
     DCHECK(!dfs_stack.empty());
 
     HloInstruction* current_node = dfs_stack.back();
-    if (visitor->DidVisit(*current_node)) {
+    DfsHloVisitor::VisitState visit_state =
+        visitor->GetVisitState(*current_node);
+    if (visit_state == DfsHloVisitor::kVisited) {
       dfs_stack.pop_back();
       VLOG(3) << "Not visiting HLO " << current_node->name()
               << " as it was already visited.";
       continue;
     }
 
-    if (visitor->IsVisiting(*current_node)) {
+    if (visit_state == DfsHloVisitor::kVisiting) {
       dfs_stack.pop_back();
 
       TF_RETURN_IF_ERROR(visitor->Preprocess(current_node));

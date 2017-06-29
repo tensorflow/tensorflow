@@ -37,29 +37,14 @@ Status DfsHloVisitor::HandleElementwiseBinary(HloInstruction* hlo,
 
 void DfsHloVisitor::SetVisiting(const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visiting: ";
-  CHECK(NotVisited(instruction));
+  DCHECK(NotVisited(instruction));
   visit_state_[&instruction] = VisitState::kVisiting;
 }
 
 void DfsHloVisitor::SetVisited(const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visited: ";
-  CHECK(NotVisited(instruction) || IsVisiting(instruction));
+  DCHECK(NotVisited(instruction) || IsVisiting(instruction));
   visit_state_[&instruction] = VisitState::kVisited;
-}
-
-bool DfsHloVisitor::IsVisiting(const HloInstruction& instruction) {
-  auto it = visit_state_.find(&instruction);
-  return it != visit_state_.end() && it->second == VisitState::kVisiting;
-}
-
-bool DfsHloVisitor::DidVisit(const HloInstruction& instruction) {
-  auto it = visit_state_.find(&instruction);
-  return it != visit_state_.end() && it->second == VisitState::kVisited;
-}
-
-bool DfsHloVisitor::NotVisited(const HloInstruction& instruction) {
-  auto it = visit_state_.find(&instruction);
-  return it == visit_state_.end() || it->second == VisitState::kNotVisited;
 }
 
 Status DfsHloVisitor::Preprocess(HloInstruction* hlo) { return Status::OK(); }

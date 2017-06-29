@@ -1,6 +1,6 @@
 # Debugging TensorFlow Programs
 
-[comment]: TODO(barryr): Links to and from sections on "Graphs" & "Monitoring Learning".
+<!-- [comment]: TODO(barryr): Links to and from sections on "Graphs" & "Monitoring Learning". -->
 
 [TOC]
 
@@ -84,7 +84,7 @@ we ship it with the
 @{$python/tfdbg#Classes_for_debug_dump_data_and_directories$`debug_data`}
 module.
 
-TIP: You can also write your own custom filters. See
+Note: You can also write your own custom filters. See
 the @{tfdbg.DebugDumpDir.find$API documentation}
 of `DebugDumpDir.find()` for additional information.
 
@@ -103,10 +103,15 @@ dictionaries displayed on the screen.
 
 ![tfdbg run-start UI](https://www.tensorflow.org/images/tfdbg_screenshot_run_start.png)
 
-This is what we refer to as the *run-start CLI*. If the screen size is
-too small to display the content of the message in its entirety, you can resize
-it or use the **PageUp** / **PageDown** / **Home** / **End** keys to navigate
-the screen output.
+This is what we refer to as the *run-start CLI*. It lists the feeds and fetches
+to the current `Session.run` call, before executing anything.
+
+If the screen size is too small to display the content of the message in its
+entirety, you can resize it.
+
+Use the **PageUp** / **PageDown** / **Home** / **End** keys to navigate the
+screen output. On most keyboards lacking those keys **Fn + Up** /
+**Fn + Down** / **Fn + Right** / **Fn + Left** will work.
 
 Enter the `run` command (or just `r`) at the command prompt:
 
@@ -168,7 +173,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | **`run`** | | **Proceed to the next Session.run()** | `run` |
 | | `-n` | Execute through the next `Session.run` without debugging, and drop to CLI right before the run after that. | `run -n` |
 | | `-t <T>` | Execute `Session.run` `T - 1` times without debugging, followed by a run with debugging. Then drop to CLI right after the debugged run. | `run -t 10` |
-| | `-f <filter_name>` | Continue executing `Session.run` until any intermediate tensors passes the specified Tensor filter (causes the filter to return `True`). | `run -f has_inf_or_nan` |
+| | `-f <filter_name>` | Continue executing `Session.run` until any intermediate tensor triggers the specified Tensor filter (causes the filter to return `True`). | `run -f has_inf_or_nan` |
 | | `--node_name_filter <pattern>` | Execute the next `Session.run`, watching only nodes with names matching the given regular-expression pattern. | `run --node_name_filter softmax.*` |
 | | `--op_type_filter <pattern>` | Execute the next `Session.run`, watching only nodes with op types matching the given regular-expression pattern. | `run --op_type_filter Variable.*` |
 | | `--tensor_dtype_filter <pattern>` | Execute the next `Session.run`, dumping only Tensors with data types (`dtype`s) matching the given regular-expression pattern. | `run --tensor_dtype_filter int.*` |
@@ -238,11 +243,13 @@ tfdbg> run -f has_inf_or_nan
 > use "run -f" to have tfdbg run until any tensor triggers that filter (cause
 > the filter to return True).
 >
-> ```
-> # In python code:
+> ``` python
 > sess.add_tensor_filter('my_filter', my_filter_callable)
+> ```
 >
-> # Run at tfdbg run-start prompt:
+> Then at the tfdbg run-start prompt run until your filter is triggered:
+>
+> ```
 > tfdbg> run -f my_filter
 > ```
 
@@ -252,7 +259,7 @@ for more information on the expected signature and return value of the predicate
 
 ![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_inf_nan.png)
 
-As the screen display indicates, the `has_inf_or_nan` filter is first passed
+As the screen display indicates on the first line, the `has_inf_or_nan` filter is first triggered
 during the fourth `Session.run()` call: an
 [Adam optimizer](https://www.tensorflow.org/api_docs/python/tf/train/AdamOptimizer)
 forward-backward training pass on the graph. In this run, 36 (out of the total
@@ -341,13 +348,13 @@ of a `ps` command.
 To fix the problem, edit `debug_mnist.py`, changing the original line:
 
 ```python
-diff = y_ * tf.log(y)
+diff = -(y_ * tf.log(y))
 ```
 
-to the following:
+to the built-in, numerically-stable implementation of softmax cross-entropy:
 
 ```python
-diff = y_ * tf.log(tf.clip_by_value(y, 1e-8, 1.0))
+diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=logits)
 ```
 
 Rerun with the `--debug` flag as follows:
@@ -517,8 +524,8 @@ python -m tensorflow.python.debug.cli.offline_analyzer \
 
 The `Session` wrapper `DumpingDebugWrapperSession` offers an easier and more
 flexible way to generate file-system dumps that can be analyzed offline.
-To use it, simply call the `tf_debug.DumpingDebugWrapperSession` method in the
-program being debugged. For example:
+To use it, simply wrap your session in a `tf_debug.DumpingDebugWrapperSession`.
+For example:
 
 ```python
 # Let your BUILD target depend on "//tensorflow/python/debug:debug_py
@@ -530,11 +537,9 @@ sess = tf_debug.DumpingDebugWrapperSession(
     sess, "/shared/storage/location/tfdbg_dumps_1/", watch_fn=my_watch_fn)
 ```
 
-`watch_fn=my_watch_fn` is a `Callable` that allows you to configure what
+The `watch_fn` argument accepts a `Callable` that allows you to configure what
 `tensor`s to watch on different `Session.run()` calls, as a function of the
-`fetches` and `feed_dict` to the `run()` call and other states. See
-@{tfdbg.DumpingDebugWrapperSession.__init__$the API doc of DumpingDebugWrapperSession}
-for more details.
+`fetches` and `feed_dict` to the `run()` call and other states.
 
 ### C++ and other languages
 
