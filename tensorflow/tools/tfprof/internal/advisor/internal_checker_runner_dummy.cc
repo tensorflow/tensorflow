@@ -17,9 +17,9 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-std::map<string, std::vector<string>> RunInternalCheckers(
-    const TFStats* stats) {
-  return std::map<string, std::vector<string>>();
+AdviceProto RunInternalCheckers(const AdvisorOptionsProto& options,
+                                const TFStats* stats) {
+  return AdviceProto();
 }
 
 }  // namespace tfprof

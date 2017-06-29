@@ -276,7 +276,7 @@ __init__.py:
     # Otherwise import symbols directly
     from tensorflow.some_module.some_other_file import some_symbol
 
-    from tensorflow.platform.all_util import remove_undocumented
+    from tensorflow.python.util.all_util import remove_undocumented
 
     _allowed_symbols = [‘some_symbol’, ‘some_other_symbol’]
 

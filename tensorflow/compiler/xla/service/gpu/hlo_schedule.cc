@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {

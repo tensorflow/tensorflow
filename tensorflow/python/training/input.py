@@ -382,7 +382,7 @@ class _SparseMetaData(object):
 
 def _as_tensor_list(tensors):
   if isinstance(tensors, dict):
-    return [tensors[k] for k in sorted(tensors)]
+    return [tensors[k] for k in sorted(tensors, key=str)]
   else:
     return tensors
 
@@ -408,7 +408,7 @@ def _as_original_type(original_tensors, tensor_list):
       # was enqueued.  Make it a list again.  See b/28117485.
       tensor_list = [tensor_list]
     return {k: tensor_list[i]
-            for i, k in enumerate(sorted(original_tensors))}
+            for i, k in enumerate(sorted(original_tensors, key=str))}
   else:
     return tensor_list
 

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -36,6 +37,8 @@ class ArgMaxTest(test.TestCase):
       ans = method(x, dimension=dimension)
       if expected_err_re is None:
         tf_ans = ans.eval()
+        # Defaults to int64 output.
+        self.assertEqual(np.int64, tf_ans.dtype)
         self.assertAllEqual(tf_ans, expected_values)
         self.assertShapeEqual(expected_values, ans)
       else:
@@ -70,6 +73,23 @@ class ArgMaxTest(test.TestCase):
   def testFloat(self):
     self._testBasic(np.float32)
     self._testDim(np.float32)
+
+  def testFloatInt32Output(self):
+    x = np.asarray(100 * np.random.randn(200), dtype=np.float32)
+    expected_values = x.argmax()
+    with self.test_session(use_gpu=True):
+      ans = math_ops.argmax(x, dimension=0, output_type=dtypes.int32)
+      tf_ans = ans.eval()
+      self.assertEqual(np.int32, tf_ans.dtype)
+      # The values are equal when comparing int32 to int64 because
+      # the values don't have a range that exceeds 32-bit integers.
+      self.assertAllEqual(tf_ans, expected_values)
+    expected_values = x.argmin()
+    with self.test_session(use_gpu=True):
+      ans = math_ops.argmin(x, dimension=0, output_type=dtypes.int32)
+      tf_ans = ans.eval()
+      self.assertEqual(np.int32, tf_ans.dtype)
+      self.assertAllEqual(tf_ans, expected_values)
 
   def testDouble(self):
     self._testBasic(np.float64)

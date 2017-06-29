@@ -710,9 +710,10 @@ cc_library(
     ],
     deps = [
         ":buffer_liveness",
+        ":heap_simulator",
         ":hlo",
-        ":hlo_ordering",
         ":hlo_proto",
+        ":hlo_scheduling",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -739,6 +740,7 @@ cc_test(
         ":flatten_call_graph",
         ":hlo",
         ":hlo_ordering",
+        ":hlo_scheduling",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -751,42 +753,14 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "heap_simulator_test",
-    size = "small",
-    srcs = ["heap_simulator_test.cc"],
-    deps = [
-        ":hlo",
-        ":hlo_ordering",
-        ":logical_buffer",
-        ":tuple_points_to_analysis",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-# The hlo_ordering library contains both hlo_ordering and heap_simulator because
-# they are mutually dependent.
 cc_library(
     name = "hlo_ordering",
-    srcs = [
-        "heap_simulator.cc",
-        "hlo_ordering.cc",
-    ],
-    hdrs = [
-        "heap_simulator.h",
-        "hlo_ordering.h",
-    ],
+    srcs = ["hlo_ordering.cc"],
+    hdrs = ["hlo_ordering.h"],
     deps = [
         ":call_graph",
         ":hlo",
         ":hlo_proto",
-        ":liveness_util",
-        ":logical_buffer",
-        ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -803,6 +777,77 @@ cc_test(
     deps = [
         ":hlo",
         ":hlo_ordering",
+        ":hlo_scheduling",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+cc_library(
+    name = "heap_simulator",
+    srcs = ["heap_simulator.cc"],
+    hdrs = ["heap_simulator.h"],
+    deps = [
+        ":hlo",
+        ":hlo_ordering",
+        ":hlo_proto",
+        ":liveness_util",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "heap_simulator_test",
+    size = "small",
+    srcs = ["heap_simulator_test.cc"],
+    deps = [
+        ":heap_simulator",
+        ":hlo",
+        ":hlo_ordering",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "hlo_scheduling",
+    srcs = ["hlo_scheduling.cc"],
+    hdrs = ["hlo_scheduling.h"],
+    deps = [
+        ":heap_simulator",
+        ":hlo",
+        ":hlo_ordering",
+        ":hlo_proto",
+        ":logical_buffer",
+        ":tuple_points_to_analysis",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "hlo_scheduling_test",
+    size = "small",
+    srcs = ["hlo_scheduling_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_ordering",
+        ":hlo_scheduling",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -1178,6 +1223,22 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_value",
+    srcs = ["hlo_value.cc"],
+    hdrs = ["hlo_value.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "hlo_dataflow_analysis",
     srcs = [
         "hlo_dataflow_analysis.cc",
@@ -1189,8 +1250,8 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_ordering",
+        ":hlo_value",
         ":liveness_util",
-        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
@@ -1198,7 +1259,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -1225,20 +1285,32 @@ cc_test(
 )
 
 cc_library(
-    name = "hlo_alias_analysis",
-    srcs = [
-        "hlo_alias_analysis.cc",
-    ],
-    hdrs = [
-        "hlo_alias_analysis.h",
-    ],
+    name = "hlo_buffer",
+    srcs = ["hlo_buffer.cc"],
+    hdrs = ["hlo_buffer.h"],
     deps = [
-        ":call_graph",
         ":hlo",
-        ":hlo_dataflow_analysis",
-        ":logical_buffer",
+        ":hlo_value",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "hlo_alias_analysis",
+    srcs = ["hlo_alias_analysis.cc"],
+    hdrs = ["hlo_alias_analysis.h"],
+    deps = [
+        ":hlo",
+        ":hlo_buffer",
+        ":hlo_dataflow_analysis",
+        ":hlo_value",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -1424,6 +1496,7 @@ cc_library(
         ":hlo",
         ":hlo_dce",
         ":hlo_ordering",
+        ":hlo_scheduling",
         ":liveness_util",
         ":logical_buffer",
         ":tuple_points_to_analysis",
@@ -1520,8 +1593,8 @@ cc_library(
         "hlo_pass_pipeline.h",
     ],
     deps = [
-        ":compiler",
         ":hlo",
+        ":hlo_graph_dumper",
         ":hlo_pass",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -1730,6 +1803,7 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
         "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
     ],
     alwayslink = 1,
 )

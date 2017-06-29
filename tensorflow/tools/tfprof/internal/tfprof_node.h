@@ -46,6 +46,7 @@ class ExecStep {
  public:
   ExecStep(TFGraphNode* node)
       : node(node),
+        run_count_(0),
         all_start_micros_(0),
         latest_end_micros_(0),
         mem_initiated_(false),
@@ -60,6 +61,7 @@ class ExecStep {
 
   void AddMemoryStats(const string& dev, const NodeExecStats& step_stat);
 
+  int64 run_count() const { return run_count_; }
   // The execution time of an op. If it runs on accelerator, then it's
   // accelerator_exec_micros(). Otherwise, it's CPU time.
   int64 exec_micros() const;
@@ -89,15 +91,18 @@ class ExecStep {
 
  private:
   TFGraphNode* node;
+  // Can be larger than 1 if run multiple times in loop.
+  int64 run_count_;
   // The earliest/latest time including scheduling and execution.
   int64 all_start_micros_;
   int64 latest_end_micros_;
   // device -> vector of {op_start_micros, op_exec_micros} pairs.
   // accelerator_execs: gpu:id/stream:all -> {op_start_micros, op_exec_micros}
-  // For accelerator, vector size can be larger than 1, multiple kernel fires.
+  // For accelerator, vector size can be larger than 1, multiple kernel fires
+  // or in tf.while_loop.
   std::map<string, std::vector<std::pair<int64, int64>>> accelerator_execs_;
   // cpu_execs: cpu/gpu:id -> {op_start_micros, op_exec_micros}
-  // For cpu, normally vector size is 1, that is only one run.
+  // For cpu, vector size can be larger than 1 if in tf.while_loop.
   std::map<string, std::vector<std::pair<int64, int64>>> cpu_execs_;
   // combines accelerator_execs_ and cpu_execs_.
   std::map<string, std::vector<std::pair<int64, int64>>> op_execs_;
@@ -188,6 +193,23 @@ class TFGraphNode {
     return src_output_idx_;
   }
 
+  // Number of times the graph node is executed. When step < 0, the
+  // average number of times executed across all steps.
+  int64 run_count(int64 step) const {
+    if (execs_.empty()) {
+      return 0;
+    }
+    if (step >= 0) {
+      auto exec = execs_.find(step);
+      CHECK(exec != execs_.end());
+      return exec->second.run_count();
+    }
+    int64 total_run_count = 0;
+    for (const auto& exec : execs_) {
+      total_run_count += exec.second.run_count();
+    }
+    return total_run_count / execs_.size();
+  }
   // This is overall computation time, including both cpu and accelerator.
   // Note, cpu and accelerator might or might not run in parallel.
   int64 exec_micros(int64 step) const {
@@ -318,7 +340,14 @@ class TFGraphNode {
     return exec->second.allocator_bytes_in_use();
   }
 
-  int64 float_ops() const { return float_ops_; }
+  int64 float_ops(int64 step) const {
+    // If not run, return static analysis.
+    if (execs_.empty()) {
+      return float_ops_;
+    }
+    // Otherwise, return dynamic float_ops.
+    return float_ops_ * run_count(step);
+  }
   const CodeDef& code() { return code_; }
   string canonical_device() const { return canonical_device_; }
   string host_device() const { return host_device_; }
@@ -371,6 +400,7 @@ class TFMultiGraphNode {
  public:
   TFMultiGraphNode(const string& name)
       : name_(name),
+        run_count_(0),
         exec_micros_(0),
         accelerator_exec_micros_(0),
         cpu_exec_micros_(0),
@@ -378,6 +408,7 @@ class TFMultiGraphNode {
         float_ops_(0) {}
 
   bool SnapshotNodes(int64 step, const std::vector<string>& type_regexes) {
+    run_count_ = 0;
     exec_micros_ = 0;
     accelerator_exec_micros_ = 0;
     cpu_exec_micros_ = 0;
@@ -398,12 +429,13 @@ class TFMultiGraphNode {
     for (const TFGraphNode* node : nodes) {
       op_types_.insert(node->op_types().begin(), node->op_types().end());
 
+      run_count_ += node->run_count(step);
       exec_micros_ += node->exec_micros(step);
       accelerator_exec_micros_ += node->accelerator_exec_micros(step);
       cpu_exec_micros_ += node->cpu_exec_micros(step);
 
       requested_bytes_ += node->requested_bytes(step);
-      float_ops_ += node->float_ops();
+      float_ops_ += node->float_ops(step);
       if (node->shape().size() > 0) {
         shapes_.push_back(node->shape());
       }
@@ -436,6 +468,7 @@ class TFMultiGraphNode {
 
   const string& name() const { return name_; }
 
+  int64 run_count() const { return run_count_; }
   int64 exec_micros() const { return exec_micros_; }
   int64 accelerator_exec_micros() const { return accelerator_exec_micros_; }
   int64 cpu_exec_micros() const { return cpu_exec_micros_; }
@@ -480,6 +513,7 @@ class TFMultiGraphNode {
   const string name_;
   // Snapshot based on type_regexes
   std::set<string> op_types_;
+  int64 run_count_;
   int64 exec_micros_;
   int64 accelerator_exec_micros_;
   int64 cpu_exec_micros_;

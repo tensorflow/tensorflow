@@ -539,9 +539,9 @@ done
 # Set default CUDA version if not set
 if [ -z "$TF_CUDA_VERSION" ]; then
   TF_CUDA_VERSION="8.0"
-  export TF_CUDA_VERSION 
+  export TF_CUDA_VERSION
 fi
-write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION" 
+write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
 
 # Set up which gcc nvcc should use as the host compiler
 # No need to set this on Windows
@@ -659,16 +659,22 @@ write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 
 # Configure the compute capabilities that TensorFlow builds for.
 # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
+function get_native_cuda_compute_capabilities {
+  device_query_bin="$CUDA_TOOLKIT_PATH/extras/demo_suite/deviceQuery" # Also works on Windows without .exe
+  "$device_query_bin" | grep 'Capability' | grep -o '[0-9]*\.[0-9]*' | sed ':a;{N;s/\n/,/};ba'
+  exit 0 # ensure that this function always exit success even if device detection fails, to prevent the whole configure from aborting
+}
 while true; do
   fromuser=""
-  default_cuda_compute_capabilities="3.5,5.2"
+  native_cuda_compute_capabilities=$(get_native_cuda_compute_capabilities)
+  default_cuda_compute_capabilities=${native_cuda_compute_capabilities:-"3.5,5.2"}
   if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
 cat << EOF
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
 EOF
-    read -p "[Default is: \"3.5,5.2\"]: " TF_CUDA_COMPUTE_CAPABILITIES
+    read -p "[Default is: \"$default_cuda_compute_capabilities\"]: " TF_CUDA_COMPUTE_CAPABILITIES
     fromuser=1
   fi
   if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
@@ -839,17 +845,17 @@ while true; do
     if [ -e "$MPI_HOME/include" ] && [ -e "$MPI_HOME/lib" ]; then
         break
     fi
- 
+
     echo "Invalid path to the MPI Toolkit. ${MPI_HOME}/include or ${MPI_HOME}/lib cannot be found."
     if [ -z "$fromuser" ]; then
         exit 1
     fi
 
     # Retry
-    MPI_HOME="" 
+    MPI_HOME=""
 done
-    
-    
+
+
 if [ "$TF_NEED_MPI" == "1" ]; then
   write_to_bazelrc 'build --define with_mpi_support=true'
 
@@ -857,11 +863,11 @@ if [ "$TF_NEED_MPI" == "1" ]; then
   ln -sf "${MPI_HOME}/include/mpi.h" third_party/mpi/mpi.h
 
 
-  #Determine if we use OpenMPI or MVAPICH, these require different header files 
+  #Determine if we use OpenMPI or MVAPICH, these require different header files
   #to be included here to make bazel dependency checker happy
 
   if [ -e "${MPI_HOME}/include/mpi_portable_platform.h" ]; then
-        #OpenMPI 
+        #OpenMPI
         ln -sf "${MPI_HOME}/include/mpi_portable_platform.h" third_party/mpi/
         sed -i -e "s/MPI_LIB_IS_OPENMPI=False/MPI_LIB_IS_OPENMPI=True/" third_party/mpi/mpi.bzl
  else
@@ -871,7 +877,7 @@ if [ "$TF_NEED_MPI" == "1" ]; then
         sed -i -e "s/MPI_LIB_IS_OPENMPI=True/MPI_LIB_IS_OPENMPI=False/" third_party/mpi/mpi.bzl
  fi
 
-  
+
   if [ -e "${MPI_HOME}/lib/libmpi.so" ]; then
     ln -sf "${MPI_HOME}/lib/libmpi.so" third_party/mpi/
   else

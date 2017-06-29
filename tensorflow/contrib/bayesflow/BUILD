@@ -94,6 +94,7 @@ cuda_py_test(
     srcs = ["python/kernel_tests/monte_carlo_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//third_party/py/numpy",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:client_testlib",

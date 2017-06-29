@@ -248,7 +248,7 @@ class QueueBase(object):
     if isinstance(vals, dict):
       if not self._names:
         raise ValueError("Queue must have names to enqueue a dictionary")
-      if sorted(self._names) != sorted(vals.keys()):
+      if sorted(self._names, key=str) != sorted(vals.keys(), key=str):
         raise ValueError("Keys in dictionary to enqueue do not match "
                          "names of Queue.  Dictionary: (%s), Queue: (%s)" %
                          (sorted(vals.keys()), sorted(self._names)))
@@ -536,6 +536,25 @@ class QueueBase(object):
       return gen_data_flow_ops._queue_close(
           self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
           name=name)
+
+  def is_closed(self, name=None):
+    """ Returns true if queue is closed.
+
+    This operation returns true if the queue is closed and false if the queue
+    is open.
+
+    Args:
+      name: A name for the operation (optional).
+	
+    Returns:
+      True if the queue is closed and false if the queue is open.
+    """
+    if name is None:
+      name = "%s_Is_Closed" % self._name
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops.queue_is_closed_v2(self._queue_ref,name=name)
+    else:
+      return gen_data_flow_ops.queue_is_closed_(self._queue_ref,name=name)
 
   def size(self, name=None):
     """Compute the number of elements in this queue.

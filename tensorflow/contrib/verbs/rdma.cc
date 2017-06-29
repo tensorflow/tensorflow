@@ -761,8 +761,8 @@ void RdmaTensorBuffer::SendNextItem() {
           (buffer_size > size_ && local_status_ == idle &&
            remote_status_ == idle)) {
         if ((local_status_ != none) && (buffer_size > size_)) {
-          CHECK(rm.data_type_ == DT_STRING)
-              << "Only string tensor allows to change size";
+          VLOG(2) << "Extend RDMA buffer from " << size_ << " to "
+                  << buffer_size;
         }
         CreateCPUBuffer(buffer_size, false);
         mu_.unlock();
@@ -782,11 +782,13 @@ void RdmaTensorBuffer::SendNextItem() {
         // local/remote_status_ won't be set back to idle
         // unitl Write() is successful
         mu_.unlock();
-        CHECK((buffer_size == size_ && rm.data_type_ != DT_STRING) ||
-              (buffer_size <= size_ && rm.data_type_ == DT_STRING))
-            << "tensor and buffer size do not agree!"
-            << " buffer_size = " << size_
-            << " requested tensor size = " << buffer_size << in.DebugString();
+        if (!((buffer_size == size_ && rm.data_type_ != DT_STRING) ||
+              (buffer_size <= size_ && rm.data_type_ == DT_STRING))) {
+          VLOG(2) << "Tensor and buffer size do not agree,"
+                  << " buffer_size = " << size_
+                  << " requested tensor size = "
+                  << buffer_size << in.DebugString();
+        }
         uint32_t imm_data = LookupBufferIndex(key);
         rm.type_ = RDMA_MESSAGE_TENSOR_WRITE;
         string message = RdmaMessage::CreateMessage(rm);

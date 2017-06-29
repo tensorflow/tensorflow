@@ -54,20 +54,21 @@ class TFShow {
                         std::unique_ptr<TFProfTensor>* tensor);
 
   // Overridden by subclass if extra requirements need to be met.
-  virtual bool ShouldShowIfExtra(ShowNode* node, const Options& opts,
-                                 int depth) {
+  virtual bool ShouldShowIfExtra(const ShowNode* node, const Options& opts,
+                                 int depth) const {
     return true;
   }
 
-  bool ShouldShow(ShowNode* node, const Options& opts, int depth);
+  bool ShouldShow(const ShowNode* node, const Options& opts, int depth) const;
 
-  bool ShouldTrim(ShowNode* node, const std::vector<string>& regexes);
+  bool ShouldTrim(const ShowNode* node,
+                  const std::vector<string>& regexes) const;
 
   bool ReAccount(ShowNode* node, const Options& opts);
 
-  string FormatNode(ShowNode* node, const Options& opts);
+  string FormatNode(ShowNode* node, const Options& opts) const;
 
-  string FormatLegend(const Options& opts);
+  string FormatLegend(const Options& opts) const;
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {

@@ -81,6 +81,30 @@ TEST_F(HloModuleTest, TwoComputationsPostOrder) {
   EXPECT_EQ(computation2->name(), "Constant.1");
 }
 
+TEST_F(HloModuleTest, CloneTest) {
+  // Create and copy a module with a diamond call graph of computations.
+  auto module = CreateNewModule();
+  auto computation1 =
+      module->AddEmbeddedComputation(CreateConstantComputation());
+  auto computation2 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  auto computation3 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  module->AddEntryComputation(
+      CreateCallComputation({computation2, computation3}));
+
+  auto post_order = module->MakeComputationPostOrder();
+  auto cloned_module = module->Clone("copy");
+  auto post_order_copied = cloned_module->MakeComputationPostOrder();
+
+  EXPECT_EQ(post_order.size(), post_order_copied.size());
+  for (auto origin = post_order.begin(), copied = post_order_copied.begin();
+       origin != post_order.end() && copied != post_order_copied.end();
+       ++origin, ++copied) {
+    EXPECT_EQ((*origin)->name() + "copy", (*copied)->name());
+  }
+}
+
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   // Create a module with a diamond call graph of computations.
   auto module = CreateNewModule();
