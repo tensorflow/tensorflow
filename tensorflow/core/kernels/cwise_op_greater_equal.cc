@@ -35,7 +35,7 @@ REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER(BinaryOp, SYCL, "GreaterEqual", functor::greater_equal, float);
+REGISTER2(BinaryOp, SYCL, "GreaterEqual", functor::greater_equal, float, double);
 
 REGISTER_KERNEL_BUILDER(Name("GreaterEqual")
                             .Device(DEVICE_SYCL)
