@@ -723,6 +723,28 @@ class Dataset(object):
     """
     return SkipDataset(self, count)
 
+  def ignore_errors(self):
+    """Creates a `Dataset` from this one and silently ignores any errors.
+
+    Use this transformation to produce a dataset that contains the same elements
+    as the input, but silently drops any elements that caused an error. For
+    example:
+
+    ```python
+    dataset = tf.contrib.data.Dataset.from_tensor_slices([1., 2., 0., 4.])
+
+    # Computing `tf.check_numerics(1. / 0.)` will raise an InvalidArgumentError.
+    dataset = dataset.map(lambda x: tf.check_numerics(1. / x, "error"))
+
+    # Using `ignore_errors()` will drop the element that causes an error.
+    dataset = dataset.ignore_errors()  # ==> { 1., 0.5, 0.2 }
+    ```
+
+    Returns:
+      A `Dataset`.
+    """
+    return IgnoreErrorsDataset(self)
+
   def batch(self, batch_size):
     """Combines consecutive elements of this dataset into batches.
 
@@ -1204,6 +1226,29 @@ class SkipDataset(Dataset):
     return self._input_dataset.output_types
 
 
+class IgnoreErrorsDataset(Dataset):
+  """A `Dataset` that silently ignores errors when computing its input."""
+
+  def __init__(self, input_dataset):
+    """See `Dataset.ignore_errors()` for details."""
+    super(IgnoreErrorsDataset, self).__init__()
+    self._input_dataset = input_dataset
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.ignore_errors_dataset(
+        self._input_dataset.make_dataset_resource(),
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
+
+
 class BatchDataset(Dataset):
   """A `Dataset` that batches contiguous elements from its input."""
 
@@ -1357,6 +1402,11 @@ class DenseToSparseBatchDataset(Dataset):
     return (dtypes.int64, self._input_dataset.output_types, dtypes.int64)
 
 
+def _should_unpack_args(args):
+  """Returns `True` if `args` should be `*args` when passed to a callable."""
+  return nest.is_sequence(args) and not isinstance(args, dict)
+
+
 class _ResourceDataset(Dataset):
   """A Dataset wrapper for a tf.resource-typed function argument."""
 
@@ -1394,7 +1444,7 @@ class GroupByWindowDataset(Dataset):
       for arg, shape in zip(args, nest.flatten(input_dataset.output_shapes)):
         arg.set_shape(shape)
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      if nest.is_sequence(nested_args):
+      if _should_unpack_args(nested_args):
         ret = key_func(*nested_args)
       else:
         ret = key_func(nested_args)
@@ -1483,7 +1533,7 @@ class MapDataset(Dataset):
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
 
-      if nest.is_sequence(nested_args):
+      if _should_unpack_args(nested_args):
         ret = map_func(*nested_args)
       else:
         ret = map_func(nested_args)
@@ -1559,7 +1609,7 @@ class FlatMapDataset(Dataset):
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
 
-      if nest.is_sequence(nested_args):
+      if _should_unpack_args(nested_args):
         dataset = map_func(*nested_args)
       else:
         dataset = map_func(nested_args)
@@ -1609,7 +1659,7 @@ class FilterDataset(Dataset):
 
       nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
 
-      if nest.is_sequence(nested_args):
+      if _should_unpack_args(nested_args):
         ret = predicate(*nested_args)
       else:
         ret = predicate(nested_args)

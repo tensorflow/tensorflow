@@ -127,7 +127,6 @@ cc_library(
     deps = [
         ":tfcompile_lib",
         ":tfcompile_proto",
-        "//tensorflow/compiler/xla/legacy_flags:buffer_assignment_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/compiler/xla/legacy_flags:util_flags",

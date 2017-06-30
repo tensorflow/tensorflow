@@ -308,7 +308,7 @@ TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
       NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   Status status = ImportGraphDef(opts, def, &graph, &shape_refiner);
   ASSERT_TRUE(RemoteFusedGraphExecuteUtils::PropagateShapeInference(
                   def, inputs, &graph, &shape_refiner)
@@ -427,7 +427,7 @@ TEST(RemoteFusedGraphExecuteUtils, BuildRemoteFusedGraphExecuteOpNode) {
       NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
 
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_ASSERT_OK(ImportGraphDef({}, def, &graph, &shape_refiner));
 
   Node* node;

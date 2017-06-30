@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/public/session.h"
@@ -580,8 +582,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteGraphInputsAndOutputsFromProto(
   } else {
     ImportGraphDefOptions opts;
     Graph graph(OpRegistry::Global());
-    ShapeRefiner shape_refiner(graph.versions().producer(),
-                               graph.op_registry());
+    ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
     TF_RETURN_IF_ERROR(
         ImportGraphDef(opts, *graph_def, &graph, &shape_refiner));
     TF_RETURN_IF_ERROR(PropagateShapeInference(*graph_def, input_tensors,
@@ -724,7 +725,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
     const std::unordered_set<string>& node_names, const GraphDef& graph_def,
     std::vector<ClusterInfo>* cluster_infos) {
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, &shape_refiner));
   std::unordered_set<string> remaining_nodes = node_names;
 
@@ -829,7 +830,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       BuildNodeSetFromNodeNamesAndPorts(std::get<1>(cluster));
 
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, &shape_refiner));
 
   for (Node* node : graph.nodes()) {
@@ -883,7 +884,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
     const std::vector<string>& border_outputs, const GraphDef& graph_def,
     ClusterInfo* cluster) {
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, &shape_refiner));
 
   std::unordered_set<const Node*> visited;
@@ -955,7 +956,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       BuildClusterSubgraphDef(cluster, input_graph_def, &subgraph_def));
 
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_RETURN_IF_ERROR(
       ImportGraphDef({}, input_graph_def, &graph, &shape_refiner));
 

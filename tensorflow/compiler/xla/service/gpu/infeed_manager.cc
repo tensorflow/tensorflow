@@ -35,7 +35,7 @@ void InfeedManager::Reset() {
   enqueued_buffer_.clear();
 }
 
-void InfeedManager::EnqueueBuffers(std::vector<InfeedBuffer*> buffers) {
+void InfeedManager::EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers) {
   tensorflow::mutex_lock l(mu_);
   bool was_empty = enqueued_buffer_.empty();
   for (gpu::InfeedBuffer* b : buffers) {
@@ -61,7 +61,7 @@ InfeedBuffer* InfeedManager::BlockingDequeueBuffer() {
   return current_buffer;
 }
 
-void InfeedManager::ReleaseBuffers(std::vector<InfeedBuffer*> buffers) {
+void InfeedManager::ReleaseBuffers(const std::vector<InfeedBuffer*>& buffers) {
   {
     tensorflow::mutex_lock l(mu_);
     for (gpu::InfeedBuffer* b : buffers) {

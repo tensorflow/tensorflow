@@ -286,7 +286,8 @@ def map_structure(func, *structure, **check_types_dict):
 def _yield_flat_up_to(shallow_tree, input_tree):
   """Yields elements `input_tree` partially flattened up to `shallow_tree`."""
   if is_sequence(shallow_tree):
-    for shallow_branch, input_branch in zip(shallow_tree, input_tree):
+    for shallow_branch, input_branch in zip(_elements_of(shallow_tree),
+                                            _elements_of(input_tree)):
       for input_leaf in _yield_flat_up_to(shallow_branch, input_branch):
         yield input_leaf
   else:
@@ -495,6 +496,7 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   # then repack based on the structure of the first input.
   all_flattened_up_to = [flatten_up_to(shallow_tree, input_tree)
                          for input_tree in inputs]
+
   results = [func(*tensors) for tensors in zip(*all_flattened_up_to)]
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
 

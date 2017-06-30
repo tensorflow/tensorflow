@@ -48,6 +48,14 @@ constexpr size_t Allocator::kAllocatorAlignment;
 
 Allocator::~Allocator() {}
 
+void RunResourceCtor(ResourceHandle* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) new (p) ResourceHandle();
+}
+
+void RunResourceDtor(ResourceHandle* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+}
+
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
 // If true, cpu allocator collects full stats.
