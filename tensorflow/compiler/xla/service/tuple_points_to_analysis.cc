@@ -125,16 +125,11 @@ void PointsToSet::add_tuple_source(const ShapeIndex& index,
 }
 
 /* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
-TuplePointsToAnalysis::Run(const HloModule* module, Colorer colorer) {
+TuplePointsToAnalysis::Run(const HloModule* module) {
   std::unique_ptr<TuplePointsToAnalysis> analysis(
-      new TuplePointsToAnalysis(module, std::move(colorer)));
+      new TuplePointsToAnalysis(module));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
-}
-
-/* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
-TuplePointsToAnalysis::Run(const HloModule* module) {
-  return Run(module, DefaultColorer());
 }
 
 Status TuplePointsToAnalysis::Analyze() {
@@ -171,9 +166,6 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
             const ShapeIndex& index,
             const std::vector<const LogicalBuffer*>& pointed_to_buffers) {
           for (const LogicalBuffer* buffer : pointed_to_buffers) {
-            if (buffer_aliases_.count(buffer) == 0) {
-              buffer_aliases_.insert({buffer, std::vector<BufferAlias>()});
-            }
             buffer_aliases_[buffer].emplace_back(instruction.get(), index);
           }
         });
@@ -184,8 +176,8 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
 const LogicalBuffer& TuplePointsToAnalysis::NewLogicalBuffer(
     HloInstruction* instruction, const ShapeIndex& index) {
   CHECK_EQ(logical_buffers_.size(), next_buffer_id_);
-  logical_buffers_.push_back(MakeUnique<LogicalBuffer>(
-      instruction, index, next_buffer_id_, colorer_(instruction, index)));
+  logical_buffers_.push_back(
+      MakeUnique<LogicalBuffer>(instruction, index, next_buffer_id_));
   ++next_buffer_id_;
   return *logical_buffers_.back();
 }
@@ -342,9 +334,11 @@ const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
 
 PointsToSet& TuplePointsToAnalysis::CreateEmptyPointsToSet(
     const HloInstruction* instruction) {
-  CHECK_EQ(0, points_to_.count(instruction));
-  points_to_[instruction] = MakeUnique<PointsToSet>(instruction->shape());
-  return *FindOrDie(points_to_, instruction);
+  auto set = MakeUnique<PointsToSet>(&instruction->shape());
+  auto res = points_to_.emplace(instruction, std::move(set));
+  CHECK(res.second) << "instruction should not have been present in the map.";
+  // Return *set using the iterator returned by emplace.
+  return *res.first->second;
 }
 
 bool TuplePointsToAnalysis::InstructionDefinesBufferAtIndex(

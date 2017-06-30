@@ -95,17 +95,6 @@ class ProfilerTest(test.TestCase):
       pma_str = f.read()
     self.assertEqual(pma_str, profiler_str)
 
-    # Test the output difference between multi-step profile and 1-step profile.
-    _ = sess.run(r,
-                 options=config_pb2.RunOptions(
-                     trace_level=config_pb2.RunOptions.FULL_TRACE),
-                 run_metadata=run_meta)
-
-    profiler.add_step(2, run_meta)
-    profiler.profile_name_scope(opts)
-    with gfile.Open(outfile, 'r') as f:
-      profiler_str = f.read()
-
     model_analyzer.print_model_analysis(
         sess.graph, tfprof_cmd='scope', run_meta=run_meta, tfprof_options=opts)
     with gfile.Open(outfile, 'r') as f:
@@ -129,7 +118,7 @@ class ProfilerTest(test.TestCase):
     opts = model_analyzer.PRINT_ALL_TIMING_MEMORY.copy()
     opts['account_type_regexes'] = ['.*']
 
-    with session.Session() as sess, ops.device('/cpu:0'):
+    with session.Session() as sess:
       r1, r2, r3 = lib.BuildSplitableModel()
       sess.run(variables.global_variables_initializer())
 
@@ -179,8 +168,18 @@ class ProfilerTest(test.TestCase):
       self.assertEqual(lib.SearchTFProfNode(pb2, 'add'), None)
       self.assertGreater(lib.SearchTFProfNode(pb3, 'add').exec_micros, 0)
 
-      # TODO(xpan): Better test of advisor.
-      profiler.advise()
+      advice_pb = profiler.advise(model_analyzer.ALL_ADVICE)
+      self.assertTrue('AcceleratorUtilizationChecker' in advice_pb.checkers)
+      self.assertTrue('ExpensiveOperationChecker' in advice_pb.checkers)
+      self.assertTrue('OperationChecker' in advice_pb.checkers)
+
+      checker = advice_pb.checkers['AcceleratorUtilizationChecker']
+      if test.is_gpu_available():
+        self.assertGreater(len(checker.reports), 0)
+      else:
+        self.assertEqual(len(checker.reports), 0)
+      checker = advice_pb.checkers['ExpensiveOperationChecker']
+      self.assertGreater(len(checker.reports), 0)
 
 
 if __name__ == '__main__':

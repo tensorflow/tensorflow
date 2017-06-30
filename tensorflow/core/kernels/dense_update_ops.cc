@@ -111,7 +111,7 @@ class DenseUpdateOp : public OpKernel {
     OP_REQUIRES(context, Tparams.IsInitialized(),
                 errors::FailedPrecondition("Attempting to use uninitialized "
                                            "parameters: ",
-                                           def().input(0)));
+                                           requested_input(0)));
     OP_REQUIRES(
         context, Tparams.IsSameSize(Tupdate),
         errors::InvalidArgument("Parameters and update must be the same size"));

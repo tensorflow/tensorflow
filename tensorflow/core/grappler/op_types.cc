@@ -50,6 +50,11 @@ bool IsNoOp(const NodeDef& node) {
   return op == "NoOp";
 }
 
+bool IsNextIteration(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "NextIteration" || op == "RefNextIteration";
+}
+
 bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
@@ -66,6 +71,8 @@ bool IsReduction(const NodeDef& node) {
   return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
          op == "Mean" || op == "Any" || op == "All";
 }
+
+bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
 
 bool IsSend(const NodeDef& node) {
   const auto op = node.op();

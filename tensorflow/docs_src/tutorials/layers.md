@@ -27,9 +27,6 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib import learn
-from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
-
 tf.logging.set_verbosity(tf.logging.INFO)
 
 # Our application logic will be added here
@@ -122,15 +119,14 @@ Open `cnn_mnist.py` and add the following `cnn_model_fn` function, which
 conforms to the interface expected by TensorFlow's Estimator API (more on this
 later in [Create the Estimator](#create-the-estimator)). `cnn_mnist.py` takes
 MNIST feature data, labels, and
-@{tf.contrib.learn.ModeKeys$model mode} (`TRAIN`, `EVAL`,
-`INFER`) as arguments; configures the CNN; and returns predictions, loss, and a
-training operation:
+@{tf.estimator.ModeKeys$model mode} (`TRAIN`, `EVAL`, `PREDICT`) as arguments;
+configures the CNN; and returns predictions, loss, and a training operation:
 
 ```python
 def cnn_model_fn(features, labels, mode):
   """Model function for CNN."""
   # Input Layer
-  input_layer = tf.reshape(features, [-1, 28, 28, 1])
+  input_layer = tf.reshape(features["x"], [-1, 28, 28, 1])
 
   # Convolutional Layer #1
   conv1 = tf.layers.conv2d(
@@ -156,39 +152,39 @@ def cnn_model_fn(features, labels, mode):
   pool2_flat = tf.reshape(pool2, [-1, 7 * 7 * 64])
   dense = tf.layers.dense(inputs=pool2_flat, units=1024, activation=tf.nn.relu)
   dropout = tf.layers.dropout(
-      inputs=dense, rate=0.4, training=mode == learn.ModeKeys.TRAIN)
+      inputs=dense, rate=0.4, training=mode == tf.estimator.ModeKeys.TRAIN)
 
   # Logits Layer
   logits = tf.layers.dense(inputs=dropout, units=10)
 
-  loss = None
-  train_op = None
+  # Generate Predictions (for PREDICT mode)
+  predicted_classes = tf.argmax(input=logits, axis=1)
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    predictions = {
+        "classes": predicted_classes,
+        "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
+    }
+    return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
   # Calculate Loss (for both TRAIN and EVAL modes)
-  if mode != learn.ModeKeys.INFER:
-    onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-    loss = tf.losses.softmax_cross_entropy(
-        onehot_labels=onehot_labels, logits=logits)
+  onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
+  loss = tf.losses.softmax_cross_entropy(
+      onehot_labels=onehot_labels, logits=logits)
 
   # Configure the Training Op (for TRAIN mode)
-  if mode == learn.ModeKeys.TRAIN:
-    train_op = tf.contrib.layers.optimize_loss(
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+    train_op = optimizer.minimize(
         loss=loss,
-        global_step=tf.contrib.framework.get_global_step(),
-        learning_rate=0.001,
-        optimizer="SGD")
+        global_step=tf.train.get_global_step())
+    return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
 
-  # Generate Predictions
-  predictions = {
-      "classes": tf.argmax(
-          input=logits, axis=1),
-      "probabilities": tf.nn.softmax(
-          logits, name="softmax_tensor")
-  }
-
-  # Return a ModelFnOps object
-  return model_fn_lib.ModelFnOps(
-      mode=mode, predictions=predictions, loss=loss, train_op=train_op)
+  # Add evaluation metrics (for EVAL mode)
+  eval_metric_ops = {
+      "accuracy": tf.metrics.accuracy(
+          labels=labels, predictions=predicted_classes)}
+  return tf.estimator.EstimatorSpec(
+      mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 ```
 
 The following sections (with headings corresponding to each code block above)
@@ -222,18 +218,18 @@ To convert our input feature map (`features`) to this shape, we can perform the
 following `reshape` operation:
 
 ```python
-input_layer = tf.reshape(features, [-1, 28, 28, 1])
+input_layer = tf.reshape(features["x"], [-1, 28, 28, 1])
 ```
 
 Note that we've indicated `-1` for batch size, which specifies that this
 dimension should be dynamically computed based on the number of input values in
-`features`, holding the size of all other dimensions constant. This allows us to
-treat `batch_size` as a hyperparameter that we can tune. For example, if we feed
-examples into our model in batches of 5, `features` will contain 3,920 values
-(one value for each pixel in each image), and `input_layer` will have a shape of
-`[5, 28, 28, 1]`. Similarly, if we feed examples in batches of 100, `features`
-will contain 78,400 values, and `input_layer` will have a shape of `[100, 28,
-28, 1]`.
+`features["x"]`, holding the size of all other dimensions constant. This allows
+us to treat `batch_size` as a hyperparameter that we can tune. For example, if
+we feed examples into our model in batches of 5, `features["x"]` will contain
+3,920 values (one value for each pixel in each image), and `input_layer` will
+have a shape of `[5, 28, 28, 1]`. Similarly, if we feed examples in batches of
+100, `features["x"]` will contain 78,400 values, and `input_layer` will have a
+shape of `[100, 28, 28, 1]`.
 
 ### Convolutional Layer #1
 
@@ -386,7 +382,7 @@ to our dense layer, using the `dropout` method in `layers`:
 
 ```python
 dropout = tf.layers.dropout(
-    inputs=dense, rate=0.4, training=mode == learn.ModeKeys.TRAIN)
+    inputs=dense, rate=0.4, training=mode == tf.estimator.ModeKeys.TRAIN)
 ```
 
 Again, `inputs` specifies the input tensor, which is the output tensor from our
@@ -415,6 +411,55 @@ logits = tf.layers.dense(inputs=dropout, units=10)
 Our final output tensor of the CNN, `logits`, has shape
 <code>[<em>batch_size</em>, 10]</code>.
 
+### Generate Predictions {#generate_predictions}
+
+The logits layer of our model returns our predictions as raw values in a
+<code>[<em>batch_size</em>, 10]</code>-dimensional tensor. Let's convert these
+raw values into two different formats that our model function can return:
+
+*   The **predicted class** for each example: a digit from 0–9.
+*   The **probabilities** for each possible target class for each example: the
+    probability that the example is a 0, is a 1, is a 2, etc.
+
+For a given example, our predicted class is the element in the corresponding row
+of the logits tensor with the highest raw value. We can find the index of this
+element using the @{tf.argmax}
+function:
+
+```python
+tf.argmax(input=logits, axis=1)
+```
+
+The `input` argument specifies the tensor from which to extract maximum
+values—here `logits`. The `axis` argument specifies the axis of the `input`
+tensor along which to find the greatest value. Here, we want to find the largest
+value along the dimension with index of 1, which corresponds to our predictions
+(recall that our logits tensor has shape <code>[<em>batch_size</em>,
+10]</code>).
+
+We can derive probabilities from our logits layer by applying softmax activation
+using @{tf.nn.softmax}:
+
+```python
+tf.nn.softmax(logits, name="softmax_tensor")
+```
+
+> Note: We use the `name` argument to explicitly name this operation
+> `softmax_tensor`, so we can reference it later. (We'll set up logging for the
+> softmax values in ["Set Up a Logging Hook"](#set-up-a-logging-hook).
+
+We compile our predictions in a dict, and return an `EstimatorSpec` object:
+
+```python
+predicted_classes = tf.argmax(input=logits, axis=1)
+if mode == tf.estimator.ModeKeys.PREDICT:
+  predictions = {
+      "classes": predicted_classes,
+      "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
+  }
+  return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
+```
+
 ### Calculate Loss {#calculating-loss}
 
 For both training and evaluation, we need to define a
@@ -426,14 +471,9 @@ as the loss metric. The following code calculates cross entropy when the model
 runs in either `TRAIN` or `EVAL` mode:
 
 ```python
-loss = None
-train_op = None
-
-# Calculate loss for both TRAIN and EVAL modes
-if mode != learn.ModeKeys.INFER:
-  onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
+loss = tf.losses.softmax_cross_entropy(
+    onehot_labels=onehot_labels, logits=logits)
 ```
 
 Let's take a closer look at what's happening above.
@@ -474,90 +514,42 @@ predictions from our logits layer. `tf.losses.softmax_cross_entropy()` takes
 
 ```python
 loss = tf.losses.softmax_cross_entropy(
-        onehot_labels=onehot_labels, logits=logits)
+    onehot_labels=onehot_labels, logits=logits)
 ```
 
 ### Configure the Training Op
 
 In the previous section, we defined loss for our CNN as the softmax
 cross-entropy of the logits layer and our labels. Let's configure our model to
-optimize this loss value during training, using the
-@{tf.contrib.layers.optimize_loss}
-method in `tf.contrib.layers`. We'll use a learning rate of 0.001 and
+optimize this loss value during training. We'll use a learning rate of 0.001 and
 [stochastic gradient descent](https://en.wikipedia.org/wiki/Stochastic_gradient_descent)
 as the optimization algorithm:
 
 ```python
-# Configure the Training Op (for TRAIN mode)
-if mode == learn.ModeKeys.TRAIN:
-    train_op = tf.contrib.layers.optimize_loss(
-        loss=loss,
-        global_step=tf.contrib.framework.get_global_step(),
-        learning_rate=0.001,
-        optimizer="SGD")
+if mode == tf.estimator.ModeKeys.TRAIN:
+  optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+  train_op = optimizer.minimize(
+      loss=loss,
+      global_step=tf.train.get_global_step())
+  return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
 ```
 
 > Note: For a more in-depth look at configuring training ops for Estimator model
 > functions, see @{$estimators#defining-the-training-op-for-the-model$"Defining
 > the training op for the model"} in the @{$estimators$"Creating Estimations in
-> tf.contrib.learn"} tutorial.
+> tf.estimator"} tutorial.
 
-### Generate Predictions {#generate_predictions}
+### Add evaluation metrics
 
-The logits layer of our model returns our predictions as raw values in a
-<code>[<em>batch_size</em>, 10]</code>-dimensional tensor. Let's convert these
-raw values into two different formats that our model function can return:
-
-*   The **predicted class** for each example: a digit from 0–9.
-*   The **probabilities** for each possible target class for each example: the
-    probability that the example is a 0, is a 1, is a 2, etc.
-
-For a given example, our predicted class is the element in the corresponding row
-of the logits tensor with the highest raw value. We can find the index of this
-element using the @{tf.argmax}
-function:
+To add accuracy metric in our model, we define `eval_metric_ops` dict in EVAL
+mode as follows:
 
 ```python
-tf.argmax(input=logits, axis=1)
-```
-
-The `input` argument specifies the tensor from which to extract maximum
-values—here `logits`. The `axis` argument specifies the axis of the `input`
-tensor along which to find the greatest value. Here, we want to find the largest
-value along the dimension with index of 1, which corresponds to our predictions
-(recall that our logits tensor has shape <code>[<em>batch_size</em>,
-10]</code>).
-
-We can derive probabilities from our logits layer by applying softmax activation
-using @{tf.nn.softmax}:
-
-```python
-tf.nn.softmax(logits, name="softmax_tensor")
-```
-
-> Note: We use the `name` argument to explicitly name this operation
-> `softmax_tensor`, so we can reference it later. (We'll set up logging for the
-> softmax values in ["Set Up a Logging Hook"](#set-up-a-logging-hook).
-
-We compile our predictions in a dict as follows:
-
-```python
-predictions = {
-    "classes": tf.argmax(
-        input=logits, axis=1),
-    "probabilities": tf.nn.softmax(
-        logits, name="softmax_tensor")
-}
-```
-
-Finally, now that we've got our `predictions`, `loss`, and `train_op`, we can
-return them, along with our `mode` argument, in a
-@{tf.contrib.learn.ModelFnOps} object:
-
-```python
-# Return a ModelFnOps object
-return model_fn_lib.ModelFnOps(
-    mode=mode, predictions=predictions, loss=loss, train_op=train_op)
+eval_metric_ops = {
+    "accuracy": tf.metrics.accuracy(
+        labels=labels, predictions=predicted_classes)}
+return tf.estimator.EstimatorSpec(
+    mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 ```
 
 ## Training and Evaluating the CNN MNIST Classifier {#training_and_evaluating_the_cnn_mnist_classifier}
@@ -573,7 +565,7 @@ First, let's load our training and test data. Add a `main()` function to
 ```python
 def main(unused_argv):
   # Load training and eval data
-  mnist = learn.datasets.load_dataset("mnist")
+  mnist = tf.contrib.learn.datasets.load_dataset("mnist")
   train_data = mnist.train.images # Returns np.array
   train_labels = np.asarray(mnist.train.labels, dtype=np.int32)
   eval_data = mnist.test.images # Returns np.array
@@ -596,19 +588,19 @@ to `main()`:
 
 ```python
 # Create the Estimator
-mnist_classifier = learn.Estimator(
-      model_fn=cnn_model_fn, model_dir="/tmp/mnist_convnet_model")
+mnist_classifier = tf.estimator.Estimator(
+    model_fn=cnn_model_fn, model_dir="/tmp/mnist_convnet_model")
 ```
 
 The `model_fn` argument specifies the model function to use for training,
-evaluation, and inference; we pass it the `cnn_model_fn` we created in
+evaluation, and prediction; we pass it the `cnn_model_fn` we created in
 ["Building the CNN MNIST Classifier."](#building-the-cnn-mnist-classifier) The
 `model_dir` argument specifies the directory where model data (checkpoints) will
 be saved (here, we specify the temp directory `/tmp/mnist_convnet_model`, but
 feel free to change to another directory of your choice).
 
 > Note: For an in-depth walkthrough of the TensorFlow `Estimator` API, see the
-> tutorial @{$estimators$"Creating Estimators in tf.contrib.learn."}
+> tutorial @{$estimators$"Creating Estimators in tf.estimator."}
 
 ### Set Up a Logging Hook {#set_up_a_logging_hook}
 
@@ -643,65 +635,54 @@ should be logged after every 50 steps of training.
 
 ### Train the Model
 
-Now we're ready to train our model, which we can do by calling `fit()` on
-`mnist_classifier`. Add the following to `main()`:
+Now we're ready to train our model, which we can do by creating `train_input_fn`
+ans calling `train()` on `mnist_classifier`. Add the following to `main()`:
 
 ```python
 # Train the model
-mnist_classifier.fit(
-    x=train_data,
+train_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": train_data},
     y=train_labels,
     batch_size=100,
+    num_epochs=None,
+    shuffle=True)
+mnist_classifier.train(
+    input_fn=train_input_fn,
     steps=20000,
-    monitors=[logging_hook])
+    hooks=[logging_hook])
 ```
 
-In the `fit` call, we pass the training feature data and labels to `x` and `y`,
-respectively. We set a `batch_size` of `100` (which means that the model will
-train on minibatches of 100 examples at each step), and `steps` of `20000`
+In the `numpy_input_fn` call, we pass the training feature data and labels to
+`x` (as a dict) and `y`, respectively. We set a `batch_size` of `100` (which
+means that the model will train on minibatches of 100 examples at each step).
+`num_epochs=None` means that the model will train until the specified number of
+steps is reached. We also set `shuffle=True` to shuffle the training data.
+In the `train` call, we set `steps=20000`
 (which means the model will train for 20,000 steps total). We pass our
-`logging_hook` to the `monitors` argument, so that it will be triggered during
+`logging_hook` to the `hooks` argument, so that it will be triggered during
 training.
 
 ### Evaluate the Model
 
 Once training is complete, we want to evaluate our model to determine its
-accuracy on the MNIST test set. To set up the accuracy metric for our model, we
-need to create a metrics dict with a @{tf.contrib.learn.MetricSpec}
-that calculates accuracy. Add the following to `main()`:
-
-```python
-# Configure the accuracy metric for evaluation
-metrics = {
-    "accuracy":
-        learn.MetricSpec(
-            metric_fn=tf.metrics.accuracy, prediction_key="classes"),
-}
-```
-
-We create our `MetricSpec`s with the following two arguments:
-
-*   `metric_fn`. The function that calculates and returns the value of our
-    metric. Here, we can use the predefined `accuracy` function in the
-    @{tf.metrics} module.
-*   `prediction_key`. The key of the tensor that contains the predictions
-    returned by the model function. Here, because we're building a
-    classification model, the prediction key is `"classes"`, which we specified
-    back in ["Generate Predictions."](#generate_predictions)
-
-Now that we've set up our `metrics` dict, we can evaluate the model. Add the
-following code, which performs evaluation and prints the results:
+accuracy on the MNIST test set. We call the `evaluate` method, which evaluates
+the metrics we specified in `eval_metric_ops` argument in the `model_fn`.
+Add the following to `main()`:
 
 ```python
 # Evaluate the model and print results
-eval_results = mnist_classifier.evaluate(
-    x=eval_data, y=eval_labels, metrics=metrics)
+eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": eval_data},
+    y=eval_labels,
+    num_epochs=1,
+    shuffle=False)
+eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
 print(eval_results)
 ```
 
-We pass our evaluation feature data and labels to `evaluate()` in the `x` and
-`y` arguments, respectively. The `metrics` argument takes the metrics dict we
-just defined.
+To create `eval_input_fn`, we set `num_epochs=1`, so that the model evaluates
+the metrics over one epoch of data and returns the result. We also set
+`shuffle=False` to iterate through the data sequentially.
 
 ### Run the Model
 
@@ -711,7 +692,7 @@ logic; now let's see the results. Run `cnn_mnist.py`.
 > Note: Training CNNs is quite computationally intensive. Estimated completion
 > time of `cnn_mnist.py` will vary depending on your processor, but will likely
 > be upwards of 1 hour on CPU. To train more quickly, you can decrease the
-> number of `steps` passed to `fit()`, but note that this will affect accuracy.
+> number of `steps` passed to `train()`, but note that this will affect accuracy.
 
 As the model trains, you'll see log output like the following:
 
@@ -738,7 +719,7 @@ Here, we've achieved an accuracy of 97.3% on our test data set.
 To learn more about TensorFlow Estimators and CNNs in TensorFlow, see the
 following resources:
 
-*   @{$estimators$Creating Estimators in tf.contrib.learn}. An
+*   @{$estimators$Creating Estimators in tf.estimator}. An
     introduction to the TensorFlow Estimator API, which walks through
     configuring an Estimator, writing a model function, calculating loss, and
     defining a training op.

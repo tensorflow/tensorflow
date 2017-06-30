@@ -17,11 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from sklearn import datasets
 from sklearn import metrics
 from sklearn import model_selection
 
 import tensorflow as tf
+
+
+X_FEATURE = 'x'  # Name of the input feature.
 
 
 def main(unused_argv):
@@ -31,16 +35,31 @@ def main(unused_argv):
       iris.data, iris.target, test_size=0.2, random_state=42)
 
   # Build 3 layer DNN with 10, 20, 10 units respectively.
-  feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
-      x_train)
-  classifier = tf.contrib.learn.DNNClassifier(
+  feature_columns = [
+      tf.feature_column.numeric_column(
+          X_FEATURE, shape=np.array(x_train).shape[1:])]
+  classifier = tf.estimator.DNNClassifier(
       feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3)
 
-  # Fit and predict.
-  classifier.fit(x_train, y_train, steps=200)
-  predictions = list(classifier.predict(x_test, as_iterable=True))
-  score = metrics.accuracy_score(y_test, predictions)
-  print('Accuracy: {0:f}'.format(score))
+  # Train.
+  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={X_FEATURE: x_train}, y=y_train, num_epochs=None, shuffle=True)
+  classifier.train(input_fn=train_input_fn, steps=200)
+
+  # Predict.
+  test_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={X_FEATURE: x_test}, y=y_test, num_epochs=1, shuffle=False)
+  predictions = classifier.predict(input_fn=test_input_fn)
+  y_predicted = np.array(list(p['class_ids'] for p in predictions))
+  y_predicted = y_predicted.reshape(np.array(y_test).shape)
+
+  # Score with sklearn.
+  score = metrics.accuracy_score(y_test, y_predicted)
+  print('Accuracy (sklearn): {0:f}'.format(score))
+
+  # Score with tensorflow.
+  scores = classifier.evaluate(input_fn=test_input_fn)
+  print('Accuracy (tensorflow): {0:f}'.format(scores['accuracy']))
 
 
 if __name__ == '__main__':

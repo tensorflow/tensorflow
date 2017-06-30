@@ -18,8 +18,10 @@ limitations under the License.
 
 #include "tensorflow/tools/tfprof/internal/advisor/accelerator_utilization_checker.h"
 #include "tensorflow/tools/tfprof/internal/advisor/checker.h"
+#include "tensorflow/tools/tfprof/internal/advisor/expensive_operation_checker.h"
 #include "tensorflow/tools/tfprof/internal/advisor/internal_checker_runner.h"
 #include "tensorflow/tools/tfprof/internal/advisor/operation_checker.h"
+#include "tensorflow/tools/tfprof/tfprof_options.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -29,23 +31,44 @@ class Advisor {
  public:
   Advisor(const TFStats* stats) : stats_(stats) {}
 
-  std::map<string, std::vector<string>> Advise() {
-    // Note: Release a checker's memory ASAP.
-    std::map<string, std::vector<string>> reports = RunInternalCheckers(stats_);
-    // TODO(xpan): Think of a way to turn off/on specific checkers.
-    AcceleratorUtilizationChecker au_checker;
-    reports[au_checker.name()] = au_checker.Run(stats_);
-    OperationChecker op_checker;
-    reports[op_checker.name()] = op_checker.Run(stats_);
+  static AdvisorOptionsProto DefaultOptions() {
+    AdvisorOptionsProto options;
+    std::vector<string> checkers(
+        kCheckers, kCheckers + sizeof(kCheckers) / sizeof(*kCheckers));
+    for (const string& checker : checkers) {
+      (*options.mutable_checkers())[checker];
+    }
+    return options;
+  }
 
-    for (const auto& checker_r : reports) {
-      fprintf(stdout, "%s reports:\n", checker_r.first.c_str());
-      for (const auto& r : checker_r.second) {
+  AdviceProto Advise(const AdvisorOptionsProto& options) {
+    // Note: Release a checker's memory ASAP.
+    AdviceProto ret = RunInternalCheckers(options, stats_);
+
+    if (options.checkers().find(kCheckers[0]) != options.checkers().end()) {
+      AcceleratorUtilizationChecker au_checker;
+      (*ret.mutable_checkers())[kCheckers[0]].MergeFrom(
+          au_checker.Run(options.checkers().at(kCheckers[0]), stats_));
+    }
+    if (options.checkers().find(kCheckers[1]) != options.checkers().end()) {
+      OperationChecker op_checker;
+      (*ret.mutable_checkers())[kCheckers[1]].MergeFrom(
+          op_checker.Run(options.checkers().at(kCheckers[1]), stats_));
+    }
+    if (options.checkers().find(kCheckers[2]) != options.checkers().end()) {
+      ExpensiveOperationChecker expensive_op_checker;
+      (*ret.mutable_checkers())[kCheckers[2]].MergeFrom(
+          expensive_op_checker.Run(options.checkers().at(kCheckers[2]),
+                                   stats_));
+    }
+    for (const auto& checker : ret.checkers()) {
+      fprintf(stdout, "\n%s:\n", checker.first.c_str());
+      for (const string& r : checker.second.reports()) {
         fprintf(stdout, "%s\n", r.c_str());
       }
     }
     fflush(stdout);
-    return reports;
+    return ret;
   }
 
  private:

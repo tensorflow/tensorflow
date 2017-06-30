@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
+#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
@@ -81,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace se = ::perftools::gputools;
 
@@ -244,9 +246,9 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 };
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
+Status CpuCompiler::RunHloPasses(HloModule* module) {
   // Optimization pipeline.
-  HloPassPipeline pipeline("CPU", dump_hlo);
+  HloPassPipeline pipeline("CPU");
   pipeline.AddInvariantChecker<HloVerifier>();
 
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
@@ -255,8 +257,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
 
   pipeline.AddPass<ConvCanonicalization>();
   {
-    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification",
-                                                               dump_hlo);
+    auto& pass =
+        pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
     pass.AddPass<AlgebraicSimplifier>(
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
@@ -343,25 +345,45 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
   }
 }
 
+Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
+  std::unique_ptr<tensorflow::WritableFile> f;
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->NewAppendableFile(file_name, &f));
+  TF_RETURN_IF_ERROR(f->Append(ir_module_string));
+  TF_RETURN_IF_ERROR(f->Close());
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
-    std::unique_ptr<HloModule> module, HloDumper dump_hlo,
-    se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+  VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
                  &InitializeLLVMCommandLineOptions, module->config());
+
+  const string dump_ir_to = module->config().debug_options().xla_dump_ir_to();
+
+  auto dump_ir_to_disk = [dump_ir_to](const llvm::Module& module) {
+    if (!dump_ir_to.empty()) {
+      TF_RETURN_IF_ERROR(
+          AppendIRToFile(dump_ir_to, llvm_ir::DumpModuleToString(module)));
+    }
+    return Status::OK();
+  };
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
   auto jit = MakeUnique<SimpleOrcJIT>(CompilerTargetOptions(module->config()),
-                                      CodeGenOptLevel(module->config()));
+                                      CodeGenOptLevel(module->config()),
+                                      dump_ir_to_disk, dump_ir_to_disk);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
-  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), dump_hlo));
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get()));
 
   HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
@@ -373,7 +395,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
   std::unique_ptr<Executable> cpu_executable;
 
-  // Cache this flag here since we'll want to access it after the module's
+  // Cache these flags here since we'll want to access them after the module's
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
@@ -381,6 +403,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       module->config().debug_options().xla_dump_debug_json_to();
 
   if (CpuParallelBackendRequested(module->config())) {
+    VLOG(1) << "Using parallel cpu backend";
+
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
     // DependencyHloOrdering is used for the parallel emitter because the order
@@ -475,6 +499,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
           .set_ir_module_string(ir_module_string);
     }
   } else {
+    VLOG(1) << "Using sequential cpu backend";
+
     // Select an order for emitting the HLO instructions for each
     // computation. Using this sequence enables tighter buffer liveness analysis
     // and reduced memory usage (as compared to using DependencyHloOrdering).
@@ -540,11 +566,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
   }
 
+  VLOG(1) << "Compilation finished";
   return std::move(cpu_executable);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlos,
+    std::vector<std::unique_ptr<HloModule>> modules,
     std::vector<se::StreamExecutor*> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on CPU.");
@@ -552,7 +579,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
-                                HloDumper dump_hlo,
                                 const AotCompilationOptions& aot_options) {
   TF_RET_CHECK(!modules.empty());
   std::call_once(llvm_command_line_options_initialized,
@@ -641,8 +667,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   std::vector<std::unique_ptr<AotCompilationResult>> results;
   for (size_t i = 0; i < modules.size(); ++i) {
     HloModule* module = modules[i].get();
+    VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
-    TF_RETURN_IF_ERROR(RunHloPasses(module, dump_hlo));
+    TF_RETURN_IF_ERROR(RunHloPasses(module));
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
@@ -719,6 +746,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         std::move(object_file_data), std::move(buffer_sizes),
         result_slice.index()));
   }
+
+  VLOG(1) << "Compilation finished";
   return std::move(results);
 }
 

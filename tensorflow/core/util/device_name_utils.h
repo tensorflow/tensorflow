@@ -48,6 +48,9 @@ class DeviceNameUtils {
   // Returns a fully qualified device name given the parameters.
   static string FullName(const string& job, int replica, int task,
                          const string& type, int id);
+  // Returns a fully qualified device name given the parameters in legacy style.
+  static string LegacyName(const string& job, int replica, int task,
+                           const string& type, int id);
 
   struct ParsedName {
     void Clear() {

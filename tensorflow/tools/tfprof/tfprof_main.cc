@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/tfprof/internal/advisor/tfprof_advisor.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_stats.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
@@ -161,12 +162,13 @@ int Run(int argc, char** argv) {
         "Profiling everything!\n");
     return 0;
   } else if (argc > 1) {
-    if (string(argv[1]) == kCmds[5]) {
+    if (string(argv[1]) == kCmds[6]) {
       PrintHelp();
       return 0;
     }
     if (string(argv[1]) == kCmds[0] || string(argv[1]) == kCmds[1] ||
-        string(argv[1]) == kCmds[2] || string(argv[1]) == kCmds[3]) {
+        string(argv[1]) == kCmds[2] || string(argv[1]) == kCmds[3] ||
+        string(argv[1]) == kCmds[4]) {
       cmd = argv[1];
     }
   }
@@ -216,7 +218,13 @@ int Run(int argc, char** argv) {
               run_meta_files[i].c_str(), s.ToString().c_str());
       return 1;
     }
-    tf_stat.ParseRunMeta(i, std::move(run_meta));
+    tf_stat.AddRunMeta(i, std::move(run_meta));
+  }
+
+  if (cmd == kCmds[4]) {
+    tf_stat.BuildAllViews();
+    Advisor(&tf_stat).Advise(Advisor::DefaultOptions());
+    return 0;
   }
 
   Options opts(FLAGS_max_depth, FLAGS_min_bytes, FLAGS_min_micros,
@@ -227,9 +235,11 @@ int Run(int argc, char** argv) {
                output_type, output_options);
 
   if (cmd == kCmds[2] || cmd == kCmds[3]) {
+    tf_stat.BuildView(cmd);
     tf_stat.ShowMultiGraphNode(cmd, opts);
     return 0;
   } else if (cmd == kCmds[0] || cmd == kCmds[1]) {
+    tf_stat.BuildView(cmd);
     tf_stat.ShowGraphNode(cmd, opts);
     return 0;
   }
@@ -254,14 +264,19 @@ int Run(int argc, char** argv) {
       fprintf(stderr, "E: %s\n", s.ToString().c_str());
       continue;
     }
-    if (cmd == kCmds[4]) {
+    if (cmd == kCmds[5]) {
       opts = new_opts;
-    } else if (cmd == kCmds[5]) {
+    } else if (cmd == kCmds[6]) {
       PrintHelp();
     } else if (cmd == kCmds[2] || cmd == kCmds[3]) {
+      tf_stat.BuildView(cmd);
       tf_stat.ShowMultiGraphNode(cmd, new_opts);
     } else if (cmd == kCmds[0] || cmd == kCmds[1]) {
+      tf_stat.BuildView(cmd);
       tf_stat.ShowGraphNode(cmd, new_opts);
+    } else if (cmd == kCmds[4]) {
+      tf_stat.BuildAllViews();
+      Advisor(&tf_stat).Advise(Advisor::DefaultOptions());
     }
   }
   return 0;

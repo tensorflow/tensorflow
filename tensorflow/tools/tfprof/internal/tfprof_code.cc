@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -31,12 +32,7 @@ namespace tfprof {
 namespace {
 // Convert to Trace proto into a short readable string.
 string GetTraceString(const CodeDef::Trace& trace) {
-  string ntrace = "";
-  if (trace.file().find_last_of('/') != trace.file().npos) {
-    ntrace += trace.file().substr(trace.file().find_last_of('/') + 1);
-  } else {
-    ntrace += trace.file();
-  }
+  string ntrace = io::Basename(trace.file()).ToString();
   ntrace += strings::StrCat(":", trace.lineno());
   if (trace.function().length() < 20) {
     ntrace += ":" + trace.function();
@@ -235,6 +231,17 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
 
 string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
   std::vector<string> attrs;
+  if (opts.select.find(kShown[0]) != opts.select.end()) {
+    string memory = FormatMemory(node->proto().total_requested_bytes());
+    if (node->account) {
+      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
+    } else {
+      memory = "--/" + memory;
+    }
+    attrs.push_back(memory);
+  }
+  std::vector<string> time_attrs = FormatTimes(node, opts);
+  attrs.insert(attrs.end(), time_attrs.begin(), time_attrs.end());
 
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     string params = FormatNumber(node->proto().total_parameters()) + " params";
@@ -255,17 +262,6 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
     }
     attrs.push_back(fops);
   }
-  if (opts.select.find(kShown[0]) != opts.select.end()) {
-    string memory = FormatMemory(node->proto().total_requested_bytes());
-    if (node->account) {
-      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
-    } else {
-      memory = "--/" + memory;
-    }
-    attrs.push_back(memory);
-  }
-  std::vector<string> time_attrs = FormatTimes(node, opts);
-  attrs.insert(attrs.end(), time_attrs.begin(), time_attrs.end());
 
   if (opts.select.find(kShown[5]) != opts.select.end() &&
       !node->node->devices().empty()) {
@@ -275,7 +271,10 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
     std::set<string> op_types = node->node->op_types();
     attrs.push_back(str_util::Join(op_types, "|"));
   }
-
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    // TODO(xpan): Make op count available in code view?
+    attrs.push_back(strings::Printf("%s N/A in code view", kShown[7]));
+  }
   if (opts.select.find(kShown[8]) != opts.select.end()) {
     attrs.push_back(strings::Printf("%s N/A in code view", kShown[8]));
   }

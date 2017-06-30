@@ -46,10 +46,9 @@ namespace {
 
 // Returns whether the two HLOs can run concurrently, i.e., neither is a
 // transitive consumer of the other.
-bool CanRunConcurrently(
-    const HloInstruction& a, const HloInstruction& b,
-    const HloComputation::ReachabilityMap& transitive_operands) {
-  return !transitive_operands.IsConnected(&a, &b);
+bool CanRunConcurrently(const HloInstruction& a, const HloInstruction& b,
+                        const HloComputation::ReachabilityMap& reachability) {
+  return !reachability.IsConnected(&a, &b);
 }
 
 // Returns which existing stream to assign to `hlo`, or -1 if a stream is not
@@ -58,7 +57,7 @@ bool CanRunConcurrently(
 // are topologically before `hlo`.
 int ComputeStreamToAssign(
     const HloInstruction& hlo, const StreamAssignment& stream_assignment,
-    const HloComputation::ReachabilityMap& transitive_operands,
+    const HloComputation::ReachabilityMap& reachability,
     const std::vector<const HloInstruction*>& seen_gemms) {
   if (hlo.opcode() == HloOpcode::kParameter ||
       hlo.opcode() == HloOpcode::kConstant) {
@@ -96,7 +95,7 @@ int ComputeStreamToAssign(
   for (const auto* seen_gemm : seen_gemms) {
     int stream_no = stream_assignment.StreamNumberForHlo(*seen_gemm);
     if (!forbidden_stream_numbers.count(stream_no) &&
-        CanRunConcurrently(*seen_gemm, hlo, transitive_operands)) {
+        CanRunConcurrently(*seen_gemm, hlo, reachability)) {
       forbidden_stream_numbers.insert(stream_no);
     }
   }
@@ -115,12 +114,12 @@ int ComputeStreamToAssign(
 std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
   auto stream_assignment = MakeUnique<StreamAssignment>();
   const HloComputation& computation = *module.entry_computation();
-  std::unique_ptr<HloComputation::ReachabilityMap> transitive_operands =
-      computation.ComputeTransitiveOperands();
+  std::unique_ptr<HloComputation::ReachabilityMap> reachability =
+      computation.ComputeReachability();
   std::vector<const HloInstruction*> seen_gemms;
   for (const auto* hlo : computation.MakeInstructionPostOrder()) {
     int stream_no = ComputeStreamToAssign(*hlo, *stream_assignment,
-                                          *transitive_operands, seen_gemms);
+                                          *reachability, seen_gemms);
     if (stream_no != -1) {
       stream_assignment->AssignStreamToHlo(hlo, stream_no);
     }

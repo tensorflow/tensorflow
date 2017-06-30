@@ -153,9 +153,14 @@ class HloComputation {
   // this order, definitions of values always appear before their uses.
   std::list<HloInstruction*> MakeInstructionPostOrder() const;
 
-  // Computes and returns the mapping from HLO to its transitive operands.
+  // Computes and returns the reachability between HLO instructions in the
+  // computation. The returned ReachabilityMap is constructed such that
+  // ReachabilityMap::IsReachable(a, b) returns true iff there exists a directed
+  // path (from producer to consumer) from 'a' to 'b'. Both data dependencies
+  // (operands) and control dependencies are considered for
+  // reachability. Trivially an instruction is reachable from itself.
   class ReachabilityMap;
-  std::unique_ptr<ReachabilityMap> ComputeTransitiveOperands() const;
+  std::unique_ptr<ReachabilityMap> ComputeReachability() const;
 
   int64 instruction_count() const { return instructions_.size(); }
 
@@ -328,8 +333,6 @@ class HloComputation::ReachabilityMap {
   bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
 
  private:
-  friend class HloComputation;
-
   // dense id assignment from HloInstruction* to number
   tensorflow::gtl::FlatMap<const HloInstruction*, int> ids_;
   // matrix_(a,b) is true iff b is reachable from a

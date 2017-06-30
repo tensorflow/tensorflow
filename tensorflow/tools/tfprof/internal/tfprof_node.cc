@@ -70,10 +70,11 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
       accelerator_execs_[dev].push_back(pair);
       op_execs_[dev].push_back(pair);
     } else if (CountAsCPUTime(dev)) {
-      // TODO(xpan): A while-loop can has multiple nodes sharing the
-      // same name. They shouldn't be counted in one node.
       cpu_execs_[dev].push_back(pair);
       op_execs_[dev].push_back(pair);
+      // In while-loop, a graph node is executed multiple times under
+      // the same name.
+      run_count_ += 1;
     }
   }
 }
@@ -169,7 +170,8 @@ int64 ExecStep::accelerator_exec_micros() const {
   // Normally, an op should only be scheduled on 1 accelerator device.
   // Hence there should generally be 1 element in accelerator_execs_.
   for (const auto& execs : accelerator_execs_) {
-    // A op can fire multiple kernel runs hence multiple elements here.
+    // An op can fire multiple kernels or
+    // being scheduled multiple times in while-loop.
     for (const auto& exec : execs.second) {
       total += exec.second;
     }
@@ -179,13 +181,9 @@ int64 ExecStep::accelerator_exec_micros() const {
 
 int64 ExecStep::cpu_exec_micros() const {
   int64 total = 0;
-  // Here we use for loop just for consistent appearence with
-  // accelerator_execs.
-  // We only expect cpu_execs_ to have 1 element because an
-  // op can only be scheduled on 1 device.
+  // Normally, an op can only be scheduled on 1 device.
   for (const auto& execs : cpu_execs_) {
-    // We only expect exec to have 1 element because an op
-    // can only be schedule once.
+    // An op can be scheduled multiple times in while-loop.
     for (const auto& exec : execs.second) {
       total += exec.second;
     }

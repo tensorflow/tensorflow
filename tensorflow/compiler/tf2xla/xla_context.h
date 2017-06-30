@@ -129,11 +129,6 @@ class XlaContext : public ResourceBase {
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
 
-  // Get an XLA lambda to compute Sigmoid. This is cached in the
-  // XlaContext since it may be used by multiple Ops. There is a
-  // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateSigmoid(const DataType type);
-
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
 

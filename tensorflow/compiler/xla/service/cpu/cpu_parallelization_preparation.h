@@ -63,7 +63,7 @@ class ParallelizationPreparation : public HloPassInterface {
 
   // Outlines 'instruction' from entry computation, if it had
   // been assigned parallel tasks in an earlier pass through the computation.
-  // Returns true if 'instruction' was succesfully outlined, false otherwise.
+  // Returns true if 'instruction' was successfully outlined, false otherwise.
   bool OutlineParallelizableInstruction(HloInstruction* instruction);
 
   // Returns true if 'instruction' can be outlined into the same sub-computation

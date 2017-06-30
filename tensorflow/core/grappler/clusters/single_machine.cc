@@ -158,7 +158,7 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         // Also clear the timeline to save memory
         init_metadata_.clear_step_stats();
       }
-      for (int i = 0; i < queue_runner_defs_.size(); ++i) {
+      for (size_t i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
         TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
                                             coordinator_.get(), &queue_runner));

@@ -97,6 +97,21 @@ InferenceContext::InferenceContext(
 
 InferenceContext::~InferenceContext() {}
 
+Status InferenceContext::Run(
+    const std::function<Status(shape_inference::InferenceContext* c)>& fn) {
+  Status s = fn(this);
+  if (!s.ok()) {
+    return AttachContext(s);
+  }
+#ifndef NDEBUG
+  for (int i = 0; i < num_outputs(); ++i) {
+    DCHECK(output(i).IsSet())
+        << i << " for " << node_def_.name() << " of type " << node_def_.op();
+  }
+#endif  // NDEBUG
+  return s;
+}
+
 Status InferenceContext::set_output(StringPiece output_name,
                                     const std::vector<ShapeHandle>& shapes) {
   const auto result = output_name_map_.find(output_name.ToString());
