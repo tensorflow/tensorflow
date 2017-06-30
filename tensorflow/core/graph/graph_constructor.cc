@@ -45,6 +45,11 @@ inline bool IsMerge(const NodeDef& node_def) {
   return node_def.op() == "Merge" || node_def.op() == "RefMerge";
 }
 
+inline bool IsNextIteration(const NodeDef& node_def) {
+  return node_def.op() == "NextIteration" ||
+         node_def.op() == "RefNextIteration";
+}
+
 bool IsValidNodeName(StringPiece s, bool allow_internal_ops) {
   using ::tensorflow::strings::Scanner;
   return Scanner(s)
@@ -365,24 +370,54 @@ Status GraphConstructor::BuildNodeIndex() {
   return Status::OK();
 }
 
+std::unordered_set<string> GetNextIterationNodes(
+    const GraphConstructor::NodeDefSlice& node_defs) {
+  std::unordered_set<string> next_iteration_nodes;
+
+  for (int n = 0; n < node_defs.size(); ++n) {
+    const NodeDef& node_def = *node_defs[n];
+    if (IsNextIteration(node_def)) {
+      next_iteration_nodes.insert(node_def.name());
+    }
+  }
+
+  return next_iteration_nodes;
+}
+
 Status GraphConstructor::InitFromEdges() {
   const int num_nodes = node_defs_.size();
   pending_count_.reserve(num_nodes);
   outputs_.resize(num_nodes);
+  std::unordered_set<string> next_iteration_nodes_ =
+      GetNextIterationNodes(node_defs_);
 
   // Parse the inputs for each node.
   for (int n = 0; n < num_nodes; ++n) {
     const NodeDef& node_def = *node_defs_[n];
     if (IsMerge(node_def)) {
-      // for merge only wait for one non-control input.
+      // Cycles in the graph are only allowed for while loops. A while loop is
+      // identified by an edge from a NextIteration node to a Merge node. For
+      // such Merge nodes, only wait for one non-control input before
+      // considering the node ready to process in Convert().
       int32 num_control_edges = 0;
+      bool has_loop_back_edge = false;
       for (int i = 0; i < node_def.input_size(); ++i) {
         StringPiece input_name(node_def.input(i));
         if (input_name.starts_with("^")) {
           num_control_edges++;
+        } else {
+          TensorId id(ParseTensorName(input_name));
+          if (next_iteration_nodes_.find(id.first.ToString()) !=
+              next_iteration_nodes_.end()) {
+            has_loop_back_edge = true;
+          }
         }
       }
-      pending_count_.push_back(num_control_edges + 1);
+      if (has_loop_back_edge) {
+        pending_count_.push_back(num_control_edges + 1);
+      } else {
+        pending_count_.push_back(node_def.input_size());
+      }
     } else {
       pending_count_.push_back(node_def.input_size());
     }

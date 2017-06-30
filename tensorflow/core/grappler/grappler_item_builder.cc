@@ -187,7 +187,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           shape_proto.add_dim()->set_size(
               cfg.placeholder_unknown_output_shape_dim);
         } else {
-          dims.push_back(dim_proto.size());
+          dims.push_back(std::max<int32>(1, dim_proto.size()));
           shape_proto.add_dim()->set_size(dim_proto.size());
         }
       }

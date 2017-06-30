@@ -155,11 +155,11 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      compile_layer_(
-          object_layer_,
-          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
-                          GetAvailableIntrinsics(), pre_optimization_callback,
-                          post_optimization_callback)) {
+      compile_layer_(object_layer_,
+                     CompilerFunctor(target_machine_.get(), &disassembler_,
+                                     opt_level, GetAvailableIntrinsics(),
+                                     std::move(pre_optimization_callback),
+                                     std::move(post_optimization_callback))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -73,10 +72,6 @@ int main(int argc, char** argv) {
   }
 
   tensorflow::port::InitMain(argv[0], &argc, &argv);
-
-  xla::legacy_flags::HloGraphDumperFlags* dumper_flags =
-      xla::legacy_flags::GetHloGraphDumperFlags();
-  dumper_flags->xla_hlo_dump_as_graphdef = true;
 
   tensorflow::gtl::ArraySlice<char*> args(argv, argc);
   args.pop_front();  // Pop off the binary name, argv[0]
