@@ -67,7 +67,7 @@ tasks:
         events:
           - push
         branches:
-          - v1.0.0-warpctc
+          - master
     routes:
       - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.gpu"
       - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.{{ event.head.sha }}.gpu"
@@ -149,7 +149,7 @@ tasks:
         events:
           - push
         branches:
-          - v1.0.0-warpctc
+          - master
     routes:
       - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.cpu"
       - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.{{ event.head.sha }}.cpu"
@@ -231,7 +231,7 @@ tasks:
         events:
           - push
         branches:
-          - v1.0.0-warpctc
+          - master
     routes:
       - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.arm"
       - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.{{ event.head.sha }}.arm"

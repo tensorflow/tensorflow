@@ -27,18 +27,20 @@ builds. Those are linux 64 bits, python 2.7 builds, and linked against CUDA 8.0,
 CuDNN 5.1.3 for the GPU version.
 
 Please refer to the artifacts available at:
-* CPU only build: https://tools.taskcluster.net/index/artifacts/#project.deepspeech.tensorflow.pip.v1.0.0-warpctc.cpu/project.deepspeech.tensorflow.pip.v1.0.0-warpctc.cpu
-* GPU enabled build: https://tools.taskcluster.net/index/artifacts/#project.deepspeech.tensorflow.pip.v1.0.0-warpctc.gpu/project.deepspeech.tensorflow.pip.v1.0.0-warpctc.gpu
+* CPU only build: https://tools.taskcluster.net/index/artifacts/#project.deepspeech.tensorflow.pip.master.cpu/project.deepspeech.tensorflow.pip.master.cpu
+* GPU enabled build: https://tools.taskcluster.net/index/artifacts/#project.deepspeech.tensorflow.pip.master.gpu/project.deepspeech.tensorflow.pip.master.gpu
 
 Pick the URL to the "tensorflow-VERSION-py2-none-any.whl" and pass it to PIP:
 ```
 $ pip install --upgrade URL
 ```
 
-For the current version being built, 1.0.0, this should also be a stable
+For the current version being built, 1.3.0, this should also be a stable
 and direct link:
-* CPU: https://index.taskcluster.net/v1/task/project.deepspeech.tensorflow.pip.v1.0.0-warpctc.cpu/artifacts/public/tensorflow_warpctc-1.0.0-cp27-cp27mu-linux_x86_64.whl
-* GPU: https://index.taskcluster.net/v1/task/project.deepspeech.tensorflow.pip.v1.0.0-warpctc.gpu/artifacts/public/tensorflow_gpu_warpctc-1.0.0-cp27-cp27mu-linux_x86_64.whl
+* Linux/AMD64 CPU: https://index.taskcluster.net/v1/task/project.deepspeech.tensorflow.pip.master.cpu/artifacts/public/tensorflow_warpctc-1.3.0rc0-cp27-cp27mu-linux_x86_64.whl
+* Linux/AMD64 GPU: https://index.taskcluster.net/v1/task/project.deepspeech.tensorflow.pip.master.gpu/artifacts/public/tensorflow_gpu_warpctc-1.3.0rc0-cp27-cp27mu-linux_x86_64.whl
+* OSX 10.12/AMD64 CPU: https://index.taskcluster.net/v1/task/project.deepspeech.tensorflow.pip.master.osx/artifacts/public/tensorflow_warpctc-1.3.0rc0-cp27-cp27m-macosx_10_12_x86_64.whl
+* Linux/ARMv6 CPU: https://index.taskcluster.net/v1/task/project.deepspeech.tensorflow.pip.master.arm/artifacts/public/libtensorflow_cc.so
 
 # System setup
 

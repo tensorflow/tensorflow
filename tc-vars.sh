@@ -3,8 +3,8 @@
 set -ex
 
 ### First define some variables that will just be sources/inherited
-BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.4.2/bazel-0.4.2-installer-linux-x86_64.sh
-BAZEL_SHA256=b76b62a8c0eead1fc2215699382f1608c7bb98529fc48c5e9ef3dfa1b8b7585e
+BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.5.2/bazel-0.5.2-installer-linux-x86_64.sh
+BAZEL_SHA256=88e3d0663540ed8de68a828169cccbcd56c87791371adb8e8e30e81c05f68a98
 
 CUDA_URL=https://developer.nvidia.com/compute/cuda/8.0/prod/local_installers/cuda_8.0.44_linux-run
 CUDA_SHA256=64dc4ab867261a0d690735c46d7cc9fc60d989da0d69dc04d1714e409cacbdf0
@@ -42,6 +42,15 @@ export TF_NEED_JEMALLOC
 TF_ENABLE_XLA=1
 export TF_ENABLE_XLA
 
+TF_NEED_MKL=0
+export TF_NEED_MKL
+
+TF_NEED_VERBS=0
+export TF_NEED_VERBS
+
+TF_NEED_MPI=0
+export TF_NEED_MPI
+
 GCC_HOST_COMPILER_PATH=/usr/bin/gcc
 export GCC_HOST_COMPILER_PATH
 
@@ -59,7 +68,7 @@ BAZEL_OPT_FLAGS="--copt=-mtune=generic --cxxopt=-mtune=generic --copt=-march=x86
 export CC_OPT_FLAGS
 
 ### Define build parameters/env variables that we will re-ues in sourcing scripts.
-TF_CUDA_FLAGS="TF_CUDA_VERSION=8.0 TF_CUDNN_VERSION=5 CUDA_TOOLKIT_PATH=${HOME_CLEAN}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${HOME_CLEAN}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
+TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=8.0 TF_CUDNN_VERSION=5 CUDA_TOOLKIT_PATH=${HOME_CLEAN}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${HOME_CLEAN}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
 BAZEL_ARM_FLAGS="--host_crosstool_top=@bazel_tools//tools/cpp:toolchain --crosstool_top=//tools/arm_compiler:toolchain --cpu=rpi-armeabi"
 BAZEL_CUDA_FLAGS="--config=cuda"
 
