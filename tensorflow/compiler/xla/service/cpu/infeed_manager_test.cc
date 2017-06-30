@@ -57,8 +57,8 @@ TEST_F(InfeedManagerTest, SingleThreadedSequential) {
 
   cpu::runtime::InfeedManager* infeed = cpu::runtime::GetInfeedManager();
 
-  infeed->EnqueueBuffer(a);
-  infeed->EnqueueBuffer(b);
+  infeed->EnqueueBuffers({a});
+  infeed->EnqueueBuffers({b});
   ProcessNextBuffer(a->length());
   ProcessNextBuffer(b->length());
 }
@@ -69,9 +69,9 @@ TEST_F(InfeedManagerTest, SingleThreadedInterleaved) {
 
   cpu::runtime::InfeedManager* infeed = cpu::runtime::GetInfeedManager();
 
-  infeed->EnqueueBuffer(a);
+  infeed->EnqueueBuffers({a});
   ProcessNextBuffer(a->length());
-  infeed->EnqueueBuffer(b);
+  infeed->EnqueueBuffers({b});
   ProcessNextBuffer(b->length());
 }
 
@@ -92,7 +92,7 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
       }
     }
     TestInfeedBuffer* a = new TestInfeedBuffer(length);
-    infeed->EnqueueBuffer(a);
+    infeed->EnqueueBuffers({a});
   });
 
   ProcessNextBuffer(length);

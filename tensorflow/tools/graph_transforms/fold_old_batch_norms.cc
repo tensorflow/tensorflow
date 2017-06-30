@@ -54,7 +54,7 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
     GraphDef replaced_graph_def;
     TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
         current_graph_def,  // clang-format off
-      {"BatchNormWithGlobalNormalization",    // batch_norm_node
+      {"BatchNormWithGlobalNormalization|FusedBatchNorm",    // batch_norm_node
         {
           {"Conv2D",                          // conv_node
             {
@@ -74,19 +74,33 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
                             std::vector<NodeDef>* new_nodes) {
           // Find all the nodes we expect in the subgraph.
           const NodeDef& batch_norm_node = match.node;
-          CHECK_EQ("BatchNormWithGlobalNormalization", batch_norm_node.op());
+          // BatchNormWithGlobalNormalization and FusedBatchNorm ops only differ
+          // by input order and attribute names.
+          CHECK(batch_norm_node.op() == "BatchNormWithGlobalNormalization" ||
+                batch_norm_node.op() == "FusedBatchNorm");
+          const bool is_fused = batch_norm_node.op() == "FusedBatchNorm";
+          const int mean_idx = is_fused ? 3 : 1;
+          const int var_idx = is_fused ? 4 : 2;
+          const int beta_idx = is_fused ? 2 : 3;
+          const int gamma_idx = is_fused ? 1 : 4;
+          const string epsilon_attr = is_fused ? "epsilon" : "variance_epsilon";
+          // FusedBatchNorm always scales after normalization.
+          const bool scale_after_normalization =
+              is_fused ||
+              batch_norm_node.attr().at("scale_after_normalization").b();
+
           const NodeDef& conv_node = match.inputs[0].node;
           CHECK_EQ("Conv2D", conv_node.op());
           const NodeDef& input_node = match.inputs[0].inputs[0].node;
           const NodeDef& weights_node = match.inputs[0].inputs[1].node;
           CHECK_EQ("Const", weights_node.op());
-          const NodeDef& mean_node = match.inputs[1].node;
+          const NodeDef& mean_node = match.inputs[mean_idx].node;
           CHECK_EQ("Const", mean_node.op());
-          const NodeDef& variance_node = match.inputs[2].node;
+          const NodeDef& variance_node = match.inputs[var_idx].node;
           CHECK_EQ("Const", variance_node.op());
-          const NodeDef& beta_node = match.inputs[3].node;
+          const NodeDef& beta_node = match.inputs[beta_idx].node;
           CHECK_EQ("Const", beta_node.op());
-          const NodeDef& gamma_node = match.inputs[4].node;
+          const NodeDef& gamma_node = match.inputs[gamma_idx].node;
           CHECK_EQ("Const", gamma_node.op());
 
           // We have a set of vectors that we want to combine into a vector of
@@ -98,9 +112,7 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
           Tensor beta = GetNodeTensorAttr(beta_node, "value");
           Tensor gamma = GetNodeTensorAttr(gamma_node, "value");
           const float variance_epsilon =
-              batch_norm_node.attr().at("variance_epsilon").f();
-          const bool scale_after_normalization =
-              batch_norm_node.attr().at("scale_after_normalization").b();
+              batch_norm_node.attr().at(epsilon_attr).f();
 
           // Make sure all the inputs really are vectors, with as many entries
           // as there are columns in the weights.
@@ -119,15 +131,16 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
               scale_values[i] =
                   (1.0f / sqrtf(variance.flat<float>()(i) + variance_epsilon)) *
                   gamma.flat<float>()(i);
-              offset_values[i] = 0.0f;
             }
           } else {
             for (int i = 0; i < weights_cols; ++i) {
               scale_values[i] =
                   (1.0f / sqrtf(variance.flat<float>()(i) + variance_epsilon));
-              offset_values[i] = (-mean.flat<float>()(i) * scale_values[i]) +
-                                 beta.flat<float>()(i);
             }
+          }
+          for (int i = 0; i < weights_cols; ++i) {
+            offset_values[i] = (-mean.flat<float>()(i) * scale_values[i]) +
+                               beta.flat<float>()(i);
           }
 
           // Multiply the original weights by the scale vector.

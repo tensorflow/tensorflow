@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -66,38 +66,85 @@ CpuTransferManager::CpuTransferManager()
 Status CpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                                                    const Literal& literal) {
   const Shape& shape = literal.shape();
-  VLOG(2) << "transferring literal shape to infeed: "
+  VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
 
-  // TODO(b/31381668) handle tuples.
-  if (ShapeUtil::IsTuple(shape)) {
-    return Unimplemented("Infeed with a tuple shape is not supported: %s",
-                         ShapeUtil::HumanString(literal.shape()).c_str());
+  if (!ShapeUtil::IsTuple(shape)) {
+    int64 size = GetByteSizeRequirement(shape);
+    return TransferBufferToInfeed(executor, size, literal.InternalData());
   }
 
-  int64 size = GetByteSizeRequirement(shape);
-  if (size > std::numeric_limits<int32>::max()) {
-    return Unimplemented("Infeed shape is too large: %s needs %lld bytes",
-                         ShapeUtil::HumanString(literal.shape()).c_str(), size);
+  if (ShapeUtil::IsNestedTuple(shape)) {
+    return Unimplemented(
+        "Infeed with a nested tuple shape is not supported: %s",
+        ShapeUtil::HumanString(literal.shape()).c_str());
   }
 
-  return TransferBufferToInfeed(executor, size, literal.InternalData());
+  // For a tuple, we transfer each of its elements to the device and
+  // enqueue the resulting destination device addresses with the
+  // infeed manager.
+  std::vector<cpu::runtime::InfeedBuffer*> buffers;
+  buffers.reserve(literal.tuple_literals_size());
+  auto cleanup = tensorflow::gtl::MakeCleanup([buffers]() {
+    for (cpu::runtime::InfeedBuffer* b : buffers) {
+      b->Done();
+    }
+  });
+
+  for (const auto& tuple_element : literal.tuple_literals()) {
+    const Shape& tuple_element_shape = tuple_element.shape();
+    int64 tuple_element_size = GetByteSizeRequirement(tuple_element_shape);
+    TF_ASSIGN_OR_RETURN(
+        cpu::runtime::InfeedBuffer * buffer,
+        TransferBufferToInfeedInternal(executor, tuple_element_size,
+                                       tuple_element.InternalData()));
+    buffers.push_back(buffer);
+  }
+
+  cpu::runtime::InfeedManager* infeed_manager =
+      cpu::runtime::GetInfeedManager();
+  infeed_manager->EnqueueBuffers(buffers);
+
+  cleanup.release();
+  return Status::OK();
 }
 
 Status CpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
                                                   int64 size,
                                                   const void* source) {
-  int32 size_32 = static_cast<int32>(size);
-  CpuInfeedBuffer* queued_buffer = new CpuInfeedBuffer(size_32);
-  TF_RETURN_IF_ERROR(TransferBufferToDevice(executor, /*size=*/size,
-                                            /*source=*/source,
-                                            queued_buffer->device_memory()));
+  TF_ASSIGN_OR_RETURN(cpu::runtime::InfeedBuffer * buffer,
+                      TransferBufferToInfeedInternal(executor, size, source));
 
   cpu::runtime::InfeedManager* infeed_manager =
       cpu::runtime::GetInfeedManager();
-  infeed_manager->EnqueueBuffer(queued_buffer);
+  infeed_manager->EnqueueBuffers({buffer});
 
   return Status::OK();
+}
+
+StatusOr<cpu::runtime::InfeedBuffer*>
+CpuTransferManager::TransferBufferToInfeedInternal(se::StreamExecutor* executor,
+                                                   int64 size,
+                                                   const void* source) {
+  if (size > std::numeric_limits<int32>::max()) {
+    return InvalidArgument("Infeed shape is too large: needs %lld bytes", size);
+  }
+
+  if (size == 0) {
+    return InvalidArgument("Infeed shape needs 0 bytes");
+  }
+
+  int32 size_32 = static_cast<int32>(size);
+  CpuInfeedBuffer* queued_buffer = new CpuInfeedBuffer(size_32);
+  Status s =
+      TransferBufferToDevice(executor, /*size=*/size,
+                             /*source=*/source, queued_buffer->device_memory());
+
+  if (!s.ok()) {
+    queued_buffer->Done();
+    return s;
+  }
+  return queued_buffer;
 }
 
 }  // namespace xla

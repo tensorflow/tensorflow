@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -1332,7 +1333,7 @@ Status DirectSession::CreateGraphs(
 
   // Check for valid partitions.
   for (const auto& partition : partitions) {
-    const string& local_partition_name =
+    const string local_partition_name =
         DeviceNameUtils::LocalName(partition.first);
     if (std::count(device_names.begin(), device_names.end(),
                    local_partition_name) == 0) {

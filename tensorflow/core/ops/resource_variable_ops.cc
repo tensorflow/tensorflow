@@ -68,10 +68,10 @@ REGISTER_OP("VarHandleOp")
       c->set_output(0, c->Scalar());
       DataType t;
       TF_RETURN_IF_ERROR(c->GetAttr("dtype", &t));
-      TensorShapeProto p;
+      PartialTensorShape p;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &p));
       ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(p, &s));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
       c->set_output_handle_shapes_and_types(0,
                                             std::vector<ShapeAndType>{{s, t}});
 
