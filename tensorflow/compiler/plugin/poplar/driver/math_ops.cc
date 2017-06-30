@@ -278,10 +278,8 @@ CreateSelectOp(poplar::Graph &graph,
                const xla::Shape& output_shape,
                TensorMap& tensor_map) {
 
-  // Find the input tensors
   poplar::Tensor pred;
   TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0, 0));
-  pred = pred.flatten();
 
   poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 1, 0));
@@ -289,54 +287,18 @@ CreateSelectOp(poplar::Graph &graph,
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 2, 0));
 
-  // Allocate the output tensor
-  poplar::Tensor out = graph.clone(in0, inst->name());
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
-  in0 = in0.flatten();
-  in1 = in1.flatten();
-  out = out.flatten();
-
-  auto cs = graph.addComputeSet(inst->ToString());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
-
-  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-  num_workers = std::min(num_workers, N);
-
-  const std::string& poplar_data_type(in0.elementType());
-
-  if (pred.dim(0) == 1) {
-    std::string vertex_name = templateVertex("ScalarSelect", poplar_data_type);
-
-    for (unsigned i = 0; i < num_workers; ++i) {
-      const auto begin = i * N / num_workers;
-      const auto end = (i + 1) * N / num_workers;
-      auto v = graph.addVertex(cs, vertex_name,
-                               {{"pred", pred[0]},
-                                {a_conn, in0.slice(begin, end)},
-                                {b_conn, in1.slice(begin, end)},
-                                {out_conn, out.slice(begin, end)}});
-      graph.setTileMapping(v, i / device_info.numWorkerContexts);
-    }
-  } else {
-    std::string vertex_name = templateVertex("Select", poplar_data_type);
-
-    for (unsigned i = 0; i < num_workers; ++i) {
-      const auto begin = i * N / num_workers;
-      const auto end = (i + 1) * N / num_workers;
-      auto v = graph.addVertex(cs, vertex_name,
-                               {{"pred", pred.slice(begin, end)},
-                                {a_conn, in0.slice(begin, end)},
-                                {b_conn, in1.slice(begin, end)},
-                                {out_conn, out.slice(begin, end)}});
-      graph.setTileMapping(v, i / device_info.numWorkerContexts);
-    }
-
+  if (pred.numElements() == 1) {
+    pred = pred.reshape({1});
+    pred = pred.broadcast(in1.numElements(), 0);
+    pred = pred.reshape(in0.shape());
   }
 
-  return poplar::program::Execute(cs);
+  poplar::program::Sequence seq;
+  poplar::Tensor out = popstd::select(graph, in0, in1, pred, seq, inst->name());
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>
