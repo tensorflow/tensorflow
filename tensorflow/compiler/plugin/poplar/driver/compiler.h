@@ -41,16 +41,16 @@ class PoplarCompiler : public Compiler {
   ~PoplarCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
-          std::unique_ptr<HloModule> module, HloDumper dump_hlo,
+          std::unique_ptr<HloModule> module,
           perftools::gputools::StreamExecutor* executor) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-          std::vector<std::unique_ptr<HloModule>>, HloDumper,
+          std::vector<std::unique_ptr<HloModule>>,
           std::vector<perftools::gputools::StreamExecutor*>) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>>, HloDumper,
-  const AotCompilationOptions&) override;
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>>,
+                     const AotCompilationOptions&) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
@@ -58,8 +58,7 @@ class PoplarCompiler : public Compiler {
 
  private:
 
-  Status RunHloOptimization(HloModule* hlo_module,
-                            HloDumper dump_hlo);
+  Status RunHloOptimization(HloModule* hlo_module);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarCompiler);
 };

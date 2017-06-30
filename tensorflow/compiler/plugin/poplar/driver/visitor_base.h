@@ -142,8 +142,7 @@ public:
 
   Status HandlePad(HloInstruction* inst) override;
 
-  Status HandleReducePrecision(HloInstruction* reduce_precision,
-                               HloInstruction* operand) override;
+  Status HandleReducePrecision(HloInstruction* reduce_precision) override;
 
   Status HandleInfeed(HloInstruction* inst) override;
 

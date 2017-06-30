@@ -199,9 +199,8 @@ public:
   std::set<HloComputation*> targets;
 };
 
-Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
-                                          HloDumper dump_hlo) {
-  HloPassPipeline pipeline("IPU", dump_hlo);
+Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
+  HloPassPipeline pipeline("IPU");
   pipeline.AddPass<Inliner>();
   pipeline.AddPass<Outliner>(1);
   pipeline.AddPass<FuseOps>();
@@ -219,13 +218,12 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
 }
 
 StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
+    std::unique_ptr<HloModule> hlo_module,
     se::StreamExecutor* stream_exec) {
 
   VLOG(1) << "Begin compilation of module " << hlo_module->name();
 
-  TF_RETURN_IF_ERROR(
-          RunHloOptimization(hlo_module.get(), dump_hlo));
+  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
 
   bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
 
@@ -332,7 +330,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<se::StreamExecutor*> stream_execs) {
 
   return tensorflow::errors::Unimplemented(
           "Compilation of multiple HLO modules is not supported on Poplar.");
@@ -341,7 +339,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 PoplarCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
+    const AotCompilationOptions& aot_options) {
 
   return tensorflow::errors::InvalidArgument(
       "AOT compilation not supported on Poplar");
