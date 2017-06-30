@@ -400,11 +400,14 @@ def make_parse_example_spec(feature_columns):
   ```
 
   For the above example, make_parse_example_spec would return the dict:
+
+  ```python
   {
-    "feature_a": parsing_ops.VarLenFeature(tf.string),
-    "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
-    "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+      "feature_a": parsing_ops.VarLenFeature(tf.string),
+      "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+      "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
   }
+  ```
 
   Args:
     feature_columns: An iterable containing all feature columns. All items
@@ -594,15 +597,21 @@ def bucketized_column(source_column, boundaries):
   `[1., 2.)`, and `[2., +inf)`.
 
   For example, if the inputs are
-    `boundaries` = [0, 10, 100]
-    input tensor = [[-5, 10000]
-                    [150,   10]
-                    [5,    100]]
+
+  ```python
+  boundaries = [0, 10, 100]
+  input tensor = [[-5, 10000]
+                  [150,   10]
+                  [5,    100]]
+  ```
 
   then the output will be
-    output = [[0, 3]
-              [3, 2]
-              [1, 3]]
+
+  ```python
+  output = [[0, 3]
+            [3, 2]
+            [1, 3]]
+  ```
 
   Example:
 
@@ -621,6 +630,7 @@ def bucketized_column(source_column, boundaries):
 
   `bucketized_column` can also be crossed with another categorical column using
   `crossed_column`:
+
   ```python
   price = numeric_column('price')
   # bucketized_column converts numerical feature to a categorical one.
@@ -745,6 +755,7 @@ def categorical_column_with_vocabulary_file(
   abbreviation. All inputs with values in that file are assigned an ID 0-49,
   corresponding to its line number. All other values are hashed and assigned an
   ID 50-54.
+
   ```python
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
@@ -759,6 +770,7 @@ def categorical_column_with_vocabulary_file(
   other 50 each have a 2-character U.S. state abbreviation. Both a literal 'XX'
   in input, and other values missing from the file, will be assigned ID 0. All
   others are assigned the corresponding line number 1-50.
+
   ```python
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
@@ -769,6 +781,7 @@ def categorical_column_with_vocabulary_file(
   ```
 
   And to make an embedding with either:
+
   ```python
   columns = [embedding_column(states, 3),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -847,6 +860,7 @@ def categorical_column_with_vocabulary_list(
   inputs are assigned `default_value` 0.
 
   Linear model:
+
   ```python
   colors = categorical_column_with_vocabulary_list(
       key='colors', vocabulary_list=('X', 'R', 'G', 'B', 'Y'), default_value=0)
@@ -856,6 +870,7 @@ def categorical_column_with_vocabulary_list(
   ```
 
   Embedding for a DNN model:
+
   ```python
   columns = [embedding_column(colors, 3),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -926,6 +941,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   literal 0 in inputs will result in the same default ID.
 
   Linear model:
+
   ```python
   video_id = categorical_column_with_identity(
       key='video_id', num_buckets=1000000, default_value=0)
@@ -935,6 +951,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   ```
 
   Embedding for a DNN model:
+
   ```python
   columns = [embedding_column(video_id, 9),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -976,8 +993,8 @@ def indicator_column(categorical_column):
   `embedding_column` if the inputs are sparse.
 
   ```python
-  name = indicator_column(categorical_column_with_vocabulary_list('name',
-      ['bob', 'george', 'wanda'])
+  name = indicator_column(categorical_column_with_vocabulary_list(
+      'name', ['bob', 'george', 'wanda'])
   columns = [name, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = input_layer(features, columns)
@@ -1009,6 +1026,8 @@ def weighted_categorical_column(
   Example:
 
   Input `tf.Example` objects:
+
+  ```proto
   [
     features {
       feature {
@@ -1031,6 +1050,7 @@ def weighted_categorical_column(
       }
     }
   ]
+  ```
 
   ```python
   categorical_column = categorical_column_with_hash_bucket(
@@ -1076,22 +1096,41 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
     Hash(cartesian product of features) % `hash_bucket_size`
 
   For example, if the input features are:
-  * SparseTensor referred by first key: shape = [2, 2]
-      [0, 0]: "a"
-      [1, 0]: "b"
-      [1, 1]: "c"
 
-  * SparseTensor referred by second key: shape = [2, 1]
-      [0, 0]: "d"
-      [1, 0]: "e"
+  * SparseTensor referred by first key:
+
+    ```python
+    shape = [2, 2]
+    {
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+    }
+    ```
+
+  * SparseTensor referred by second key:
+
+    ```python
+    shape = [2, 1]
+    {
+        [0, 0]: "d"
+        [1, 0]: "e"
+    }
+    ```
 
   then crossed feature will look like:
-      shape = [2, 2]
+
+  ```python
+   shape = [2, 2]
+  {
       [0, 0]: Hash64("d", Hash64("a")) % hash_bucket_size
       [1, 0]: Hash64("e", Hash64("b")) % hash_bucket_size
       [1, 1]: Hash64("e", Hash64("c")) % hash_bucket_size
+  }
+  ```
 
   Here is an example to create a linear model with crosses of string features:
+
   ```python
   keywords_x_doc_terms = crossed_column(['keywords', 'doc_terms'], 50K)
   columns = [keywords_x_doc_terms, ...]
@@ -1100,6 +1139,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   ```
 
   You could also use vocabulary lookup before crossing:
+
   ```python
   keywords = categorical_column_with_vocabulary_file(
       'keywords', '/path/to/vocabulary/file', vocabulary_size=1K)
@@ -1111,6 +1151,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
 
   If an input feature is of numeric type, you can use
   `categorical_column_with_identity`, or `bucketized_column`, as in the example:
+
   ```python
   # vertical_id is an integer categorical feature.
   vertical_id = categorical_column_with_identity('vertical_id', 10K)
@@ -1125,6 +1166,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
 
   To use crossed column in DNN model, you need to add it in an embedding column
   as in this example:
+
   ```python
   vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
   vertical_id_x_price_embedded = embedding_column(vertical_id_x_price, 10)

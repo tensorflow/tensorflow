@@ -55,6 +55,8 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/resampler/kernels/resampler_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/resampler/ops/resampler_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"
@@ -125,6 +127,7 @@ if(WIN32)
       "${tensorflow_source_dir}/tensorflow/core/kernels/*quantiz*.cc"
       "${tensorflow_source_dir}/tensorflow/core/kernels/neon/*"
       # no in tensorflow.dll - comes from .so
+      "${tensorflow_source_dir}/tensorflow/contrib/resampler/kernels/resampler_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/gru_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/lstm_ops.cc"

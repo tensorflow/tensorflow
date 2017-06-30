@@ -28,7 +28,7 @@ limitations under the License.
 // clang-format on
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"

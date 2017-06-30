@@ -30,7 +30,8 @@ static const int32 LEFT_INDEX = 0;
 static const int32 RIGHT_INDEX = 1;
 
 GrowStats::GrowStats(const TensorForestParams& params, int32 depth)
-    : depth_(depth),
+    : weight_sum_(0),
+      depth_(depth),
       params_(params),
       split_after_samples_(ResolveParam(params.split_after_samples(), depth)),
       num_splits_to_consider_(
@@ -58,6 +59,8 @@ ClassificationStats::ClassificationStats(const TensorForestParams& params,
   // Early splitting params.
   if (params.finish_type().type() == SPLIT_FINISH_BASIC) {
     min_split_samples_ = split_after_samples_;
+    finish_sample_epoch_ = 1;
+    finish_check_every_ = split_after_samples_ * 2;
   } else {
     if (!params.has_dominate_fraction() || !params.has_min_split_samples()) {
       LOG(FATAL) << "dominate_fraction and min_split_samples "
@@ -98,6 +101,9 @@ ClassificationStats::ClassificationStats(const TensorForestParams& params,
       default:
         LOG(WARNING) << "Unknown pruning type";
     }
+  } else {
+    prune_check_every_ = split_after_samples_ * 2;
+    prune_sample_epoch_ = 1;
   }
 
   if (params.use_running_stats_method()) {

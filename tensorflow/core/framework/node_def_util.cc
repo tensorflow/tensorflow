@@ -21,10 +21,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -610,5 +612,57 @@ Status AttachDef(const Status& status, const NodeDef& node_def) {
 Status AttachDef(const Status& status, const Node& node) {
   return AttachDef(status, node.def());
 }
+
+void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {
+  node_def->mutable_attr()->insert(
+      AttrValueMap::value_type(name.ToString(), value));
+}
+
+#define ADD_NODE_ATTR(T)                                           \
+  void AddNodeAttr(StringPiece name, T value, NodeDef* node_def) { \
+    AttrValue attr_value;                                          \
+    SetAttrValue(value, &attr_value);                              \
+    AddNodeAttr(name, attr_value, node_def);                       \
+  }
+ADD_NODE_ATTR(StringPiece)
+ADD_NODE_ATTR(const char*)
+ADD_NODE_ATTR(int32)
+ADD_NODE_ATTR(int64)
+ADD_NODE_ATTR(float)
+ADD_NODE_ATTR(double)
+ADD_NODE_ATTR(bool)
+ADD_NODE_ATTR(DataType)
+ADD_NODE_ATTR(const PartialTensorShape&)
+ADD_NODE_ATTR(const Tensor&)
+ADD_NODE_ATTR(const TensorProto&)
+ADD_NODE_ATTR(const NameAttrList&)
+ADD_NODE_ATTR(gtl::ArraySlice<StringPiece>)
+ADD_NODE_ATTR(gtl::ArraySlice<const char*>)
+ADD_NODE_ATTR(gtl::ArraySlice<string>)
+ADD_NODE_ATTR(gtl::ArraySlice<int32>)
+ADD_NODE_ATTR(gtl::ArraySlice<int64>)
+ADD_NODE_ATTR(gtl::ArraySlice<float>)
+ADD_NODE_ATTR(gtl::ArraySlice<bool>)
+ADD_NODE_ATTR(const std::vector<bool>&)
+ADD_NODE_ATTR(gtl::ArraySlice<DataType>)
+ADD_NODE_ATTR(gtl::ArraySlice<TensorShape>)
+ADD_NODE_ATTR(gtl::ArraySlice<PartialTensorShape>)
+ADD_NODE_ATTR(gtl::ArraySlice<TensorShapeProto>)
+ADD_NODE_ATTR(gtl::ArraySlice<Tensor>)
+ADD_NODE_ATTR(gtl::ArraySlice<NameAttrList>)
+#undef ADD_NODE_ATTR
+
+void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map) {
+  map->insert(AttrValueMap::value_type(name.ToString(), value));
+}
+
+#define ADD_ATTR(T)                                            \
+  void AddAttr(StringPiece name, T value, AttrValueMap* map) { \
+    AttrValue attr_value;                                      \
+    SetAttrValue(value, &attr_value);                          \
+    AddAttr(name, attr_value, map);                            \
+  }
+ADD_ATTR(bool)
+#undef ADD_ATTR
 
 }  // namespace tensorflow

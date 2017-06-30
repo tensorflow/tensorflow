@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_FUNCTION_H_
 
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -33,6 +34,7 @@ limitations under the License.
 namespace tensorflow {
 
 class CancellationManager;
+class GraphDef;
 class OpKernel;
 class ResourceMgr;
 class ScopedStepContainer;

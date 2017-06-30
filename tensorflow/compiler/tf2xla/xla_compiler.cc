@@ -423,7 +423,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   xla::ComputationBuilder builder(client(), name);
   XlaContext* context =
       new XlaContext(this, &builder, options_.allow_cpu_custom_calls,
-                     options_.resolve_compile_time_constants);
+                     options.resolve_compile_time_constants);
   core::ScopedUnref context_unref(context);
 
   result->tuple_arg = options.use_tuple_arg;

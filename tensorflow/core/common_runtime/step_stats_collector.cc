@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/scanner.h"

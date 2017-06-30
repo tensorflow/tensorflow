@@ -33,6 +33,9 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const auto& node : item.fetch) {
     nodes_to_preserve.insert(NodeName(node));
   }
+  for (const auto& feed : item.feed) {
+    nodes_to_preserve.insert(NodeName(feed.first));
+  }
   for (const auto& node : item.init_ops) {
     nodes_to_preserve.insert(NodeName(node));
   }
@@ -46,10 +49,6 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
     // Don't remove nodes that must be preserved.
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
-      continue;
-    }
-    // Don't remove nodes that are explicitly placed.
-    if (!node.device().empty()) {
       continue;
     }
     // Don't remove nodes that drive control dependencies.

@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 
 #include "numpy/arrayobject.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"

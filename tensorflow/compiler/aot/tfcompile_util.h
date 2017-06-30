@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_AOT_TFCOMPILE_UTIL_H_
 
 #include "tensorflow/compiler/aot/tfcompile.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
@@ -29,6 +30,11 @@ Status ValidateCppIdent(StringPiece ident, StringPiece msg);
 
 // ValidateConfig returns OK iff config is valid.
 Status ValidateConfig(const Config& config);
+
+// Returns in <out> a copy of <in>, pruned to only include fetches from
+// <config>.
+Status PruneGraphDefInto(const Config& config, const GraphDef& in,
+                         GraphDef* out);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

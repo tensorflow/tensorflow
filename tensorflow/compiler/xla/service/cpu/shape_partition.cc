@@ -20,7 +20,7 @@ namespace cpu {
 
 std::vector<int64> ShapePartitionAssigner::Run(int64 target_partition_count) {
   // Gather outer-most dims where dim_size >= 'target_partition_count'.
-  // Note: always leave inner-dim static for vectorization/optimzations.
+  // Note: always leave inner-dim static for vectorization/optimizations.
   std::vector<int64> outer_dims;
   int64 outer_dim_size = 1;
   // TODO(b/27458679) Consider reserving enough minor dimensions (based on

@@ -166,12 +166,6 @@ Service::CreateComputeConstantBackend() {
   return NotFound("CPU platform not found");
 }
 
-/* static */ Compiler::HloDumper Service::MakeHloDumper() {
-  return [](const HloModule& module, const string& label) {
-    return Executable::DumpExecutedHlo(module, label, /*profile=*/nullptr);
-  };
-}
-
 Service::Service(const ServiceOptions& options,
                  std::unique_ptr<Backend> execute_backend,
                  std::unique_ptr<Backend> compute_constant_backend)
@@ -392,11 +386,9 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     modules.push_back(std::move(module));
   }
 
-  Compiler::HloDumper hlo_dumper = MakeHloDumper();
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      backend->compiler()->Compile(std::move(modules), hlo_dumper,
-                                   std::move(executors)));
+      backend->compiler()->Compile(std::move(modules), std::move(executors)));
 
   if (!other_directory_path.empty()) {
     for (size_t i = 0; i < versioned_handles.size(); ++i) {
@@ -443,15 +435,9 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
                                           /*include_unreachable_instructions=*/
                                           !executable_for_compute_constant));
 
-  Compiler::HloDumper hlo_dumper = MakeHloDumper();
-  if (executable_for_compute_constant &&
-      !flags->xla_hlo_graph_for_compute_constant) {
-    hlo_dumper = [](const HloModule&, const string&) {};
-  }
-
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), hlo_dumper, executor));
+      backend->compiler()->Compile(std::move(module), executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -1191,7 +1177,8 @@ tensorflow::Status Service::GetComputationStats(
       std::unique_ptr<HloModule> module,
       computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig()));
 
-  MakeHloDumper()(*module, "computation statistics subject");
+  hlo_graph_dumper::MaybeDumpHloModule(*module,
+                                       "computation statistics subject");
 
   // Run HLO analysis to get the computation statistics.
   HloCostAnalysis analysis(
@@ -1205,17 +1192,6 @@ tensorflow::Status Service::GetComputationStats(
   stats.set_transcendental_count(analysis.transcendental_count());
   *result->mutable_stats() = stats;
   return tensorflow::Status::OK();
-}
-
-tensorflow::Status Service::CheckRunsInClientProcess(
-    const string& method_name) const {
-  if (runs_in_client_process_) {
-    return tensorflow::Status::OK();
-  } else {
-    return FailedPrecondition(
-        "%s only supported if service runs in the same process as the client",
-        method_name.c_str());
-  }
 }
 
 template <typename RequestT, typename ResponseT>

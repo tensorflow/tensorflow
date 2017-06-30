@@ -29,8 +29,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/coding.h"
@@ -270,7 +273,7 @@ struct ProtoHelper<int64> {
 
 template <>
 struct ProtoHelper<ResourceHandle> {
-  static protobuf::RepeatedPtrField<ResourceHandle>::const_iterator Begin(
+  static protobuf::RepeatedPtrField<ResourceHandleProto>::const_iterator Begin(
       const TensorProto& proto) {
     return proto.resource_handle_val().begin();
   }
@@ -278,8 +281,11 @@ struct ProtoHelper<ResourceHandle> {
     return proto.resource_handle_val().size();
   }
   static void Fill(const ResourceHandle* data, size_t n, TensorProto* proto) {
-    protobuf::RepeatedPtrField<ResourceHandle> copy(data, data + n);
-    proto->mutable_resource_handle_val()->Swap(&copy);
+    auto* handles = proto->mutable_resource_handle_val();
+    handles->Clear();
+    for (size_t i = 0; i < n; i++) {
+      data[i].AsProto(handles->Add());
+    }
   }
 };
 

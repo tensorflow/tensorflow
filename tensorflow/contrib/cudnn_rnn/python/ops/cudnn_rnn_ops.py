@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
+from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
@@ -25,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
@@ -145,7 +147,7 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     return self._transform_lstm_canonical(weights, biases)
 
   def _transformed_canonical_names(self, weights, biases):
-    """Return canonical names for fused weight and bias tensors."""
+    """Return canonical names for transformed weight and bias tensors."""
     if (self._cudnn_rnn.direction != "unidirectional" or
         self._cudnn_rnn.rnn_mode != "lstm"):
       assert len(weights) == len(biases)
@@ -156,23 +158,25 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
       num_layers = self._cudnn_rnn.num_layers
       # TODO(jamesqin): get rid of multi_rnn_cell when num_layers is 1
       for i in range(num_layers):
-        # One fused weight tensor each layer.
-        w_names.append("multi_rnn_cell/cell_%d/lstm_cell/kernel" % i)
-        # Three fused bias tensors each layer:
-        # the 1st is for LSTMBlockCell restore; the latter two sum up to the
-        # 1st, and are used for cuDNN restore.
-        b_names.append("multi_rnn_cell/cell_%d/lstm_cell/bias" % i)
+        # One transformed weight tensor each layer.
+        w_names.append(
+            "multi_rnn_cell/cell_%d/cudnn_compatible_lstm_cell/kernel" % i)
+        # Three transformed bias tensors each layer:
+        # the 1st is for CudnnCompatbleLSTM(Block)Cell restore; the latter two
+        # sum up to the 1st, and are used for cuDNN restore.
+        b_names.append(
+            "multi_rnn_cell/cell_%d/cudnn_compatible_lstm_cell/bias" % i)
         b_names.extend([
-            "multi_rnn_cell/cell_%d/lstm_cell/bias_cudnn_%d" % (i, j)
-            for j in range(2)
+            "multi_rnn_cell/cell_%d/cudnn_compatible_lstm_cell/bias_cudnn_%d" %
+            (i, j) for j in range(2)
         ])
       return w_names, b_names
 
   def _transform_lstm_canonical(self, weights, biases):
-    """Create fused lstm canonical params.
+    """Create transformed lstm canonical params.
 
     Produce properly-shaped monolithic weight and bias tensors to share between
-    cuDNN and non-platform specific LSTM cells (w/o peephole).
+    cuDNN and cudnn_compatible non-platform specific LSTM cells.
     Args:
       weights: a list of Tensors recovered from cuDNN params_to_canonical.
       biases: a list of Tensors recovered from cuDNN params_to_canonical.
@@ -180,7 +184,7 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
       Two lists of tensors, one for weight and bias each.
       The weight list contains num_layers tensors and bias one contains 3 *
       num_layers tensors. Both original and combined biases since cuDNN biases
-      are not restorable from the fused version.
+      are not restorable from the transformed version.
     """
     transformed_weights, transformed_biases = [], []
     for i in range(self._cudnn_rnn.num_layers):
@@ -676,3 +680,40 @@ ops.RegisterShape("CudnnRNNParamsToCanonical")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CudnnRNNCanonicalToParams")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CudnnRNN")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CudnnRNNBackprop")(common_shapes.call_cpp_shape_fn)
+
+
+class CudnnCompatibleLSTMCell(rnn_cell_impl.LSTMCell):
+  """Cudnn Compatible LSTMCell.
+
+  A simple wrapper around @{tf.nn.rnn_cell.LSTMCell} to use along with
+  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by the
+  former seamlessly.
+  """
+
+  def __init__(self, num_units, reuse=None):
+    super(CudnnCompatibleLSTMCell, self).__init__(
+        num_units,
+        use_peepholes=False,
+        cell_clip=None,
+        num_proj=None,
+        proj_clip=None,
+        state_is_tuple=True,
+        activation=None,
+        reuse=reuse,
+        forget_bias=0)
+
+
+class CudnnCompatibleLSTMBlockCell(lstm_ops.LSTMBlockCell):
+  """Cudnn Compatible LSTMBlockCell.
+
+  A simple wrapper around @{tf.contrib.rnn.LSTMBlockCell} to use along with
+  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by the
+  former seamlessly. It is the more performant than
+  ${tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell}, the same way
+  @{tf.contrib.rnn.LSTMBlockCell} is than @{tf.nn.rnn_cell.LSTMCell}.
+  """
+
+  def __init__(self, num_units):
+    super(CudnnCompatibleLSTMBlockCell, self).__init__(
+        num_units, forget_bias=0, clip_cell=False, use_peephole=False)
+    self._names.update({"scope": "cudnn_compatible_lstm_cell"})

@@ -65,6 +65,7 @@ class TFProfShowTest : public ::testing::Test {
 
     tf_stats_.reset(new TFStats(std::move(graph_pb), std::move(run_meta_pb),
                                 std::move(op_log_pb), std::move(ckpt_reader)));
+    tf_stats_->BuildAllViews();
   }
 
   std::unique_ptr<TFStats> tf_stats_;
@@ -165,15 +166,16 @@ TEST_F(TFProfShowTest, DumpOpMode) {
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
   EXPECT_EQ(
       "nodename|outputbytes|totalexecutiontime|acceleratorexecutiontime|"
-      "cpuexecutiontime|#parameters|#float_ops|opoccurrence|"
+      "cpuexecutiontime|#parameters|#float_ops|opoccurrence(run|defined)|"
       "inputshapes\nVariableV21.48KB(100.00%,17.10%),5us(100.00%,5.15%),0us(0."
       "00%,0.00%),5us(100.00%,5.15%),370params(100.00%,100.00%),0float_ops(100."
-      "00%,0.00%),4\n\ninput_type:\t(*4)\texec_time:5us\n\nAssign0B(0.00%,0.00%"
-      "),0us(94.85%,0.00%),0us(0.00%,0.00%),0us(94.85%,0.00%),0params(0.00%,0."
-      "00%),0float_ops(100.00%,0.00%),8\n\ninput_type:0:unknown,\t1:unknown\t(*"
-      "8)\texec_time:0us\n\nConst1.54KB(58.87%,17.74%),1us(80.41%,1.03%),0us(0."
-      "00%,0.00%),1us(80.41%,1.03%),0params(0.00%,0.00%),0float_ops(98.49%,0."
-      "00%),24\n\ninput_type:\t(*24)\texec_time:1us\n\n",
+      "00%,0.00%),4|4\n\ninput_type:\t(run*4|defined*4)\texec_time:"
+      "5us\n\nAssign0B(0.00%,0.00%),0us(94.85%,0.00%),0us(0.00%,0.00%),0us(94."
+      "85%,0.00%),0params(0.00%,0.00%),0float_ops(100.00%,0.00%),0|8\n\ninput_"
+      "type:0:unknown,\t1:unknown\t(run*0|defined*8)\texec_time:0us\n\nConst1."
+      "54KB(58.87%,17.74%),1us(80.41%,1.03%),0us(0.00%,0.00%),1us(80.41%,1.03%)"
+      ",0params(0.00%,0.00%),0float_ops(98.49%,0.00%),1|24\n\ninput_type:\t("
+      "run*1|defined*24)\texec_time:1us\n\n",
       StringReplace(dump_str, " ", ""));
 }
 }  // namespace tfprof

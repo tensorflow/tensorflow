@@ -33,7 +33,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Intrinsics.h"
 #include "external/llvm/include/llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -375,6 +374,57 @@ Status IrEmitter::HandleSelect(HloInstruction* select, HloInstruction* pred,
 Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
   VLOG(2) << "HandleInfeed: " << infeed->ToString();
 
+  const Shape& shape = infeed->shape();
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                      EmitTargetAddressForOp(infeed));
+
+  if (ShapeUtil::IsTuple(shape)) {
+    TF_RET_CHECK(!ShapeUtil::IsNestedTuple(shape));
+
+    // For a tuple, we first copy each of the internal elements to
+    // their corresponding target locations. We then construct the
+    // tuple outer buffer containing pointers to the internal
+    // elements.
+    std::vector<llvm::Value*> tuple_element_addresses;
+    for (int64 i = 0; i < shape.tuple_shapes_size(); ++i) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
+                          assignment_.GetUniqueSlice(infeed, {i}));
+
+      const Shape& tuple_element_shape =
+          ShapeUtil::GetTupleElementShape(shape, i);
+
+      // Only the outer tuple buffer's target address is obtained from
+      // EmitTargetAddressForOp to handle the case when Infeed is the
+      // root instruction. Target addresses for internal elements can
+      // be obtained from EmitTempBufferPointer.
+      llvm::Value* tuple_element_address =
+          EmitTempBufferPointer(buffer, tuple_element_shape);
+
+      TF_RETURN_IF_ERROR(EmitInfeedTransfer(ByteSizeOf(tuple_element_shape),
+                                            tuple_element_address));
+
+      tuple_element_addresses.push_back(tuple_element_address);
+    }
+
+    llvm_ir::EmitTuple(llvm_ir::IrArray(target_address, shape),
+                       tuple_element_addresses, &ir_builder_);
+  } else {
+    TF_RETURN_IF_ERROR(EmitInfeedTransfer(ByteSizeOf(shape), target_address));
+  }
+
+  emitted_value_[infeed] = target_address;
+
+  return Status::OK();
+}
+
+Status IrEmitter::EmitInfeedTransfer(int64 length,
+                                     llvm::Value* target_address) {
+  if (length > std::numeric_limits<int32>::max()) {
+    return InvalidArgument("infeed buffer length %lld is too large", length);
+  }
+  int32 length_32 = static_cast<int32>(length);
+
   // The signature of the acquire infeed buffer function is:
   //
   //   (void*)(int32 length);
@@ -401,25 +451,13 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
           runtime::kReleaseInfeedBufferAfterDequeueSymbolName, release_type));
   release_func->setCallingConv(llvm::CallingConv::C);
 
-  const Shape& shape = infeed->shape();
-  int64 length = ByteSizeOf(shape);
-  if (length > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("infeed buffer length %lld is too large", length);
-  }
-  int32 length_32 = static_cast<int32>(length);
-
   llvm::Value* acquired_pointer =
       ir_builder_.CreateCall(acquire_func, {ir_builder_.getInt32(length_32)});
-
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(infeed));
 
   ir_builder_.CreateMemCpy(target_address, acquired_pointer, length_32, 1);
 
   ir_builder_.CreateCall(release_func,
                          {ir_builder_.getInt32(length_32), acquired_pointer});
-
-  emitted_value_[infeed] = target_address;
 
   return Status::OK();
 }
@@ -777,7 +815,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot, HloInstruction* lhs,
   // Dot operation is complicated so we delegate to a helper class.
   TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
       *dot, /*transpose_lhs=*/false, /*transpose_rhs=*/false, target_array,
-      lhs_array, rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_));
+      lhs_array, rhs_array, GetExecutableRunOptionsArgument(), &ir_builder_,
+      hlo_module_config_));
 
   emitted_value_[dot] = target_address;
   return Status::OK();
@@ -862,9 +901,10 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution,
            int64_type,    int64_type,     int64_type,     int64_type,
            int64_type,    int64_type,     int64_type,     int64_type},
           /*isVarArg=*/false);
-      legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
+      bool multi_threaded_eigen =
+          hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
       const char* fn_name =
-          (flags->xla_cpu_multi_thread_eigen
+          (multi_threaded_eigen
                ? runtime::kEigenConvF32SymbolName
                : runtime::kEigenSingleThreadedConvF32SymbolName);
       llvm::Function* conv_func = llvm::cast<llvm::Function>(
@@ -1525,7 +1565,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(DotOpEmitter::EmitDotOperation(
         *dot, dot->operand(0)->IsRank2Transpose(),
         dot->operand(1)->IsRank2Transpose(), target_array, lhs_array, rhs_array,
-        GetExecutableRunOptionsArgument(), &ir_builder_));
+        GetExecutableRunOptionsArgument(), &ir_builder_, hlo_module_config_));
 
     emitted_value_[fusion] = target_address;
     return Status::OK();
@@ -1898,11 +1938,14 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
       GetTempBuffersArgument(), slice.index(), &ir_builder_);
   llvm::LoadInst* tempbuf_address_base =
       ir_builder_.CreateLoad(tempbuf_address_ptr);
-  //  Loading the address of a buffer is invariant of the point at which the
-  //  load is executed in the program because we never reassign buffers.
-  tempbuf_address_base->setMetadata(
-      llvm::LLVMContext::MD_invariant_load,
-      llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
+  if (hlo_module_config_.debug_options()
+          .xla_llvm_enable_invariant_load_metadata()) {
+    //  Loading the address of a buffer is invariant of the point at which the
+    //  load is executed in the program because we never reassign buffers.
+    tempbuf_address_base->setMetadata(
+        llvm::LLVMContext::MD_invariant_load,
+        llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
+  }
   llvm_ir::SetTbaaForInstruction(tempbuf_address_base, target_shape,
                                  /*is_pointer_to=*/true);
   AttachAlignmentMetadataForLoad(tempbuf_address_base, allocation.size());

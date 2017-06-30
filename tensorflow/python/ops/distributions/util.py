@@ -37,7 +37,7 @@ from tensorflow.python.ops import nn
 
 def assert_close(
     x, y, data=None, summarize=None, message=None, name="assert_close"):
-  """Assert that that x and y are within machine epsilon of each other.
+  """Assert that x and y are within machine epsilon of each other.
 
   Args:
     x: Floating-point `Tensor`
@@ -74,7 +74,8 @@ def assert_close(
 
 
 def assert_integer_form(
-    x, data=None, summarize=None, message=None, name="assert_integer_form"):
+    x, data=None, summarize=None, message=None,
+    int_dtype=None, name="assert_integer_form"):
   """Assert that x has integer components (or floats equal to integers).
 
   Args:
@@ -83,18 +84,30 @@ def assert_integer_form(
       error message and first few entries of `x` and `y`.
     summarize: Print this many entries of each tensor.
     message: A string to prefix to the default message.
+    int_dtype: A `tf.dtype` used to cast the float to. The default (`None`)
+      implies the smallest possible signed int will be used for casting.
     name: A name for this operation (optional).
 
   Returns:
-    Op raising `InvalidArgumentError` if round(x) != x.
+    Op raising `InvalidArgumentError` if `cast(x, int_dtype) != x`.
   """
-
-  message = message or "x has non-integer components"
-  x = ops.convert_to_tensor(x, name="x")
-  casted_x = math_ops.to_int64(x)
-  return check_ops.assert_equal(
-      x, math_ops.cast(math_ops.round(casted_x), x.dtype),
-      data=data, summarize=summarize, message=message, name=name)
+  with ops.name_scope(name, values=[x, data]):
+    x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_integer:
+      return control_flow_ops.no_op()
+    message = message or "{} has non-integer components".format(x.op.name)
+    if int_dtype is None:
+      try:
+        int_dtype = {
+            dtypes.float16: dtypes.int16,
+            dtypes.float32: dtypes.int32,
+            dtypes.float64: dtypes.int64,
+        }[x.dtype.base_dtype]
+      except KeyError:
+        raise TypeError("Unrecognized type {}".format(x.dtype.name))
+    return check_ops.assert_equal(
+        x, math_ops.cast(math_ops.cast(x, int_dtype), x.dtype),
+        data=data, summarize=summarize, message=message, name=name)
 
 
 def assert_symmetric(matrix):
@@ -103,14 +116,22 @@ def assert_symmetric(matrix):
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
 
 
-def embed_check_nonnegative_discrete(x, check_integer=True):
+def embed_check_nonnegative_integer_form(
+    x, name="embed_check_nonnegative_integer_form"):
   """Assert x is a non-negative tensor, and optionally of integers."""
-  assertions = [check_ops.assert_non_negative(
-      x, message="x must be non-negative.")]
-  if check_integer:
-    assertions += [assert_integer_form(
-        x, message="x cannot contain fractional components.")]
-  return control_flow_ops.with_dependencies(assertions, x)
+  with ops.name_scope(name, values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    assertions = [
+        check_ops.assert_non_negative(
+            x, message="'{}' must be non-negative.".format(x.op.name)),
+    ]
+    if not x.dtype.is_integer:
+      assertions += [
+          assert_integer_form(
+              x, message="'{}' cannot contain fractional components.".format(
+                  x.op.name)),
+      ]
+    return control_flow_ops.with_dependencies(assertions, x)
 
 
 def same_dynamic_shape(a, b):
@@ -175,16 +196,26 @@ def get_logits_and_probs(logits=None,
 
     if probs is None:
       logits = ops.convert_to_tensor(logits, name="logits")
+      if not logits.dtype.is_floating:
+        raise TypeError("logits must having floating type.")
+      # We can early return since we constructed probs and therefore know
+      # they're valid.
       if multidimensional:
+        if validate_args:
+          logits = embed_check_categorical_event_shape(logits)
         return logits, nn.softmax(logits, name="probs")
       return logits, math_ops.sigmoid(logits, name="probs")
 
     probs = ops.convert_to_tensor(probs, name="probs")
+    if not probs.dtype.is_floating:
+      raise TypeError("probs must having floating type.")
+
     if validate_args:
       with ops.name_scope("validate_probs"):
         one = constant_op.constant(1., probs.dtype)
         dependencies = [check_ops.assert_non_negative(probs)]
         if multidimensional:
+          probs = embed_check_categorical_event_shape(probs)
           dependencies += [assert_close(math_ops.reduce_sum(probs, -1), one,
                                         message="probs does not sum to 1.")]
         else:
@@ -203,6 +234,247 @@ def get_logits_and_probs(logits=None,
         # explicitly keeps the pivot dimension.
         return math_ops.log(probs), probs
       return math_ops.log(probs) - math_ops.log1p(-1. * probs), probs
+
+
+def _is_known_unsigned_by_dtype(dt):
+  """Helper returning True if dtype is known to be unsigned."""
+  return {
+      dtypes.bool: True,
+      dtypes.uint8: True,
+      dtypes.uint16: True,
+  }.get(dt.base_dtype, False)
+
+
+def _is_known_signed_by_dtype(dt):
+  """Helper returning True if dtype is known to be signed."""
+  return {
+      dtypes.float16: True,
+      dtypes.float32: True,
+      dtypes.float64: True,
+      dtypes.int8: True,
+      dtypes.int16: True,
+      dtypes.int32: True,
+      dtypes.int64: True,
+  }.get(dt.base_dtype, False)
+
+
+def _is_known_dtype(dt):
+  """Helper returning True if dtype is known."""
+  return _is_known_unsigned_by_dtype(dt) or _is_known_signed_by_dtype(dt)
+
+
+def _largest_integer_by_dtype(dt):
+  """Helper returning the largest integer exactly representable by dtype."""
+  if not _is_known_dtype(dt):
+    raise TypeError("Unrecognized dtype: {}".format(dt.name))
+  if dt.is_floating:
+    return int(2**(np.finfo(dt.as_numpy_dtype).nmant + 1))
+  if dt.is_integer:
+    return np.iinfo(dt.as_numpy_dtype).max
+  if dt.base_dtype == dtypes.bool:
+    return int(1)
+  # We actually can't land here but keep the case for completeness.
+  raise TypeError("Unrecognized dtype: {}".format(dt.name))
+
+
+def _smallest_integer_by_dtype(dt):
+  """Helper returning the smallest integer exactly representable by dtype."""
+  if not _is_known_dtype(dt):
+    raise TypeError("Unrecognized dtype: {}".format(dt.name))
+  if _is_known_unsigned_by_dtype(dt):
+    return 0
+  return -1 * _largest_integer_by_dtype(dt)
+
+
+def _is_integer_like_by_dtype(dt):
+  """Helper returning True if dtype.is_interger or is `bool`."""
+  if not _is_known_dtype(dt):
+    raise TypeError("Unrecognized dtype: {}".format(dt.name))
+  return dt.is_integer or dt.base_dtype == dtypes.bool
+
+
+def embed_check_categorical_event_shape(
+    categorical_param,
+    name="embed_check_categorical_event_shape"):
+  """Embeds checks that categorical distributions don't have too many classes.
+
+  A categorical-type distribution is one which, e.g., returns the class label
+  rather than a one-hot encoding.  E.g., `Categorical(probs)`.
+
+  Since distributions output samples in the same dtype as the parameters, we
+  must ensure that casting doesn't lose precision. That is, the
+  `parameter.dtype` implies a maximum number of classes. However, since shape is
+  `int32` and categorical variables are presumed to be indexes into a `Tensor`,
+  we must also ensure that the number of classes is no larger than the largest
+  possible `int32` index, i.e., `2**31-1`.
+
+  In other words the number of classes, `K`, must satisfy the following
+  condition:
+
+  ```python
+  K <= min(
+      int(2**31 - 1),  # Largest float as an index.
+      {
+          dtypes.float16: int(2**11),   # Largest int as a float16.
+          dtypes.float32: int(2**24),
+          dtypes.float64: int(2**53),
+      }.get(categorical_param.dtype.base_dtype, 0))
+  ```
+
+  Args:
+    categorical_param: Floating-point `Tensor` representing parameters of
+      distribution over categories. The rightmost shape is presumed to be the
+      number of categories.
+    name: A name for this operation (optional).
+
+  Returns:
+    categorical_param: Input `Tensor` with appropriate assertions embedded.
+
+  Raises:
+    TypeError: if `categorical_param` has an unknown `dtype`.
+    ValueError: if we can statically identify `categorical_param` as being too
+      large (for being closed under int32/float casting).
+  """
+  with ops.name_scope(name, values=[categorical_param]):
+    x = ops.convert_to_tensor(categorical_param, name="categorical_param")
+    # The size must not exceed both of:
+    # - The largest possible int32 (since categorical values are presumed to be
+    #   indexes into a Tensor).
+    # - The largest possible integer exactly representable under the given
+    #   floating-point dtype (since we need to cast to/from).
+    #
+    # The chosen floating-point thresholds are 2**(1 + mantissa_bits).
+    # For more details, see:
+    # https://en.wikipedia.org/wiki/Floating-point_arithmetic#Internal_representation
+    x_dtype = x.dtype.base_dtype
+    max_event_size = (_largest_integer_by_dtype(x_dtype)
+                      if x_dtype.is_floating else 0)
+    if max_event_size is 0:
+      raise TypeError("Unable to validate size of unrecognized dtype "
+                      "({}).".format(x_dtype.name))
+    try:
+      x_shape_static = x.get_shape().with_rank_at_least(1)
+    except ValueError:
+      raise ValueError("A categorical-distribution parameter must have "
+                       "at least 1 dimension.")
+    if x_shape_static[-1].value is not None:
+      event_size = x_shape_static[-1].value
+      if event_size < 2:
+        raise ValueError("A categorical-distribution parameter must have at "
+                         "least 2 events.")
+      if event_size > max_event_size:
+        raise ValueError(
+            "Number of classes exceeds `dtype` precision, i.e., "
+            "{} implies shape ({}) cannot exceed {}.".format(
+                x_dtype.name, event_size, max_event_size))
+      return x
+    else:
+      event_size = array_ops.shape(x, name="x_shape")[-1]
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_rank_at_least(
+              x, 1, message=("A categorical-distribution parameter must have "
+                             "at least 1 dimension.")),
+          check_ops.assert_greater_equal(
+              array_ops.shape(x)[-1], 2,
+              message=("A categorical-distribution parameter must have at "
+                       "least 2 events.")),
+          check_ops.assert_less_equal(
+              event_size, max_event_size,
+              message="Number of classes exceeds `dtype` precision, "
+                      "i.e., {} dtype cannot exceed {} shape.".format(
+                          x_dtype.name, max_event_size)),
+      ], x)
+
+
+def embed_check_integer_casting_closed(
+    x,
+    target_dtype,
+    assert_nonnegative=True,
+    name="embed_check_casting_closed"):
+  """Ensures integers remain unaffected despite casting to/from int/float types.
+
+  Example integer-types: `uint8`, `int32`, `bool`.
+  Example floating-types: `float32`, `float64`.
+
+  The largest possible integer representable by an IEEE754 floating-point is
+  `2**(1 + mantissa_bits)` yet the largest possible integer as an int-type is
+  `2**(bits - 1) - 1`. This function ensures that a `Tensor` purporting to have
+  integer-form values can be cast to some other type without loss of precision.
+
+  The smallest representable integer is the negative of the largest
+  representable integer, except for types: `uint8`, `uint16`, `bool`. For these
+  types, the smallest representable integer is `0`.
+
+  Args:
+    x: `Tensor` representing integer-form values.
+    target_dtype: TF `dtype` under which `x` should have identical values.
+    assert_nonnegative: `bool` indicating `x` should contain nonnegative values.
+    name: A name for this operation (optional).
+
+  Returns:
+    x: Input `Tensor` with appropriate assertions embedded.
+
+  Raises:
+    TypeError: if `x` is neither integer- nor floating-type.
+    TypeError: if `target_dtype` is neither integer- nor floating-type.
+    TypeError: if neither `x` nor `target_dtype` are integer-type.
+  """
+
+  with ops.name_scope(name, values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+    if (not _is_integer_like_by_dtype(x.dtype)
+        and not x.dtype.is_floating):
+      raise TypeError("{}.dtype must be floating- or "
+                      "integer-type.".format(x.dtype.name))
+    if (not _is_integer_like_by_dtype(target_dtype)
+        and not target_dtype.is_floating):
+      raise TypeError("target_dtype ({}) must be floating- or "
+                      "integer-type.".format(target_dtype.name))
+    if (not _is_integer_like_by_dtype(x.dtype)
+        and not _is_integer_like_by_dtype(target_dtype)):
+      raise TypeError("At least one of {}.dtype ({}) and target_dtype ({}) "
+                      "must be integer-type.".format(
+                          x.op.name, x.dtype.name, target_dtype.name))
+
+    assertions = []
+    if assert_nonnegative:
+      assertions += [
+          check_ops.assert_non_negative(
+              x, message="Elements must be non-negative."),
+      ]
+
+    if x.dtype.is_floating:
+      # Being here means _is_integer_like_by_dtype(target_dtype) = True.
+      # Since this check implies the magnitude check below, we need only it.
+      assertions += [
+          assert_integer_form(
+              x, int_dtype=target_dtype,
+              message="Elements must be {}-equivalent.".format(
+                  target_dtype.name)),
+      ]
+    else:
+      if (_largest_integer_by_dtype(x.dtype)
+          > _largest_integer_by_dtype(target_dtype)):
+        # Cast may lose integer precision.
+        assertions += [
+            check_ops.assert_less_equal(
+                x, _largest_integer_by_dtype(target_dtype),
+                message=("Elements cannot exceed {}.".format(
+                    _largest_integer_by_dtype(target_dtype)))),
+        ]
+      if (not assert_nonnegative and
+          (_smallest_integer_by_dtype(x.dtype)
+           < _smallest_integer_by_dtype(target_dtype))):
+        assertions += [
+            check_ops.assert_greater_equal(
+                x, _smallest_integer_by_dtype(target_dtype),
+                message=("Elements cannot be smaller than {}.".format(
+                    _smallest_integer_by_dtype(target_dtype)))),
+        ]
+
+    if not assertions:
+      return x
+    return control_flow_ops.with_dependencies(assertions, x)
 
 
 def log_combinations(n, counts, name="log_combinations"):
@@ -456,6 +728,8 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
   e.g., `tril = tf.matrix_band_part(full, -1, 0)`, rather than directly
   construct a lower triangular.
 
+  Warning: This Op is intended for convenience, not efficiency.
+
   Example:
 
   ```python
@@ -561,6 +835,74 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
     y = array_ops.matrix_band_part(y, -1, 0)
     y.set_shape(y.get_shape().merge_with(final_shape))
     return y
+
+
+def tridiag(below=None, diag=None, above=None, name=None):
+  """Creates a matrix with values set above, below, and on the diagonal.
+
+  Example:
+
+  ```python
+  tridiag(below=[1., 2., 3.],
+          diag=[4., 5., 6., 7.],
+          above=[8., 9., 10.])
+  # ==> array([[  4.,   8.,   0.,   0.],
+  #            [  1.,   5.,   9.,   0.],
+  #            [  0.,   2.,   6.,  10.],
+  #            [  0.,   0.,   3.,   7.]], dtype=float32)
+  ```
+
+  Warning: This Op is intended for convenience, not efficiency.
+
+  Args:
+    below: `Tensor` of shape `[B1, ..., Bb, d-1]` corresponding to the below
+      diagonal part. `None` is logically equivalent to `below = 0`.
+    diag: `Tensor` of shape `[B1, ..., Bb, d]` corresponding to the diagonal
+      part.  `None` is logically equivalent to `diag = 0`.
+    above: `Tensor` of shape `[B1, ..., Bb, d-1]` corresponding to the above
+      diagonal part.  `None` is logically equivalent to `above = 0`.
+    name: Python `str`. The name to give this op.
+
+  Returns:
+    tridiag: `Tensor` with values set above, below and on the diagonal.
+
+  Raises:
+    ValueError: if all inputs are `None`.
+  """
+
+  def _pad(x):
+    """Prepends and appends a zero to every vector in a batch of vectors."""
+    shape = array_ops.concat([array_ops.shape(x)[:-1], [1]], axis=0)
+    z = array_ops.zeros(shape, dtype=x.dtype)
+    return array_ops.concat([z, x, z], axis=-1)
+
+  def _add(*x):
+    """Adds list of Tensors, ignoring `None`."""
+    s = None
+    for y in x:
+      if y is None:
+        continue
+      elif s is None:
+        s = y
+      else:
+        s += y
+    if s is None:
+      raise ValueError("Must specify at least one of `below`, `diag`, `above`.")
+    return s
+
+  with ops.name_scope(name, "tridiag", [below, diag, above]):
+    if below is not None:
+      below = ops.convert_to_tensor(below, name="below")
+      below = array_ops.matrix_diag(_pad(below))[..., :-1, 1:]
+    if diag is not None:
+      diag = ops.convert_to_tensor(diag, name="diag")
+      diag = array_ops.matrix_diag(diag)
+    if above is not None:
+      above = ops.convert_to_tensor(above, name="above")
+      above = array_ops.matrix_diag(_pad(above))[..., 1:, :-1]
+    # TODO(jvdillon): Consider using scatter_nd instead of creating three full
+    # matrices.
+    return _add(below, diag, above)
 
 
 # TODO(jvdillon): Merge this test back into:

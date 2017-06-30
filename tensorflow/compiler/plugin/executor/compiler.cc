@@ -48,9 +48,8 @@ namespace executorplugin {
  * each pass in the optimization pipeline.  The service subdirectory
  * contains useful optimization passes.
  */
-Status ExecutorCompiler::RunHloOptimization(HloModule* hlo_module,
-                                            HloDumper dump_hlo) {
-  HloPassPipeline pipeline("Executor", dump_hlo);
+Status ExecutorCompiler::RunHloOptimization(HloModule* hlo_module) {
+  HloPassPipeline pipeline("Executor");
   pipeline.AddPass<Inliner>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
@@ -67,13 +66,13 @@ Status ExecutorCompiler::RunHloOptimization(HloModule* hlo_module,
 }
 
 StatusOr<std::unique_ptr<Executable>> ExecutorCompiler::Compile(
-        std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
+        std::unique_ptr<HloModule> hlo_module,
         se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Generate graph " << hlo_module->name();
 
-  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get(), dump_hlo));
+  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
 
   // Typically you would visit the HLO graph, building up a compiled equivalent
   // In this case we are using an Hlo evaluator at execution time, so we don't
@@ -88,7 +87,7 @@ StatusOr<std::unique_ptr<Executable>> ExecutorCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> ExecutorCompiler::Compile(
         std::vector<std::unique_ptr<HloModule>> hlo_modules,
-        HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
+        std::vector<se::StreamExecutor*> stream_execs) {
 
   return tensorflow::errors::Unimplemented(
       "Compilation of multiple HLO modules is not supported on Executor.");
@@ -97,7 +96,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> ExecutorCompiler::Compile(
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 ExecutorCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
+    const AotCompilationOptions& aot_options) {
 
   return tensorflow::errors::InvalidArgument(
       "AOT compilation not supported on Executor");

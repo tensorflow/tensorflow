@@ -12,7 +12,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":tfprof_logger",
-        "//tensorflow/contrib/tfprof/python/tools/tfprof/internal:pywrap_tensorflow_print_model_analysis_lib",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/tools/tfprof:protos_all_py",
     ],
 )

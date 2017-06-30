@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -1931,26 +1930,31 @@ class ComputationLowerer {
       const SessionComputation& session_computation,
       VersionedComputationHandle::Version version,
       UserComputation::HloComputationResolver hlo_resolver,
+      const DebugOptions& debug_options,
       bool include_unreachable_instructions) {
     ComputationLowerer lowerer(computation_name, session_computation, version,
-                               std::move(hlo_resolver));
-    return lowerer.Lower(include_unreachable_instructions);
+                               std::move(hlo_resolver), debug_options,
+                               include_unreachable_instructions);
+    return lowerer.Lower();
   }
 
  private:
   ComputationLowerer(const string& computation_name,
                      const SessionComputation& session_computation,
                      VersionedComputationHandle::Version version,
-                     UserComputation::HloComputationResolver hlo_resolver)
+                     UserComputation::HloComputationResolver hlo_resolver,
+                     const DebugOptions& debug_options,
+                     bool include_unreachable_instructions)
       : hlo_builder_(computation_name),
         session_computation_(session_computation),
         version_(version),
-        hlo_resolver_(std::move(hlo_resolver)) {}
+        hlo_resolver_(std::move(hlo_resolver)),
+        debug_options_(debug_options),
+        include_unreachable_instructions_(include_unreachable_instructions) {}
 
   // Build an HLO computation from the SessionComputation at the given
   // version.
-  StatusOr<std::unique_ptr<HloComputation>> Lower(
-      bool include_unreachable_instructions);
+  StatusOr<std::unique_ptr<HloComputation>> Lower();
 
  private:
   // Traverses the computation 'root' using a DFS, calling 'visit' in postorder.
@@ -1980,6 +1984,8 @@ class ComputationLowerer {
   const SessionComputation& session_computation_;
   const VersionedComputationHandle::Version version_;
   const UserComputation::HloComputationResolver hlo_resolver_;
+  const DebugOptions& debug_options_;
+  const bool include_unreachable_instructions_;
 };
 
 // Calls 'apply' on each operand of 'request'.
@@ -2273,8 +2279,7 @@ void ComputationLowerer::TraversePostorder(
   }
 }
 
-StatusOr<std::unique_ptr<HloComputation>> ComputationLowerer::Lower(
-    bool include_unreachable_instructions) {
+StatusOr<std::unique_ptr<HloComputation>> ComputationLowerer::Lower() {
   // Map from ComputationDataHandle to HLO instruction. Serves as a record of
   // which operations have been visited as well as a cache for looking up
   // ComputationDataHandles as HloInstructions.
@@ -2290,7 +2295,7 @@ StatusOr<std::unique_ptr<HloComputation>> ComputationLowerer::Lower(
   HloInstruction* hlo_root =
       instructions.at(root_request->output_handle().handle());
 
-  if (include_unreachable_instructions) {
+  if (include_unreachable_instructions_) {
     // Iterate through all computation data handles, and visit any unvisited
     // operations.
     for (int64 request_num = 1; request_num <= version_; ++request_num) {
@@ -2785,8 +2790,7 @@ void ComputationLowerer::Visit(
         lhs = (lhs == operand_to_broadcast) ? broadcasted_operand : lhs;
         rhs = (rhs == operand_to_broadcast) ? broadcasted_operand : rhs;
       }
-      if (legacy_flags::GetUserComputationFlags()
-              ->xla_eliminate_hlo_implicit_broadcast) {
+      if (debug_options_.xla_eliminate_hlo_implicit_broadcast()) {
         if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
           // lhs side is being implicitly broadcast. Change to explicit.
           lhs =
@@ -2845,7 +2849,7 @@ void ComputationLowerer::Visit(
 
 StatusOr<std::unique_ptr<HloComputation>> UserComputation::BuildHloComputation(
     VersionedComputationHandle::Version version,
-    HloComputationResolver hlo_resolver,
+    HloComputationResolver hlo_resolver, const DebugOptions& debug_options,
     bool include_unreachable_instructions) const {
   tensorflow::mutex_lock lock(mutex_);
 
@@ -2857,7 +2861,7 @@ StatusOr<std::unique_ptr<HloComputation>> UserComputation::BuildHloComputation(
       std::unique_ptr<HloComputation> hlo_computation,
       ComputationLowerer::Lower(
           tensorflow::strings::StrCat(name(), ".v", version),
-          session_computation_, version, std::move(hlo_resolver),
+          session_computation_, version, std::move(hlo_resolver), debug_options,
           include_unreachable_instructions));
 
   XLA_VLOG_LINES(2, hlo_computation->ToString());

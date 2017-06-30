@@ -77,9 +77,10 @@ Status OpRegistry::LookUp(const string& op_type_name,
     if (first_unregistered) {
       OpList op_list;
       Export(true, &op_list);
-      VLOG(1) << "All registered Ops:";
-      for (const auto& op : op_list.op()) {
-        VLOG(1) << SummarizeOpDef(op);
+      if (VLOG_IS_ON(3)) {
+         LOG(INFO) << "All registered Ops:";
+         for (const auto& op : op_list.op())
+            LOG(INFO) << SummarizeOpDef(op);
       }
       first_unregistered = false;
     }

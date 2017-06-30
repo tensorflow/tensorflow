@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {
 namespace internal {
@@ -24,10 +25,8 @@ template <typename Device, typename T>
 void TransposeSimple(const Device& d, const Tensor& in,
                      const gtl::ArraySlice<int32> perm, Tensor* out) {
   const int ndims = in.dims();
-  gtl::InlinedVector<int64, 8> in_strides(ndims);
-  ComputeStride(in.shape(), in_strides.data());
-  gtl::InlinedVector<int64, 8> out_strides(ndims);
-  ComputeStride(out->shape(), out_strides.data());
+  gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
+  gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
   const int64 nelem = in.NumElements();
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
@@ -43,20 +42,6 @@ void TransposeSimple(const Device& d, const Tensor& in,
     }
     q[o_idx] = p[i_idx];
   }
-}
-
-template <typename Device, typename T, int NDIMS>
-void TransposeUsingEigen(const Device& d, const Tensor& in,
-                         const gtl::ArraySlice<int32> perm, Tensor* out) {
-  Eigen::array<int, NDIMS> p;
-  for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
-  auto x = typename TTypes<T, NDIMS>::ConstTensor(
-      reinterpret_cast<const T*>(in.tensor_data().data()),
-      in.shape().AsEigenDSizes<NDIMS>());
-  auto y = typename TTypes<T, NDIMS>::Tensor(
-      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
-      out->shape().AsEigenDSizes<NDIMS>());
-  y.device(d) = x.shuffle(p);
 }
 
 }  // end namespace internal
