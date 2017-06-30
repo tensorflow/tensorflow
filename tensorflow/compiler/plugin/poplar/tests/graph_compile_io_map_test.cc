@@ -66,11 +66,9 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   PoplarCompiler compiler;
-  auto hlo_dumper = [](const HloModule& module, const string& label) {};
 
   std::unique_ptr<Executable> executable =
     compiler.Compile(std::move(hlo_module),
-                     hlo_dumper,
                      nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -102,11 +100,9 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   PoplarCompiler compiler;
-  auto hlo_dumper = [](const HloModule& module, const string& label) {};
 
   std::unique_ptr<Executable> executable =
           compiler.Compile(std::move(hlo_module),
-                           hlo_dumper,
                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -139,11 +135,9 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   PoplarCompiler compiler;
-  auto hlo_dumper = [](const HloModule& module, const string& label) {};
 
   std::unique_ptr<Executable> executable =
           compiler.Compile(std::move(hlo_module),
-                           hlo_dumper,
                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -171,11 +165,9 @@ TEST_F(GraphCompileIoMapTest, NoConversion) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   PoplarCompiler compiler;
-  auto hlo_dumper = [](const HloModule& module, const string& label) {};
 
   std::unique_ptr<Executable> executable =
           compiler.Compile(std::move(hlo_module),
-                           hlo_dumper,
                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
@@ -206,11 +198,9 @@ TEST_F(GraphCompileIoMapTest, Int64Conversion) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   PoplarCompiler compiler;
-  auto hlo_dumper = [](const HloModule& module, const string& label) {};
 
   std::unique_ptr<Executable> executable =
           compiler.Compile(std::move(hlo_module),
-                           hlo_dumper,
                            nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
