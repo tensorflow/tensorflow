@@ -95,7 +95,7 @@ We can flatten this array into a vector of 28x28 = 784 numbers. It doesn't
 matter how we flatten the array, as long as we're consistent between images.
 From this perspective, the MNIST images are just a bunch of points in a
 784-dimensional vector space, with a
-[very rich structure](http://colah.github.io/posts/2014-10-Visualizing-MNIST/)
+[very rich structure](https://colah.github.io/posts/2014-10-Visualizing-MNIST/)
 (warning: computationally intensive visualizations).
 
 Flattening the data throws away information about the 2D structure of the image.
@@ -231,7 +231,7 @@ Now let's turn that into something that TensorFlow can use.
 
 
 To do efficient numerical computing in Python, we typically use libraries like
-[NumPy](http://www.numpy.org/) that do expensive operations such as matrix
+[NumPy](http://www.numpy.org) that do expensive operations such as matrix
 multiplication outside Python, using highly efficient code implemented in
 another language.  Unfortunately, there can still be a lot of overhead from
 switching back to Python every operation. This overhead is especially bad if you
@@ -324,7 +324,7 @@ distribution (the one-hot vector with the digit labels).  In some rough sense, t
 cross-entropy is measuring how inefficient our predictions are for describing
 the truth. Going into more detail about cross-entropy is beyond the scope of
 this tutorial, but it's well worth
-[understanding](http://colah.github.io/posts/2015-09-Visual-Information/).
+[understanding](https://colah.github.io/posts/2015-09-Visual-Information).
 
 To implement cross-entropy we need to first add a new placeholder to input the
 correct answers:
@@ -356,7 +356,7 @@ instead.
 Now that we know what we want our model to do, it's very easy to have TensorFlow
 train it to do so.  Because TensorFlow knows the entire graph of your
 computations, it can automatically use the
-[backpropagation algorithm](http://colah.github.io/posts/2015-08-Backprop/) to
+[backpropagation algorithm](https://colah.github.io/posts/2015-08-Backprop) to
 efficiently determine how your variables affect the loss you ask it to
 minimize. Then it can apply your choice of optimization algorithm to modify the
 variables and reduce the loss.
@@ -447,7 +447,7 @@ Is that good? Well, not really. In fact, it's pretty bad. This is because we're
 using a very simple model. With some small changes, we can get to 97%. The best
 models can get to over 99.7% accuracy! (For more information, have a look at
 this
-[list of results](http://rodrigob.github.io/are_we_there_yet/build/classification_datasets_results.html).)
+[list of results](https://rodrigob.github.io/are_we_there_yet/build/classification_datasets_results).)
 
 What matters is that we learned from this model. Still, if you're feeling a bit
 down about these results, check out
