@@ -20,17 +20,12 @@ namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Atanh", functor::atanh, float, double,
           complex64, complex128);
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Atanh")                               \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          UnaryOp<SYCLDevice, functor::atanh<TYPE>>);
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-#undef REGISTER_SYCL_KERNEL
+// {lukeiwanski}: Enable that once Eigen has implementation
+#if 0
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER2(UnaryOp, SYCL, "Atanh", functor::atanh, float, double);
 #endif // TENSORFLOW_USE_SYC
+#endif
 
 #if GOOGLE_CUDA
 REGISTER2(UnaryOp, GPU, "Atanh", functor::atanh, float, double);
