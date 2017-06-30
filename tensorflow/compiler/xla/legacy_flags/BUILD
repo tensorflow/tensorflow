@@ -91,18 +91,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_graph_dumper_flags",
-    srcs = ["hlo_graph_dumper_flags.cc"],
-    hdrs = ["hlo_graph_dumper_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "service_flags",
     srcs = ["service_flags.cc"],
     hdrs = ["service_flags.h"],
@@ -129,18 +117,6 @@ cc_library(
     name = "backend_flags",
     srcs = ["backend_flags.cc"],
     hdrs = ["backend_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "user_computation_flags",
-    srcs = ["user_computation_flags.cc"],
-    hdrs = ["user_computation_flags.h"],
     deps = [
         ":parse_flags_from_env",
         "//tensorflow/compiler/xla:types",

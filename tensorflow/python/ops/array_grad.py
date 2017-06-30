@@ -586,6 +586,12 @@ def _QuantizeAndDequantizeV2Grad(_, grad):
   return [grad, None, None]
 
 
+@ops.RegisterGradient("QuantizeAndDequantizeV3")
+def _QuantizeAndDequantizeV3Grad(_, grad):
+  # Only propagate the gradient for the unquantized input.
+  return [grad, None, None, None]
+
+
 @ops.RegisterGradient("ExtractImagePatches")
 def _ExtractImagePatchesGrad(op, grad):
 

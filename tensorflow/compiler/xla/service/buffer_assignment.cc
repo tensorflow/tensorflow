@@ -67,6 +67,7 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
 
 void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
                                      int64 size) {
+  VLOG(4) << "Trying to add " << buffer << " to " << this;
   CHECK(assigned_buffers_.count(&buffer) == 0)
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
@@ -213,10 +214,14 @@ bool BufferAssignment::HasTopLevelAllocation(
 
 StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
     const HloInstruction* instruction, const ShapeIndex& index) const {
+  VLOG(3) << "Trying to find unique slice for " << instruction->name() << " ["
+          << index << "]";
   BufferAllocation::Slice result;
   for (const LogicalBuffer* buffer :
        GetPointsToSet(instruction).element(index)) {
+    VLOG(3) << "Examining buffer " << *buffer;
     if (HasAllocation(*buffer)) {
+      VLOG(3) << "Has allocation";
       const BufferAllocation::Slice slice =
           GetAssignedAllocation(*buffer).GetSlice(*buffer);
       if (result.allocation() == nullptr) {
@@ -227,6 +232,8 @@ StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
             "be determined at compile-time.",
             instruction->name().c_str(), index.ToString().c_str());
       }
+    } else {
+      VLOG(3) << "No allocation";
     }
   }
   if (result.allocation() == nullptr) {
@@ -1319,8 +1326,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     LogicalBuffer::SizeFunction buffer_size) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
-                      BufferLiveness::Run(module, std::move(hlo_ordering),
-                                          std::move(colorer_)));
+                      BufferLiveness::Run(module, std::move(hlo_ordering)));
 
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
@@ -1340,6 +1346,10 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   std::vector<ColocatedBufferSet> colocated_buffer_sets;
   BuildColocatedBufferSets(module, assignment->liveness(),
                            assignment->buffer_size_, &colocated_buffer_sets);
+  TF_RETURN_IF_ERROR(colorer_(&assignment->mutable_points_to_analysis()));
+  VLOG(3) << "After coloring:";
+  XLA_VLOG_LINES(3, assignment->points_to_analysis().ToString());
+
   AssignColocatedBufferSets(colocated_buffer_sets, assignment.get(),
                             &colocated_buffers, &colocated_allocations);
 
