@@ -103,6 +103,7 @@ tf_gen_op_wrapper_py(
 tf_custom_op_library(
     name = "python/ops/_tensor_forest_ops.so",
     srcs = [
+        ":libgenerated_proto_implementations.so",
         ":v2_op_defs",
         ":v2_op_sources",
     ],
@@ -213,12 +214,12 @@ cc_library(
     name = "model_ops_lib",
     srcs = ["kernels/model_ops.cc"],
     deps = [
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc_headers_only",
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource",
         "//tensorflow/contrib/tensor_forest/kernels/v4:input_data",
-        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -250,9 +251,11 @@ tf_custom_op_library(
     name = "python/ops/_model_ops.so",
     srcs = [
         "ops/model_ops.cc",
+        "//tensorflow/contrib/tensor_forest:libgenerated_proto_implementations.so",
     ],
     deps = [
         ":model_ops_lib",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
     ],
 )
 
@@ -284,7 +287,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest/kernels/v4:input_data",
         "//tensorflow/contrib/tensor_forest/kernels/v4:input_target",
         "//tensorflow/contrib/tensor_forest/kernels/v4:params",
-        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -316,6 +319,7 @@ tf_custom_op_library(
     name = "python/ops/_stats_ops.so",
     srcs = [
         "ops/stats_ops.cc",
+        "//tensorflow/contrib/tensor_forest:libgenerated_proto_implementations.so",
     ],
     deps = [
         ":stats_ops_lib",
@@ -350,6 +354,19 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf//:protobuf_headers",
+    ],
+)
+
+cc_binary(
+    name = "libgenerated_proto_implementations.so",
+    srcs = ["//tensorflow/core:libframework.so"],
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
     ],
 )
 
