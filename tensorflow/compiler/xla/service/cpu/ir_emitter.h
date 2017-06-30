@@ -423,6 +423,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
 
+  // Emit IR to transfer an infeed buffer to the target address.
+  Status EmitInfeedTransfer(int64 length, llvm::Value* target_address);
+
   const HloModuleConfig& hlo_module_config_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
