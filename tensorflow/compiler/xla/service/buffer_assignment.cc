@@ -327,8 +327,9 @@ void BufferAssignment::CombineTempAllocations() {
       // Each temp allocation is placed end-to-end, accounting for alignment.
       // The offset of each buffer in the combined allocation is computed from
       // the base offset of the allocation.
+      int64 alignment = color_alignment_(color);
       const int64 base =
-          RoundUpToNearest(combined_allocation->size(), alignment_);
+          RoundUpToNearest(combined_allocation->size(), alignment);
       combined_allocation->set_size(base + temp_allocation.size());
       for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
         const LogicalBuffer* buffer = buffer_offset_size.first;
@@ -582,12 +583,13 @@ Status GatherComputationsByAllocationType(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+    LogicalBuffer::SizeFunction buffer_size,
+    LogicalBuffer::AlignmentFunction color_alignment,
     bool allow_input_output_aliasing, TuplePointsToAnalysis::Colorer colorer) {
-  BufferAssigner assigner(alignment, allow_input_output_aliasing,
-                          std::move(colorer));
+  BufferAssigner assigner(allow_input_output_aliasing, std::move(colorer));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
-                                   std::move(buffer_size));
+                                   std::move(buffer_size),
+                                   std::move(color_alignment));
 }
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
@@ -944,11 +946,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     }
     auto color_map = SplitBuffersByColor(all_buffers_to_assign);
     for (auto& single_colored_set : color_map) {
-      VLOG(2) << "Simulating heap for color " << single_colored_set.first;
+      auto color = single_colored_set.first;
+      VLOG(2) << "Simulating heap for color " << color;
+      int64 alignment = assignment->color_alignment_(color);
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
           HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                 MakeUnique<LazyBestFitHeap>(alignment_)),
+                                 MakeUnique<LazyBestFitHeap>(alignment)),
                              assignment->module(), module_sequence,
                              assignment->points_to_analysis(),
                              assignment->buffer_size_,
@@ -969,11 +973,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       CHECK(instruction_sequence != nullptr) << computation->name();
       auto color_map = SplitBuffersByColor(buffers_to_assign);
       for (auto& single_colored_set : color_map) {
-        VLOG(2) << "Simulating heap for color " << single_colored_set.first;
+        auto color = single_colored_set.first;
+        VLOG(2) << "Simulating heap for color " << color;
+        int64 alignment = assignment->color_alignment_(color);
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                   MakeUnique<LazyBestFitHeap>(alignment_)),
+                                   MakeUnique<LazyBestFitHeap>(alignment)),
                                *computation, *instruction_sequence,
                                assignment->points_to_analysis(),
                                assignment->buffer_size_,
@@ -1322,7 +1328,8 @@ void BufferAssigner::AssignColocatedBufferSets(
 
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size) {
+    LogicalBuffer::SizeFunction buffer_size,
+    LogicalBuffer::AlignmentFunction color_alignment) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
                       BufferLiveness::Run(module, std::move(hlo_ordering)));
 
@@ -1332,8 +1339,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
 
   // Can't use MakeUnique because BufferAssignment constructor is private.
-  std::unique_ptr<BufferAssignment> assignment(new BufferAssignment(
-      module, std::move(liveness), alignment_, std::move(buffer_size)));
+  std::unique_ptr<BufferAssignment> assignment(
+      new BufferAssignment(module, std::move(liveness), std::move(buffer_size),
+                           std::move(color_alignment)));
 
   // Assign buffers with the tightest constraints first (colocated buffer sets).
   // Once b/32491382 enables module-level liveness analysis, we may be able
