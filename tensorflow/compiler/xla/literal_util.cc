@@ -1003,7 +1003,7 @@ tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice<half>() {
   //        support in protobuf
   auto values = mutable_f16s();
   return tensorflow::gtl::MutableArraySlice<half>(
-      reinterpret_cast<half*>(&(*values)[0]), values->size() / sizeof(half));
+      reinterpret_cast<half*>(&(*values)[0]), values->size());
 }
 
 template <>
