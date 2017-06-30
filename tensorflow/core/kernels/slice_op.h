@@ -21,20 +21,93 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {
 
 namespace internal {
 
+#if GOOGLE_CUDA
+
+#include "tensorflow/core/util/cuda_kernel_helper.h"
+
+template <typename T>
+__global__ void SliceKernel(int nthreads, const T* src, const int32* buf,
+                            const int32 ndims, T* dst) {
+  const int32* in_strides = buf;
+  const int32* out_strides = buf + ndims;
+  const int32* slice_indices = buf + ndims * 2;
+  CUDA_1D_KERNEL_LOOP(o_idx, nthreads) {
+    int32 i_idx = 0;
+    int32 t = o_idx;
+    for (int i = 0; i < ndims; ++i) {
+      i_idx += (t / out_strides[i] + slice_indices[i]) * in_strides[i];
+      t %= out_strides[i];
+    }
+    dst[o_idx] = ldg(src + i_idx);
+  }
+}
+
 template <typename Device, typename T>
 void SliceSimple(const Device& d, Tensor* out, const Tensor& in,
-                 const gtl::ArraySlice<int64>& slice_indices);
+                 const gtl::ArraySlice<int64>& slice_indices) {
+  // Ensures we can use 32-bit index.
+  const int64 in_nelem = in.NumElements();
+  CHECK_LT(in_nelem, kint32max) << "Tensor too large to transpose on GPU";
+  const int64 out_nelem = out->NumElements();
+  CHECK_LT(out_nelem, kint32max) << "Tensor too large to transpose on GPU";
+  // Pack strides and slice indices sizes into one buffer.
+  const int32 ndims = in.dims();
+  gtl::InlinedVector<int32, 24> host_buf(ndims * 3);
+  gtl::InlinedVector<int32, 8> in_strides = ComputeStride<int32>(in.shape());
+  gtl::InlinedVector<int32, 8> out_strides = ComputeStride<int32>(out->shape());
+  for (int i = 0; i < ndims; ++i) {
+    host_buf[i] = in_strides[i];
+    host_buf[ndims + i] = out_strides[i];
+    host_buf[ndims * 2 + i] = slice_indices[i];
+  }
+  auto num_bytes = sizeof(int64) * host_buf.size();
+  auto dev_buf = d.allocate(num_bytes);
+  // NOTE: host_buf is not allocated by CudaHostAllocator, and
+  // therefore we are doing a sync copy effectively.
+  d.memcpyHostToDevice(dev_buf, host_buf.data(), num_bytes);
+  // Launch kernel to q[...] = p[...].
+  const T* p = in.flat<T>().data();
+  T* q = out->flat<T>().data();
+  CudaLaunchConfig cfg = GetCudaLaunchConfig(out_nelem, d);
+  SliceKernel<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
+      cfg.virtual_thread_count, p, reinterpret_cast<const int32*>(dev_buf),
+      ndims, q);
+  // Safe to deallocate immediately after the kernel launch.
+  d.deallocate(dev_buf);
+}
+#else
+template <typename Device, typename T>
+void SliceSimple(const Device& d, Tensor* out, const Tensor& in,
+                 const gtl::ArraySlice<int64>& slice_indices) {
+  const int ndims = in.dims();
+  const int64 nelem = out->NumElements();
+  gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
+  gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
+  const T* p = in.flat<T>().data();
+  T* q = out->flat<T>().data();
+
+  for (int64 o_idx = 0; o_idx < nelem; ++o_idx) {
+    int64 i_idx = 0;
+    int64 t = o_idx;
+    for (int i = 0; i < ndims; ++i) {
+      i_idx += (t / out_strides[i] + slice_indices[i]) * in_strides[i];
+      t %= out_strides[i];
+    }
+    q[o_idx] = p[i_idx];
+  }
+}
+#endif
 
 template <typename Device, typename T, int NDIMS>
 void SliceUsingEigen(const Device& d, Tensor* out, const Tensor& in,
                  const gtl::ArraySlice<int64>& slice_indices,
                  const gtl::ArraySlice<int64>& slice_sizes) {
-
   auto input = in.tensor<T, NDIMS>();
   auto output = out->tensor<T, NDIMS>();
   Eigen::DSizes<int, NDIMS> indices;
