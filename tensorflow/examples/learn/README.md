@@ -19,7 +19,6 @@ processing (`sudo pip install pandas`).
 
 ## Techniques
 
-* [Using skflow with Pipeline]( https://www.tensorflow.org/code/tensorflow/examples/learn/iris_with_pipeline.py)
 * [Deep Neural Network with Customized Decay Function]( https://www.tensorflow.org/code/tensorflow/examples/learn/iris_custom_decay_dnn.py)
 
 ## Specialized Models

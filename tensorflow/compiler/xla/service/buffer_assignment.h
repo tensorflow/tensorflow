@@ -320,6 +320,10 @@ class BufferAssignment {
     return liveness_->points_to_analysis();
   }
 
+  TuplePointsToAnalysis& mutable_points_to_analysis() const {
+    return liveness_->mutable_points_to_analysis();
+  }
+
   // Returns the BufferLiveness object used to construct this assignment.
   const BufferLiveness& liveness() const { return *liveness_; }
 

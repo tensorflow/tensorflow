@@ -587,14 +587,19 @@ void HloComputation::ReachabilityMap::SetReachableAndTransitiveClosure(
 }
 
 std::unique_ptr<HloComputation::ReachabilityMap>
-HloComputation::ComputeTransitiveOperands() const {
-  const auto all = MakeInstructionPostOrder();
+HloComputation::ComputeReachability() const {
+  const std::list<HloInstruction*> all = MakeInstructionPostOrder();
   auto result = MakeUnique<HloComputation::ReachabilityMap>(all);
 
-  // Fill in the dependency bit matrix
-  for (const auto* hlo : all) {
+  // Fill in the dependency bit matrix. Iterate in reverse topological order.
+  for (auto it = all.rbegin(); it != all.rend(); ++it) {
+    const HloInstruction* hlo = *it;
+    result->SetReachable(hlo, hlo);
     for (const HloInstruction* operand : hlo->operands()) {
-      result->SetReachableAndTransitiveClosure(hlo, operand);
+      result->SetReachableAndTransitiveClosure(operand, hlo);
+    }
+    for (const HloInstruction* pred : hlo->control_predecessors()) {
+      result->SetReachableAndTransitiveClosure(pred, hlo);
     }
   }
   return result;

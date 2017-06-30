@@ -714,8 +714,13 @@ if is_windows; then
   write_to_bazelrc "test --config=win-cuda"
 else
   # If CUDA is enabled, always use GPU during build and test.
-  write_to_bazelrc "build --config=cuda"
-  write_to_bazelrc "test --config=cuda"
+  if [ "$TF_CUDA_CLANG" == "1" ]; then
+    write_to_bazelrc "build --config=cuda_clang"
+    write_to_bazelrc "test --config=cuda_clang"
+  else
+    write_to_bazelrc "build --config=cuda"
+    write_to_bazelrc "test --config=cuda"
+  fi
 fi
 
 # end of if "$TF_NEED_CUDA" == "1"

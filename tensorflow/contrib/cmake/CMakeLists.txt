@@ -121,6 +121,7 @@ include(farmhash)
 include(fft2d)
 include(highwayhash)
 include(protobuf)
+include(re2)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -136,6 +137,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
+    ${re2_STATIC_LIBRARIES}
 )
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
@@ -150,6 +152,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     eigen
     gemmlowp
     fft2d
+    re2
 )
 
 include_directories(
@@ -168,6 +171,7 @@ include_directories(
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
+    ${re2_INCLUDE_DIR}
 )
 
 if(tensorflow_ENABLE_SSL_SUPPORT)

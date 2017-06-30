@@ -128,6 +128,7 @@ file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_PYTHON(
     ${tensorflow_source_dir} PYTHON_PROTO_GENFILES ${tf_protos_python_srcs}
@@ -141,6 +142,7 @@ file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_python_protos_cc_srcs}
@@ -523,10 +525,10 @@ add_python_module("tensorflow/contrib/text/kernels")
 add_python_module("tensorflow/contrib/text/ops")
 add_python_module("tensorflow/contrib/text/python")
 add_python_module("tensorflow/contrib/text/python/ops")
-add_python_module("tensorflow/contrib/tfprof" DONTCOPY)  # SWIG wrapper not implemented.
-#add_python_module("tensorflow/contrib/tfprof/python")
-#add_python_module("tensorflow/contrib/tfprof/python/tools")
-#add_python_module("tensorflow/contrib/tfprof/python/tools/tfprof")
+add_python_module("tensorflow/contrib/tfprof/python")
+add_python_module("tensorflow/contrib/tfprof/python/tools")
+add_python_module("tensorflow/contrib/tfprof/python/tools/tfprof")
+add_python_module("tensorflow/contrib/tfprof/python/tools/tfprof/internal")
 add_python_module("tensorflow/contrib/tpu")
 add_python_module("tensorflow/contrib/tpu/ops")
 add_python_module("tensorflow/contrib/tpu/python")
@@ -733,6 +735,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
     "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/print_model_analysis.h"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/print_model_analysis.cc"
 )
 
 if(WIN32)
@@ -756,6 +760,7 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
         $<TARGET_OBJECTS:tf_grappler>
+        $<TARGET_OBJECTS:tf_tools_tfprof>
         $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
         $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
         $<TARGET_OBJECTS:tf_core_kernels>
@@ -803,6 +808,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_grappler>
+    $<TARGET_OBJECTS:tf_tools_tfprof>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>

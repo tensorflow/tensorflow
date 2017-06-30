@@ -49,7 +49,6 @@ test iris
 test iris_custom_decay_dnn
 test iris_custom_model
 test iris_run_config
-test iris_with_pipeline
 test random_forest_mnist
 test resnet
 test text_classification --test_with_fake_data
