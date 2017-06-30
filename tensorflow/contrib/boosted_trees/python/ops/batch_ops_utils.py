@@ -68,11 +68,12 @@ def _move_tensors(tensors, device):
         return array_ops.unstack(values)
     else:
       with ops.device(tensors[0].device):
-        sizes = array_ops.stack([array_ops.size(tensor) for tensor in tensors])
+        sizes = array_ops.stack(
+            [array_ops.shape(tensor)[0] for tensor in tensors])
         values = array_ops.concat(tensors, axis=0)
       with ops.device(device):
         sizes = array_ops.unstack(sizes)
-        return list(array_ops.split(values, sizes))
+        return list(array_ops.split(values, sizes, axis=0))
 
 
 def _scheduled_stamp_resource_op_runner(batch, stamp):
@@ -90,8 +91,10 @@ def _scheduled_stamp_resource_op_runner(batch, stamp):
       grouped_args[key].append(op.args[key])
     resource_handles.append(op.resource_handle)
   # Move all the inputs to the op device in one RPC.
-  grouped_args = {k: _move_tensors(v, resource_handles[0].device)
-                  for k, v in grouped_args.items()}
+  grouped_args = {
+      k: _move_tensors(v, resource_handles[0].device)
+      for k, v in grouped_args.items()
+  }
   with ops.device(resource_handles[0].device):
     return batch[0].op(resource_handles, stamp, **grouped_args)
 
@@ -110,8 +113,8 @@ def run_handler_scheduled_ops(per_handler_ops, stamp, worker_device):
     results = batch[0].batch_runner_fn()(batch, stamp)
     # If the result is a tuple, move each entry in the tuple in one RPC.
     if isinstance(results, tuple):
-      results = tuple(_move_tensors(result, worker_device) for result in
-                      results)
+      results = tuple(
+          _move_tensors(result, worker_device) for result in results)
       # Once all the results are on the worker, create individual tuple for
       # each scheduled op request.
       for i in range(len(batch)):

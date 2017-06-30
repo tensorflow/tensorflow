@@ -85,11 +85,10 @@ REGISTER_OP("ParseExample")
       }
 
       // Output dense_shapes.
-      TensorShapeProto shape_proto;
       for (int i = 0; i < attrs.num_dense; ++i) {
-        attrs.dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle dense;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &dense));
+        TF_RETURN_IF_ERROR(
+            c->MakeShapeFromPartialTensorShape(attrs.dense_shapes[i], &dense));
         TF_RETURN_IF_ERROR(c->Concatenate(input, dense, &dense));
         c->set_output(output_idx++, dense);
       }
@@ -196,11 +195,10 @@ REGISTER_OP("ParseSingleSequenceExample")
       }
 
       // Output context_dense_shapes.
-      TensorShapeProto shape_proto;
       for (int i = 0; i < attrs.num_context_dense; ++i) {
-        attrs.context_dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            attrs.context_dense_shapes[i], &s));
         c->set_output(output_idx++, s);
       }
 
@@ -218,9 +216,9 @@ REGISTER_OP("ParseSingleSequenceExample")
 
       // Output feature_list_dense_shapes.
       for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
-        attrs.feature_list_dense_shapes[i].AsProto(&shape_proto);
         ShapeHandle s;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            attrs.feature_list_dense_shapes[i], &s));
         TF_RETURN_IF_ERROR(
             c->Concatenate(c->Vector(InferenceContext::kUnknownDim), s, &s));
         c->set_output(output_idx++, s);

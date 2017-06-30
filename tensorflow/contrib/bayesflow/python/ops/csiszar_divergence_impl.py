@@ -389,7 +389,7 @@ def pearson(logu, name=None):
 
 
 def squared_hellinger(logu, name=None):
-  """The Amari-alpha Csiszar-function in log-space.
+  """The Squared-Hellinger Csiszar-function in log-space.
 
   A Csiszar-function is a member of,
 
@@ -424,7 +424,7 @@ def squared_hellinger(logu, name=None):
 
 
 def triangular(logu, name=None):
-  """The Amari-alpha Csiszar-function in log-space.
+  """The Triangular Csiszar-function in log-space.
 
   A Csiszar-function is a member of,
 

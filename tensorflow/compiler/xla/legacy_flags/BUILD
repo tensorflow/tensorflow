@@ -103,17 +103,6 @@ cc_library(
 )
 
 cc_library(
-    name = "buffer_assignment_flags",
-    srcs = ["buffer_assignment_flags.cc"],
-    hdrs = ["buffer_assignment_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "backend_flags",
     srcs = ["backend_flags.cc"],
     hdrs = ["backend_flags.h"],
