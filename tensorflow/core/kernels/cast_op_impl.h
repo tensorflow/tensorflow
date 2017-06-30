@@ -177,8 +177,7 @@ GetSyclCastFromFloat(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetSyclCastFromDouble(DataType dst_dtype);
-
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
 

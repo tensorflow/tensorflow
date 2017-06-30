@@ -56,6 +56,6 @@ GetSyclCastFromFloat(DataType dst_dtype) {
   CURRY_TYPES3_NO_HALF(CAST_CASE, SYCLDevice, float);
   return nullptr;
 }
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
