@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
@@ -518,10 +517,9 @@ namespace {
 
 class FileGraphRenderer : public GraphRendererInterface {
  public:
-  string RenderGraph(const string& graph, GraphKind graph_kind) override {
+  string RenderGraph(const string& graph, GraphKind graph_kind,
+                     const DebugOptions& debug_options) override {
     static std::atomic<int> output_num(0);
-    legacy_flags::HloGraphDumperFlags* flags =
-        legacy_flags::GetHloGraphDumperFlags();
     string file_extension;
     switch (graph_kind) {
       case DOT_GRAPH:
@@ -532,7 +530,7 @@ class FileGraphRenderer : public GraphRendererInterface {
         break;
     }
     string path =
-        JoinPath(flags->xla_hlo_dump_graph_path,
+        JoinPath(debug_options.xla_hlo_graph_path(),
                  StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
     auto status = Status::OK();
     int fd = mkstemps(&path[0], file_extension.length());
@@ -558,13 +556,11 @@ XLA_REGISTER_GRAPH_RENDERER(FileGraphRenderer, 0);
 }  // namespace
 
 string DumpGraph(const HloComputation& computation, const string& label,
-                 bool show_addresses, bool show_layouts,
+                 const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile) {
   string graph;
   string graph_url;
-  legacy_flags::HloGraphDumperFlags* flags =
-      legacy_flags::GetHloGraphDumperFlags();
-  if (flags->xla_hlo_dump_as_graphdef) {
+  if (debug_options.xla_hlo_dump_as_graphdef()) {
     HloTfGraphBuilder builder;
     TF_CHECK_OK(builder.AddComputation(computation));
     CHECK(tensorflow::protobuf::TextFormat::PrintToString(builder.GetGraphDef(),
@@ -573,12 +569,13 @@ string DumpGraph(const HloComputation& computation, const string& label,
     // renderers support rendering GraphDefs. Always dump GraphDefs to files
     // for now.
     graph_url = FileGraphRenderer().RenderGraph(
-        graph, GraphRendererInterface::TF_GRAPHDEF);
+        graph, GraphRendererInterface::TF_GRAPHDEF, debug_options);
   } else {
-    graph = ComputationToDotGraph(computation, label, show_addresses,
-                                  show_layouts, hlo_execution_profile);
+    graph = ComputationToDotGraph(
+        computation, label, debug_options.xla_hlo_graph_addresses(),
+        debug_options.xla_hlo_graph_layout(), hlo_execution_profile);
     graph_url = GetGraphRenderer()->RenderGraph(
-        graph, GraphRendererInterface::DOT_GRAPH);
+        graph, GraphRendererInterface::DOT_GRAPH, debug_options);
   }
   LOG(INFO) << "computation " << computation.name() << " [" << label
             << "]: " << graph_url;
@@ -605,9 +602,8 @@ string MaybeDumpHloModule(const HloModule& module, const string& label,
   if (!debug_options.xla_generate_hlo_graph().empty() &&
       RE2::PartialMatch(module.name(),
                         debug_options.xla_generate_hlo_graph())) {
-    graph_url = DumpGraph(*module.entry_computation(), label,
-                          debug_options.xla_hlo_graph_addresses(),
-                          debug_options.xla_hlo_graph_layout(), profile);
+    graph_url =
+        DumpGraph(*module.entry_computation(), label, debug_options, profile);
   }
   if (!debug_options.xla_log_hlo_text().empty() &&
       RE2::PartialMatch(module.name(), debug_options.xla_log_hlo_text())) {

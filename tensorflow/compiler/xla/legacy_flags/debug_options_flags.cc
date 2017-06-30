@@ -27,6 +27,8 @@ struct DebugOptionsFlags {
   string xla_generate_hlo_graph;
   bool xla_hlo_graph_addresses;
   bool xla_hlo_graph_layout;
+  string xla_hlo_graph_path;
+  bool xla_hlo_dump_as_graphdef;
   string xla_log_hlo_text;
   string xla_generate_hlo_text_to;
 
@@ -39,6 +41,7 @@ struct DebugOptionsFlags {
   bool xla_embed_ir_in_executable;
   string xla_dump_ir_to;
   string xla_dump_debug_json_to;
+  bool xla_eliminate_hlo_implicit_broadcast;
 
   bool xla_cpu_multi_thread_eigen;
 
@@ -61,6 +64,8 @@ void AllocateFlags() {
   flag_values->xla_generate_hlo_graph = "";
   flag_values->xla_hlo_graph_addresses = false;
   flag_values->xla_hlo_graph_layout = false;
+  flag_values->xla_hlo_graph_path = "/tmp/";
+  flag_values->xla_hlo_dump_as_graphdef = false;
   flag_values->xla_log_hlo_text = "";
   flag_values->xla_generate_hlo_text_to = "";
   flag_values->xla_disable_hlo_passes = "";
@@ -72,6 +77,7 @@ void AllocateFlags() {
   flag_values->xla_embed_ir_in_executable = false;
   flag_values->xla_dump_ir_to = "";
   flag_values->xla_dump_debug_json_to = "";
+  flag_values->xla_eliminate_hlo_implicit_broadcast = false;
   flag_values->xla_cpu_multi_thread_eigen = true;
   flag_values->xla_gpu_cuda_data_dir = "./cuda_sdk_lib";
   flag_values->xla_gpu_ftz = false;
@@ -90,6 +96,12 @@ void AllocateFlags() {
            "xla_hlo_graph_layout", &flag_values->xla_hlo_graph_layout,
            "With xla_generate_hlo_graph, show layout of HLO ops in "
            "graph dump."),
+       tensorflow::Flag(
+           "xla_hlo_graph_path", &flag_values->xla_hlo_graph_path,
+           "With xla_generate_hlo_graph, dump the graphs into this path."),
+       tensorflow::Flag("xla_hlo_dump_as_graphdef",
+                        &flag_values->xla_hlo_dump_as_graphdef,
+                        "Dump HLO graphs as TensorFlow GraphDefs."),
        tensorflow::Flag(
            "xla_log_hlo_text", &flag_values->xla_log_hlo_text,
            "HLO modules matching this regex will be dumped to LOG(INFO). "),
@@ -127,6 +139,11 @@ void AllocateFlags() {
                         "Embed the compiler IR as a string in the executable."),
        tensorflow::Flag("xla_dump_ir_to", &flag_values->xla_dump_ir_to,
                         "Dump the compiler IR into this file/path."),
+       tensorflow::Flag("xla_eliminate_hlo_implicit_broadcast",
+                        &flag_values->xla_eliminate_hlo_implicit_broadcast,
+                        "Eliminate implicit broadcasts when lowering user "
+                        "computations to HLO instructions; use explicit "
+                        "broadcast instead."),
        tensorflow::Flag("xla_cpu_multi_thread_eigen",
                         &flag_values->xla_cpu_multi_thread_eigen,
                         "When generating calls to Eigen in the CPU backend, "
@@ -166,6 +183,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_generate_hlo_graph(flag_values->xla_generate_hlo_graph);
   options.set_xla_hlo_graph_addresses(flag_values->xla_hlo_graph_addresses);
   options.set_xla_hlo_graph_layout(flag_values->xla_hlo_graph_layout);
+  options.set_xla_hlo_graph_path(flag_values->xla_hlo_graph_path);
   options.set_xla_log_hlo_text(flag_values->xla_log_hlo_text);
   options.set_xla_generate_hlo_text_to(flag_values->xla_generate_hlo_text_to);
 
@@ -181,6 +199,8 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_embed_ir_in_executable(
       flag_values->xla_embed_ir_in_executable);
   options.set_xla_dump_ir_to(flag_values->xla_dump_ir_to);
+  options.set_xla_eliminate_hlo_implicit_broadcast(
+      flag_values->xla_eliminate_hlo_implicit_broadcast);
   options.set_xla_dump_debug_json_to(flag_values->xla_dump_debug_json_to);
   options.set_xla_cpu_multi_thread_eigen(
       flag_values->xla_cpu_multi_thread_eigen);

@@ -68,8 +68,8 @@ class HloOrdering {
   std::unique_ptr<CallGraph> call_graph_;
 };
 
-// Base class for partial orderings implemented by a map of strict predecessors
-// for each instruction. Subclasses should fill in strict_predecessors_.
+// Base class for partial orderings implemented by a map of predecessors for
+// each instruction. Subclasses should fill in predecessors_.
 class PredecessorHloOrdering : public HloOrdering {
  public:
   ~PredecessorHloOrdering() override = default;
@@ -89,13 +89,12 @@ class PredecessorHloOrdering : public HloOrdering {
                                        const HloInstruction* b) const override;
 
   // For each computation in the module, this is the set of the instruction's
-  // strict predecessors. An instruction is not an element of its own strict
-  // predecessor set.
+  // predecessors. An instruction is an element of its own predecessor set.
   //
   // Subclasses should fill this in to define the desired ordering.
   tensorflow::gtl::FlatMap<const HloComputation*,
                            std::unique_ptr<HloComputation::ReachabilityMap>>
-      strict_predecessors_;
+      predecessors_;
 };
 
 // An HLO ordering based on data dependencies in the HLO graph. In this partial

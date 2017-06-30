@@ -95,17 +95,6 @@ class ProfilerTest(test.TestCase):
       pma_str = f.read()
     self.assertEqual(pma_str, profiler_str)
 
-    # Test the output difference between multi-step profile and 1-step profile.
-    _ = sess.run(r,
-                 options=config_pb2.RunOptions(
-                     trace_level=config_pb2.RunOptions.FULL_TRACE),
-                 run_metadata=run_meta)
-
-    profiler.add_step(2, run_meta)
-    profiler.profile_name_scope(opts)
-    with gfile.Open(outfile, 'r') as f:
-      profiler_str = f.read()
-
     model_analyzer.print_model_analysis(
         sess.graph, tfprof_cmd='scope', run_meta=run_meta, tfprof_options=opts)
     with gfile.Open(outfile, 'r') as f:
