@@ -3873,7 +3873,7 @@ class _DefaultStack(threading.local):
   def reset(self):
     self.stack = []
 
-  def is_cleared():
+  def is_cleared(self):
     return self.stack == []
 
   @property
