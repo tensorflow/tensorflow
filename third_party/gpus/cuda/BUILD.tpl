@@ -94,8 +94,8 @@ cc_library(
     srcs = ["lib/%{cusolver_lib}"],
     data = ["lib/%{cusolver_lib}"],
     includes = ["include"],
-    linkstatic = 1,
     linkopts = ["-lgomp"],
+    linkstatic = 1,
     visibility = ["//visibility:public"],
 )
 
@@ -129,9 +129,9 @@ cc_library(
 cc_library(
     name = "cuda",
     deps = [
+        ":cublas",
         ":cuda_headers",
         ":cudart",
-        ":cublas",
         ":cudnn",
         ":cufft",
         ":curand",

@@ -33,6 +33,9 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const auto& node : item.fetch) {
     nodes_to_preserve.insert(NodeName(node));
   }
+  for (const auto& feed : item.feed) {
+    nodes_to_preserve.insert(NodeName(feed.first));
+  }
   for (const auto& node : item.init_ops) {
     nodes_to_preserve.insert(NodeName(node));
   }
