@@ -2161,7 +2161,7 @@ tf_cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "lib_jpeg_jpeg_mem_unittest",
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
     data = glob(["lib/jpeg/testdata/*.jpg"]),
@@ -2174,10 +2174,10 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "lib_strings_ordered_code_test",
     srcs = ["lib/strings/ordered_code_test.cc"],
-    copts = ["$(STACK_FRAME_UNLIMITED)"],  # Tests initialize large vectors
+    extra_copts = ["$(STACK_FRAME_UNLIMITED)"],  # Tests initialize large vectors
     deps = [
         ":lib",
         ":lib_internal",
@@ -2186,7 +2186,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "lib_random_weighted_picker_test",
     size = "medium",
     srcs = ["lib/random/weighted_picker_test.cc"],
@@ -2926,7 +2926,7 @@ tf_cc_tests(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "example_example_parser_configuration_test",
     size = "small",
     srcs = ["example/example_parser_configuration_test.cc"],
