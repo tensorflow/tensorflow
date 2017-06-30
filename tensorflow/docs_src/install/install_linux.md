@@ -276,13 +276,8 @@ take the following steps:
      the following command:
 
      <pre>
-<<<<<<< HEAD
-     $ <b>sudo pip install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.0-cp27-none-linux_x86_64.whl</b>
-=======
      $ <b>sudo pip3 install --upgrade \
      https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.1-cp34-cp34m-linux_x86_64.whl</b>
->>>>>>> google/r1.2
      </pre>
 
      If this step fails, see
@@ -469,11 +464,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
 
      <pre>
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
-<<<<<<< HEAD
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.0-cp27-none-linux_x86_64.whl</b></pre>
-=======
      https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.1-cp34-cp34m-linux_x86_64.whl</b></pre>
->>>>>>> google/r1.2
 
 
 <a name="ValidateYourInstallation"></a>
