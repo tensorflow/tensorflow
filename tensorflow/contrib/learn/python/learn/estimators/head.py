@@ -37,7 +37,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-#from tensorflow.python.ops import logging_ops
 from tensorflow.python import summary as logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
