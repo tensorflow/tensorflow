@@ -72,6 +72,8 @@ bool IsReduction(const NodeDef& node) {
          op == "Mean" || op == "Any" || op == "All";
 }
 
+bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
+
 bool IsSend(const NodeDef& node) {
   const auto op = node.op();
   return op == "_Send";

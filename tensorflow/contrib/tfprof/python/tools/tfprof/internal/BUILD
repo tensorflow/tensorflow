@@ -28,26 +28,11 @@ py_library(
     ],
 )
 
-tf_py_wrap_cc(
-    name = "pywrap_tensorflow_print_model_analysis_lib",
-    srcs = ["pywrap_tensorflow_print_model_analysis.i"],
-    swig_includes = [
-        "//tensorflow/python:lib/core/strings.i",
-        "//tensorflow/python:platform/base.i",
-    ],
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/tools/tfprof/internal:print_model_analysis_hdr",
-        "//util/python:python_headers",
-    ],
-)
-
 py_test(
     name = "print_model_analysis_test",
     srcs = ["print_model_analysis_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":pywrap_tensorflow_print_model_analysis_lib",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -56,6 +41,7 @@ py_test(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:variable_scope",
         "//tensorflow/tools/tfprof:protos_all_py",
     ],

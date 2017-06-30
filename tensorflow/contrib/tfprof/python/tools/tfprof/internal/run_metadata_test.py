@@ -116,7 +116,7 @@ class RunMetadataTest(test.TestCase):
     with ops.device('/cpu:0'):
       tfprof_node, run_meta = _run_model()
       self.assertEqual(tfprof_node.children[0].name, 'MatMul')
-      self.assertGreater(tfprof_node.children[0].exec_micros, 10)
+      self.assertGreater(tfprof_node.children[0].exec_micros, 0)
 
     ret = _extract_node(run_meta, 'MatMul')
     self.assertEqual(len(ret), 1)

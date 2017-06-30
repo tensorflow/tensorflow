@@ -48,10 +48,6 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
     }
-    // Don't remove nodes that are explicitly placed.
-    if (!node.device().empty()) {
-      continue;
-    }
     // Don't remove nodes that drive control dependencies.
     // Don't remove nodes that are driven by control dependencies either since
     // we can't ensure (yet) that we won't increase the number of control

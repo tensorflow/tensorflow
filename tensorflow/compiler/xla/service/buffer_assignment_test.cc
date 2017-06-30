@@ -379,12 +379,15 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunColoredBufferAssignment(
-      module.get(),
-      [](const HloInstruction* instruction, const ShapeIndex& index) {
-        static int64 serial = 0;
-        return LogicalBuffer::Color(serial++);
-      });
+  auto colorer = [](TuplePointsToAnalysis* points_to_analysis) {
+    int color = 0;
+    for (auto& buffer : points_to_analysis->logical_buffers()) {
+      buffer->set_color(LogicalBuffer::Color(color++));
+    }
+    return Status::OK();
+  };
+
+  auto buffers = RunColoredBufferAssignment(module.get(), colorer);
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -431,14 +434,23 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunColoredBufferAssignment(
-      module.get(),
-      [](const HloInstruction* instruction, const ShapeIndex& index) {
-        return (instruction->opcode() == HloOpcode::kAdd ||
-                instruction->opcode() == HloOpcode::kMultiply)
-                   ? LogicalBuffer::Color(1)
-                   : LogicalBuffer::Color(0);
-      });
+  auto colorer = [](TuplePointsToAnalysis* points_to_analysis) {
+    for (auto& buffer : points_to_analysis->logical_buffers()) {
+      const auto& aliases = points_to_analysis->GetBufferAliases(*buffer);
+      for (const auto& alias : aliases) {
+        if (alias.instruction()->opcode() == HloOpcode::kAdd ||
+            alias.instruction()->opcode() == HloOpcode::kMultiply) {
+          buffer->set_color(LogicalBuffer::Color(1));
+        }
+      }
+      if (!buffer->has_color()) {
+        buffer->set_color(LogicalBuffer::Color(0));
+      }
+    }
+    return Status::OK();
+  };
+
+  auto buffers = RunColoredBufferAssignment(module.get(), colorer);
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =

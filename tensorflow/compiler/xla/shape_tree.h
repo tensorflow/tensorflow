@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -81,19 +82,56 @@ struct ShapeTreeNode {
 // Like the Shape data structure, this is a tree and tuple elements cannot be
 // duplicated. That is, every distinct ShapeIndex in the Shape has a unique T
 // object.
+//
+// Normally a ShapeTree owns its Shape, but for efficiency reasons, sometimes
+// it's helpful not to copy a Shape just to make a ShapeTree.  In these cases,
+// you can pass a Shape* instead of a Shape& to the ShapeTree constructor.  It's
+// then up to you to ensure that the pointed-to Shape doesn't die or mutate
+// before its ShapeTree goes away.
 template <typename T>
 class ShapeTree {
  public:
   // Default constructor creates a tree with a nil shape (i.e. an empty tuple).
   ShapeTree() : ShapeTree(ShapeUtil::MakeNil()) {}
+
   // Create ShapeTree with the given shape, and default-constructed T values for
   // all nodes.
-  explicit ShapeTree(const Shape& shape);
-  // Create ShapeTree with the given shape, and init_value for all nodes.
-  ShapeTree(const Shape& shape, const T& init_value);
+  //
+  // The version that takes a pointer may be cheaper because it doesn't require
+  // any Shape copies, but then it's up to you to ensure that the pointer stays
+  // alive longer than this ShapeTree.
+  explicit ShapeTree(Shape shape);
+  explicit ShapeTree(const Shape* shape);
 
-  ShapeTree(const ShapeTree& other) = default;
-  ShapeTree& operator=(const ShapeTree& other) = default;
+  // Create ShapeTree with the given shape, and init_value for all nodes.
+  ShapeTree(Shape shape, const T& init_value);
+  ShapeTree(const Shape* shape, const T& init_value);
+
+  ShapeTree(const ShapeTree& other)
+      : root_(other.root_), shape_storage_(other.shape_storage_) {
+    // Fix up internal pointer if necessary.
+    if (shape_storage_) {
+      CHECK_EQ(other.shape_, &*other.shape_storage_);
+      shape_ = &*shape_storage_;
+    } else {
+      shape_ = other.shape_;
+    }
+  }
+
+  ShapeTree& operator=(const ShapeTree& other) {
+    root_ = other.root_;
+    shape_storage_ = other.shape_storage_;
+
+    // Fix up internal pointer if necessary.
+    if (shape_storage_) {
+      CHECK_EQ(other.shape_, &*other.shape_storage_);
+      shape_ = &*shape_storage_;
+    } else {
+      shape_ = other.shape_;
+    }
+
+    return *this;
+  }
 
   // Returns the data element associated with the array in the shape at the
   // given index (see ShapeUtil::GetSubshape for how indexes are defined).
@@ -101,7 +139,7 @@ class ShapeTree {
   T* mutable_element(const ShapeIndex& index);
 
   // Return the shape represented with this ShapeTree.
-  const Shape& shape() const { return shape_; }
+  const Shape& shape() const { return *shape_; }
 
   // Returns true if the node at the given index is a leaf node (an array
   // shape).
@@ -112,27 +150,27 @@ class ShapeTree {
   // Recursively traverses the shape and calls the given function at each
   // element. The function has the following arguments:
   //
+  //   Fn :    A callable of type void(const ShapeIndex& index, const T& data)
+  //           (or compatible).
   //   index : the index of the element in the shape. See ShapeUtil::GetSubshape
   //           for definition of index.
   //   data : The data value at this elemnt.
-  using VisitorFunction =
-      std::function<void(const ShapeIndex& /*index*/, const T& /*data*/)>;
-  void ForEachElement(const VisitorFunction& func) const;
+  template <typename Fn>
+  void ForEachElement(const Fn& func) const;
 
-  using MutableVisitorFunction =
-      std::function<void(const ShapeIndex& /*index*/, T* /*data*/)>;
-  void ForEachMutableElement(const MutableVisitorFunction& func);
+  // Like ForEachElement, but the callable has type
+  //
+  //   void (const ShapeIndex& index, T* data).
+  //
+  template <typename Fn>
+  void ForEachMutableElement(const Fn& func);
 
-  // Variants of ForEach(Mutable)Element which propagate a Status value from the
-  // visitor.
-  using StatusVisitorFunction =
-      std::function<Status(const ShapeIndex& /*index*/, const T& /*data*/)>;
-  Status ForEachElementWithStatus(const StatusVisitorFunction& func) const;
-
-  using MutableStatusVisitorFunction =
-      std::function<Status(const ShapeIndex& /*index*/, T* /*data*/)>;
-  Status ForEachMutableElementWithStatus(
-      const MutableStatusVisitorFunction& func);
+  // Like ForEach(Mutable)Element, but the callable returns a Status instead of
+  // void.  The first non-OK return value is returned by the ForEach* function.
+  template <typename Fn>
+  Status ForEachElementWithStatus(const Fn& func) const;
+  template <typename Fn>
+  Status ForEachMutableElementWithStatus(const Fn& func);
 
   // Copy the subtree of values from 'other' rooted at ShapeIndex
   // 'source_base_index' into the subtree of value in this ShapeTree rooted at
@@ -161,10 +199,12 @@ class ShapeTree {
   // Helpers for traversing the shape via ForEachElement. The helpers
   // recursively traverse the subtree rooted at "index" (defined as in
   // ShapeUtil::GetSubshape).
-  static Status ForEachHelper(const StatusVisitorFunction& func,
-                              const Node& node, ShapeIndex* index);
-  static Status ForEachMutableHelper(const MutableStatusVisitorFunction& func,
-                                     Node* node, ShapeIndex* index);
+  template <typename Fn>
+  static Status ForEachHelper(const Fn& func, const Node& node,
+                              ShapeIndex* index);
+  template <typename Fn>
+  static Status ForEachMutableHelper(const Fn& func, Node* node,
+                                     ShapeIndex* index);
 
   // Return the tree node at the given index.
   Node* Lookup(const ShapeIndex& index);
@@ -173,8 +213,13 @@ class ShapeTree {
   // The root node, which contains all other nodes.
   Node root_;
 
-  // The XLA shape mirrored in this ShapeTree.
-  Shape shape_;
+  // If we own our Shape, this field contains it, and shape_ is a pointer into
+  // here.  Otherwise if we don't own our shape, this is nullopt.
+  tensorflow::gtl::optional<Shape> shape_storage_;
+
+  // The XLA shape mirrored in this ShapeTree.  This is either a pointer into
+  // shape_storage_ or the Shape pointer passed to our constructor.
+  const Shape* shape_;
 };
 
 template <typename T>
@@ -200,20 +245,34 @@ void ShapeTree<T>::InitChildren(const Shape& shape, Node* node) {
 }
 
 template <typename T>
-ShapeTree<T>::ShapeTree(const Shape& shape) : root_(), shape_(shape) {
+ShapeTree<T>::ShapeTree(Shape shape)
+    : root_(), shape_storage_(std::move(shape)), shape_(&*shape_storage_) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.
-  LayoutUtil::ClearLayout(&shape_);
-  InitChildren(shape_, &root_);
+  LayoutUtil::ClearLayout(&*shape_storage_);
+  InitChildren(*shape_, &root_);
 }
 
 template <typename T>
-ShapeTree<T>::ShapeTree(const Shape& shape, const T& init_value)
-    : root_(init_value), shape_(shape) {
+ShapeTree<T>::ShapeTree(const Shape* shape) : root_(), shape_(shape) {
+  InitChildren(*shape_, &root_);
+}
+
+template <typename T>
+ShapeTree<T>::ShapeTree(Shape shape, const T& init_value)
+    : root_(init_value),
+      shape_storage_(std::move(shape)),
+      shape_(&*shape_storage_) {
   // The shape_ field is just used to hold the structure of the shape.
   // It should not be relied upon to store layout information.
-  LayoutUtil::ClearLayout(&shape_);
-  InitChildren(shape_, init_value, &root_);
+  LayoutUtil::ClearLayout(&*shape_storage_);
+  InitChildren(*shape_, init_value, &root_);
+}
+
+template <typename T>
+ShapeTree<T>::ShapeTree(const Shape* shape, const T& init_value)
+    : root_(init_value), shape_(shape) {
+  InitChildren(*shape_, init_value, &root_);
 }
 
 template <typename T>
@@ -245,8 +304,9 @@ const internal::ShapeTreeNode<T>* ShapeTree<T>::Lookup(
 
 /* static */
 template <typename T>
-Status ShapeTree<T>::ForEachHelper(const StatusVisitorFunction& func,
-                                   const Node& node, ShapeIndex* index) {
+template <typename Fn>
+Status ShapeTree<T>::ForEachHelper(const Fn& func, const Node& node,
+                                   ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(*index, node.data));
   for (int64 i = 0; i < node.children.size(); ++i) {
     index->push_back(i);
@@ -258,8 +318,9 @@ Status ShapeTree<T>::ForEachHelper(const StatusVisitorFunction& func,
 
 /* static */
 template <typename T>
-Status ShapeTree<T>::ForEachMutableHelper(
-    const MutableStatusVisitorFunction& func, Node* node, ShapeIndex* index) {
+template <typename Fn>
+Status ShapeTree<T>::ForEachMutableHelper(const Fn& func, Node* node,
+                                          ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(*index, &node->data));
   for (int64 i = 0; i < node->children.size(); ++i) {
     index->push_back(i);
@@ -271,21 +332,22 @@ Status ShapeTree<T>::ForEachMutableHelper(
 }
 
 template <typename T>
-Status ShapeTree<T>::ForEachElementWithStatus(
-    const StatusVisitorFunction& func) const {
+template <typename Fn>
+Status ShapeTree<T>::ForEachElementWithStatus(const Fn& func) const {
   ShapeIndex index;
   return ForEachHelper(func, root_, &index);
 }
 
 template <typename T>
-Status ShapeTree<T>::ForEachMutableElementWithStatus(
-    const MutableStatusVisitorFunction& func) {
+template <typename Fn>
+Status ShapeTree<T>::ForEachMutableElementWithStatus(const Fn& func) {
   ShapeIndex index;
   return ForEachMutableHelper(func, &root_, &index);
 }
 
 template <typename T>
-void ShapeTree<T>::ForEachElement(const VisitorFunction& func) const {
+template <typename Fn>
+void ShapeTree<T>::ForEachElement(const Fn& func) const {
   ShapeIndex index;
   return ForEachHelper(
              [&func](const ShapeIndex& index, const T& data) {
@@ -297,7 +359,8 @@ void ShapeTree<T>::ForEachElement(const VisitorFunction& func) const {
 }
 
 template <typename T>
-void ShapeTree<T>::ForEachMutableElement(const MutableVisitorFunction& func) {
+template <typename Fn>
+void ShapeTree<T>::ForEachMutableElement(const Fn& func) {
   ShapeIndex index;
   return ForEachMutableHelper(
              [&func](const ShapeIndex& index, T* data) {

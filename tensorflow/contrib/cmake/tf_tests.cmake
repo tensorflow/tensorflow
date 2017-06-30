@@ -150,6 +150,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/internal/*_test.py"
   )
 
   # exclude the ones we don't want
@@ -166,6 +168,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
     # requires scipy
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
+    # flaky test
+    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/internal/run_metadata_test.py"
   )
   if (WIN32)
     set(tf_test_src_py_exclude
@@ -372,6 +377,11 @@ if (tensorflow_BUILD_CC_TESTS)
     ${tf_cc_saved_model_test_srcs}
   )
 
+  file(GLOB tf_tools_tfprof_test_srcs
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/*_test.cc"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/advisor/*_test.cc"
+  )
+
   set(tf_test_lib tf_test_lib)
   add_library(${tf_test_lib} STATIC ${tf_src_testlib})
 
@@ -413,6 +423,17 @@ if (tensorflow_BUILD_CC_TESTS)
   AddTests(
     SOURCES ${tf_cc_saved_model_test_srcs}
     DATA ${tf_cc_saved_model_test_data}
+    OBJECTS ${tf_obj_test}
+    LIBS ${tf_test_libs}
+  )
+
+  file(GLOB_RECURSE tf_tools_tfprof_test_data
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/testdata/*"
+  )
+
+  AddTests(
+    SOURCES ${tf_tools_tfprof_test_srcs}
+    DATA ${tf_tools_tfprof_test_data}
     OBJECTS ${tf_obj_test}
     LIBS ${tf_test_libs}
   )
