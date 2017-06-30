@@ -646,3 +646,19 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "pprof-c0fb62ec88c411cc91194465e54db2632845b650",
       build_file = str(Label("//third_party:pprof.BUILD")),
   )
+
+  native.new_http_archive(
+      name = "cub_archive",
+      urls = [
+          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.6.4.zip",
+          "https://github.com/NVlabs/cub/archive/1.6.4.zip",
+      ],
+      sha256 = "966d0c4f41e2bdc81aebf9ccfbf0baffaac5a74f00b826b06f4dee79b2bb8cee",
+      strip_prefix = "cub-1.6.4",
+      build_file = str(Label("//third_party:cub.BUILD")),
+  )
+
+  native.bind(
+      name = "cub",
+      actual = "@cub_archive//:cub",
+  )

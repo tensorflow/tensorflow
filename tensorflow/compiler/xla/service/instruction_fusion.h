@@ -77,10 +77,9 @@ class InstructionFusion : public HloPassInterface {
 
   // Whether or not we can fuse consumer into original_producer on all paths
   // from the producer to the consumer where nodes are HLOs and edges are uses.
-  bool CanFuseOnAllPaths(
-      const HloComputation::ReachabilityMap& reachability_map,
-      HloInstruction* producer, HloInstruction* consumer,
-      DoNotFuseSet* do_not_fuse);
+  bool CanFuseOnAllPaths(const HloReachabilityMap& reachability_map,
+                         HloInstruction* producer, HloInstruction* consumer,
+                         DoNotFuseSet* do_not_fuse);
 
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.

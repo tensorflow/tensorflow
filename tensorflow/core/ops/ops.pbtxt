@@ -9747,6 +9747,31 @@ op {
   description: "The upper regularized incomplete Gamma function is defined as:\n\n\\\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\\\)\n\nwhere\n\n\\\\(Gamma(a, x) = int_{x}^{\\infty} t^{a-1} exp(-t) dt\\\\)\n\nis the upper incomplete Gama function.\n\nNote, above `P(a, x)` (`Igamma`) is the lower regularized complete\nGamma function."
 }
 op {
+  name: "IgnoreErrorsDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that contains the elements of `input_dataset` ignoring errors."
+  is_stateful: true
+}
+op {
   name: "Imag"
   input_arg {
     name: "input"

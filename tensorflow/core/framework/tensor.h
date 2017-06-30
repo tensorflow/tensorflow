@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/tensor_description.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -35,8 +35,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-class TensorBuffer;  // Forward declaration.
+// Forward declarations.  In particular, we forward declare protos so that their
+// symbols can be removed from .so exports.
+class AllocationDescription;
+class TensorBuffer;
 class TensorCApi;
+class TensorDescription;
+class TensorProto;
 
 /// @ingroup core
 /// Represents an n-dimensional array of values.

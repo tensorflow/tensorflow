@@ -60,10 +60,7 @@ cuda_py_test(
         "//tensorflow/tools/tfprof:protos_all_py",
     ],
     tags = [
-        "manual",
         "no_pip",
-        "noguitar",
-        "notap",
     ],
 )
 

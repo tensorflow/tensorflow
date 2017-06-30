@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -67,41 +68,39 @@ GpuHloOrdering::GpuHloOrdering(
   // GpuExecutable adds cross-stream dependency edges to ensure each instruction
   // waits for its operands before executing.
   //
-  // The predecessor map is built incrementally, in reverse thunk launch
-  // order. We record the most-recently seen instructions per stream in
-  // 'earliest_instruction_per_stream'. This lets us quickly determine the
+  // The predecessor map is built incrementally, in thunk launch order. We
+  // record the most-recently seen instructions per stream in
+  // 'last_instruction_per_stream'. This lets us quickly determine the
   // same-stream predecessors of each instruction.
 
   // Compute the set of all instructions we will want to set reachability on.
-  auto predecessor_map = MakeUnique<HloComputation::ReachabilityMap>(
+  auto predecessor_map = MakeUnique<HloReachabilityMap>(
       module->entry_computation()->MakeInstructionPostOrder());
 
   // The most recently visited instruction per stream.
-  std::vector<const HloInstruction*> earliest_instruction_per_stream(
+  std::vector<const HloInstruction*> last_instruction_per_stream(
       stream_assignment.StreamCount(), nullptr);
 
-  for (auto it = thunk_launch_order.rbegin(); it != thunk_launch_order.rend();
-       ++it) {
-    const HloInstruction* hlo = *it;
+  for (const HloInstruction* hlo : thunk_launch_order) {
     predecessor_map->SetReachable(hlo, hlo);
     if (stream_assignment.HasStreamAssigned(*hlo)) {
+      // Gather all instruction which are immediate predecessors of 'hlo' in the
+      // reachability graph.
+      std::vector<const HloInstruction*> immediate_preds;
+      immediate_preds.insert(immediate_preds.end(), hlo->operands().begin(),
+                             hlo->operands().end());
+      immediate_preds.insert(immediate_preds.end(),
+                             hlo->control_predecessors().begin(),
+                             hlo->control_predecessors().end());
+
       // All ops already queued on the same instruction stream, and their
-      // transitive predecessors, are predecessors. Since the relation is
-      // transitive, we just set the transitive closure of the previous op.
+      // transitive predecessors, are predecessors.
       const int stream_no = stream_assignment.StreamNumberForHlo(*hlo);
-      if (earliest_instruction_per_stream[stream_no] != nullptr) {
-        // Because we are iterating in reverse order, 'hlo' precedes the
-        // last visited instruction on this stream.
-        predecessor_map->SetReachableAndTransitiveClosure(
-            hlo, earliest_instruction_per_stream[stream_no]);
+      if (last_instruction_per_stream[stream_no] != nullptr) {
+        immediate_preds.push_back(last_instruction_per_stream[stream_no]);
       }
-      for (const HloInstruction* operand : hlo->operands()) {
-        predecessor_map->SetReachableAndTransitiveClosure(operand, hlo);
-      }
-      for (const HloInstruction* pred : hlo->control_predecessors()) {
-        predecessor_map->SetReachableAndTransitiveClosure(pred, hlo);
-      }
-      earliest_instruction_per_stream[stream_no] = hlo;
+      predecessor_map->SetReachabilityToUnion(immediate_preds, hlo);
+      last_instruction_per_stream[stream_no] = hlo;
     } else {
       // Only parameters and constants don't have an assigned stream, since they
       // don't require a thunk. These ops don't have any predecessors.

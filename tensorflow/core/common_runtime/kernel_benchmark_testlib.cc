@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/notification.h"

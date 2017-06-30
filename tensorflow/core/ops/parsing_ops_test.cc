@@ -59,25 +59,24 @@ TEST(ParsingOpsTest, DecodeCSV_ShapeFn) {
   INFER_ERROR("Shape of a default must be", op, "?;[2];?");
 }
 
-static std::vector<TensorShapeProto> MakeDenseShapes(int size,
-                                                     bool add_extra_shape,
-                                                     int unknown_outer_dims) {
-  std::vector<TensorShapeProto> shapes(size);
+static std::vector<PartialTensorShape> MakeDenseShapes(int size,
+                                                       bool add_extra_shape,
+                                                       int unknown_outer_dims) {
+  std::vector<PartialTensorShape> shapes(size);
   for (int i = 0; i < size; ++i) {
     // Make shapes be the sequence [?,1]; [?,1,2], [?,1,2,3]...
     // where the number of prefixed ? depends on unknown_outer_dims.
     if (i == 0) {
+      shapes[i].Clear();
       for (int d = 0; d < unknown_outer_dims; ++d) {
-        shapes[i].add_dim()->set_size(-1);
+        shapes[i].AddDim(-1);
       }
     } else {
       shapes[i] = shapes[i - 1];
     }
-    shapes[i].add_dim()->set_size(i + 1);
+    shapes[i].AddDim(i + 1);
   }
-  if (add_extra_shape) {
-    shapes.resize(shapes.size() + 1);
-  }
+  if (add_extra_shape) shapes.push_back(PartialTensorShape({}));
   return shapes;
 }
 
