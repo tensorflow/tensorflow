@@ -229,13 +229,8 @@ take the following steps:
      you are installing TensorFlow for Mac OS and Python 2.7
      issue the following command:
 
-<<<<<<< HEAD
-     <pre> $ <b>sudo pip install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py2-none-any.whl</b> </pre>
-=======
      <pre> $ <b>sudo pip3 install --upgrade \
      https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.1-py2-none-any.whl</b> </pre>
->>>>>>> google/r1.2
 
      If the preceding command fails, see
      [installation problems](#common-installation-problems).
