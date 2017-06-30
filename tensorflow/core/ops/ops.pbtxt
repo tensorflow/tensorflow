@@ -191,6 +191,30 @@ op {
   summary: "Computes acos of x element-wise."
 }
 op {
+  name: "Acosh"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes acosh of x element-wise."
+}
+op {
   name: "Add"
   input_arg {
     name: "x"
@@ -1578,12 +1602,12 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32, 0 <= dimension < rank(input).  Describes which dimension\nof the input Tensor to reduce across. For vectors, use dimension = 0."
+    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
     name: "output"
-    type: DT_INT64
+    type_attr: "output_type"
   }
   attr {
     name: "T"
@@ -1612,6 +1636,19 @@ op {
     type: "type"
     default_value {
       type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    default_value {
+      type: DT_INT64
     }
     allowed_values {
       list {
@@ -1631,12 +1668,12 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32, 0 <= dimension < rank(input).  Describes which dimension\nof the input Tensor to reduce across. For vectors, use dimension = 0."
+    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
     name: "output"
-    type: DT_INT64
+    type_attr: "output_type"
   }
   attr {
     name: "T"
@@ -1665,6 +1702,19 @@ op {
     type: "type"
     default_value {
       type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "output_type"
+    type: "type"
+    default_value {
+      type: DT_INT64
     }
     allowed_values {
       list {
@@ -1770,6 +1820,30 @@ op {
     }
   }
   summary: "Computes asin of x element-wise."
+}
+op {
+  name: "Asinh"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes asinh of x element-wise."
 }
 op {
   name: "Assert"
@@ -2001,6 +2075,30 @@ op {
   }
   summary: "Computes arctangent of `y/x` element-wise, respecting signs of the arguments."
   description: "This is the angle \\( \\theta \\in [-\\pi, \\pi] \\) such that\n\\[ x = r \\cos(\\theta) \\]\nand\n\\[ y = r \\sin(\\theta) \\]\nwhere \\(r = \\sqrt(x^2 + y^2) \\)."
+}
+op {
+  name: "Atanh"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes atanh of x element-wise."
 }
 op {
   name: "AudioSpectrogram"
@@ -5173,6 +5271,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -6275,7 +6374,7 @@ op {
     }
   }
   summary: "Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors."
-  description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
+  description: "Given an input tensor of shape `[batch, in_height, in_width, in_channels]`\nand a filter / kernel tensor of shape\n`[filter_height, filter_width, in_channels, channel_multiplier]`, containing\n`in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies\na different filter to each input channel (expanding from 1 channel to\n`channel_multiplier` channels for each), then concatenates the results\ntogether. Thus, the output has `in_channels * channel_multiplier` channels.\n\n```\nfor k in 0..in_channels-1\n  for q in 0..channel_multiplier-1\n    output[b, i, j, k * channel_multiplier + q] =\n      sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *\n                        filter[di, dj, k, q]\n```\n\nMust have `strides[0] = strides[3] = 1`.  For the most common case of the same\nhorizontal and vertices strides, `strides = [1, stride, stride, 1]`."
 }
 op {
   name: "DepthwiseConv2dNativeBackpropFilter"
@@ -15472,6 +15571,55 @@ op {
   description: "This op simulates the precision loss from the quantized forward pass by:\n1. Quantizing the tensor to fixed point numbers, which should match the target\n   quantization method when it is used in inference.\n2. Dequantizing it back to floating point numbers for the following ops, most\n   likely matmul.\n\nThere are different ways to quantize. This version does not use the full range\nof the output type, choosing to elide the lowest possible value for symmetry\n(e.g., output range is -127 to 127, not -128 to 127 for signed 8 bit\nquantization), so that 0.0 maps to 0.\n\nTo perform this op, we first find the range of values in our tensor. The range\nwe use is always centered on 0, so we find m such that\n\n1. m = max(abs(input_min), abs(input_max)) if range_given is true,\n2. m = max(abs(min_elem(input)), abs(max_elem(input))) otherwise.\n\nOur input tensor range is then [-m, m].\n\nNext, we choose our fixed-point quantization buckets, [min_fixed, max_fixed].\nIf signed_input is true, this is\n\n  [min_fixed, max_fixed ] =\n      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1].\n\nOtherwise, if signed_input is false, the fixed-point range is\n\n  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1].\n\nFrom this we compute our scaling factor, s:\n\n  s = (max_fixed - min_fixed) / (2 * m).\n\nNow we can quantize and dequantize the elements of our tensor.  An element e\nis transformed into e\':\n\n  e\' = (e * s).round_to_nearest() / s.\n\nNote that we have a different number of buckets in the signed vs. unsigned\ncases.  For example, if num_bits == 8, we get 254 buckets in the signed case\nvs. 255 in the unsigned case.\n\nFor example, suppose num_bits = 8 and m = 1.  Then\n\n  [min_fixed, max_fixed] = [-127, 127], and\n  s = (127 + 127) / 2 = 127.\n\nGiven the vector {-1, -0.5, 0, 0.3}, this is quantized to\n{-127, -63, 0, 38}, and dequantized to {-1, -63.0/127, 0, 38.0/127}."
 }
 op {
+  name: "QuantizeAndDequantizeV3"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_min"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_max"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "num_bits"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "signed_input"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "range_given"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Quantizes then dequantizes a tensor."
+  description: "This is almost identical to QuantizeAndDequantizeV2, except that num_bits is a\ntensor, so its value can change during training."
+}
+op {
   name: "QuantizeDownAndShrinkRange"
   input_arg {
     name: "input"
@@ -21683,6 +21831,63 @@ op {
   description: "within a given variable according to `indices`.\n\n`ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `ref`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or slices (if `K < P`) along the `K`th\ndimension of `ref`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].\n```\n\nFor example, say we want to add 4 scattered elements to a rank-1 tensor to 8\nelements. In Python, that addition would look like this:\n\n    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    add = tf.scatter_nd_add(ref, indices, updates)\n    with tf.Session() as sess:\n      print sess.run(add)\n\nThe resulting update to ref would look like this:\n\n    [1, 13, 3, 14, 14, 6, 7, 20]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
 }
 op {
+  name: "ScatterNdNonAliasingAdd"
+  input_arg {
+    name: "input"
+    description: "A Tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    description: "A Tensor. Must be one of the following types: `int32`, `int64`.\nA tensor of indices into `input`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A Tensor. Must have the same type as ref. A tensor of updated values\nto add to `input`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "A `Tensor` with the same shape as `input`, containing values of `input`\nupdated with `updates`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Applies sparse addition to `input` using individual values or slices"
+  description: "from `updates` according to indices `indices`.  The updates are non-aliasing:\n`input` is only modified in-place if no other operations will use it.\nOtherwise, a copy of `input` is made.  This operation has a gradient with\nrespect to both `input` and `updates`.\n\n`input` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.\n\n`indices` must be integer tensor, containing indices into `input`.\nIt must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.\n\nThe innermost dimension of `indices` (with length `K`) corresponds to\nindices into elements (if `K = P`) or `(P-K)`-dimensional slices\n(if `K < P`) along the `K`th dimension of `input`.\n\n`updates` is `Tensor` of rank `Q-1+P-K` with shape:\n\n```\n[d_0, ..., d_{Q-2}, input.shape[K], ..., input.shape[P-1]].\n```\n\nFor example, say we want to add 4 scattered elements to a rank-1 tensor to 8\nelements. In Python, that addition would look like this:\n\n    input = tf.constant([1, 2, 3, 4, 5, 6, 7, 8])\n    indices = tf.constant([[4], [3], [1], [7]])\n    updates = tf.constant([9, 10, 11, 12])\n    output = tf.scatter_nd_non_aliasing_add(input, indices, updates)\n    with tf.Session() as sess:\n      print(sess.run(output))\n\nThe resulting value `output` would look like this:\n\n    [1, 13, 3, 14, 14, 6, 7, 20]\n\nSee [tf.scatter_nd](#scatter_nd) for more details about how to make updates to\nslices."
+}
+op {
   name: "ScatterNdSub"
   input_arg {
     name: "ref"
@@ -22805,6 +23010,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -24909,6 +25115,123 @@ op {
   }
   summary: "Multiply matrix \"a\" by matrix \"b\"."
   description: "The inputs must be two-dimensional matrices and the inner dimension of \"a\" must\nmatch the outer dimension of \"b\". This op is optimized for the case where at\nleast one of \"a\" or \"b\" is sparse. The breakeven for using this versus a dense\nmatrix multiply on one platform was 30% zero values in the sparse matrix.\n\nThe gradient computation of this operation will only take advantage of sparsity\nin the input gradient when that gradient comes from a Relu."
+}
+op {
+  name: "SparseReduceMax"
+  input_arg {
+    name: "input_indices"
+    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, possibly not in canonical ordering."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "input_values"
+    description: "1-D.  `N` non-empty values corresponding to `input_indices`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_shape"
+    description: "1-D.  Shape of the input SparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "reduction_axes"
+    description: "1-D.  Length-`K` vector containing the reduction axes."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    description: "`R-K`-D.  The reduced Tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "keep_dims"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, retain reduced dimensions with length 1."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes the max of elements across dimensions of a SparseTensor."
+  description: "This Op takes a SparseTensor and is the sparse counterpart to\n`tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`\ninstead of a sparse one.\n\nReduces `sp_input` along the dimensions given in `reduction_axes`.  Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained\nwith length 1.\n\nIf `reduction_axes` has no entries, all dimensions are reduced, and a tensor\nwith a single element is returned.  Additionally, the axes can be negative,\nwhich are interpreted according to the indexing rules in Python."
+}
+op {
+  name: "SparseReduceMaxSparse"
+  input_arg {
+    name: "input_indices"
+    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, possibly not in canonical ordering."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "input_values"
+    description: "1-D.  `N` non-empty values corresponding to `input_indices`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_shape"
+    description: "1-D.  Shape of the input SparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "reduction_axes"
+    description: "1-D.  Length-`K` vector containing the reduction axes."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "keep_dims"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, retain reduced dimensions with length 1."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes the max of elements across dimensions of a SparseTensor."
+  description: "This Op takes a SparseTensor and is the sparse counterpart to\n`tf.reduce_max()`.  In contrast to SparseReduceMax, this Op returns a\nSparseTensor.\n\nReduces `sp_input` along the dimensions given in `reduction_axes`.  Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained\nwith length 1.\n\nIf `reduction_axes` has no entries, all dimensions are reduced, and a tensor\nwith a single element is returned.  Additionally, the axes can be negative,\nwhich are interpreted according to the indexing rules in Python."
 }
 op {
   name: "SparseReduceSum"

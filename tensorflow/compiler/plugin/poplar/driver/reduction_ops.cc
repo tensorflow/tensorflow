@@ -17,7 +17,7 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
-#include <popreduce/Reduce.hpp>
+#include <popnn/MaxPool.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -29,9 +29,7 @@ static const std::string b_conn("b");
 static const std::string out_conn("out");
 
 static const std::string reduction_add("ReductionAdd");
-static const std::string reduction_sub("ReductionSub");
 static const std::string reduction_mul("ReductionMul");
-static const std::string reduction_div("ReductionDiv");
 static const std::string reduction_max("ReductionMax");
 static const std::string reduction_min("ReductionMin");
 static const std::string reduction_and("ReductionAnd");
@@ -44,9 +42,9 @@ static const std::string reduction_lt("SelectionLt");
 
 static const std::string unknown("Unknown");
 
-
-port::StatusOr<bool>
-IsComputationReducableArtithmetic(HloComputation* computation) {
+bool
+IsReducableArtithmetic(const HloInstruction* inst,
+                       const HloComputation* computation) {
   HloInstruction* root(computation->root_instruction());
   if (!hlo_query::AllOperandsAreParameters(*root)) {
     return false;
@@ -54,9 +52,7 @@ IsComputationReducableArtithmetic(HloComputation* computation) {
 
   switch (root->opcode()) {
     case HloOpcode::kAdd:
-    case HloOpcode::kSubtract:
     case HloOpcode::kMultiply:
-    case HloOpcode::kDivide:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kLogicalAnd:
@@ -67,9 +63,9 @@ IsComputationReducableArtithmetic(HloComputation* computation) {
   }
 }
 
-port::StatusOr<bool>
-IsComputationSimpleSelection(HloComputation* computation)
-{
+bool
+IsSimpleSelection(const HloInstruction* inst,
+                  const HloComputation* computation) {
   HloInstruction* root(computation->root_instruction());
   if (!hlo_query::AllOperandsAreParameters(*root)) {
     return false;
@@ -86,17 +82,47 @@ IsComputationSimpleSelection(HloComputation* computation)
   }
 }
 
+bool
+IsPoplibsPool(const HloInstruction* inst,
+              const HloComputation* computation) {
+  HloInstruction* root(computation->root_instruction());
+  if (!hlo_query::AllOperandsAreParameters(*root)) {
+    return false;
+  }
+
+  switch (root->opcode()) {
+    case HloOpcode::kMaximum:
+      break;
+    default:
+      return false;
+  }
+
+  if (ShapeUtil::Rank(inst->shape()) != 4) {
+    return false;
+  }
+
+  const Window& window(inst->window());
+  if (window.dimensions(0).size() != 1 ||
+      window.dimensions(0).stride() != 1 ||
+      window.dimensions(0).padding_low() != 0 ||
+      window.dimensions(0).padding_high() != 0 ||
+      window.dimensions(3).size() != 1 ||
+      window.dimensions(3).stride() != 1 ||
+      window.dimensions(3).padding_low() != 0 ||
+      window.dimensions(3).padding_high() != 0) {
+    return false;
+  }
+
+  return true;
+}
+
 static const std::string&
 ReductionVertexBaseName(const HloInstruction* inst) {
   switch (inst->opcode()) {
     case HloOpcode::kAdd:
       return reduction_add;
-    case HloOpcode::kSubtract:
-      return reduction_sub;
     case HloOpcode::kMultiply:
       return reduction_mul;
-    case HloOpcode::kDivide:
-      return reduction_div;
     case HloOpcode::kMaximum:
       return reduction_max;
     case HloOpcode::kMinimum:
@@ -305,6 +331,46 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
   }
 
   return poplar::program::Execute(cs);
+}
+
+port::StatusOr<poplar::program::Program>
+CreatePoplibsWindowReduction(poplar::Graph &graph,
+                             CompilerResources& res,
+                             const HloInstruction *inst,
+                             const xla::Shape& output_shape,
+                             TensorMap& tensor_map) {
+  // Find the input tensors
+  poplar::Tensor to_reduce;
+  TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0, 0));
+
+  poplar::Tensor init_val;
+  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1, 0));
+
+  const Window& window(inst->window());
+  std::vector<std::size_t> kernel_shape = {
+    (std::size_t)window.dimensions(1).size(),
+    (std::size_t)window.dimensions(2).size()
+  };
+  std::vector<unsigned> stride = {
+    (unsigned)window.dimensions(1).stride(),
+    (unsigned)window.dimensions(2).stride()
+  };
+  std::vector<int> padding_lower = {
+    (int)window.dimensions(1).padding_low(),
+    (int)window.dimensions(2).padding_low()
+  };
+  std::vector<int> padding_upper = {
+    (int)window.dimensions(1).padding_high(),
+    (int)window.dimensions(2).padding_high()
+  };
+
+  poplar::program::Sequence prog;
+  poplar::Tensor out = popnn::maxpool::maxPool(graph, kernel_shape, stride,
+                                               padding_lower, padding_upper,
+                                               to_reduce, prog, inst->name());
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  return prog;
 }
 
 port::StatusOr<poplar::program::Program>

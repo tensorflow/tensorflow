@@ -74,6 +74,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
 
     const int64 N = indices_t->shape().dim_size(0);
     const int64 dense_rows = dense_shape(0);
+
     Tensor* empty_row_indicator_t;
     OP_REQUIRES_OK(context, context->allocate_output("empty_row_indicator",
                                                      TensorShape({dense_rows}),
@@ -84,6 +85,29 @@ class SparseFillEmptyRowsOp : public OpKernel {
         context, context->allocate_output("reverse_index_map", TensorShape({N}),
                                           &reverse_index_map_t));
     auto reverse_index_map = reverse_index_map_t->vec<int64>();
+
+    int rank = indices_t->shape().dim_size(1);
+
+    if (dense_rows == 0) {
+      OP_REQUIRES(
+          context, N == 0,
+          errors::InvalidArgument("Received SparseTensor with dense_shape[0] = "
+                                  "0 but indices.shape[0] = ",
+                                  N));
+      Tensor* output_indices_t;
+      TensorShape output_indices_shape({0, rank});
+      OP_REQUIRES_OK(context, context->allocate_output("output_indices",
+                                                       output_indices_shape,
+                                                       &output_indices_t));
+      Tensor* output_values_t;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output("output_values", TensorShape({0}),
+                                              &output_values_t));
+
+      // Exit early, nothing more to do.
+      return;
+    }
+
     Tensor scratch_t;
     OP_REQUIRES_OK(context,
                    context->allocate_temp(DT_INT64, TensorShape({dense_rows}),
@@ -115,7 +139,6 @@ class SparseFillEmptyRowsOp : public OpKernel {
       }
     }
     Tensor* output_indices_t;
-    int rank = indices_t->shape().dim_size(1);
     const int64 N_full = scratch(dense_rows - 1);
     TensorShape output_indices_shape({N_full, rank});
     OP_REQUIRES_OK(context, context->allocate_output("output_indices",

@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -1864,36 +1863,12 @@ INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,
                         ArrayElementwiseOpTestParamCount,
                         ::testing::Values(127, 128, 129, 17 * 4096));
 
-XLA_TEST_F(ArrayElementwiseOpTest, ReducePrecisionNoOpF32) {
-  ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<float>({-2.5f, 25.5f});
-  auto reduce_precision = builder.ReducePrecision(a, 8, 23);
-
-  ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f}, {});
-}
-
-XLA_TEST_F(ArrayElementwiseOpTest, ReducePrecisionNoOpParamF32) {
-  ComputationBuilder builder(client_, TestName());
-
-  std::vector<float> a_values = {-2.5f, 25.5f};
-
-  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({a_values});
-  std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
-  auto a_param = builder.Parameter(0, a_literal->shape(), "a_param");
-
-  auto reduce_precision = builder.ReducePrecision(a_param, 8, 23);
-
-  ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f}, {a_data.get()});
-}
-
 }  // namespace
 }  // namespace xla
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendUserComputationFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

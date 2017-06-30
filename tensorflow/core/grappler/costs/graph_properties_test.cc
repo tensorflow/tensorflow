@@ -309,6 +309,371 @@ TEST_F(GraphPropertiesTest, Queues) {
   EXPECT_EQ("float: [1,2,3]", PropToString(props5[2]));
 }
 
+TEST_F(GraphPropertiesTest, MergeWithoutLoops) {
+  // Python code used to generate the graph is below.
+  const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 7
+      }
+    }
+  }
+}
+node {
+  name: "Const_1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 5
+      }
+    }
+  }
+}
+node {
+  name: "ones"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+          dim {
+            size: 1
+          }
+        }
+        float_val: 1.0
+      }
+    }
+  }
+}
+node {
+  name: "Less"
+  op: "Less"
+  input: "Const"
+  input: "Const_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/Switch"
+  op: "Switch"
+  input: "Less"
+  input: "Less"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/switch_t"
+  op: "Identity"
+  input: "cond/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/switch_f"
+  op: "Identity"
+  input: "cond/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/pred_id"
+  op: "Identity"
+  input: "Less"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+}
+node {
+  name: "cond/concat/axis"
+  op: "Const"
+  input: "^cond/switch_t"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "cond/concat/Switch"
+  op: "Switch"
+  input: "ones"
+  input: "cond/pred_id"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ones"
+      }
+    }
+  }
+}
+node {
+  name: "cond/concat"
+  op: "ConcatV2"
+  input: "cond/concat/Switch:1"
+  input: "cond/concat/Switch:1"
+  input: "cond/concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/concat_1/axis"
+  op: "Const"
+  input: "^cond/switch_f"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "cond/concat_1/Switch"
+  op: "Switch"
+  input: "ones"
+  input: "cond/pred_id"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@ones"
+      }
+    }
+  }
+}
+node {
+  name: "cond/concat_1"
+  op: "ConcatV2"
+  input: "cond/concat_1/Switch"
+  input: "cond/concat_1/Switch"
+  input: "cond/concat_1/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "cond/Merge"
+  op: "Merge"
+  input: "cond/concat"
+  input: "cond/concat_1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "concat/axis"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "concat"
+  op: "ConcatV2"
+  input: "cond/Merge"
+  input: "cond/Merge"
+  input: "concat/axis"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 21
+}
+  )EOF";
+
+  // Test graph produced in python using:
+  /*
+    with tf.Graph().as_default():
+      x = tf.constant(2)
+      y = tf.constant(5)
+      z = tf.ones([1,1,1])
+      def f1(): return tf.concat([z, z], axis=0)
+      def f2(): return tf.concat([z, z], axis=1)
+      r = tf.cond(tf.less(x, y), f1, f2)
+      tf.concat([r, r], axis=2)
+      with open('/tmp/graph.pbtxt', 'w') as f:
+        f.write(str(tf.get_default_graph().as_graph_def()))
+   */
+
+  GrapplerItem item;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically());
+
+  std::vector<string> nodes{"cond/Merge", "cond/concat", "cond/concat_1"};
+  std::vector<string> expected_outputs{"float: [-1,-1,1]", "float: [2,1,1]",
+                                       "float: [1,2,1]"};
+  for (int i = 0; i < nodes.size(); i++) {
+    const auto props = properties.GetOutputProperties(nodes[i]);
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ(expected_outputs[i], PropToString(prop));
+  }
+}
+
 TEST_F(GraphPropertiesTest, WhileLoop) {
   // Python code used to generate the graph is below.
   const string gdef_ascii = R"EOF(

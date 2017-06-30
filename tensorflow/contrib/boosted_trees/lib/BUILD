@@ -22,60 +22,7 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_library(
-    name = "weighted_quantiles",
-    srcs = [],
-    hdrs = [
-        "quantiles/weighted_quantiles_buffer.h",
-        "quantiles/weighted_quantiles_stream.h",
-        "quantiles/weighted_quantiles_summary.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-    ],
-)
-
-cc_test(
-    name = "weighted_quantiles_buffer_test",
-    size = "small",
-    srcs = ["quantiles/weighted_quantiles_buffer_test.cc"],
-    deps = [
-        ":weighted_quantiles",
-        "//tensorflow/core",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_test(
-    name = "weighted_quantiles_summary_test",
-    size = "small",
-    srcs = ["quantiles/weighted_quantiles_summary_test.cc"],
-    deps = [
-        ":weighted_quantiles",
-        "//tensorflow/core",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_test(
-    name = "weighted_quantiles_stream_test",
-    size = "small",
-    srcs = ["quantiles/weighted_quantiles_stream_test.cc"],
-    deps = [
-        ":weighted_quantiles",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
+# Utils
 
 cc_library(
     name = "utils",
@@ -161,6 +108,8 @@ cc_test(
     ],
 )
 
+# Models
+
 cc_library(
     name = "models",
     srcs = ["models/multiple_additive_trees.cc"],
@@ -190,29 +139,7 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "trees",
-    srcs = ["trees/decision_tree.cc"],
-    hdrs = ["trees/decision_tree.h"],
-    deps = [
-        ":utils",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
-        "//tensorflow/core:framework_headers_lib",
-    ],
-)
-
-cc_test(
-    name = "trees_test",
-    size = "small",
-    srcs = ["trees/decision_tree_test.cc"],
-    deps = [
-        ":trees",
-        ":utils",
-        "//tensorflow/core:tensor_testutil",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
+# Testutil
 
 cc_library(
     name = "batch_features_testutil",
@@ -245,5 +172,236 @@ cc_binary(
         ":random_tree_gen",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+    ],
+)
+
+# Quantiles
+
+cc_library(
+    name = "weighted_quantiles",
+    srcs = [],
+    hdrs = [
+        "quantiles/weighted_quantiles_buffer.h",
+        "quantiles/weighted_quantiles_stream.h",
+        "quantiles/weighted_quantiles_summary.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+cc_test(
+    name = "weighted_quantiles_buffer_test",
+    size = "small",
+    srcs = ["quantiles/weighted_quantiles_buffer_test.cc"],
+    deps = [
+        ":weighted_quantiles",
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "weighted_quantiles_summary_test",
+    size = "small",
+    srcs = ["quantiles/weighted_quantiles_summary_test.cc"],
+    deps = [
+        ":weighted_quantiles",
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "weighted_quantiles_stream_test",
+    size = "small",
+    srcs = ["quantiles/weighted_quantiles_stream_test.cc"],
+    deps = [
+        ":weighted_quantiles",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+# Trees
+
+cc_library(
+    name = "trees",
+    srcs = ["trees/decision_tree.cc"],
+    hdrs = ["trees/decision_tree.h"],
+    deps = [
+        "//tensorflow/contrib/boosted_trees/lib:utils",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+cc_test(
+    name = "trees_test",
+    size = "small",
+    srcs = ["trees/decision_tree_test.cc"],
+    deps = [
+        ":trees",
+        "//tensorflow/contrib/boosted_trees/lib:utils",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+# Learner/Common
+
+cc_library(
+    name = "class-partition-key",
+    hdrs = ["learner/common/accumulators/class-partition-key.h"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+cc_library(
+    name = "feature-stats-accumulator",
+    hdrs = ["learner/common/accumulators/feature-stats-accumulator.h"],
+    deps = [
+        ":class-partition-key",
+    ],
+)
+
+cc_test(
+    name = "feature-stats-accumulator_test",
+    size = "small",
+    srcs = ["learner/common/accumulators/feature-stats-accumulator_test.cc"],
+    deps = [
+        ":feature-stats-accumulator",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "example_partitioner",
+    srcs = ["learner/common/partitioners/example_partitioner.cc"],
+    hdrs = ["learner/common/partitioners/example_partitioner.h"],
+    deps = [
+        "//tensorflow/contrib/boosted_trees/lib:trees",
+        "//tensorflow/contrib/boosted_trees/lib:utils",
+        "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+cc_test(
+    name = "example_partitioner_test",
+    size = "small",
+    srcs = ["learner/common/partitioners/example_partitioner_test.cc"],
+    deps = [
+        ":example_partitioner",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+# Learner/stochastic
+
+cc_library(
+    name = "feature-column-handlers",
+    srcs = [
+        "learner/stochastic/handlers/bias-feature-column-handler.cc",
+        "learner/stochastic/handlers/categorical-feature-column-handler.cc",
+        "learner/stochastic/handlers/dense-quantized-feature-column-handler.cc",
+        "learner/stochastic/handlers/sparse-quantized-feature-column-handler.cc",
+    ],
+    hdrs = [
+        "learner/stochastic/handlers/bias-feature-column-handler.h",
+        "learner/stochastic/handlers/categorical-feature-column-handler.h",
+        "learner/stochastic/handlers/dense-quantized-feature-column-handler.h",
+        "learner/stochastic/handlers/feature-column-handler.h",
+        "learner/stochastic/handlers/sparse-quantized-feature-column-handler.h",
+    ],
+    deps = [
+        ":feature-split-candidate",
+        ":feature-stats-accumulator",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
+        "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+cc_test(
+    name = "feature-column-handlers_test",
+    size = "small",
+    srcs = [
+        "learner/stochastic/handlers/bias-feature-column-handler_test.cc",
+        "learner/stochastic/handlers/categorical-feature-column-handler_test.cc",
+        "learner/stochastic/handlers/dense-quantized-feature-column-handler_test.cc",
+        "learner/stochastic/handlers/sparse-quantized-feature-column-handler_test.cc",
+    ],
+    deps = [
+        ":feature-column-handlers",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "gradient-stats",
+    hdrs = ["learner/stochastic/stats/gradient-stats.h"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "node-stats",
+    hdrs = ["learner/stochastic/stats/node-stats.h"],
+    deps = [
+        ":gradient-stats",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "split-stats",
+    hdrs = ["learner/stochastic/stats/split-stats.h"],
+    deps = [
+        ":node-stats",
+    ],
+)
+
+cc_library(
+    name = "feature-split-candidate",
+    hdrs = ["learner/stochastic/stats/feature-split-candidate.h"],
+    deps = [
+        ":split-stats",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+    ],
+)
+
+cc_test(
+    name = "node-stats_test",
+    size = "small",
+    srcs = ["learner/stochastic/stats/node-stats_test.cc"],
+    deps = [
+        ":node-stats",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

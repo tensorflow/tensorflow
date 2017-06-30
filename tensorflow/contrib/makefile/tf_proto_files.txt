@@ -1,3 +1,7 @@
+tensorflow/contrib/boosted_trees/proto/learner.proto
+tensorflow/contrib/boosted_trees/proto/quantiles.proto
+tensorflow/contrib/boosted_trees/proto/split_info.proto
+tensorflow/contrib/boosted_trees/proto/tree_config.proto
 tensorflow/core/util/test_log.proto
 tensorflow/core/util/saved_tensor_slice.proto
 tensorflow/core/util/memmapped_file_system.proto

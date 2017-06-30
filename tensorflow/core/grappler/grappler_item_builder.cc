@@ -70,6 +70,10 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // correct optimizations.
 Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
                      const ItemConfig& cfg) {
+  if (!cfg.apply_optimizations && !cfg.inline_functions) {
+    return Status::OK();
+  }
+
   // Create a session option for a single GPU device.
   SessionOptions options;
 
@@ -183,7 +187,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           shape_proto.add_dim()->set_size(
               cfg.placeholder_unknown_output_shape_dim);
         } else {
-          dims.push_back(dim_proto.size());
+          dims.push_back(std::max<int32>(1, dim_proto.size()));
           shape_proto.add_dim()->set_size(dim_proto.size());
         }
       }
@@ -328,7 +332,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   Status optimize_status =
       OptimizeGraph(new_item->graph, &new_item->graph, cfg);
   if (!optimize_status.ok()) {
-    LOG(ERROR) << "Function optimization failed: " << optimize_status;
+    LOG(ERROR) << "Graph preprocessing failed: " << optimize_status;
     return nullptr;
   }
 

@@ -7,8 +7,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "batch_scheduler_hdrs",
     hdrs = ["batch_scheduler.h"],

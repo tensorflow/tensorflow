@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"

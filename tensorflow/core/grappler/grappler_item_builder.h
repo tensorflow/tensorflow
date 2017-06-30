@@ -32,7 +32,7 @@ struct ItemConfig {
         ignore_colocation(true),
         placeholder_unknown_output_shape_dim(-1),
         apply_optimizations(false),
-        inline_functions(true) {}
+        inline_functions(false) {}
 
   // If true, ignore all user specified node placement.
   bool ignore_user_placement;

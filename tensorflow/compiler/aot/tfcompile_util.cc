@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/tfcompile_util.h"
 
+#include <queue>
 #include <set>
+#include <unordered_map>
 
 #include "tensorflow/compiler/aot/tfcompile.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -111,6 +115,52 @@ Status ValidateConfig(const Config& config) {
   TF_RETURN_IF_ERROR(CheckFeedFetchNameConflicts("fetch", names));
   if (config.feed().empty() || config.fetch().empty()) {
     return errors::InvalidArgument("feeds and fetches must be specified");
+  }
+  return Status::OK();
+}
+
+Status PruneGraphDefInto(const Config& config, const GraphDef& in,
+                         GraphDef* out) {
+  *out = in;
+  out->clear_node();
+
+  // Maps node name to reachability.
+  std::unordered_map<string, std::pair<bool, const NodeDef*>> node_by_name;
+  for (const NodeDef& node : in.node()) {
+    node_by_name[node.name()] = std::pair<bool, const NodeDef*>(false, &node);
+  }
+
+  std::queue<string> name_queue;
+  for (int i = 0; i < config.fetch_size(); ++i) {
+    name_queue.push(config.fetch(i).id().node_name());
+  }
+  while (!name_queue.empty()) {
+    const string name = name_queue.front();
+    name_queue.pop();
+
+    auto find_it = node_by_name.find(name);
+    if (find_it == node_by_name.end()) {
+      return errors::InvalidArgument("While pruning graph, node ", name,
+                                     " needed but not found in the graph.");
+    }
+    auto& map_entry = find_it->second;
+    if (map_entry.first) {
+      continue;
+    }
+    map_entry.first = true;
+
+    for (const string& in_edge : map_entry.second->input()) {
+      name_queue.push(ParseTensorName(in_edge).first.ToString());
+    }
+  }
+
+  // Copy over, preserving order of original and only nodes that are reachable
+  // from the fetches.
+  out->mutable_node()->Reserve(in.node_size());
+  for (const NodeDef& node : in.node()) {
+    if (node_by_name[node.name()].first) {
+      *out->add_node() = node;
+    }
   }
   return Status::OK();
 }

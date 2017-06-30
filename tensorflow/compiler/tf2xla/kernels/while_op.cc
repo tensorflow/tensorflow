@@ -113,12 +113,14 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // present as loop body outputs; the signature of the loop's input and
   // output must match. We ensure this by asking the compiler to include the
   // current values of all resources, even if they haven't been updated by the
-  // computation.
+  // computation. We must also ask the compiler to keep compile-time constant
+  // outputs as part of the generated computation, for the same reason.
   // TODO(phawkins): consider adding loop-invariant inputs to XLA's While()
   // operator.
   XlaCompiler::CompileOptions body_options;
   body_options.use_tuple_arg = use_tuple_arg;
   body_options.return_updated_values_for_all_resources = true;
+  body_options.resolve_compile_time_constants = false;
   XlaCompiler::CompilationResult body;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
                                                 arguments, &body));
@@ -161,6 +163,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   XlaCompiler::CompileOptions cond_options;
   cond_options.use_tuple_arg = use_tuple_arg;
+  cond_options.resolve_compile_time_constants = false;
   XlaCompiler::CompilationResult cond;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(cond_options, cond_name_attr_,
                                                 arguments, &cond));

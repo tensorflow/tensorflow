@@ -23,7 +23,6 @@ import unittest
 import numpy as np
 
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
-from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -114,17 +113,14 @@ class CudnnRNNTest(TensorFlowTestCase):
     num_units = cudnn_model.num_units
     num_layers = cudnn_model.num_layers
 
-    # To reuse cuDNN-trained models, must set
-    # forget_bias, clip_cell = 0, False
-    # In LSTMCell and LSTMBlockCell, forget_bias is added in addition to learned
-    # bias, whereas cuDNN does not apply the additional bias.
+    # To reuse cuDNN-trained models, must use CudnnCompatibleLSTM...Cells.
     if use_block_cell:
       # pylint: disable=g-long-lambda
-      single_cell = lambda: lstm_ops.LSTMBlockCell(num_units, forget_bias=0,
-                                                   clip_cell=False)
+      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMBlockCell(
+          num_units)
       # pylint: enable=g-long-lambda
     else:
-      single_cell = lambda: rnn_cell_impl.LSTMCell(num_units, forget_bias=0)
+      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMCell(num_units)
     cell = rnn_cell_impl.MultiRNNCell(
         [single_cell() for _ in range(num_layers)])
     return rnn.dynamic_rnn(
@@ -171,7 +167,7 @@ class CudnnRNNTest(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testCheckpointReusableByCanonicalLSTMCells(self):
+  def testCudnnCompatibleLSTMCells(self):
     configs = [
         {
             "num_layers": 1,
@@ -207,7 +203,7 @@ class CudnnRNNTest(TensorFlowTestCase):
         },
     ]
     for cfg in configs:
-      self._testCheckpointReusableByCanonicalLSTMCells(
+      self._testCudnnCompatibleLSTMCells(
           cfg["num_layers"],
           cfg["seq_length"],
           cfg["num_units"],
@@ -215,7 +211,7 @@ class CudnnRNNTest(TensorFlowTestCase):
           cfg["batch_size"],
           cfg["rnn_mode"],
           use_block_cell=False)
-      self._testCheckpointReusableByCanonicalLSTMCells(
+      self._testCudnnCompatibleLSTMCells(
           cfg["num_layers"],
           cfg["seq_length"],
           cfg["num_units"],
@@ -224,7 +220,7 @@ class CudnnRNNTest(TensorFlowTestCase):
           cfg["rnn_mode"],
           use_block_cell=True)
 
-  def _testCheckpointReusableByCanonicalLSTMCells(
+  def _testCudnnCompatibleLSTMCells(
       self, num_layers, seq_length, num_units, input_size, batch_size, rnn_mode,
       use_block_cell):
     np.random.seed(0)

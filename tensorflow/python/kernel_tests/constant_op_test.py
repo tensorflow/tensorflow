@@ -684,6 +684,16 @@ class PlaceholderTest(test.TestCase):
           ValueError, lambda e: "Cannot feed value of shape" in str(e)):
         p_identity.eval(feed_dict={p: feed_array[:5, :2]})
 
+  def testPartialShapeWhenNotFed(self):
+    with self.test_session():
+      p = array_ops.placeholder(dtypes_lib.float32, shape=[None, 3], name="p")
+      p_identity = array_ops.identity(p)
+
+      # Should trigger an operator error, not a shape error.
+      with self.assertRaisesOpError(
+          "must feed a value for placeholder tensor 'p' with dtype float"):
+        p_identity.eval()
+
   def testControlDependency(self):
     with self.test_session():
       p = array_ops.placeholder(dtypes_lib.int32, shape=[], name="p")

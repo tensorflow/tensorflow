@@ -312,8 +312,7 @@ Status BaseVisitor::HandlePad(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleReducePrecision(HloInstruction* inst,
-                                          HloInstruction* operand) {
+Status BaseVisitor::HandleReducePrecision(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 

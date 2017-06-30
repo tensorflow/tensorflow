@@ -16,6 +16,9 @@
 
 #include <popstd/Cast.hpp>
 #include <popstd/Operations.hpp>
+#include <popstd/Add.hpp>
+#include <popstd/SubtractFrom.hpp>
+#include <popstd/HadamardProduct.hpp>
 #include <poplin/MatMul.hpp>
 
 namespace xla {
@@ -39,11 +42,17 @@ typedef poplar::Tensor (*popstd_binary_fn)(poplar::Graph &graph,
                                            poplar::program::Sequence &prog,
                                            const std::string &debugPrefix);
 
+typedef void (*popstd_inplace_binary_fn)(poplar::Graph &graph,
+                                         poplar::Tensor A, poplar::Tensor B,
+                                         poplar::program::Sequence &prog,
+                                         const std::string &debugPrefix);
+
 static port::StatusOr<popstd_unary_fn>
 LookupUnaryFn(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAbs: return popstd::abs;
     case HloOpcode::kCeil: return popstd::ceil;
+    case HloOpcode::kCos: return popstd::cos;
     case HloOpcode::kExp: return popstd::exp;
     case HloOpcode::kFloor: return popstd::floor;
     case HloOpcode::kLog: return popstd::log;
@@ -52,7 +61,6 @@ LookupUnaryFn(HloOpcode opcode) {
     case HloOpcode::kSign: return popstd::signum;
     case HloOpcode::kTanh: return popstd::tanh;
 
-    case HloOpcode::kCos:
     case HloOpcode::kIsFinite:
     default:
       break;
@@ -81,6 +89,20 @@ LookupBinaryFn(HloOpcode opcode) {
     case HloOpcode::kPower: return popstd::pow;
     case HloOpcode::kRemainder: return popstd::rem;
     case HloOpcode::kSubtract: return popstd::sub;
+    default:
+      break;
+  }
+  return port::Status(port::error::UNKNOWN,
+                      port::StrCat("[Poplar] Invalid opcode lookup ",
+                                   HloOpcodeString(opcode)));
+}
+
+static port::StatusOr<popstd_inplace_binary_fn>
+LookupBinaryInPlaceFn(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAdd: return popstd::addTo;
+    case HloOpcode::kMultiply: return popstd::hadamardProduct;
+    case HloOpcode::kSubtract: return popstd::subtractFrom;
     default:
       break;
   }
@@ -165,47 +187,15 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
 
   if (IsInPlaceUpdate(inst) && (in0.shape() == in1.shape())) {
 
-    const std::string& poplar_data_type(in0.elementType());
+    popstd_inplace_binary_fn fn;
+    TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst->opcode()));
 
-    std::string vertex_name;
-    switch (inst->opcode()) {
-      case HloOpcode::kAdd:
-        vertex_name = templateVertex("AddInPlace", poplar_data_type);
-        break;
-      case HloOpcode::kSubtract:
-        vertex_name = templateVertex("SubInPlace", poplar_data_type);
-        break;
-      case HloOpcode::kMultiply:
-        vertex_name = templateVertex("MulInPlace", poplar_data_type);
-        break;
-      default:
-        break;
-    }
+    poplar::program::Sequence seq;
+    fn(graph, in0, in1, seq, inst->name());
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, in0));
 
-    // And now flatten
-    in0 = in0.flatten();
-    in1 = in1.flatten();
-
-    auto cs = graph.addComputeSet(inst->name());
-    const auto &device_info = graph.getDevice().getDeviceInfo();
-
-    const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-    unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-    num_workers = std::min(num_workers, N);
-
-    for (unsigned i = 0; i < num_workers; ++i) {
-      const auto begin = i * N / num_workers;
-      const auto end = (i + 1) * N / num_workers;
-      auto v = graph.addVertex(cs, vertex_name,
-                               {{a_conn, in0.slice(begin, end)},
-                                {b_conn, in1.slice(begin, end)}});
-      graph.setTileMapping(v, i / device_info.numWorkerContexts);
-    }
-
-    return poplar::program::Execute(cs);
+    return seq;
 
   } else {
 
@@ -288,10 +278,8 @@ CreateSelectOp(poplar::Graph &graph,
                const xla::Shape& output_shape,
                TensorMap& tensor_map) {
 
-  // Find the input tensors
   poplar::Tensor pred;
   TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0, 0));
-  pred = pred.flatten();
 
   poplar::Tensor in0;
   TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, inst, 1, 0));
@@ -299,54 +287,18 @@ CreateSelectOp(poplar::Graph &graph,
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 2, 0));
 
-  // Allocate the output tensor
-  poplar::Tensor out = graph.clone(in0, inst->name());
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
-  in0 = in0.flatten();
-  in1 = in1.flatten();
-  out = out.flatten();
-
-  auto cs = graph.addComputeSet(inst->ToString());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
-
-  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-  num_workers = std::min(num_workers, N);
-
-  const std::string& poplar_data_type(in0.elementType());
-
-  if (pred.dim(0) == 1) {
-    std::string vertex_name = templateVertex("ScalarSelect", poplar_data_type);
-
-    for (unsigned i = 0; i < num_workers; ++i) {
-      const auto begin = i * N / num_workers;
-      const auto end = (i + 1) * N / num_workers;
-      auto v = graph.addVertex(cs, vertex_name,
-                               {{"pred", pred[0]},
-                                {a_conn, in0.slice(begin, end)},
-                                {b_conn, in1.slice(begin, end)},
-                                {out_conn, out.slice(begin, end)}});
-      graph.setTileMapping(v, i / device_info.numWorkerContexts);
-    }
-  } else {
-    std::string vertex_name = templateVertex("Select", poplar_data_type);
-
-    for (unsigned i = 0; i < num_workers; ++i) {
-      const auto begin = i * N / num_workers;
-      const auto end = (i + 1) * N / num_workers;
-      auto v = graph.addVertex(cs, vertex_name,
-                               {{"pred", pred.slice(begin, end)},
-                                {a_conn, in0.slice(begin, end)},
-                                {b_conn, in1.slice(begin, end)},
-                                {out_conn, out.slice(begin, end)}});
-      graph.setTileMapping(v, i / device_info.numWorkerContexts);
-    }
-
+  if (pred.numElements() == 1) {
+    pred = pred.reshape({1});
+    pred = pred.broadcast(in1.numElements(), 0);
+    pred = pred.reshape(in0.shape());
   }
 
-  return poplar::program::Execute(cs);
+  poplar::program::Sequence seq;
+  poplar::Tensor out = popstd::select(graph, in0, in1, pred, seq, inst->name());
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>

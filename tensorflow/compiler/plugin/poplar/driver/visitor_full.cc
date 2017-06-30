@@ -128,10 +128,7 @@ Status FullVisitor::HandleReduce(
         HloInstruction* init_value,
         tensorflow::gtl::ArraySlice<int64> dimensions,
         HloComputation* function) {
-  bool simple_reduction;
-  TF_ASSIGN_OR_RETURN(simple_reduction,
-                      IsComputationReducableArtithmetic(function));
-  if (simple_reduction) {
+  if (IsReducableArtithmetic(inst, function)) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleReduction(*graph_,
@@ -284,7 +281,7 @@ Status FullVisitor::HandleMap(
         tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) {
   bool simple_parallel;
   TF_ASSIGN_OR_RETURN(simple_parallel,
-                      IsComputationParallelMap(function));
+                      IsParallelMap(inst, function));
   if (simple_parallel) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
@@ -304,10 +301,18 @@ Status FullVisitor::HandleReduceWindow(
         HloInstruction* operand,
         const Window& window,
         HloComputation* function) {
-  bool simple_reduction;
-  TF_ASSIGN_OR_RETURN(simple_reduction,
-                      IsComputationReducableArtithmetic(function));
-  if (simple_reduction) {
+  if (IsPoplibsPool(inst, function)) {
+    poplar::program::Program prog;
+    TF_ASSIGN_OR_RETURN(prog,
+                        CreatePoplibsWindowReduction(*graph_,
+                                                     resources_,
+                                                     inst,
+                                                     GetOutputShape(inst),
+                                                     tensor_map));
+    sequence.add(prog);
+    return Status::OK();
+  }
+  if (IsReducableArtithmetic(inst, function)) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleWindowReduction(*graph_,
@@ -322,13 +327,8 @@ Status FullVisitor::HandleReduceWindow(
 }
 
 Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
-  bool simple_selection;
-  TF_ASSIGN_OR_RETURN(simple_selection,
-                      IsComputationSimpleSelection(inst->select()));
-  bool simple_reduction;
-  TF_ASSIGN_OR_RETURN(simple_reduction,
-                      IsComputationReducableArtithmetic(inst->scatter()));
-  if (simple_selection && simple_reduction) {
+  if (IsSimpleSelection(inst, inst->select()) &&
+      IsReducableArtithmetic(inst, inst->scatter())) {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(prog,
                         CreateSimpleSelectAndScatter(*graph_,

@@ -34,28 +34,74 @@ from tensorflow.python.ops.distributions import util as distribution_util
 class Categorical(distribution.Distribution):
   """Categorical distribution.
 
-  The categorical distribution is parameterized by the log-probabilities
-  of a set of classes.
+  The Categorical distribution is parameterized by either probabilities or
+  log-probabilities of a set of `K` classes. It is defined over the integers
+  `{0, 1, ..., K}`.
+
+  The Categorical distribution is closely related to the `OneHotCategorical` and
+  `Multinomial` distributions.  The Categorical distribution can be intuited as
+  generating samples according to `argmax{ OneHotCategorical(probs) }` itself
+  being identical to `argmax{ Multinomial(probs, total_count=1) }.
+
+  #### Mathematical Details
+
+  The probability mass function (pmf) is,
+
+  ```none
+  pmf(k; pi) = prod_j pi_j**[k == j]
+  ```
+
+  #### Pitfalls
+
+  The number of classes, `K`, must not exceed:
+  - the largest integer representable by `self.dtype`, i.e.,
+    `2**(mantissa_bits+1)` (IEE754),
+  - the maximum `Tensor` index, i.e., `2**31-1`.
+
+  In other words,
+
+  ```python
+  K <= min(2**31-1, {
+    tf.float16: 2**11,
+    tf.float32: 2**24,
+    tf.float64: 2**53 }[param.dtype])
+  ```
+
+  Note: This condition is validated only when `self.validate_args = True`.
 
   #### Examples
 
-  Creates a 3-class distribution, with the 2nd class, the most likely to be
-  drawn from.
+  Creates a 3-class distribution with the 2nd class being most likely.
 
   ```python
-  p = [0.1, 0.5, 0.4]
-  dist = Categorical(probs=p)
+  dist = Categorical(probs=[0.1, 0.5, 0.4])
+  n = 1e4
+  empirical_prob = tf.cast(
+      tf.histogram_fixed_width(
+        dist.sample(int(n)),
+        [0., 2],
+        nbins=3),
+      dtype=tf.float32) / n
+  # ==> array([ 0.1005,  0.5037,  0.3958], dtype=float32)
   ```
 
-  Creates a 3-class distribution, with the 2nd class the most likely to be
-  drawn from, using logits.
+  Creates a 3-class distribution with the 2nd class being most likely.
+  Parameterized by [logits](https://en.wikipedia.org/wiki/Logit) rather than
+  probabilities.
 
   ```python
-  logits = [-50, 400, 40]
-  dist = Categorical(logits=logits)
+  dist = Categorical(logits=np.log([0.1, 0.5, 0.4])
+  n = 1e4
+  empirical_prob = tf.cast(
+      tf.histogram_fixed_width(
+        dist.sample(int(n)),
+        [0., 2],
+        nbins=3),
+      dtype=tf.float32) / n
+  # ==> array([0.1045,  0.5047, 0.3908], dtype=float32)
   ```
 
-  Creates a 3-class distribution, with the 3rd class is most likely to be drawn.
+  Creates a 3-class distribution with the 3rd class being most likely.
   The distribution functions can be evaluated on counts.
 
   ```python
@@ -115,6 +161,10 @@ class Categorical(distribution.Distribution):
           validate_args=validate_args,
           multidimensional=True,
           name=name)
+
+      if validate_args:
+        self._logits = distribution_util.embed_check_categorical_event_shape(
+            self._logits)
 
       logits_shape_static = self._logits.get_shape().with_rank_at_least(1)
       if logits_shape_static.ndims is not None:
@@ -186,22 +236,25 @@ class Categorical(distribution.Distribution):
       logits_2d = self.logits
     else:
       logits_2d = array_ops.reshape(self.logits, [-1, self.event_size])
-    samples = random_ops.multinomial(logits_2d, n, seed=seed)
-    samples = math_ops.cast(samples, self.dtype)
-    ret = array_ops.reshape(
-        array_ops.transpose(samples),
+    draws = random_ops.multinomial(logits_2d, n, seed=seed)
+    draws = array_ops.reshape(
+        array_ops.transpose(draws),
         array_ops.concat([[n], self.batch_shape_tensor()], 0))
-    return ret
+    return math_ops.cast(draws, self.dtype)
 
   def _cdf(self, k):
     k = ops.convert_to_tensor(k, name="k")
+    if self.validate_args:
+      k = distribution_util.embed_check_integer_casting_closed(
+          k, target_dtype=dtypes.int32)
 
     # If there are multiple batch dimension, flatten them into one.
     batch_flattened_probs = array_ops.reshape(self._probs,
                                               [-1, self._event_size])
-    batch_flattened_k = array_ops.reshape(k, (-1,))
+    batch_flattened_k = array_ops.reshape(k, [-1])
 
     # Form a tensor to sum over.
+    # We don't need to cast k to integer since `sequence_mask` does this for us.
     mask_tensor = array_ops.sequence_mask(batch_flattened_k, self._event_size)
     to_sum_over = array_ops.where(mask_tensor,
                                   batch_flattened_probs,
@@ -211,6 +264,10 @@ class Categorical(distribution.Distribution):
 
   def _log_prob(self, k):
     k = ops.convert_to_tensor(k, name="k")
+    if self.validate_args:
+      k = distribution_util.embed_check_integer_casting_closed(
+          k, target_dtype=dtypes.int32)
+
     if self.logits.get_shape()[:-1] == k.get_shape():
       logits = self.logits
     else:
@@ -219,11 +276,17 @@ class Categorical(distribution.Distribution):
       logits_shape = array_ops.shape(logits)[:-1]
       k *= array_ops.ones(logits_shape, dtype=k.dtype)
       k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
+      if k.dtype.is_integer:
+        pass
+      elif k.dtype.is_floating:
+        # When `validate_args=True` we've already ensured int/float casting
+        # is closed.
+        return ops.cast(k, dtype=dtypes.int32)
+      else:
+        raise TypeError("`value` should have integer `dtype` or "
+                        "`self.dtype` ({})".format(self.dtype.base_dtype))
     return -nn_ops.sparse_softmax_cross_entropy_with_logits(labels=k,
                                                             logits=logits)
-
-  def _prob(self, k):
-    return math_ops.exp(self._log_prob(k))
 
   def _entropy(self):
     return -math_ops.reduce_sum(

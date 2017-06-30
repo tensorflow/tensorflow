@@ -206,9 +206,9 @@ class VirtualScheduler {
 
   // Prints out summary of execution (timing, memory usage, etc.)
   Costs Summary() const;
-  // Like the above, but writes detailed stats to stepstats.
-  // If stepstats is nullptr, then just calls and return Summary().
-  Costs Summary(StepStats* stepstats);
+  // Like the above, but writes detailed stats to RunMetadata.
+  // If metadata is nullptr, then just calls and return Summary().
+  Costs Summary(RunMetadata* metadata);
 
  protected:
   // GetDeviceStates and GetNodeStates are currently for testing purpuse only.

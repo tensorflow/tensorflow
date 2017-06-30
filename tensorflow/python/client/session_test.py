@@ -128,6 +128,17 @@ class SessionTest(test_util.TensorFlowTestCase):
       results = s.run([inp])
       self.assertAllEqual([20.0], results)
 
+    pool = config.session_inter_op_thread_pool.add()
+    pool.num_threads = 1
+    pool.global_name = 't1'
+    run_options = config_pb2.RunOptions()
+    run_options.inter_op_thread_pool = (
+        len(config.session_inter_op_thread_pool) - 1)
+    with session.Session(config=config) as s:
+      inp = constant_op.constant(30.0, name='W2')
+      results = s.run([inp], options=run_options)
+      self.assertAllEqual([30.0], results)
+
   def testErrorsReported(self):
     with session.Session() as s:
       constant_op.constant(10.0, name='W1')

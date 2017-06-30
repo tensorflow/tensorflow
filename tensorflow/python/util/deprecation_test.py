@@ -608,7 +608,7 @@ class DeprecatedArgsTest(test.TestCase):
     self._assert_subset(set(["after " + date, instructions, "d2"]),
                         set(args2[1:]))
 
-    # Assert calls with the deprecated arguments dont log warnings if
+    # Assert calls with the deprecated arguments don't log warnings if
     # the value matches the 'ok_val'.
     mock_warning.reset_mock()
     self.assertEqual(3, _fn(1, None, 2, d2="my_ok_val"))

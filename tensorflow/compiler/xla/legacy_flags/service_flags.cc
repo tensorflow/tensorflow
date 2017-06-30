@@ -36,33 +36,13 @@ static std::once_flag flags_init;
 static void AllocateFlags() {
   flags = new ServiceFlags;
   flags->xla_hlo_profile = false;
-  flags->xla_log_hlo_text = "";
-  flags->xla_generate_hlo_graph = "";
-  flags->xla_hlo_graph_addresses = false;
-  flags->xla_hlo_graph_layout = false;
   flags->xla_hlo_graph_for_compute_constant = false;
   flags->xla_dump_computations_to = "";
-  flags->xla_dump_hlo_text_to = "";
   flags->xla_dump_executions_to = "";
   flag_list = new std::vector<tensorflow::Flag>({
       tensorflow::Flag(
           "xla_hlo_profile", &flags->xla_hlo_profile,
           "Instrument the computation to collect per-HLO cycle counts"),
-      tensorflow::Flag(
-          "xla_log_hlo_text", &flags->xla_log_hlo_text,
-          "If non-empty, print the text format of "
-          "HLO modules whose name partially matches this regex. E.g. "
-          "xla_log_hlo_text=.* will dump the text for every module."),
-      tensorflow::Flag(
-          "xla_generate_hlo_graph", &flags->xla_generate_hlo_graph,
-          "If non-empty, dump graph of HLO modules whose name partially "
-          "matches this regex. E.g. --xla_generate_hlo_graph=.* will dump "
-          "the graph of every module."),
-      tensorflow::Flag("xla_hlo_graph_addresses",
-                       &flags->xla_hlo_graph_addresses,
-                       "Show addresses of HLO ops in graph"),
-      tensorflow::Flag("xla_hlo_graph_layout", &flags->xla_hlo_graph_layout,
-                       "Show layout of HLO ops in graph"),
       tensorflow::Flag(
           "xla_hlo_graph_for_compute_constant",
           &flags->xla_hlo_graph_for_compute_constant,
@@ -71,9 +51,6 @@ static void AllocateFlags() {
       tensorflow::Flag("xla_dump_computations_to",
                        &flags->xla_dump_computations_to,
                        "Dumps computations that XLA executes into the provided "
-                       "directory path"),
-      tensorflow::Flag("xla_dump_hlo_text_to", &flags->xla_dump_hlo_text_to,
-                       "Dumps HLO modules that XLA executes into the provided "
                        "directory path"),
       tensorflow::Flag("xla_dump_executions_to", &flags->xla_dump_executions_to,
                        "Dumps parameters and results of computations that XLA "

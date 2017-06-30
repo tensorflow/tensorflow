@@ -10,32 +10,6 @@
 
 using namespace poplar;
 
-#define BINARY_IN_PLACE(NAME, EXP) \
-template<typename T> \
-class NAME##InPlace : public Vertex { \
-public: \
-  InOut<Vector<T>> a; \
-  Input<Vector<T>> b; \
-\
-  bool compute() { \
-    for (unsigned i = 0; i < a.size(); ++i) { \
-      a[i] = (EXP); \
-    } \
-    return true; \
-  } \
-\
-  int getCycleEstimate() const { return 1; } \
-}; \
-\
-template class NAME##InPlace<float>; \
-template class NAME##InPlace<half>; \
-template class NAME##InPlace<int>;
-
-// In place updates
-BINARY_IN_PLACE(Add, a[i] + b[i])
-BINARY_IN_PLACE(Mul, a[i] * b[i])
-BINARY_IN_PLACE(Sub, a[i] - b[i])
-
 // Random
 
 template<typename T>
@@ -223,9 +197,7 @@ template class NAME<int>;
 REDUCTION_ELEMENTWISE(ReductionMax, std::numeric_limits<T>::lowest(), std::max(a[i], v))
 REDUCTION_ELEMENTWISE(ReductionMin, std::numeric_limits<T>::max(),    std::min(a[i], v))
 REDUCTION_ELEMENTWISE(ReductionAdd, 0.0, v + a[i])
-REDUCTION_ELEMENTWISE(ReductionSub, 0.0, v - a[i])
 REDUCTION_ELEMENTWISE(ReductionMul, 1.0, v * a[i])
-REDUCTION_ELEMENTWISE(ReductionDiv, 1.0, v / a[i])
 
 #define LOGICAL_REDUCTION_ELEMENTWISE(NAME, INIT, EXP) \
 template<typename T> \

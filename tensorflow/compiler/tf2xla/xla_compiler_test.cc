@@ -203,19 +203,19 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
   args[0].type = DT_INT32;
   args[0].shape = TensorShape({2});
 
+  XlaCompiler::Options options = DefaultOptions();
+  XlaCompiler compiler(options);
   {
     // Compiles the graph, with resolve_compile_time_constants enabled.
-    XlaCompiler::Options options = DefaultOptions();
-    options.resolve_compile_time_constants = true;
-    XlaCompiler compiler(options);
 
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.resolve_compile_time_constants = true;
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
-                                       "constants", std::move(graph_copy), args,
-                                       &result));
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
+                                       std::move(graph_copy), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_TRUE(result.outputs[0].is_constant);
@@ -242,17 +242,14 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
   {
     // Compiles the graph, with resolve_compile_time_constants disabled.
-    XlaCompiler::Options options = DefaultOptions();
-    options.resolve_compile_time_constants = false;
-    XlaCompiler compiler(options);
-
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.resolve_compile_time_constants = false;
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
-                                       "constants", std::move(graph_copy), args,
-                                       &result));
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
+                                       std::move(graph_copy), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_FALSE(result.outputs[0].is_constant);

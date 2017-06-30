@@ -126,6 +126,7 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
   }
   nodes = SortNodes(nodes, opts);
 
+  // pre keeps track of previous visited node.
   OpNode* pre = nullptr;
   std::vector<OpNode*> account_nodes;
   for (auto it = nodes.rbegin(); it != nodes.rend(); ++it) {
@@ -170,9 +171,11 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
     root_->ResetTotalStats();
     if (pre) {
       root_->AggregateTotalStats(pre);
-      root_->mutable_proto()->add_children()->MergeFrom(pre->proto());
-      pre->mutable_proto()->clear_children();
     }
+  }
+  if (pre) {
+    root_->mutable_proto()->add_children()->MergeFrom(pre->proto());
+    pre->mutable_proto()->clear_children();
   }
 
   if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
@@ -180,6 +183,8 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
     for (OpNode* node : show_nodes) {
       display_str += FormatNode(node, root_.get(), opts);
     }
+    // In op view, we don't show root (total). But it will still in proto.
+    // TODO(xpan): Is it the right choice?
     root_->formatted_str = display_str;
   }
   return root_.get();
@@ -201,7 +206,7 @@ int64 TFOp::SearchRoot(const std::vector<OpNode*> nodes,
   return i;
 }
 
-string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
+string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
   std::vector<string> attrs;
 
   if (opts.select.find(kShown[0]) != opts.select.end()) {
@@ -278,9 +283,14 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
   }
 
   if (opts.select.find(kShown[7]) != opts.select.end()) {
+    int64 total_runs = 0;
+    for (const auto& gnode : node->proto().graph_nodes()) {
+      total_runs += gnode.run_count();
+    }
     attrs.push_back(strings::Printf(
         "%10s",
-        strings::Printf("%d", node->proto().graph_nodes_size()).c_str()));
+        strings::Printf("%lld|%d", total_runs, node->proto().graph_nodes_size())
+            .c_str()));
   }
 
   string node_str = strings::Printf("%-25s%s\n", node->name().c_str(),
