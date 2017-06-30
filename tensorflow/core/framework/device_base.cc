@@ -19,4 +19,8 @@ namespace tensorflow {
 
 DeviceBase::~DeviceBase() {}
 
+const DeviceAttributes& DeviceBase::attributes() const {
+  LOG(FATAL) << "Device does not implement attributes()";
+}
+
 }  // namespace tensorflow

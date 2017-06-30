@@ -444,6 +444,72 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide,
                                             subtract));
   }
 
+  // A/exp(B) => A*exp(-B)
+  if (rhs->opcode() == HloOpcode::kExp) {
+    VLOG(10) << "transform [A/exp(B) => A*exp(-B)]: " << divide->ToString();
+    HloInstruction* negate =
+        computation_->AddInstruction(HloInstruction::CreateUnary(
+            divide->shape(), HloOpcode::kNegate, rhs->mutable_operand(0)));
+    HloInstruction* new_exp = computation_->AddInstruction(
+        HloInstruction::CreateUnary(divide->shape(), HloOpcode::kExp, negate));
+    return ReplaceWithNewInstruction(
+        divide, HloInstruction::CreateBinary(
+                    divide->shape(), HloOpcode::kMultiply, lhs, new_exp));
+  }
+
+  // A/pow(B,C) => A*pow(B,-C)
+  if (rhs->opcode() == HloOpcode::kPower) {
+    VLOG(10) << "transform [A/pow(B,C) => A*pow(B,-C)]: " << divide->ToString();
+    HloInstruction* negate =
+        computation_->AddInstruction(HloInstruction::CreateUnary(
+            divide->shape(), HloOpcode::kNegate, rhs->mutable_operand(1)));
+    HloInstruction* new_power = computation_->AddInstruction(
+        HloInstruction::CreateBinary(divide->shape(), HloOpcode::kPower,
+                                     rhs->mutable_operand(0), negate));
+    return ReplaceWithNewInstruction(
+        divide, HloInstruction::CreateBinary(
+                    divide->shape(), HloOpcode::kMultiply, lhs, new_power));
+  }
+
+  // Simplifying integral division would produce unexpected results.
+  if (ShapeUtil::ElementIsIntegral(divide->shape())) {
+    return Status::OK();
+  }
+
+  // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)
+  if (lhs->opcode() == HloOpcode::kDivide &&
+      rhs->opcode() == HloOpcode::kDivide) {
+    auto a_times_d = computation_->AddInstruction(HloInstruction::CreateBinary(
+        divide->shape(), HloOpcode::kMultiply, lhs->mutable_operand(0),
+        rhs->mutable_operand(1)));
+    auto b_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
+        divide->shape(), HloOpcode::kMultiply, lhs->mutable_operand(1),
+        rhs->mutable_operand(0)));
+    return ReplaceWithNewInstruction(
+        divide, HloInstruction::CreateBinary(
+                    divide->shape(), HloOpcode::kDivide, a_times_d, b_times_c));
+  }
+
+  // (A / B) / C => A / (B * C)
+  if (lhs->opcode() == HloOpcode::kDivide) {
+    auto b_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
+        divide->shape(), HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
+    return ReplaceWithNewInstruction(
+        divide,
+        HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
+                                     lhs->mutable_operand(0), b_times_c));
+  }
+
+  // A / (B / C) => (A*C) / B
+  if (rhs->opcode() == HloOpcode::kDivide) {
+    auto a_times_c = computation_->AddInstruction(HloInstruction::CreateBinary(
+        divide->shape(), HloOpcode::kMultiply, lhs, rhs->mutable_operand(1)));
+    return ReplaceWithNewInstruction(
+        divide,
+        HloInstruction::CreateBinary(divide->shape(), HloOpcode::kDivide,
+                                     a_times_c, rhs->mutable_operand(0)));
+  }
+
   return Status::OK();
 }
 
@@ -591,6 +657,16 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply,
   if (IsAll(lhs, 1) && ReplaceInstructionIfSameShape(multiply, rhs)) {
     return Status::OK();
   }
+
+  // exp(A) * exp(B) => exp(A+B)
+  if (lhs->opcode() == HloOpcode::kExp && rhs->opcode() == HloOpcode::kExp) {
+    auto add = computation_->AddInstruction(HloInstruction::CreateBinary(
+        multiply->shape(), HloOpcode::kAdd, lhs->mutable_operand(0),
+        rhs->mutable_operand(0)));
+    return ReplaceWithNewInstruction(
+        multiply,
+        HloInstruction::CreateUnary(multiply->shape(), HloOpcode::kExp, add));
+  }
   return Status::OK();
 }
 
@@ -602,6 +678,17 @@ Status AlgebraicSimplifierVisitor::HandleLog(HloInstruction* log,
       ReplaceInstructionIfSameShape(log, operand->mutable_operand(0))) {
     return Status::OK();
   }
+
+  // ln(pow(A,B)) => B*ln(A)
+  if (operand->opcode() == HloOpcode::kPower) {
+    auto new_log = computation_->AddInstruction(HloInstruction::CreateUnary(
+        log->shape(), HloOpcode::kLog, operand->mutable_operand(0)));
+    return ReplaceWithNewInstruction(
+        log,
+        HloInstruction::CreateBinary(log->shape(), HloOpcode::kMultiply,
+                                     new_log, operand->mutable_operand(1)));
+  }
+
   return Status::OK();
 }
 
@@ -873,10 +960,10 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     }
 
     // Verify that the slice shape matches the pad shape.
-    TF_ASSIGN_OR_RETURN(Shape inferred_slice_shape,
-                        ShapeInference::InferSliceShape(
-                            nonzero_pad_shape, start_indices, end_indices,
-                            strides));
+    TF_ASSIGN_OR_RETURN(
+        Shape inferred_slice_shape,
+        ShapeInference::InferSliceShape(nonzero_pad_shape, start_indices,
+                                        end_indices, strides));
     TF_RET_CHECK(ShapeUtil::Compatible(inferred_slice_shape, pad->shape()));
 
     std::unique_ptr<HloInstruction> slice = HloInstruction::CreateSlice(
@@ -909,6 +996,14 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power,
     return Status::OK();
   }
 
+  // pow(exp(A),B) => exp(A*B)
+  if (lhs->opcode() == HloOpcode::kExp) {
+    auto a_times_b = computation_->AddInstruction(HloInstruction::CreateBinary(
+        power->shape(), HloOpcode::kMultiply, lhs->operands()[0], rhs));
+    return ReplaceWithNewInstruction(
+        power, HloInstruction::CreateUnary(power->shape(), HloOpcode::kExp,
+                                           a_times_b));
+  }
   VLOG(10) << "trying transform [pow(A, 2) => A*A]: " << power->ToString();
   if (IsAll(rhs, 2)) {
     return ReplaceWithNewInstruction(

@@ -95,6 +95,7 @@ filegroup(
         "//third_party/hadoop:LICENSE.txt",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
+        "@cub_archive//:LICENSE.TXT",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",

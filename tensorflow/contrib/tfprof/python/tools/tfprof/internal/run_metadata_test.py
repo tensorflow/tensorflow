@@ -146,6 +146,10 @@ class RunMetadataTest(test.TestCase):
       self.assertEqual(mm_node.cpu_exec_micros, total_cpu_execs)
       self.assertEqual(mm_node.exec_micros, total_cpu_execs)
 
+  # pylint: disable=pointless-string-statement
+  """
+  TODO(xpan): This test is flaky because RunMetadata returned from TensorFlow
+  is random. Still being investigated.
   def testLoopGPU(self):
     if not test.is_gpu_available():
       return
@@ -180,6 +184,8 @@ class RunMetadataTest(test.TestCase):
       self.assertEqual(mm_node.cpu_exec_micros, total_cpu_execs)
       self.assertEqual(mm_node.exec_micros,
                        total_cpu_execs + total_accelerator_execs)
+  """
+
 
 if __name__ == '__main__':
   test.main()
