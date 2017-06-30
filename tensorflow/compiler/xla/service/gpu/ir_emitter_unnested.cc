@@ -1886,15 +1886,38 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk) {
+  const Shape& element_shape = hlo.IsMultiOutputFusion()
+                                   ? ShapeUtil::GetSubshape(hlo.shape(), {0})
+                                   : hlo.shape();
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      hlo.shape(), ir_emitter_context_->device_description());
+      element_shape, ir_emitter_context_->device_description());
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
-  // Otherwise, emit a parallel loop that computes the partition that each
-  // thread is in charge of.
-  return ParallelLoopEmitter(element_generator, GetIrArray(hlo),
-                             launch_dimensions, &ir_builder_)
-      .EmitLoop();
+  if (!hlo.IsMultiOutputFusion()) {
+    return ParallelLoopEmitter(element_generator, GetIrArray(hlo),
+                               launch_dimensions, &ir_builder_)
+        .EmitLoop();
+  }
+
+  // For multiple outputs fusion, we need to emit each operand and the root.
+  std::vector<llvm_ir::IrArray> output_arrays;
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(hlo.shape()); ++i) {
+    output_arrays.push_back(GetIrArray(hlo, {i}));
+  }
+  TF_RETURN_IF_ERROR(ParallelLoopEmitter(element_generator, output_arrays,
+                                         launch_dimensions, &ir_builder_)
+                         .EmitLoop());
+
+  std::vector<llvm::Value*> tuple_operand_ptrs;
+  for (int64 i = 0; i < output_arrays.size(); ++i) {
+    tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
+  }
+  ir_builder_.SetInsertPoint(ir_builder_.GetInsertBlock()->getTerminator());
+  //  const HloInstruction* root = hlo.fused_expression_root();
+  llvm_ir::EmitTuple(
+      GetIrArray(*hlo.fused_expression_root()->fusion_instruction()),
+      tuple_operand_ptrs, &ir_builder_);
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::EmitTargetElementLoop(
