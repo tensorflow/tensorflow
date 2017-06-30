@@ -1216,6 +1216,8 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
         "platform/*.cc",
         "platform/profile_utils/**/*.h",
         "platform/profile_utils/**/*.cc",
+        "framework/resource_handle.h",
+        "framework/resource_handle.cc",
     ],
     exclude = [
         "**/*test*",
@@ -1245,7 +1247,6 @@ cc_library(
                 "platform/*.cc",
                 "platform/profile_utils/**/*.h",
                 "platform/profile_utils/**/*.cc",
-            ] + [
                 "framework/resource_handle.h",
                 "framework/resource_handle.cc",
             ],
