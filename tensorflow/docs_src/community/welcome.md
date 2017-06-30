@@ -26,6 +26,7 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Rust language bindings](https://github.com/google/tensorflow-rust)
 * [Operator Vectorization Library](https://github.com/opveclib/opveclib)
 * [Swift language bindings](https://github.com/PerfectlySoft/Perfect-TensorFlow)
+* [Sublime Tensorflow - A plugin for Sublime Text](https://github.com/baptisteArnaud/Sublime-Tensorflow)
 
 ## TensorFlow Communities Around the World
 
