@@ -477,6 +477,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "variance_scaling_initializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "zeros_initializer"
     mtype: "<type \'type\'>"
   }
@@ -1031,6 +1035,14 @@ tf_module {
   member_method {
     name: "global_variables_initializer"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "glorot_normal_initializer"
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
+  }
+  member_method {
+    name: "glorot_uniform_initializer"
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "gradients"
