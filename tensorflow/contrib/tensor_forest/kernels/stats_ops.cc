@@ -22,7 +22,6 @@
 #include "tensorflow/contrib/tensor_forest/kernels/v4/params.h"
 #include "tensorflow/contrib/tensor_forest/proto/fertile_stats.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"

@@ -15,17 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/executor/executable.h"
 #include "tensorflow/compiler/plugin/executor/executor.h"
-
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
-
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::executorplugin;
 
 namespace xla {
 namespace executorplugin {
+
+namespace se = ::perftools::gputools;
+namespace sep = ::perftools::gputools::executorplugin;
 
 ExecutorExecutable::ExecutorExecutable(std::unique_ptr<HloModule> hlo_module)
     : Executable(std::move(hlo_module), ShapeSizeBytes) {}
@@ -90,15 +88,14 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
     arg_literals_ptrs.push_back(arg_literals.back().get());
 
     // Copy in the data from the stream_executor buffers
-    void* buffer = arg_literals.back().get()->MutableInternalData();
+    void* buffer = arg_literals.back()->MutableInternalData();
     memcpy(buffer, arguments[p].opaque(),
            ShapeUtil::ByteSizeOf(param->shape()));
   }
 
   // Execute the graph using the evaluator
   HloEvaluator evaluator;
-  std::unique_ptr<Literal> output;
-  TF_ASSIGN_OR_RETURN(output,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> output,
                       evaluator.Evaluate(computation, arg_literals_ptrs));
 
   // Copy the result into the return buffer
