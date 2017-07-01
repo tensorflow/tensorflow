@@ -20,39 +20,13 @@ from __future__ import print_function
 
 import time
 
-import portpicker
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import server_lib
 from tensorflow.python.training import training
-
-
-def create_local_cluster(num_workers, num_ps, protocol="grpc"):
-  """Create local GRPC servers and return them."""
-  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
-  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
-  cluster_dict = {
-      "worker": ["localhost:%s" % port for port in worker_ports],
-      "ps": ["localhost:%s" % port for port in ps_ports]
-  }
-  cs = server_lib.ClusterSpec(cluster_dict)
-
-  workers = [
-      server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_workers)
-  ]
-  ps_servers = [
-      server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_ps)
-  ]
-
-  return workers, ps_servers
 
 
 # Creates the workers and return their sessions, graphs, train_ops.

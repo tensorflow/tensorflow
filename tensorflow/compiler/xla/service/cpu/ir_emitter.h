@@ -286,7 +286,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Emit IR to compute the target address of the buffer for the given op.
   // The returned Value is a pointer to a IR type that represents the op's
   // element type.
-  StatusOr<llvm::Value*> EmitTargetAddressForOp(const HloInstruction* op);
+  StatusOr<llvm::Value*> EmitTargetAddressForOp(
+      const HloInstruction* op, const ShapeIndex& shape_index = {});
 
   // Structurizes "array_elements" into an MD array that represents "shape".
   // This is a recursive function, and "dimension_index" indicates the index of
