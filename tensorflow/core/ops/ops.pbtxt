@@ -7583,7 +7583,7 @@ op {
   }
   output_arg {
     name: "patches"
-    description: "4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *\nksize_cols * depth]` containing image patches with size\n`ksize_rows x ksize_cols x depth` vectorized in the \"depth\" dimension."
+    description: "4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *\nksize_cols * depth]` containing image patches with size\n`ksize_rows x ksize_cols x depth` vectorized in the \"depth\" dimension. Note\n`out_rows` and `out_cols` are the dimensions of the output patches."
     type_attr: "T"
   }
   attr {
@@ -7603,7 +7603,7 @@ op {
   attr {
     name: "rates"
     type: "list(int)"
-    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by\nsubsampling them spatially by a factor of `rates`."
+    description: "1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the\ninput stride, specifying how far two consecutive patch samples are in the\ninput. Equivalent to extracting patches with\n`patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by\nsubsampling them spatially by a factor of `rates`. This is equivalent to\n`rate` in dilated (a.k.a. Atrous) convolutions."
     has_minimum: true
     minimum: 4
   }
