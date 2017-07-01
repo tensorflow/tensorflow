@@ -612,6 +612,7 @@ TEST_F(MathGradTest, Cos) {
 // TODO(zhifengc)
 // TEST_F(MathGradSComplexTest, Real) {}
 // TEST_F(MathGradSComplexTest, Imag) {}
+// TEST_F(MathGradSComplexTest, Arg) {}
 // TEST_F(MathGradSComplexTest, Conj) {}
 // TEST_F(MathGradTernary, Select) {}
 

@@ -373,6 +373,22 @@ Status ImagGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Imag", ImagGrad);
 
+Status ArgGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // y = Arg(x)
+  // dx = -dy / (Im(x) + iRe(x)) = -dy * z
+  auto re = Real(scope, op.input(0));
+  auto im = Imag(scope, op.input(0));
+  auto z_inv = Reciprocal(scope, Complex(scope, im, re));
+  auto zero = Cast(scope, Const(scope, 0), grad_inputs[0].type());
+  auto grad = Complex(scope, grad_inputs[0], zero);
+  auto dx = Neg(scope, Mul(scope, grad, z_inv));
+  grad_outputs->push_back(dx);
+  return scope.status(); 
+}
+REGISTER_GRADIENT_OP("Arg", ArgGrad);
+
 Status ConjGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {

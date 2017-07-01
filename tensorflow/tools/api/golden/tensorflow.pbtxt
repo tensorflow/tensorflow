@@ -553,6 +553,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "arg"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "arg_max"
     argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
