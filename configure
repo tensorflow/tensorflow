@@ -264,19 +264,27 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
       exit 1
   fi
 
+  loc="$(locate -e libdl.so.2 2>/dev/null | sed -n 1p)"
+  if [[ ! "$loc" ]] ; then
+    printf "WARN: Could not use 'locate' command. Trying 'find'.\n"
+    loc="$(find / -mount -name 'libdl.so.2' -print 2>/dev/null | head -n1)"
+    if [[ ! "$loc" ]] ; then
+      printf "FATAL ERROR: Could not use commands 'find' or 'locate'\n"
+      exit
+    fi
+  fi
+
   if [ -e "$MKL_INSTALL_PATH/${MKL_ML_LIB_PATH}" ]; then
       ln -sf $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/${MKL_ML_OMP_LIB_PATH} third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
-      loc=$(locate -e libdl.so.2 | sed -n 1p)
       ln -sf $loc third_party/mkl/libdl.so.2
   elif [ -e "$MKL_INSTALL_PATH/${MKL_RT_LIB_PATH}" ]; then
       ln -sf $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/${MKL_RT_OMP_LIB_PATH} third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
       ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
-      loc=$(locate -e libdl.so.2 | sed -n 1p)
       ln -sf $loc third_party/mkl/libdl.so.2
   else
       echo "ERROR: $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} nor $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} exists";
