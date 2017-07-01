@@ -38,6 +38,13 @@ ParallelLoopEmitter::ParallelLoopEmitter(
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
+    tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
+    : LoopEmitter(target_element_generator, target_arrays, ir_builder),
+      launch_dimensions_(launch_dimensions) {}
+
+ParallelLoopEmitter::ParallelLoopEmitter(
+    const llvm_ir::ElementGenerator& target_element_generator,
     const llvm_ir::IrArray& target_array,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
     : LoopEmitter(target_element_generator, target_array, ir_builder),

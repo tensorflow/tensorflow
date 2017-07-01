@@ -143,7 +143,6 @@ class HttpRequest {
   size_t post_body_read_ = 0;
 
   std::vector<char>* response_buffer_ = nullptr;
-  size_t response_buffer_size_ = 0;
   CURL* curl_ = nullptr;
   curl_slist* curl_headers_ = nullptr;
 

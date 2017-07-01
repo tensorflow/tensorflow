@@ -31,11 +31,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -397,6 +399,258 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         };
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[select],
                         ElementWiseTernaryOp(select, std::move(select_op)));
+    return Status::OK();
+  };
+
+  Status HandleConvolution(HloInstruction* conv, HloInstruction* lhs,
+                           HloInstruction* rhs, const Window& window) override {
+    CHECK(ShapeUtil::IsArray(lhs->shape()));
+    CHECK(ShapeUtil::IsArray(rhs->shape()));
+    CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
+    CHECK(ShapeUtil::SameElementType(lhs->shape(), conv->shape()));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs->shape()));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs->shape()));
+
+    const auto& dnums = conv->convolution_dimension_numbers();
+    const int64 num_spatial_dims = dnums.spatial_dimensions_size();
+    CHECK_EQ(num_spatial_dims, dnums.kernel_spatial_dimensions_size());
+    CHECK_GE(num_spatial_dims, 1);
+    CHECK_EQ(window.dimensions_size(), num_spatial_dims);
+
+    CHECK_EQ(num_spatial_dims + 2, ShapeUtil::Rank(lhs->shape()));
+    CHECK_EQ(num_spatial_dims + 2, ShapeUtil::Rank(rhs->shape()));
+
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferConvolveShape(
+                            lhs->shape(), rhs->shape(), window, dnums));
+    CHECK(ShapeUtil::Compatible(conv->shape(), inferred_return_shape))
+        << "return shape set to: " << ShapeUtil::HumanString(conv->shape())
+        << " but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+
+    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
+    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+
+    const auto lhs_rank = ShapeUtil::Rank(lhs->shape());
+    const auto rhs_rank = ShapeUtil::Rank(rhs->shape());
+
+    // Dimension number applicable for both input (lhs), and output.
+    const int64 batch_dim = dnums.batch_dimension();
+    const int64 z_dim = dnums.feature_dimension();
+    // Dimension number applicable for kernel (rhs).
+    const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
+    const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
+
+    const int64 z_size = ShapeUtil::GetDimension(lhs->shape(), z_dim);
+
+    std::vector<int64> window_dimension_sizes;
+    for (auto i : dnums.kernel_spatial_dimensions()) {
+      window_dimension_sizes.push_back(
+          ShapeUtil::GetDimension(rhs->shape(), i));
+    }
+
+    const Shape& window_shape = ShapeUtil::MakeShape(
+        rhs->shape().element_type(), window_dimension_sizes);
+
+    auto result = Literal::CreateFromShape(conv->shape());
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> out_index) {
+          ReturnT result_val = static_cast<ReturnT>(0);
+
+          std::vector<int64> lhs_index(lhs_rank, 0);
+          std::vector<int64> rhs_index(rhs_rank, 0);
+
+          lhs_index[batch_dim] = out_index[batch_dim];
+          rhs_index[kernel_output_z_dim] = out_index[z_dim];
+
+          std::vector<int64> rhs_spatial_index(
+              dnums.kernel_spatial_dimensions_size(), 0);
+
+          // Convolve input feature with kernel.
+          do {
+            for (int64 iz = 0; iz < z_size; ++iz) {
+              lhs_index[z_dim] = iz;
+              rhs_index[kernel_input_z_dim] = iz;
+
+              // Find corresponding spatial dimension index for input (lhs).
+              for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
+                // Spatial dimension number for input (lhs) and output.
+                const int64 spatial_dim = dnums.spatial_dimensions(ki);
+
+                // Calculate lhs (input) index without taking base dilation into
+                // account.
+                const int64 undilated_index =
+                    out_index[spatial_dim] * window.dimensions(ki).stride() -
+                    window.dimensions(ki).padding_low() +
+                    rhs_spatial_index[ki] *
+                        window.dimensions(ki).window_dilation();
+                // Skip if the lhs (input) index is to be dilated.
+                if (undilated_index % window.dimensions(ki).base_dilation() !=
+                    0) {
+                  goto cnt;
+                }
+
+                // Calculate the actual lhs (input) index after dilation.
+                lhs_index[spatial_dim] =
+                    undilated_index / window.dimensions(ki).base_dilation();
+
+                // Skip if input index is not in bound.
+                if (!(lhs_index[spatial_dim] >= 0 &&
+                      lhs_index[spatial_dim] <
+                          lhs->shape().dimensions(spatial_dim))) {
+                  goto cnt;
+                }
+
+                rhs_index[dnums.kernel_spatial_dimensions(ki)] =
+                    rhs_spatial_index[ki];
+              }
+
+              result_val += lhs_literal.Get<ReturnT>(lhs_index) *
+                            rhs_literal.Get<ReturnT>(rhs_index);
+            }
+          cnt:;
+          } while (IndexUtil::BumpIndices(window_shape, &rhs_spatial_index));
+
+          return result_val;
+        }));
+
+    parent_->evaluated_[conv] = std::move(result);
+    return Status::OK();
+  };
+
+  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
+                   HloInstruction* rhs) override {
+    CHECK(ShapeUtil::IsArray(dot->shape()));
+    CHECK(ShapeUtil::IsArray(lhs->shape()));
+    CHECK(ShapeUtil::IsArray(rhs->shape()));
+
+    // Dot only supports operands of rank 1 and 2.
+    const auto dot_rank = ShapeUtil::Rank(dot->shape());
+    const auto lhs_rank = ShapeUtil::Rank(lhs->shape());
+    const auto rhs_rank = ShapeUtil::Rank(rhs->shape());
+    CHECK(lhs_rank > 0 && lhs_rank <= 2);
+    CHECK(rhs_rank > 0 && rhs_rank <= 2);
+    CHECK_EQ(dot_rank, lhs_rank + rhs_rank - 2);
+
+    CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
+    CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
+
+    // Check contracted dimensions are the same.
+    //
+    // Determine the index of the contracted dimensions for input tensors.
+    // dimensions -1 of lhs and dimension 0 of rhs are contracted.
+    const int64 lhs_contracted_dimension =
+        ShapeUtil::GetDimensionNumber(lhs->shape(), -1);
+    const int64 rhs_contracted_dimension = 0;
+    CHECK_EQ(lhs->shape().dimensions(lhs_contracted_dimension),
+             rhs->shape().dimensions(rhs_contracted_dimension))
+        << "lhs contracted dimension: "
+        << lhs->shape().dimensions(lhs_contracted_dimension)
+        << " rhs contracted dimension: "
+        << rhs->shape().dimensions(rhs_contracted_dimension);
+    const int64 contracted_dimension_size =
+        lhs->shape().dimensions(lhs_contracted_dimension);
+
+    const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
+    const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+
+    auto result = Literal::CreateFromShape(dot->shape());
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          ReturnT result_val = static_cast<ReturnT>(0);
+
+          std::vector<int64> lhs_index(lhs_rank, 0);
+          std::vector<int64> rhs_index(rhs_rank, 0);
+          // Set index for non-contracted dimension for lhs and rhs.
+          if (lhs_rank > 1) {
+            lhs_index[0] = multi_index[0];
+          }
+          if (rhs_rank > 1) {
+            rhs_index[1] = multi_index[multi_index.size() - 1];
+          }
+
+          // Accumulates resulting product along the contracted dimension.
+          for (int64 i = 0; i < contracted_dimension_size; ++i) {
+            lhs_index[lhs_contracted_dimension] = i;
+            rhs_index[rhs_contracted_dimension] = i;
+
+            result_val += lhs_literal.Get<ReturnT>(lhs_index) *
+                          rhs_literal.Get<ReturnT>(rhs_index);
+          }
+
+          return result_val;
+        }));
+
+    parent_->evaluated_[dot] = std::move(result);
+    return Status::OK();
+  };
+
+  Status HandlePad(HloInstruction* pad) override {
+    CHECK(!ShapeUtil::IsTuple(pad->operand(0)->shape()));
+    // Padding value must be scalar.
+    CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
+    CHECK_EQ(ShapeUtil::Rank(pad->operand(0)->shape()),
+             pad->padding_config().dimensions_size());
+
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferPadShape(
+                            /*operand_shape=*/pad->operand(0)->shape(),
+                            /*padding_value_shape=*/pad->operand(1)->shape(),
+                            /*padding_config=*/pad->padding_config()));
+    CHECK(ShapeUtil::Compatible(pad->shape(), inferred_return_shape))
+        << "return shape is set to: " << ShapeUtil::HumanString(pad->shape())
+        << "but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+
+    // Create new HLO of padded shape with padding value.
+    ReturnT scalar =
+        parent_->GetEvaluatedLiteralFor(pad->operand(1)).Get<ReturnT>({});
+    auto result = Literal::CreateFromShape(pad->shape());
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&scalar](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          return scalar;
+        }));
+
+    auto evaluated_operand = parent_->GetEvaluatedLiteralFor(pad->operand(0));
+
+    std::vector<int64> input_index(ShapeUtil::Rank(evaluated_operand.shape()),
+                                   0);
+    std::vector<int64> target_index(ShapeUtil::Rank(result->shape()), 0);
+
+    // Loop through each element of the operand, assign them to the
+    // corresponding index of the resulting padded literal.
+    const PaddingConfig& pad_config = pad->padding_config();
+
+    auto func = [&](const std::vector<int64>& input_index) {
+      for (auto i = 0; i < input_index.size(); ++i) {
+        // Interior padding occurs logically before edge padding, so in the case
+        // of negative edge padding elements are removed from the
+        // interior-padded operand.
+        target_index[i] =
+            pad_config.dimensions(i).edge_padding_low() +
+            input_index[i] * (pad_config.dimensions(i).interior_padding() + 1);
+
+        // Account for negative low and high padding: skip assignment if the
+        // any target index is out of range.
+        if (!(target_index[i] >= 0 &&
+              target_index[i] < pad->shape().dimensions(i))) {
+          return true;
+        }
+      }
+      result->Set<ReturnT>(target_index,
+                           evaluated_operand.Get<ReturnT>(input_index));
+      return true;
+    };
+
+    std::vector<int64> zero_base(evaluated_operand.shape().dimensions_size(),
+                                 0);
+    std::vector<int64> step(evaluated_operand.shape().dimensions_size(), 1);
+
+    ShapeUtil::ForEachIndex(
+        evaluated_operand.shape(), zero_base,
+        AsInt64Slice(evaluated_operand.shape().dimensions()), step, func);
+
+    parent_->evaluated_[pad] = std::move(result);
     return Status::OK();
   };
 

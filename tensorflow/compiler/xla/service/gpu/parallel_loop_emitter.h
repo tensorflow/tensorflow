@@ -41,6 +41,12 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
                       const llvm_ir::IrArray& target_array,
                       const LaunchDimensions& launch_dimensions,
                       llvm::IRBuilder<>* ir_builder);
+
+  ParallelLoopEmitter(
+      const llvm_ir::ElementGenerator& target_element_generator,
+      tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
+      const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder);
+
   ParallelLoopEmitter(const ParallelLoopEmitter&) = delete;
   ParallelLoopEmitter& operator=(const ParallelLoopEmitter&) = delete;
   ~ParallelLoopEmitter() override = default;
