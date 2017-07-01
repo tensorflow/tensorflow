@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "create_local_cluster"
-    argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\'], varargs=None, keywords=None, defaults=[\'grpc\'], "
+    argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\', \'worker_config\', \'ps_config\'], varargs=None, keywords=None, defaults=[\'grpc\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_temp_dir"
