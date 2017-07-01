@@ -1315,6 +1315,12 @@ class GraphTest(test_util.TensorFlowTestCase):
   def _AssertDefault(self, expected):
     self.assertIs(expected, ops.get_default_graph())
 
+  def testResetDefaultGraphNesting(self):
+    g0 = ops.Graph()
+    with self.assertRaises(AssertionError):
+      with g0.as_default():
+        ops.reset_default_graph()
+
   def testGraphContextManager(self):
     g0 = ops.Graph()
     with g0.as_default() as g1:
