@@ -646,8 +646,9 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                                  0);
     std::vector<int64> step(evaluated_operand.shape().dimensions_size(), 1);
 
-    ShapeUtil::ForEachIndex(evaluated_operand.shape(), zero_base,
-                            evaluated_operand.shape().dimensions(), step, func);
+    ShapeUtil::ForEachIndex(
+        evaluated_operand.shape(), zero_base,
+        AsInt64Slice(evaluated_operand.shape().dimensions()), step, func);
 
     parent_->evaluated_[pad] = std::move(result);
     return Status::OK();
