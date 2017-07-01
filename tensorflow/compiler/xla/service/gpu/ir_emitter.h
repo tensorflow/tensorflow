@@ -118,8 +118,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                      IrEmitterContext* ir_emitter_context, bool is_nested);
 
   // A convenient helper for calling HloToIrBindings::GetIrArray.
-  llvm_ir::IrArray GetIrArray(const HloInstruction& inst) {
-    return bindings_.GetIrArray(inst);
+  llvm_ir::IrArray GetIrArray(const HloInstruction& inst,
+                              const ShapeIndex& shape_index = {}) {
+    return bindings_.GetIrArray(inst, shape_index);
   }
   // A convenient helper for calling HloToIrBindings::GetBasePointer.
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {

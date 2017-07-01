@@ -47,6 +47,10 @@ class LoopEmitter {
   // element of the given target array.
   LoopEmitter(const ElementGenerator& target_element_generator,
               const IrArray& target_array, llvm::IRBuilder<>* ir_builder);
+  // Same as previous method except emits multiple targets in an array.
+  LoopEmitter(const ElementGenerator& target_element_generator,
+              tensorflow::gtl::ArraySlice<IrArray> target_arrays,
+              llvm::IRBuilder<>* ir_builder);
   LoopEmitter(const LoopEmitter&) = delete;
   LoopEmitter& operator=(const LoopEmitter&) = delete;
   virtual ~LoopEmitter() = default;
