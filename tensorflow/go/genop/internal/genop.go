@@ -41,7 +41,7 @@ import (
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
-	pb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework"
+	pb "github.com/tensorflow/tensorflow/tensorflow/go/pb/tensorflow/core/framework"
 )
 
 // GenerateFunctionsForRegisteredOps writes a Go source code file to w

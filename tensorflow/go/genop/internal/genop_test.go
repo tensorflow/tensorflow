@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	pb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework"
+	pb "github.com/tensorflow/tensorflow/tensorflow/go/pb/tensorflow/core/framework"
 )
 
 func TestGenerateOp(t *testing.T) {
