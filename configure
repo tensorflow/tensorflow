@@ -70,27 +70,7 @@ END
 
 function setup_python {
   ## Set up python-related environment settings:
-  while true; do
-    fromuser=""
-    if [ -z "$PYTHON_BIN_PATH" ]; then
-      default_python_bin_path=$(which python || which python3 || true)
-      read -p "Please specify the location of python. [Default is $default_python_bin_path]: " PYTHON_BIN_PATH
-      fromuser="1"
-      if [ -z "$PYTHON_BIN_PATH" ]; then
-        PYTHON_BIN_PATH=$default_python_bin_path
-      fi
-    fi
-    if [ -e "$PYTHON_BIN_PATH" ]; then
-      break
-    fi
-    echo "Invalid python path. ${PYTHON_BIN_PATH} cannot be found" 1>&2
-    if [ -z "$fromuser" ]; then
-      exit 1
-    fi
-    PYTHON_BIN_PATH=""
-    # Retry
-  done
-
+  get_path PYTHON_BIN_PATH "python" "bin" "python3"
   if [ -z "$PYTHON_LIB_PATH" ]; then
     # Split python_path into an array of paths, this allows path containing spaces
     IFS=',' read -r -a python_lib_path <<< "$(python_path)"
