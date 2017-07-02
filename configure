@@ -205,10 +205,7 @@ function build_with {
   done
 }
 
-bazel version > bazel.version
-curr_bazel_version=$(head -n 1 bazel.version | cut -d ' ' -f3)
-rm -f bazel.version
-
+curr_bazel_version="$(bazel version | grep label | cut -d ' ' -f3 | grep -o '[0-9.]*')"
 echo "You have bazel $curr_bazel_version installed."
 if [ -z "$curr_bazel_version" ]; then
   echo "WARNING: current bazel installation is not a release version."
