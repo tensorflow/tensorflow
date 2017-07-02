@@ -355,20 +355,7 @@ if [[ "$TF_NEED_JEMALLOC" == "1" ]]; then
   write_to_bazelrc 'build --define with_jemalloc=true'
 fi
 
-while [[ "$TF_NEED_GCP" == "" ]]; do
-  read -p "Do you wish to build TensorFlow with "\
-"Google Cloud Platform support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=1;;
-    [Nn]* ) echo "No Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=0;;
-    "" ) echo "No Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
-
+build_with TF_NEED_GCP "Google Cloud Platform" "disabled"
 if [[ "$TF_NEED_GCP" == "1" ]]; then
   write_to_bazelrc 'build --define with_gcp_support=true'
 fi
