@@ -157,11 +157,57 @@ function version {
   echo "$@" | awk -F. '{ printf("%03d%03d%03d\n", $1,$2,$3); }';
 }
 
+function build_with {
+  # don't change value if it is already set
+  if [[ "$(eval echo \"\$$1\")" ]] ; then
+    return
+  fi
+  local needed="$1"
+  local build_ask="$2"
+  # default is 'enabled' or 'disabled'
+  local default="$3"
+
+  if [[ "$4" ]] ; then
+    local build_ans_yes="$4"
+    local build_ans_no="$5"
+  else
+    local build_ans_yes="$build_ask support will be enabled for TensorFlow."
+    local build_ans_no="No $build_ans_yes"
+    local build_ask="Do you wish to build TensorFlow with $build_ask support?"
+  fi
+
+  if [[ "$default" == "enabled" ]] ; then
+    local build_ask="$build_ask [Y/n] "
+  else
+    local build_ask="$build_ask [y/N] "
+  fi
+
+  while true; do
+    read -p "$build_ask" user_input
+
+    case "$user_input" in
+      [Yy]* ) echo "$build_ans_yes"
+        eval $needed=1
+        break;;
+      [Nn]* ) echo "$build_ans_no"
+        eval $needed=0
+        break;;
+      "" ) if [[ "$default" == "enabled" ]] ; then
+          echo "$build_ans_yes"
+          eval $needed=1
+        else
+          echo "$build_ans_no"
+          eval $needed=0
+        fi
+        break;;
+      * ) echo "Invalid selection: $user_input";;
+    esac
+  done
+}
 
 bazel version > bazel.version
 curr_bazel_version=$(head -n 1 bazel.version | cut -d ' ' -f3)
 rm -f bazel.version
-
 
 echo "You have bazel $curr_bazel_version installed."
 if [ -z "$curr_bazel_version" ]; then
