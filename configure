@@ -648,54 +648,14 @@ fi
 
 # OpenCL configuration
 
-if [ "$TF_NEED_OPENCL" == "1" ]; then
-  # Determine which C++ compiler should be used as the host compiler
-  while true; do
-    fromuser=""
-    if [ -z "$HOST_CXX_COMPILER" ]; then
-      default_cxx_host_compiler=$(which g++ || true)
-      read -p "Please specify which C++ compiler should be used as the host C++ compiler. [Default is $default_cxx_host_compiler]: " HOST_CXX_COMPILER
-      fromuser="1"
-      if [ -z "$HOST_CXX_COMPILER" ]; then
-        HOST_CXX_COMPILER=$default_cxx_host_compiler
-      fi
-    fi
-    if [ -e "$HOST_CXX_COMPILER" ]; then
-      export HOST_CXX_COMPILER
-      write_action_env_to_bazelrc "HOST_CXX_COMPILER" "$HOST_CXX_COMPILER"
-      break
-    fi
-    echo "Invalid C++ compiler path. ${HOST_CXX_COMPILER} cannot be found" 1>&2
-    if [ -z "$fromuser" ]; then
-      exit 1
-    fi
-    HOST_CXX_COMPILER=""
-    # Retry
-  done
+if (( "$TF_NEED_OPENCL" )) ; then
+  get_path HOST_CXX_COMPILER "g++" "bin"
+  export HOST_CXX_COMPILER
+  write_action_env_to_bazelrc "HOST_CXX_COMPILER" "$HOST_CXX_COMPILER"
 
-  # Determine which C compiler should be used as the host compiler
-  while true; do
-    fromuser=""
-    if [ -z "$HOST_C_COMPILER" ]; then
-      default_c_host_compiler=$(which gcc || true)
-      read -p "Please specify which C compiler should be used as the host C compiler. [Default is $default_c_host_compiler]: " HOST_C_COMPILER
-      fromuser="1"
-      if [ -z "$HOST_C_COMPILER" ]; then
-        HOST_C_COMPILER=$default_c_host_compiler
-      fi
-    fi
-    if [ -e "$HOST_C_COMPILER" ]; then
-      export HOST_C_COMPILER
-      write_action_env_to_bazelrc "HOST_C_COMPILER" "$HOST_C_COMPILER"
-      break
-    fi
-    echo "Invalid C compiler path. ${HOST_C_COMPILER} cannot be found" 1>&2
-    if [ -z "$fromuser" ]; then
-      exit 1
-    fi
-    HOST_C_COMPILER=""
-    # Retry
-  done
+  get_path HOST_C_COMPILER "gcc" "bin"
+  export HOST_C_COMPILER
+  write_action_env_to_bazelrc "HOST_C_COMPILER" "$HOST_C_COMPILER"
 
   while true; do
     # Configure the OPENCL version to use.
@@ -735,37 +695,21 @@ fi
 
 build_with TF_NEED_MPI "MPI" "disabled"
 # Find out where the MPI toolkit is installed
-while true; do
-    if [ "$TF_NEED_MPI" == "0" ]; then
-        break;
-    fi
-
-    fromuser=""
-    if [ -z "$MPI_HOME" ]; then
-        #Get the base folder by removing the bin path
-        default_mpi_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
-        read -p "Please specify the MPI toolkit folder. [Default is $default_mpi_path]: " MPI_HOME
-        fromuser="1"
-        if [ -z "$MPI_HOME" ]; then
-            MPI_HOME=$default_mpi_path
-        fi
-    fi
-
-    #Check that the include and library folders are where we expect them to be
-    if [ -e "$MPI_HOME/include" ] && [ -e "$MPI_HOME/lib" ]; then
-        break
-    fi
-
+if (( "$TF_NEED_MPI" )) ; then
+  mpi_lib_array=( )
+  if [[ "$(which mpirun 2>/dev/null)" ]] ; then
+    mpi_lib_array+="$(dirname $(dirname $(which mpirun)))"
+  fi
+  if [[ "$(which mpiexec 2>/dev/null)" ]] ; then
+    mpi_lib_array+="$(dirname $(dirname $(which mpiexec)))"
+  fi
+  get_path MPI_HOME "MPI" "lib" "$mpi_lib_array"
+  #Check that the include and library folders are where we expect them to be
+  if [[ ! -e "$MPI_HOME/include" ]] && [[ ! -e "$MPI_HOME/lib" ]]; then
     echo "Invalid path to the MPI Toolkit. ${MPI_HOME}/include or ${MPI_HOME}/lib cannot be found."
-    if [ -z "$fromuser" ]; then
-        exit 1
-    fi
+    exit 1
+  fi
 
-    # Retry
-    MPI_HOME=""
-done
-
-if [ "$TF_NEED_MPI" == "1" ]; then
   write_to_bazelrc 'build --define with_mpi_support=true'
 
   #Link the MPI header files
@@ -775,15 +719,15 @@ if [ "$TF_NEED_MPI" == "1" ]; then
   #to be included here to make bazel dependency checker happy
 
   if [ -e "${MPI_HOME}/include/mpi_portable_platform.h" ]; then
-        #OpenMPI
-        ln -sf "${MPI_HOME}/include/mpi_portable_platform.h" third_party/mpi/
-        sed -i -e "s/MPI_LIB_IS_OPENMPI=False/MPI_LIB_IS_OPENMPI=True/" third_party/mpi/mpi.bzl
- else
-        #MVAPICH / MPICH
-        ln -sf "${MPI_HOME}/include/mpio.h" third_party/mpi/
-        ln -sf "${MPI_HOME}/include/mpicxx.h" third_party/mpi/
-        sed -i -e "s/MPI_LIB_IS_OPENMPI=True/MPI_LIB_IS_OPENMPI=False/" third_party/mpi/mpi.bzl
- fi
+    #OpenMPI
+    ln -sf "${MPI_HOME}/include/mpi_portable_platform.h" third_party/mpi/
+    sed -i -e "s/MPI_LIB_IS_OPENMPI=False/MPI_LIB_IS_OPENMPI=True/" third_party/mpi/mpi.bzl
+  else
+    #MVAPICH / MPICH
+    ln -sf "${MPI_HOME}/include/mpio.h" third_party/mpi/
+    ln -sf "${MPI_HOME}/include/mpicxx.h" third_party/mpi/
+    sed -i -e "s/MPI_LIB_IS_OPENMPI=True/MPI_LIB_IS_OPENMPI=False/" third_party/mpi/mpi.bzl
+  fi
 
   if [ -e "${MPI_HOME}/lib/libmpi.so" ]; then
     ln -sf "${MPI_HOME}/lib/libmpi.so" third_party/mpi/
