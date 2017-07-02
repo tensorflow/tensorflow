@@ -31,15 +31,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* const kSchemePrefix = "grpc://";
+const size_t kSchemePrefixLength = strlen(kSchemePrefix);
+
 GrpcSession::GrpcSession(const SessionOptions& options)
     : options_(options), current_graph_version_(-1) {}
 
 GrpcSession::~GrpcSession() {}
-
-namespace {
-const char* kSchemePrefix = "grpc://";
-const size_t kSchemePrefixLength = strlen(kSchemePrefix);
-}  // namespace
 
 /* static */
 Status GrpcSession::Create(const SessionOptions& options,
@@ -76,7 +74,7 @@ void ReEncodeConsts(GraphDef* gdef) {
         }
       }
       if (proto != nullptr && proto->tensor_content().empty() &&
-          proto->ByteSize() > 64) {
+          proto->ByteSizeLong() > 64) {
         // If the constant is encoded with repeated proto fields and
         // it is moderate large, we re-encode it in tensor_content as
         // a Cord. This is mildly helpful for reducing the peak memory

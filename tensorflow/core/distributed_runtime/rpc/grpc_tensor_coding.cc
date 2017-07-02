@@ -37,7 +37,7 @@ static void unref_tensorbuffer(void* raw) {
 
 void EncodeRecvTensorResponseToByteBuffer(const RecvTensorResponse& proto,
                                           ::grpc::ByteBuffer* result) {
-  size_t len = proto.ByteSize();
+  size_t len = proto.ByteSizeLong();
   gpr_slice s = gpr_slice_malloc(len);
   proto.SerializeWithCachedSizesToArray(
       reinterpret_cast<uint8*>(GPR_SLICE_START_PTR(s)));
