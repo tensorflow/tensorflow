@@ -387,19 +387,9 @@ GEN_GIT_SOURCE=tensorflow/tools/git/gen_git_source.py
 chmod a+x ${GEN_GIT_SOURCE}
 "${PYTHON_BIN_PATH}" ${GEN_GIT_SOURCE} --configure "${SOURCE_BASE_DIR}"
 
-## Set up SYCL-related environment settings
-while [ "$TF_NEED_OPENCL" == "" ]; do
-  read -p "Do you wish to build TensorFlow with OpenCL support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=1;;
-    [Nn]* ) echo "No OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=0;;
-    "" ) echo "No OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
+build_with TF_NEED_OPENCL "OpenCL" "disabled"
 
 ## Set up Cuda-related environment settings
-
 while [ "$TF_NEED_CUDA" == "" ]; do
   read -p "Do you wish to build TensorFlow with CUDA support? [y/N] " INPUT
   case $INPUT in
