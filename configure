@@ -411,28 +411,11 @@ if [ "$TF_NEED_CUDA" == "1" ]; then
   write_action_env_to_bazelrc "TF_CUDA_CLANG" "$TF_CUDA_CLANG"
 
   # Set up which clang we should use as the cuda / host compiler.
-  while [[ "$TF_CUDA_CLANG" == "1" ]] && true; do
-    fromuser=""
-    if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
-      default_clang_host_compiler_path=$(which clang || true)
-      read -p "Please specify which clang should be used as device and host compiler. [Default is $default_clang_host_compiler_path]: " CLANG_CUDA_COMPILER_PATH
-      fromuser="1"
-      if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
-        CLANG_CUDA_COMPILER_PATH="$default_clang_host_compiler_path"
-      fi
-    fi
-    if [ -e "$CLANG_CUDA_COMPILER_PATH" ]; then
-      export CLANG_CUDA_COMPILER_PATH
-      write_action_env_to_bazelrc "CLANG_CUDA_COMPILER_PATH" "$CLANG_CUDA_COMPILER_PATH"
-      break
-    fi
-    echo "Invalid clang path. ${CLANG_CUDA_COMPILER_PATH} cannot be found" 1>&2
-    if [ -z "$fromuser" ]; then
-      exit 1
-    fi
-    CLANG_CUDA_COMPILER_PATH=""
-    # Retry
-  done
+  if (( "$TF_CUDA_CLANG" )) ; then
+    get_path CLANG_CUDA_COMPILER_PATH "clang" "bin"
+    export CLANG_CUDA_COMPILER_PATH
+    write_action_env_to_bazelrc "CLANG_CUDA_COMPILER_PATH" "$CLANG_CUDA_COMPILER_PATH"
+  fi
 
   # Find out where the CUDA toolkit is installed
   while true; do
