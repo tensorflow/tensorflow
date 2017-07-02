@@ -33,13 +33,14 @@ FLAGS = None
 MAX_DOCUMENT_LENGTH = 10
 EMBEDDING_SIZE = 50
 n_words = 0
+WORDS_FEATURE = 'words'
 
 
 def bag_of_words_model(features, target):
   """A bag-of-words model. Note it disregards the word order in the text."""
   target = tf.one_hot(target, 15, 1, 0)
   features = encoders.bow_encoder(
-      features, vocab_size=n_words, embed_dim=EMBEDDING_SIZE)
+      features[WORDS_FEATURE], vocab_size=n_words, embed_dim=EMBEDDING_SIZE)
   logits = tf.contrib.layers.fully_connected(features, 15, activation_fn=None)
   loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
   train_op = tf.contrib.layers.optimize_loss(
@@ -60,7 +61,7 @@ def rnn_model(features, target):
   # maps word indexes of the sequence into [batch_size, sequence_length,
   # EMBEDDING_SIZE].
   word_vectors = tf.contrib.layers.embed_sequence(
-      features, vocab_size=n_words, embed_dim=EMBEDDING_SIZE, scope='words')
+      features[WORDS_FEATURE], vocab_size=n_words, embed_dim=EMBEDDING_SIZE, scope='words')
 
   # Split into list of embedding per word, while removing doc length dim.
   # word_list results to be a list of tensors [batch_size, EMBEDDING_SIZE].
@@ -78,7 +79,7 @@ def rnn_model(features, target):
   # regression over output classes.
   target = tf.one_hot(target, 15, 1, 0)
   logits = tf.contrib.layers.fully_connected(encoding, 15, activation_fn=None)
-  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
+  loss = tf.losses.softmax_cross_entropy(target, logits)
 
   # Create a training op.
   train_op = tf.contrib.layers.optimize_loss(
@@ -98,20 +99,20 @@ def main(unused_argv):
   # Prepare training and testing data
   dbpedia = learn.datasets.load_dataset(
       'dbpedia', test_with_fake_data=FLAGS.test_with_fake_data)
-  x_train = pandas.DataFrame(dbpedia.train.data)[1]
+  x_train = pandas.Series(dbpedia.train.data[:,1])
   y_train = pandas.Series(dbpedia.train.target)
-  x_test = pandas.DataFrame(dbpedia.test.data)[1]
+  x_test = pandas.Series(dbpedia.test.data[:,1])
   y_test = pandas.Series(dbpedia.test.target)
 
   # Process vocabulary
   vocab_processor = learn.preprocessing.VocabularyProcessor(MAX_DOCUMENT_LENGTH)
-  
+
   x_transform_train = vocab_processor.fit_transform(x_train)
   x_transform_test = vocab_processor.transform(x_test)
-  
+
   x_train = np.array(list(x_transform_train))
   x_test = np.array(list(x_transform_test))
-  
+
   n_words = len(vocab_processor.vocabulary_)
   print('Total words: %d' % n_words)
 
@@ -123,10 +124,10 @@ def main(unused_argv):
   classifier = learn.Estimator(model_fn=model_fn)
 
   # Train and predict
-  classifier.fit(x_train, y_train, steps=100)
+  classifier.fit(input_fn=lambda: ({WORDS_FEATURE: tf.constant(x_train)}, tf.constant(y_train)), steps=100)
   y_predicted = [
       p['class'] for p in classifier.predict(
-          x_test, as_iterable=True)
+        input_fn=lambda: {WORDS_FEATURE: tf.constant(x_test)})
   ]
   score = metrics.accuracy_score(y_test, y_predicted)
   print('Accuracy: {0:f}'.format(score))
