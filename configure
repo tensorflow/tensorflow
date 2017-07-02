@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
+declare -A array_test=( [one]="position_one" [two]="position_two" [three]="position_three" )
+array_ans=""
+positional_test=( one two three )
+positional_ans="position_oneposition_twoposition_three"
 
+for x in "${positional_test[@]}" ; do
+  array_ans+="$(eval echo \${array_test[$x]})"
+done
+
+if [[ ! "$array_ans" == "$positional_ans" ]] ; then
+  echo "dec arrays not supported"
+  exit 1
+fi
+ 
 set -e
 set -o pipefail
 
