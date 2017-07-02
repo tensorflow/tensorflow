@@ -41,7 +41,7 @@ function main() {
     exit 1
   fi
 
-  DEST=$1
+  DEST=$(realpath $1)
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
   GPU_FLAG=""
@@ -90,11 +90,11 @@ function main() {
       "${TMPDIR}/external"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
     # Copy MKL libs over so they can be loaded at runtime
-    if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
+    so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
+    mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
+    if [ $? -eq 0 ]; then
       mkdir "${TMPDIR}/_solib_k8"
-  		cp -R \
-  			bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-        "${TMPDIR}/_solib_k8"
+      cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
     fi
   else
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
@@ -107,11 +107,11 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
+      so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
+      mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
+      if [ $? -eq 0 ]; then
         mkdir "${TMPDIR}/_solib_k8"
-        cp -R \
-          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-          "${TMPDIR}/_solib_k8"
+        cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
@@ -124,11 +124,11 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
+      so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
+      mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
+      if [ $? -eq 0 ]; then
         mkdir "${TMPDIR}/_solib_k8"
-    		cp -R \
-    			bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-          "${TMPDIR}/_solib_k8"
+        cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
       fi
     fi
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow

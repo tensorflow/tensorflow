@@ -18,7 +18,7 @@ limitations under the License.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
-#include "third_party/mkl/include/mkl_trans.h"
+#include "mkl_trans.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
 

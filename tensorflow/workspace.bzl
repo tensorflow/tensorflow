@@ -172,6 +172,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   native.new_http_archive(
+      name = "mkl",
+      urls = [
+          "https://github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
+      ],
+      strip_prefix = "mklml_lnx_2018.0.20170425",
+      build_file = str(Label("//third_party/mkl:mkl.BUILD")),
+  )
+
+  native.new_http_archive(
       name = "ortools_archive",
       urls = [
           "http://mirror.bazel.build/github.com/google/or-tools/archive/253f7955c6a1fd805408fba2e42ac6d45b312d15.tar.gz",
