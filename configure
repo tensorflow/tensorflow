@@ -763,21 +763,7 @@ if [ "$TF_NEED_OPENCL" == "1" ]; then
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
 
-
-while [ "$TF_NEED_MPI" == "" ]; do
-  read -p "Do you wish to build TensorFlow with "\
-"MPI support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "MPI support will be enabled for "\
-"TensorFlow"; TF_NEED_MPI=1;;
-    [Nn]* ) echo "MPI support will not be enabled for "\
-"TensorFlow"; TF_NEED_MPI=0;;
-    "" ) echo "MPI support will not be enabled for "\
-"TensorFlow"; TF_NEED_MPI=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
-
+build_with TF_NEED_MPI "MPI" "disabled"
 # Find out where the MPI toolkit is installed
 while true; do
     if [ "$TF_NEED_MPI" == "0" ]; then
