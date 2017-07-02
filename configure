@@ -365,17 +365,8 @@ if [[ "$TF_NEED_HDFS" == "1" ]]; then
   write_to_bazelrc 'build --define with_hdfs_support=true'
 fi
 
-## Enable XLA.
-while [[ "$TF_ENABLE_XLA" == "" ]]; do
-  read -p "Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=1;;
-    [Nn]* ) echo "No XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
-    "" ) echo "No XLA support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
-
+build_with TF_ENABLE_XLA "Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)?" \
+  "disabled" "XLA JIT support will be enabled for TensorFlow" "No XLA support will be enabled for TensorFlow"
 if [[ "$TF_ENABLE_XLA" == "1" ]]; then
   write_to_bazelrc 'build --define with_xla_support=true'
 fi
