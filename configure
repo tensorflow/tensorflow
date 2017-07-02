@@ -396,288 +396,288 @@ export TF_NEED_OPENCL
 write_action_env_to_bazelrc "TF_NEED_OPENCL" "$TF_NEED_OPENCL"
 
 if [ "$TF_NEED_CUDA" == "1" ]; then
-while [[ "$TF_CUDA_CLANG" == "" ]]; do
-  read -p "Do you want to use clang as CUDA compiler? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "Clang will be used as CUDA compiler"; TF_CUDA_CLANG=1;;
-    [Nn]* ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
-    "" ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
+  while [[ "$TF_CUDA_CLANG" == "" ]]; do
+    read -p "Do you want to use clang as CUDA compiler? [y/N] " INPUT
+    case $INPUT in
+      [Yy]* ) echo "Clang will be used as CUDA compiler"; TF_CUDA_CLANG=1;;
+      [Nn]* ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
+      "" ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
+      * ) echo "Invalid selection: " $INPUT;;
+    esac
+  done
 
-export TF_CUDA_CLANG
-write_action_env_to_bazelrc "TF_CUDA_CLANG" "$TF_CUDA_CLANG"
+  export TF_CUDA_CLANG
+  write_action_env_to_bazelrc "TF_CUDA_CLANG" "$TF_CUDA_CLANG"
 
-# Set up which clang we should use as the cuda / host compiler.
-while [[ "$TF_CUDA_CLANG" == "1" ]] && true; do
-  fromuser=""
-  if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
-    default_clang_host_compiler_path=$(which clang || true)
-    read -p "Please specify which clang should be used as device and host compiler. [Default is $default_clang_host_compiler_path]: " CLANG_CUDA_COMPILER_PATH
-    fromuser="1"
+  # Set up which clang we should use as the cuda / host compiler.
+  while [[ "$TF_CUDA_CLANG" == "1" ]] && true; do
+    fromuser=""
     if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
-      CLANG_CUDA_COMPILER_PATH="$default_clang_host_compiler_path"
-    fi
-  fi
-  if [ -e "$CLANG_CUDA_COMPILER_PATH" ]; then
-    export CLANG_CUDA_COMPILER_PATH
-    write_action_env_to_bazelrc "CLANG_CUDA_COMPILER_PATH" "$CLANG_CUDA_COMPILER_PATH"
-    break
-  fi
-  echo "Invalid clang path. ${CLANG_CUDA_COMPILER_PATH} cannot be found" 1>&2
-  if [ -z "$fromuser" ]; then
-    exit 1
-  fi
-  CLANG_CUDA_COMPILER_PATH=""
-  # Retry
-done
-
-# Find out where the CUDA toolkit is installed
-while true; do
-  # Configure the Cuda SDK version to use.
-  if [ -z "$TF_CUDA_VERSION" ]; then
-    read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: " TF_CUDA_VERSION
-  fi
-
-  fromuser=""
-  if [ -z "$CUDA_TOOLKIT_PATH" ]; then
-    default_cuda_path=/usr/local/cuda
-    if is_windows; then
-      if [ -z "$CUDA_PATH" ]; then
-        default_cuda_path="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0"
-      else
-        default_cuda_path="$(cygpath -m "$CUDA_PATH")"
-      fi
-    elif is_linux; then
-      # If the default doesn't exist, try an alternative default.
-      if [ ! -d $default_cuda_path ] && [ -d /opt/cuda ]; then
-        default_cuda_path=/opt/cuda
+      default_clang_host_compiler_path=$(which clang || true)
+      read -p "Please specify which clang should be used as device and host compiler. [Default is $default_clang_host_compiler_path]: " CLANG_CUDA_COMPILER_PATH
+      fromuser="1"
+      if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
+        CLANG_CUDA_COMPILER_PATH="$default_clang_host_compiler_path"
       fi
     fi
-    read -p "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
-    fromuser="1"
+    if [ -e "$CLANG_CUDA_COMPILER_PATH" ]; then
+      export CLANG_CUDA_COMPILER_PATH
+      write_action_env_to_bazelrc "CLANG_CUDA_COMPILER_PATH" "$CLANG_CUDA_COMPILER_PATH"
+      break
+    fi
+    echo "Invalid clang path. ${CLANG_CUDA_COMPILER_PATH} cannot be found" 1>&2
+    if [ -z "$fromuser" ]; then
+      exit 1
+    fi
+    CLANG_CUDA_COMPILER_PATH=""
+    # Retry
+  done
+
+  # Find out where the CUDA toolkit is installed
+  while true; do
+    # Configure the Cuda SDK version to use.
+    if [ -z "$TF_CUDA_VERSION" ]; then
+      read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: " TF_CUDA_VERSION
+    fi
+
+    fromuser=""
     if [ -z "$CUDA_TOOLKIT_PATH" ]; then
-      CUDA_TOOLKIT_PATH="$default_cuda_path"
+      default_cuda_path=/usr/local/cuda
+      if is_windows; then
+        if [ -z "$CUDA_PATH" ]; then
+          default_cuda_path="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0"
+        else
+          default_cuda_path="$(cygpath -m "$CUDA_PATH")"
+        fi
+      elif is_linux; then
+        # If the default doesn't exist, try an alternative default.
+        if [ ! -d $default_cuda_path ] && [ -d /opt/cuda ]; then
+          default_cuda_path=/opt/cuda
+        fi
+      fi
+      read -p "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
+      fromuser="1"
+      if [ -z "$CUDA_TOOLKIT_PATH" ]; then
+        CUDA_TOOLKIT_PATH="$default_cuda_path"
+      fi
     fi
-  fi
 
-  if [[ -z "$TF_CUDA_VERSION" ]]; then
-    TF_CUDA_EXT=""
-  else
-    TF_CUDA_EXT=".$TF_CUDA_VERSION"
-  fi
-
-  if is_windows; then
-    CUDA_RT_LIB_PATH="lib/x64/cudart.lib"
-  elif is_linux; then
-    CUDA_RT_LIB_PATH="lib64/libcudart.so${TF_CUDA_EXT}"
-  elif is_macos; then
-    CUDA_RT_LIB_PATH="lib/libcudart${TF_CUDA_EXT}.dylib"
-  fi
-
-  if [ -e "${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}" ]; then
-    export CUDA_TOOLKIT_PATH
-    write_action_env_to_bazelrc "CUDA_TOOLKIT_PATH" "$CUDA_TOOLKIT_PATH"
-    export TF_CUDA_VERSION
-    break
-  fi
-  echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH} cannot be found"
-
-  if [ -z "$fromuser" ]; then
-    exit 1
-  fi
-  # Retry
-  TF_CUDA_VERSION=""
-  CUDA_TOOLKIT_PATH=""
-done
-
-# Set default CUDA version if not set
-if [ -z "$TF_CUDA_VERSION" ]; then
-  TF_CUDA_VERSION="8.0"
-  export TF_CUDA_VERSION
-fi
-write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
-
-# Set up which gcc nvcc should use as the host compiler
-# No need to set this on Windows
-while [[ "$TF_CUDA_CLANG" != "1" ]] && ! is_windows && true; do
-  fromuser=""
-  if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
-    default_gcc_host_compiler_path=$(which gcc || true)
-    cuda_bin_symlink="$CUDA_TOOLKIT_PATH/bin/gcc"
-    if [ -L "$cuda_bin_symlink" ]; then
-      default_gcc_host_compiler_path=$(readlink $cuda_bin_symlink)
-    fi
-    read -p "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
-    fromuser="1"
-    if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
-      GCC_HOST_COMPILER_PATH="$default_gcc_host_compiler_path"
-    fi
-  fi
-  if [ -e "$GCC_HOST_COMPILER_PATH" ]; then
-    export GCC_HOST_COMPILER_PATH
-    write_action_env_to_bazelrc "GCC_HOST_COMPILER_PATH" "$GCC_HOST_COMPILER_PATH"
-    break
-  fi
-  echo "Invalid gcc path. ${GCC_HOST_COMPILER_PATH} cannot be found" 1>&2
-  if [ -z "$fromuser" ]; then
-    exit 1
-  fi
-  GCC_HOST_COMPILER_PATH=""
-  # Retry
-done
-
-# Find out where the cuDNN library is installed
-while true; do
-  # Configure the cuDNN version to use.
-  if [ -z "$TF_CUDNN_VERSION" ]; then
-    read -p "Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: " TF_CUDNN_VERSION
-  fi
-
-  fromuser=""
-  if [ -z "$CUDNN_INSTALL_PATH" ]; then
-    default_cudnn_path=${CUDA_TOOLKIT_PATH}
-    read -p "Please specify the location where cuDNN $TF_CUDNN_VERSION library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
-    fromuser="1"
-    if [ -z "$CUDNN_INSTALL_PATH" ]; then
-      CUDNN_INSTALL_PATH=$default_cudnn_path
-    fi
-    # Result returned from "read" will be used unexpanded. That make "~" unusable.
-    # Going through one more level of expansion to handle that.
-    CUDNN_INSTALL_PATH=`"${PYTHON_BIN_PATH}" -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
-    if is_windows; then
-      CUDNN_INSTALL_PATH="$(cygpath -m "$CUDNN_INSTALL_PATH")"
-    fi
-  fi
-
-  if [[ -z "$TF_CUDNN_VERSION" ]]; then
-    TF_CUDNN_EXT=""
-  else
-    TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
-  fi
-
-  if is_windows; then
-    CUDA_DNN_LIB_PATH="lib/x64/cudnn.lib"
-    CUDA_DNN_LIB_ALT_PATH="lib/x64/cudnn.lib"
-  elif is_linux; then
-    CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
-  elif is_macos; then
-    CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
-    CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
-  fi
-
-  if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" ] || [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
-    export TF_CUDNN_VERSION
-    write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
-    export CUDNN_INSTALL_PATH
-    write_action_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
-    break
-  fi
-
-  if is_linux; then
-    if ! type ldconfig > /dev/null 2>&1; then
-        LDCONFIG_BIN=/sbin/ldconfig
+    if [[ -z "$TF_CUDA_VERSION" ]]; then
+      TF_CUDA_EXT=""
     else
-        LDCONFIG_BIN=ldconfig
+      TF_CUDA_EXT=".$TF_CUDA_VERSION"
     fi
-    CUDNN_PATH_FROM_LDCONFIG="$($LDCONFIG_BIN -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
-    if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
+
+    if is_windows; then
+      CUDA_RT_LIB_PATH="lib/x64/cudart.lib"
+    elif is_linux; then
+      CUDA_RT_LIB_PATH="lib64/libcudart.so${TF_CUDA_EXT}"
+    elif is_macos; then
+      CUDA_RT_LIB_PATH="lib/libcudart${TF_CUDA_EXT}.dylib"
+    fi
+
+    if [ -e "${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH}" ]; then
+      export CUDA_TOOLKIT_PATH
+      write_action_env_to_bazelrc "CUDA_TOOLKIT_PATH" "$CUDA_TOOLKIT_PATH"
+      export TF_CUDA_VERSION
+      break
+    fi
+    echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH} cannot be found"
+
+    if [ -z "$fromuser" ]; then
+      exit 1
+    fi
+    # Retry
+    TF_CUDA_VERSION=""
+    CUDA_TOOLKIT_PATH=""
+  done
+
+  # Set default CUDA version if not set
+  if [ -z "$TF_CUDA_VERSION" ]; then
+    TF_CUDA_VERSION="8.0"
+    export TF_CUDA_VERSION
+  fi
+  write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
+
+  # Set up which gcc nvcc should use as the host compiler
+  # No need to set this on Windows
+  while [[ "$TF_CUDA_CLANG" != "1" ]] && ! is_windows && true; do
+    fromuser=""
+    if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
+      default_gcc_host_compiler_path=$(which gcc || true)
+      cuda_bin_symlink="$CUDA_TOOLKIT_PATH/bin/gcc"
+      if [ -L "$cuda_bin_symlink" ]; then
+        default_gcc_host_compiler_path=$(readlink $cuda_bin_symlink)
+      fi
+      read -p "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
+      fromuser="1"
+      if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
+        GCC_HOST_COMPILER_PATH="$default_gcc_host_compiler_path"
+      fi
+    fi
+    if [ -e "$GCC_HOST_COMPILER_PATH" ]; then
+      export GCC_HOST_COMPILER_PATH
+      write_action_env_to_bazelrc "GCC_HOST_COMPILER_PATH" "$GCC_HOST_COMPILER_PATH"
+      break
+    fi
+    echo "Invalid gcc path. ${GCC_HOST_COMPILER_PATH} cannot be found" 1>&2
+    if [ -z "$fromuser" ]; then
+      exit 1
+    fi
+    GCC_HOST_COMPILER_PATH=""
+    # Retry
+  done
+
+  # Find out where the cuDNN library is installed
+  while true; do
+    # Configure the cuDNN version to use.
+    if [ -z "$TF_CUDNN_VERSION" ]; then
+      read -p "Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: " TF_CUDNN_VERSION
+    fi
+
+    fromuser=""
+    if [ -z "$CUDNN_INSTALL_PATH" ]; then
+      default_cudnn_path=${CUDA_TOOLKIT_PATH}
+      read -p "Please specify the location where cuDNN $TF_CUDNN_VERSION library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
+      fromuser="1"
+      if [ -z "$CUDNN_INSTALL_PATH" ]; then
+        CUDNN_INSTALL_PATH=$default_cudnn_path
+      fi
+      # Result returned from "read" will be used unexpanded. That make "~" unusable.
+      # Going through one more level of expansion to handle that.
+      CUDNN_INSTALL_PATH=`"${PYTHON_BIN_PATH}" -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
+      if is_windows; then
+        CUDNN_INSTALL_PATH="$(cygpath -m "$CUDNN_INSTALL_PATH")"
+      fi
+    fi
+
+    if [[ -z "$TF_CUDNN_VERSION" ]]; then
+      TF_CUDNN_EXT=""
+    else
+      TF_CUDNN_EXT=".$TF_CUDNN_VERSION"
+    fi
+
+    if is_windows; then
+      CUDA_DNN_LIB_PATH="lib/x64/cudnn.lib"
+      CUDA_DNN_LIB_ALT_PATH="lib/x64/cudnn.lib"
+    elif is_linux; then
+      CUDA_DNN_LIB_PATH="lib64/libcudnn.so${TF_CUDNN_EXT}"
+      CUDA_DNN_LIB_ALT_PATH="libcudnn.so${TF_CUDNN_EXT}"
+    elif is_macos; then
+      CUDA_DNN_LIB_PATH="lib/libcudnn${TF_CUDNN_EXT}.dylib"
+      CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
+    fi
+
+    if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" ] || [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
       export TF_CUDNN_VERSION
+      write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
       export CUDNN_INSTALL_PATH
-      CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
       write_action_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
       break
     fi
-  fi
-  echo "Invalid path to cuDNN ${CUDNN_VERSION} toolkit. Neither of the following two files can be found:"
-  echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}"
-  echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_ALT_PATH}"
-  if is_linux; then
-    echo "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}"
-  fi
 
-  if [ -z "$fromuser" ]; then
-    exit 1
+    if is_linux; then
+      if ! type ldconfig > /dev/null 2>&1; then
+          LDCONFIG_BIN=/sbin/ldconfig
+      else
+          LDCONFIG_BIN=ldconfig
+      fi
+      CUDNN_PATH_FROM_LDCONFIG="$($LDCONFIG_BIN -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
+      if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
+        export TF_CUDNN_VERSION
+        export CUDNN_INSTALL_PATH
+        CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
+        write_action_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
+        break
+      fi
+    fi
+    echo "Invalid path to cuDNN ${CUDNN_VERSION} toolkit. Neither of the following two files can be found:"
+    echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_PATH}"
+    echo "${CUDNN_INSTALL_PATH}/${CUDA_DNN_LIB_ALT_PATH}"
+    if is_linux; then
+      echo "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}"
+    fi
+
+    if [ -z "$fromuser" ]; then
+      exit 1
+    fi
+    # Retry
+    TF_CUDNN_VERSION=""
+    CUDNN_INSTALL_PATH=""
+  done
+
+  # Set default CUDNN version if not set
+  if [ -z "$TF_CUDNN_VERSION" ]; then
+    TF_CUDNN_VERSION="6"
+    export TF_CUDNN_VERSION
   fi
-  # Retry
-  TF_CUDNN_VERSION=""
-  CUDNN_INSTALL_PATH=""
-done
+  write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 
-# Set default CUDNN version if not set
-if [ -z "$TF_CUDNN_VERSION" ]; then
-  TF_CUDNN_VERSION="6"
-  export TF_CUDNN_VERSION
-fi
-write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
-
-# Configure the compute capabilities that TensorFlow builds for.
-# Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
-function get_native_cuda_compute_capabilities {
-  device_query_bin="$CUDA_TOOLKIT_PATH/extras/demo_suite/deviceQuery" # Also works on Windows without .exe
-  "$device_query_bin" | grep 'Capability' | grep -o '[0-9]*\.[0-9]*' | sed ':a;{N;s/\n/,/};ba'
-  exit 0 # ensure that this function always exit success even if device detection fails, to prevent the whole configure from aborting
-}
-while true; do
-  fromuser=""
-  native_cuda_compute_capabilities=$(get_native_cuda_compute_capabilities)
-  default_cuda_compute_capabilities=${native_cuda_compute_capabilities:-"3.5,5.2"}
-  if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
+  # Configure the compute capabilities that TensorFlow builds for.
+  # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
+  function get_native_cuda_compute_capabilities {
+    device_query_bin="$CUDA_TOOLKIT_PATH/extras/demo_suite/deviceQuery" # Also works on Windows without .exe
+    "$device_query_bin" | grep 'Capability' | grep -o '[0-9]*\.[0-9]*' | sed ':a;{N;s/\n/,/};ba'
+    exit 0 # ensure that this function always exit success even if device detection fails, to prevent the whole configure from aborting
+  }
+  while true; do
+    fromuser=""
+    native_cuda_compute_capabilities=$(get_native_cuda_compute_capabilities)
+    default_cuda_compute_capabilities=${native_cuda_compute_capabilities:-"3.5,5.2"}
+    if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
 cat << EOF
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
 EOF
-    read -p "[Default is: \"$default_cuda_compute_capabilities\"]: " TF_CUDA_COMPUTE_CAPABILITIES
-    fromuser=1
-  fi
-  if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
-    TF_CUDA_COMPUTE_CAPABILITIES=$default_cuda_compute_capabilities
-  fi
-  # Check whether all capabilities from the input is valid
-  COMPUTE_CAPABILITIES=${TF_CUDA_COMPUTE_CAPABILITIES//,/ }
-  ALL_VALID=1
-  for CAPABILITY in $COMPUTE_CAPABILITIES; do
-    if [[ ! "$CAPABILITY" =~ [0-9]+.[0-9]+ ]]; then
-      echo "Invalid compute capability: " $CAPABILITY
-      ALL_VALID=0
+      read -p "[Default is: \"$default_cuda_compute_capabilities\"]: " TF_CUDA_COMPUTE_CAPABILITIES
+      fromuser=1
+    fi
+    if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
+      TF_CUDA_COMPUTE_CAPABILITIES=$default_cuda_compute_capabilities
+    fi
+    # Check whether all capabilities from the input is valid
+    COMPUTE_CAPABILITIES=${TF_CUDA_COMPUTE_CAPABILITIES//,/ }
+    ALL_VALID=1
+    for CAPABILITY in $COMPUTE_CAPABILITIES; do
+      if [[ ! "$CAPABILITY" =~ [0-9]+.[0-9]+ ]]; then
+        echo "Invalid compute capability: " $CAPABILITY
+        ALL_VALID=0
+        break
+      fi
+    done
+    if [ "$ALL_VALID" == "0" ]; then
+      if [ -z "$fromuser" ]; then
+        exit 1
+      fi
+    else
+      export TF_CUDA_COMPUTE_CAPABILITIES
+      write_action_env_to_bazelrc "TF_CUDA_COMPUTE_CAPABILITIES" "$TF_CUDA_COMPUTE_CAPABILITIES"
       break
     fi
+    TF_CUDA_COMPUTE_CAPABILITIES=""
   done
-  if [ "$ALL_VALID" == "0" ]; then
-    if [ -z "$fromuser" ]; then
-      exit 1
-    fi
-  else
-    export TF_CUDA_COMPUTE_CAPABILITIES
-    write_action_env_to_bazelrc "TF_CUDA_COMPUTE_CAPABILITIES" "$TF_CUDA_COMPUTE_CAPABILITIES"
-    break
-  fi
-  TF_CUDA_COMPUTE_CAPABILITIES=""
-done
 
-if is_windows; then
-  # The following three variables are needed for MSVC toolchain configuration in Bazel
-  export CUDA_PATH="$CUDA_TOOLKIT_PATH"
-  export CUDA_COMPUTE_CAPABILITIES="$TF_CUDA_COMPUTE_CAPABILITIES"
-  export NO_WHOLE_ARCHIVE_OPTION=1
-  write_action_env_to_bazelrc "CUDA_PATH" "$CUDA_PATH"
-  write_action_env_to_bazelrc "CUDA_COMPUTE_CAPABILITIES" "$CUDA_COMPUTE_CAPABILITIES"
-  write_action_env_to_bazelrc "NO_WHOLE_ARCHIVE_OPTION" "1"
-  write_to_bazelrc "build --config=win-cuda"
-  write_to_bazelrc "test --config=win-cuda"
-else
-  # If CUDA is enabled, always use GPU during build and test.
-  if [ "$TF_CUDA_CLANG" == "1" ]; then
-    write_to_bazelrc "build --config=cuda_clang"
-    write_to_bazelrc "test --config=cuda_clang"
+  if is_windows; then
+    # The following three variables are needed for MSVC toolchain configuration in Bazel
+    export CUDA_PATH="$CUDA_TOOLKIT_PATH"
+    export CUDA_COMPUTE_CAPABILITIES="$TF_CUDA_COMPUTE_CAPABILITIES"
+    export NO_WHOLE_ARCHIVE_OPTION=1
+    write_action_env_to_bazelrc "CUDA_PATH" "$CUDA_PATH"
+    write_action_env_to_bazelrc "CUDA_COMPUTE_CAPABILITIES" "$CUDA_COMPUTE_CAPABILITIES"
+    write_action_env_to_bazelrc "NO_WHOLE_ARCHIVE_OPTION" "1"
+    write_to_bazelrc "build --config=win-cuda"
+    write_to_bazelrc "test --config=win-cuda"
   else
-    write_to_bazelrc "build --config=cuda"
-    write_to_bazelrc "test --config=cuda"
+    # If CUDA is enabled, always use GPU during build and test.
+    if [ "$TF_CUDA_CLANG" == "1" ]; then
+      write_to_bazelrc "build --config=cuda_clang"
+      write_to_bazelrc "test --config=cuda_clang"
+    else
+      write_to_bazelrc "build --config=cuda"
+      write_to_bazelrc "test --config=cuda"
+    fi
   fi
-fi
 
 # end of if "$TF_NEED_CUDA" == "1"
 fi
