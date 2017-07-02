@@ -1,0 +1,13 @@
+diff --git a/src/include/openssl/base.h b/src/include/openssl/base.h
+index 7a3adfb..88012ad 100644
+--- a/src/include/openssl/base.h
++++ b/src/include/openssl/base.h
+@@ -94,6 +94,8 @@ extern "C" {
+ #elif defined(__pnacl__)
+ #define OPENSSL_32_BIT
+ #define OPENSSL_PNACL
++#elif defined(__s390x__)
++#define OPENSSL_64_BIT
+ #else
+ #error "Unknown target CPU"
+ #endif
