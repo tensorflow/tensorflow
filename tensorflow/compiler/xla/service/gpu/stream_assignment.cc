@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 
 namespace xla {
 namespace gpu {
@@ -47,7 +48,7 @@ namespace {
 // Returns whether the two HLOs can run concurrently, i.e., neither is a
 // transitive consumer of the other.
 bool CanRunConcurrently(const HloInstruction& a, const HloInstruction& b,
-                        const HloComputation::ReachabilityMap& reachability) {
+                        const HloReachabilityMap& reachability) {
   return !reachability.IsConnected(&a, &b);
 }
 
@@ -57,7 +58,7 @@ bool CanRunConcurrently(const HloInstruction& a, const HloInstruction& b,
 // are topologically before `hlo`.
 int ComputeStreamToAssign(
     const HloInstruction& hlo, const StreamAssignment& stream_assignment,
-    const HloComputation::ReachabilityMap& reachability,
+    const HloReachabilityMap& reachability,
     const std::vector<const HloInstruction*>& seen_gemms) {
   if (hlo.opcode() == HloOpcode::kParameter ||
       hlo.opcode() == HloOpcode::kConstant) {
@@ -114,7 +115,7 @@ int ComputeStreamToAssign(
 std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
   auto stream_assignment = MakeUnique<StreamAssignment>();
   const HloComputation& computation = *module.entry_computation();
-  std::unique_ptr<HloComputation::ReachabilityMap> reachability =
+  std::unique_ptr<HloReachabilityMap> reachability =
       computation.ComputeReachability();
   std::vector<const HloInstruction*> seen_gemms;
   for (const auto* hlo : computation.MakeInstructionPostOrder()) {

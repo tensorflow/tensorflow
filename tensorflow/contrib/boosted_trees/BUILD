@@ -151,6 +151,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":split_handler_ops_py",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
@@ -225,9 +227,10 @@ class NodeProcessor {
     return input_pos;
   }
 
-  void AddNodeTranspose(const string& node_name, const string& input_name,
-                        DataType data_type, const TensorShapeProto& input_shape,
-                        bool NHWCToNCHW) {
+  NodeDef* AddNodeTranspose(const string& node_name, const string& input_name,
+                            DataType data_type,
+                            const TensorShapeProto& input_shape,
+                            bool NHWCToNCHW) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(node_name, node);
     node->set_name(node_name);
@@ -256,6 +259,7 @@ class NodeProcessor {
       }
       node->mutable_attr()->insert({"_output_shapes", attr_output_shape});
     }
+    return node;
   }
 
   virtual Status AddLayoutTransposeToInputs() {
@@ -268,10 +272,11 @@ class NodeProcessor {
       int output_pos = NodePosition(node_->input(pos));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
-      AddNodeTranspose(
+      NodeDef* transpose = AddNodeTranspose(
           node_name, node_->input(pos), node_->attr().at("T").type(),
           input_node->attr().at("_output_shapes").list().shape(output_pos),
           true);
+      transpose->set_device(node_->device());
       node_map_->UpdateOutput(node_->input(pos), node_->name(), node_name);
       node_map_->AddOutput(node_name, node_->name());
       *node_->mutable_input(pos) = node_name;
@@ -307,9 +312,10 @@ class NodeProcessor {
       }
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
-      AddNodeTranspose(node_name, node_->name(), node_->attr().at("T").type(),
-                       node_->attr().at("_output_shapes").list().shape(0),
-                       false);
+      NodeDef* transpose = AddNodeTranspose(
+          node_name, node_->name(), node_->attr().at("T").type(),
+          node_->attr().at("_output_shapes").list().shape(0), false);
+      transpose->set_device(node_->device());
       *it = node_name;
       node_map_->UpdateOutput(node_->name(), output->name(), node_name);
       node_map_->AddOutput(node_name, output->name());
@@ -592,7 +598,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
 
   bool Is4DOperateWithVector() const { return Is4DOperateWithND(1); }
 
-  void AddNodeShapeConst(const string& name, int num_channels) {
+  NodeDef* AddNodeShapeConst(const string& name, int num_channels) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(name, node);
     node->set_name(name);
@@ -609,10 +615,12 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
-  void AddNodeReshape(const string& node_name, const string& input_name,
-                      const string& shape_const_node_name, DataType data_type) {
+  NodeDef* AddNodeReshape(const string& node_name, const string& input_name,
+                          const string& shape_const_node_name,
+                          DataType data_type) {
     NodeDef* node = graph_->add_node();
     node_map_->AddNode(node_name, node);
     node->set_name(node_name);
@@ -627,6 +635,7 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
     AttrValue attr_type_params;
     attr_type_params.set_type(data_type);
     node->mutable_attr()->insert({"T", attr_type_params});
+    return node;
   }
 
   Status CustomizedProcessing() override {
@@ -640,10 +649,13 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       int vector_size =
           input_node->attr().at("_output_shapes").list().shape(0).dim(0).size();
-      AddNodeShapeConst(shape_const_node_name, vector_size);
+      NodeDef* shp = AddNodeShapeConst(shape_const_node_name, vector_size);
+      shp->set_device("/job:localhost/replica:0/task:0/cpu:0");
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
-      AddNodeReshape(reshape_node_name, node_->input(1), shape_const_node_name,
-                     node_->attr().at("T").type());
+      NodeDef* reshape =
+          AddNodeReshape(reshape_node_name, node_->input(1),
+                         shape_const_node_name, node_->attr().at("T").type());
+      reshape->set_device(node_->device());
       node_map_->AddOutput(shape_const_node_name, reshape_node_name);
       node_map_->UpdateOutput(node_->input(1), node_->name(),
                               reshape_node_name);
@@ -948,8 +960,8 @@ class DataLayoutOptimizer {
   }
 
  private:
-  void AddNodePermConst(const string& name,
-                        const std::vector<int>& permutation) {
+  NodeDef* AddNodePermConst(const string& name,
+                            const std::vector<int>& permutation) {
     NodeDef* node = graph_->add_node();
     node_map_.AddNode(name, node);
     node->set_name(name);
@@ -964,9 +976,10 @@ class DataLayoutOptimizer {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
-  void AddNodeConcatConst() {
+  NodeDef* AddNodeConcatConst() {
     NodeDef* node = graph_->add_node();
     node_map_.AddNode(kConcatConst, node);
     node->set_name(kConcatConst);
@@ -979,9 +992,10 @@ class DataLayoutOptimizer {
     tensor.scalar<int>()() = 1;
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
-  void AddNodeReductionConst() {
+  NodeDef* AddNodeReductionConst() {
     NodeDef* node = graph_->add_node();
     node_map_.AddNode(kReductionConst, node);
     node->set_name(kReductionConst);
@@ -998,6 +1012,7 @@ class DataLayoutOptimizer {
     }
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
+    return node;
   }
 
   // Expand all nodes which is in NHWC, but supports NCHW or is layout agnostic.
@@ -1042,10 +1057,14 @@ class DataLayoutOptimizer {
     // only needs to be performed if at least one node in the previous pass is
     // expanded.
     if (graph_->node_size() > node_size_original) {
-      AddNodePermConst(kPermNHWCToNCHW, {0, 3, 1, 2});
-      AddNodePermConst(kPermNCHWToNHWC, {0, 2, 3, 1});
-      AddNodeConcatConst();
-      AddNodeReductionConst();
+      NodeDef* n = AddNodePermConst(kPermNHWCToNCHW, {0, 3, 1, 2});
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
+      n = AddNodePermConst(kPermNCHWToNHWC, {0, 2, 3, 1});
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
+      n = AddNodeConcatConst();
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
+      n = AddNodeReductionConst();
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
       std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
       for (int i = 0; i < graph_->node_size(); i++) {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
@@ -1201,6 +1220,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (!status.ok()) {
     *output = item.graph;
   }
+
   return status;
 }
 

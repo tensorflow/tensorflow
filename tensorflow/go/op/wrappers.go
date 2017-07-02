@@ -595,7 +595,8 @@ func Bitcast(scope *Scope, input tf.Output, type_ tf.DataType) (output tf.Output
 // input stride, specifying how far two consecutive patch samples are in the
 // input. Equivalent to extracting patches with
 // `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by
-// subsampling them spatially by a factor of `rates`.
+// subsampling them spatially by a factor of `rates`. This is equivalent to
+// `rate` in dilated (a.k.a. Atrous) convolutions.
 //	padding: The type of padding algorithm to use.
 //
 // We specify the size-related attributes as:
@@ -608,7 +609,8 @@ func Bitcast(scope *Scope, input tf.Output, type_ tf.DataType) (output tf.Output
 //
 // Returns 4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *
 // ksize_cols * depth]` containing image patches with size
-// `ksize_rows x ksize_cols x depth` vectorized in the "depth" dimension.
+// `ksize_rows x ksize_cols x depth` vectorized in the "depth" dimension. Note
+// `out_rows` and `out_cols` are the dimensions of the output patches.
 func ExtractImagePatches(scope *Scope, images tf.Output, ksizes []int64, strides []int64, rates []int64, padding string) (patches tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -4408,31 +4410,6 @@ func MatrixDiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
 	return op.Output(0)
 }
 
-// Concatenates tensors along one dimension.
-//
-// Arguments:
-//	values: List of `N` Tensors to concatenate. Their ranks and types must match,
-// and their sizes must match in all dimensions except `concat_dim`.
-//	axis: 0-D.  The dimension along which to concatenate.  Must be in the
-// range [-rank(values), rank(values)).
-//
-// Returns A `Tensor` with the concatenation of values stacked along the
-// `concat_dim` dimension.  This tensor's shape matches that of `values` except
-// in `concat_dim` where it has the sum of the sizes.
-func ConcatV2(scope *Scope, values []tf.Output, axis tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ConcatV2",
-		Input: []tf.Input{
-			tf.OutputList(values), axis,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // QueueDequeueUpToV2Attr is an optional argument to QueueDequeueUpToV2.
 type QueueDequeueUpToV2Attr func(optionalAttr)
 
@@ -5654,6 +5631,48 @@ func TensorArrayConcatV2(scope *Scope, handle tf.Output, flow_in tf.Output, dtyp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Concatenates tensors along one dimension.
+//
+// Arguments:
+//	values: List of `N` Tensors to concatenate. Their ranks and types must match,
+// and their sizes must match in all dimensions except `concat_dim`.
+//	axis: 0-D.  The dimension along which to concatenate.  Must be in the
+// range [-rank(values), rank(values)).
+//
+// Returns A `Tensor` with the concatenation of values stacked along the
+// `concat_dim` dimension.  This tensor's shape matches that of `values` except
+// in `concat_dim` where it has the sum of the sizes.
+func ConcatV2(scope *Scope, values []tf.Output, axis tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConcatV2",
+		Input: []tf.Input{
+			tf.OutputList(values), axis,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that contains the elements of `input_dataset` ignoring errors.
+func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "IgnoreErrorsDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Creates a dataset that splits a SparseTensor into elements row-wise.

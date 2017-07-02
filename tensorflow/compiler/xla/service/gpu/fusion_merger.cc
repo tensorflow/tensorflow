@@ -98,7 +98,13 @@ double CalculateFlopsToBytesRatio(HloInstruction* fusion) {
   // Calculate total bytes transferred in/out.
   double bytes = CalculateBytesReadByFusionInstruction(fusion);
   // Add bytes written to root instructions buffer.
-  bytes += ShapeUtil::ByteSizeOf(fusion->fused_expression_root()->shape());
+  if (fusion->IsMultiOutputFusion()) {
+    for (auto& operand : fusion->fused_expression_root()->operands()) {
+      bytes += ShapeUtil::ByteSizeOf(operand->shape());
+    }
+  } else {
+    bytes += ShapeUtil::ByteSizeOf(fusion->fused_expression_root()->shape());
+  }
   // Calculate flops for all fused instructions. Use a null shape size function
   // because we don't care about bytes accessed by the ops.
   HloCostAnalysis analysis([](const Shape& shape) { return 0; });
@@ -112,8 +118,15 @@ double CalculateFlopsToBytesRatio(HloInstruction* fusion) {
 double GetCurrentBytesTransferred(HloInstruction* fusion) {
   CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
   const double bytes_read = CalculateBytesReadByFusionInstruction(fusion);
-  const double bytes_written =
-      ShapeUtil::ByteSizeOf(fusion->fused_expression_root()->shape());
+  double bytes_written = 0;
+  if (fusion->IsMultiOutputFusion()) {
+    for (auto& operand : fusion->fused_expression_root()->operands()) {
+      bytes_written += ShapeUtil::ByteSizeOf(operand->shape());
+    }
+  } else {
+    bytes_written =
+        ShapeUtil::ByteSizeOf(fusion->fused_expression_root()->shape());
+  }
   // Current bytes transferred (ignoring non 'fusion' user operands) is bytes
   // read and written by 'fusion', plus reads of size 'bytes_written' for each
   // user.
@@ -195,6 +208,12 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // Input fusion instructions need to be rooted at a particular HLO (e.g.
   // kReduce), so they shouldn't be further fused either.
   if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+    ++num_fail_not_loop_fusion_;
+    return Status::OK();
+  }
+
+  // Skip multiple output fusion. It's not yet supported.
+  if (fusion->IsMultiOutputFusion()) {
     ++num_fail_not_loop_fusion_;
     return Status::OK();
   }

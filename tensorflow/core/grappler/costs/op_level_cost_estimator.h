@@ -129,6 +129,7 @@ class OpLevelCostEstimator {
   Costs PredictMatMul(const OpInfo& op_features) const;
   Costs PredictNoOp(const OpInfo& op_features) const;
   Costs PredictBatchMatMul(const OpInfo& op_features) const;
+  Costs PredictMetadata(const OpInfo& op_features) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.

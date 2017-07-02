@@ -18,8 +18,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/cc_op_gen.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/framework/op_gen_overrides.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"

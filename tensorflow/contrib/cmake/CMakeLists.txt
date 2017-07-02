@@ -122,6 +122,7 @@ include(fft2d)
 include(highwayhash)
 include(protobuf)
 include(re2)
+include(cub)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -151,6 +152,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     protobuf
     eigen
     gemmlowp
+    cub
     fft2d
     re2
 )
@@ -170,6 +172,7 @@ include_directories(
     ${jsoncpp_INCLUDE_DIR}
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
+    ${cub_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
 )

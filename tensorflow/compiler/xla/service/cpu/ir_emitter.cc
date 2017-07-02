@@ -374,6 +374,57 @@ Status IrEmitter::HandleSelect(HloInstruction* select, HloInstruction* pred,
 Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
   VLOG(2) << "HandleInfeed: " << infeed->ToString();
 
+  const Shape& shape = infeed->shape();
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                      EmitTargetAddressForOp(infeed));
+
+  if (ShapeUtil::IsTuple(shape)) {
+    TF_RET_CHECK(!ShapeUtil::IsNestedTuple(shape));
+
+    // For a tuple, we first copy each of the internal elements to
+    // their corresponding target locations. We then construct the
+    // tuple outer buffer containing pointers to the internal
+    // elements.
+    std::vector<llvm::Value*> tuple_element_addresses;
+    for (int64 i = 0; i < shape.tuple_shapes_size(); ++i) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
+                          assignment_.GetUniqueSlice(infeed, {i}));
+
+      const Shape& tuple_element_shape =
+          ShapeUtil::GetTupleElementShape(shape, i);
+
+      // Only the outer tuple buffer's target address is obtained from
+      // EmitTargetAddressForOp to handle the case when Infeed is the
+      // root instruction. Target addresses for internal elements can
+      // be obtained from EmitTempBufferPointer.
+      llvm::Value* tuple_element_address =
+          EmitTempBufferPointer(buffer, tuple_element_shape);
+
+      TF_RETURN_IF_ERROR(EmitInfeedTransfer(ByteSizeOf(tuple_element_shape),
+                                            tuple_element_address));
+
+      tuple_element_addresses.push_back(tuple_element_address);
+    }
+
+    llvm_ir::EmitTuple(llvm_ir::IrArray(target_address, shape),
+                       tuple_element_addresses, &ir_builder_);
+  } else {
+    TF_RETURN_IF_ERROR(EmitInfeedTransfer(ByteSizeOf(shape), target_address));
+  }
+
+  emitted_value_[infeed] = target_address;
+
+  return Status::OK();
+}
+
+Status IrEmitter::EmitInfeedTransfer(int64 length,
+                                     llvm::Value* target_address) {
+  if (length > std::numeric_limits<int32>::max()) {
+    return InvalidArgument("infeed buffer length %lld is too large", length);
+  }
+  int32 length_32 = static_cast<int32>(length);
+
   // The signature of the acquire infeed buffer function is:
   //
   //   (void*)(int32 length);
@@ -400,25 +451,13 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
           runtime::kReleaseInfeedBufferAfterDequeueSymbolName, release_type));
   release_func->setCallingConv(llvm::CallingConv::C);
 
-  const Shape& shape = infeed->shape();
-  int64 length = ByteSizeOf(shape);
-  if (length > std::numeric_limits<int32>::max()) {
-    return InvalidArgument("infeed buffer length %lld is too large", length);
-  }
-  int32 length_32 = static_cast<int32>(length);
-
   llvm::Value* acquired_pointer =
       ir_builder_.CreateCall(acquire_func, {ir_builder_.getInt32(length_32)});
-
-  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                      EmitTargetAddressForOp(infeed));
 
   ir_builder_.CreateMemCpy(target_address, acquired_pointer, length_32, 1);
 
   ir_builder_.CreateCall(release_func,
                          {ir_builder_.getInt32(length_32), acquired_pointer});
-
-  emitted_value_[infeed] = target_address;
 
   return Status::OK();
 }
@@ -1996,9 +2035,9 @@ llvm::Value* IrEmitter::EmitArrayFunctionCall(
 }
 
 StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
-    const HloInstruction* op) {
-  const Shape& target_shape = op->shape();
-  if (op == op->parent()->root_instruction()) {
+    const HloInstruction* op, const ShapeIndex& shape_index) {
+  const Shape& target_shape = ShapeUtil::GetSubshape(op->shape(), shape_index);
+  if (op == op->parent()->root_instruction() && shape_index.empty()) {
     // For the root node, we write directly to the output buffer of the
     // function.
     llvm::Argument* retval = GetResultArgument();
@@ -2030,19 +2069,46 @@ Status IrEmitter::EmitTargetElementLoop(
   TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
                       EmitTargetAddressForOp(target_op));
   VLOG(2) << "  target address: " << llvm_ir::DumpToString(*target_address);
-  llvm_ir::IrArray target_array(target_address, target_shape);
-  AddAliasingInformationToIrArray(*target_op, &target_array);
 
-  if (num_dynamic_loop_bounds_ > 0 &&
-      target_op == target_op->parent()->root_instruction()) {
-    // Emit parallel loop for root instruction if dynamic outer-dimension loop
-    // bounds were specified.
-    TF_RETURN_IF_ERROR(EmitParallelTargetElementLoop(
-        target_shape, element_generator, &target_array));
-  } else {
+  if (target_op->IsMultiOutputFusion()) {
+    // For multiple outputs fusion, we need to emit each operand and the root.
+    TF_RET_CHECK(num_dynamic_loop_bounds_ == 0);
+    std::vector<llvm_ir::IrArray> output_arrays;
+    for (int64 i = 0; i < ShapeUtil::TupleElementCount(target_shape); ++i) {
+      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                          assignment_.GetUniqueSlice(target_op, {i}));
+      const Shape& element_shape = ShapeUtil::GetSubshape(target_shape, {i});
+      llvm::Value* op_target_address =
+          EmitTempBufferPointer(slice, element_shape);
+      output_arrays.push_back(
+          llvm_ir::IrArray(op_target_address, element_shape));
+    }
     TF_RETURN_IF_ERROR(
-        llvm_ir::LoopEmitter(element_generator, target_array, &ir_builder_)
+        llvm_ir::LoopEmitter(element_generator, output_arrays, &ir_builder_)
             .EmitLoop());
+
+    std::vector<llvm::Value*> tuple_operand_ptrs;
+    for (int64 i = 0; i < output_arrays.size(); ++i) {
+      tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
+    }
+    llvm_ir::EmitTuple(llvm_ir::IrArray(target_address, target_shape),
+                       tuple_operand_ptrs, &ir_builder_);
+
+  } else {
+    llvm_ir::IrArray target_array(target_address, target_shape);
+    AddAliasingInformationToIrArray(*target_op, &target_array);
+
+    if (num_dynamic_loop_bounds_ > 0 &&
+        target_op == target_op->parent()->root_instruction()) {
+      // Emit parallel loop for root instruction if dynamic outer-dimension loop
+      // bounds were specified.
+      TF_RETURN_IF_ERROR(EmitParallelTargetElementLoop(
+          target_shape, element_generator, &target_array));
+    } else {
+      TF_RETURN_IF_ERROR(
+          llvm_ir::LoopEmitter(element_generator, target_array, &ir_builder_)
+              .EmitLoop());
+    }
   }
 
   emitted_value_[target_op] = target_address;

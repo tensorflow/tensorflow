@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_gen_overrides.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -71,6 +73,9 @@ bool ConsumeEquals(StringPiece* description) {
   return false;
 }
 
+OpGenOverrideMap::OpGenOverrideMap() {}
+OpGenOverrideMap::~OpGenOverrideMap() {}
+
 Status OpGenOverrideMap::LoadFileList(Env* env, const string& filenames) {
   std::vector<string> v = str_util::Split(filenames, ",");
   for (const string& f : v) {
@@ -86,7 +91,7 @@ Status OpGenOverrideMap::LoadFile(Env* env, const string& filename) {
   OpGenOverrides all;
   protobuf::TextFormat::ParseFromString(contents, &all);
   for (const auto& one : all.op()) {
-    map_[one.name()] = one;
+    map_[one.name()].reset(new OpGenOverride(one));
   }
   return Status::OK();
 }
@@ -142,7 +147,7 @@ const OpGenOverride* OpGenOverrideMap::ApplyOverride(OpDef* op_def) const {
   // Look up
   const auto iter = map_.find(op_def->name());
   if (iter == map_.end()) return nullptr;
-  const OpGenOverride& proto = iter->second;
+  const OpGenOverride& proto = *iter->second;
 
   // Apply overrides from `proto`.
   if (!proto.rename_to().empty()) {

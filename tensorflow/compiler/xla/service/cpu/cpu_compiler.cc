@@ -317,6 +317,7 @@ namespace {
 
 // Align buffers to 16-byte boundaries.
 constexpr int64 kMemoryAlignment = 16;
+auto memory_alignment = [](LogicalBuffer::Color) { return kMemoryAlignment; };
 
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
@@ -415,7 +416,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(module.get(),
                             MakeUnique<DependencyHloOrdering>(module.get()),
-                            BufferSizeBytesFunction(), kMemoryAlignment));
+                            BufferSizeBytesFunction(), memory_alignment));
 
     if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
@@ -515,7 +516,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         BufferAssigner::Run(
             module.get(),
             MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
-            BufferSizeBytesFunction(), kMemoryAlignment));
+            BufferSizeBytesFunction(), memory_alignment));
 
     if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
@@ -681,7 +682,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
             module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
-            BufferSizeBytesFunction(), kMemoryAlignment));
+            BufferSizeBytesFunction(), memory_alignment));
 
     const string dump_debug_json_to =
         module->config().debug_options().xla_dump_debug_json_to();

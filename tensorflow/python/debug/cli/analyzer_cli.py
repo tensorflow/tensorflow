@@ -999,11 +999,10 @@ class DebugAnalyzer(object):
 
   def _reconstruct_print_source_command(self,
                                         parsed,
-                                        line_begin_decrease=0,
+                                        line_begin,
                                         max_elements_per_line_increase=0):
     return "ps %s %s -b %d -m %d" % (
-        parsed.source_file_path, "-t" if parsed.tensors else "",
-        max(parsed.line_begin - line_begin_decrease, 1),
+        parsed.source_file_path, "-t" if parsed.tensors else "", line_begin,
         parsed.max_elements_per_line + max_elements_per_line_increase)
 
   def print_source(self, args, screen_info=None):
@@ -1015,38 +1014,26 @@ class DebugAnalyzer(object):
     source_annotation = source_utils.annotate_source(
         self._debug_dump,
         parsed.source_file_path,
-        do_dumped_tensors=parsed.tensors,
-        min_line=parsed.line_begin)
+        do_dumped_tensors=parsed.tensors)
 
     source_lines, line_num_width = source_utils.load_source(
         parsed.source_file_path)
 
     labeled_source_lines = []
-    if parsed.line_begin > 1:
-      omitted_info_line = RL(
-          "(... Omitted %d source lines ...) " % (parsed.line_begin - 1),
-          "bold")
-      omitted_info_line += RL(
-          "+5",
-          debugger_cli_common.MenuItem(
-              None,
-              self._reconstruct_print_source_command(
-                  parsed, line_begin_decrease=5)))
-      labeled_source_lines.append(omitted_info_line)
-
-    for i, line in enumerate(source_lines[parsed.line_begin - 1:]):
-      annotated_line = RL("L%d" % (i + parsed.line_begin),
-                          cli_shared.COLOR_YELLOW)
+    actual_initial_scroll_target = 0
+    for i, line in enumerate(source_lines):
+      annotated_line = RL("L%d" % (i + 1), cli_shared.COLOR_YELLOW)
       annotated_line += " " * (line_num_width - len(annotated_line))
       annotated_line += line
       labeled_source_lines.append(annotated_line)
 
-      if i + parsed.line_begin in source_annotation:
-        sorted_elements = sorted(source_annotation[i + parsed.line_begin])
+      if i + 1 == parsed.line_begin:
+        actual_initial_scroll_target = len(labeled_source_lines) - 1
+
+      if i + 1 in source_annotation:
+        sorted_elements = sorted(source_annotation[i + 1])
         for k, element in enumerate(sorted_elements):
           if k >= parsed.max_elements_per_line:
-            # TODO(cais): Replace this accordion pattern with the easier-to-use
-            # INIT_SCROLL_POS_KEY.
             omitted_info_line = RL("    (... Omitted %d of %d %s ...) " % (
                 len(sorted_elements) - parsed.max_elements_per_line,
                 len(sorted_elements),
@@ -1056,7 +1043,7 @@ class DebugAnalyzer(object):
                 debugger_cli_common.MenuItem(
                     None,
                     self._reconstruct_print_source_command(
-                        parsed, max_elements_per_line_increase=5)))
+                        parsed, i + 1, max_elements_per_line_increase=5)))
             labeled_source_lines.append(omitted_info_line)
             break
 
@@ -1071,7 +1058,9 @@ class DebugAnalyzer(object):
           labeled_source_lines.append(label)
 
     output = debugger_cli_common.rich_text_lines_from_rich_line_list(
-        labeled_source_lines)
+        labeled_source_lines,
+        annotations={debugger_cli_common.INIT_SCROLL_POS_KEY:
+                     actual_initial_scroll_target})
     _add_main_menu(output, node_name=None)
     return output
 
