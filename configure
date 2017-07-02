@@ -396,15 +396,9 @@ export TF_NEED_OPENCL
 write_action_env_to_bazelrc "TF_NEED_OPENCL" "$TF_NEED_OPENCL"
 
 if [ "$TF_NEED_CUDA" == "1" ]; then
-  while [[ "$TF_CUDA_CLANG" == "" ]]; do
-    read -p "Do you want to use clang as CUDA compiler? [y/N] " INPUT
-    case $INPUT in
-      [Yy]* ) echo "Clang will be used as CUDA compiler"; TF_CUDA_CLANG=1;;
-      [Nn]* ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
-      "" ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
-      * ) echo "Invalid selection: " $INPUT;;
-    esac
-  done
+  build_with TF_CUDA_CLANG "Do you want to use clang as the CUDA compiler?" \
+    "disabled" "Clang will be used as the CUDA compiler." \
+    "nvcc will be used as the CUDA compiler."
 
   export TF_CUDA_CLANG
   write_action_env_to_bazelrc "TF_CUDA_CLANG" "$TF_CUDA_CLANG"
