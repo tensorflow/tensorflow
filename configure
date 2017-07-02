@@ -217,7 +217,9 @@ elif [ "$(version "$MIN_BAZEL_VERSION")" -gt "$(version "$curr_bazel_version")" 
 fi
 
 # This file contains customized config settings.
-rm -f .tf_configure.bazelrc
+if [[ -f .tf_configure.bazelrc ]] ; then
+  rm -f .tf_configure.bazelrc
+fi
 touch .tf_configure.bazelrc
 if [[ ! -e .bazelrc ]]; then
   if [[ -e "${HOME}/.bazelrc" ]]; then
