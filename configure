@@ -344,16 +344,8 @@ if is_windows; then
 fi
 
 if is_linux; then
-  while [ "$TF_NEED_JEMALLOC" == "" ]; do
-    read -p "Do you wish to use jemalloc as the malloc implementation? [Y/n] "\
-      INPUT
-    case $INPUT in
-      [Yy]* ) echo "jemalloc enabled"; TF_NEED_JEMALLOC=1;;
-      [Nn]* ) echo "jemalloc disabled"; TF_NEED_JEMALLOC=0;;
-      "" ) echo "jemalloc enabled"; TF_NEED_JEMALLOC=1;;
-      * ) echo "Invalid selection: " $INPUT;;
-    esac
-  done
+  build_with TF_NEED_JEMALLOC "Do you wish to use jemalloc as the malloc implementation?" \
+    "enabled" "jemalloc enabled." "jemalloc disabled."
 else
   TF_NEED_JEMALLOC=0
 fi
