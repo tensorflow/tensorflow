@@ -110,9 +110,9 @@ def main(unused_argv):
   # Prepare training and testing data
   dbpedia = tf.contrib.learn.datasets.load_dataset(
       'dbpedia', test_with_fake_data=FLAGS.test_with_fake_data)
-  x_train = pandas.DataFrame(dbpedia.train.data)[1]
+  x_train = pandas.Series(dbpedia.train.data[:,1])
   y_train = pandas.Series(dbpedia.train.target)
-  x_test = pandas.DataFrame(dbpedia.test.data)[1]
+  x_test = pandas.Series(dbpedia.test.data[:,1])
   y_test = pandas.Series(dbpedia.test.target)
 
   # Process vocabulary
