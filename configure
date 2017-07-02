@@ -360,20 +360,7 @@ if [[ "$TF_NEED_GCP" == "1" ]]; then
   write_to_bazelrc 'build --define with_gcp_support=true'
 fi
 
-while [[ "$TF_NEED_HDFS" == "" ]]; do
-  read -p "Do you wish to build TensorFlow with "\
-"Hadoop File System support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "Hadoop File System support will be enabled for "\
-"TensorFlow"; TF_NEED_HDFS=1;;
-    [Nn]* ) echo "No Hadoop File System support will be enabled for "\
-"TensorFlow"; TF_NEED_HDFS=0;;
-    "" ) echo "No Hadoop File System support will be enabled for "\
-"TensorFlow"; TF_NEED_HDFS=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
-
+build_with TF_NEED_HDFS "Hadoop File System" "disabled"
 if [[ "$TF_NEED_HDFS" == "1" ]]; then
   write_to_bazelrc 'build --define with_hdfs_support=true'
 fi
