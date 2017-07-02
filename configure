@@ -246,17 +246,8 @@ build_with TF_NEED_MKL "MKL" "disabled"
 OSNAME=`uname -s`
 
 if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
-  while [ "$TF_DOWNLOAD_MKL" == "" ]; do
-    fromuser=""
-    read -p "Do you wish to download MKL LIB from the web? [Y/n] " INPUT
-    fromuser="1"
-    case $INPUT in
-      [Yy]* ) TF_DOWNLOAD_MKL=1;;
-      [Nn]* ) TF_DOWNLOAD_MKL=0;;
-      "" )    TF_DOWNLOAD_MKL=1;;
-      * )     echo "Invalid selection: " $INPUT; exit 1;;
-    esac
-  done
+  build_with TF_DOWNLOAD_MKL "Do you wish to download MKL LIB from the web?" \
+    "enabled" "Downloading..." "Will not download MKL LIB."
 
   if [[ "$TF_DOWNLOAD_MKL" == "1" ]]; then
     DST=`dirname $0`
