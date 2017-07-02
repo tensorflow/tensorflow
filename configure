@@ -205,6 +205,60 @@ function build_with {
   done
 }
 
+function get_path {
+  if [[ "$(eval echo \"\$$1\")" ]] ; then
+    return
+  fi
+  local sys_path="$1"
+  local path_for="$2"
+  # looking for a path for a bin or lib
+  local type_of_path="$3"
+  # optional search for bin, array of paths for lib
+  local generic_path="$4"
+  local default_path=""
+
+  if [[ "$type_of_path" == "bin" ]] ; then
+    local default_path="$(which $path_for || true)"
+    if [[ !"$default_path" ]] && [[ "$generic_path" ]] ; then
+      local default_path="$(which $generic_path || true)"
+    fi
+    local ask_for_path="Please specify the location of $path_for. [Default is $default_path]:"
+  else
+    echo "Possible library path(s): "
+    for x in "${generic_path[@]}" ; do
+      if [[ "$x" ]] && [[ ! "$default_path" ]] ; then
+        local default_path="$x"
+      fi
+      echo "    $x"
+    done
+    local ask_for_path="Please input the desired $path_for library path to use. [Default is $default_path]:"
+  fi
+
+  while true; do
+    read -p "$ask_for_path " $sys_path
+
+    if [[ ! "$(eval echo \$$sys_path)" ]] ; then
+      if [[ -e "$default_path" ]] ; then
+        eval $sys_path="$default_path"
+      elif [[ -e "$generic_path" ]] && [[ "$type_of_path" == "bin" ]] ; then
+        eval $sys_path="$default_path"
+      else
+        echo "ERROR! I cannot find a default path and one was not specified." 1>&2
+      fi
+    fi
+
+    if [[ -e "$(eval echo \$$sys_path)" ]] ; then
+      if [[ "$type_of_path" == "bin" ]] && [[ ! -x "$(eval echo \$$sys_path)" ]] ; then
+        echo "ERROR! \$$sys_path is not executable." 1>&2
+      else
+        break
+      fi
+    else
+      echo "ERROR! $(eval echo \$$sys_path) does not seem to be a valid path to $path_for." 1>&2
+    fi
+  done
+}
+
 curr_bazel_version="$(bazel version | grep label | cut -d ' ' -f3 | grep -o '[0-9.]*')"
 echo "You have bazel $curr_bazel_version installed."
 if [ -z "$curr_bazel_version" ]; then
