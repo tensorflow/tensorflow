@@ -388,21 +388,10 @@ chmod a+x ${GEN_GIT_SOURCE}
 "${PYTHON_BIN_PATH}" ${GEN_GIT_SOURCE} --configure "${SOURCE_BASE_DIR}"
 
 build_with TF_NEED_OPENCL "OpenCL" "disabled"
-
-## Set up Cuda-related environment settings
-while [ "$TF_NEED_CUDA" == "" ]; do
-  read -p "Do you wish to build TensorFlow with CUDA support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=1;;
-    [Nn]* ) echo "No CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
-    "" ) echo "No CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
+build_with TF_NEED_CUDA "CUDA" "disabled"
 
 export TF_NEED_CUDA
 write_action_env_to_bazelrc "TF_NEED_CUDA" "$TF_NEED_CUDA"
-
 export TF_NEED_OPENCL
 write_action_env_to_bazelrc "TF_NEED_OPENCL" "$TF_NEED_OPENCL"
 
