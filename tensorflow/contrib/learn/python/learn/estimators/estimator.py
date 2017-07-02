@@ -356,7 +356,7 @@ class BaseEstimator(
     sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
-  Users should not instantiate or subclass this class. Instead, use `Estimator`.
+  Users should not instantiate or subclass this class. Instead, use an `Estimator`.
   """
   __metaclass__ = abc.ABCMeta
 

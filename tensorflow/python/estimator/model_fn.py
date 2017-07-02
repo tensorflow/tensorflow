@@ -58,9 +58,9 @@ class EstimatorSpec(
         'export_outputs', 'training_chief_hooks', 'training_hooks',
         'scaffold'
     ])):
-  """Ops and objects returned from a `model_fn` and passed to `Estimator`.
+  """Ops and objects returned from a `model_fn` and passed to an `Estimator`.
 
-  `EstimatorSpec` fully defines the model to be run by `Estimator`.
+  `EstimatorSpec` fully defines the model to be run by an `Estimator`.
   """
 
   def __new__(cls,
@@ -81,8 +81,8 @@ class EstimatorSpec(
     * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
     model_fn can populate all arguments independent of mode. In this case, some
-    arguments will be ignored by `Estimator`. E.g. `train_op` will be ignored
-    in eval and infer modes. Example:
+    arguments will be ignored by an `Estimator`. E.g. `train_op` will be
+    ignored in eval and infer modes. Example:
 
     ```python
     def my_model_fn(mode, features, labels):
