@@ -795,13 +795,11 @@ while true; do
     MPI_HOME=""
 done
 
-
 if [ "$TF_NEED_MPI" == "1" ]; then
   write_to_bazelrc 'build --define with_mpi_support=true'
 
   #Link the MPI header files
   ln -sf "${MPI_HOME}/include/mpi.h" third_party/mpi/mpi.h
-
 
   #Determine if we use OpenMPI or MVAPICH, these require different header files
   #to be included here to make bazel dependency checker happy
@@ -817,7 +815,6 @@ if [ "$TF_NEED_MPI" == "1" ]; then
         sed -i -e "s/MPI_LIB_IS_OPENMPI=True/MPI_LIB_IS_OPENMPI=False/" third_party/mpi/mpi.bzl
  fi
 
-
   if [ -e "${MPI_HOME}/lib/libmpi.so" ]; then
     ln -sf "${MPI_HOME}/lib/libmpi.so" third_party/mpi/
   else
@@ -825,6 +822,5 @@ if [ "$TF_NEED_MPI" == "1" ]; then
     exit 1
   fi
 fi
-
 
 echo "Configuration finished"
