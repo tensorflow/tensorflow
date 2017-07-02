@@ -215,6 +215,8 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
     write_to_bazelrc 'build:mkl --define with_mkl_support=true'
     write_to_bazelrc 'build:mkl -c opt'
     write_to_bazelrc 'build:mkl --copt="-DEIGEN_USE_VML"'
+
+    echo "Add \"--config=mkl\" to your bazel command to build with MKL support."
   elif [ "$OSNAME" == "Darwin" ]; then
       echo "Darwin is unsupported yet";
       exit 1
