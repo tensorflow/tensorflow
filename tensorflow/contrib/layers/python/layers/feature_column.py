@@ -15,13 +15,13 @@
 """This API defines FeatureColumn abstraction.
 
 FeatureColumns provide a high level abstraction for ingesting and representing
-features in tf.learn Estimator models.
+features in `Estimator` models.
 
 FeatureColumns are the primary way of encoding features for pre-canned
-tf.learn Estimators.
+`Estimator` models.
 
-When using FeatureColumns with tf.learn models, the type of feature column you
-should choose depends on (1) the feature type and (2) the model type.
+When using FeatureColumns with `Estimator` models, the type of feature column
+you should choose depends on (1) the feature type and (2) the model type.
 
 (1) Feature type:
 
@@ -74,7 +74,7 @@ should choose depends on (1) the feature type and (2) the model type.
       columns=[department_column, bucketized_age_column],
       hash_bucket_size=1000)
 
-Example of building tf.learn model using FeatureColumns:
+Example of building an `Estimator` model using FeatureColumns:
 
   # Define features and transformations
   deep_feature_columns = [age_column, embedded_dept_column]
@@ -104,7 +104,7 @@ FeatureColumns can also be transformed into a generic input layer for
 custom models using `input_from_feature_columns` within
 `feature_column_ops.py`.
 
-Example of building non-tf.learn model using FeatureColumns:
+Example of building a non-`Estimator` model using FeatureColumns:
 
   # Building model via layers
 

@@ -64,7 +64,7 @@ class TaskType(object):
 class ClusterConfig(object):
   """This class specifies the configurations for a distributed run.
 
-  If you're using `tf.learn` `Estimators`, you should probably use the subclass
+  If you're using an `Estimator`, you should probably use the subclass
   RunConfig instead.
   """
 
