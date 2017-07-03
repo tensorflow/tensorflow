@@ -77,7 +77,7 @@ public final class Shape {
     return shape[i];
   }
 
-  /** Succint description of the shape meant for debugging. */
+  /** Succinct description of the shape meant for debugging. */
   @Override
   public String toString() {
     if (shape == null) {
