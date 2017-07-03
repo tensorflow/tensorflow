@@ -325,6 +325,8 @@ class TensorArrayTest(xla_test.XLATestCase):
         ta.write(-1, np.int32(7)).flow.eval()
 
   def testTensorArrayReadWrongIndexOrDataTypeFails(self):
+    # Find two different floating point types, create an array of
+    # the first type, but try to read the other type
     if len(self.float_types) > 1:
       dtype1 = self.float_types[0]
       dtype2 = self.float_types[1]
