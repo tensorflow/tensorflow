@@ -1936,7 +1936,7 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
                skip_connection=False,
                forget_bias=1.0,
                initializers=None,
-               name="conv_lstm"):
+               name="conv_lstm_cell"):
     """Construct ConvLSTMCell.
     Args:
       conv_ndims: Convolution dimensionality (1, 2 or 3).
@@ -2012,7 +2012,7 @@ class Conv1DLSTMCell(ConvLSTMCell):
 
   https://arxiv.org/pdf/1506.04214v1.pdf
   """
-  def __init__(self, name="conv_1d_lstm", **kwargs):
+  def __init__(self, name="conv_1d_lstm_cell", **kwargs):
     """Construct Conv1DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv1DLSTMCell, self).__init__(conv_ndims=1, **kwargs)
 
@@ -2021,7 +2021,7 @@ class Conv2DLSTMCell(ConvLSTMCell):
 
   https://arxiv.org/pdf/1506.04214v1.pdf
   """
-  def __init__(self, name="conv_2d_lstm", **kwargs):
+  def __init__(self, name="conv_2d_lstm_cell", **kwargs):
     """Construct Conv2DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv2DLSTMCell, self).__init__(conv_ndims=2, **kwargs)
 
@@ -2030,7 +2030,7 @@ class Conv3DLSTMCell(ConvLSTMCell):
 
   https://arxiv.org/pdf/1506.04214v1.pdf
   """
-  def __init__(self, name="conv_3d_lstm", **kwargs):
+  def __init__(self, name="conv_3d_lstm_cell", **kwargs):
     """Construct Conv3DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
 
@@ -2063,7 +2063,6 @@ def _conv(args,
       raise ValueError("Conv Linear expects all args to be of same Dimensiton: %s" % str(shapes))
     else:
       total_arg_size_depth += shape[-1]
-
   dtype = [a.dtype for a in args][0]
 
   # determine correct conv operation
