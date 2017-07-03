@@ -39,6 +39,7 @@ class LayoutOptimizer : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
+  Status InferOutputShapes(GrapplerItem* item);
   int num_gpus_ = 0;
 };
 

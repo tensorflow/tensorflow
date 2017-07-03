@@ -87,6 +87,8 @@ class MasterSession : public core::RefCounted {
   Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
              MutableRunStepResponseWrapper* resp);
 
+  Status ListDevices(ListDevicesResponse* resp) const;
+
   // Close this session and delete "*this". Returns OK if all known
   // states are cleanup successfully.
   //
@@ -112,7 +114,7 @@ class MasterSession : public core::RefCounted {
 
   // The optional session-specific worker cluster.
   // TODO(saeta): Convert to std::optional when available.
-  std::unique_ptr<WorkerCacheInterface> worker_cache_;
+  const std::unique_ptr<WorkerCacheInterface> worker_cache_;
   // Retrieves either worker_cache_ or the env_->worker_cache as appropriate.
   WorkerCacheInterface* get_worker_cache() const;
 

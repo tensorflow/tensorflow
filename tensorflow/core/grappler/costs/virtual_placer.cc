@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -24,47 +23,76 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-VirtualPlacer::VirtualPlacer(const Cluster* cluster) : has_gpu_(false) {
+VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
   CHECK(cluster);
   devices_ = cluster->GetDevices();
-  for (const auto& device : devices_) {
-    if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
-      has_gpu_ = true;
+
+  if (devices_.empty()) {
+    // If there are no devices in the cluster, add a single device, "UNKNOWN" to
+    // the cluster.
+    default_device_ = "UNKNOWN";
+    DeviceProperties& prop = devices_["UNKNOWN"];
+    prop.set_type("UNKNOWN");
+
+  } else {
+    default_device_ = devices_.begin()->first;
+    VLOG(1) << "Number of devices: " << devices_.size();
+    for (const auto& device : devices_) {
+      if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
+        default_device_ = device.first;
+        break;
+      }
     }
   }
-
-  unknown_device_.set_type("UNKNOWN");
 }
 
 const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
-  DeviceNameUtils::ParsedName parsed;
+  string device = get_canonical_device_name(node);
+  VLOG(3) << "Device name: " << device;
+  auto it = devices_.find(device);
+  DCHECK(it != devices_.end());
+  return it->second;
+}
+
+string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
+  string device;
   if (!node.device().empty()) {
-    auto it = devices_.find(node.device());
-    if (it != devices_.end()) {
-      return it->second;
+    if (devices_.find(node.device()) != devices_.end()) {
+      return node.device();
     }
-    if (DeviceNameUtils::ParseLocalName(node.device(), &parsed)) {
-      string device_name =
-          strings::StrCat("/job:localhost/replica:0/task:0/",
-                          str_util::Lowercase(parsed.type), ":", parsed.id);
-      it = devices_.find(device_name);
-      if (it != devices_.end()) {
-        return it->second;
+    DeviceNameUtils::ParsedName parsed_name;
+    bool parsed = DeviceNameUtils::ParseFullName(node.device(), &parsed_name);
+    if (!parsed) {
+      parsed = DeviceNameUtils::ParseLocalName(node.device(), &parsed_name);
+      parsed_name.job = "localhost";
+    }
+    if (!parsed) {
+      if (node.device() == "GPU" || node.device() == "CPU" ||
+          node.device() == "gpu" || node.device() == "cpu") {
+        parsed_name.job = "localhost";
+        parsed_name.type = node.device();
+        parsed = true;
       }
     }
-    return unknown_device_;
-  }
-  string device;
-  if (has_gpu_) {
-    device = "/job:localhost/replica:0/task:0/gpu:0";
+    if (!parsed) {
+      return get_default_device_name();
+    } else {
+      device = strings::StrCat(
+          "/job:", parsed_name.job, "/replica:", parsed_name.replica,
+          "/task:", parsed_name.task, "/",
+          str_util::Lowercase(parsed_name.type), ":", parsed_name.id);
+    }
   } else {
-    device = "/job:localhost/replica:0/task:0/cpu:0";
+    return get_default_device_name();
   }
-  auto it = devices_.find(device);
-  if (it == devices_.end()) {
-    return unknown_device_;
+  if (devices_.find(device) == devices_.end()) {
+    return get_default_device_name();
   }
-  return it->second;
+  return device;
+}
+
+const string& VirtualPlacer::get_default_device_name() const {
+  return default_device_;
 }
 
 }  // end namespace grappler

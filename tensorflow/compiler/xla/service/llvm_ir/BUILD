@@ -29,7 +29,6 @@ cc_library(
         ":ir_array",
         ":llvm_util",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/legacy_flags:alias_analysis_flags",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:logical_buffer",
@@ -47,9 +46,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:llvm_util_flags",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
@@ -80,6 +76,7 @@ cc_library(
     deps = [
         ":ir_array",
         ":llvm_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
@@ -94,6 +91,7 @@ cc_library(
     deps = [
         ":ir_array",
         ":llvm_loop",
+        ":ops",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

@@ -16,8 +16,24 @@ r"""Convert checkpoints using RNNCells to new name convention.
 
 Usage:
 
-  python checkpoint_convert [--write_v1_checkpoint] \
+  python checkpoint_convert.py [--write_v1_checkpoint] \
       '/path/to/checkpoint' '/path/to/new_checkpoint'
+
+For example, if there is a V2 checkpoint to be converted and the files include:
+  /tmp/my_checkpoint/model.ckpt.data-00000-of-00001
+  /tmp/my_checkpoint/model.ckpt.index
+  /tmp/my_checkpoint/model.ckpt.meta
+
+use the following command:
+  mkdir /tmp/my_converted_checkpoint &&
+  python checkpoint_convert.py \
+      /tmp/my_checkpoint/model.ckpt /tmp/my_converted_checkpoint/model.ckpt
+
+This will generate three converted checkpoint files corresponding to the three
+old ones in the new directory:
+  /tmp/my_converted_checkpoint/model.ckpt.data-00000-of-00001
+  /tmp/my_converted_checkpoint/model.ckpt.index
+  /tmp/my_converted_checkpoint/model.ckpt.meta
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -108,6 +124,20 @@ _RNN_NAME_REPLACEMENTS = collections.OrderedDict([
      'attention_cell_wrapper/attention/kernel'),
     ('attention_cell_wrapper/attention/biases',
      'attention_cell_wrapper/attention/bias'),
+    ############################################################################
+    # contrib/legacy_seq2seq/python/ops/seq2seq.py
+    ('attention_decoder/weights',
+     'attention_decoder/kernel'),
+    ('attention_decoder/biases',
+     'attention_decoder/bias'),
+    ('attention_decoder/Attention_0/weights',
+     'attention_decoder/Attention_0/kernel'),
+    ('attention_decoder/Attention_0/biases',
+     'attention_decoder/Attention_0/bias'),
+    ('attention_decoder/AttnOutputProjection/weights',
+     'attention_decoder/AttnOutputProjection/kernel'),
+    ('attention_decoder/AttnOutputProjection/biases',
+     'attention_decoder/AttnOutputProjection/bias'),
 ])
 
 _RNN_SHARDED_NAME_REPLACEMENTS = collections.OrderedDict([
@@ -146,7 +176,7 @@ def _split_sharded_vars(name_shape_map):
 
   Returns:
     not_sharded: Names of the non-sharded variables.
-    sharded: Names of the sharded varibales.
+    sharded: Names of the sharded variables.
   """
   sharded = []
   not_sharded = []

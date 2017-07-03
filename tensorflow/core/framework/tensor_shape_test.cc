@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -546,6 +547,23 @@ TEST(TensorShapeTest, Overflow) {
     EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
               TensorShapeUtils::MakeShape(overflow, &shape).code());
   }
+}
+
+TEST(TensorShapeTest, UnknownRank) {
+  // NOTE(irving): Unfortunately, for historical reasons we have to allow an
+  // TensorShapeProto with unknown_rank() set to be parsed as a TensorShape.
+  // Would be nice to tighten this, but it's tricky given backwards
+  // compatibility requirements.
+  TensorShapeProto proto;
+  proto.set_unknown_rank(true);
+  EXPECT_TRUE(TensorShape::IsValid(proto));
+  TF_EXPECT_OK(TensorShape::IsValidShape(proto));
+  EXPECT_EQ(TensorShape(), TensorShape(proto));
+
+  proto.add_dim()->set_size(7);
+  EXPECT_TRUE(TensorShape::IsValid(proto));
+  TF_EXPECT_OK(TensorShape::IsValidShape(proto));
+  EXPECT_EQ(TensorShape({7}), TensorShape(proto));
 }
 
 TEST(TensorShapeUtilsTest, StartsWith) {

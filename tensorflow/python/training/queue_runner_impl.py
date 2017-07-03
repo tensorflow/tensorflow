@@ -22,6 +22,7 @@ import threading
 import weakref
 
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -401,6 +402,10 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
     collection: A `GraphKey` specifying the graph collection to
       get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
+  Raises:
+    ValueError: if `sess` is None and there isn't any default session.
+    TypeError: if `sess` is not a `tf.Session` object.
+
   Returns:
     A list of threads.
   """
@@ -410,6 +415,15 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
       raise ValueError("Cannot start queue runners: No default session is "
                        "registered. Use `with sess.as_default()` or pass an "
                        "explicit session to tf.start_queue_runners(sess=sess)")
+
+  if not isinstance(sess, session.SessionInterface):
+    # Following check is due to backward compatibility. (b/62061352)
+    if sess.__class__.__name__ in [
+        "MonitoredSession", "SingularMonitoredSession"]:
+      return []
+    raise TypeError("sess must be a `tf.Session` object. "
+                    "Given class: {}".format(sess.__class__))
+
   with sess.graph.as_default():
     threads = []
     for qr in ops.get_collection(collection):

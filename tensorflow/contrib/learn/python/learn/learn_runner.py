@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.contrib.training.python.training import hparam as hparam_lib
@@ -155,7 +154,7 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
       to create the `Estimator` (passed as `model_dir` to its constructor). It
       must return an `Experiment`. For this case, `run_config` and `hparams`
       must be None.
-      2) It accpets two arguments `run_config` and `hparams`, which should be
+      2) It accepts two arguments `run_config` and `hparams`, which should be
       used to create the `Estimator` (`run_config` passed as `config` to its
       constructor; `hparams` used as the hyper-paremeters of the model).
       It must return an `Experiment`. For this case, `output_dir` must be None.
@@ -210,7 +209,6 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
   return _execute_schedule(experiment, schedule)
 
 
-@experimental
 def tune(experiment_fn, tuner):
   """Tune an experiment with hyper-parameters.
 

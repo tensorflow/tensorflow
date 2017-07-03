@@ -18,7 +18,6 @@
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -61,7 +60,7 @@ class HloRematerialization {
 
  protected:
   HloRematerialization(const ShapeSizeFunction& size_function)
-      : size_function_(size_function), cost_analysis_(size_function_) {}
+      : size_function_(size_function) {}
   ~HloRematerialization() {}
 
   // Runs rematerialization on the given module. Returns whether the module was
@@ -99,9 +98,6 @@ class HloRematerialization {
 
   // Call graph of the hlo_module.
   std::unique_ptr<CallGraph> call_graph_;
-
-  // Analysis used for computing the rematerialization cost of instructions.
-  HloCostAnalysis cost_analysis_;
 
   // The peak memory usage of each computation. The map contains only those
   // computations called from sequential context

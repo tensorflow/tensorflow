@@ -50,10 +50,13 @@ class SliceOp : public XlaOpKernel {
     // slice will be an empty handle if the output has no elements.
     CHECK_EQ(begin.size(), size.size());
     std::vector<int64> limits;
+    limits.reserve(begin.size());
     for (int i = 0; i < begin.size(); ++i) {
       limits.push_back(begin[i] + size[i]);
     }
-    ctx->SetOutput(0, ctx->builder()->Slice(ctx->Input(0), begin, limits));
+    std::vector<int64> strides(begin.size(), 1);
+    ctx->SetOutput(0, ctx->builder()->Slice(ctx->Input(0), begin, limits,
+                                            strides));
   }
 
  private:

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
@@ -63,7 +64,6 @@ EIGEN_STRONG_INLINE void gather_float_int32_xla_impl(float* out, void** data) {
 
 // Implements gather on CPU. This is called by an XLA custom call, set up by
 // gather_op.cc.
-extern "C" void __attribute__((visibility("default")))
-gather_float_int32_xla_impl(float* out, void** data) {
+extern "C" void TF_EXPORT gather_float_int32_xla_impl(float* out, void** data) {
   tensorflow::gather_float_int32_xla_impl(out, data);
 }

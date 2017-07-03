@@ -20,6 +20,7 @@ cc_library(
 
 cc_test(
     name = "runtime_test",
+    size = "small",
     srcs = ["runtime_test.cc"],
     deps = [
         ":runtime",
@@ -88,6 +89,7 @@ cc_library(
 
 cc_test(
     name = "codegen_test",
+    size = "small",
     srcs = ["codegen_test.cc"],
     data = ["codegen_test_h.golden"],
     deps = [
@@ -101,10 +103,12 @@ cc_test(
 
 cc_test(
     name = "tfcompile_util_test",
+    size = "small",
     srcs = ["tfcompile_util_test.cc"],
     deps = [
         ":tfcompile_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -123,9 +127,9 @@ cc_library(
     deps = [
         ":tfcompile_lib",
         ":tfcompile_proto",
-        "//tensorflow/compiler/xla/legacy_flags:compiler_functor_flags",
-        "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
-        "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla/legacy_flags:service_flags",
+        "//tensorflow/compiler/xla/legacy_flags:util_flags",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
@@ -148,6 +152,17 @@ tf_library(
     config = "test_graph_tfadd.config.pbtxt",
     cpp_class = "AddComp",
     graph = "test_graph_tfadd.pbtxt",
+    tags = ["manual"],
+)
+
+# A test of tf_library that includes a graph with an unknown op, but where
+# the compilation works because the unknown op is not needed for the fetches.
+tf_library(
+    name = "test_graph_tfunknownop",
+    testonly = 1,
+    config = "test_graph_tfunknownop.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
     tags = ["manual"],
 )
 
@@ -194,6 +209,7 @@ test_suite(
     tests = [
         ":benchmark_test",
         ":test_graph_tfadd_test",
+        ":test_graph_tfunknownop_test",
         "//tensorflow/compiler/aot/tests:all_tests",
     ],
 )

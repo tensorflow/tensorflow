@@ -362,7 +362,7 @@ minimize. Then it can apply your choice of optimization algorithm to modify the
 variables and reduce the loss.
 
 ```python
-train_step = tf.train.GradientDescentOptimizer(0.05).minimize(cross_entropy)
+train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
 ```
 
 In this case, we ask TensorFlow to minimize `cross_entropy` using the

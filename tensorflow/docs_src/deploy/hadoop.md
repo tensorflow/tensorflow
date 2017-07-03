@@ -46,7 +46,7 @@ be set:
     expanded as described in the libhdfs documentation:
 
     ```shell
-    CLASSPATH=$($HADOOP_HDFS_HOME}/bin/hadoop classpath --glob) python your_script.py
+    CLASSPATH=$(${HADOOP_HDFS_HOME}/bin/hadoop classpath --glob) python your_script.py
     ```
     For older version of Hadoop/libhdfs (older than 2.6.0), you have to expand the
     classpath wildcard manually. For more details, see

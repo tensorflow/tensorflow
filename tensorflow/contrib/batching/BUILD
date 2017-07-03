@@ -7,8 +7,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "batch_scheduler_hdrs",
     hdrs = ["batch_scheduler.h"],
@@ -21,13 +19,13 @@ cc_library(
     name = "batch_scheduler",
     hdrs = ["batch_scheduler.h"],
     deps = [
-        ":batch_scheduler_hdrs",
         "//tensorflow/core:lib",
     ],
 )
 
 cc_test(
     name = "batch_scheduler_test",
+    size = "small",
     srcs = [
         "batch_scheduler_test.cc",
     ],
@@ -54,7 +52,6 @@ cc_library(
     deps = [
         ":batch_scheduler",
         ":shared_batch_scheduler_hdrs",
-        "//tensorflow/contrib/batching/util:periodic_function",
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
@@ -62,6 +59,7 @@ cc_library(
 
 cc_test(
     name = "shared_batch_scheduler_test",
+    size = "small",
     srcs = [
         "shared_batch_scheduler_test.cc",
     ],
@@ -85,6 +83,7 @@ cc_library(
 
 cc_test(
     name = "basic_batch_scheduler_test",
+    size = "small",
     srcs = [
         "basic_batch_scheduler_test.cc",
     ],
@@ -181,7 +180,11 @@ py_test(
     size = "small",
     srcs = ["python/ops/batch_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["nomac"],
+    tags = [
+        "manual",
+        "no_pip",
+        "nomac",
+    ],
     deps = [
         ":batch_py",
         "//tensorflow/python:framework_test_lib",

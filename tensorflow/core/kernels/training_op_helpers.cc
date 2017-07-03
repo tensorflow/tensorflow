@@ -71,6 +71,7 @@ Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     Var* var;
     if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
+      core::ScopedUnref unref_var(var);
       if (lock_held) {
         *out = *var->tensor();
       } else {

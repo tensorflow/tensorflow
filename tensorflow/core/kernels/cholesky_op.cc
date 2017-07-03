@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
-// TODO(konstantinos): Enable complex inputs. This will require additional tests
-//                     and OP_REQUIRES.
+
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
@@ -65,11 +64,11 @@ class CholeskyOp : public LinearAlgebraOp<Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         llt_decomposition(input);
 
-    // Output the lower triangular in a dense form.
-    outputs->at(0) = llt_decomposition.matrixL();
-
     OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
                 errors::InvalidArgument(kErrMsg));
+
+    // Output the lower triangular in a dense form.
+    outputs->at(0) = llt_decomposition.matrixL();
   }
 };
 
@@ -85,8 +84,10 @@ namespace functor {
       typename TTypes<T, 3>::Tensor output);                                 \
   extern template struct MatrixBandPart<GPUDevice, T>;
 
-TF_CALL_float(DECLARE_GPU_SPEC);
-TF_CALL_double(DECLARE_GPU_SPEC);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_complex64(DECLARE_GPU_SPEC);
+TF_CALL_complex128(DECLARE_GPU_SPEC);
+
 }  // namespace functor
 
 template <class Scalar>
@@ -151,7 +152,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     }
 
     // Register callback to check info after kernels finish.
-    auto info_checker = [context, done](
+    auto info_checker = [context, dev_info, done](
                             const Status& status,
                             const std::vector<HostLapackInfo>& /* unused */) {
       Status full_status = status;
@@ -171,11 +172,15 @@ class CholeskyOpGpu : public AsyncOpKernel {
 
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<double>), double);
+REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex64>), complex64);
+REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex128>), complex128);
 
 #endif  // GOOGLE_CUDA
 
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<float>), float);
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<double>), double);
+REGISTER_LINALG_OP("Cholesky", (CholeskyOp<complex64>), complex64);
+REGISTER_LINALG_OP("Cholesky", (CholeskyOp<complex128>), complex128);
 REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<float>), float);
 REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<double>), double);
 

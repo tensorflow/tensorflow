@@ -103,8 +103,7 @@ class DynamicStitchOp : public XlaOpKernel {
     int max_index = -1;
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
-        max_index = std::max(
-            max_index, xla::LiteralUtil::Get<int>(indices[input_num], {i}));
+        max_index = std::max(max_index, indices[input_num].Get<int>({i}));
       }
     }
     int number_of_indices = max_index + 1;
@@ -118,7 +117,7 @@ class DynamicStitchOp : public XlaOpKernel {
     int index_used_count = 0;
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
-        int index = xla::LiteralUtil::Get<int>(indices[input_num], {i});
+        int index = indices[input_num].Get<int>({i});
         src_input_vector[index] = input_num;
         src_slice_vector[index] = i;
         if (!src_index_used[index]) {
@@ -157,6 +156,8 @@ class DynamicStitchOp : public XlaOpKernel {
                                    indices0_shape.dims());
     std::vector<int64> slice_limit(1 + data0_shape.dims() -
                                    indices0_shape.dims());
+    std::vector<int64> stride(1 + data0_shape.dims() -
+                              indices0_shape.dims(), 1);
     for (int d = indices0_shape.dims(); d < data0_shape.dims(); d++) {
       slice_limit[1 + d - indices0_shape.dims()] = data0_shape.dim_size(d);
     }
@@ -169,7 +170,7 @@ class DynamicStitchOp : public XlaOpKernel {
       // And place it in the concat list in the place indicated by
       // the index.
       to_concat[index_num] =
-          ctx->builder()->Slice(expression, slice_start, slice_limit);
+          ctx->builder()->Slice(expression, slice_start, slice_limit, stride);
     }
 
     ctx->SetOutput(0, ctx->builder()->ConcatInDim(to_concat, 0));

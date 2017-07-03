@@ -1,4 +1,4 @@
-FROM nvidia/cuda:8.0-cudnn5-devel-ubuntu14.04
+FROM nvidia/cuda:8.0-cudnn6-devel-ubuntu14.04
 
 MAINTAINER Ilya Biryukov <ibiryukov@google.com>
 
@@ -27,7 +27,6 @@ RUN /install/build_and_install_clang.sh
 
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
-RUN echo "import %workspace%/.tf_configure.bazelrc" >> /etc/bazel.bazelrc
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
 # Configure the build for our CUDA configuration.

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
@@ -50,6 +51,8 @@ struct GrapplerItem {
 
   // Return the set of node evaluated during a regular train/inference step.
   std::vector<const NodeDef*> MainOpsFanin() const;
+  // Return the set of node run to populate the queues (if any).
+  std::vector<const NodeDef*> EnqueueOpsFanin() const;
   // Return the set nodes used by TensorFlow to initialize the graph.
   std::vector<const NodeDef*> InitOpsFanin() const;
   // Return the set of variables accessed during a regular train/inference step.

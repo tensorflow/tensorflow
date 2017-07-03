@@ -226,7 +226,7 @@ def checkpoints_iterator(checkpoint_dir,
 
   This behavior gives control to callers on what to do if checkpoints do not
   come fast enough or stop being generated.  For example, if callers have a way
-  to detect that the training has stopped and know that no new new checkpoints
+  to detect that the training has stopped and know that no new checkpoints
   will be generated, they can provide a `timeout_fn` that returns `True` when
   the training has stopped.  If they know that the training is still going on
   they return `False` instead.
@@ -370,7 +370,7 @@ def evaluate_repeatedly(checkpoint_dir,
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
   summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
-  summaries run immedietly after the model checkpoint has been restored.
+  summaries run immediately after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.

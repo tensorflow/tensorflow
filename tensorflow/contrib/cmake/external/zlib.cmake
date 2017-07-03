@@ -22,7 +22,8 @@ set(ZLIB_TAG 50893291621658f355bc5b4d450a8d06a563053d)
 
 if(WIN32)
   set(zlib_STATIC_LIBRARIES
-      ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstatic.lib)
+      debug ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstaticd.lib
+      optimized ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstatic.lib)
 else()
   set(zlib_STATIC_LIBRARIES
       ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/libz.a)

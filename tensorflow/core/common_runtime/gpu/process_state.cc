@@ -127,7 +127,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
         gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
     int bus_id = se->GetDeviceDescription().numa_node();
     if (bus_id >= 0 && bus_id < static_cast<int64>(gpu_visitors_.size())) {
-      for (auto v : gpu_visitors_[bus_id]) {
+      for (const auto& v : gpu_visitors_[bus_id]) {
         gpu_allocators_[gpu_id]->AddAllocVisitor(v);
       }
     }
@@ -159,9 +159,36 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
   numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
-    Allocator* allocator =
-        new PoolAllocator(100 /*pool_size_limit*/, true /*auto_resize*/,
-                          new BasicCPUAllocator(), new NoopRounder, "cpu_pool");
+    bool use_bfc_allocator = false;
+    // TODO(reedwm): Switch default to BGFAllocator if it's at least as fast and
+    // efficient.
+    Status status = ReadBoolFromEnvVar("TF_CPU_ALLOCATOR_USE_BFC", false,
+                                       &use_bfc_allocator);
+    if (!status.ok()) {
+      LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
+    }
+    Allocator* allocator;
+    if (use_bfc_allocator) {
+      // TODO(reedwm): evaluate whether 64GB by default is the best choice.
+      int64 cpu_mem_limit_in_mb = -1;
+      Status status = ReadInt64FromEnvVar("TF_CPU_BFC_MEM_LIMIT_IN_MB",
+                                          1LL << 16 /*64GB max by default*/,
+                                          &cpu_mem_limit_in_mb);
+      if (!status.ok()) {
+        LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
+      }
+      int64 cpu_mem_limit = cpu_mem_limit_in_mb * (1LL << 20);
+      allocator = new BFCAllocator(new BasicCPUAllocator(), cpu_mem_limit,
+                                   true /*allow_growth*/,
+                                   "bfc_cpu_allocator_for_gpu" /*name*/);
+      VLOG(2) << "Using BFCAllocator with memory limit of "
+              << cpu_mem_limit_in_mb << " MB for ProcessState CPU allocator";
+    } else {
+      allocator = new PoolAllocator(
+          100 /*pool_size_limit*/, true /*auto_resize*/,
+          new BasicCPUAllocator(), new NoopRounder, "cpu_pool");
+      VLOG(2) << "Using PoolAllocator for ProcessState CPU allocator";
+    }
     if (LogMemory::IsEnabled()) {
       // Wrap the allocator to track allocation ids for better logging
       // at the cost of performance.

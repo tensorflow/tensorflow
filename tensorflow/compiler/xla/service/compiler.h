@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -91,13 +92,6 @@ class AotCompilationOptions {
 // platform.
 class Compiler {
  public:
-  // Callback signature used to dump the HLO graph during compilation.
-  // Different compiler backends will call this as they please, providing
-  // a view of the HLO at different points in compilation -- context for the
-  // dump is indicated by the label string.
-  using HloDumper =
-      std::function<void(const HloModule& module, const string& label)>;
-
   virtual ~Compiler() {}
 
   // Returns the ID of the platform that this compiler targets.
@@ -113,25 +107,20 @@ class Compiler {
   // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> Compile(
       std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
       perftools::gputools::StreamExecutor* executor) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules, and returns a corresponding
   // sequence of executable objects.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> hlo_module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo,
+      std::vector<std::unique_ptr<HloModule>> modules,
       std::vector<perftools::gputools::StreamExecutor*> stream_exec) = 0;
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      std::vector<std::unique_ptr<HloModule>> module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo, const AotCompilationOptions& options) = 0;
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+                     const AotCompilationOptions& options) = 0;
 
   /////
   // The Compiler class also serves as a point to register compiler objects
@@ -152,8 +141,18 @@ class Compiler {
   static StatusOr<Compiler*> GetForPlatform(
       const perftools::gputools::Platform* platform);
 
-  // Returns the size in bytes of the top-level buffer of a shape.
-  virtual int64 ShapeSizeBytes(const Shape& shape) const = 0;
+  // Returns a function that computes the size in bytes of the logical
+  // buffer that contains a shape.
+  virtual HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const = 0;
+
+  // Returns a function that computes the size in bytes of a given
+  // logical buffer.
+  std::function<int64(const LogicalBuffer&)> BufferSizeBytesFunction() {
+    HloCostAnalysis::ShapeSizeFunction shape_size = ShapeSizeBytesFunction();
+    return [shape_size](const LogicalBuffer& buffer) {
+      return shape_size(buffer.shape());
+    };
+  }
 
  private:
   // Mutex that guards the platform-compiler map.

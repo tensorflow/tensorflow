@@ -22,11 +22,20 @@ namespace tensorflow {
 namespace grappler {
 
 bool IsConcat(const NodeDef& node);
+bool IsConstant(const NodeDef& node);
 bool IsDequeueOp(const NodeDef& node);
+bool IsIdentity(const NodeDef& node);
+bool IsMerge(const NodeDef& node);
+bool IsNextIteration(const NodeDef& node);
+bool IsNoOp(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
+bool IsRecv(const NodeDef& node);
+bool IsReduction(const NodeDef& node);
+bool IsReshape(const NodeDef& node);
+bool IsSend(const NodeDef& node);
+bool IsSwitch(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
-bool IsMerge(const NodeDef& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

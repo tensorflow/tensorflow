@@ -26,10 +26,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -188,7 +191,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                       const RunState* run_state,
                       SimpleGraphExecutionState* execution_state);
 
-  string DetailText(const NodeDef& def, const NodeExecStats& ns) {
+  string DetailText(const Node& node, const NodeExecStats& ns) {
     int64 tot = 0;
     for (auto& no : ns.output()) {
       tot += no.tensor_description().allocation_description().requested_bytes();
@@ -197,12 +200,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     if (tot >= 0.1 * 1048576.0) {
       bytes = strings::Printf("[%.1fMB] ", tot / 1048576.0);
     }
-    return strings::StrCat(
-        bytes, def.name(), " = ", def.op(), "(",
-        str_util::Join(
-            std::vector<StringPiece>(def.input().begin(), def.input().end()),
-            ", "),
-        ")");
+    return strings::StrCat(bytes, node.name(), " = ", node.type_string(), "(",
+                           str_util::Join(node.requested_inputs(), ", "), ")");
   }
 
  private:
@@ -790,7 +789,7 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
       if (!ns.timeline_label().empty()) {
         details = ns.timeline_label();
       } else if (found_node_in_graph) {
-        details = DetailText(node->def(), ns);
+        details = DetailText(*node, ns);
       } else {
         // Leave details string empty
       }
@@ -997,8 +996,7 @@ MasterSession::MasterSession(
           << " #remote " << remote_devs_->size();
 
   LOG(INFO) << "Start master session " << handle_
-            << " with config: " << std::endl
-            << session_opts_.config.DebugString();
+            << " with config: " << session_opts_.config.ShortDebugString();
 }
 
 MasterSession::~MasterSession() {
@@ -1106,6 +1104,30 @@ Status MasterSession::CreateWorkerSessions(
   return status;
 }
 
+Status MasterSession::ListDevices(ListDevicesResponse* resp) const {
+  if (worker_cache_) {
+    // This is a ClusterSpec-propagated session, and thus env_->local_devices
+    // are invalid.
+
+    // Mark the "client_device" as the sole local device.
+    const Device* client_device = devices_->client_device();
+    for (const Device* dev : devices_->devices()) {
+      if (dev != client_device) {
+        *(resp->add_remote_device()) = dev->attributes();
+      }
+    }
+    *(resp->add_local_device()) = client_device->attributes();
+  } else {
+    for (Device* dev : env_->local_devices) {
+      *(resp->add_local_device()) = dev->attributes();
+    }
+    for (auto&& dev : *remote_devs_) {
+      *(resp->add_local_device()) = dev->attributes();
+    }
+  }
+  return Status::OK();
+}
+
 Status MasterSession::Extend(const ExtendSessionRequest* req,
                              ExtendSessionResponse* resp) {
   UpdateLastAccessTime();
@@ -1145,7 +1167,6 @@ WorkerCacheInterface* MasterSession::get_worker_cache() const {
 Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
                                 ReffedClientGraph** rcg, bool is_partial) {
   const uint64 hash = HashBuildGraphOptions(opts);
-  ReffedClientGraph* to_unref = nullptr;
   {
     mutex_lock l(mu_);
     // Keep track of how many times this subgraph has been executed in
@@ -1176,7 +1197,6 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
     *rcg = iter->second;
     (*rcg)->Ref();
   }
-  if (to_unref) to_unref->Unref();
   return Status::OK();
 }
 
@@ -1385,7 +1405,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
         run_state->rcg->CheckFetches(req, run_state, execution_state_.get()));
   }
 
-  // Determine if this partial run satisfies all the pending inputs and ouputs.
+  // Determine if this partial run satisfies all the pending inputs and outputs.
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     auto it = run_state->pending_inputs.find(req.feed_name(i));
     it->second = true;
@@ -1448,8 +1468,8 @@ Status MasterSession::CreateDebuggerState(
   // DirectSessions, it is less so for non-direct Sessions. Devise a better
   // way to get its value when the need arises.
   TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
-      debug_options.global_step(), -1, rcg_execution_count, input_names,
-      output_names, target_names));
+      debug_options.global_step(), rcg_execution_count, rcg_execution_count,
+      input_names, output_names, target_names));
 
   return Status::OK();
 }

@@ -22,6 +22,7 @@ import copy
 import json
 
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -289,14 +290,15 @@ class RunConfigTest(test.TestCase):
         save_summary_steps=12,
         save_checkpoints_steps=13,
         save_checkpoints_secs=14,
-        session_config=15,
+        session_config=config_pb2.ConfigProto(allow_soft_placement=True),
         keep_checkpoint_max=16,
         keep_checkpoint_every_n_hours=17)
     self.assertEqual(11, config.tf_random_seed)
     self.assertEqual(12, config.save_summary_steps)
     self.assertEqual(13, config.save_checkpoints_steps)
     self.assertEqual(14, config.save_checkpoints_secs)
-    self.assertEqual(15, config.session_config)
+    self.assertEqual(config_pb2.ConfigProto(allow_soft_placement=True),
+                     config.session_config)
     self.assertEqual(16, config.keep_checkpoint_max)
     self.assertEqual(17, config.keep_checkpoint_every_n_hours)
 
@@ -305,7 +307,7 @@ class RunConfigTest(test.TestCase):
         save_summary_steps=22,
         save_checkpoints_steps=23,
         save_checkpoints_secs=24,
-        session_config=25,
+        session_config=config_pb2.ConfigProto(allow_soft_placement=False),
         keep_checkpoint_max=26,
         keep_checkpoint_every_n_hours=27)
     self.assertEqual(config.uid(), new_config.uid())

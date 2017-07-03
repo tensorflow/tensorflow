@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-// TOOD(zongheng): this should be a general functor that powers SparseAdd and
+// TODO(zongheng): this should be a general functor that powers SparseAdd and
 // ScatterNd ops.  It should be moved to its own head file, once the other ops
 // are implemented.
 template <typename Device, typename T, typename Index, int NDIMS,

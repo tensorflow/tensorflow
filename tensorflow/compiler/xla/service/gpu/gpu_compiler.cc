@@ -23,7 +23,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/DiagnosticPrinter.h"
 #include "external/llvm/include/llvm/IR/LLVMContext.h"
 #include "external/llvm/include/llvm/IR/Module.h"
-#include "tensorflow/compiler/xla/legacy_flags/gpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -92,11 +94,9 @@ constexpr int64 kMemoryAlignment = 256;
 // called in GpuCompiler's constructor, so can't return an error. But
 // GpuCompiler::Compile will return an error when the wanted libdevice file
 // doesn't exist in the folder this function returns.
-string GetLibdeviceDir() {
+string GetLibdeviceDir(const HloModuleConfig& config) {
   std::vector<string> potential_libdevice_dirs;
-  // Flag xla_cuda_data_dir specified by the user.
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
-  const string datadir = flags->xla_cuda_data_dir;
+  const string datadir = config.debug_options().xla_gpu_cuda_data_dir();
   if (!datadir.empty()) {
     potential_libdevice_dirs.push_back(datadir);
   }
@@ -119,14 +119,13 @@ string GetLibdeviceDir() {
 
 // Runs optimization passes on the given HLO module.
 tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
-                                     const Compiler::HloDumper& dump_hlo,
                                      const se::DeviceDescription& device_desc) {
   {
-    HloPassPipeline pipeline("optimization", dump_hlo);
+    HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
     {
-      auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-          "simplification", dump_hlo);
+      auto& pass =
+          pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
@@ -146,7 +145,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   {
-    HloPassFix<HloPassPipeline> fusion("fusion", dump_hlo);
+    HloPassFix<HloPassPipeline> fusion("fusion");
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
@@ -156,19 +155,17 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(
-    const Compiler::HloDumper& dump_hlo, HloModule* hlo_module,
-    HloModuleConfig* module_config) {
+tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
-  HloPassPipeline pipeline("GPU-ir-emit-prepare", dump_hlo);
+  HloPassPipeline pipeline("GPU-ir-emit-prepare");
   pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
-      module_config->mutable_entry_computation_layout());
+      hlo_module->mutable_entry_computation_layout());
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -188,70 +185,55 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   return pipeline.Run(hlo_module).status();
 }
 
-// Invokes the ptxas tool on the given PTX string, and stores the resulting
-// SASS in *cubin. If -v 2 or greater, runs ptxas with -v and dumps the
-// resulting stderr (which contains register allocation info, etc.)
-// to VLOG(2). If ptxas binary is not found *sass is set to "".
-Status CompilePTX(const string& ptx, int cc_major, int cc_minor,
-                  string* cubin) {
-  *cubin = "";
-
+// Invokes the ptxas tool on the given PTX string, and dumps its output.
+void DumpPtxasInfo(const string& ptx) {
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin/ptxas");
-
   // Do not log PTX stats if ptxas is not found at the given path.
-  LOG(INFO) << "Invoking ptxas at path \"" << ptxas_path << "\".";
-  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(ptxas_path));
+  if (!tensorflow::Env::Default()->FileExists(ptxas_path).ok()) {
+    LOG(WARNING)
+        << "Failed to dump PTX stats because ptxas is not found at path \""
+        << ptxas_path << "\".";
+    return;
+  }
 
   // Write `ptx` into a temporary file.
   char tempdir_template[] = "/tmp/ptxXXXXXX";
   char* tempdir_name = mkdtemp(tempdir_template);
   CHECK_NOTNULL(tempdir_name);
   string ptx_path = tensorflow::io::JoinPath(tempdir_name, "ptx");
-
   TF_CHECK_OK(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), ptx_path, ptx));
   LOG(INFO) << "ptx file written to: " << ptx_path;
 
   // Invoke ptxas and collect its output.
-  tensorflow::SubProcess ptxas_info;
-  string arch = tensorflow::strings::StrCat("sm_", cc_major, cc_minor);
-  string cubin_path = tensorflow::io::JoinPath(tempdir_name, "cubin");
-
-  if (VLOG_IS_ON(2)) {
-    ptxas_info.SetProgram(ptxas_path, {ptxas_path, "-v", "-o", cubin_path,
-                                       "-arch", arch, ptx_path});
-  } else {
-    ptxas_info.SetProgram(
-        ptxas_path, {ptxas_path, "-o", cubin_path, "-arch", arch, ptx_path});
-  }
-  ptxas_info.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
-  CHECK(ptxas_info.Start());
+  tensorflow::SubProcess ptxas_info_dumper;
+  ptxas_info_dumper.SetProgram(ptxas_path, {ptxas_path, ptx_path, "-o",
+                                            "/dev/null", "-v", "-arch=sm_35"});
+  ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
+                                     tensorflow::ACTION_PIPE);
+  CHECK(ptxas_info_dumper.Start());
   string stderr_output;
-  int ptxas_exit_status = ptxas_info.Communicate(
+  int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
-
-  TF_RET_CHECK(ptxas_exit_status == 0);
-  return tensorflow::ReadFileToString(tensorflow::Env::Default(), cubin_path,
-                                      cubin);
+  XLA_LOG_LINES(tensorflow::INFO, stderr_output);
+  if (exit_status != 0) {
+    LOG(FATAL) << "Invalid PTX. See the error message above for reasons.";
+  }
 }
 
 }  // namespace
 
 GpuCompiler::GpuCompiler()
-    : libdevice_dir_(GetLibdeviceDir()),
-      pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
+    : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-    se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  TF_RETURN_IF_ERROR(OptimizeHloModule(hlo_module.get(), dump_hlo,
-                                       stream_exec->GetDeviceDescription()));
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(dump_hlo, hlo_module.get(),
-                                                   module_config.get()));
+  TF_RETURN_IF_ERROR(
+      OptimizeHloModule(module.get(), stream_exec->GetDeviceDescription()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -264,7 +246,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   };
   llvm_context.setDiagnosticHandler(DiagnosticHandler, &printer);
 
-  llvm::Module llvm_module(hlo_module->name().c_str(), llvm_context);
+  llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
   llvm_module.setTargetTriple(kTargetTriple);
   llvm_module.setDataLayout(kDataLayout);
@@ -272,36 +254,43 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // Determine the HLO schedule, which is an ordering of HLO instructions.  This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
   // must also be used to determine the thunk launch schedule.
-  std::unique_ptr<StreamAssignment> stream_assignment =
-      AssignStreams(*hlo_module);
+  std::unique_ptr<StreamAssignment> stream_assignment = AssignStreams(*module);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloSchedule> hlo_schedule,
-      HloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
+      HloSchedule::Build(*module, *stream_assignment, pointer_size_));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(hlo_module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          [this](const LogicalBuffer& buffer) {
-                            return ShapeSizeBytes(buffer.shape());
-                          },
-                          kMemoryAlignment));
+      BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
+                          BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
+                            return kMemoryAlignment;
+                          }));
 
-  IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
+  const string dump_debug_json_to =
+      module->config().debug_options().xla_dump_debug_json_to();
+  if (!dump_debug_json_to.empty()) {
+    HloProto proto = MakeHloProto(*module, *buffer_assignment);
+    TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
+        proto, dump_debug_json_to, module->name()));
+  }
+
+  IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
                                       &llvm_module);
 
-  HloComputation* entry_computation = hlo_module->entry_computation();
-  IrEmitterUnnested ir_emitter(*module_config, entry_computation,
-                               module_config->has_hybrid_result(),
+  HloComputation* entry_computation = module->entry_computation();
+  IrEmitterUnnested ir_emitter(module->config(), entry_computation,
+                               module->config().has_hybrid_result(),
                                &ir_emitter_context);
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));
 
   string ir_module_string_before_opt;
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
-  if (VLOG_IS_ON(2) || flags->xla_gpu_embed_ir) {
+  const bool embed_ir_in_executable =
+      module->config().debug_options().xla_embed_ir_in_executable();
+  if (VLOG_IS_ON(2) || embed_ir_in_executable) {
     ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
     VLOG(2) << "LLVM module before optimizations:";
     XLA_VLOG_LINES(2, ir_module_string_before_opt);
@@ -309,14 +298,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   // Reserve space for the PTX to be generated for this module.
   string* ptx;
-  string* cubin;
   {
     tensorflow::mutex_lock lock(mutex_);
     generated_ptxes_.emplace_back(MakeUnique<string>());
     ptx = generated_ptxes_.back().get();
-
-    generated_cubins_.emplace_back(MakeUnique<string>());
-    cubin = generated_cubins_.back().get();
   }
   int cc_major, cc_minor;
   if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
@@ -326,13 +311,20 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     cc_major = 2;
     cc_minor = 0;
   }
+  if (libdevice_dir_.empty()) {
+    // Compute libdevice_dir_ just once and cache it in this member.
+    libdevice_dir_ = GetLibdeviceDir(module->config());
+  }
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
-                                         *module_config, libdevice_dir_));
+                                         module->config(), libdevice_dir_));
 
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
   VLOG(2) << "PTX:";
   XLA_VLOG_LINES(2, *ptx);
+  if (VLOG_IS_ON(2)) {
+    DumpPtxasInfo(*ptx);
+  }
 
   auto thunk_schedule = MakeUnique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
@@ -340,14 +332,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   VLOG(2) << "Printing the thunk schedule...";
   XLA_VLOG_LINES(2, thunk_schedule->ToString());
 
-  TF_RET_CHECK(CompilePTX(*ptx, cc_major, cc_minor, cubin).ok());
-
   auto* gpu_executable =
-      new GpuExecutable(*cubin, *ptx, {cc_major, cc_minor},
-                        std::move(thunk_schedule), std::move(hlo_module),
-                        std::move(module_config), std::move(buffer_assignment));
-
-  if (flags->xla_gpu_embed_ir) {
+      new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(module),
+                        std::move(buffer_assignment), ShapeSizeBytesFunction());
+  if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }
@@ -355,27 +343,20 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::unique_ptr<HloModule>> modules,
+    std::vector<se::StreamExecutor*> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-GpuCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> module,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-    HloDumper dump_hlo, const AotCompilationOptions& options) {
+GpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
+                                const AotCompilationOptions& options) {
   return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
 }
 
 se::Platform::Id GpuCompiler::PlatformId() const {
   return se::cuda::kCudaPlatformId;
-}
-
-int64 GpuCompiler::ShapeSizeBytes(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
 }  // namespace gpu

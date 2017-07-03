@@ -29,7 +29,7 @@ into broad categories:
     are modified.
 -   *Gradients (AKA automatic differentiation)*: Given a graph and a list of
     input and output operations, add operations to the graph that compute the
-    partial deriviatives (gradients) of the inputs with respect to the outputs.
+    partial derivatives (gradients) of the inputs with respect to the outputs.
     Allows for customization of the gradient function for a particular operation
     in the graph.
 -   *Functions*: Define a subgraph that may be called in multiple places in the

@@ -498,7 +498,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
@@ -1240,16 +1241,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         [self._curr_file_path, "-b", "3"],
         screen_info={"cols": 80})
 
-    self.assertIn("Omitted 2 source lines", out.lines[0])
-    self.assertTrue(out.lines[0].endswith("+5"))
-    expand_lines_command = out.font_attr_segs[0][-1][2].content
-    self.assertStartsWith(expand_lines_command,
-                          "ps %s " % self._curr_file_path)
-    self.assertIn("-b 1", expand_lines_command)
-
-    self.assertIsNone(self._findSourceLine(out, 1))
-    self.assertIsNone(self._findSourceLine(out, 2))
-    self.assertIsNotNone(self._findSourceLine(out, 3))
+    self.assertEqual(
+        2, out.annotations[debugger_cli_common.INIT_SCROLL_POS_KEY])
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
@@ -1461,7 +1454,8 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 

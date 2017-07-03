@@ -40,10 +40,12 @@ The following tutorials focus on linear models:
   * @{$wide_and_deep$TensorFlow Wide & Deep Learning Tutorial}, which explains
     how to use the high-level API to jointly train both a wide linear model
     and a deep feed-forward neural network.
+  * @{$kernel_methods$Improving Linear Models Using Explicit Kernel Methods},
+    which shows how to improve the quality of a linear model by using explicit
+    kernel mappings.
 
 Although TensorFlow specializes in machine learning, you may also use
 TensorFlow to solve other kinds of math problems.  For example:
 
   * @{$mandelbrot$Mandelbrot Set}
   * @{$pdes$Partial Differential Equations}
-

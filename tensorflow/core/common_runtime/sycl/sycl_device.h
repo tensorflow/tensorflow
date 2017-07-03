@@ -27,30 +27,183 @@ limitations under the License.
 
 namespace tensorflow {
 
+
+class GSYCLInterface
+{
+    std::vector<Eigen::QueueInterface*>     m_queue_interface_;    // owned
+    std::vector<Allocator*>                 m_cpu_allocator_;      // not owned
+    std::vector<SYCLAllocator*>             m_sycl_allocator_;     // owned
+    std::vector<SYCLDeviceContext*>         m_sycl_context_;       // owned
+
+    static std::mutex mutex_;
+    static GSYCLInterface* s_instance;
+    GSYCLInterface() {
+      bool found_device =false;
+      auto device_list = Eigen::get_sycl_supported_devices();
+      // Obtain list of supported devices from Eigen
+      for (const auto& device : device_list) {
+        if(device.is_gpu()) {
+          // returns first found GPU
+          AddDevice(device);
+          found_device = true;
+        }
+      }
+
+      if(!found_device) {
+        // Currently Intel GPU is not supported
+        LOG(WARNING) << "No OpenCL GPU found that is supported by ComputeCpp, trying OpenCL CPU";
+      }
+
+      for (const auto& device : device_list) {
+        if(device.is_cpu()) {
+          // returns first found CPU
+          AddDevice(device);
+          found_device = true;
+        }
+      }
+
+      if(!found_device) {
+        // Currently Intel GPU is not supported
+        LOG(FATAL) << "No OpenCL GPU nor CPU found that is supported by ComputeCpp";
+      } else {
+        LOG(INFO) << "Found following OpenCL devices:";
+        for (int i = 0; i < device_list.size(); i++) {
+          LOG(INFO) << GetShortDeviceDescription(i);
+        }
+      }
+    }
+
+    ~GSYCLInterface() {
+        m_cpu_allocator_.clear();
+
+        for (auto p : m_sycl_allocator_) {
+          p->Synchronize();
+          delete p;
+        }
+        m_sycl_allocator_.clear();
+
+        for(auto p : m_sycl_context_) {
+          p->Unref();
+        }
+        m_sycl_context_.clear();
+
+        for (auto p : m_queue_interface_) {
+          p->deallocate_all();
+          delete p;
+          p = nullptr;
+        }
+        m_queue_interface_.clear();
+    }
+
+    void AddDevice(const cl::sycl::device & d) {
+      m_queue_interface_.push_back(new Eigen::QueueInterface(d));
+      m_cpu_allocator_.push_back(cpu_allocator());
+      m_sycl_allocator_.push_back(new SYCLAllocator(m_queue_interface_.back()));
+      m_sycl_context_.push_back(new SYCLDeviceContext());
+    }
+
+  public:
+    static GSYCLInterface *instance()
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (!s_instance) {
+        s_instance = new GSYCLInterface();
+      }
+      return s_instance;
+    }
+
+    static void Reset()
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if(s_instance) {
+        delete s_instance;
+        s_instance = NULL;
+      }
+    }
+
+    Eigen::QueueInterface * GetQueueInterface(size_t i = 0) {
+      if(!m_queue_interface_.empty()) {
+        return m_queue_interface_[i];
+      } else {
+        std::cerr << "No cl::sycl::device has been added" << std::endl;
+        return nullptr;
+      }
+    }
+
+    SYCLAllocator * GetSYCLAllocator(size_t i = 0) {
+      if(!m_sycl_allocator_.empty()) {
+        return m_sycl_allocator_[i];
+      } else {
+        std::cerr << "No cl::sycl::device has been added" << std::endl;
+        return nullptr;
+      }
+    }
+
+    Allocator * GetCPUAllocator(size_t i = 0) {
+      if(!m_cpu_allocator_.empty()) {
+        return m_cpu_allocator_[i];
+      } else {
+        std::cerr << "No cl::sycl::device has been added" << std::endl;
+        return nullptr;
+      }
+    }
+
+    SYCLDeviceContext * GetSYCLContext(size_t i = 0) {
+      if(!m_sycl_context_.empty()) {
+        return m_sycl_context_[i];
+      } else {
+        std::cerr << "No cl::sycl::device has been added" << std::endl;
+        return nullptr;
+      }
+    }
+
+    string GetShortDeviceDescription(int device_id = 0) {
+      auto _device = GetSYCLAllocator(device_id)
+                         ->getSyclDevice()
+                         ->sycl_queue()
+                         .get_device();
+      auto _name = _device.get_info<cl::sycl::info::device::name>();
+      auto _vendor = _device.get_info<cl::sycl::info::device::vendor>();
+      auto _profile = _device.get_info<cl::sycl::info::device::profile>();
+
+      std::string _type;
+      if (_device.is_host()) {
+        _type = "Host";
+      } else if (_device.is_cpu()) {
+        _type = "CPU";
+      } else if (_device.is_gpu()) {
+        _type = "GPU";
+      } else if (_device.is_accelerator()) {
+        _type = "Accelerator";
+      } else {
+        _type = "Unknown";
+      }
+
+      return strings::StrCat("id: ", device_id, " ,type: ", _type, " ,name: ",
+                             _name.c_str(), " ,vendor: ", _vendor.c_str(),
+                             " ,profile: ", _profile.c_str());
+    }
+};
+
+
 class SYCLDevice : public LocalDevice {
  public:
-  template <typename SYCLSelector>
   SYCLDevice(const SessionOptions &options, const string &name,
              Bytes memory_limit, const DeviceLocality &locality,
-             const string &physical_device_desc, SYCLSelector sycl_selector,
-             Allocator *cpu_allocator)
+             const string &physical_device_desc, SYCLAllocator * sycl_allocator,
+             Allocator *cpu_allocator, SYCLDeviceContext* ctx)
       : LocalDevice(
             options,
             Device::BuildDeviceAttributes(name, DEVICE_SYCL, memory_limit,
-                                          locality, physical_device_desc),
-            nullptr),
+                                          locality, physical_device_desc)),
         cpu_allocator_(cpu_allocator),
-        sycl_queue_(new Eigen::QueueInterface(sycl_selector)),
-        sycl_device_(new Eigen::SyclDevice(sycl_queue_)),
-        sycl_allocator_(new SYCLAllocator(sycl_queue_)),
-        device_context_(new SYCLDeviceContext()) {
-    set_eigen_sycl_device(sycl_device_);
+        sycl_allocator_(sycl_allocator),
+        device_context_(ctx) {
     RegisterDevice();
+    set_eigen_sycl_device(sycl_allocator->getSyclDevice());
   }
 
   ~SYCLDevice() override;
-
-  void EnterLameDuckMode();
 
   void Compute(OpKernel *op_kernel, OpKernelContext *context) override;
   Allocator *GetAllocator(AllocatorAttributes attr) override;
@@ -62,18 +215,12 @@ class SYCLDevice : public LocalDevice {
                         DeviceContextMap *device_context_map) override;
 
   Status Sync() override;
-  static string GetShortDeviceDescription(/*int device_id,
-                                          const DeviceDescription& desc*/) {
-    return strings::StrCat("device: 0, name SYCL, pci bus id: 0");
-  }
 
  private:
   void RegisterDevice();
 
-  Allocator *cpu_allocator_;           // owned
-  Eigen::QueueInterface *sycl_queue_;  // owned
-  Eigen::SyclDevice *sycl_device_;     // owned
-  SYCLAllocator *sycl_allocator_;      // owned
+  Allocator         *cpu_allocator_;           // not owned
+  SYCLAllocator     *sycl_allocator_;          // not owned
   SYCLDeviceContext *device_context_;
 };
 

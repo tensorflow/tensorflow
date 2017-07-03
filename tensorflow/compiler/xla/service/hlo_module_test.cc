@@ -38,7 +38,7 @@ class HloModuleTest : public HloTestBase {
   std::unique_ptr<HloComputation> CreateConstantComputation() {
     auto builder = HloComputation::Builder("Constant");
     builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
     return builder.Build();
   }
 
@@ -58,7 +58,7 @@ class HloModuleTest : public HloTestBase {
 
 TEST_F(HloModuleTest, OneComputationPostOrder) {
   // Create a module with a single computation.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(CreateConstantComputation());
 
   EXPECT_THAT(module->MakeComputationPostOrder(),
@@ -67,7 +67,7 @@ TEST_F(HloModuleTest, OneComputationPostOrder) {
 
 TEST_F(HloModuleTest, TwoComputationsPostOrder) {
   // Create a module with two unconnected computations.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation1 = module->AddEntryComputation(CreateConstantComputation());
   auto computation2 =
       module->AddEmbeddedComputation(CreateConstantComputation());
@@ -81,9 +81,33 @@ TEST_F(HloModuleTest, TwoComputationsPostOrder) {
   EXPECT_EQ(computation2->name(), "Constant.1");
 }
 
+TEST_F(HloModuleTest, CloneTest) {
+  // Create and copy a module with a diamond call graph of computations.
+  auto module = CreateNewModule();
+  auto computation1 =
+      module->AddEmbeddedComputation(CreateConstantComputation());
+  auto computation2 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  auto computation3 =
+      module->AddEmbeddedComputation(CreateCallComputation({computation1}));
+  module->AddEntryComputation(
+      CreateCallComputation({computation2, computation3}));
+
+  auto post_order = module->MakeComputationPostOrder();
+  auto cloned_module = module->Clone("copy");
+  auto post_order_copied = cloned_module->MakeComputationPostOrder();
+
+  EXPECT_EQ(post_order.size(), post_order_copied.size());
+  for (auto origin = post_order.begin(), copied = post_order_copied.begin();
+       origin != post_order.end() && copied != post_order_copied.end();
+       ++origin, ++copied) {
+    EXPECT_EQ((*origin)->name() + "copy", (*copied)->name());
+  }
+}
+
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   // Create a module with a diamond call graph of computations.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation1 =
       module->AddEmbeddedComputation(CreateConstantComputation());
   auto computation2 =
@@ -104,3 +128,7 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
 }  // namespace
 
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

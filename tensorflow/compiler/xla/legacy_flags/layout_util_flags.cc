@@ -53,7 +53,7 @@ static void AllocateRawFlag() {
 static bool ParseDefaultLayout(const string& text, DefaultLayout* layout) {
   bool result = true;
   std::vector<string> field = tensorflow::str_util::Split(text, ':');
-  if (field.size() > 0) {
+  if (!field.empty()) {
     if (field[0] == "random") {
       layout->dimension_order = DefaultLayout::DimensionOrder::kRandom;
       if (field.size() > 1) {

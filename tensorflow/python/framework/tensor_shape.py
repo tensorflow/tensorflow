@@ -66,6 +66,11 @@ class Dimension(object):
   def __int__(self):
     return self._value
 
+  # This is needed for Windows.
+  # See https://github.com/tensorflow/tensorflow/pull/9780
+  def __long__(self):
+    return self._value
+
   def __index__(self):
     # Allow use in Python 3 range
     return self._value
@@ -360,7 +365,7 @@ class Dimension(object):
 def as_dimension(value):
   """Converts the given value to a Dimension.
 
-  A Dimenson input will be returned unmodified.
+  A Dimension input will be returned unmodified.
   An input of `None` will be converted to an unknown Dimension.
   An integer input will be converted to a Dimension with that value.
 

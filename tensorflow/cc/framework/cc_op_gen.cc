@@ -18,8 +18,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/cc_op_gen.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/framework/op_gen_overrides.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -740,11 +744,10 @@ void OpInfo::GetOutput(string* out) const {
     return;
   }
   strings::StrAppend(out, "  ::tensorflow::NameRangeMap _outputs_range;\n");
-  strings::StrAppend(
-      out,
-      "  ::tensorflow::Status _status_ = "
-      "::tensorflow::NameRangesForNode(ret->def(), ret->op_def(), "
-      "nullptr, &_outputs_range);\n");
+  strings::StrAppend(out,
+                     "  ::tensorflow::Status _status_ = "
+                     "::tensorflow::NameRangesForNode(*ret, ret->op_def(), "
+                     "nullptr, &_outputs_range);\n");
   strings::StrAppend(out, "  if (!_status_.ok()) {\n", "    ", scope_str,
                      ".UpdateStatus(_status_);\n", "    return;\n");
   strings::StrAppend(out, "  }\n\n");

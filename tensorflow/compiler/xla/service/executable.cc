@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 
 #include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -71,7 +72,7 @@ Status Executable::DumpSessionModule() {
 // Removes illegal characters from filenames.
 static void SanitizeFilename(string* name) {
   for (char& c : *name) {
-    if (c == '/' || c == '\\') {
+    if (c == '/' || c == '\\' || c == '[' || c == ']') {
       c = '_';
     }
   }
