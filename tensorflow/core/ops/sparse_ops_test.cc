@@ -191,12 +191,12 @@ TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
   INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");  // use d3_1, !adjoint_b.
   INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
   INFER_OK(op, "?;?;[2];[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
-  INFER_OK(op, "?;?;?;[?,?,?,?]", "[?,?,?,d3_3]"); // use d3_3, !adjoint_b.
+  INFER_OK(op, "?;?;?;[?,?,?,?]", "[d3_0,d3_1,?,d3_3]"); // use d3_3, !adjoint_b.
 
   set_adjoints(false, true);
   INFER_OK(op, "?;?;?;[?,?]", "[?,d3_0]");  // use d3_0, adjoint_b.
   INFER_OK(op, "?;?;?;[1,2]", "[?,d3_0]");  // use d3_0, adjoint_b.
-  INFER_OK(op, "?;?;?;[?,?,?,?]", "[?,?,?,d3_2]"); // use d3_2, adjoint_b.
+  INFER_OK(op, "?;?;?;[?,?,?,?]", "[d3_0,d3_1,?,d3_2]"); // use d3_2, adjoint_b.
 
   // second to last output comes from a, depending on adjoint_a value.
   // When input tensor is known, its values determine output shape.
