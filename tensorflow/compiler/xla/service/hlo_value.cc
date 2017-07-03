@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 
 #include <algorithm>
+#include <utility>
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -36,6 +37,10 @@ namespace xla {
 
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
+
+const Shape& HloLocation::shape() const {
+  return ShapeUtil::GetSubshape(instruction->shape(), index);
+}
 
 string HloLocation::ToString() const {
   string index_str =
@@ -148,25 +153,33 @@ bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
 
 void HloValue::AddLocation(HloInstruction* instruction,
                            const ShapeIndex& index) {
-  // The given location should not already exist in locations_.
+  HloLocation new_location{instruction, index};
+
+  // The new location must not already exist in locations_.
   for (const HloLocation& location : locations_) {
-    DCHECK(!(location.instruction == instruction && location.index == index));
+    DCHECK_NE(location, new_location);
+  }
+  // The shape of the new location must match existing locations.
+  if (!locations_.empty()) {
+    CHECK(
+        ShapeUtil::Compatible(locations_.front().shape(), new_location.shape()))
+        << "front: " << locations_.front() << " new: " << new_location;
   }
 
-  locations_.push_back(HloLocation{instruction, index});
+  locations_.push_back(std::move(new_location));
 
-  //  Update uses.
+  // Update uses.
   for (HloInstruction* user : instruction->users()) {
     for (int64 operand_number : user->OperandIndices(instruction)) {
       if (MayUseOperandValue(operand_number, index, user)) {
+        HloUse new_use{user, operand_number, index};
+
+        // The new use must not already exist in uses_.
         for (const HloUse& use : uses_) {
-          // Verify that this use does not already exist.
-          DCHECK(!(use.instruction == user &&
-                   use.operand_number == operand_number &&
-                   use.operand_index == index));
+          DCHECK_NE(use, new_use);
         }
 
-        uses_.push_back(HloUse{user, operand_number, index});
+        uses_.push_back(std::move(new_use));
       }
     }
   }

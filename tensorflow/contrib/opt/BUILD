@@ -100,6 +100,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",  # Flaky: b/29892493
+        "notap",  # data race due to b/62910646
     ],
     deps = [
         ":opt_py",

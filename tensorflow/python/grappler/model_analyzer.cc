@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/grappler/model_analyzer.h"
 
 #include <iomanip>
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 

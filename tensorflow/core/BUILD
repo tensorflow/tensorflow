@@ -500,7 +500,6 @@ cc_library(
 # Generates library per group of ops.
 tf_gen_op_libs(
     op_lib_names = [
-        "array_ops",
         "bitwise_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
@@ -532,6 +531,13 @@ tf_gen_op_libs(
         "string_ops",
         "training_ops",
     ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = [
+        "array_ops",
+    ],
+    deps = [":protos_all_cc"],
 )
 
 tf_gen_op_libs(
@@ -1216,6 +1222,8 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
         "platform/*.cc",
         "platform/profile_utils/**/*.h",
         "platform/profile_utils/**/*.cc",
+        "framework/resource_handle.h",
+        "framework/resource_handle.cc",
     ],
     exclude = [
         "**/*test*",
@@ -1245,7 +1253,6 @@ cc_library(
                 "platform/*.cc",
                 "platform/profile_utils/**/*.h",
                 "platform/profile_utils/**/*.cc",
-            ] + [
                 "framework/resource_handle.h",
                 "framework/resource_handle.cc",
             ],

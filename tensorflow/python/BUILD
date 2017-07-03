@@ -233,6 +233,7 @@ cc_library(
         ":numpy_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:script_ops_op_lib",
         "//third_party/py/numpy:headers",
         "//util/python:python_headers",
@@ -2995,6 +2996,9 @@ tf_py_test(
         ":training",
         ":variables",
     ],
+    tags = [
+        "notsan",  # data race due to b/62910646
+    ],
 )
 
 py_library(
@@ -3083,6 +3087,7 @@ py_test(
     tags = [
         "no_gpu",
         "no_pip_gpu",
+        "notsan",  # data race due to b/62910646
     ],
     deps = [
         ":client",

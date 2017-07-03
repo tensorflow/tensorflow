@@ -37,6 +37,7 @@ namespace tensorflow {
 using boosted_trees::learner::SplitInfo;
 using boosted_trees::learner::stochastic::GradientStats;
 using boosted_trees::learner::stochastic::NodeStats;
+using boosted_trees::learner::LearnerConfig_MultiClassStrategy;
 
 class BaseBuildSplitOp : public OpKernel {
  public:
@@ -53,16 +54,24 @@ class BaseBuildSplitOp : public OpKernel {
                                              &tree_complexity_regularization_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("min_node_weight", &min_node_weight_));
+
+    int strategy;
+    OP_REQUIRES_OK(context, context->GetAttr("multiclass_strategy", &strategy));
+    OP_REQUIRES(
+        context,
+        boosted_trees::learner::LearnerConfig_MultiClassStrategy_IsValid(
+            strategy),
+        errors::InvalidArgument("Wrong multiclass strategy passed."));
+    multiclass_strategy_ = LearnerConfig_MultiClassStrategy(strategy);
   }
 
   NodeStats ComputeNodeStats(const GradientStats& grad_stats) {
-    return NodeStats(
-        l1_regularization_, l2_regularization_, min_node_weight_,
-        boosted_trees::learner::LearnerConfig_MultiClassStrategy_TREE_PER_CLASS,
-        grad_stats);
+    return NodeStats(l1_regularization_, l2_regularization_, min_node_weight_,
+                     multiclass_strategy_, grad_stats);
   }
 
  protected:
+  LearnerConfig_MultiClassStrategy multiclass_strategy_;
   int32 feature_column_group_id_;
   float l1_regularization_;
   float l2_regularization_;
@@ -159,7 +168,7 @@ class BuildDenseInequalitySplitsOp : public BaseBuildSplitOp {
       int32 best_bucket_idx = 0;
       NodeStats best_right_node_stats(0);
       NodeStats best_left_node_stats(0);
-      GradientStats left_gradient_stats(0, 0);
+      GradientStats left_gradient_stats;
       for (int64 bucket_idx = start_index; bucket_idx < end_index;
            ++bucket_idx) {
         GradientStats g(*gradients_t, *hessians_t, bucket_idx);
@@ -301,7 +310,7 @@ class BuildSparseInequalitySplitsOp : public BaseBuildSplitOp {
       int32 best_bucket_idx = 0;
       NodeStats best_right_node_stats(0);
       NodeStats best_left_node_stats(0);
-      GradientStats left_gradient_stats(0, 0);
+      GradientStats left_gradient_stats;
       bool default_right = false;
       for (int64 bucket_idx = start_index + 1; bucket_idx < end_index;
            ++bucket_idx) {

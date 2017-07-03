@@ -153,6 +153,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
 )
@@ -205,6 +206,7 @@ cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -449,7 +451,11 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["remote_device_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["manual"],
+    tags = tf_cuda_tests_tags() + [
+        "manual",
+        "notap",  # Memory leak due to b/62910646
+        "noguitar",  # Memory leak due to b/62910646
+    ],
     deps = [
         ":master",
         ":remote_device",

@@ -34,10 +34,12 @@ void InfeedManager::Reset() {
   enqueued_buffer_.clear();
 }
 
-void InfeedManager::EnqueueBuffer(InfeedBuffer* buffer) {
+void InfeedManager::EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers) {
   tensorflow::mutex_lock l(mu_);
   bool was_empty = enqueued_buffer_.empty();
-  enqueued_buffer_.push_back(buffer);
+  for (InfeedBuffer* b : buffers) {
+    enqueued_buffer_.push_back(b);
+  }
   if (was_empty) {
     // This has the potential to suffer from the notified thread
     // immediately trying and failing to acquire mu_, but seems

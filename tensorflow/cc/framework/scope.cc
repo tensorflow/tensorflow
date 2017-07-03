@@ -136,7 +136,7 @@ Scope::Impl::Impl(const std::shared_ptr<Graph>& graph,
 Scope Scope::NewRootScope() {
   Graph* graph = new Graph(OpRegistry::Global());
   ShapeRefiner* refiner =
-      new ShapeRefiner(graph->versions().producer(), graph->op_registry());
+      new ShapeRefiner(graph->versions(), graph->op_registry());
   return Scope(new Impl(graph, new Status, new Impl::NameMap, refiner));
 }
 
