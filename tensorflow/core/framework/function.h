@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_FUNCTION_H_
 
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
@@ -33,6 +34,7 @@ limitations under the License.
 namespace tensorflow {
 
 class CancellationManager;
+class GraphDef;
 class OpKernel;
 class ResourceMgr;
 class ScopedStepContainer;
@@ -200,7 +202,7 @@ typedef std::function<Status(const string&, const OpDef**)>
 struct InstantiationResult {
   DataTypeVector arg_types;
   DataTypeVector ret_types;
-  GraphDef gdef;
+  std::vector<NodeDef> nodes;
 };
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
@@ -216,6 +218,7 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 // etc.)
 string DebugString(const FunctionDef& func_def);
 string DebugString(const GraphDef& instantiated_func_def);
+string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes);
 
 // Returns a debug string for a top level graph (the main program and
 // its supporting functions defined in its library).

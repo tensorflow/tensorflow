@@ -59,11 +59,11 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   auto builder = HloComputation::Builder(TestName());
   // The input dimensions are in CNHW order.
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
+      Literal::CreateR4FromArray4D(Array4D<float>(
           kInputFeatureCount, kBatchSize, kInputSize, kInputSize))));
   // The kernel dimensions are in OIHW order.
   auto kernel = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
+      Literal::CreateR4FromArray4D(Array4D<float>(
           kOutputFeatureCount, kInputFeatureCount, kWindowSize, kWindowSize))));
 
   ConvolutionDimensionNumbers dnums;
@@ -81,7 +81,7 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
           F32, {kOutputFeatureCount, kBatchSize, output_size, output_size}),
       input, kernel, conv_window_, dnums));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
@@ -113,11 +113,11 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   auto builder = HloComputation::Builder(TestName());
   // The input dimensions are in NHWC order.
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
+      Literal::CreateR4FromArray4D(Array4D<float>(
           kBatchSize, kInputSize, kInputSize, kInputFeatureCount))));
   // The kernel dimensions are in HWIO order.
   auto kernel = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
+      Literal::CreateR4FromArray4D(Array4D<float>(
           kWindowSize, kWindowSize, kInputFeatureCount, kOutputFeatureCount))));
 
   ConvolutionDimensionNumbers dnums;
@@ -135,7 +135,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
           F32, {kBatchSize, output_size, output_size, kOutputFeatureCount}),
       input, kernel, conv_window_, dnums));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   ConvCanonicalization conv_canonicalization;
@@ -144,3 +144,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
 
 }  // namespace cpu
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

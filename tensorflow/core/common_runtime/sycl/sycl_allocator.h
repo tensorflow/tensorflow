@@ -28,17 +28,19 @@ namespace tensorflow {
 
 class SYCLAllocator : public Allocator {
  public:
-  SYCLAllocator(Eigen::QueueInterface *device) : device_(device) {}
+  SYCLAllocator(Eigen::QueueInterface *queue) : sycl_device_(new Eigen::SyclDevice(queue)) {}
   virtual ~SYCLAllocator() override;
   string Name() override;
   void *AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void *ptr) override;
 
-  void EnterLameDuckMode();
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
-
+  void Synchronize() { sycl_device_->synchronize(); }
+  bool Ok() { return sycl_device_->ok(); }
+  Eigen::SyclDevice* getSyclDevice() { return sycl_device_; }
  private:
-  Eigen::QueueInterface *device_;  // not owned
+  Eigen::SyclDevice *sycl_device_;  // owned
+
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);
 };
 

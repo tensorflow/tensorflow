@@ -293,8 +293,28 @@ Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
 )doc");
 
+REGISTER_OP("Sinh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic sine of x element-wise.
+)doc");
+
+REGISTER_OP("Cosh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic cosine of x element-wise.
+)doc");
+
 REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
+)doc");
+
+REGISTER_OP("Asinh").UNARY_COMPLEX().Doc(R"doc(
+Computes inverse hyperbolic sine of x element-wise.
+)doc");
+
+REGISTER_OP("Acosh").UNARY_COMPLEX().Doc(R"doc(
+Computes inverse hyperbolic cosine of x element-wise.
+)doc");
+
+REGISTER_OP("Atanh").UNARY_COMPLEX().Doc(R"doc(
+Computes inverse hyperbolic tangent of x element-wise.
 )doc");
 
 REGISTER_OP("TanhGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
@@ -1100,6 +1120,9 @@ The inputs must be two-dimensional matrices and the inner dimension of "a" must
 match the outer dimension of "b". This op is optimized for the case where at
 least one of "a" or "b" is sparse. The breakeven for using this versus a dense
 matrix multiply on one platform was 30% zero values in the sparse matrix.
+
+The gradient computation of this operation will only take advantage of sparsity
+in the input gradient when that gradient comes from a Relu.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1278,33 +1301,37 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
 REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: Tidx")
-    .Output("output: int64")
+    .Output("output: output_type")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
 Note that in case of ties the identity of the return value is not guaranteed.
 
-dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
-  of the input Tensor to reduce across. For vectors, use dimension = 0.
+dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
+  which dimension of the input Tensor to reduce across. For vectors,
+  use dimension = 0.
 )doc");
 
 REGISTER_OP("ArgMin")
     .Input("input: T")
     .Input("dimension: Tidx")
-    .Output("output: int64")
+    .Output("output: output_type")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
 
 Note that in case of ties the identity of the return value is not guaranteed.
 
-dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
-  of the input Tensor to reduce across. For vectors, use dimension = 0.
+dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
+  which dimension of the input Tensor to reduce across. For vectors,
+  use dimension = 0.
 )doc");
 
 namespace {
@@ -2260,7 +2287,12 @@ REGISTER_OP("QuantizedMul")
     .Attr("T2: quantizedtype")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .SetIsCommutative()
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns x * y element-wise, working on quantized buffers.
 
@@ -2289,7 +2321,12 @@ REGISTER_OP("QuantizedAdd")
     .Attr("T2: quantizedtype")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .SetIsCommutative()
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns x + y element-wise, working on quantized buffers.
 

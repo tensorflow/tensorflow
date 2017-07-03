@@ -521,7 +521,7 @@ class PoolingTest(test.TestCase):
               padding="SAME").eval()
 
   # The following are tests that verify that the CPU and GPU implementations
-  # produce the same resuts.
+  # produce the same results.
   def _CompareMaxPoolingFwd(self, input_shape, ksize, strides, padding):
     for dtype in np.float64, np.float32, np.float16:
       tensor_input = np.random.rand(*input_shape).astype(dtype)

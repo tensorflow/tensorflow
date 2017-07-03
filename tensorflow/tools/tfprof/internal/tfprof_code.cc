@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -31,12 +32,7 @@ namespace tfprof {
 namespace {
 // Convert to Trace proto into a short readable string.
 string GetTraceString(const CodeDef::Trace& trace) {
-  string ntrace = "";
-  if (trace.file().find_last_of('/') != trace.file().npos) {
-    ntrace += trace.file().substr(trace.file().find_last_of('/') + 1);
-  } else {
-    ntrace += trace.file();
-  }
+  string ntrace = io::Basename(trace.file()).ToString();
   ntrace += strings::StrCat(":", trace.lineno());
   if (trace.function().length() < 20) {
     ntrace += ":" + trace.function();
@@ -53,14 +49,16 @@ string GetTraceString(const CodeDef::Trace& trace) {
 }  // namespace
 
 void TFCode::AddNode(TFGraphNode* node) {
-  if (!node->code()) {
+  if (node->code().traces_size() == 0) {
     return;
   }
   TFMultiGraphNode* pre_trace_node = nullptr;
-  for (int i = 0; i < node->code()->traces_size(); ++i) {
+  // TODO(xpan): Consider to release CodeDef after TFCode is built. It
+  // takes a lot of memory.
+  for (int i = 0; i < node->code().traces_size(); ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
-    const string& trace = GetTraceString(node->code()->traces(i));
+    const string& trace = GetTraceString(node->code().traces(i));
     if (i == 0) {
       if (!trace_root_) {
         trace_root_.reset(new TFMultiGraphNode(trace));
@@ -72,7 +70,7 @@ void TFCode::AddNode(TFGraphNode* node) {
     pre_trace_node->AddChildren(trace);
     TFMultiGraphNode* trace_node = pre_trace_node->children().at(trace).get();
 
-    if (i == node->code()->traces_size() - 1) {
+    if (i == node->code().traces_size() - 1) {
       trace_node->AddGraphNode(node);
     }
     pre_trace_node = trace_node;
@@ -217,9 +215,7 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
     node->ResetTotalStats();
     std::vector<CodeNode*> act_cnodes = Account(node->children, opts);
     node->account = ReAccount(node, opts);
-    // LOG(ERROR) << act_cnodes.size() << " " << node->account;
     if (node->account || !act_cnodes.empty()) {
-      // LOG(ERROR) << node->name();
       node->show_children.clear();
       node->ResetTotalStats();
       node->AddSelfToTotalStats();
@@ -235,6 +231,17 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
 
 string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
   std::vector<string> attrs;
+  if (opts.select.find(kShown[0]) != opts.select.end()) {
+    string memory = FormatMemory(node->proto().total_requested_bytes());
+    if (node->account) {
+      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
+    } else {
+      memory = "--/" + memory;
+    }
+    attrs.push_back(memory);
+  }
+  std::vector<string> time_attrs = FormatTimes(node, opts);
+  attrs.insert(attrs.end(), time_attrs.begin(), time_attrs.end());
 
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     string params = FormatNumber(node->proto().total_parameters()) + " params";
@@ -255,24 +262,7 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
     }
     attrs.push_back(fops);
   }
-  if (opts.select.find(kShown[0]) != opts.select.end()) {
-    string memory = FormatMemory(node->proto().total_requested_bytes());
-    if (node->account) {
-      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
-    } else {
-      memory = "--/" + memory;
-    }
-    attrs.push_back(memory);
-  }
-  if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(node->proto().total_exec_micros());
-    if (node->account) {
-      time = FormatTime(node->proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    attrs.push_back(time);
-  }
+
   if (opts.select.find(kShown[5]) != opts.select.end() &&
       !node->node->devices().empty()) {
     attrs.push_back(str_util::Join(node->node->devices(), "|"));
@@ -280,6 +270,13 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     std::set<string> op_types = node->node->op_types();
     attrs.push_back(str_util::Join(op_types, "|"));
+  }
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    // TODO(xpan): Make op count available in code view?
+    attrs.push_back(strings::Printf("%s N/A in code view", kShown[7]));
+  }
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    attrs.push_back(strings::Printf("%s N/A in code view", kShown[8]));
   }
 
   return strings::Printf("%s%s (%s)\n", string(indent, ' ').c_str(),

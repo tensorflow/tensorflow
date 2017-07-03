@@ -209,7 +209,9 @@ def _get_replica_device_setter(config):
   """
   ps_ops = [
       'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
-      'MutableHashTableOfTensors', 'MutableDenseHashTable'
+      'MutableHashTableV2', 'MutableHashTableOfTensors',
+      'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
+      'MutableDenseHashTableV2'
   ]
 
   if config.task_type:
@@ -528,7 +530,7 @@ class BaseEstimator(
     """
     _verify_input_args(x, y, input_fn, feed_fn, batch_size)
     if x is not None:
-      return SKCompat(self).score(x, y, batch_size, steps, metrics)
+      return SKCompat(self).score(x, y, batch_size, steps, metrics, name)
 
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
@@ -955,6 +957,7 @@ class BaseEstimator(
       self._check_inputs(features, labels)
       model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
+      all_hooks.extend(hooks)
       all_hooks.extend([
           basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
           basic_session_run_hooks.LoggingTensorHook(
@@ -964,7 +967,6 @@ class BaseEstimator(
               },
               every_n_iter=100)
       ])
-      all_hooks.extend(hooks)
 
       scaffold = model_fn_ops.scaffold or monitored_session.Scaffold()
       if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
@@ -1351,7 +1353,7 @@ class SKCompat(sklearn.BaseEstimator):
                         monitors=all_monitors)
     return self
 
-  def score(self, x, y, batch_size=128, steps=None, metrics=None):
+  def score(self, x, y, batch_size=128, steps=None, metrics=None, name=None):
     input_fn, feed_fn = _get_input_fn(x, y, input_fn=None,
                                       feed_fn=None, batch_size=batch_size,
                                       shuffle=False, epochs=1)
@@ -1363,7 +1365,7 @@ class SKCompat(sklearn.BaseEstimator):
         feed_fn=feed_fn,
         steps=steps,
         metrics=metrics,
-        name='score')
+        name=name)
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results

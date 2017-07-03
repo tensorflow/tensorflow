@@ -124,6 +124,20 @@ _RNN_NAME_REPLACEMENTS = collections.OrderedDict([
      'attention_cell_wrapper/attention/kernel'),
     ('attention_cell_wrapper/attention/biases',
      'attention_cell_wrapper/attention/bias'),
+    ############################################################################
+    # contrib/legacy_seq2seq/python/ops/seq2seq.py
+    ('attention_decoder/weights',
+     'attention_decoder/kernel'),
+    ('attention_decoder/biases',
+     'attention_decoder/bias'),
+    ('attention_decoder/Attention_0/weights',
+     'attention_decoder/Attention_0/kernel'),
+    ('attention_decoder/Attention_0/biases',
+     'attention_decoder/Attention_0/bias'),
+    ('attention_decoder/AttnOutputProjection/weights',
+     'attention_decoder/AttnOutputProjection/kernel'),
+    ('attention_decoder/AttnOutputProjection/biases',
+     'attention_decoder/AttnOutputProjection/bias'),
 ])
 
 _RNN_SHARDED_NAME_REPLACEMENTS = collections.OrderedDict([
@@ -162,7 +176,7 @@ def _split_sharded_vars(name_shape_map):
 
   Returns:
     not_sharded: Names of the non-sharded variables.
-    sharded: Names of the sharded varibales.
+    sharded: Names of the sharded variables.
   """
   sharded = []
   not_sharded = []

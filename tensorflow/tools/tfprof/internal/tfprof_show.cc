@@ -26,8 +26,10 @@ namespace tensorflow {
 namespace tfprof {
 
 const TFGraphNodeProto& TFShow::Show(const Options& opts) {
-  if (opts.output_type == kOutput[0]) {
-    Timeline timeline(opts.output_options.at(kTimelineOpts[0]));
+  if (opts.output_type == kOutput[3]) {
+    return ShowInternal(opts, nullptr)->proto();
+  } else if (opts.output_type == kOutput[0]) {
+    Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else if (opts.output_type == kOutput[2]) {
     const ShowNode* root = ShowInternal(opts, nullptr);
@@ -64,7 +66,8 @@ bool TFShow::LookUpCheckPoint(const string& name,
   return true;
 }
 
-bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
+bool TFShow::ShouldShow(const ShowNode* node, const Options& opts,
+                        int depth) const {
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
@@ -72,6 +75,7 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
       node->proto().exec_micros() < opts.min_micros ||
       node->proto().parameters() < opts.min_params ||
       node->proto().float_ops() < opts.min_float_ops ||
+      node->proto().run_count() < opts.min_occurrence ||
       depth > opts.max_depth || !ShouldShowIfExtra(node, opts, depth)) {
     return false;
   }
@@ -96,7 +100,8 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
   return true;
 }
 
-bool TFShow::ShouldTrim(ShowNode* node, const std::vector<string>& regexes) {
+bool TFShow::ShouldTrim(const ShowNode* node,
+                        const std::vector<string>& regexes) const {
   for (const string& regex : regexes) {
     if (RE2::FullMatch(node->name(), regex)) {
       return true;
@@ -105,7 +110,8 @@ bool TFShow::ShouldTrim(ShowNode* node, const std::vector<string>& regexes) {
   return false;
 }
 
-bool TFShow::ShouldAccount(ShowNode* node, const Options& opts) {
+bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
+  node->ReInit(opts.step);
   if (opts.account_type_regexes.size() == 1 &&
       opts.account_type_regexes[0] == ".*") {
     return true;
@@ -120,7 +126,7 @@ bool TFShow::ShouldAccount(ShowNode* node, const Options& opts) {
   return false;
 }
 
-string TFShow::FormatNode(ShowNode* node, const Options& opts) {
+string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
   std::vector<string> info;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     const string shape = FormatShapes(node->node->shape());
@@ -155,13 +161,17 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) {
     info.push_back(memory);
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(node->proto().total_exec_micros());
-    if (node->account) {
-      time = FormatTime(node->proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    info.push_back(time);
+    info.push_back(FormatTotalExecTime(node, opts));
+    info.push_back(FormatAcceleratorExecTime(node, opts));
+    info.push_back(FormatCPUExecTime(node, opts));
+  }
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    info.push_back(FormatAcceleratorExecTime(node, opts));
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    info.push_back(FormatCPUExecTime(node, opts));
   }
   if (opts.select.find(kShown[5]) != opts.select.end()) {
     if (node->proto().devices_size() > 0) {
@@ -169,15 +179,42 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) {
     }
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
-    std::set<string> op_types = node->node->op_types();
+    const std::set<string>& op_types = node->node->op_types();
     info.push_back(str_util::Join(op_types, "|"));
+  }
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    string run = FormatNumber(node->proto().total_run_count());
+    if (node->account) {
+      run = FormatNumber(node->proto().run_count()) + "/" + run;
+    } else {
+      run = "--/" + run;
+    }
+    string definition = FormatNumber(node->proto().total_definition_count());
+    if (node->account) {
+      definition = "1/" + definition;
+    } else {
+      definition = "--/" + definition;
+    }
+    info.push_back(run + "|" + definition);
+  }
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    std::vector<string> shape_vec;
+    for (const auto& s : node->node->input_shapes()) {
+      if (s.second.empty()) {
+        shape_vec.push_back(strings::Printf("%d:unknown", s.first));
+      } else {
+        shape_vec.push_back(strings::Printf(
+            "%d:%s", s.first, str_util::Join(s.second, "x").c_str()));
+      }
+    }
+    info.push_back(str_util::Join(shape_vec, "|"));
   }
 
   return strings::Printf("%s (%s)", node->name().c_str(),
                          str_util::Join(info, ", ").c_str());
 }
 
-string TFShow::FormatLegend(const Options& opts) {
+string TFShow::FormatLegend(const Options& opts) const {
   std::vector<string> legends;
   if (opts.select.find(kShown[2]) != opts.select.end()) {
     legends.push_back("# parameters");
@@ -189,13 +226,29 @@ string TFShow::FormatLegend(const Options& opts) {
     legends.push_back("output bytes");
   }
   if (opts.select.find(kShown[1]) != opts.select.end()) {
-    legends.push_back("execution time");
+    legends.push_back("total execution time");
+    legends.push_back("accelerator execution time");
+    legends.push_back("cpu execution time");
+  }
+  if (opts.select.find(kShown[9]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    legends.push_back("accelerator execution time");
+  }
+  if (opts.select.find(kShown[10]) != opts.select.end() &&
+      opts.select.find(kShown[1]) == opts.select.end()) {
+    legends.push_back("cpu execution time");
   }
   if (opts.select.find(kShown[5]) != opts.select.end()) {
     legends.push_back("assigned devices");
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     legends.push_back("op types");
+  }
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    legends.push_back("op count (run|defined)");
+  }
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    legends.push_back("input shapes");
   }
   return strings::Printf("node name | %s\n",
                          str_util::Join(legends, " | ").c_str());

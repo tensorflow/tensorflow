@@ -174,8 +174,7 @@ for more information on how to use them.
 
 ## Variables
 
-See also the how-to documentation on @{$variables$variables}
-and @{$variable_scope$variable scopes}, and
+See also the how-to documentation on @{$variables$variables} and
 @{$python/state_ops$the API documentation for variables}.
 
 #### What is the lifetime of a variable?
@@ -189,7 +188,7 @@ operation for that variable in a session. It is destroyed when that
 
 Variables allow concurrent read and write operations. The value read from a
 variable may change if it is concurrently updated. By default, concurrent
-assigment operations to a variable are allowed to run with no mutual exclusion.
+assignment operations to a variable are allowed to run with no mutual exclusion.
 To acquire a lock when assigning to a variable, pass `use_locking=True` to
 @{tf.Variable.assign}.
 

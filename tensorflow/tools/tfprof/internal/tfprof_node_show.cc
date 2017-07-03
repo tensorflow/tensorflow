@@ -22,18 +22,31 @@ namespace tfprof {
 namespace {}
 
 ShowNode::ShowNode(const TFGraphNode* node) : node(node), account(false) {
-  ReInit();
+  ReInit(-1);
 }
 
-void ShowNode::ReInit() {
+void ShowNode::ReInit(int64 step) {
   mutable_proto()->set_name(name());
+  mutable_proto()->clear_devices();
   if (!node->canonical_device().empty()) {
     mutable_proto()->add_devices(node->canonical_device());
   }
-  mutable_proto()->set_exec_micros(node->kernel_exec_micros());
-  mutable_proto()->set_requested_bytes(node->requested_bytes());
-  mutable_proto()->set_float_ops(node->float_ops());
+  mutable_proto()->set_run_count(node->run_count(step));
+  mutable_proto()->set_exec_micros(node->exec_micros(step));
+  mutable_proto()->set_accelerator_exec_micros(
+      node->accelerator_exec_micros(step));
+  mutable_proto()->set_cpu_exec_micros(node->cpu_exec_micros(step));
 
+  mutable_proto()->set_requested_bytes(node->requested_bytes(step));
+  mutable_proto()->set_float_ops(node->float_ops(step));
+
+  mutable_proto()->clear_input_shapes();
+  for (const auto& inp : node->input_shapes()) {
+    (*mutable_proto()->mutable_input_shapes())[inp.first].MergeFrom(
+        VecToShapeProto(inp.second));
+  }
+
+  proto_.clear_parameters();
   if (!node->shape().empty()) {
     int64 params = 1;
     bool complete_shape = true;
@@ -59,8 +72,18 @@ const TFGraphNodeProto& ShowNode::proto() const { return proto_; }
 
 void ShowNode::AggregateTotalStats(ShowNode* node) {
   TFGraphNodeProto* node_pb = node->mutable_proto();
+  mutable_proto()->set_total_run_count(proto().total_run_count() +
+                                       node_pb->total_run_count());
+  mutable_proto()->set_total_definition_count(
+      proto().total_definition_count() + node_pb->total_definition_count());
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          node_pb->total_exec_micros());
+  mutable_proto()->set_total_accelerator_exec_micros(
+      proto().total_accelerator_exec_micros() +
+      node_pb->total_accelerator_exec_micros());
+  mutable_proto()->set_total_cpu_exec_micros(proto().total_cpu_exec_micros() +
+                                             node_pb->total_cpu_exec_micros());
+
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              node_pb->total_requested_bytes());
   mutable_proto()->set_total_parameters(proto().total_parameters() +
@@ -70,8 +93,18 @@ void ShowNode::AggregateTotalStats(ShowNode* node) {
 }
 
 void ShowNode::AddSelfToTotalStats() {
+  mutable_proto()->set_total_definition_count(proto().total_definition_count() +
+                                              1);
+  mutable_proto()->set_total_run_count(proto().total_run_count() +
+                                       proto().run_count());
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          proto().exec_micros());
+  mutable_proto()->set_total_accelerator_exec_micros(
+      proto().total_accelerator_exec_micros() +
+      proto().accelerator_exec_micros());
+  mutable_proto()->set_total_cpu_exec_micros(proto().total_cpu_exec_micros() +
+                                             proto().cpu_exec_micros());
+
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              proto().requested_bytes());
   mutable_proto()->set_total_parameters(proto().total_parameters() +
@@ -81,7 +114,12 @@ void ShowNode::AddSelfToTotalStats() {
 }
 
 void ShowNode::ResetTotalStats() {
+  mutable_proto()->set_total_definition_count(0);
+  mutable_proto()->set_total_run_count(0);
   mutable_proto()->set_total_exec_micros(0);
+  mutable_proto()->set_total_accelerator_exec_micros(0);
+  mutable_proto()->set_total_cpu_exec_micros(0);
+
   mutable_proto()->set_total_requested_bytes(0);
   mutable_proto()->set_total_parameters(0);
   mutable_proto()->set_total_float_ops(0);
@@ -90,27 +128,32 @@ void ShowNode::ResetTotalStats() {
 
 ShowMultiNode::ShowMultiNode(TFMultiGraphNode* node)
     : node(node), account(false), show(false) {
-  ReInit({".*"});
+  ReInit(-1, {".*"});
 }
 
-bool ShowMultiNode::ReInit(const std::vector<string>& type_regexes) {
-  bool has_matched_type = node->SnapshotNodes(type_regexes);
+bool ShowMultiNode::ReInit(int64 step,
+                           const std::vector<string>& type_regexes) {
+  bool has_matched_type = node->SnapshotNodes(step, type_regexes);
 
   std::vector<ShowNode> snodes;
   mutable_proto()->mutable_graph_nodes()->Clear();
   for (auto it : node->graph_nodes()) {
     ShowNode snode(it.second);
     snodes.push_back(snode);
+    snodes.back().ReInit(step);
     snodes.back().AddSelfToTotalStats();
     mutable_proto()->add_graph_nodes()->MergeFrom(snodes.back().proto());
   }
 
   mutable_proto()->set_name(name());
-  mutable_proto()->set_exec_micros(node->kernel_exec_micros());
+  mutable_proto()->set_exec_micros(node->exec_micros());
+  mutable_proto()->set_accelerator_exec_micros(node->accelerator_exec_micros());
+  mutable_proto()->set_cpu_exec_micros(node->cpu_exec_micros());
+
   mutable_proto()->set_requested_bytes(node->requested_bytes());
   mutable_proto()->set_float_ops(node->float_ops());
 
-  mutable_proto()->set_parameters(0);
+  mutable_proto()->clear_parameters();
   if (!node->shapes().empty()) {
     for (const std::vector<int64>& shape : node->shapes()) {
       int64 params = 1;
@@ -141,6 +184,12 @@ void ShowMultiNode::AggregateTotalStats(ShowMultiNode* node) {
   TFMultiGraphNodeProto* node_pb = node->mutable_proto();
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          node_pb->total_exec_micros());
+  mutable_proto()->set_total_accelerator_exec_micros(
+      proto().total_accelerator_exec_micros() +
+      node_pb->total_accelerator_exec_micros());
+  mutable_proto()->set_total_cpu_exec_micros(proto().total_cpu_exec_micros() +
+                                             node_pb->total_cpu_exec_micros());
+
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              node_pb->total_requested_bytes());
   mutable_proto()->set_total_parameters(proto().total_parameters() +
@@ -152,6 +201,12 @@ void ShowMultiNode::AggregateTotalStats(ShowMultiNode* node) {
 void ShowMultiNode::AddSelfToTotalStats() {
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          proto().exec_micros());
+  mutable_proto()->set_total_accelerator_exec_micros(
+      proto().total_accelerator_exec_micros() +
+      proto().accelerator_exec_micros());
+  mutable_proto()->set_total_cpu_exec_micros(proto().total_cpu_exec_micros() +
+                                             proto().cpu_exec_micros());
+
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
                                              proto().requested_bytes());
   mutable_proto()->set_total_parameters(proto().total_parameters() +
@@ -162,6 +217,9 @@ void ShowMultiNode::AddSelfToTotalStats() {
 
 void ShowMultiNode::ResetTotalStats() {
   mutable_proto()->set_total_exec_micros(0);
+  mutable_proto()->set_total_accelerator_exec_micros(0);
+  mutable_proto()->set_total_cpu_exec_micros(0);
+
   mutable_proto()->set_total_requested_bytes(0);
   mutable_proto()->set_total_parameters(0);
   mutable_proto()->set_total_float_ops(0);

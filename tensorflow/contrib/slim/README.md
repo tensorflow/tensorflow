@@ -775,7 +775,7 @@ images, labels = LoadTestData(...)
 predictions = MyModel(images)
 
 mae_value_op, mae_update_op = slim.metrics.streaming_mean_absolute_error(predictions, labels)
-mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels, labels)
+mre_value_op, mre_update_op = slim.metrics.streaming_mean_relative_error(predictions, labels)
 pl_value_op, pl_update_op = slim.metrics.percentage_less(mean_relative_errors, 0.3)
 ```
 
@@ -836,7 +836,7 @@ with tf.Session() as sess:
   for batch_id in range(num_batches):
     sess.run(names_to_updates.values())
 
-  metric_values = sess.run(name_to_values.values())
+  metric_values = sess.run(names_to_values.values())
   for metric, value in zip(names_to_values.keys(), metric_values):
     print('Metric %s has value: %f' % (metric, value))
 ```

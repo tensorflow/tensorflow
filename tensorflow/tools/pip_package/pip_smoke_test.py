@@ -32,8 +32,8 @@ PY_TEST_QUERY = """bazel query 'deps(\
   filter("^((?!benchmark).)*$",\
   kind(py_test,\
   //tensorflow/python/... \
-  + //tensorflow/tensorboard/... \
   + //tensorflow/contrib/... \
+  - //tensorflow/contrib/tensorboard/... \
   - attr(tags, "manual|no_pip", //tensorflow/...))), 1)'"""
 
 # Hard-coded blacklist of files if not included in pip package
@@ -46,6 +46,7 @@ BLACKLIST = [
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
+    "//tensorflow/core:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",

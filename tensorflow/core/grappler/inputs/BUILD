@@ -22,7 +22,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -30,13 +29,13 @@ cc_library(
 
 cc_test(
     name = "utils_test",
+    size = "small",
     srcs = [
         "utils_test.cc",
     ],
     deps = [
         ":utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -64,8 +63,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/kernels:aggregate_ops",
-        "//tensorflow/core/kernels:array",
     ],
 )

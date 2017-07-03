@@ -55,6 +55,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import saver
 from tensorflow.python.training import saver_test_utils
@@ -118,6 +119,9 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
 
       def __init__(self):
         super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def _call_input_fn(self, input_fn, mode):
+        return input_fn()
 
       def _create_global_step(self, graph):
         pass
@@ -251,6 +255,17 @@ class EstimatorConstructorTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'params'):
       estimator.Estimator(model_fn=model_fn, params={'hidden_layers': 4})
 
+  def test_internal_params_is_a_deepcopy(self):
+
+    def model_fn(features, labels, params):
+      _, _, _ = features, labels, params
+
+    params = {'hidden_layers': 4}
+    est = estimator.Estimator(model_fn=model_fn, params=params)
+
+    params['hidden_layers'] = 5
+    self.assertEqual(4, est.params['hidden_layers'])
+
   def test_not_known_model_fn_args(self):
 
     def model_fn(features, labels, something):
@@ -323,6 +338,79 @@ def _make_input_fn(features, labels):
 
 
 class EstimatorTrainTest(test.TestCase):
+
+  def test_callable_model_fn(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+
+    model_fn_call_count = [0]
+
+    test_self = self
+
+    class ModelFn(object):
+
+      def __call__(self, features, labels):
+        model_fn_call_count[0] += 1
+        test_self.assertItemsEqual(expected_features.keys(), features.keys())
+        return _estimator_spec(
+            expected_features, expected_labels, features, labels,
+            model_fn_lib.ModeKeys.TRAIN)
+
+    with self.assertRaisesRegexp(ValueError, 'does not include params'):
+      estimator.Estimator(model_fn=ModelFn(), params={'a': 'b'})
+    est = estimator.Estimator(model_fn=ModelFn(), config=run_config.RunConfig())
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def test_callable_input_fn(self):
+    expected_params = {'batch_size': 10}
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    input_fn_call_count = [0]
+
+    def _model_fn(features, labels, mode, params, config):
+      del params, config
+      return model_fn_global_step_incrementer(features, labels, mode)
+
+    test_self = self
+
+    class InputFn(object):
+
+      def __call__(self, params, config):
+        input_fn_call_count[0] += 1
+        test_self.assertEqual(expected_params, params)
+        test_self.assertEqual(4321, config.tf_random_seed)
+        return dummy_input_fn()
+
+    est = estimator.Estimator(model_fn=_model_fn,
+                              params=expected_params,
+                              config=expected_config)
+    self.assertEqual(0, input_fn_call_count[0])
+    est.train(InputFn(), steps=1)
+    self.assertEqual(1, input_fn_call_count[0])
+
+  def test_input_fn_args(self):
+    expected_params = {'batch_size': 10}
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    input_fn_call_count = [0]
+
+    def _model_fn(features, labels, mode, params, config):
+      del params, config
+      return model_fn_global_step_incrementer(features, labels, mode)
+
+    def _input_fn(params, config):
+      input_fn_call_count[0] += 1
+      self.assertEqual(expected_params, params)
+      self.assertEqual(4321, config.tf_random_seed)
+      return dummy_input_fn()
+
+    est = estimator.Estimator(model_fn=_model_fn,
+                              params=expected_params,
+                              config=expected_config)
+    self.assertEqual(0, input_fn_call_count[0])
+    est.train(_input_fn, steps=1)
+    self.assertEqual(1, input_fn_call_count[0])
 
   def test_minimal_model_fn_args(self):
     expected_features = {'x': 42., 'y': 43.}
@@ -664,6 +752,29 @@ class _StepCounterHook(session_run_hook.SessionRunHook):
 
 class EstimatorEvaluateTest(test.TestCase):
 
+  def test_input_fn_args(self):
+    expected_params = {'batch_size': 10}
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    input_fn_call_count = [0]
+
+    def _model_fn(features, labels, mode, params, config):
+      del params, config
+      return model_fn_global_step_incrementer(features, labels, mode)
+
+    def _input_fn(params, config):
+      input_fn_call_count[0] += 1
+      self.assertEqual(expected_params, params)
+      self.assertEqual(4321, config.tf_random_seed)
+      return dummy_input_fn()
+
+    est = estimator.Estimator(model_fn=_model_fn,
+                              params=expected_params,
+                              config=expected_config)
+    est.train(dummy_input_fn, steps=1)
+    self.assertEqual(0, input_fn_call_count[0])
+    est.evaluate(_input_fn, steps=1)
+    self.assertEqual(1, input_fn_call_count[0])
+
   def test_model_fn_must_return_estimator_spec(self):
     def _model_fn(features, labels, mode):
       _, _ = features, labels
@@ -769,9 +880,9 @@ class EstimatorEvaluateTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn_with_incremental_loss)
     est.train(dummy_input_fn, steps=1)
     scores = est.evaluate(dummy_input_fn, steps=5)
-    self.assertIn(model_fn_lib.MetricKeys.LOSS, scores)
+    self.assertIn(model_fn_lib.LOSS_METRIC_KEY, scores)
     # Average loss will be (2 + 4 + 6 + 8 + 10)/5=6
-    self.assertAlmostEqual(6., scores[model_fn_lib.MetricKeys.LOSS])
+    self.assertAlmostEqual(6., scores[model_fn_lib.LOSS_METRIC_KEY])
 
   def test_hooks_should_be_session_run_hook(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
@@ -864,6 +975,33 @@ class EstimatorEvaluateTest(test.TestCase):
 
 
 class EstimatorPredictTest(test.TestCase):
+
+  def test_input_fn_args(self):
+    expected_params = {'batch_size': 10}
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    input_fn_call_count = [0]
+
+    def _model_fn(features, labels, mode, params, config):
+      del features, labels, params, config
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]))
+
+    def _input_fn(params, config):
+      input_fn_call_count[0] += 1
+      self.assertEqual(expected_params, params)
+      self.assertEqual(4321, config.tf_random_seed)
+      return dummy_input_fn()
+
+    est = estimator.Estimator(model_fn=_model_fn,
+                              params=expected_params,
+                              config=expected_config)
+    est.train(dummy_input_fn, steps=1)
+    self.assertEqual(0, input_fn_call_count[0])
+    next(est.predict(_input_fn))
+    self.assertEqual(1, input_fn_call_count[0])
 
   def test_no_trained_model_in_model_dir(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
@@ -1286,7 +1424,7 @@ class EstimatorExportTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         # Note that the SavedModel builder replaced the Saver with a new one
-        self.assertTrue('save_1/LookupTableImport' in graph_ops)
+        self.assertTrue('save_1/LookupTableImportV2' in graph_ops)
 
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
@@ -1518,6 +1656,47 @@ class EstimatorExportTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
     est.export_savedmodel(tempfile.mkdtemp(), serving_input_receiver_fn)
+
+
+class EstimatorHookOrderingTest(test.TestCase):
+
+  def testCustomHooksAreCalledBeforeNanTensorHook(self):
+
+    def nan_making_model_fn(mode, features, labels):
+      """A graph that generates NaN's for testing."""
+      del features, labels
+
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, name='global_step')
+      inc_global_step = state_ops.assign_add(global_step, 1)
+      nan_const = constant_op.constant(np.nan, dtype=dtypes.float32)
+      loss = control_flow_ops.cond(
+          inc_global_step > 1, lambda: nan_const, lambda: 1.0)
+
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=global_step.read_value(),
+          loss=loss,
+          train_op=inc_global_step)
+
+    def empty_input_fn():
+      return dict(), None
+
+    class AfterRunCountingHook(session_run_hook.SessionRunHook):
+      """Hooks that counts the number of times after_run() is called."""
+
+      def __init__(self):
+        self.after_run_count = 0
+
+      def after_run(self, run_context, run_values):
+        del run_context, run_values
+        self.after_run_count += 1
+
+    test_hook = AfterRunCountingHook()
+    est = estimator.Estimator(model_fn=nan_making_model_fn)
+    with self.assertRaises(basic_session_run_hooks.NanLossDuringTrainingError):
+      est.train(input_fn=empty_input_fn, steps=2, hooks=[test_hook])
+    self.assertEqual(2, test_hook.after_run_count)
 
 
 class EstimatorIntegrationTest(test.TestCase):

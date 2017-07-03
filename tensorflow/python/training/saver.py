@@ -1547,9 +1547,14 @@ class Saver(object):
     Args:
       sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
+
+    Raises:
+      ValueError: If save_path is None.
     """
     if self._is_empty:
       return
+    if save_path is None:
+      raise ValueError("Can't load save_path when it is None.")
     logging.info("Restoring parameters from %s", save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})

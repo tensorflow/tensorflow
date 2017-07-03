@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -200,7 +202,9 @@ TEST(ContainerInfo, Error) {
 // handles.
 class StubDevice : public DeviceBase {
  public:
-  StubDevice(const string& name) : DeviceBase(nullptr) { attr_.set_name(name); }
+  explicit StubDevice(const string& name) : DeviceBase(nullptr) {
+    attr_.set_name(name);
+  }
 
   Allocator* GetAllocator(AllocatorAttributes) override {
     return cpu_allocator();

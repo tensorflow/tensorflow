@@ -49,9 +49,14 @@ void GraphRewriter::ForwardInputs(
   for (const auto& input : original_node.input()) {
     string input_node_name = NodeName(input);
     auto itr = nodes_.find(input_node_name);
-    CHECK(itr != nodes_.end());
+    if (itr == nodes_.end()) {
+      // Invalid input, preserve it as is.
+      *new_node->add_input() = input;
+    }
     const NodeDef* input_node = itr->second;
-    if (nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
+    if ((input_node->device().empty() || original_node.device().empty() ||
+         input_node->device() == original_node.device()) &&
+        nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
       ForwardInputs(*input_node, nodes_to_delete, new_node);
     } else {
       *new_node->add_input() = input;

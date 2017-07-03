@@ -311,7 +311,6 @@ void ComputeComputationPostOrder(
 
   visited->insert(computation);
   post_order->push_back(computation);
-  return;
 }
 
 }  // namespace
@@ -499,7 +498,9 @@ bool HloComputation::operator==(const HloComputation& other) const {
         // If <a,b> are visited but not identical, the recursion should have
         // been aborted. So, if <a,b> are visited at this point, they must be
         // identical.
-        if (visited.count(std::make_pair(a, b)) > 0) return true;
+        if (visited.count(std::make_pair(a, b)) > 0) {
+          return true;
+        }
         visited.emplace(a, b);
         return a->Identical(
             *b, eq, [](const HloComputation* a, const HloComputation* b) {
@@ -522,72 +523,60 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
                                      new_instruction->shape()));
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
+  // Try to add metadata for HLO instructions that are created to replace
+  // existing HLO instructions (e.g. during optimizations). The assumption is
+  // that the old instruction and the new instruction would perform the same
+  // function, and that they would be correlated to the same TF op. This might
+  // not always be correct since HLO optimizations can cross TF op boundaries.
+  // But still this seems to be better than nothing.
+  if (new_instruction->metadata().op_name().empty()) {
+    new_instruction->set_metadata(old_instruction->metadata());
+  }
   TF_RETURN_IF_ERROR(
       ReplaceUsesOfInstruction(old_instruction, new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }
 
-HloComputation::ReachabilityMap::ReachabilityMap(
-    const std::list<HloInstruction*>& all_instructions) {
-  const int n = all_instructions.size();
-  int next_id = 0;
-  for (const auto* hlo : all_instructions) {
-    ids_[hlo] = next_id;
-    next_id++;
-  }
-  DCHECK_EQ(n, ids_.size());  // instructions should be unique
-  matrix_.Reset(n * n);
-}
+std::unique_ptr<HloReachabilityMap> HloComputation::ComputeReachability()
+    const {
+  const std::list<HloInstruction*> all = MakeInstructionPostOrder();
+  auto result = MakeUnique<HloReachabilityMap>(all);
 
-void HloComputation::ReachabilityMap::SetReachable(const HloInstruction* a,
-                                                   const HloInstruction* b) {
-  const int id_a = FindOrDie(ids_, a);
-  const int id_b = FindOrDie(ids_, b);
-  matrix_.set(id_a * ids_.size() + id_b);
-}
-
-bool HloComputation::ReachabilityMap::IsReachable(
-    const HloInstruction* a, const HloInstruction* b) const {
-  const int id_a = FindOrDie(ids_, a);
-  const int id_b = FindOrDie(ids_, b);
-  return matrix_.get(id_a * ids_.size() + id_b);
-}
-
-bool HloComputation::ReachabilityMap::IsConnected(
-    const HloInstruction* a, const HloInstruction* b) const {
-  const int id_a = FindOrDie(ids_, a);
-  const int id_b = FindOrDie(ids_, b);
-  return matrix_.get(id_a * ids_.size() + id_b) ||
-         matrix_.get(id_b * ids_.size() + id_a);
-}
-
-void HloComputation::ReachabilityMap::SetReachableAndTransitiveClosure(
-    const HloInstruction* a, const HloInstruction* b) {
-  const int id_a = FindOrDie(ids_, a);
-  const int id_b = FindOrDie(ids_, b);
-  const int n = ids_.size();
-  matrix_.set(id_a * n + id_b);
-
-  // Copy transitive set for b into entries for a
-  for (int i = 0; i < n; i++) {
-    if (matrix_.get(id_b * n + i)) {
-      matrix_.set(id_a * n + i);
-    }
-  }
-}
-
-std::unique_ptr<HloComputation::ReachabilityMap>
-HloComputation::ComputeTransitiveOperands() const {
-  const auto all = MakeInstructionPostOrder();
-  auto result = MakeUnique<HloComputation::ReachabilityMap>(all);
-
-  // Fill in the dependency bit matrix
-  for (const auto* hlo : all) {
-    for (const HloInstruction* operand : hlo->operands()) {
-      result->SetReachableAndTransitiveClosure(hlo, operand);
-    }
+  std::vector<HloInstruction*> inputs;
+  for (const HloInstruction* hlo : all) {
+    inputs.assign(hlo->operands().begin(), hlo->operands().end());
+    inputs.insert(inputs.end(), hlo->control_predecessors().begin(),
+                  hlo->control_predecessors().end());
+    result->SetReachabilityToUnion(inputs, hlo);
   }
   return result;
+}
+
+void HloComputation::UpdateReachabilityThroughInstruction(
+    const HloInstruction* instruction, HloReachabilityMap* reachability_map) {
+  std::queue<const HloInstruction*> worklist;
+  worklist.push(instruction);
+
+  std::vector<HloInstruction*> inputs;
+
+  while (!worklist.empty()) {
+    const HloInstruction* item = worklist.front();
+    worklist.pop();
+
+    inputs.assign(item->operands().begin(), item->operands().end());
+    inputs.insert(inputs.end(), item->control_predecessors().begin(),
+                  item->control_predecessors().end());
+
+    if (reachability_map->SetReachabilityToUnion(inputs, item)) {
+      // Add immediate successors to worklist.
+      for (const HloInstruction* user : item->users()) {
+        worklist.push(user);
+      }
+      for (const HloInstruction* succ : item->control_successors()) {
+        worklist.push(succ);
+      }
+    }
+  }
 }
 
 std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {

@@ -33,6 +33,7 @@ static const char* const kOptions[] = {
     "-min_params",
     "-min_float_ops",
     "-min_occurrence",
+    "-step",
     "-order_by",
     "-account_type_regexes",
     "-start_name_regexes",
@@ -45,20 +46,23 @@ static const char* const kOptions[] = {
 };
 
 static const char* const kOrderBy[] = {
-    "name", "bytes", "micros", "params", "float_ops", "occurrence",
+    "name",       "bytes",  "micros",    "accelerator_micros",
+    "cpu_micros", "params", "float_ops", "occurrence",
 };
 
 // Append Only.
+// TODO(xpan): As we are adding more fields to be selected, we
+// need to have a way to tell users what fields are available in which view.
 static const char* const kShown[] = {
-    "bytes",        "micros", "params",   "float_ops",
-    "tensor_value", "device", "op_types", "occurrence",
-};
+    "bytes",     "micros",   "params",     "float_ops",    "tensor_value",
+    "device",    "op_types", "occurrence", "input_shapes", "accelerator_micros",
+    "cpu_micros"};
 
 static const char* const kCmds[] = {
-    "scope", "graph", "code", "op", "set", "help",
+    "scope", "graph", "code", "op", "advise", "set", "help",
 };
 
-static const char* const kOutput[] = {"timeline", "stdout", "file"};
+static const char* const kOutput[] = {"timeline", "stdout", "file", "none"};
 
 static const char* const kTimelineOpts[] = {
     "outfile",
@@ -81,12 +85,13 @@ struct Options {
 
   virtual ~Options() {}
   Options()
-      : Options(0, 0, 0, 0, 0, 0, "", {}, {}, {}, {}, {}, false, {}, "", {}) {}
+      : Options(0, 0, 0, 0, 0, 0, 0, "", {}, {}, {}, {}, {}, false, {}, "",
+                {}) {}
 
   Options(int max_depth, tensorflow::int64 min_bytes,
           tensorflow::int64 min_micros, tensorflow::int64 min_params,
           tensorflow::int64 min_float_ops, tensorflow::int64 min_occurrence,
-          const string& order_by,
+          tensorflow::int64 step, const string& order_by,
           const std::vector<string>& account_type_regexes,
           const std::vector<string>& start_name_regexes,
           const std::vector<string>& trim_name_regexes,
@@ -101,6 +106,7 @@ struct Options {
         min_params(min_params),
         min_float_ops(min_float_ops),
         min_occurrence(min_occurrence),
+        step(step),
         order_by(order_by),
         account_type_regexes(account_type_regexes),
         start_name_regexes(start_name_regexes),
@@ -120,6 +126,7 @@ struct Options {
   tensorflow::int64 min_params;
   tensorflow::int64 min_float_ops;
   tensorflow::int64 min_occurrence;
+  tensorflow::int64 step;
   string order_by;
 
   std::vector<string> account_type_regexes;

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 
 #include <unordered_map>
+#include <utility>
 
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -159,7 +161,7 @@ Output BoolInput(const Scope& scope) {
 }
 
 Output Combine(const Scope& scope, Input a, Input b) {
-  return ConstructOp(scope, "Combine", {a, b});
+  return ConstructOp(scope, "Combine", {std::move(a), std::move(b)});
 }
 
 class GraphPartitionTest : public ::testing::Test {

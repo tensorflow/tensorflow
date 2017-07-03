@@ -17,7 +17,6 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -108,7 +107,7 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 TEST(TFunc, ControlDep) {
@@ -154,7 +153,7 @@ ControlDep(x:int32) -> (y:int32) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_INT32}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_INT32}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 REGISTER_OP("HasDefaultType")
@@ -198,7 +197,7 @@ BackCompat() -> (y:float) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector());
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 TEST(TFunc, NTimesT) {
@@ -234,7 +233,7 @@ NTimesT(x:float, y:float) -> (z:float) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 // NOTE: This is the simplest Map op. It takes a f:T->U.
@@ -299,7 +298,7 @@ AddSquared[N:int, T:{float, double, int32, int64}](x:N*T) -> (y:T) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT, DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 TEST(TFunc, ControlDeps) {
@@ -344,7 +343,7 @@ ControlDeps(x:float) -> () {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 TEST(TFunc, XTimesTwo) {
@@ -425,7 +424,7 @@ Test(i:float) -> (o:float) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 REGISTER_OP("Cond")
@@ -493,7 +492,7 @@ MySelect(x:float) -> (z:float) {
 )P";
   EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT}));
   EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
-  EXPECT_EQ(DebugString(result.gdef), e2);
+  EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
 static void HasError(const Status& s, const string& substr) {
@@ -1028,7 +1027,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   *proto.add_gradient() = grad;
   FunctionLibraryDefinition lib_def3(OpRegistry::Global(), proto);
   TF_EXPECT_OK(lib_def.AddLibrary(lib_def3));
-};
+}
 
 TEST(FunctionLibraryDefinitionTest, ToProto) {
   FunctionDefLibrary proto1;

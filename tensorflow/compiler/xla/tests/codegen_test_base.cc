@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <utility>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -32,6 +33,20 @@ limitations under the License.
 
 namespace xla {
 
+std::unique_ptr<HloModule> CodegenTestBase::CreateNewModuleWithEmbeddedIr(
+    bool ftz) {
+  HloModuleConfig config;
+  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  debug_options.set_xla_embed_ir_in_executable(true);
+  debug_options.set_xla_gpu_ftz(ftz);
+  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
+  debug_options.add_xla_disable_hlo_passes("constant_folding");
+  config.set_debug_options(debug_options);
+
+  return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
+                               config);
+}
+
 void CodegenTestBase::CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
                                          const string& pattern) {
   std::unique_ptr<Executable> executable =
@@ -43,8 +58,7 @@ void CodegenTestBase::CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
 std::unique_ptr<Executable> CodegenTestBase::CompileToExecutable(
     std::unique_ptr<HloModule> hlo_module) {
   return backend_->compiler()
-      ->Compile(std::move(hlo_module), test_hlo_dumper_,
-                backend_->default_stream_executor())
+      ->Compile(std::move(hlo_module), backend_->default_stream_executor())
       .ConsumeValueOrDie();
 }
 

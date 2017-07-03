@@ -27,7 +27,6 @@ from tensorflow.contrib.framework.python.ops import arg_scope
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import layers as _layers
 from tensorflow.contrib.layers.python.layers import regularizers
-from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -38,6 +37,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -48,6 +48,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 
 
@@ -118,6 +119,76 @@ class AvgPool2DTest(test.TestCase):
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     output = _layers.avg_pool2d(images, images.get_shape()[1:3], stride=1)
     self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+
+
+class AvgPool3DTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCDHW or NDHWC.'):
+      _layers.avg_pool3d(images, [3, 3, 3], data_format='CDHWN')
+
+  def testCreateAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    output = _layers.avg_pool3d(images, [3, 3, 3])
+    self.assertEqual(output.op.name, 'AvgPool3D/AvgPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateAvgPoolNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, 2, depth, height, width))
+    output = _layers.avg_pool3d(images, [3, 3, 3], data_format='NCDHW')
+    self.assertEquals(output.op.name, 'AvgPool3D/transpose_1')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 1, 2, 4])
+
+  def testCollectOutputs(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], outputs_collections='outputs')
+    output_collected = ops.get_collection('outputs')[0]
+    self.assertEqual(output_collected.aliases, ['AvgPool3D'])
+    self.assertEqual(output_collected, output)
+
+  def testCreateSquareAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, 3)
+    self.assertEqual(output.op.name, 'AvgPool3D/AvgPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateAvgPoolWithScope(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], scope='pool1')
+    self.assertEqual(output.op.name, 'pool1/AvgPool3D')
+
+  def testCreateAvgPoolWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 5, 3])
+
+  def testCreateAvgPoolWithSamePaddingNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, 3, depth, height, width), seed=1)
+    output = _layers.avg_pool3d(
+        images, [3, 3, 3], padding='SAME', data_format='NCDHW')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3, 5])
+
+  def testCreateAvgPoolStrideWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, [3, 3, 3], stride=1, padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, depth, height, width, 3])
+
+  def testGlobalAvgPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.avg_pool3d(images, images.get_shape()[1:4], stride=1)
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 1, 3])
 
 
 class PoolTest(test.TestCase):
@@ -1422,12 +1493,12 @@ class PartialFlattenTest(test.TestCase):
 
   def testSparsePartialFlatten(self):
     """Test `_inner_flatten` on `SparseTensor`s."""
-    shape = [4, 3, 11, 6, 1, 3]
+    shape = [4, 3, 11, 6]
     np.random.seed(10301)
     random_ = np.random.rand(*shape)
     indices, values, _ = _sparsify(random_)
 
-    for new_rank in [1, 2, 3, 4, 5]:
+    for new_rank in [1, 2, 3]:
       expected_shape = (shape[:new_rank - 1] + [np.prod(shape[new_rank - 1:])])
       reshaped_random_ = np.reshape(random_, expected_shape)
       expected_indices, expected_values, _ = _sparsify(reshaped_random_)
@@ -1558,23 +1629,23 @@ class FCTest(test.TestCase):
         inputs, 32, scope='fc1', weights_regularizer=regularizer)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
-    self.assertEqual(len(loss_ops.get_regularization_losses()), 1)
+    self.assertEqual(len(losses.get_regularization_losses()), 1)
     _layers.fully_connected(
         inputs, 32, scope='fc1', weights_regularizer=regularizer, reuse=True)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
-    self.assertEqual(len(loss_ops.get_regularization_losses()), 1)
+    self.assertEqual(len(losses.get_regularization_losses()), 1)
 
     with variable_scope.variable_scope('outer', reuse=False):
       _layers.fully_connected(inputs, 32, weights_regularizer=regularizer)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 2)
-      self.assertEqual(len(loss_ops.get_regularization_losses()), 2)
+      self.assertEqual(len(losses.get_regularization_losses()), 2)
     with variable_scope.variable_scope('outer', reuse=True):
       _layers.fully_connected(inputs, 32, weights_regularizer=regularizer)
       self.assertEqual(
           len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 2)
-      self.assertEqual(len(loss_ops.get_regularization_losses()), 2)
+      self.assertEqual(len(losses.get_regularization_losses()), 2)
 
   def testCreateFCWithoutActivation(self):
     height, width = 3, 3
@@ -1702,13 +1773,6 @@ class BatchNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'Weighted mean and variance'):
         _layers.batch_norm(inputs, batch_weights=batch_weights, fused=True)
 
-  def testParamRegularizersFused(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=(5, 3, 3, 7))
-      with self.assertRaisesRegexp(ValueError,
-                                   'Regularizers are not currently'):
-        _layers.batch_norm(inputs, param_regularizers={}, fused=True)
-
   def _testCreateOp(self, fused):
     height, width = 3, 3
     with self.test_session():
@@ -1779,7 +1843,8 @@ class BatchNormTest(test.TestCase):
     height, width = 3, 3
     with self.test_session():
       images = random_ops.random_uniform((5, height, width, 3), seed=1)
-      _layers.batch_norm(images, scale=True, zero_debias_moving_mean=True)
+      _layers.batch_norm(
+          images, scale=True, zero_debias_moving_mean=True, fused=False)
       self.assertEqual(len(variables.get_model_variables()), 6)
       moving_mean = variables.get_variables_by_name('moving_mean')[0]
       moving_variance = variables.get_variables_by_name('moving_variance')[0]
@@ -1873,7 +1938,8 @@ class BatchNormTest(test.TestCase):
         images,
         decay=0.1,
         updates_collections=None,
-        zero_debias_moving_mean=True)
+        zero_debias_moving_mean=True,
+        fused=False)
     moving_mean = variables.get_variables_by_name('BatchNorm/moving_mean')[0]
     moving_variance = variables.get_variables_by_name('moving_variance')[0]
     biased = variables.get_variables_by_name('biased')[0]
@@ -2522,7 +2588,7 @@ class BatchNormTest(test.TestCase):
 
   def _runBatchNormalizationWithFormat(self, shape, data_format, is_training):
     channels = shape[-1]
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       images = np.arange(np.product(shape), dtype=np.float32).reshape(shape)
       beta = init_ops.constant_initializer(
           np.arange(
@@ -2560,20 +2626,22 @@ class BatchNormTest(test.TestCase):
       return sess.run(output)
 
   def testNHWCAndNCHWInferenceProduceSameOutput(self):
-    for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
-      nhwc = self._runBatchNormalizationWithFormat(
-          data_format='NHWC', shape=shape, is_training=False)
-      nchw = self._runBatchNormalizationWithFormat(
-          data_format='NCHW', shape=shape, is_training=False)
-      self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
+    if test.is_gpu_available(cuda_only=True):
+      for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
+        nhwc = self._runBatchNormalizationWithFormat(
+            data_format='NHWC', shape=shape, is_training=False)
+        nchw = self._runBatchNormalizationWithFormat(
+            data_format='NCHW', shape=shape, is_training=False)
+        self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
   def testNHWCAndNCHWTrainingProduceSameOutput(self):
-    for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
-      nhwc = self._runBatchNormalizationWithFormat(
-          data_format='NHWC', shape=shape, is_training=True)
-      nchw = self._runBatchNormalizationWithFormat(
-          data_format='NCHW', shape=shape, is_training=True)
-      self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
+    if test.is_gpu_available(cuda_only=True):
+      for shape in [[7, 3, 5], [5, 2, 3, 4], [11, 3, 2, 4, 5]]:
+        nhwc = self._runBatchNormalizationWithFormat(
+            data_format='NHWC', shape=shape, is_training=True)
+        nchw = self._runBatchNormalizationWithFormat(
+            data_format='NCHW', shape=shape, is_training=True)
+        self.assertAllClose(nhwc, nchw, atol=1e-4, rtol=1e-4)
 
 
 class LayerNormTest(test.TestCase):
@@ -2771,6 +2839,76 @@ class MaxPool2DTest(test.TestCase):
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
     output = _layers.max_pool2d(images, images.get_shape()[1:3], stride=1)
     self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+
+
+class MaxPool3DTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCDHW or NDHWC.'):
+      _layers.max_pool3d(images, [3, 3, 3], data_format='CDHWN')
+
+  def testCreateMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, depth, height, width, 3)).astype(np.float32)
+    output = _layers.max_pool3d(images, [3, 3, 3])
+    self.assertEqual(output.op.name, 'MaxPool3D/MaxPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateMaxPoolNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = np.random.uniform(size=(5, 3, depth, height, width)).astype(np.float32)
+    output = _layers.max_pool3d(images, [3, 3, 3], data_format='NCDHW')
+    self.assertEquals(output.op.name, 'MaxPool3D/transpose_1')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 1, 2, 4])
+
+  def testCollectOutputs(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], outputs_collections='outputs')
+    output_collected = ops.get_collection('outputs')[0]
+    self.assertEqual(output_collected.aliases, ['MaxPool3D'])
+    self.assertEqual(output_collected, output)
+
+  def testCreateSquareMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, 3)
+    self.assertEqual(output.op.name, 'MaxPool3D/MaxPool3D')
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
+
+  def testCreateMaxPoolWithScope(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], scope='pool1')
+    self.assertEqual(output.op.name, 'pool1/MaxPool3D')
+
+  def testCreateMaxPoolWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 5, 3])
+
+  def testCreateMaxPoolWithSamePaddingNCDHW(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, 3, depth, height, width), seed=1)
+    output = _layers.max_pool3d(
+        images, [3, 3, 3], padding='SAME', data_format='NCDHW')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3, 5])
+
+  def testCreateMaxPoolStrideWithSamePadding(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, [3, 3, 3], stride=1, padding='SAME')
+    self.assertListEqual(output.get_shape().as_list(), [5, depth, height, width, 3])
+
+  def testGlobalMaxPool(self):
+    depth, height, width = 3, 6, 9
+    images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
+    output = _layers.max_pool3d(images, images.get_shape()[1:4], stride=1)
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 1, 3])
 
 
 class OneHotEncodingTest(test.TestCase):
@@ -3229,6 +3367,69 @@ class UnitNormTests(test.TestCase):
       with self.test_session():
         actual = norms.eval({image: placeholder_value})
         self.assertAllClose(expected, actual, 1e-4, 1e-4)
+
+
+class PoincareNormalizeTest(test.TestCase):
+
+  def _PoincareNormalize(self, x, dim, epsilon=1e-5):
+    if isinstance(dim, list):
+      norm = np.linalg.norm(x, axis=tuple(dim))
+      for d in dim:
+        norm = np.expand_dims(norm, d)
+      norm_x = ((1. - epsilon) * x) / norm
+    else:
+      norm = np.expand_dims(np.apply_along_axis(np.linalg.norm, dim, x), dim)
+      norm_x = ((1. - epsilon) * x) / norm
+    return np.where(norm > 1.0 - epsilon, norm_x, x)
+
+  def testPoincareNormalize(self):
+    x_shape = [20, 7, 3]
+    epsilon = 1e-5
+    tol = 1e-6
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float32)
+    for dim in range(len(x_shape)):
+      y_np = self._PoincareNormalize(x_np, dim, epsilon)
+      with self.test_session():
+        x_tf = constant_op.constant(x_np, name='x')
+        y_tf = _layers.poincare_normalize(x_tf, dim, epsilon)
+        y_tf_eval = y_tf.eval()
+        norm = np.linalg.norm(y_np, axis=dim)
+        self.assertLessEqual(norm.max(), 1. - epsilon + tol)
+        norm = np.linalg.norm(y_tf_eval, axis=dim)
+        self.assertLessEqual(norm.max(), 1. - epsilon + tol)
+        self.assertAllClose(y_np, y_tf_eval)
+
+  def testPoincareNormalizeDimArray(self):
+    x_shape = [20, 7, 3]
+    epsilon = 1e-5
+    tol = 1e-6
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float32)
+    dim = [1, 2]
+    y_np = self._PoincareNormalize(x_np, dim, epsilon)
+    with self.test_session():
+      x_tf = constant_op.constant(x_np, name='x')
+      y_tf = _layers.poincare_normalize(x_tf, dim, epsilon)
+      y_tf_eval = y_tf.eval()
+      norm = np.linalg.norm(y_np, axis=tuple(dim))
+      self.assertLess(norm.max(), 1. - epsilon + tol)
+      norm = np.linalg.norm(y_tf_eval, axis=tuple(dim))
+      self.assertLess(norm.max(), 1. - epsilon + tol)
+      self.assertAllClose(y_np, y_tf_eval, rtol=1e-6, atol=1e-6)
+
+  def testPoincareNormalizeGradient(self):
+    x_shape = [20, 7, 3]
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float64)
+    for dim in range(len(x_shape)):
+      with self.test_session():
+        x_tf = constant_op.constant(x_np, name='x')
+        y_tf = _layers.poincare_normalize(x_tf, dim)
+        err = gradient_checker.compute_gradient_error(x_tf, x_shape,
+                                                      y_tf, x_shape)
+      print('PoinCareNormalize gradient err = %g ' % err)
+      self.assertLess(err, 1e-4)
 
 
 # TODO(b/28426988): Add separate tests for non-legacy versions.

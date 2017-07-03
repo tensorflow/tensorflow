@@ -438,7 +438,7 @@ class TransformUtilsTest : public ::testing::Test {
            const std::set<string>& output_nodes,
            std::vector<NodeDef>* new_nodes) {
           NodeDef original_copy;
-          original_copy.CopyFrom(match.node);
+          original_copy = match.node;
           const string original_name = match.node.name();
           original_copy.set_name(original_name + "_before_identity");
           new_nodes->push_back(original_copy);

@@ -26,6 +26,7 @@ _TF_CUDA_VERSION = "TF_CUDA_VERSION"
 _TF_CUDNN_VERSION = "TF_CUDNN_VERSION"
 _CUDNN_INSTALL_PATH = "CUDNN_INSTALL_PATH"
 _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
+_TF_CUDA_CONFIG_REPO = "TF_CUDA_CONFIG_REPO"
 
 _DEFAULT_CUDA_VERSION = ""
 _DEFAULT_CUDNN_VERSION = ""
@@ -57,7 +58,7 @@ def find_cc(repository_ctx):
     if cc_name_from_env:
       cc_name = cc_name_from_env
   if cc_name.startswith("/"):
-    # Absolute path, maybe we should make this suported by our which function.
+    # Absolute path, maybe we should make this supported by our which function.
     return cc_name
   cc = repository_ctx.which(cc_name)
   if cc == None:
@@ -829,7 +830,7 @@ def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
       # On Windows, symlink is not supported, so we just copy all the files.
       cmd = 'cp -f' if _is_windows(repository_ctx) else 'ln -s'
       command.append(cmd + ' "%s" "%s"' % (src_files[i] , dest))
-      outs.append('      "' + dest_dir + dest_files[i] + '",')
+      outs.append('        "' + dest_dir + dest_files[i] + '",')
   genrule = _genrule(src_dir, genrule_name, " && ".join(command),
                      "\n".join(outs))
   return genrule
@@ -846,11 +847,11 @@ def _genrule(src_dir, genrule_name, command, outs):
       genrule_name + '",\n' +
       '    outs = [\n' +
       outs +
-      '    ],\n' +
+      '\n    ],\n' +
       '    cmd = """\n' +
       command +
-      '    """,\n' +
-      ')\n\n'
+      '\n   """,\n' +
+      ')\n'
   )
 
 
@@ -883,15 +884,16 @@ def _use_cuda_clang(repository_ctx):
     return enable_cuda == "1"
   return False
 
-def _compute_cuda_extra_copts(repository_ctx, cuda_config):
+def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
   if _use_cuda_clang(repository_ctx):
-    capability_flags = ["--cuda-gpu-arch=sm_" + cap.replace(".", "") for cap in cuda_config.compute_capabilities]
+    capability_flags = ["--cuda-gpu-arch=sm_" +
+        cap.replace(".", "") for cap in compute_capabilities]
   else:
     # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
     capability_flags = []
   return str(capability_flags)
 
-def _create_cuda_repository(repository_ctx):
+def _create_local_cuda_repository(repository_ctx):
   """Creates the repository containing files set up to build with CUDA."""
   cuda_config = _get_cuda_config(repository_ctx)
 
@@ -939,7 +941,8 @@ def _create_cuda_repository(repository_ctx):
   _tpl(repository_ctx, "cuda:build_defs.bzl",
        {
            "%{cuda_is_configured}": "True",
-           "%{cuda_extra_copts}": _compute_cuda_extra_copts(repository_ctx, cuda_config),
+           "%{cuda_extra_copts}": _compute_cuda_extra_copts(
+               repository_ctx, cuda_config.compute_capabilities),
 
        })
   _tpl(repository_ctx, "cuda:BUILD",
@@ -999,14 +1002,33 @@ def _create_cuda_repository(repository_ctx):
                "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
        })
 
+def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
+  """Creates pointers to a remotely configured repo set up to build with CUDA."""
+  _tpl(repository_ctx, "cuda:build_defs.bzl",
+       {
+           "%{cuda_is_configured}": "True",
+           "%{cuda_extra_copts}": _compute_cuda_extra_copts(
+               repository_ctx, _compute_capabilities(repository_ctx)),
+
+       })
+  _tpl(repository_ctx, "cuda:remote.BUILD",
+       {
+           "%{remote_cuda_repo}": remote_config_repo,
+       }, "cuda/BUILD")
+  _tpl(repository_ctx, "crosstool:remote.BUILD", {
+           "%{remote_cuda_repo}": remote_config_repo,
+       }, "crosstool/BUILD")
 
 def _cuda_autoconf_impl(repository_ctx):
   """Implementation of the cuda_autoconf repository rule."""
   if not _enable_cuda(repository_ctx):
     _create_dummy_repository(repository_ctx)
   else:
-    _create_cuda_repository(repository_ctx)
-
+    if _TF_CUDA_CONFIG_REPO in repository_ctx.os.environ:
+      _create_remote_cuda_repository(repository_ctx,
+          repository_ctx.os.environ[_TF_CUDA_CONFIG_REPO])
+    else:
+      _create_local_cuda_repository(repository_ctx)
 
 
 cuda_configure = repository_rule(
@@ -1019,6 +1041,7 @@ cuda_configure = repository_rule(
         _TF_CUDA_VERSION,
         _TF_CUDNN_VERSION,
         _TF_CUDA_COMPUTE_CAPABILITIES,
+        _TF_CUDA_CONFIG_REPO,
     ],
 )
 

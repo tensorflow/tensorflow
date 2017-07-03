@@ -45,13 +45,13 @@ TEST_F(HloDceTest, NoDeadCode) {
   // Verify that no dead code is removed from a computation with no dead code.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(123.0f)));
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
@@ -81,7 +81,7 @@ TEST_F(HloDceTest, DeadParameters) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       live_param->shape(), HloOpcode::kNegate, live_param));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(5, computation->instruction_count());
@@ -98,9 +98,9 @@ TEST_F(HloDceTest, ControlDependencies) {
   // Verify that instructions with control dependencies are not removed.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(123.0f)));
 
   // Create two dead instructions: a negate and an add.
   auto dead_negate = builder.AddInstruction(HloInstruction::CreateUnary(
@@ -121,7 +121,7 @@ TEST_F(HloDceTest, ControlDependencies) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Add a control dependency between two instructions.
@@ -156,3 +156,7 @@ TEST_F(HloDceTest, ControlDependencies) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

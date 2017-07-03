@@ -29,25 +29,19 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
                  std::unique_ptr<RunMetadata> run_meta,
                  std::unique_ptr<OpLog> op_log,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
-    : graph_(std::move(graph)),
-      run_meta_(std::move(run_meta)),
-      op_log_(std::move(op_log)),
+    : has_code_traces_(false),
+      graph_(std::move(graph)),
       ckpt_reader_(std::move(ckpt_reader)) {
   CHECK(graph_) << "Must at least have GraphDef";
 
-  printf("Parsing GraphDef...\n");
+  printf("Parsing Inputs...\n");
   ParseGraph();
-  if (run_meta_) {
-    printf("Parsing RunMetadata...\n");
-    ParseRunMeta();
+  if (run_meta && run_meta->has_step_stats()) {
+    AddRunMeta(0, std::move(run_meta));
   }
-  if (op_log_) {
-    printf("Parsing OpLog...\n");
-    ParseOpLog();
-  }
+  AddOpLog(std::move(op_log));
 
   if (ckpt_reader_) {
-    printf("Parsing Checkpoint...\n");
     for (const auto& v : ckpt_reader_->GetVariableToShapeMap()) {
       auto node = nodes_map_.find(v.first);
       if (node != nodes_map_.end()) {
@@ -55,27 +49,51 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
       }
     }
   }
+}
 
-  printf("Preparing Views...\n");
-  scope_view_ = std::unique_ptr<TFScope>(new TFScope(ckpt_reader_.get()));
-  graph_view_ = std::unique_ptr<TFGraph>(new TFGraph(ckpt_reader_.get()));
-  code_view_ = std::unique_ptr<TFCode>(new TFCode());
-  op_view_ = std::unique_ptr<TFOp>(new TFOp());
-
-  for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
-    scope_view_->AddNode(it->second.get());
-    graph_view_->AddNode(it->second.get());
-    code_view_->AddNode(it->second.get());
-    op_view_->AddNode(it->second.get());
+void TFStats::BuildView(const string& cmd) {
+  if (cmd == kCmds[0] && !scope_view_) {
+    scope_view_.reset(new TFScope(ckpt_reader_.get()));
+    for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
+      scope_view_->AddNode(it->second.get());
+    }
+    scope_view_->Build();
   }
-  scope_view_->Build();
-  graph_view_->Build();
-  code_view_->Build();
-  op_view_->Build();
+  if (cmd == kCmds[1] && !graph_view_) {
+    graph_view_.reset(new TFGraph(ckpt_reader_.get()));
+    for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
+      graph_view_->AddNode(it->second.get());
+    }
+    graph_view_->Build();
+  }
+  if (cmd == kCmds[2] && !code_view_) {
+    code_view_.reset(new TFCode());
+    for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
+      code_view_->AddNode(it->second.get());
+    }
+    code_view_->Build();
+  }
+  if (cmd == kCmds[3] && !op_view_) {
+    op_view_.reset(new TFOp());
+    for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
+      op_view_->AddNode(it->second.get());
+    }
+    op_view_->Build();
+  }
+}
+
+void TFStats::BuildAllViews() {
+  std::vector<string> cmds_str(kCmds, kCmds + sizeof(kCmds) / sizeof(*kCmds));
+  for (const string& cmd : cmds_str) {
+    BuildView(cmd);
+  }
 }
 
 const TFGraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
-                                               const Options& opts) {
+                                               const Options& opts) const {
+  if (!Validate(opts)) {
+    return empty_graph_node_;
+  }
   if (cmd == kCmds[0]) {
     return scope_view_->Show(opts);
   } else if (cmd == kCmds[1]) {
@@ -86,8 +104,11 @@ const TFGraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
   }
 }
 
-const TFMultiGraphNodeProto& TFStats::ShowMultiGraphNode(const string& cmd,
-                                                         const Options& opts) {
+const TFMultiGraphNodeProto& TFStats::ShowMultiGraphNode(
+    const string& cmd, const Options& opts) const {
+  if (!Validate(opts)) {
+    return empty_multi_graph_node_;
+  }
   if (cmd == kCmds[2]) {
     return code_view_->Show(opts);
   } else if (cmd == kCmds[3]) {
@@ -106,7 +127,8 @@ void TFStats::ParseGraph() {
   }
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     const NodeDef* node_def = it->second->node_def();
-    for (string node_input : node_def->input()) {
+    for (int i = 0; i < node_def->input_size(); ++i) {
+      string node_input = node_def->input(i);
       int output_idx = 0;
       // input name format can be: "^node:src_output"
       auto prefix_pos = node_input.find(":");
@@ -125,13 +147,16 @@ void TFStats::ParseGraph() {
       if (input_node == nodes_map_.end()) {
         continue;
       }
-      it->second->AddInput(input_node->second.get(), output_idx);
+      it->second->AddInput(input_node->second.get(), output_idx, i);
     }
   }
 }
 
-void TFStats::ParseOpLog() {
-  for (const OpLogEntry& entry : op_log_->log_entries()) {
+void TFStats::AddOpLog(std::unique_ptr<OpLog> op_log) {
+  if (!op_log) {
+    return;
+  }
+  for (const OpLogEntry& entry : op_log->log_entries()) {
     auto node = nodes_map_.find(entry.name());
     if (node == nodes_map_.end()) continue;
     for (const string& type : entry.types()) {
@@ -141,16 +166,25 @@ void TFStats::ParseOpLog() {
       node->second->AddFloatOps(entry.float_ops());
     }
     if (entry.has_code_def()) {
-      node->second->AddCode(&entry.code_def());
+      has_code_traces_ = true;
+      node->second->AddCode(entry.code_def());
     }
   }
 }
 
-void TFStats::ParseRunMeta() {
-  if (!run_meta_->has_step_stats()) return;
+void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
+  if (!run_meta || !run_meta->has_step_stats()) {
+    fprintf(stderr, "Invalid RunMetadata for step %lld\n", step);
+    return;
+  }
+  if (steps_.find(step) != steps_.end()) {
+    fprintf(stderr, "The same step %lld has been added before.\n", step);
+    return;
+  }
+  steps_.insert(step);
 
-  for (const auto& dev_stat : run_meta_->step_stats().dev_stats()) {
-    for (const auto& node_stat : dev_stat.node_stats()) {
+  for (const auto& dev_stat : run_meta->step_stats().dev_stats()) {
+    for (const NodeExecStats& node_stat : dev_stat.node_stats()) {
       string name = node_stat.node_name();
       // Sometimes the node_name is suffixed with unnecessary information.
       auto split_pos = node_stat.node_name().find(":");
@@ -159,10 +193,23 @@ void TFStats::ParseRunMeta() {
       }
       auto node = nodes_map_.find(name);
       if (node != nodes_map_.end()) {
-        node->second->AddStepStat(dev_stat.device(), &node_stat);
+        node->second->AddStepStat(step, dev_stat.device(), node_stat);
       }
     }
   }
+}
+
+bool TFStats::Validate(const Options& opts) const {
+  if (opts.step >= 0 && steps_.find(opts.step) == steps_.end()) {
+    fprintf(stderr, "Options -step=%lld not found\n", opts.step);
+    return false;
+  }
+  return true;
+}
+
+void TFStats::AddNodeForTest(int64 step, std::unique_ptr<TFGraphNode> node) {
+  steps_.insert(step);
+  nodes_map_[node->name()] = std::move(node);
 }
 }  // namespace tfprof
 }  // namespace tensorflow

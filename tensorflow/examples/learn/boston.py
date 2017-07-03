@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 from sklearn import datasets
 from sklearn import metrics
 from sklearn import model_selection
@@ -39,22 +40,31 @@ def main(unused_argv):
   x_train = scaler.fit_transform(x_train)
 
   # Build 2 layer fully connected DNN with 10, 10 units respectively.
-  feature_columns = tf.contrib.learn.infer_real_valued_columns_from_input(
-      x_train)
-  regressor = tf.contrib.learn.DNNRegressor(
+  feature_columns = [
+      tf.feature_column.numeric_column('x', shape=np.array(x_train).shape[1:])]
+  regressor = tf.estimator.DNNRegressor(
       feature_columns=feature_columns, hidden_units=[10, 10])
 
-  # Fit
-  regressor.fit(x_train, y_train, steps=5000, batch_size=1)
-  
-  # Transform
-  x_transformed = scaler.transform(x_test)
-  
-  # Predict and score
-  y_predicted = list(regressor.predict(x_transformed, as_iterable=True))
-  score = metrics.mean_squared_error(y_predicted, y_test)
+  # Train.
+  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={'x': x_train}, y=y_train, batch_size=1, num_epochs=None, shuffle=True)
+  regressor.train(input_fn=train_input_fn, steps=2000)
 
-  print('MSE: {0:f}'.format(score))
+  # Predict.
+  x_transformed = scaler.transform(x_test)
+  test_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={'x': x_transformed}, y=y_test, num_epochs=1, shuffle=False)
+  predictions = regressor.predict(input_fn=test_input_fn)
+  y_predicted = np.array(list(p['predictions'] for p in predictions))
+  y_predicted = y_predicted.reshape(np.array(y_test).shape)
+
+  # Score with sklearn.
+  score_sklearn = metrics.mean_squared_error(y_predicted, y_test)
+  print('MSE (sklearn): {0:f}'.format(score_sklearn))
+
+  # Score with tensorflow.
+  scores = regressor.evaluate(input_fn=test_input_fn)
+  print('MSE (tensorflow): {0:f}'.format(scores['average_loss']))
 
 
 if __name__ == '__main__':

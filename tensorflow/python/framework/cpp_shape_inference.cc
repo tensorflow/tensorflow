@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/python/framework/cpp_shape_inference.h"
 
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/python/framework/cpp_shape_inference.pb.h"
@@ -182,6 +183,7 @@ std::vector<string> RunCppShapeInference(
 
   std::vector<PyObject*> input_constant_tensor_values_v;
   int cnt = PyList_Size(input_constant_tensor_values);
+  input_constant_tensor_values_v.reserve(cnt);
   for (int i = 0; i < cnt; ++i) {
     input_constant_tensor_values_v.push_back(
         PyList_GetItem(input_constant_tensor_values, i));

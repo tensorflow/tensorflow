@@ -831,11 +831,13 @@ a different filter to each input channel (expanding from 1 channel to
 `channel_multiplier` channels for each), then concatenates the results
 together. Thus, the output has `in_channels * channel_multiplier` channels.
 
+```
 for k in 0..in_channels-1
   for q in 0..channel_multiplier-1
     output[b, i, j, k * channel_multiplier + q] =
       sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
                         filter[di, dj, k, q]
+```
 
 Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
 horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
@@ -1454,6 +1456,11 @@ Performs max pooling on the input and outputs both max values and indices.
 The indices in `argmax` are flattened, so that a maximum value at position
 `[b, y, x, c]` becomes flattened index
 `((b * height + y) * width + x) * channels + c`.
+
+The indices returned are always in `[0, height) x [0, width)` before flattening,
+even if padding is involved and the mathematically correct answer is outside
+(either negative or too large).  This is a bug, but fixing it is difficult to do
+in a safe backwards compatible way, especially due to flattening.
 
 ksize: The size of the window for each dimension of the input tensor.
 strides: The stride of the sliding window for each dimension of the

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -887,7 +888,7 @@ class CSession {
     TF_DeleteSessionOptions(opts);
   }
 
-  CSession(TF_Session* session) { session_ = session; }
+  explicit CSession(TF_Session* session) : session_(session) {}
 
   ~CSession() {
     TF_Status* s = TF_NewStatus();
@@ -1345,7 +1346,7 @@ class CApiWhileLoopTest : public ::testing::Test {
     EXPECT_EQ(expected_value, *data);
   }
 
-  // Create a valid conditonal graph. Useful for testing unrelated errors.
+  // Create a valid conditional graph. Useful for testing unrelated errors.
   void CreateCondGraph() {
     TF_Operation* one = ScalarConst(1, params_->cond_graph, s_);
     TF_Operation* less_than =

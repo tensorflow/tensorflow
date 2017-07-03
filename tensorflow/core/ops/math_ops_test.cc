@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -27,6 +28,7 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   ShapeInferenceTestOp op("AddN");
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "AddN")
                      .Input(src_list)

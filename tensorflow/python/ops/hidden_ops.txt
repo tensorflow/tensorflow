@@ -157,6 +157,8 @@ ResizeBilinearGrad
 ResizeNearestNeighborGrad
 AdjustContrastv2
 ScaleImageGrad
+SampleDistortedBoundingBox
+SampleDistortedBoundingBoxV2
 
 # io_ops
 FixedLengthRecordReader
@@ -191,6 +193,7 @@ WholeFileReader
 TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
+LMDBReader
 
 # linalg_ops
 BatchCholesky
@@ -218,6 +221,7 @@ MergeSummary
 Print
 ScalarSummary
 TensorSummary
+TensorSummaryV2
 
 # math_ops
 Abs

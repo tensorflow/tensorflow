@@ -59,8 +59,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
 
 // Eigen Ops directly allocate memory only for temporary buffers used
@@ -393,7 +391,7 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
 
   if (vlog_1) {
     VLOG(1) << "GpuDevice::Compute " << op_kernel->name() << " op "
-            << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
+            << op_kernel->type_string() << " on GPU" << gpu_id_ << " stream["
             << stream_id << "]";
   }
 
@@ -467,7 +465,7 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   const auto stream_id = gpu_device_context->stream_id();
 
   VLOG(1) << "GpuDevice::ComputeAsync " << op_kernel->name() << " op "
-          << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
+          << op_kernel->type_string() << " on GPU" << gpu_id_ << " stream["
           << stream_id << "]";
 
   // When TraceMe profiling is off (which is the default), the
@@ -600,13 +598,13 @@ namespace {
 int64 MinSystemMemory(int64 available_memory) {
   // We use the following heuristic for now:
   //
-  // If the available_memory is < 2GiB, we allocate 200MiB to system memory.
+  // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
   // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
   //
   // In the future we could be more sophisticated by using a table of devices.
   if (available_memory < (1LL << 31)) {
-    // 200MiB
-    return 209715200LL;
+    // 225MiB
+    return 225 * 1024 * 1024;
   } else {
     // max(300 MiB, 0.05 * available_memory)
     return std::max(314572800LL, static_cast<int64>(available_memory * 0.05));

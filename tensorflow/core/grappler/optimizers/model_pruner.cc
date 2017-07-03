@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include <unordered_set>
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -31,6 +33,9 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const auto& node : item.fetch) {
     nodes_to_preserve.insert(NodeName(node));
   }
+  for (const auto& feed : item.feed) {
+    nodes_to_preserve.insert(NodeName(feed.first));
+  }
   for (const auto& node : item.init_ops) {
     nodes_to_preserve.insert(NodeName(node));
   }
@@ -44,10 +49,6 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
     // Don't remove nodes that must be preserved.
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
-      continue;
-    }
-    // Don't remove nodes that are explicitly placed.
-    if (!node.device().empty()) {
       continue;
     }
     // Don't remove nodes that drive control dependencies.
@@ -72,6 +73,9 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Pruned " << nodes_to_delete.size()
           << " nodes from the graph. The graph now contains "
           << pruned_graph->node_size() << " nodes.";
+
+  *pruned_graph->mutable_library() = item.graph.library();
+  *pruned_graph->mutable_versions() = item.graph.versions();
 
   return Status::OK();
 }

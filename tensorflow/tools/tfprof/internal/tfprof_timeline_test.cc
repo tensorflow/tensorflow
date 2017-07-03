@@ -39,7 +39,8 @@ class TFProfTimelineTest : public ::testing::Test {
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "tools/tfprof/internal/testdata/graph.pbtxt");
     std::unique_ptr<tensorflow::GraphDef> graph_pb(new tensorflow::GraphDef());
-    TF_CHECK_OK(ReadGraphDef(Env::Default(), graph_path, graph_pb.get()));
+    TF_CHECK_OK(
+        ReadProtoFile(Env::Default(), graph_path, graph_pb.get(), false));
 
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb(
         new tensorflow::RunMetadata());
@@ -47,10 +48,11 @@ class TFProfTimelineTest : public ::testing::Test {
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "tools/tfprof/internal/testdata/run_meta");
     TF_CHECK_OK(
-        ReadBinaryProto(Env::Default(), run_meta_path, run_meta_pb.get()));
+        ReadProtoFile(Env::Default(), run_meta_path, run_meta_pb.get(), true));
 
     tf_stats_.reset(new TFStats(std::move(graph_pb), std::move(run_meta_pb),
                                 nullptr, nullptr));
+    tf_stats_->BuildAllViews();
   }
 
   std::unique_ptr<TFStats> tf_stats_;
@@ -60,7 +62,7 @@ class TFProfTimelineTest : public ::testing::Test {
 // manually check it's correct
 TEST_F(TFProfTimelineTest, GraphView) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
-  Options opts(10000, 0, 0, 0, 0, 0, "name", {".*"},  // accout_type_regexes
+  Options opts(10000, 0, 0, 0, 0, 0, 0, "name", {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "timeline",
                {{"outfile", dump_file}});
@@ -73,7 +75,7 @@ TEST_F(TFProfTimelineTest, GraphView) {
 
 TEST_F(TFProfTimelineTest, ScopeView) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
-  Options opts(5, 0, 0, 0, 0, 0, "name", {".*"},  // accout_type_regexes
+  Options opts(5, 0, 0, 0, 0, 0, 0, "name", {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "timeline",
                {{"outfile", dump_file}});

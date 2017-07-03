@@ -56,7 +56,7 @@ fi
 
 # Override the default ui_type=curses to allow the test to pass in a tty-less
 # test environment.
-cat << EOF | ${DEBUG_FIBONACCI_BIN} --ui_type=readline
+cat << EOF | ${DEBUG_FIBONACCI_BIN} --tensor_size=2 --ui_type=readline
 run
 exit
 EOF

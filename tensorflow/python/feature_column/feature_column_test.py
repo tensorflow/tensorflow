@@ -2535,6 +2535,21 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
       fc.categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12, 24, 12))
 
+  def test_invalid_num_oov_buckets(self):
+    with self.assertRaisesRegexp(ValueError, 'Invalid num_oov_buckets'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa', vocabulary_list=(12, 24, 36),
+          num_oov_buckets=-1)
+
+  def test_invalid_buckets_and_default_value(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'both num_oov_buckets and default_value'):
+      fc.categorical_column_with_vocabulary_list(
+          key='aaa',
+          vocabulary_list=(12, 24, 36),
+          num_oov_buckets=100,
+          default_value=2)
+
   def test_invalid_input_dtype_int32(self):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa',
@@ -2693,6 +2708,26 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
               dense_shape=inputs.dense_shape),
           id_weight_pair.id_tensor.eval())
 
+  def test_get_sparse_tensors_with_oov_buckets(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'),
+        num_oov_buckets=100)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1), (1, 2)),
+        values=('marlo', 'skywalker', 'omar', 'heisenberg'),
+        dense_shape=(2, 3))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, 33, 0, 62), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
   def test_get_sparse_tensors_int32(self):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa',
@@ -2736,11 +2771,33 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
               dense_shape=(3, 3)),
           id_weight_pair.id_tensor.eval())
 
+  def test_get_sparse_tensors_int32_with_oov_buckets(self):
+    column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
+        dtype=dtypes.int32,
+        num_oov_buckets=100)
+    inputs = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1), (2, 2)),
+        values=(11, 100, 30, 22),
+        dense_shape=(3, 3))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+    self.assertIsNone(id_weight_pair.weight_tensor)
+    with _initialized_session():
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, 60, 0, 4), dtype=np.int64),
+              dense_shape=inputs.dense_shape),
+          id_weight_pair.id_tensor.eval())
+
   def test_linear_model(self):
     wire_column = fc.categorical_column_with_vocabulary_list(
         key='aaa',
-        vocabulary_list=('omar', 'stringer', 'marlo'))
-    self.assertEqual(3, wire_column._num_buckets)
+        vocabulary_list=('omar', 'stringer', 'marlo'),
+        num_oov_buckets=1)
+    self.assertEqual(4, wire_column._num_buckets)
     with ops.Graph().as_default():
       predictions = fc.linear_model({
           wire_column.name: sparse_tensor.SparseTensorValue(
@@ -2752,12 +2809,12 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
       wire_var = get_linear_model_column_var(wire_column)
       with _initialized_session():
         self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,)), wire_var.eval())
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
         self.assertAllClose(((0.,), (0.,)), predictions.eval())
-        wire_var.assign(((1.,), (2.,), (3.,))).eval()
+        wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
         # 'marlo' -> 2: wire_var[2] = 3
-        # 'skywalker' -> None, 'omar' -> 0: wire_var[0] = 1
-        self.assertAllClose(((3.,), (1.,)), predictions.eval())
+        # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
+        self.assertAllClose(((3.,), (5.,)), predictions.eval())
 
 
 class IdentityCategoricalColumnTest(test.TestCase):

@@ -121,6 +121,11 @@ class TFRecordWriter(object):
     """
     self._writer.WriteRecord(record)
 
+  def flush(self):
+    """Flush the file."""
+    with errors.raise_exception_on_not_ok_status() as status:
+      self._writer.Flush(status)
+
   def close(self):
     """Close the file."""
     with errors.raise_exception_on_not_ok_status() as status:

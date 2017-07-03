@@ -47,7 +47,7 @@ num_cpus() {
 # Get the hash of the last non-merge git commit on the current branch.
 # Usage: get_last_non_merge_git_commit
 get_last_non_merge_git_commit() {
-  echo $(git rev-list --no-merges -n 1 HEAD)
+  git rev-list --no-merges -n 1 HEAD
 }
 
 # List files changed (i.e., added, removed or revised) in the last non-merge
@@ -75,7 +75,7 @@ get_py_files_to_check() {
 
     echo "${PY_FILES}"
   else
-    echo $(find tensorflow -name '*.py')
+    find tensorflow -name '*.py'
   fi
 }
 
@@ -157,25 +157,25 @@ do_pylint() {
   NONWL_ERRORS_FILE="$(mktemp)_pylint_nonwl_errors.log"
 
   rm -rf ${OUTPUT_FILE}
-  rm -rf ${ERRORS_FLIE}
+  rm -rf ${ERRORS_FILE}
   rm -rf ${NONWL_ERRORS_FILE}
   touch ${NONWL_ERRORS_FILE}
 
   ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
-      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} 2>&1 > ${OUTPUT_FILE}
+      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} > ${OUTPUT_FILE} 2>&1
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
-  echo "pylint took $((${PYLINT_END_TIME} - ${PYLINT_START_TIME})) s"
+  echo "pylint took $((PYLINT_END_TIME - PYLINT_START_TIME)) s"
   echo ""
 
   grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
-  while read LINE; do
+  while read -r LINE; do
     IS_WHITELISTED=0
     for WL_REGEX in ${ERROR_WHITELIST}; do
-      if [[ ! -z $(echo ${LINE} | grep "${WL_REGEX}") ]]; then
+      if echo ${LINE} | grep -q "${WL_REGEX}"; then
         echo "Found a whitelisted error:"
         echo "  ${LINE}"
         IS_WHITELISTED=1
@@ -248,7 +248,7 @@ do_pep8() {
   PEP8_END_TIME=$(date +'%s')
 
   echo ""
-  echo "pep8 took $((${PEP8_END_TIME} - ${PEP8_START_TIME})) s"
+  echo "pep8 took $((PEP8_END_TIME - PEP8_START_TIME)) s"
   echo ""
 
   if [[ -s ${PEP8_OUTPUT_FILE} ]]; then
@@ -278,7 +278,7 @@ do_buildifier(){
   BUILDIFIER_END_TIME=$(date +'%s')
 
   echo ""
-  echo "buildifier took $((${BUILDIFIER_END_TIME} - ${BUILDIFIER_START_TIME})) s"
+  echo "buildifier took $((BUILDIFIER_END_TIME - BUILDIFIER_START_TIME)) s"
   echo ""
 
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
@@ -306,7 +306,7 @@ do_external_licenses_check(){
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
  bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --no_implicit_deps --no_host_deps --keep_going \
-  | egrep -v "^//tensorflow" \
+  | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
   | uniq 2>&1 \
@@ -315,7 +315,7 @@ do_external_licenses_check(){
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
   bazel query "deps(${LICENSES_TARGET})" --no_implicit_deps --no_host_deps --keep_going \
-  | egrep -v "^//tensorflow" \
+  | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
   | uniq 2>&1 \
@@ -329,7 +329,7 @@ do_external_licenses_check(){
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
   echo
-  echo "do_external_licenses_check took $((${EXTERNAL_LICENSES_CHECK_END_TIME} - ${EXTERNAL_LICENSES_CHECK_START_TIME})) s"
+  echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"
   echo
 
   if [[ -s ${MISSING_LICENSES_FILE} ]] || [[ -s ${EXTRA_LICENSES_FILE} ]] ; then

@@ -326,7 +326,7 @@ def switch(data, pred, dtype=None, name=None):
 def _SwitchRefOrTensor(data, pred, name="Switch"):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is false, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwarded to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.
@@ -437,10 +437,14 @@ def _convert_tensorarray_to_flow(tensor_or_tensor_array):
 
 
 def _make_tensor_array(ta, t_or_flow):
+  # pylint: disable=protected-access
   new_ta = tensor_array_ops.TensorArray(
       dtype=ta.dtype, handle=ta.handle, flow=t_or_flow,
-      infer_shape=ta._infer_shape)
-  new_ta._element_shape = ta._element_shape  # pylint: disable=protected-access
+      infer_shape=ta._infer_shape,
+      colocate_with_first_write_call=ta._colocate_with_first_write_call)
+  new_ta._colocate_with = ta._colocate_with
+  new_ta._element_shape = ta._element_shape
+  # pylint: enable=protected-access
   return new_ta
 
 
@@ -1359,18 +1363,20 @@ class ControlFlowContext(object):
       import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(values_def, control_flow_pb2.ValuesDef)
-    self._values = set(values_def.values)
+    self._values = set(
+        ops.prepend_name_scope(value, import_scope)
+        for value in values_def.values)
     g = ops.get_default_graph()
     self._external_values = {}
     for k, v in values_def.external_values.items():
+      k = ops.prepend_name_scope(k, import_scope)
       self._external_values[k] = g.as_graph_element(
           ops.prepend_name_scope(v, import_scope))
     op_names = set([op.split(":")[0]
                     for op in self._values - set(self._external_values)])
     for op in op_names:
       # pylint: disable=protected-access
-      g.as_graph_element(ops.prepend_name_scope(
-          op, import_scope))._set_control_flow_context(self)
+      g.as_graph_element(op)._set_control_flow_context(self)
       # pylint: enable=protected-access
 
   @property
@@ -1400,6 +1406,7 @@ class ControlFlowContext(object):
         [ops.strip_name_scope(v, export_scope)
          for v in sorted(self._values)])
     for k, v in self._external_values.items():
+      k = ops.strip_name_scope(k, export_scope)
       values_def.external_values[k] = ops.strip_name_scope(
           v.name, export_scope)
     return values_def
@@ -1634,6 +1641,8 @@ class CondContext(ControlFlowContext):
           # pylint: disable=protected-access
           op._update_input(index, real_x)
           # pylint: enable=protected-access
+      # Remove any external control dependency on this op.
+      self._RemoveExternalControlEdges(op)
       for x in op.outputs:
         self._values.add(x.name)
       # pylint: disable=protected-access

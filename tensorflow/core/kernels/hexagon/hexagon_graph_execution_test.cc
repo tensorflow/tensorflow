@@ -26,6 +26,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 
 #include <memory>
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/hexagon/graph_transfer_utils.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
@@ -46,8 +47,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 
 namespace tensorflow {
 
-using ByteArray = IRemoteFusedGraphExecutor::ByteArray;
-using ConstByteArray = IRemoteFusedGraphExecutor::ConstByteArray;
+using ByteArray = HexagonControlWrapper::ByteArray;
 
 constexpr const char* const IMAGE_FILENAME = "/data/local/tmp/img_299x299.bmp";
 constexpr const char* const MODEL_FILENAME =
@@ -87,8 +87,7 @@ static void DumpTop10Results(const int byte_size,
       10 /* show top_n results */);
 }
 
-static void DumpTop10Results(
-    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs) {
+static void DumpTop10Results(const std::vector<ByteArray>& outputs) {
   CHECK(outputs.size() == 1);
   const int byte_size = std::get<1>(outputs.at(0));
   const float* float_array =
@@ -96,9 +95,8 @@ static void DumpTop10Results(
   DumpTop10Results(byte_size, float_array);
 }
 
-static void CheckFirstResult(
-    const std::vector<IRemoteFusedGraphExecutor::ByteArray>& outputs,
-    const int expected_first_id) {
+static void CheckFirstResult(const std::vector<ByteArray>& outputs,
+                             const int expected_first_id) {
   EXPECT_GE(outputs.size(), 1);
   const int byte_size = std::get<1>(outputs.at(0));
   const int element_count = byte_size / sizeof(float);
@@ -240,7 +238,7 @@ static void RunInferenceByHexagonControlWrapper(
   }
 
   // 5-1. Read output node's outputs
-  std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
+  std::vector<ByteArray> outputs;
   hexagon_control_wrapper.ReadOutputNode("softmax", &outputs);
 
   // 5-2. Dump results
