@@ -894,7 +894,8 @@ def _hessian_vector_product(ys, xs, v):
   return gradients(elemwise_products, xs)
 
 
-def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
+def 
+(ys, xs, name="hessians", colocate_gradients_with_ops=False,
             gate_gradients=False, aggregation_method=None):
   """Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.
 
@@ -917,7 +918,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
     aggregation_method: See `gradients()` documentation for details.
 
   Returns:
-    A list of Hessian matrices of `sum(y)` for each `x` in `xs`.
+    A list of Hessian matrices of `sum(ys)` for each `x` in `xs`.
 
   Raises:
     LookupError: if one of the operations between `xs` and `ys` does not
