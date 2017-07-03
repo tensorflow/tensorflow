@@ -893,16 +893,20 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(1.0/2.0)):
         x = array_ops.zeros([batch_size, 2, 1])
         #print(x.get_shape()[1:])
-        cell = rnn_cell.Conv1DLSTMCell(input_shape=shape, kernel_shape=filter_size, output_channels=num_features)
+        cell = contrib_rnn_cell.Conv1DLSTMCell(input_shape=shape,
+                                               kernel_shape=filter_size,
+                                               output_channels=num_features)
         hidden = cell.zero_state(batch_size, dtypes.float32)
         output, state = cell(x, hidden)
 
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             hidden[0].name:
-                np.array([[[1.],[1.]], [[2.],[2.]]]),
+                np.array([[[1.],[1.]],
+                          [[2.],[2.]]]),
             x.name:
-                np.array([[[1.],[1.]], [[2.],[2.]]]),
+                np.array([[[1.],[1.]],
+                          [[2.],[2.]]]),
         })
         # This is a smoke test, making sure expected values are unchanged.
         self.assertEqual(len(res), 2)
@@ -931,16 +935,24 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(1.0/4.0)):
         x = array_ops.zeros([batch_size, 2, 2, 1])
-        cell = rnn_cell.Conv2DLSTMCell(input_shape=shape, kernel_shape=filter_size, output_channels=num_features)
+        cell = contrib_rnn_cell.Conv2DLSTMCell(input_shape=shape,
+                                               kernel_shape=filter_size,
+                                               output_channels=num_features)
         hidden = cell.zero_state(batch_size, dtypes.float32)
         output, state = cell(x, hidden)
 
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             hidden[0].name:
-                np.array([[[[1.],[1.]], [[1.],[1.]]], [[[2.],[2.]], [[2.],[2.]]]]),
+                np.array([[[[1.],[1.]],
+                           [[1.],[1.]]],
+                          [[[2.],[2.]],
+                           [[2.],[2.]]]]),
             x.name:
-                np.array([[[[1.],[1.]], [[1.],[1.]]], [[[2.],[2.]], [[2.],[2.]]]]),
+                np.array([[[[1.],[1.]],
+                           [[1.],[1.]]],
+                          [[[2.],[2.]],
+                           [[2.],[2.]]]]),
         })
         # This is a smoke test, making sure expected values are unchanged.
         self.assertEqual(len(res), 2)
@@ -977,16 +989,32 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(1.0/8.0)):
         x = array_ops.zeros([batch_size, 2, 2, 2, 1])
-        cell = rnn_cell.Conv3DLSTMCell(input_shape=shape, kernel_shape=filter_size, output_channels=num_features)
+        cell = contrib_rnn_cell.Conv3DLSTMCell(input_shape=shape,
+                                               kernel_shape=filter_size,
+                                               output_channels=num_features)
         hidden = cell.zero_state(batch_size, dtypes.float32)
         output, state = cell(x, hidden)
 
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             hidden[0].name:
-                np.array([[[[[1.],[1.]], [[1.],[1.]]],[[[1.],[1.]], [[1.],[1.]]]], [[[[2.],[2.]], [[2.],[2.]]], [[[2.],[2.]], [[2.],[2.]]]]]),
+                np.array([[[[[1.],[1.]], 
+                            [[1.],[1.]]],
+                           [[[1.],[1.]],
+                            [[1.],[1.]]]], 
+                          [[[[2.],[2.]],
+                            [[2.],[2.]]],
+                           [[[2.],[2.]],
+                            [[2.],[2.]]]]]),
             x.name:
-                np.array([[[[[1.],[1.]], [[1.],[1.]]],[[[1.],[1.]], [[1.],[1.]]]], [[[[2.],[2.]], [[2.],[2.]]], [[[2.],[2.]], [[2.],[2.]]]]])
+                np.array([[[[[1.],[1.]],
+                            [[1.],[1.]]],
+                           [[[1.],[1.]],
+                            [[1.],[1.]]]],
+                          [[[[2.],[2.]],
+                            [[2.],[2.]]],
+                           [[[2.],[2.]],
+                           [[2.],[2.]]]]])
         })
         # This is a smoke test, making sure expected values are unchanged.
         self.assertEqual(len(res), 2)

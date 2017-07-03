@@ -1921,8 +1921,8 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
 
     return new_h, new_state
 
-class ConvLSTMCell(core_rnn_cell.RNNCell):
-  """Basic Convolutional LSTM recurrent network cell.
+class ConvLSTMCell(rnn_cell_impl.RNNCell):
+  """Convolutional LSTM recurrent network cell.
 
   https://arxiv.org/pdf/1506.04214v1.pdf
   """
@@ -1984,7 +1984,7 @@ class ConvLSTMCell(core_rnn_cell.RNNCell):
             + [self._total_output_channels])
     zero_cell = array_ops.zeros(shape, dtype=dtype)
     zero_hidden = array_ops.zeros(shape, dtype=dtype)
-    zero_state = core_rnn_cell.LSTMStateTuple(zero_cell, zero_hidden)
+    zero_state = rnn_cell_impl.LSTMStateTuple(zero_cell, zero_hidden)
     return zero_state
 
   def call(self, inputs, state, scope=None):
@@ -2004,36 +2004,41 @@ class ConvLSTMCell(core_rnn_cell.RNNCell):
 
     if self._skip_connection:
       output = array_ops.concat([output, inputs], axis=-1)
-    new_state = core_rnn_cell.LSTMStateTuple(new_cell, output)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_cell, output)
     return output, new_state
 
 class Conv1DLSTMCell(ConvLSTMCell):
-  """1D convolutional LSTM."""
+  """1D Convolutional LSTM recurrent network cell.
 
+  https://arxiv.org/pdf/1506.04214v1.pdf
+  """
   def __init__(self, name="conv_1d_lstm", **kwargs):
-    """Construct Conv1DLSTM. See `snt.ConvLSTM` for more details."""
+    """Construct Conv1DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv1DLSTMCell, self).__init__(conv_ndims=1, **kwargs)
 
 class Conv2DLSTMCell(ConvLSTMCell):
-  """2D convolutional LSTM."""
+  """2D Convolutional LSTM recurrent network cell.
 
+  https://arxiv.org/pdf/1506.04214v1.pdf
+  """
   def __init__(self, name="conv_2d_lstm", **kwargs):
-    """Construct Conv2DLSTM. See `snt.ConvLSTM` for more details."""
+    """Construct Conv2DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv2DLSTMCell, self).__init__(conv_ndims=2, **kwargs)
 
 class Conv3DLSTMCell(ConvLSTMCell):
-  """3D convolutional LSTM."""
+  """3D Convolutional LSTM recurrent network cell.
 
+  https://arxiv.org/pdf/1506.04214v1.pdf
+  """
   def __init__(self, name="conv_3d_lstm", **kwargs):
-    """Construct Conv3DLSTM. See `snt.ConvLSTM` for more details."""
+    """Construct Conv3DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
 
 def _conv(args, 
           filter_size,
           num_features,
           bias,
-          bias_start=0.0,
-          scope=None):
+          bias_start=0.0):
   """convolution:
   Args:
     args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D, 
@@ -2041,7 +2046,6 @@ def _conv(args,
     filter_size: int tuple of filter height and width.
     num_features: int, number of features.
     bias_start: starting value to initialize the bias; 0 by default.
-    scope: VariableScope for the created subgraph; defaults to "Linear".
   Returns:
     A 3D, 4D, or 5D Tensor with shape [batch ... num_features]
   Raises:
@@ -2074,28 +2078,27 @@ def _conv(args,
     strides = shape_length*[1]
 
   # Now the computation.
-  with vs.variable_scope(scope or "Conv_%sD" % str(shape_length-2)):
-    matrix = vs.get_variable(
-        "Matrix", 
-        filter_size + [total_arg_size_depth, num_features],
-        dtype=dtype)
-    if len(args) == 1:
-      res = conv_op(args[0],
-                    matrix,
-                    strides,
-                    padding='SAME')
-    else:
-      res = conv_op(array_ops.concat(axis=shape_length-1, values=args),
-                    matrix,
-                    strides,
-                    padding='SAME')
-    if not bias:
-      return res
-    bias_term = vs.get_variable(
-        "Bias", [num_features],
-        dtype=dtype,
-        initializer=init_ops.constant_initializer(
-            bias_start, dtype=dtype))
+  kernel = vs.get_variable(
+      "kernel", 
+      filter_size + [total_arg_size_depth, num_features],
+      dtype=dtype)
+  if len(args) == 1:
+    res = conv_op(args[0],
+                  kernel,
+                  strides,
+                  padding='SAME')
+  else:
+   res = conv_op(array_ops.concat(axis=shape_length-1, values=args),
+                 kernel,
+                 strides,
+                 padding='SAME')
+  if not bias:
+    return res
+  bias_term = vs.get_variable(
+      "biases", [num_features],
+      dtype=dtype,
+      initializer=init_ops.constant_initializer(
+          bias_start, dtype=dtype))
   return res + bias_term
 
 class GLSTMCell(rnn_cell_impl.RNNCell):
