@@ -1071,7 +1071,7 @@ class MaxPool3DGradSYCL {
     T* output_backprop = ConvertToActualTypeSycl(T, output_backprop_accessor_);
 
     const int index = item.get_linear_id();
-    output_backprop[index] = T{0};
+    T output_value = 0;
     int n = index;
     const int d = n % p_.depth_;
     n /= p_.depth_;
@@ -1114,15 +1114,14 @@ class MaxPool3DGradSYCL {
         rstart = std::max(rstart, 0);
 
         for (int poolc = poolcstart; poolc < poolcend; ++poolc) {
-          const int output_data_idx =
-              ((poolp * p_.out_rows_ + poolr) * p_.out_cols_ + poolc) *
-                  p_.depth_ +
-              d;
-
           int cstart = poolc * p_.stride_cols_ - p_.pad_cols_;
           const int cend = std::min(cstart + p_.window_cols_, p_.in_cols_);
           cstart = std::max(cstart, 0);
 
+          const int output_data_idx =
+              ((poolp * p_.out_rows_ + poolr) * p_.out_cols_ + poolc) *
+                  p_.depth_ +
+              d;
           bool should_continue = true;
           bool is_max = (input_data[index] == output_data_n[output_data_idx]);
           for (int win_p = pstart; win_p < pend && should_continue; ++win_p) {
@@ -1144,11 +1143,12 @@ class MaxPool3DGradSYCL {
             }
           }
           if (is_max) {
-            output_backprop[index] += input_backprop_n[output_data_idx];
+            output_value += input_backprop_n[output_data_idx];
           }
         }
       }
     }
+    output_backprop[index] = output_value;
   }
 
  private:
