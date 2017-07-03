@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
@@ -66,6 +68,7 @@ class GrpcRemoteMaster : public MasterInterface {
   Status RunStep(CallOptions* call_options, RunStepRequestWrapper* request,
                  MutableRunStepResponseWrapper* response) override {
     ::grpc::ClientContext ctx;
+    auto trace = TraceRpc("RunStep/Client", &ctx);
     ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->RunStep(&ctx, request->ToProto(),
@@ -99,6 +102,14 @@ class GrpcRemoteMaster : public MasterInterface {
   }
 
  private:
+  // Start tracing, attaching a unique ID to both the trace and the RPC.
+  port::Tracing::TraceMe TraceRpc(StringPiece name,
+                                  ::grpc::ClientContext* ctx) {
+    string trace_id = strings::StrCat(port::Tracing::UniqueId());
+    ctx->AddMetadata(GrpcIdKey(), trace_id);
+    return port::Tracing::TraceMe(name, trace_id);
+  }
+
   std::unique_ptr<grpc::MasterService::Stub> stub_;
 
   void SetDeadline(::grpc::ClientContext* ctx, int64 time_in_ms) {

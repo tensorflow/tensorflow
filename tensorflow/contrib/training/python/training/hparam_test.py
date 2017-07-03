@@ -96,11 +96,11 @@ class HParamsTest(test.TestCase):
     self.assertEquals('2.3"', hparams2.c_c)
 
   def testBoolParsing(self):
-    for value in 'true', 'false', '1', '0':
+    for value in 'true', 'false', 'True', 'False', '1', '0':
       for initial in False, True:
         hparams = hparam.HParams(use_gpu=initial)
         hparams.parse('use_gpu=' + value)
-        self.assertEqual(hparams.use_gpu, value in ['true', '1'])
+        self.assertEqual(hparams.use_gpu, value in ['True', 'true', '1'])
 
         # Exports to proto.
         hparam_def = hparams.to_proto()

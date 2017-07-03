@@ -878,8 +878,12 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CloneFusionWithNewOperands(shape, new_operands);
     case HloOpcode::kParameter:
       return CreateParameter(parameter_number_, shape, parameter_name_);
-    // Unsupported ops for cloning.
     case HloOpcode::kBatchNormTraining:
+      CHECK_EQ(new_operands.size(), 3);
+      return CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
+                                     new_operands[2], epsilon(),
+                                     feature_index());
+    // Unsupported ops for cloning.
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:
@@ -1077,7 +1081,7 @@ Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
   auto pred_it = std::find(instruction->control_predecessors_.begin(),
                            instruction->control_predecessors_.end(), this);
   TF_RET_CHECK(pred_it != instruction->control_predecessors_.end());
-  instruction->control_predecessors_.erase(succ_it);
+  instruction->control_predecessors_.erase(pred_it);
 
   return Status::OK();
 }
@@ -1883,7 +1887,7 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kReverse:
       return visitor->HandleReverse(this, operands_[0]);
     case HloOpcode::kReducePrecision:
-      return visitor->HandleReducePrecision(this, operands_[0]);
+      return visitor->HandleReducePrecision(this);
     case HloOpcode::kSlice:
       return visitor->HandleSlice(this, operands_[0]);
     case HloOpcode::kDynamicSlice:
@@ -1925,19 +1929,21 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
 static Status PushDFSChild(DfsHloVisitor* visitor,
                            std::vector<HloInstruction*>* dfs_stack,
                            HloInstruction* parent, HloInstruction* child) {
-  if (visitor->IsVisiting(*child)) {
-    return FailedPrecondition(
-        "A cycle is detected while visiting instruction %s",
-        parent->ToString().c_str());
-  }
+  switch (visitor->GetVisitState(*child)) {
+    case DfsHloVisitor::kVisiting:
+      return FailedPrecondition(
+          "A cycle is detected while visiting instruction %s",
+          parent->ToString().c_str());
 
-  if (!visitor->DidVisit(*child)) {
-    dfs_stack->push_back(child);
-  } else {
-    VLOG(3) << "Not visiting HLO " << child->name()
-            << " as it was already visited.";
+    case DfsHloVisitor::kVisited:
+      VLOG(3) << "Not visiting HLO " << child->name()
+              << " as it was already visited.";
+      return Status::OK();
+
+    case DfsHloVisitor::kNotVisited:
+      dfs_stack->push_back(child);
+      return Status::OK();
   }
-  return Status::OK();
 }
 
 static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
@@ -1950,14 +1956,16 @@ static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
     DCHECK(!dfs_stack.empty());
 
     HloInstruction* current_node = dfs_stack.back();
-    if (visitor->DidVisit(*current_node)) {
+    DfsHloVisitor::VisitState visit_state =
+        visitor->GetVisitState(*current_node);
+    if (visit_state == DfsHloVisitor::kVisited) {
       dfs_stack.pop_back();
       VLOG(3) << "Not visiting HLO " << current_node->name()
               << " as it was already visited.";
       continue;
     }
 
-    if (visitor->IsVisiting(*current_node)) {
+    if (visit_state == DfsHloVisitor::kVisiting) {
       dfs_stack.pop_back();
 
       TF_RETURN_IF_ERROR(visitor->Preprocess(current_node));

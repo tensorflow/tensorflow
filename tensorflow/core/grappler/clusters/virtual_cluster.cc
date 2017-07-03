@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
@@ -60,6 +61,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
   if (metadata) {
     metadata->clear_step_stats();
     metadata->clear_cost_graph();
+    metadata->clear_partition_graphs();
   }
 
   Costs node_costs;
@@ -94,7 +96,7 @@ Status VirtualCluster::Run(const GraphDef& graph,
   } while (scheduler.MarkCurrNodeExecuted(node_costs));
 
   if (metadata) {
-    scheduler.Summary(metadata->mutable_step_stats());
+    scheduler.Summary(metadata);
   }
   return Status::OK();
 }

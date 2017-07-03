@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/legacy_flags/convolution_thunk_flags.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -287,10 +286,7 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     const ConvolutionDescriptor& convolution_descriptor,
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // TODO(b/29126320): Try cudnn v5's new auto-tuner when it's rolled out.
-  legacy_flags::ConvolutionThunkFlags* flags =
-      legacy_flags::GetConvolutionThunkFlags();
-  if (flags->xla_gpu_autotune_convolution_algorithm &&
-      best_algorithm_.algorithm() == se::dnn::kDefaultAlgorithm) {
+  if (best_algorithm_.algorithm() == se::dnn::kDefaultAlgorithm) {
     // Auto-tuning either is disabled or only happens in the first run of this
     // function.
     VLOG(2) << "Profiling for best convolution algorithm used for "

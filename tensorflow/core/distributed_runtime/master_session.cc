@@ -26,10 +26,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -993,8 +996,7 @@ MasterSession::MasterSession(
           << " #remote " << remote_devs_->size();
 
   LOG(INFO) << "Start master session " << handle_
-            << " with config: " << std::endl
-            << session_opts_.config.DebugString();
+            << " with config: " << session_opts_.config.ShortDebugString();
 }
 
 MasterSession::~MasterSession() {

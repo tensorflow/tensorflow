@@ -81,9 +81,8 @@ class ConvolutionThunk : public Thunk {
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
 
-  // Does the convolution for the thunk on "stream". If the
-  // xla_gpu_autotune_convolution_algorithm is turned on, auto-tuning happens on
-  // the first run of this function.
+  // Does the convolution for the thunk on "stream". Auto-tuning happens on the
+  // first run of this function.
   tensorflow::Status ExecuteOnStream(
       const BufferAllocations& buffer_allocations,
       perftools::gputools::Stream* stream) override;

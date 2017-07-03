@@ -207,6 +207,9 @@ Status RandomShape(shape_inference::InferenceContext* c);
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
                             ShapeHandle values_shape, ShapeHandle shape_shape);
 
+// Shape function for ScatterNd update/add/sub/... operations.
+Status ScatterNdUpdateShape(InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow

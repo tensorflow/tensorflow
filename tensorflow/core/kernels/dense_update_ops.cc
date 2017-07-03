@@ -111,7 +111,7 @@ class DenseUpdateOp : public OpKernel {
     OP_REQUIRES(context, Tparams.IsInitialized(),
                 errors::FailedPrecondition("Attempting to use uninitialized "
                                            "parameters: ",
-                                           def().input(0)));
+                                           requested_input(0)));
     OP_REQUIRES(
         context, Tparams.IsSameSize(Tupdate),
         errors::InvalidArgument("Parameters and update must be the same size"));
@@ -154,7 +154,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
       Name("Assign").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       AssignOpT<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 

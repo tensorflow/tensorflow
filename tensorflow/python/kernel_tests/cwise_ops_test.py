@@ -184,6 +184,7 @@ class UnaryOpTest(test.TestCase):
 
   def testFloatBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float32)
+    w = x - x.min() + 1.01 # all greater than 1
     y = (x + .5).astype(np.float32)  # no zero
     z = (x + 15.5).astype(np.float32)  # all positive
     k = np.arange(-0.90, 0.90, 0.25).astype(np.float32)  # between -1 and 1
@@ -203,6 +204,9 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.sinh, math_ops.sinh)
     self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
+    self._compareBoth(x, np.arcsinh, math_ops.asinh)
+    self._compareBoth(w, np.arccosh, math_ops.acosh)
+    self._compareBoth(k, np.arctanh, math_ops.atanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(x, self._log_sigmoid, math_ops.log_sigmoid)
     self._compareBoth(y, np.sign, math_ops.sign)
@@ -248,6 +252,7 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.log, math_ops.log)
     self._compareBoth(x, np.log1p, math_ops.log1p)
     self._compareBoth(x, np.sinh, math_ops.sinh)
+    self._compareBoth(x, np.arcsinh, math_ops.asinh)
     self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
@@ -273,6 +278,7 @@ class UnaryOpTest(test.TestCase):
 
   def testDoubleBasic(self):
     x = np.arange(-3, 3).reshape(1, 3, 2).astype(np.float64)
+    w = x - x.min() + 1.01 # all greater than 1
     y = (x + .5).astype(np.float64)  # no zero
     z = (x + 15.5).astype(np.float64)  # all positive
     k = np.arange(-0.90, 0.90, 0.35).reshape(1, 3, 2).astype(
@@ -292,6 +298,9 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.sinh, math_ops.sinh)
     self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
+    self._compareBoth(x, np.arcsinh, math_ops.asinh)
+    self._compareBoth(w, np.arccosh, math_ops.acosh)
+    self._compareBoth(k, np.arctanh, math_ops.atanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
@@ -398,6 +407,9 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.sinh, math_ops.sinh)
     self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
+    self._compareCpu(x, np.arcsinh, math_ops.asinh)
+    self._compareCpu(x, np.arccosh, math_ops.acosh)
+    self._compareCpu(x, np.arctanh, math_ops.atanh)
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
     self._compareCpu(x, np.cos, math_ops.cos)
@@ -434,6 +446,9 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.sinh, math_ops.sinh)
     self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
+    self._compareCpu(x, np.arcsinh, math_ops.asinh)
+    self._compareCpu(x, np.arccosh, math_ops.acosh)
+    self._compareCpu(x, np.arctanh, math_ops.atanh)
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
     self._compareCpu(x, np.cos, math_ops.cos)

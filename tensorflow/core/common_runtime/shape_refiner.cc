@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -38,6 +39,10 @@ ShapeRefiner::ShapeRefiner(int graph_def_version,
     : graph_def_version_(graph_def_version),
       ops_registry_(ops),
       graph_runner_(Env::Default()) {}
+
+ShapeRefiner::ShapeRefiner(const VersionDef& versions,
+                           const OpRegistryInterface* ops)
+    : ShapeRefiner(versions.producer(), ops) {}
 
 ShapeRefiner::~ShapeRefiner() {
   // The lifetime of the tensors are bound to the GraphRunner, so the tensors
@@ -294,7 +299,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
   }
   InferenceContext* c = it->second.get();
 
-  if (node->def().op() == "Shape") {
+  if (node->type_string() == "Shape") {
     // If input shapes to the shape op are fully defined,
     // we can infer the shape op's output tensor.
     bool fully_defined_inputs = c->FullyDefined(c->input(0));
@@ -324,7 +329,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
       *output = t;
       *success = true;
     }
-  } else if (node->def().op() == "Rank") {
+  } else if (node->type_string() == "Rank") {
     bool rank_known = c->RankKnown(c->input(0));
     if (rank_known) {
       int32 input_rank = c->Rank(c->input(0));
@@ -333,7 +338,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
       *output = t;
       *success = true;
     }
-  } else if (node->def().op() == "Size") {
+  } else if (node->type_string() == "Size") {
     bool fully_defined_inputs = c->FullyDefined(c->input(0));
     if (fully_defined_inputs) {
       int32 rank = c->Rank(c->input(0));
@@ -666,10 +671,10 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
 
 bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
                                     ShapeHandle s1) {
-  if (c->Rank(s0) != c->Rank(s1)) {
+  if (!c->RankKnown(s0)) {
+    return !c->RankKnown(s1);
+  } else if (!c->RankKnown(s1) || c->Rank(s0) != c->Rank(s1)) {
     return false;
-  } else if (!c->RankKnown(s0)) {
-    return true;
   }
 
   for (int i = 0; i < c->Rank(s0); ++i) {

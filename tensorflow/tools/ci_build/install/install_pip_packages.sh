@@ -85,3 +85,7 @@ pip2 install mock
 
 pip2 install portpicker
 pip3 install portpicker
+
+# TensorFlow Serving integration tests require the following:
+pip2 install grpcio
+pip3 install grpcio

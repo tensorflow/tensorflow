@@ -1951,7 +1951,8 @@ class MetaGraphTest(test.TestCase):
                                                         logits=logit)
         adam.AdamOptimizer().minimize(cost, name="optimize")
       meta_graph_def = saver_module.export_meta_graph(clear_devices=True)
-      graph_io.write_graph(meta_graph_def, "/tmp", "meta_graph.pbtxt")
+      graph_io.write_graph(meta_graph_def, self.get_temp_dir(),
+                           "meta_graph.pbtxt")
 
     with session.Session(graph=ops_lib.Graph()) as sess:
       saver_module.import_meta_graph(meta_graph_def, import_scope="new_model")

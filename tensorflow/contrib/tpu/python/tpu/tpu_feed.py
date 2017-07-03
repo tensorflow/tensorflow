@@ -448,7 +448,7 @@ class InfeedQueue(object):
             name=full_name,
             device_ordinal=tpu_ordinal)
 
-  def generate_enqueue_ops(self, sharded_inputs):
+  def generate_enqueue_ops(self, sharded_inputs, tpu_ordinal_function=None):
     """Generates the host-side Ops to enqueue the shards of a tuple.
 
     sharded_inputs is a list, one for each shard, of lists of
@@ -466,6 +466,10 @@ class InfeedQueue(object):
       sharded_inputs: a list of lists of Tensors. The length of the outer list
         determines the number of shards. Each inner list indicates the types
         and shapes of the tuples in the corresponding shard.
+      tpu_ordinal_function: if not None, a function that takes the
+        shard index as input and returns the ordinal of the TPU device
+        the shard's infeed should be placed on. tpu_ordinal_function must be
+        set if the inputs are placed on CPU devices.
 
     Returns:
       A list of host-side Ops, one for each shard, that when executed together
@@ -487,9 +491,12 @@ class InfeedQueue(object):
     if self._generated_enqueue_ops:
       raise ValueError("Can't generate two enqueue Ops from the same queue")
     self._generated_enqueue_ops = True
+    if tpu_ordinal_function is None:
+      tpu_ordinal_function = lambda index: -1
     name_prefix = "%s/enqueue" % self._name
     return [
-        self._generate_enqueue_op(shard, name_prefix, index)
+        self._generate_enqueue_op(shard, name_prefix, index,
+                                  tpu_ordinal=tpu_ordinal_function(index))
         for (shard, index) in zip(sharded_inputs, xrange(self.number_of_shards))
     ]
 

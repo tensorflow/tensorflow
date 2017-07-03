@@ -233,6 +233,11 @@ class Call : public UntypedCall<Service> {
   RequestMessage request;
   ResponseMessage response;
 
+  const std::multimap<::grpc::string_ref, ::grpc::string_ref>& client_metadata()
+      const {
+    return ctx_.client_metadata();
+  }
+
  private:
   // Creates a completion queue tag for handling cancellation by the client.
   // NOTE: This method must be called before this call is enqueued on a

@@ -830,7 +830,7 @@ def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
       # On Windows, symlink is not supported, so we just copy all the files.
       cmd = 'cp -f' if _is_windows(repository_ctx) else 'ln -s'
       command.append(cmd + ' "%s" "%s"' % (src_files[i] , dest))
-      outs.append('      "' + dest_dir + dest_files[i] + '",')
+      outs.append('        "' + dest_dir + dest_files[i] + '",')
   genrule = _genrule(src_dir, genrule_name, " && ".join(command),
                      "\n".join(outs))
   return genrule
@@ -851,7 +851,7 @@ def _genrule(src_dir, genrule_name, command, outs):
       '    cmd = """\n' +
       command +
       '\n   """,\n' +
-      ')\n\n'
+      ')\n'
   )
 
 
@@ -1027,18 +1027,12 @@ def _cuda_autoconf_impl(repository_ctx):
     if _TF_CUDA_CONFIG_REPO in repository_ctx.os.environ:
       _create_remote_cuda_repository(repository_ctx,
           repository_ctx.os.environ[_TF_CUDA_CONFIG_REPO])
-    elif repository_ctx.attr.remote_config_repo != "":
-      _create_remote_cuda_repository(repository_ctx,
-          repository_ctx.attr.remote_config_repo)
     else:
       _create_local_cuda_repository(repository_ctx)
 
 
 cuda_configure = repository_rule(
     implementation = _cuda_autoconf_impl,
-    attrs = {
-        "remote_config_repo": attr.string(mandatory = False, default =""),
-    },
     environ = [
         _GCC_HOST_COMPILER_PATH,
         "TF_NEED_CUDA",
@@ -1056,13 +1050,9 @@ cuda_configure = repository_rule(
 Add the following to your WORKSPACE FILE:
 
 ```python
-cuda_configure(
-  name = "local_config_cuda"
-  remote_config_repo = "@remote_cuda_config_tf//"
-)
+cuda_configure(name = "local_config_cuda")
 ```
 
 Args:
   name: A unique name for this workspace rule.
-  remote_config_repo: Location of a pre-generated config (optional).
 """

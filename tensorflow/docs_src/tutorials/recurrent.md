@@ -75,7 +75,9 @@ The basic pseudocode is as follows:
 words_in_dataset = tf.placeholder(tf.float32, [num_batches, batch_size, num_features])
 lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
-state = tf.zeros([batch_size, lstm.state_size])
+hidden_state = tf.zeros([batch_size, lstm.state_size])
+current_state = tf.zeros([batch_size, lstm.state_size])
+state = hidden_state, current_state
 probabilities = []
 loss = 0.0
 for current_batch_of_words in words_in_dataset:

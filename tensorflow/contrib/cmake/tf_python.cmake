@@ -123,9 +123,12 @@ endfunction()
 file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/decision_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_PYTHON(
     ${tensorflow_source_dir} PYTHON_PROTO_GENFILES ${tf_protos_python_srcs}
@@ -139,6 +142,7 @@ file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_python_protos_cc_srcs}
@@ -204,6 +208,7 @@ add_python_module("tensorflow/python/debug/examples")
 add_python_module("tensorflow/python/debug/lib")
 add_python_module("tensorflow/python/debug/wrappers")
 add_python_module("tensorflow/python/estimator")
+add_python_module("tensorflow/python/estimator/canned")
 add_python_module("tensorflow/python/estimator/export")
 add_python_module("tensorflow/python/estimator/inputs")
 add_python_module("tensorflow/python/estimator/inputs/queues")
@@ -244,6 +249,8 @@ add_python_module("tensorflow/contrib/bayesflow/examples/reinforce_simple")
 add_python_module("tensorflow/contrib/bayesflow/python")
 add_python_module("tensorflow/contrib/bayesflow/python/kernel_tests")
 add_python_module("tensorflow/contrib/bayesflow/python/ops")
+add_python_module("tensorflow/contrib/boosted_trees")
+add_python_module("tensorflow/contrib/boosted_trees/proto")
 add_python_module("tensorflow/contrib/cloud")
 add_python_module("tensorflow/contrib/cloud/kernels")
 add_python_module("tensorflow/contrib/cloud/ops")
@@ -269,6 +276,8 @@ add_python_module("tensorflow/contrib/data/python/framework")
 add_python_module("tensorflow/contrib/data/python/kernel_tests")
 add_python_module("tensorflow/contrib/data/python/ops")
 add_python_module("tensorflow/contrib/data/python/util")
+add_python_module("tensorflow/contrib/decision_trees")
+add_python_module("tensorflow/contrib/decision_trees/proto")
 add_python_module("tensorflow/contrib/deprecated")
 add_python_module("tensorflow/contrib/distributions")
 add_python_module("tensorflow/contrib/distributions/python")
@@ -446,6 +455,11 @@ add_python_module("tensorflow/contrib/quantization/python")
 add_python_module("tensorflow/contrib/remote_fused_graph/pylib")
 add_python_module("tensorflow/contrib/remote_fused_graph/pylib/python")
 add_python_module("tensorflow/contrib/remote_fused_graph/pylib/python/ops")
+add_python_module("tensorflow/contrib/resampler")
+add_python_module("tensorflow/contrib/resampler/kernels")
+add_python_module("tensorflow/contrib/resampler/ops")
+add_python_module("tensorflow/contrib/resampler/python")
+add_python_module("tensorflow/contrib/resampler/python/ops")
 add_python_module("tensorflow/contrib/rnn")
 add_python_module("tensorflow/contrib/rnn/kernels")
 add_python_module("tensorflow/contrib/rnn/ops")
@@ -511,10 +525,10 @@ add_python_module("tensorflow/contrib/text/kernels")
 add_python_module("tensorflow/contrib/text/ops")
 add_python_module("tensorflow/contrib/text/python")
 add_python_module("tensorflow/contrib/text/python/ops")
-add_python_module("tensorflow/contrib/tfprof" DONTCOPY)  # SWIG wrapper not implemented.
-#add_python_module("tensorflow/contrib/tfprof/python")
-#add_python_module("tensorflow/contrib/tfprof/python/tools")
-#add_python_module("tensorflow/contrib/tfprof/python/tools/tfprof")
+add_python_module("tensorflow/contrib/tfprof/python")
+add_python_module("tensorflow/contrib/tfprof/python/tools")
+add_python_module("tensorflow/contrib/tfprof/python/tools/tfprof")
+add_python_module("tensorflow/contrib/tfprof/python/tools/tfprof/internal")
 add_python_module("tensorflow/contrib/tpu")
 add_python_module("tensorflow/contrib/tpu/ops")
 add_python_module("tensorflow/contrib/tpu/python")
@@ -647,6 +661,8 @@ GENERATE_PYTHON_OP_LIB("contrib_memory_stats_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/memory_stats/ops/gen_memory_stats_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_nccl_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/nccl/ops/gen_nccl_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_resampler_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/resampler/ops/gen_resampler_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_gru_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/rnn/ops/gen_gru_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_rnn_lstm_ops"
@@ -657,6 +673,10 @@ GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_hybrid_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/hybrid/ops/gen_training_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_model_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_model_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_stats_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_stats_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_text_skip_gram_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/text/python/ops/gen_skip_gram_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
@@ -715,6 +735,8 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/cc/framework/ops.cc"
     "${tensorflow_source_dir}/tensorflow/cc/framework/scope.cc"
     "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.cc"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/print_model_analysis.h"
+    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/print_model_analysis.cc"
 )
 
 if(WIN32)
@@ -738,6 +760,7 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
         $<TARGET_OBJECTS:tf_grappler>
+        $<TARGET_OBJECTS:tf_tools_tfprof>
         $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
         $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
         $<TARGET_OBJECTS:tf_core_kernels>
@@ -785,6 +808,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
     $<TARGET_OBJECTS:tf_grappler>
+    $<TARGET_OBJECTS:tf_tools_tfprof>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>

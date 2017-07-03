@@ -391,11 +391,6 @@ const xla::Computation* XlaOpKernelContext::GetOrCreateAdd(
   return XlaContext::Get(context_).GetOrCreateAdd(type);
 }
 
-const xla::Computation* XlaOpKernelContext::GetOrCreateSigmoid(
-    const DataType type) {
-  return XlaContext::Get(context_).GetOrCreateSigmoid(type);
-}
-
 XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}
 
 void XlaOpKernel::Compute(OpKernelContext* context) {
