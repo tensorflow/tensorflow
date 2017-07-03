@@ -110,7 +110,7 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
             memmapped_env.FileExists("bla-bla-bla").code());
 }
 
-TEST(MemmappedFileSystemTest, NotInitalized) {
+TEST(MemmappedFileSystemTest, NotInitialized) {
   MemmappedEnv memmapped_env(Env::Default());
   std::unique_ptr<ReadOnlyMemoryRegion> memory_region;
   EXPECT_EQ(
