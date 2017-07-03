@@ -127,7 +127,6 @@ cc_library(
     deps = [
         ":tfcompile_lib",
         ":tfcompile_proto",
-        "//tensorflow/compiler/xla/legacy_flags:buffer_assignment_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/compiler/xla/legacy_flags:util_flags",
@@ -157,7 +156,7 @@ tf_library(
 )
 
 # A test of tf_library that includes a graph with an unknown op, but where
-# the compilation works because the the unknown op is not needed for the fetches.
+# the compilation works because the unknown op is not needed for the fetches.
 tf_library(
     name = "test_graph_tfunknownop",
     testonly = 1,

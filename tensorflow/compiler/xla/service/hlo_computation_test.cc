@@ -425,6 +425,30 @@ TEST_F(HloComputationTest, Reachability) {
   EXPECT_TRUE(reachability->IsConnected(copy, constant1));
   EXPECT_FALSE(reachability->IsConnected(negate, add));
   EXPECT_FALSE(reachability->IsConnected(add, negate));
+
+  // Remove the control dependency then update and verify the reachability map
+  ASSERT_IS_OK(add->RemoveControlDependencyTo(exp));
+  computation->UpdateReachabilityThroughInstruction(exp, reachability.get());
+
+  EXPECT_TRUE(reachability->IsReachable(constant1, constant1));
+  EXPECT_FALSE(reachability->IsReachable(constant1, constant2));
+  EXPECT_TRUE(reachability->IsReachable(constant1, add));
+  EXPECT_FALSE(reachability->IsReachable(constant1, negate));
+  EXPECT_FALSE(reachability->IsReachable(constant1, exp));
+  EXPECT_TRUE(reachability->IsReachable(constant1, mul));
+  EXPECT_FALSE(reachability->IsReachable(constant1, copy));
+
+  // Change a use within the graph then update and verify the reachability map
+  ASSERT_IS_OK(constant2->ReplaceUseWith(negate, constant1));
+  computation->UpdateReachabilityThroughInstruction(negate, reachability.get());
+
+  EXPECT_FALSE(reachability->IsReachable(constant2, constant1));
+  EXPECT_TRUE(reachability->IsReachable(constant2, constant2));
+  EXPECT_TRUE(reachability->IsReachable(constant2, add));
+  EXPECT_FALSE(reachability->IsReachable(constant2, negate));
+  EXPECT_FALSE(reachability->IsReachable(constant2, exp));
+  EXPECT_TRUE(reachability->IsReachable(constant2, mul));
+  EXPECT_FALSE(reachability->IsReachable(constant2, copy));
 }
 
 }  // namespace

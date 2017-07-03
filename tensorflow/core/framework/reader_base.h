@@ -19,11 +19,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include "tensorflow/core/framework/queue_interface.h"
-#include "tensorflow/core/framework/reader_base.pb.h"
+#include "tensorflow/core/framework/reader_base.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/reader_interface.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
+
+class ReaderBaseState;
 
 // Default implementation of ReaderInterface.
 class ReaderBase : public ReaderInterface {

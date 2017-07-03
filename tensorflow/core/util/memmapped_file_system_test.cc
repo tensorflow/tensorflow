@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -109,7 +110,7 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
             memmapped_env.FileExists("bla-bla-bla").code());
 }
 
-TEST(MemmappedFileSystemTest, NotInitalized) {
+TEST(MemmappedFileSystemTest, NotInitialized) {
   MemmappedEnv memmapped_env(Env::Default());
   std::unique_ptr<ReadOnlyMemoryRegion> memory_region;
   EXPECT_EQ(

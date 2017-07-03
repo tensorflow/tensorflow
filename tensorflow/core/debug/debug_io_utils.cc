@@ -27,6 +27,7 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
