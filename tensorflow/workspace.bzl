@@ -114,6 +114,8 @@ def _patched_http_archive_impl(repo_ctx):
       sha256=repo_ctx.attr.sha256,
       stripPrefix=repo_ctx.attr.strip_prefix)
   _apply_patch(repo_ctx, repo_ctx.attr.patch_file)
+  if repo_ctx.attr.build_file:
+    repo_ctx.template("BUILD", repo_ctx.attr.build_file, {}, False)
 
 
 patched_http_archive = repository_rule(
@@ -337,12 +339,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       #       This patch fixes a runtime crash when tensorflow is compiled
       #       with clang -O2 on Linux (see https://github.com/tensorflow/tensorflow/issues/8394)
       patch_file = str(Label("//third_party/protobuf:add_noinlines.patch")),
+      # TODO(pcloudy): Remove build_file after protobuf is updated to a version containg google/protobuf@0b059a3
+      build_file = str(Label("//third_party/protobuf:protobuf.BUILD")),
   )
 
   # We need to import the protobuf library under the names com_google_protobuf
   # and com_google_protobuf_cc to enable proto_library support in bazel.
   # Unfortunately there is no way to alias http_archives at the moment.
-  native.http_archive(
+  native.new_http_archive(
       name = "com_google_protobuf",
       urls = [
           "http://mirror.bazel.build/github.com/google/protobuf/archive/v3.3.1.tar.gz",
@@ -350,9 +354,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "30f23a45c6f4515598702a6d19c4295ba92c4a635d7ad8d331a4db9fccff392d",
       strip_prefix = "protobuf-3.3.1",
+      # TODO(pcloudy): Remove build_file after protobuf is updated to a version containg google/protobuf@0b059a3
+      build_file = str(Label("//third_party/protobuf:protobuf.BUILD")),
   )
 
-  native.http_archive(
+  native.new_http_archive(
       name = "com_google_protobuf_cc",
       urls = [
           "http://mirror.bazel.build/github.com/google/protobuf/archive/v3.3.1.tar.gz",
@@ -360,6 +366,8 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "30f23a45c6f4515598702a6d19c4295ba92c4a635d7ad8d331a4db9fccff392d",
       strip_prefix = "protobuf-3.3.1",
+      # TODO(pcloudy): Remove build_file after protobuf is updated to a version containg google/protobuf@0b059a3
+      build_file = str(Label("//third_party/protobuf:protobuf.BUILD")),
   )
 
   native.new_http_archive(
