@@ -894,8 +894,7 @@ def _hessian_vector_product(ys, xs, v):
   return gradients(elemwise_products, xs)
 
 
-def 
-(ys, xs, name="hessians", colocate_gradients_with_ops=False,
+def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
             gate_gradients=False, aggregation_method=None):
   """Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.
 
