@@ -1520,7 +1520,10 @@ cc_library(
     name = "hlo_verifier",
     srcs = ["hlo_verifier.cc"],
     hdrs = ["hlo_verifier.h"],
-    deps = [":hlo_pass"],
+    deps = [
+        ":hlo_pass",
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
