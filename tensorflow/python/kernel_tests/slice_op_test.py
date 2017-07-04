@@ -210,14 +210,14 @@ class SliceTest(test.TestCase):
           for i in range(8)
       ]
       slice_t = array_ops.slice(a, indices, sizes)
-      slice_val= sess.run(slice_t)
+      slice_val = sess.run(slice_t)
 
-    expected_val = inp[indices[0]:indices[0] + sizes[0], indices[1]:indices[1] + sizes[1],
-        indices[2]:indices[2] + sizes[2], indices[3]:indices[3] + sizes[3],
-        indices[4]:indices[4] + sizes[4], indices[5]:indices[5] + sizes[5],
-        indices[6]:indices[6] + sizes[6], indices[7]:indices[7] + sizes[7]]
+    expected_val = inp[indices[0]:indices[0] + sizes[0], indices[1]:indices[1] + sizes[
+      1], indices[2]:indices[2] + sizes[2], indices[3]:indices[3] + sizes[3], indices[
+        4]:indices[4] + sizes[4], indices[5]:indices[5] + sizes[5], indices[6]:indices[
+          6] + sizes[6], indices[7]:indices[7] + sizes[7]]
     self.assertAllEqual(slice_val, expected_val)
-    #self.assertEqual(slice_val.get_shape(), expected_val.shape)
+    self.assertEqual(expected_val.shape, slice_t.get_shape())
 
   def _testGradientSlice(self, input_shape, slice_begin, slice_size):
     with self.test_session(use_gpu=True):

@@ -88,10 +88,12 @@ void HandleStridedSliceCase(OpKernelContext* context,
     for (int i = 0; i < NDIM; ++i) {
       sizes[i] = end[i] - begin[i];
     }
+    const TensorShape final_shape = result->shape();
     CHECK(result->CopyFrom(*result, processing_shape));
     const Tensor input = context->input(0);
     functor::Slice<Device, Proxy>()(
         context->eigen_device<Device>(), result, input, begin, sizes);
+    CHECK(result->CopyFrom(*result, final_shape));
   } else {
     Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
     Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;
