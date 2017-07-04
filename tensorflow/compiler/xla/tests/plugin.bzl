@@ -14,15 +14,19 @@
 # ==============================================================================
 """Additional XLA devices to be included in the unit test suite."""
 
-plugins = {
-  "poplar": {
-    "deps": [
-      "//tensorflow/compiler/plugin/poplar:poplar_lib",
-      "//tensorflow/compiler/xla/tests:test_macros_cpu",
-    ],
-    "copts": [],
-    "tags": [],
-    "args": []
-  },
-}
+# Example:
+#
+#plugins = {
+#  "poplar": {
+#    "deps": [
+#      "//tensorflow/compiler/plugin/poplar:poplar_lib",
+#      "//tensorflow/compiler/xla/tests:test_macros_cpu",
+#    ],
+#    "copts": [],
+#    "tags": [],
+#    "args": []
+#  },
+#}
+
+plugins = {}
 
