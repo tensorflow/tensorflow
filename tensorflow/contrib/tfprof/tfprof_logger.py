@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""tfprof is a tool that profile various aspect of TensorFlow model."""
+"""Logging tensorflow::tfprof::OpLog.
+
+OpLog is used to add extra model information for offline analysis by tfprof.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-from tensorflow.contrib.tfprof import model_analyzer
-from tensorflow.contrib.tfprof import tfprof_logger
+from tensorflow.python.profiler.tfprof_logger import write_op_log

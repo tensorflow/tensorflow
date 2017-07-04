@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,11 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""tfprof is a tool that profile various aspect of TensorFlow model."""
+"""tfprof is a tool that profile various aspect of TensorFlow model.
+
+@@Profiler
+@@profile
+@@advise
+@@write_op_log
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-from tensorflow.contrib.tfprof import model_analyzer
-from tensorflow.contrib.tfprof import tfprof_logger
+# pylint: disable=unused-import,wildcard-import
+from tensorflow.python.profiler.model_analyzer import *
+from tensorflow.python.profiler.tfprof_logger import *
+from tensorflow.python.util.all_util import remove_undocumented
+
+
+remove_undocumented(__name__, [])

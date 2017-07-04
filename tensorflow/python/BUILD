@@ -87,6 +87,7 @@ py_library(
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
@@ -2798,8 +2799,8 @@ tf_py_wrap_cc(
         "//tensorflow/core:reader_base",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
-        "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
