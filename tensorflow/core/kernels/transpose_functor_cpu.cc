@@ -167,7 +167,35 @@ template <typename T>
 struct Transpose<SYCLDevice, T> {
   static void run(const SYCLDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
-    // Should add a specialized implementation for SYCLDevice here.
+    switch (in.dims()) {
+      case 1:
+        internal::TransposeUsingEigen<SYCLDevice, T, 1>(d, in, perm, out);
+        break;
+      case 2:
+        internal::TransposeUsingEigen<SYCLDevice, T, 2>(d, in, perm, out);
+        break;
+      case 3:
+        internal::TransposeUsingEigen<SYCLDevice, T, 3>(d, in, perm, out);
+        break;
+      case 4:
+        internal::TransposeUsingEigen<SYCLDevice, T, 4>(d, in, perm, out);
+        break;
+      case 5:
+        internal::TransposeUsingEigen<SYCLDevice, T, 5>(d, in, perm, out);
+        break;
+      case 6:
+        internal::TransposeUsingEigen<SYCLDevice, T, 6>(d, in, perm, out);
+        break;
+      case 7:
+        internal::TransposeUsingEigen<SYCLDevice, T, 7>(d, in, perm, out);
+        break;
+      case 8:
+        internal::TransposeUsingEigen<SYCLDevice, T, 8>(d, in, perm, out);
+        break;
+      default:
+        LOG(FATAL) << "Unsupported TransposeUsingEigen for: " << in.dims();
+        break;
+    }
   }
 };
 
