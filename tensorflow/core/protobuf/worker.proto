@@ -361,5 +361,5 @@ message RemoteMemoryRegion {
   string port = 2;
   uint64 addr = 3;
   uint32 rkey = 4;
-  uint32 length = 5;
+  uint32 tensor_key = 5;
 }

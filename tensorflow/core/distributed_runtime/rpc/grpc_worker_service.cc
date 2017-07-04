@@ -349,7 +349,8 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
             if (s.ok()) {
               use_dma = true;
             } else {
-              LOG(ERROR) << s.ToString();
+              LOG(ERROR) << s.ToString() << " with allocator "
+                         << src_dev->GetAllocator(send_args.alloc_attrs)->Name();
             }
           }
           if (use_dma) {

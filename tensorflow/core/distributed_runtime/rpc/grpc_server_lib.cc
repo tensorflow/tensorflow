@@ -165,7 +165,7 @@ Status GrpcServer::Init(
   }
 
   rdma_client_.reset(NewRdmaClient());
-  rdma_server_.reset(NewRdmaServer(env_, host, port));
+  rdma_server_.reset(NewRdmaServer(host, port));
   TF_RETURN_IF_ERROR(rdma_server_->Init());
 
   // N.B. The order of initialization here is intricate, because we

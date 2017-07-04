@@ -3,11 +3,9 @@
 
 #include "tensorflow/core/distributed_runtime/rdma.h"
 
-#include "tensorflow/core/platform/env.h"
-
 namespace tensorflow {
 
-RdmaServer* NewRdmaServer(Env* env_, const string& host, const string& port);
+RdmaServer* NewRdmaServer(const string& host, const string& port);
 
 RdmaClient* NewRdmaClient();
 

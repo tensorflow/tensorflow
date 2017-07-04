@@ -251,9 +251,11 @@ cc_library(
     deps = [
         "//tensorflow/core/distributed_runtime:rdma",
         "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
     ],
+    copts = [ "-g" ],
     linkopts = select({
         "//conditions:default": ["-libverbs", "-lrdmacm"],
     }),

@@ -15,8 +15,9 @@ class TensorBuffer;
 
 class RdmaClient {
  public:
+  using Any = ::google::protobuf::Any;
   virtual Status ReadTensorViaDMA(const TensorBuffer* buffer,
-      const ::google::protobuf::Any& transport_options) = 0;
+                                  const Any& transport_options) = 0;
 };
 
 class RdmaServer {
@@ -27,8 +28,9 @@ class RdmaServer {
 
   virtual void Stop() = 0;
 
+  using Any = ::google::protobuf::Any;
   virtual Status RegisterTensorDMA(const TensorBuffer* buffer,
-      ::google::protobuf::Any* mutable_transport_options) = 0;
+                                   Any* mutable_transport_options) = 0;
 };
 
 }  // namespace tensorflow
