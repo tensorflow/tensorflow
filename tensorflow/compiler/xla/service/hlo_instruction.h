@@ -69,7 +69,8 @@ class HloInstruction {
   };
 
   ~HloInstruction();
-  // Creates a parameter-retrieving instruction.
+  // Creates a parameter-retrieving instruction. The parameter name may not
+  // contain "::" (the separator used in fully qualified names).
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
                                                          const Shape& shape,
                                                          const string& name);
@@ -447,8 +448,10 @@ class HloInstruction {
     return parameter_name_;
   }
 
+  // Sets the parameter name. The name may not contain "::".
   void set_parameter_name(const string& str) {
     CHECK_EQ(HloOpcode::kParameter, opcode_);
+    DCHECK(str.find("::") == string::npos);
     parameter_name_ = str;
   }
 
@@ -525,9 +528,12 @@ class HloInstruction {
   // or "elementwise".
   string ToCategory() const;
 
-  // Returns the string concatenation of parent name and this instructions
-  // name. This name is guaranteed to be unique among all instructions in the
-  // HloModule.
+  // Returns the string concatenation of:
+  // - Parent name
+  // - If this is a fused instruction: The fusion instruction's name
+  // - This instruction's name
+  // The components are separated using "::". The fully qualified name is
+  // guaranteed to be unique among all instructions in the HloModule.
   string FullyQualifiedName() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
@@ -737,7 +743,8 @@ class HloInstruction {
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
-  // the instruction to form the name of the cloned instruction.
+  // the instruction to form the name of the cloned instruction; it may not
+  // contain "::".
   std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone");
 
   // Clones the HLO instruction as above but with new shape and operands.
@@ -795,9 +802,9 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
-  // Returns the opcode string for this instruction. Compared with
-  // HloOpcodeString method, this wrapper dumps additional information
-  // such as fusion kind.
+  // Returns the opcode string for this instruction. This is the result from
+  // HloOpcodeString plus, for fusion nodes, the fusion kind, separated by a
+  // ':'.
   string ExtendedOpcodeStr() const;
 
   // Returns a string identifier for this instruction. If no string identifier
@@ -806,7 +813,8 @@ class HloInstruction {
   const string& name() const { return name_; }
 
   // Use the given NameUniquer to select a unique name for the instruction based
-  // on the instruction's existing name.
+  // on the instruction's existing name. The NameUniquer may not introduce the
+  // substring "::" into the name.
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Sets the debug metadata for this instruction.

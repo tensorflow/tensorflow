@@ -87,7 +87,7 @@ class ComputationBuilder {
   }
 
   // Enqueues a "retrieve parameter value" instruction for a parameter that was
-  // passed to the computation.
+  // passed to the computation. The parameter name may not contain "::".
   ComputationDataHandle Parameter(int64 parameter_number, const Shape& shape,
                                   const string& name);
 
