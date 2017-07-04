@@ -42,7 +42,7 @@ def main(unused_argv):
   # Build 2 layer fully connected DNN with 10, 10 units respectively.
   feature_columns = [
       tf.feature_column.numeric_column('x', shape=np.array(x_train).shape[1:])]
-  regressor = tf.estimator.DNNRegressor(
+  regressor = tf.contrib.learn.DNNRegressor(
       feature_columns=feature_columns, hidden_units=[10, 10])
 
   # Train.
