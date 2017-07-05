@@ -13,6 +13,7 @@ load(
     "cc_header_only_library",
     "if_not_windows",
     "tf_copts",
+    "tf_cc_test",
 )
 
 # To be exported to tensorflow/core:mobile_srcs.
@@ -61,7 +62,7 @@ cc_library(
     deps = ["//tensorflow/core:lib"],
 )
 
-cc_test(
+tf_cc_test(
     name = "tensor_bundle_test",
     size = "small",
     srcs = ["tensor_bundle_test.cc"],
