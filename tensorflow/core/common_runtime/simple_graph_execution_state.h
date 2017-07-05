@@ -186,6 +186,9 @@ class SimpleGraphExecutionState {
   void SaveStatefulNodes(Graph* graph);
   void RestoreStatefulNodes(Graph* graph);
 
+  Status OptimizeGraph(const BuildGraphOptions& options,
+                       std::unique_ptr<Graph>* optimized_graph);
+
   GraphDef original_graph_def_;            // Immutable after ctor.
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned

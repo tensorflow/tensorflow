@@ -1241,16 +1241,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         [self._curr_file_path, "-b", "3"],
         screen_info={"cols": 80})
 
-    self.assertIn("Omitted 2 source lines", out.lines[0])
-    self.assertTrue(out.lines[0].endswith("+5"))
-    expand_lines_command = out.font_attr_segs[0][-1][2].content
-    self.assertStartsWith(expand_lines_command,
-                          "ps %s " % self._curr_file_path)
-    self.assertIn("-b 1", expand_lines_command)
-
-    self.assertIsNone(self._findSourceLine(out, 1))
-    self.assertIsNone(self._findSourceLine(out, 2))
-    self.assertIsNotNone(self._findSourceLine(out, 3))
+    self.assertEqual(
+        2, out.annotations[debugger_cli_common.INIT_SCROLL_POS_KEY])
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
