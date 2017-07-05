@@ -1279,7 +1279,18 @@ cc_library(
                 "platform/**/stream_executor.h",
             ],
         ),
-    }),
+    }) + tf_additional_lib_srcs(
+        exclude = [
+            "**/*test*",
+            "platform/**/cuda.h",
+            "platform/**/cuda_libdevice_path.cc",
+            "platform/**/stream_executor.h",
+            "platform/**/env_time.cc",
+        ] +
+        # Protobuf deps already included through the ":lib_proto_parsing"
+        # dependency.
+        tf_additional_proto_srcs(),
+    ),
     hdrs = tf_additional_lib_hdrs() + [
         "lib/core/blocking_counter.h",
         "lib/core/refcount.h",
@@ -1540,18 +1551,7 @@ tf_cuda_library(
             "util/memmapped_file_system_writer.h",
             "util/memmapped_file_system_writer.cc",
         ],
-    }) + proto_text_hdrs_and_srcs.srcs + tf_additional_lib_srcs(
-        exclude = [
-            "**/*test*",
-            "platform/**/cuda.h",
-            "platform/**/cuda_libdevice_path.cc",
-            "platform/**/stream_executor.h",
-            "platform/**/env_time.cc",
-        ] +
-        # Protobuf deps already included through the ":lib_proto_parsing"
-        # dependency of ":lib_internal".
-        tf_additional_proto_srcs(),
-    ),
+    }) + proto_text_hdrs_and_srcs.srcs,
     hdrs = [
         "framework/op_segment.h",
         "framework/rendezvous.h",  # only needed for tests
