@@ -109,7 +109,7 @@ class NestTest(test.TestCase):
     # Check also that the OrderedDict was created, with the correct key order.
     unflattened_ordered_dict = unflattened[2]["c"][1]
     self.assertIsInstance(unflattened_ordered_dict, collections.OrderedDict)
-    self.assertEqual(unflattened_ordered_dict.keys(), ["b", "a"])
+    self.assertEqual(list(unflattened_ordered_dict.keys()), ["b", "a"])
 
   def testFlatten_numpyIsNotFlattened(self):
     structure = np.array([1, 2, 3])
