@@ -266,10 +266,7 @@ cc_library(
 
 cc_binary(
     name = "framework/test_file_system.so",
-    srcs = [
-        "framework/test_file_system.cc",
-        "//tensorflow/core:libframework.so",
-    ],
+    srcs = ["framework/test_file_system.cc"],
     copts = if_not_windows(["-Wno-sign-compare"]),
     linkopts = select({
         "//conditions:default": [
