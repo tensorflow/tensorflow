@@ -480,7 +480,7 @@ def _convert_model_fn_to_train_step(model_fn, dequeue_fn, mode, run_config,
 
     # TODO(xiejw): how to do we support hook and savers in the original
     # model_fn. Realistically, the original
-    # model_fn will be excuted on TPU chips in a replica way. The hooks
+    # model_fn will be executed on TPU chips in a replica way. The hooks
     # returned by the model_fn cannot be supported at all. If we have to,
     # the graph construction part in the model_fn should be separated from the
     # control part (such as hooks and savers). By that the graph construction

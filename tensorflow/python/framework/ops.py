@@ -3873,6 +3873,9 @@ class _DefaultStack(threading.local):
   def reset(self):
     self.stack = []
 
+  def is_cleared(self):
+    return self.stack == []
+
   @property
   def enforce_nesting(self):
     return self._enforce_nesting
@@ -4078,7 +4081,13 @@ def reset_default_graph():
   a `tf.Session` or `tf.InteractiveSession` is active will result in undefined
   behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
   after calling this function will result in undefined behavior.
+  Raises:
+    AssertionError: If this function is called within a nested graph.
   """
+  if not _default_graph_stack.is_cleared():
+    raise AssertionError("Do not use tf.reset_default_graph() to clear "
+                         "nested graphs. If you need a cleared graph, "
+                         "exit the nesting and create a new graph.")
   _default_graph_stack.reset()
 
 

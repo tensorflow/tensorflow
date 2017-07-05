@@ -73,7 +73,7 @@ def main():
   bc_out = filename + '.sycl'
 
   # strip asan for the device
-  computecpp_device_compiler_flags = ['-sycl-compress-name', '-Wno-unused-variable',
+  computecpp_device_compiler_flags = ['-sycl-compress-name', '-Wno-unused-variable', '-Wno-c++11-narrowing',
                                       '-I', COMPUTECPP_INCLUDE, '-isystem', COMPUTECPP_INCLUDE,
                                       '-std=c++11', '-sycl', '-emit-llvm', '-no-serial-memop',
                                       '-Xclang', '-cl-denorms-are-zero', '-Xclang', '-cl-fp32-correctly-rounded-divide-sqrt']

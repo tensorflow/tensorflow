@@ -86,23 +86,35 @@ void HloToIrBindings::EmitBasePointersForHlos(
       continue;
     }
 
-    // A non-IO HLO with a buffer is bound to
-    // (1) an alloca if it is thread-local, or
-    // (2) an internal pointer in temp_buffer_base according to its offset.
-    const BufferAllocation::Slice slice =
-        buffer_assignment_->GetUniqueTopLevelSlice(non_io_hlo)
-            .ConsumeValueOrDie();
-    if (slice.allocation()->is_thread_local()) {
-      llvm::Type* pointee_type =
-          llvm_ir::ShapeToIrType(non_io_hlo->shape(), ir_builder_);
-      BindHloToIrValue(*non_io_hlo, ir_builder_->CreateAlloca(pointee_type));
-    } else {
-      const int64 offset = slice.offset();
-      CHECK_NE(nullptr, temp_buffer_base_);
-      BindHloToIrValue(*non_io_hlo,
-                       ir_builder_->CreateInBoundsGEP(
-                           temp_buffer_base_, ir_builder_->getInt64(offset)));
-    }
+    ShapeUtil::ForEachSubshape(
+        non_io_hlo->shape(),
+        [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+          // A non-IO HLO with a buffer is bound to
+          // (1) an alloca if it is thread-local, or
+          // (2) an internal pointer in temp_buffer_base according to its
+          // offset.
+          auto slice_result =
+              buffer_assignment_->GetUniqueSlice(non_io_hlo, index);
+          if (!slice_result.ok()) {
+            return;
+          }
+          const BufferAllocation::Slice slice =
+              slice_result.ConsumeValueOrDie();
+          if (slice.allocation()->is_thread_local()) {
+            llvm::Type* pointee_type =
+                llvm_ir::ShapeToIrType(non_io_hlo->shape(), ir_builder_);
+            BindHloToIrValue(*non_io_hlo,
+                             ir_builder_->CreateAlloca(pointee_type), index);
+          } else {
+            const int64 offset = slice.offset();
+            CHECK_NE(nullptr, temp_buffer_base_);
+            BindHloToIrValue(
+                *non_io_hlo,
+                ir_builder_->CreateInBoundsGEP(temp_buffer_base_,
+                                               ir_builder_->getInt64(offset)),
+                index);
+          }
+        });
   }
 }
 
@@ -112,7 +124,7 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
   if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
     return llvm_ir::EmitGetTupleElement(
         gte->shape(), gte->tuple_index(), /*alignment=*/1,
-        GetTypedIrValue(*gte->operand(0), base_ptr), ir_builder_);
+        GetTypedIrValue(*gte->operand(0), {}, base_ptr), ir_builder_);
   }
   return llvm_ir::EmitGetTupleElement(
       gte->shape(), gte->tuple_index(), /*alignment=*/1,
@@ -120,8 +132,10 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
 }
 
 llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
+                                              const ShapeIndex& shape_index,
                                               llvm::Value* ir_value) {
-  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(hlo.shape(), ir_builder_);
+  llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
+      ShapeUtil::GetSubshape(hlo.shape(), shape_index), ir_builder_);
   llvm::Type* dest_type = pointee_type->getPointerTo();
 
   llvm::Value* typed_ir_value;
@@ -139,13 +153,24 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
 }
 
 void HloToIrBindings::BindHloToIrValue(const HloInstruction& hlo,
-                                       llvm::Value* ir_value) {
+                                       llvm::Value* ir_value,
+                                       const ShapeIndex& shape_index) {
   VLOG(2) << "Binding " << hlo.ToString();
-  InsertOrDie(&base_ptrs_, &hlo, GetTypedIrValue(hlo, ir_value));
+
+  const Shape& hlo_shape = hlo.shape();
+  llvm::Value* typed_ir_value = GetTypedIrValue(hlo, shape_index, ir_value);
+
+  if (!BoundToIrValue(hlo)) {
+    // Set the root of ShapeTree first before assigning the element ir value.
+    InsertOrDie(&base_ptrs_, &hlo, ShapeTree<llvm::Value*>(hlo_shape, nullptr));
+  }
+  *(base_ptrs_[&hlo].mutable_element(shape_index)) = typed_ir_value;
 }
 
-llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo) {
-  llvm_ir::IrArray ir_array(GetBasePointer(hlo), hlo.shape());
+llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
+                                             const ShapeIndex& shape_index) {
+  llvm_ir::IrArray ir_array(GetBasePointer(hlo, shape_index),
+                            ShapeUtil::GetSubshape(hlo.shape(), shape_index));
   alias_analysis_.AddAliasingInformationToIrArray(hlo, &ir_array);
   return ir_array;
 }
@@ -154,7 +179,7 @@ void HloToIrBindings::UnbindAllLocalIrValues() {
   std::vector<const HloInstruction*> hlos_to_unbind;
   for (auto& key_value : base_ptrs_) {
     if (!llvm::isa<llvm::GlobalVariable>(
-            key_value.second->stripPointerCasts())) {
+            (key_value.second.element({}))->stripPointerCasts())) {
       hlos_to_unbind.push_back(key_value.first);
     }
   }

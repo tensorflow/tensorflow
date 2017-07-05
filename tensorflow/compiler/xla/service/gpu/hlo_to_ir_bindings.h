@@ -48,7 +48,8 @@ class HloToIrBindings {
       tensorflow::gtl::ArraySlice<const HloInstruction*> non_io_hlos);
 
   // Rebinds the given HLO to the LLVM IR value that represent its address.
-  void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value);
+  void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value,
+                        const ShapeIndex& shape_index = {});
 
   // Unbinds all IR values that's defined in an LLVM function, e.g., function
   // arguments and stack variables. Global variables will be kept in bindings_.
@@ -64,15 +65,18 @@ class HloToIrBindings {
 
   llvm::Value* GetTempBufferBase() const { return temp_buffer_base_; }
 
-  // A helper method that returns the base pointer of the IrArray for "inst".
-  llvm::Value* GetBasePointer(const HloInstruction& hlo) const {
+  // A helper method that returns the base pointer of the IrArray containing the
+  // output of "inst".at the given ShapeIndex.
+  llvm::Value* GetBasePointer(const HloInstruction& hlo,
+                              const ShapeIndex& shape_index = {}) const {
     auto it = base_ptrs_.find(&hlo);
     CHECK(it != base_ptrs_.end());
-    return it->second;
+    return it->second.element(shape_index);
   }
 
   // Return the underlying IrArray of the output of the given instruction.
-  llvm_ir::IrArray GetIrArray(const HloInstruction& hlo);
+  llvm_ir::IrArray GetIrArray(const HloInstruction& hlo,
+                              const ShapeIndex& shape_index = {});
 
  private:
   // Emits IR to resolve (possibly) recursive GetTupleElement instructions.
@@ -81,6 +85,7 @@ class HloToIrBindings {
 
   // Returns an llvm typed ir representation of 'ir_value' based on 'hlo' shape.
   llvm::Value* GetTypedIrValue(const HloInstruction& hlo,
+                               const ShapeIndex& shape_index,
                                llvm::Value* ir_value);
 
   const BufferAssignment* buffer_assignment_;
@@ -90,7 +95,10 @@ class HloToIrBindings {
   llvm::IRBuilder<>* ir_builder_;
 
   // Stores the underlying llvm::IrArray for each HloInstruction.
-  std::unordered_map<const HloInstruction*, llvm::Value*> base_ptrs_;
+  // For an instruction that generates multiple outputs, the root will be a
+  // tuple shape. The IrArray for each element output is stored in the subnode
+  // in the ShapeTree.
+  std::unordered_map<const HloInstruction*, ShapeTree<llvm::Value*>> base_ptrs_;
 
   // The address of the memory block that contains all temporary buffers.
   llvm::Value* temp_buffer_base_;
