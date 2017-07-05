@@ -209,6 +209,18 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
         sequence.add(prog);
         return Status::OK();
       }
+      case HloOpcode::kMaximum:
+      {
+        poplar::program::Program prog;
+        TF_ASSIGN_OR_RETURN(prog,
+                            CreateReluOp(*graph_,
+                                         resources_,
+                                         inst,
+                                         GetOutputShape(inst),
+                                         tensor_map));
+        sequence.add(prog);
+        return Status::OK();
+      }
       default:
         return Unimplemented(inst);
     }
