@@ -298,8 +298,8 @@ The completed trainable linear regression model is shown here:
 import tensorflow as tf
 
 # Model parameters
-W = tf.Variable([.3])
-b = tf.Variable([-.3])
+W = tf.Variable([.3], dtype=tf.float32)
+b = tf.Variable([-.3], dtype=tf.float32)
 # Model input and output
 x = tf.placeholder(tf.float32)
 linear_model = W * x + b
