@@ -91,7 +91,7 @@ void HandleStridedSliceCase(OpKernelContext* context,
     const TensorShape final_shape = result->shape();
     CHECK(result->CopyFrom(*result, processing_shape));
     const Tensor input = context->input(0);
-    functor::Slice<Device, Proxy>()(
+    functor::Slice<Device, T>()(
         context->eigen_device<Device>(), result, input, begin, sizes);
     CHECK(result->CopyFrom(*result, final_shape));
   } else {
