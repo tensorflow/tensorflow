@@ -20,12 +20,9 @@ namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Atanh", functor::atanh, float, double,
           complex64, complex128);
 
-// {lukeiwanski}: Enable that once Eigen has implementation
-#if 0
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Atanh", functor::atanh, float, double);
 #endif // TENSORFLOW_USE_SYC
-#endif
 
 #if GOOGLE_CUDA
 REGISTER2(UnaryOp, GPU, "Atanh", functor::atanh, float, double);

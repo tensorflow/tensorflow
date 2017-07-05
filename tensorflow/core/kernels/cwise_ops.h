@@ -47,7 +47,7 @@ template <typename T>
 struct scalar_asinh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
-    return std::asinh(a);
+    return numext::asinh(a);
   }
 };
 template <typename T>
@@ -59,7 +59,7 @@ template <typename T>
 struct scalar_acosh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
-    return std::acosh(a);
+    return numext::acosh(a);
   }
 };
 template <typename T>
@@ -71,7 +71,7 @@ template <typename T>
 struct scalar_atanh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
-    return std::atanh(a);
+    return numext::atanh(a);
   }
 };
 template <typename T>
