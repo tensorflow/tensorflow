@@ -339,9 +339,9 @@ def _EluGradGrad(op, grad):
 def _SeluGradGrad(op, grad):
   x = op.inputs[1]
   scale_alpha = 1.7580993408473768599402175208123
-  return (gen_nn_ops._selu_grad(grad, op.outputs[0]),
+  return (gen_nn_ops._elu_grad(grad, op.outputs[0]),
           array_ops.where(
-              x < 0., gen_nn_ops._selu_grad(grad, op.outputs[0] + scale_alpha),
+              x < 0., gen_nn_ops._elu_grad(grad, op.outputs[0] + scale_alpha),
               array_ops.zeros(shape=array_ops.shape(x), dtype=x.dtype)))
 
 
