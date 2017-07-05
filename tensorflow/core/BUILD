@@ -1717,7 +1717,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/compiler:__subpackages__",
-        "//tensorflow/tools/tfprof:__subpackages__",
+        "//tensorflow/core/profiler:__subpackages__",
     ],
     deps = [":lib_internal"],
 )

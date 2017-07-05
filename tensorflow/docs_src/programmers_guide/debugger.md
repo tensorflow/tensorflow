@@ -587,7 +587,7 @@ python -m tensorflow.python.debug.cli.offline_analyzer \
        graph to record the values of intermediate tensors. These nodes
        slow down the graph execution. If you are interested in profiling your
        model, check out
-       [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tfprof)
+       [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler)
        and other profiling tools for TensorFlow.
 
 **Q**: _How do I link tfdbg against my `Session` in Bazel? Why do I see an

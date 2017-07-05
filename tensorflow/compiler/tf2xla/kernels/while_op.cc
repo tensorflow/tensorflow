@@ -63,7 +63,8 @@ Status MakeXlaCompilerArgumentsFromInputs(
       if (arg.initialized) {
         auto shape = ctx->builder()->GetShape(resource->value);
         TF_RETURN_IF_ERROR(shape.status());
-        arg.shape = XLAShapeToTensorShape(*shape.ValueOrDie());
+        TF_RETURN_IF_ERROR(
+            XLAShapeToTensorShape(*shape.ValueOrDie(), &arg.shape));
       } else {
         *has_uninitialized_vars = true;
       }

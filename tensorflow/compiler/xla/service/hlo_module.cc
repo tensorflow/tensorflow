@@ -37,19 +37,17 @@ HloModule::HloModule(const string& name,
                      const HloModuleConfig& config)
     : name_(name),
       config_(config),
-      entry_computation_(nullptr),
       has_entry_computation_handle_(true),
-      entry_computation_handle_(entry_computation_handle),
-      computation_name_uniquer_(/*separator=*/".") {}
+      entry_computation_handle_(entry_computation_handle) {}
 
-HloModule::HloModule(const string& name)
-    : name_(name),
-      entry_computation_(nullptr),
-      computation_name_uniquer_(/*separator=*/".") {}
+HloModule::HloModule(const string& name) : name_(name) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
   computation->UniquifyName(&computation_name_uniquer_);
+  for (auto& instruction : computation->instructions()) {
+    instruction->UniquifyName(&instruction_name_uniquer_);
+  }
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
   return computations_.back().get();
