@@ -71,6 +71,11 @@ void SYCLAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 
+size_t SYCLAllocator::RequestedSize(void* ptr) {
+  const auto& buffer = sycl_device_->get_sycl_buffer(ptr);
+  return buffer.get_size();
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_SYCL

@@ -39,6 +39,12 @@ class SYCLAllocator : public Allocator {
   void Synchronize() { sycl_device_->synchronize(); }
   bool Ok() { return sycl_device_->ok(); }
   void GetStats(AllocatorStats* stats) override;
+  // The SYCL buffers keep track of their size, so we already have tracking.
+  bool TracksAllocationSizes() override { return true; }
+  // Get the size of the corresponding SYCL buffer.
+  // Implementing this also provides an implementation of
+  // AllocatedSize(void* ptr) by default.
+  size_t RequestedSize(void* ptr) override;
   Eigen::SyclDevice* getSyclDevice() { return sycl_device_; }
  private:
   Eigen::SyclDevice *sycl_device_;  // owned
