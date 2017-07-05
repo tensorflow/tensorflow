@@ -255,6 +255,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
         SavedModel.
 
   Raises:
+    ValueError: When any of the input tensor keys is not valid.
     RuntimeError: An error when output file already exists and overwrite is not
     enabled.
   """
@@ -265,6 +266,15 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
   # uses tensor name.
   inputs_tensor_info = _get_inputs_tensor_info_from_meta_graph_def(
       meta_graph_def, signature_def_key)
+
+  # Check if input tensor keys are valid.
+  for input_key_name in input_tensor_key_feed_dict.keys():
+    if input_key_name not in inputs_tensor_info.keys():
+      raise ValueError(
+          '"%s" is not a valid input key. Please choose from %s, or use '
+          '--show option.' %
+          (input_key_name, '"' + '", "'.join(inputs_tensor_info.keys()) + '"'))
+
   inputs_feed_dict = {
       inputs_tensor_info[key].name: tensor
       for key, tensor in input_tensor_key_feed_dict.items()
