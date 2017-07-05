@@ -24,6 +24,8 @@ import threading
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
@@ -139,6 +141,12 @@ class TestDebugWrapperSessionBadAction(framework.BaseDebugWrapperSession):
 
 class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
+  def _no_rewrite_session_config(self):
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    return config_pb2.ConfigProto(graph_options=graph_options)
+
   def setUp(self):
     self._observer = {
         "sess_init_count": 0,
@@ -153,7 +161,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     self._dump_root = tempfile.mkdtemp()
 
-    self._sess = session.Session()
+    self._sess = session.Session(config=self._no_rewrite_session_config())
 
     self._a_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
     self._b_init_val = np.array([[2.0], [-1.0]])
