@@ -2110,6 +2110,17 @@ cc_test(
 )
 
 tf_cc_test(
+    name = "framework_op_gen_lib_test",
+    size = "small",
+    srcs = ["framework/op_gen_lib_test.cc"],
+    deps = [
+        ":op_gen_lib",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "quantize_training_test",
     srcs = ["graph/quantize_training_test.cc"],
     deps = [
