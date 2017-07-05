@@ -1623,7 +1623,7 @@ HloInstructionProto HloInstruction::ToProto() const {
     case HloOpcode::kFusion: {
       HloComputationProto* proto_fused_computation =
           proto.mutable_fused_instructions_computation();
-      proto_fused_computation->set_name(FullyQualifiedName());
+      proto_fused_computation->set_name(name());
 
       // Fill in fused instructions. Note that fused_instructions() returns in
       // reverse post-order (i.e. root first), so we reverse to get post-order.
@@ -1697,14 +1697,6 @@ string HloInstruction::ToCategory() const {
   }
 
   return HloOpcodeString(opcode());
-}
-
-string HloInstruction::FullyQualifiedName() const {
-  if (IsFused()) {
-    return StrCat(fusion_instruction()->parent()->name(),
-                  "::", fusion_instruction()->name(), "::", name_);
-  }
-  return StrCat(parent_->name(), "::", name_);
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }

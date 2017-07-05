@@ -528,14 +528,6 @@ class HloInstruction {
   // or "elementwise".
   string ToCategory() const;
 
-  // Returns the string concatenation of:
-  // - Parent name
-  // - If this is a fused instruction: The fusion instruction's name
-  // - This instruction's name
-  // The components are separated using "::". The fully qualified name is
-  // guaranteed to be unique among all instructions in the HloModule.
-  string FullyQualifiedName() const;
-
   // Returns a logging instruction, if the output of this instruction is logged.
   //
   // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace
