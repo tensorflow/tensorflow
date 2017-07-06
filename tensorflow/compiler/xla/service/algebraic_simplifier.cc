@@ -1055,6 +1055,9 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
     TryToSinkReshapeOrBroadcastAfterOpWithUniqueNonScalarOperand(
         HloInstruction* reshape_or_broadcast) {
   bool changed = false;
+  if (ShapeUtil::IsScalar(reshape_or_broadcast->shape())) {
+    return false;
+  }
   HloInstruction* operand = reshape_or_broadcast->mutable_operand(0);
   for (HloInstruction* user : reshape_or_broadcast->users()) {
     if (user->user_count() == 0 && user != computation_->root_instruction()) {
