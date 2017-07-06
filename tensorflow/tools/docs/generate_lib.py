@@ -421,7 +421,7 @@ class DocGenerator(object):
 
   def __init__(self):
     if sys.version_info >= (3, 0):
-      print('Warning: Doc generation is not supported from python3.')
+      sys.exit('Doc generation is not supported from python3.')
     self.argument_parser = argparse.ArgumentParser()
     self._py_modules = None
     self._private_map = _get_default_private_map()
