@@ -513,7 +513,7 @@ The resulting update to ref would look like this:
 
     [1, 11, 3, 10, 9, 6, 7, 12]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -570,7 +570,7 @@ The resulting update to ref would look like this:
 
     [1, 13, 3, 14, 14, 6, 7, 20]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -627,7 +627,7 @@ The resulting update to ref would look like this:
 
     [1, -9, 3, -6, -4, 6, 7, -4]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -687,7 +687,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 
 //     [1, 22, 3, 40, 45, 6, 7, 96]
 
-// See [tf.scatter_nd](#scatter_nd) for more details about how to make updates
+// See @{tf.scatter_nd} for more details about how to make updates
 // to slices.
 
 // ref: A mutable Tensor. Should be from a Variable node.
@@ -743,7 +743,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 
 //     [10, 5, 30, 13, 25, 60, 70, 16]
 
-// See [tf.scatter_nd](#scatter_nd) for more details about how to make updates
+// See @{tf.scatter_nd} for more details about how to make updates
 // to slices.
 
 // ref: A mutable Tensor. Should be from a Variable node.
