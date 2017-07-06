@@ -1,8 +1,9 @@
 """Build rules for XLA testing."""
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
+load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
 
-all_backends = ["cpu", "cpu_parallel", "gpu"]
+all_backends = ["cpu", "cpu_parallel", "gpu"] + plugins.keys()
 
 def filter_backends(backends):
   """Removes "gpu" from a backend list if CUDA is not enabled.
@@ -121,6 +122,11 @@ def xla_test(name,
       backend_deps = ["//tensorflow/compiler/xla/service:gpu_plugin"]
       backend_deps += ["//tensorflow/compiler/xla/tests:test_macros_gpu"]
       this_backend_tags += ["requires-gpu-sm35"]
+    elif backend in plugins:
+      backend_deps = plugins[backend]["deps"]
+      this_backend_copts += plugins[backend]["copts"]
+      this_backend_tags += plugins[backend]["tags"]
+      this_backend_args += plugins[backend]["args"]
     else:
       fail("Unknown backend %s" % backend)
 
