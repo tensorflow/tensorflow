@@ -495,6 +495,15 @@ class Estimator(object):
       return result[0]
     return result
 
+  def _get_features_and_labels_from_input_fn(self, input_fn, mode):
+    result = self._call_input_fn(input_fn, mode)
+    if isinstance(result, (list, tuple)):
+      if len(result) != 2:
+        raise ValueError(
+            'input_fn should return (feautures, labels) as a len 2 tuple.')
+      return result
+    return result, None
+
   def _extract_batch_length(self, preds_evaluated):
     """Extracts batch length of predictions."""
     batch_length = None
@@ -591,14 +600,19 @@ class Estimator(object):
     """
     model_fn_args = _fn_args(self._model_fn)
     kwargs = {}
+    if 'labels' in model_fn_args:
+      kwargs['labels'] = labels
+    else:
+      if labels is not None:
+        raise ValueError(
+            'model_fn does not take labels, but input_fn returns labels.')
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
     if 'params' in model_fn_args:
       kwargs['params'] = self.params
     if 'config' in model_fn_args:
       kwargs['config'] = self.config
-    model_fn_results = self._model_fn(
-        features=features, labels=labels, **kwargs)
+    model_fn_results = self._model_fn(features=features, **kwargs)
 
     if not isinstance(model_fn_results, model_fn_lib.EstimatorSpec):
       raise ValueError('model_fn should return an EstimatorSpec.')
@@ -610,7 +624,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._call_input_fn(
+      features, labels = self._get_features_and_labels_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.TRAIN)
       estimator_spec = self._call_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN)
@@ -693,7 +707,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._call_input_fn(
+      features, labels = self._get_features_and_labels_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.EVAL)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
@@ -808,8 +822,6 @@ def _verify_model_fn_args(model_fn, params):
   args = set(_fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
-  if 'labels' not in args:
-    raise ValueError('model_fn (%s) must include labels argument.' % model_fn)
   if params is not None and 'params' not in args:
     raise ValueError('model_fn (%s) does not include params argument, '
                      'but params (%s) is passed to Estimator.' % (model_fn,
