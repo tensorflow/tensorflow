@@ -25,6 +25,10 @@ function is_windows() {
   [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]
 }
 
+function is_ppc64le() {
+  [[ "${uname -m}" == "ppc64le" ]]
+}
+
 function sed_in_place() {
   sed -e $1 $2 > "$2.bak"
   mv "$2.bak" $2
@@ -294,7 +298,12 @@ fi # TF_NEED_MKL
 
 ## Set up architecture-dependent optimization flags.
 if [ -z "$CC_OPT_FLAGS" ]; then
-  default_cc_opt_flags="-march=native"
+  if [ is_ppc64le ]; then
+    # gcc on ppc64le does not support -march, use mcpu instead
+    default_cc_opt_flags="-mcpu=native"
+  else
+    default_cc_opt_flags="-march=native"
+  fi
   read -p "Please specify optimization flags to use during compilation when bazel option "\
 "\"--config=opt\" is specified [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
   if [ -z "$CC_OPT_FLAGS" ]; then
