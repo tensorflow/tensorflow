@@ -30,6 +30,7 @@ from tensorflow.contrib.tpu.python.tpu import training_loop
 
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.estimator import util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -303,7 +304,7 @@ class TpuEstimator(estimator_lib.Estimator):
     if not self._use_tpu or mode != model_fn_lib.ModeKeys.TRAIN:
       return super(TpuEstimator, self)._call_input_fn(input_fn, mode)
 
-    input_fn_args = estimator_lib._fn_args(input_fn)  # pylint: disable=protected-access
+    input_fn_args = util.fn_args(input_fn)
     config = self.config  # a deep copy.
     kwargs = {}
     if 'params' in input_fn_args:
@@ -357,7 +358,7 @@ def _verify_estimator_spec(estimator_spec):
 def _call_model_fn(model_fn, features, labels, mode, config, params,
                    require_params=False):
   """Calls the model_fn with required parameters."""
-  model_fn_args = estimator_lib._fn_args(model_fn)  # pylint: disable=protected-access
+  model_fn_args = util.fn_args(model_fn)
   kwargs = {}
   if 'mode' in model_fn_args:
     kwargs['mode'] = mode

@@ -31,6 +31,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export.export import build_all_signature_defs
 from tensorflow.python.estimator.export.export import get_timestamped_export_dir
 from tensorflow.python.framework import ops
@@ -47,7 +48,6 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
@@ -575,7 +575,7 @@ class Estimator(object):
       ValueError: if input_fn takes invalid arguments.
     """
     del mode  # unused
-    input_fn_args = _fn_args(input_fn)
+    input_fn_args = util.fn_args(input_fn)
     kwargs = {}
     if 'params' in input_fn_args:
       kwargs['params'] = self.params
@@ -598,7 +598,7 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = _fn_args(self._model_fn)
+    model_fn_args = util.fn_args(self._model_fn)
     kwargs = {}
     if 'labels' in model_fn_args:
       kwargs['labels'] = labels
@@ -791,35 +791,9 @@ def _get_replica_device_setter(config):
     return None
 
 
-def _fn_args(fn):
-  """Get argument names for function-like object.
-
-  Args:
-    fn: Function, or function-like object (e.g., result of `functools.partial`).
-
-  Returns:
-    `tuple` of string argument names.
-
-  Raises:
-    ValueError: if partial function has positionally bound arguments
-  """
-  _, fn = tf_decorator.unwrap(fn)
-  if hasattr(fn, '__call__') and tf_inspect.ismethod(fn.__call__):
-    # Handle callables.
-    return tuple(tf_inspect.getargspec(fn.__call__).args)
-  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
-    # Handle functools.partial and similar objects.
-    return tuple([
-        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
-        if arg not in set(fn.keywords.keys())
-    ])
-  # Handle function.
-  return tuple(tf_inspect.getargspec(fn).args)
-
-
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  args = set(_fn_args(model_fn))
+  args = set(util.fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
   if params is not None and 'params' not in args:
