@@ -24,9 +24,7 @@ xla_proto_library(
 xla_proto_library(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
-    deps = [
-        "//tensorflow/compiler/xla:xla_data_proto",
-    ],
+    deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -166,15 +164,9 @@ cc_library(
 
 cc_library(
     name = "hlo_reachability",
-    srcs = [
-        "hlo_reachability.cc",
-    ],
-    hdrs = [
-        "hlo_reachability.h",
-    ],
+    srcs = ["hlo_reachability.cc"],
+    hdrs = ["hlo_reachability.h"],
     deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
@@ -550,7 +542,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/core:lib",
-        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
     ],
@@ -1136,12 +1127,8 @@ cc_test(
 
 cc_library(
     name = "hlo_cost_analysis",
-    srcs = [
-        "hlo_cost_analysis.cc",
-    ],
-    hdrs = [
-        "hlo_cost_analysis.h",
-    ],
+    srcs = ["hlo_cost_analysis.cc"],
+    hdrs = ["hlo_cost_analysis.h"],
     deps = [
         ":hlo",
         "//tensorflow/compiler/xla:shape_util",
@@ -1243,12 +1230,8 @@ cc_test(
 
 cc_library(
     name = "logical_buffer",
-    srcs = [
-        "logical_buffer.cc",
-    ],
-    hdrs = [
-        "logical_buffer.h",
-    ],
+    srcs = ["logical_buffer.cc"],
+    hdrs = ["logical_buffer.h"],
     deps = [
         ":hlo",
         ":hlo_proto",
@@ -1278,12 +1261,8 @@ cc_library(
 
 cc_library(
     name = "hlo_dataflow_analysis",
-    srcs = [
-        "hlo_dataflow_analysis.cc",
-    ],
-    hdrs = [
-        "hlo_dataflow_analysis.h",
-    ],
+    srcs = ["hlo_dataflow_analysis.cc"],
+    hdrs = ["hlo_dataflow_analysis.h"],
     deps = [
         ":call_graph",
         ":hlo",
@@ -1379,12 +1358,8 @@ cc_test(
 
 cc_library(
     name = "tuple_points_to_analysis",
-    srcs = [
-        "tuple_points_to_analysis.cc",
-    ],
-    hdrs = [
-        "tuple_points_to_analysis.h",
-    ],
+    srcs = ["tuple_points_to_analysis.cc"],
+    hdrs = ["tuple_points_to_analysis.h"],
     deps = [
         ":hlo",
         ":logical_buffer",
@@ -1421,12 +1396,8 @@ cc_test(
 
 cc_library(
     name = "compilation_cache",
-    srcs = [
-        "compilation_cache.cc",
-    ],
-    hdrs = [
-        "compilation_cache.h",
-    ],
+    srcs = ["compilation_cache.cc"],
+    hdrs = ["compilation_cache.h"],
     deps = [
         ":executable",
         ":hlo_module_config",
