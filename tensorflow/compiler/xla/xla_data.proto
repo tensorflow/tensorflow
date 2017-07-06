@@ -552,7 +552,6 @@ message TransposeRequest {
 message ParameterRequest {
   Shape shape = 2;
   int64 parameter = 3;
-  // Parameter name. May not contain "::".
   string name = 4;
 }
 

@@ -51,7 +51,6 @@ using ::tensorflow::strings::StrCat;
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
     int64 parameter_number, const Shape& shape, const string& name) {
-  DCHECK(name.find("::") == string::npos);
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kParameter, shape));
   instruction->parameter_number_ = parameter_number;
@@ -905,7 +904,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 HloInstruction::~HloInstruction() {}
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
-  DCHECK(suffix.find("::") == string::npos);
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
   if (suffix.empty()) {
@@ -2426,7 +2424,6 @@ HloModule* HloInstruction::GetModule() const {
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
-  DCHECK(name_.find("::") == string::npos);
 }
 
 void HloInstruction::set_outer_dimension_partitions(

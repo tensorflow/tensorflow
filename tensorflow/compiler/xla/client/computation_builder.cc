@@ -192,11 +192,6 @@ ComputationDataHandle ComputationBuilder::Parameter(int64 parameter_number,
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
-  if (name.find("::") != string::npos) {
-    NoteError(InvalidArgument("Parameter name (\"%s\") may not contain \"::\"",
-                              name.c_str()));
-    return ComputationDataHandle();
-  }
 
   ParameterRequest request;
   *request.mutable_shape() = shape;

@@ -69,8 +69,7 @@ class HloInstruction {
   };
 
   ~HloInstruction();
-  // Creates a parameter-retrieving instruction. The parameter name may not
-  // contain "::" (the separator used in fully qualified names).
+  // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
                                                          const Shape& shape,
                                                          const string& name);
@@ -448,10 +447,8 @@ class HloInstruction {
     return parameter_name_;
   }
 
-  // Sets the parameter name. The name may not contain "::".
   void set_parameter_name(const string& str) {
     CHECK_EQ(HloOpcode::kParameter, opcode_);
-    DCHECK(str.find("::") == string::npos);
     parameter_name_ = str;
   }
 
@@ -735,8 +732,7 @@ class HloInstruction {
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
-  // the instruction to form the name of the cloned instruction; it may not
-  // contain "::".
+  // the instruction to form the name of the cloned instruction.
   std::unique_ptr<HloInstruction> Clone(const string& suffix = "clone");
 
   // Clones the HLO instruction as above but with new shape and operands.
@@ -805,8 +801,7 @@ class HloInstruction {
   const string& name() const { return name_; }
 
   // Use the given NameUniquer to select a unique name for the instruction based
-  // on the instruction's existing name. The NameUniquer may not introduce the
-  // substring "::" into the name.
+  // on the instruction's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Sets the debug metadata for this instruction.
