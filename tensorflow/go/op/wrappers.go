@@ -1637,15 +1637,25 @@ func Identity(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
-// Gather values or slices from `params` according to `indices`.
+// Gather slices from `params` into a Tensor with shape specified by `indices`.
 //
-// `indices` is an integer tensor containing indices into `params`.  The last
-// dimension of `indices` can be at most the rank of `params`:
+// `indices` is an K-dimensional integer tensor, best thought of as a
+// (K-1)-dimensional tensor of indices into `params`, where each element defines a
+// slice of `params`:
+//
+//     output[i_0, ..., i_{K-2}] = params[indices[i0, ..., i_{K-2}]]
+//
+// Whereas in @{tf.gather} `indices` defines slices into the first
+// dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+// first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+//
+// The last dimension of `indices` can be at most the rank of
+// `params`:
 //
 //     indices.shape[-1] <= params.rank
 //
 // The last dimension of `indices` corresponds to elements
-// (if `indices.shape[-1] = params.rank`) or slices
+// (if `indices.shape[-1] == params.rank`) or slices
 // (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
 // of `params`.  The output tensor has shape
 //
@@ -2775,8 +2785,8 @@ func SpaceToDepth(scope *Scope, input tf.Output, block_size int64) (output tf.Ou
 //
 // Creates a new tensor by applying sparse `updates` to individual
 // values or slices within a zero tensor of the given `shape` according to
-// indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
-// operator which extracts values or slices from a given tensor.
+// indices.  This operator is the inverse of the @{tf.gather_nd} operator which
+// extracts values or slices from a given tensor.
 //
 // **WARNING**: The order in which updates are applied is nondeterministic, so the
 // output will be nondeterministic if `indices` contains duplicates.
@@ -17148,8 +17158,7 @@ func MatrixSolveLs(scope *Scope, matrix tf.Output, rhs tf.Output, l2_regularizer
 //
 //     [1, 13, 3, 14, 14, 6, 7, 20]
 //
-// See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
-// slices.
+// See @{tf.scatter_nd} for more details about how to make updates to slices.
 //
 // Arguments:
 //	input: A Tensor.
