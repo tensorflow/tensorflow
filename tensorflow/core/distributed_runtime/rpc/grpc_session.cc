@@ -190,12 +190,14 @@ Status GrpcSession::RunHelper(
     req->add_feed(it.first, it.second);
   }
 
-  // Build an index from fetch tensor name to offset.
+  // Build an index from fetch tensor name to first index in
+  // output_tensor_names.
   std::unordered_map<string, int> output_name_to_offset;
-  for (const string& output_name : output_tensor_names) {
-    req->add_fetch(output_name);
-    output_name_to_offset.insert(
-        std::make_pair(output_name, output_name_to_offset.size()));
+  for (int i = 0; i < output_tensor_names.size(); ++i) {
+    const string& name = output_tensor_names[i];
+    if (output_name_to_offset.insert(std::make_pair(name, i)).second) {
+      req->add_fetch(name);
+    }
   }
   for (const string& target : target_node_names) {
     req->add_target(target);
@@ -220,6 +222,17 @@ Status GrpcSession::RunHelper(
     Tensor output;
     TF_RETURN_IF_ERROR(resp->TensorValue(i, &output));
     (*outputs)[fetch_it->second] = output;
+  }
+  // In the unlikely event that output_tensor_names contains duplicates, fill in
+  // the duplicate values.
+  if (output_name_to_offset.size() != output_tensor_names.size()) {
+    for (int i = 0; i < output_tensor_names.size(); ++i) {
+      const string& name = output_tensor_names[i];
+      int offset = output_name_to_offset[name];
+      if (offset != i) {
+        (*outputs)[i] = (*outputs)[offset];
+      }
+    }
   }
 
   if (run_metadata) {

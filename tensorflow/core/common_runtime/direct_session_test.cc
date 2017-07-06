@@ -406,6 +406,34 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
 }
 
+TEST(DirectSessionTest, FetchMultipleTimes) {
+  Graph g(OpRegistry::Global());
+  Tensor seven_tensor(DT_INT32, TensorShape());
+  seven_tensor.flat<int32>()(0) = 7;
+  Node* seven_node = test::graph::Constant(&g, seven_tensor);
+
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  const std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+
+  auto seven = seven_node->name();
+  Status s = session->Run(inputs, {seven, seven}, {}, &outputs);
+  TF_ASSERT_OK(s);
+
+  EXPECT_EQ(2, outputs.size());
+  for (int i = 0; i < outputs.size(); ++i) {
+    const Tensor& t = outputs[i];
+    ASSERT_TRUE(t.IsInitialized()) << i;
+    EXPECT_EQ(7, t.flat<int32>()(0)) << i;
+  }
+}
+
 REGISTER_OP("Darth")
     .Input("x: float")
     .Output("y: float")
