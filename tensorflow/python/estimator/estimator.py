@@ -31,6 +31,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator import util
 from tensorflow.python.estimator.export.export import build_all_signature_defs
 from tensorflow.python.estimator.export.export import get_timestamped_export_dir
 from tensorflow.python.framework import ops
@@ -47,7 +48,6 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 
@@ -495,6 +495,15 @@ class Estimator(object):
       return result[0]
     return result
 
+  def _get_features_and_labels_from_input_fn(self, input_fn, mode):
+    result = self._call_input_fn(input_fn, mode)
+    if isinstance(result, (list, tuple)):
+      if len(result) != 2:
+        raise ValueError(
+            'input_fn should return (feautures, labels) as a len 2 tuple.')
+      return result
+    return result, None
+
   def _extract_batch_length(self, preds_evaluated):
     """Extracts batch length of predictions."""
     batch_length = None
@@ -566,7 +575,7 @@ class Estimator(object):
       ValueError: if input_fn takes invalid arguments.
     """
     del mode  # unused
-    input_fn_args = _fn_args(input_fn)
+    input_fn_args = util.fn_args(input_fn)
     kwargs = {}
     if 'params' in input_fn_args:
       kwargs['params'] = self.params
@@ -589,16 +598,21 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = _fn_args(self._model_fn)
+    model_fn_args = util.fn_args(self._model_fn)
     kwargs = {}
+    if 'labels' in model_fn_args:
+      kwargs['labels'] = labels
+    else:
+      if labels is not None:
+        raise ValueError(
+            'model_fn does not take labels, but input_fn returns labels.')
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
     if 'params' in model_fn_args:
       kwargs['params'] = self.params
     if 'config' in model_fn_args:
       kwargs['config'] = self.config
-    model_fn_results = self._model_fn(
-        features=features, labels=labels, **kwargs)
+    model_fn_results = self._model_fn(features=features, **kwargs)
 
     if not isinstance(model_fn_results, model_fn_lib.EstimatorSpec):
       raise ValueError('model_fn should return an EstimatorSpec.')
@@ -610,7 +624,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._call_input_fn(
+      features, labels = self._get_features_and_labels_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.TRAIN)
       estimator_spec = self._call_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN)
@@ -693,7 +707,7 @@ class Estimator(object):
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
-      features, labels = self._call_input_fn(
+      features, labels = self._get_features_and_labels_from_input_fn(
           input_fn, model_fn_lib.ModeKeys.EVAL)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
@@ -777,39 +791,11 @@ def _get_replica_device_setter(config):
     return None
 
 
-def _fn_args(fn):
-  """Get argument names for function-like object.
-
-  Args:
-    fn: Function, or function-like object (e.g., result of `functools.partial`).
-
-  Returns:
-    `tuple` of string argument names.
-
-  Raises:
-    ValueError: if partial function has positionally bound arguments
-  """
-  _, fn = tf_decorator.unwrap(fn)
-  if hasattr(fn, '__call__') and tf_inspect.ismethod(fn.__call__):
-    # Handle callables.
-    return tuple(tf_inspect.getargspec(fn.__call__).args)
-  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
-    # Handle functools.partial and similar objects.
-    return tuple([
-        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
-        if arg not in set(fn.keywords.keys())
-    ])
-  # Handle function.
-  return tuple(tf_inspect.getargspec(fn).args)
-
-
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  args = set(_fn_args(model_fn))
+  args = set(util.fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
-  if 'labels' not in args:
-    raise ValueError('model_fn (%s) must include labels argument.' % model_fn)
   if params is not None and 'params' not in args:
     raise ValueError('model_fn (%s) does not include params argument, '
                      'but params (%s) is passed to Estimator.' % (model_fn,

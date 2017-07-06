@@ -170,6 +170,10 @@ above
 [`label_image` script](https://www.tensorflow.org/code/tensorflow/examples/image_retraining/label_image.py)
 is a reasonable starting point.
 
+If you find the default Inception v3 model is too large or slow for your
+application, take a look at the [Other Model Architectures section](/tutorials/image_retraining#other_model_architectures)
+below for options to speed up and slim down your network.
+
 ## Training on Your Own Categories
 
 If you've managed to get the script working on the flower example images, you
@@ -328,3 +332,43 @@ errors in the input data set, such as mislabeled, low-quality, or ambiguous
 images. However, one should generally avoid point-fixing individual errors in
 the test set, since they are likely to merely reflect more general problems in
 the (much larger) training set.
+
+## Other Model Architectures
+
+By default the script uses a pretrained version of the Inception v3 model
+architecture. This is a good place to start because it provides high accuracy
+results, but if you intend to deploy your model on mobile devices or other 
+resource-constrained environments you may want to trade off a little accuracy
+for much smaller file sizes or faster speeds. To help with that, the
+[retrain.py script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/image_retraining/retrain.py)
+supports 32 different variations on the [Mobilenet architecture](https://research.googleblog.com/2017/06/mobilenets-open-source-models-for.html).
+
+These are a little less precise than Inception v3, but can result in far
+smaller file sizes (down to less than a megabyte) and can be many times faster
+to run. To train with one of these models, pass in the `--architecture` flag,
+for example:
+
+```
+python tensorflow/examples/image_retraining/retrain.py \
+    --image_dir ~/flower_photos --architecture mobilenet_0.25_128_quantized
+```
+
+This will create a 941KB model file in `/tmp/output_graph.pb`, with 25% of the
+parameters of the full Mobilenet, taking 128x128 sized input images, and with
+its weights quantized down to eight bits on disk. You can choose '1.0', '0.75',
+'0.50', or '0.25' to control the number of weight parameters, and so the file
+size (and to some extent the speed), '224', '192', '160', or '128' for the input
+image size, with smaller sizes giving faster speeds, and an optional
+'_quantized' at the end to indicate whether the file should contain 8-bit or
+32-bit float weights.
+
+The speed and size advantages come at a loss to accuracy of course, but for many
+purposes this isn't critical. They can also be somewhat offset with improved
+training data. For example, training with distortions allows me to get above 80%
+accuracy on the flower data set even with the 0.25/128/quantized graph above.
+
+If you're going to be using the Mobilenet models in label_image or your own
+programs, you'll need to feed in an image of the specified size converted to a
+float range into the 'input' tensor. Typically 24-bit images are in the range
+[0,255], and you must convert them to the [-1,1] float range expected by the
+model with the formula  `(image - 128.)/128.`.

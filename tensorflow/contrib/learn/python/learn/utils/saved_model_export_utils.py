@@ -417,7 +417,11 @@ def make_export_strategy(serving_input_fn,
   return export_strategy.ExportStrategy('Servo', export_fn)
 
 
-def make_parsing_export_strategy(feature_columns, exports_to_keep=5):
+def make_parsing_export_strategy(feature_columns,
+                                 default_output_alternative_key=None,
+                                 assets_extra=None,
+                                 as_text=False,
+                                 exports_to_keep=5):
   """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
 
   Creates a SavedModel export that expects to be fed with a single string
@@ -427,6 +431,18 @@ def make_parsing_export_strategy(feature_columns, exports_to_keep=5):
   Args:
     feature_columns: An iterable of `FeatureColumn`s representing the features
       that must be provided at serving time (excluding labels!).
+    default_output_alternative_key: the name of the head to serve when an
+      incoming serving request does not explicitly request a specific head.
+      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      or for single-headed models.
+    assets_extra: A dict specifying how to populate the assets.extra directory
+      within the exported SavedModel.  Each key should give the destination
+      path (including the filename) relative to the assets.extra directory.
+      The corresponding value gives the full path of the source file to be
+      copied.  For example, the simple case of copying a single file without
+      renaming it is specified as
+      `{'my_asset_file.txt': '/path/to/my_asset_file.txt'}`.
+    as_text: whether to write the SavedModel proto in text format.
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
@@ -436,5 +452,9 @@ def make_parsing_export_strategy(feature_columns, exports_to_keep=5):
   """
   feature_spec = feature_column.create_feature_spec_for_parsing(feature_columns)
   serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
-  return make_export_strategy(serving_input_fn, exports_to_keep=exports_to_keep)
-
+  return make_export_strategy(
+      serving_input_fn,
+      default_output_alternative_key=default_output_alternative_key,
+      assets_extra=assets_extra,
+      as_text=as_text,
+      exports_to_keep=exports_to_keep)

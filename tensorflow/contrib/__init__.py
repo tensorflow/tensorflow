@@ -66,6 +66,7 @@ from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing
 from tensorflow.contrib import tfprof
+from tensorflow.contrib import timeseries
 from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util

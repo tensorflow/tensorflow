@@ -131,9 +131,11 @@ Status XlaCompiler::CompileFunction(
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
 
-  if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile(
-        strings::StrCat("xla_compile_function_input_", function_id), *graph);
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "XlaCompiler::CompileFunction: "
+            << dump_graph::DumpGraphToFile(
+                   strings::StrCat("xla_compile_function_", function_id),
+                   *graph);
   }
 
   // Optimize the graph before running the compiler.
@@ -144,12 +146,6 @@ Status XlaCompiler::CompileFunction(
   GraphOptimizer optimizer(opts);
   optimizer.Optimize(flib_runtime_.get(), flib_runtime_->env(),
                      /*device=*/nullptr, &graph);
-
-  if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile(
-        strings::StrCat("xla_compile_function_optimized_", function_id),
-        *graph);
-  }
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
@@ -413,6 +409,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate ComputationBuilder.";
 
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "XlaCompiler::CompileGraph: "
+            << dump_graph::DumpGraphToFile(
+                   strings::StrCat("xla_compile_graph_", name), *graph);
+  }
+
   // Report the error here if initialization failed.
   TF_RETURN_IF_ERROR(initialization_status_);
 
@@ -508,11 +510,13 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       OutputDescription& output = result->outputs[i];
       output.is_constant = false;
       if (num_computation_outputs > 1) {
-        output.shape =
-            XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(
-                result->xla_output_shape, computation_output));
+        TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
+            xla::ShapeUtil::GetTupleElementShape(result->xla_output_shape,
+                                                 computation_output),
+            &output.shape));
       } else {
-        output.shape = XLAShapeToTensorShape(result->xla_output_shape);
+        TF_RETURN_IF_ERROR(
+            XLAShapeToTensorShape(result->xla_output_shape, &output.shape));
       }
       ++computation_output;
     }
@@ -521,13 +525,14 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   for (std::vector<ResourceUpdate>::size_type i = 0;
        i < result->resource_updates.size(); ++i) {
     if (num_computation_outputs > 1) {
-      result->resource_updates[i].shape =
-          XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(
-              result->xla_output_shape, computation_output));
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
+          xla::ShapeUtil::GetTupleElementShape(result->xla_output_shape,
+                                               computation_output),
+          &result->resource_updates[i].shape));
     } else {
       CHECK_EQ(0, computation_output);
-      result->resource_updates[i].shape =
-          XLAShapeToTensorShape(result->xla_output_shape);
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
+          result->xla_output_shape, &result->resource_updates[i].shape));
     }
     ++computation_output;
   }

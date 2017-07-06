@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/executor/compiler.h"
 #include "tensorflow/compiler/plugin/executor/executable.h"
-
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -30,18 +29,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
-#include "tensorflow/core/lib/core/errors.h"
+namespace xla {
+namespace executorplugin {
 
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::executorplugin;
-namespace port = ::perftools::gputools::port;
-
-namespace xla {
-namespace executorplugin {
 
 /*
  * Run optimization passes on the module.  The graph is transformed by
@@ -111,12 +107,11 @@ ExecutorCompiler::ShapeSizeBytesFunction() const {
   return ExecutorExecutable::ShapeSizeBytes;
 }
 
-
-}  // namespace executorplugin
-}  // namespace xla
-
 REGISTER_MODULE_INITIALIZER(executor_compiler, {
   xla::Compiler::RegisterCompilerFactory(sep::kExecutorPlatformId, []() {
     return xla::MakeUnique<xla::executorplugin::ExecutorCompiler>();
   });
 });
+
+}  // namespace executorplugin
+}  // namespace xla

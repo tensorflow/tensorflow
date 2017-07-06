@@ -63,7 +63,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
-      CHECK(primitive_util::IsIntegralType(from_type));
+      CHECK(primitive_util::IsIntegralType(from_type) || from_type == PRED);
       if (from_type == to_type) {
         return operand_value;
       }
@@ -78,7 +78,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
         }
-        if (primitive_util::IsUnsignedIntegralType(from_type)) {
+        if (primitive_util::IsUnsignedIntegralType(from_type) ||
+            from_type == PRED) {
           return ir_builder_->CreateUIToFP(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));

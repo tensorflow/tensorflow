@@ -86,10 +86,13 @@ class MultiOutputFusionTest : public HloTestBase {
     if (manual_fusion) {
       auto tuple = computation->AddInstruction(HloInstruction::CreateTuple(
           ArraySlice<HloInstruction*>({sub, add2}, 0, 2)));
-      computation->AddInstruction(
+      auto gte0 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 0));
-      computation->AddInstruction(
+      auto gte1 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 1));
+      TF_CHECK_OK(dot->ReplaceOperandWith(0, gte0));
+      TF_CHECK_OK(dot->ReplaceOperandWith(1, gte1));
+
       CHECK_NE(
           computation->CreateFusionInstruction(
               {tuple, sub, add2, broadcast}, HloInstruction::FusionKind::kLoop),
@@ -141,10 +144,13 @@ class MultiOutputFusionTest : public HloTestBase {
       auto tuple = computation->AddInstruction(HloInstruction::CreateTuple(
           ArraySlice<HloInstruction*>({sub_U8, add}, 0, 2)));
 
-      computation->AddInstruction(
+      auto gte0 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape_U8, tuple, 0));
-      computation->AddInstruction(
+      auto gte1 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape_F32, tuple, 1));
+      TF_CHECK_OK(sub->ReplaceOperandWith(0, gte0));
+      TF_CHECK_OK(reshape->ReplaceOperandWith(0, gte1));
+
       CHECK_NE(computation->CreateFusionInstruction(
                    {tuple, sub_U8, add, param0_U8, param1_F32},
                    HloInstruction::FusionKind::kLoop),

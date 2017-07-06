@@ -130,6 +130,7 @@ message TensorForestParams {
   bool collate_examples = 10;
   bool checkpoint_stats = 11;
   bool use_running_stats_method = 20;
+  bool initialize_average_splits = 22;
 
   // Number of classes (classification) or targets (regression)
   int32 num_outputs = 12;
