@@ -16,17 +16,17 @@
 
 # Example:
 #
-#plugins = {
-#  "foo": {
-#    "deps": [
-#      "//tensorflow/compiler/plugin/foo:foo_lib",
-#      "//tensorflow/compiler/plugin/foo:test_macros",
-#    ],
-#    "copts": [],
-#    "tags": [],
-#    "args": []
-#  },
-#}
+# plugins = {
+#   "foo": {
+#     "deps": [
+#       "//tensorflow/compiler/plugin/foo:foo_lib",
+#       "//tensorflow/compiler/plugin/foo:test_macros",
+#     ],
+#     "copts": [],
+#     "tags": [],
+#     "args": []
+#   },
+# }
 
 plugins = {}
 
