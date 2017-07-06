@@ -508,11 +508,13 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       OutputDescription& output = result->outputs[i];
       output.is_constant = false;
       if (num_computation_outputs > 1) {
-        output.shape =
-            XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(
-                result->xla_output_shape, computation_output));
+        TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
+            xla::ShapeUtil::GetTupleElementShape(result->xla_output_shape,
+                                                 computation_output),
+            &output.shape));
       } else {
-        output.shape = XLAShapeToTensorShape(result->xla_output_shape);
+        TF_RETURN_IF_ERROR(
+            XLAShapeToTensorShape(result->xla_output_shape, &output.shape));
       }
       ++computation_output;
     }
@@ -521,13 +523,14 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   for (std::vector<ResourceUpdate>::size_type i = 0;
        i < result->resource_updates.size(); ++i) {
     if (num_computation_outputs > 1) {
-      result->resource_updates[i].shape =
-          XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(
-              result->xla_output_shape, computation_output));
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
+          xla::ShapeUtil::GetTupleElementShape(result->xla_output_shape,
+                                               computation_output),
+          &result->resource_updates[i].shape));
     } else {
       CHECK_EQ(0, computation_output);
-      result->resource_updates[i].shape =
-          XLAShapeToTensorShape(result->xla_output_shape);
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(
+          result->xla_output_shape, &result->resource_updates[i].shape));
     }
     ++computation_output;
   }

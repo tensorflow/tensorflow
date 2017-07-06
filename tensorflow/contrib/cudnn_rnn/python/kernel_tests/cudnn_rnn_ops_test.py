@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import os
 import unittest
 import numpy as np
@@ -33,7 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn as rnn_lib
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -42,6 +43,31 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import saver as saver_lib
+
+
+def _create_cudnn_compatible_canonical_rnn(cudnn_model,
+                                           inputs,
+                                           use_block_cell,
+                                           scope="rnn"):
+  model = cudnn_model.rnn_mode
+  if model not in (cudnn_rnn_ops.CUDNN_LSTM, cudnn_rnn_ops.CUDNN_GRU):
+    raise ValueError("%s is not supported!" % model)
+  if model == cudnn_rnn_ops.CUDNN_GRU and use_block_cell:
+    raise ValueError("gru is not supported when using block cell!")
+
+  num_units = cudnn_model.num_units
+  num_layers = cudnn_model.num_layers
+  # To reuse cuDNN-trained models, must use cudnn compatible rnn cells.
+  if use_block_cell:
+    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMBlockCell(num_units)
+  else:
+    if model == cudnn_rnn_ops.CUDNN_LSTM:
+      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMCell(num_units)
+    else:
+      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleGRUCell(num_units)
+  cell = rnn_cell_impl.MultiRNNCell([single_cell() for _ in range(num_layers)])
+  return rnn_lib.dynamic_rnn(
+      cell, inputs, dtype=dtypes.float32, time_major=True, scope=scope)
 
 
 class CudnnRNNTest(TensorFlowTestCase):
@@ -53,16 +79,16 @@ class CudnnRNNTest(TensorFlowTestCase):
                    input_size,
                    input_mode="linear_input",
                    dropout=0.):
-    if rnn_mode == "lstm":
+    if rnn_mode == cudnn_rnn_ops.CUDNN_LSTM:
       model = cudnn_rnn_ops.CudnnLSTM(
           num_layers, num_units, input_size, dropout=dropout)
-    elif rnn_mode == "gru":
+    elif rnn_mode == cudnn_rnn_ops.CUDNN_GRU:
       model = cudnn_rnn_ops.CudnnGRU(
           num_layers, num_units, input_size, dropout=dropout)
-    elif rnn_mode == "rnn_tanh":
+    elif rnn_mode == cudnn_rnn_ops.CUDNN_RNN_TANH:
       model = cudnn_rnn_ops.CudnnRNNTanh(
           num_layers, num_units, input_size, dropout=dropout)
-    elif rnn_mode == "rnn_relu":
+    elif rnn_mode == cudnn_rnn_ops.CUDNN_RNN_RELU:
       model = cudnn_rnn_ops.CudnnRNNRelu(
           num_layers, num_units, input_size, dropout=dropout)
     else:
@@ -102,30 +128,6 @@ class CudnnRNNTest(TensorFlowTestCase):
       params_v_restored = sess.run(params)
       self.assertAllEqual(params_v, params_v_restored)
 
-  def _create_equivalent_canonical_rnn(self,
-                                       cudnn_model,
-                                       inputs,
-                                       use_block_cell,
-                                       scope="rnn"):
-    if cudnn_model.rnn_mode is not "lstm":
-      raise ValueError("%s is not supported!" % cudnn_model.rnn_mode)
-
-    num_units = cudnn_model.num_units
-    num_layers = cudnn_model.num_layers
-
-    # To reuse cuDNN-trained models, must use CudnnCompatibleLSTM...Cells.
-    if use_block_cell:
-      # pylint: disable=g-long-lambda
-      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMBlockCell(
-          num_units)
-      # pylint: enable=g-long-lambda
-    else:
-      single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMCell(num_units)
-    cell = rnn_cell_impl.MultiRNNCell(
-        [single_cell() for _ in range(num_layers)])
-    return rnn.dynamic_rnn(
-        cell, inputs, dtype=dtypes.float32, time_major=True, scope=scope)
-
   def _build_forward_cudnn_model(self,
                                  rnn_mode,
                                  num_layers,
@@ -140,7 +142,7 @@ class CudnnRNNTest(TensorFlowTestCase):
     # Set zero init input states
     input_h = constant_op.constant(
         np.zeros([num_layers, batch_size, num_units]), dtype=dtypes.float32)
-    has_input_c = (rnn_mode == "lstm")
+    has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
     if has_input_c:
       input_c = constant_op.constant(
           np.zeros([num_layers, batch_size, num_units]), dtype=dtypes.float32)
@@ -167,7 +169,7 @@ class CudnnRNNTest(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testCudnnCompatibleLSTMCells(self):
+  def testCudnnCompatibleRnnCells(self):
     configs = [
         {
             "num_layers": 1,
@@ -175,7 +177,6 @@ class CudnnRNNTest(TensorFlowTestCase):
             "num_units": 4,
             "input_size": 5,
             "batch_size": 6,
-            "rnn_mode": "lstm"
         },
         {
             "num_layers": 2,
@@ -183,7 +184,6 @@ class CudnnRNNTest(TensorFlowTestCase):
             "num_units": 4,
             "input_size": 8,
             "batch_size": 16,
-            "rnn_mode": "lstm"
         },
         {
             "num_layers": 2,
@@ -191,7 +191,6 @@ class CudnnRNNTest(TensorFlowTestCase):
             "num_units": 4,
             "input_size": 5,
             "batch_size": 6,
-            "rnn_mode": "lstm"
         },
         {
             "num_layers": 1,
@@ -199,30 +198,24 @@ class CudnnRNNTest(TensorFlowTestCase):
             "num_units": 2,
             "input_size": 4,
             "batch_size": 1,
-            "rnn_mode": "lstm"
         },
     ]
-    for cfg in configs:
-      self._testCudnnCompatibleLSTMCells(
-          cfg["num_layers"],
-          cfg["seq_length"],
-          cfg["num_units"],
-          cfg["input_size"],
-          cfg["batch_size"],
-          cfg["rnn_mode"],
-          use_block_cell=False)
-      self._testCudnnCompatibleLSTMCells(
-          cfg["num_layers"],
-          cfg["seq_length"],
-          cfg["num_units"],
-          cfg["input_size"],
-          cfg["batch_size"],
-          cfg["rnn_mode"],
-          use_block_cell=True)
+    for rnn, cfg, use_block_cell in itertools.product(
+        (cudnn_rnn_ops.CUDNN_LSTM,), configs, (True, False,)):
+      self._testCudnnCompatibleRnnCells(cfg["num_layers"], cfg["seq_length"],
+                                        cfg["num_units"], cfg["input_size"],
+                                        cfg["batch_size"], rnn, use_block_cell)
+    # TODO(jamesqin): Add CudnnCompatibleGRUBlockCell.
+    for rnn, cfg, use_block_cell in itertools.product(
+        (cudnn_rnn_ops.CUDNN_GRU,), configs, (False,)):
+      self._testCudnnCompatibleRnnCells(cfg["num_layers"], cfg["seq_length"],
+                                        cfg["num_units"], cfg["input_size"],
+                                        cfg["batch_size"], rnn, use_block_cell)
 
-  def _testCudnnCompatibleLSTMCells(
-      self, num_layers, seq_length, num_units, input_size, batch_size, rnn_mode,
-      use_block_cell):
+  def _testCudnnCompatibleRnnCells(self, num_layers, seq_length, num_units,
+                                   input_size, batch_size, rnn_mode,
+                                   use_block_cell):
+    has_state_c = rnn_mode == cudnn_rnn_ops.CUDNN_LSTM
     np.random.seed(0)
     # Train graph
     with ops.Graph().as_default():
@@ -280,15 +273,15 @@ class CudnnRNNTest(TensorFlowTestCase):
         self.assertAllEqual(cudnn_params_v, restored_cudnn_params_v)
 
         # Cudnn inference
-        (cudnn_output, cudnn_output_h, cudnn_output_c) = sess.run(
+        cudnn_output = sess.run(
             cudnn_output_tuple, feed_dict={cudnn_inputs: inference_input})
 
-    # LSTMBlockCell inference graph
+    # Canonical RNN inference graph
     with ops.Graph().as_default():
       random_seed.set_random_seed(299)
       cell_inputs = array_ops.placeholder(
           dtypes.float32, shape=[seq_length, batch_size, input_size])
-      (output, states) = self._create_equivalent_canonical_rnn(
+      (output, states) = _create_cudnn_compatible_canonical_rnn(
           cudnn_model, cell_inputs, use_block_cell)
       saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
 
@@ -301,15 +294,19 @@ class CudnnRNNTest(TensorFlowTestCase):
             [output, states], feed_dict={cell_inputs: inference_input})
 
         # output across timestamps are packed into one tensor.
-        self.assertAllClose(cudnn_output, output_v, atol=1e-6, rtol=1e-6)
+        self.assertAllClose(cudnn_output[0], output_v, atol=1e-6, rtol=1e-6)
 
         for i in range(num_layers):
-          # output_h
-          self.assertAllClose(
-              cudnn_output_h[i, :], states_v[i].h, atol=1e-6, rtol=1e-6)
-          # output_c
-          self.assertAllClose(
-              cudnn_output_c[i, :], states_v[i].c, atol=1e-6, rtol=1e-6)
+          if has_state_c:
+            # output_h
+            self.assertAllClose(
+                cudnn_output[1][i, :], states_v[i].h, atol=1e-6, rtol=1e-6)
+            # output_c
+            self.assertAllClose(
+                cudnn_output[2][i, :], states_v[i].c, atol=1e-6, rtol=1e-6)
+          else:
+            self.assertAllClose(
+                cudnn_output[1][i, :], states_v[i], atol=1e-6, rtol=1e-6)
 
   def _testSaveRestoreOutput(self, rnn_mode):
     num_layers = 2
@@ -326,7 +323,7 @@ class CudnnRNNTest(TensorFlowTestCase):
     save_path = os.path.join(self.get_temp_dir(), "save-restore-output-test")
     saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
 
-    has_input_c = (rnn_mode == "lstm")
+    has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
     input_data = array_ops.ones([seq_length, batch_size, input_size])
     input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
     if has_input_c:
@@ -359,7 +356,10 @@ class CudnnRNNTest(TensorFlowTestCase):
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
   def testSaveRestore(self):
-    rnn_modes = ["lstm", "gru", "rnn_tanh", "rnn_relu"]
+    rnn_modes = [
+        cudnn_rnn_ops.CUDNN_LSTM, cudnn_rnn_ops.CUDNN_GRU,
+        cudnn_rnn_ops.CUDNN_RNN_TANH, cudnn_rnn_ops.CUDNN_RNN_RELU
+    ]
     for rnn_mode in rnn_modes:
       self._testSaveRestoreVariable(rnn_mode)
       self._testSaveRestoreOutput(rnn_mode)
@@ -369,8 +369,8 @@ class CudnnRNNTest(TensorFlowTestCase):
                         num_units,
                         input_size,
                         input_mode="auto_select",
-                        direction="unidirection"):
-    if direction != "unidirection":
+                        direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION):
+    if direction != cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION:
       # TODO(zhengxq): support bidirection in parameter size estimate.
       raise ValueError("Only unidirection in parameter size estimate")
     first_layer_weights = 4 * num_units * (num_units + input_size)
@@ -380,7 +380,8 @@ class CudnnRNNTest(TensorFlowTestCase):
 
   def _testOneLSTMParamsSize(self, num_layers, num_units, input_size):
     min_params_size = self._MinLSTMParamSize(num_layers, num_units, input_size)
-    model = self._CreateModel("lstm", num_layers, num_units, input_size)
+    model = self._CreateModel(cudnn_rnn_ops.CUDNN_LSTM, num_layers, num_units,
+                              input_size)
     params_size = model.params_size()
     with self.test_session(use_gpu=True) as sess:
       params_size_v = sess.run(params_size)
@@ -412,7 +413,7 @@ class CudnnRNNTest(TensorFlowTestCase):
         input_size,
         input_mode="auto_select",
         dropout=dropout)
-    has_input_c = (rnn_mode == "lstm")
+    has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
     params_size_t = model.params_size()
     input_data = array_ops.ones([seq_length, batch_size, input_size])
     input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
@@ -454,7 +455,7 @@ class CudnnRNNTest(TensorFlowTestCase):
     # demonstrative of the dropout-invariant nature of CudnnRnn.)
     test_configs = [
         {
-            "rnn_mode": "lstm",
+            "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,
             "dropout": [0., 0.5, 1.],
             "expected": 231833.22,
             "tolerance": 1e-2,
@@ -468,7 +469,7 @@ class CudnnRNNTest(TensorFlowTestCase):
             },
         },
         {
-            "rnn_mode": "gru",
+            "rnn_mode": cudnn_rnn_ops.CUDNN_GRU,
             "dropout": [0., 0.5, 1.],
             "expected": 56000,
             "tolerance": 1e-2,
@@ -482,7 +483,7 @@ class CudnnRNNTest(TensorFlowTestCase):
             },
         },
         {
-            "rnn_mode": "rnn_tanh",
+            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_TANH,
             "dropout": [0., 0.5, 1.],
             "expected": 56000,
             "tolerance": 1e-2,
@@ -496,7 +497,7 @@ class CudnnRNNTest(TensorFlowTestCase):
             },
         },
         {
-            "rnn_mode": "rnn_relu",
+            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_RELU,
             "dropout": [0., 0.5, 1.],
             "expected": 130688,
             "tolerance": 1e-2,
@@ -530,7 +531,7 @@ class CudnnRNNTest(TensorFlowTestCase):
     # make sure the drop patterns across the two runs are the same.
     old_env_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE", str(False))
     os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = str(True)
-    has_input_c = (rnn_mode == "lstm")
+    has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
     random_seed.set_random_seed(1234)
     model = self._CreateModel(
         rnn_mode, num_layers, num_units, input_size, dropout=dropout)
@@ -587,7 +588,7 @@ class CudnnRNNTest(TensorFlowTestCase):
   def testSimpleTraining(self):
     test_configs = [
         {
-            "rnn_mode": "lstm",
+            "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,
             "dropout": [0., 0.5, 1.],
             "tolerance": 1e-2,
             "shape": {
@@ -600,7 +601,7 @@ class CudnnRNNTest(TensorFlowTestCase):
             },
         },
         {
-            "rnn_mode": "gru",
+            "rnn_mode": cudnn_rnn_ops.CUDNN_GRU,
             "dropout": [0., 0.5, 1.],
             "tolerance": 4e-3,
             "shape": {
@@ -613,7 +614,7 @@ class CudnnRNNTest(TensorFlowTestCase):
             },
         },
         {
-            "rnn_mode": "rnn_tanh",
+            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_TANH,
             "dropout": [0., 0.5, 1.],
             "tolerance": 5e-3,
             "shape": {
@@ -626,7 +627,7 @@ class CudnnRNNTest(TensorFlowTestCase):
             },
         },
         {
-            "rnn_mode": "rnn_relu",
+            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_RELU,
             "dropout": [0., 0.5, 1.],
             "tolerance": 4e-1,
             "shape": {

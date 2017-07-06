@@ -155,6 +155,8 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
+      object_layer_(
+          [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
                                      opt_level, GetAvailableIntrinsics(),
@@ -166,9 +168,8 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
 
 SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
-  auto handle = compile_layer_.addModule(
-      std::move(module), MakeUnique<llvm::SectionMemoryManager>(),
-      MakeUnique<SimpleResolver>());
+  auto handle =
+      compile_layer_.addModule(std::move(module), MakeUnique<SimpleResolver>());
   module_handles_.push_back(handle);
   return handle;
 }

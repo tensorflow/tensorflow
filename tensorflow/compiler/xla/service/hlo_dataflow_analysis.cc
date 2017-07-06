@@ -99,7 +99,7 @@ string HloDataflowAnalysis::ToString() const {
        module_->computations()) {
     for (const std::unique_ptr<HloInstruction>& instruction :
          computation->instructions()) {
-      StrAppend(&out, "    ", instruction->FullyQualifiedName(), ":\n");
+      StrAppend(&out, "    ", instruction->name(), ":\n");
       if (ShapeUtil::IsTuple(instruction->shape())) {
         GetInstructionValueSet(instruction.get())
             .ForEachElement([this, &instruction, &out](

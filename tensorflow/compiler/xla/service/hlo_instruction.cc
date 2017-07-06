@@ -51,6 +51,7 @@ using ::tensorflow::strings::StrCat;
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
     int64 parameter_number, const Shape& shape, const string& name) {
+  DCHECK(name.find("::") == string::npos);
   auto instruction =
       WrapUnique(new HloInstruction(HloOpcode::kParameter, shape));
   instruction->parameter_number_ = parameter_number;
@@ -313,6 +314,12 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
   instruction->slice_starts_.assign(start_indices.begin(), start_indices.end());
   instruction->slice_limits_.assign(limit_indices.begin(), limit_indices.end());
   instruction->slice_strides_.assign(strides.begin(), strides.end());
+  // For backward compatibility with old serialized computations: if there are
+  // no strides, assume all strides are 1.
+  // TODO(b/63317920): remove this code.
+  if (instruction->slice_strides_.empty()) {
+    instruction->slice_strides_ = std::vector<int64>(start_indices.size(), 1LL);
+  }
   return instruction;
 }
 
@@ -898,6 +905,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
 HloInstruction::~HloInstruction() {}
 
 std::unique_ptr<HloInstruction> HloInstruction::Clone(const string& suffix) {
+  DCHECK(suffix.find("::") == string::npos);
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape_, operands_);
   if (suffix.empty()) {
@@ -1615,7 +1623,7 @@ HloInstructionProto HloInstruction::ToProto() const {
     case HloOpcode::kFusion: {
       HloComputationProto* proto_fused_computation =
           proto.mutable_fused_instructions_computation();
-      proto_fused_computation->set_name(FullyQualifiedName());
+      proto_fused_computation->set_name(name());
 
       // Fill in fused instructions. Note that fused_instructions() returns in
       // reverse post-order (i.e. root first), so we reverse to get post-order.
@@ -1689,14 +1697,6 @@ string HloInstruction::ToCategory() const {
   }
 
   return HloOpcodeString(opcode());
-}
-
-string HloInstruction::FullyQualifiedName() const {
-  if (IsFused()) {
-    return StrCat(fusion_instruction()->parent()->name(),
-                  "::", fusion_instruction()->name(), "::", name_);
-  }
-  return StrCat(parent_->name(), "::", name_);
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
@@ -2426,6 +2426,7 @@ HloModule* HloInstruction::GetModule() const {
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
+  DCHECK(name_.find("::") == string::npos);
 }
 
 void HloInstruction::set_outer_dimension_partitions(
