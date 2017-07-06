@@ -38,17 +38,6 @@ class CastOp : public XlaOpKernel {
 
     if (src_dtype_ == dst_dtype_) {
       output = input;
-    } else if (src_dtype_ == DT_BOOL) {
-      // XLA's ConvertElementType doesn't support casting to/from
-      // bools. So we need to handle those cases separately.
-      // Builds the equivalent of (input ? 1 : 0)
-      xla::ComputationBuilder l(builder->client(), "PredCast");
-      xla::ComputationDataHandle x =
-          l.Parameter(0, xla::ShapeUtil::MakeShape(src_type_, {}), "x");
-      l.Select(x, XlaHelpers::One(&l, dst_dtype_),
-               XlaHelpers::Zero(&l, dst_dtype_));
-      xla::Computation computation = l.Build().ConsumeValueOrDie();
-      output = builder->Map({input}, computation);
     } else if (dst_dtype_ == DT_BOOL) {
       output = builder->Ne(input, XlaHelpers::Zero(builder, src_dtype_));
     } else {
