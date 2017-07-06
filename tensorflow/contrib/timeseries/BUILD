@@ -22,6 +22,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "timeseries_pip",
+    deps = [
+        ":timeseries",
+        "//tensorflow/contrib/timeseries/examples:known_anomaly",
+        "//tensorflow/contrib/timeseries/examples:multivariate",
+        "//tensorflow/contrib/timeseries/examples:predict",
+        "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
+        "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:test_utils",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

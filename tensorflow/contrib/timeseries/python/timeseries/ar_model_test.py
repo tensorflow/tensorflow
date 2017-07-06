@@ -66,7 +66,7 @@ class ARModelTest(test.TestCase):
              noise_stddev / 3. * np.random.randn(num_samples, 1))
     # Add some anomalies to data1
     if anomaly_prob > 0.:
-      num_anomalies = anomaly_prob * num_samples
+      num_anomalies = int(anomaly_prob * num_samples)
       anomaly_values = (anomaly_stddev_scale * noise_stddev / 4 *
                         np.random.randn(num_anomalies))
       indices = np.random.randint(0, num_samples, num_anomalies)
