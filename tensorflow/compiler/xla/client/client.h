@@ -150,7 +150,7 @@ class Client {
 
   // Retrieves the statistics of the given computation.
   StatusOr<ComputationStats> GetComputationStats(
-      const Computation& computation) const;
+      const Computation& computation, const DebugOptions& debug_options) const;
 
   // Returns the Shape of the given array specified by 'data'. The shape
   // includes the Layout of the array as it is stored on the service.
