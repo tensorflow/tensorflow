@@ -42,7 +42,6 @@ struct DebugOptionsFlags {
   string xla_dump_ir_to;
   string xla_dump_debug_json_to;
   bool xla_eliminate_hlo_implicit_broadcast;
-  bool xla_enable_buffer_reuse;
 
   bool xla_cpu_multi_thread_eigen;
 
@@ -79,7 +78,6 @@ void AllocateFlags() {
   flag_values->xla_dump_ir_to = "";
   flag_values->xla_dump_debug_json_to = "";
   flag_values->xla_eliminate_hlo_implicit_broadcast = false;
-  flag_values->xla_enable_buffer_reuse = true;
   flag_values->xla_cpu_multi_thread_eigen = true;
   flag_values->xla_gpu_cuda_data_dir = "./cuda_sdk_lib";
   flag_values->xla_gpu_ftz = false;
@@ -146,9 +144,6 @@ void AllocateFlags() {
                         "Eliminate implicit broadcasts when lowering user "
                         "computations to HLO instructions; use explicit "
                         "broadcast instead."),
-       tensorflow::Flag("xla_enable_buffer_reuse",
-                        &flag_values->xla_enable_buffer_reuse,
-                        "Enable reuse of buffers between HLO operations."),
        tensorflow::Flag("xla_cpu_multi_thread_eigen",
                         &flag_values->xla_cpu_multi_thread_eigen,
                         "When generating calls to Eigen in the CPU backend, "
@@ -207,7 +202,6 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_dump_ir_to(flag_values->xla_dump_ir_to);
   options.set_xla_eliminate_hlo_implicit_broadcast(
       flag_values->xla_eliminate_hlo_implicit_broadcast);
-  options.set_xla_enable_buffer_reuse(flag_values->xla_enable_buffer_reuse);
   options.set_xla_dump_debug_json_to(flag_values->xla_dump_debug_json_to);
 
   options.set_xla_cpu_multi_thread_eigen(
