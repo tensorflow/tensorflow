@@ -90,6 +90,7 @@ def build_params_proto(params):
   proto.collate_examples = params.v4_collate_examples
   proto.checkpoint_stats = params.v4_checkpoint_stats
   proto.use_running_stats_method = params.v4_use_running_stats_method
+  proto.initialize_average_splits = params.v4_initialize_average_splits
 
   if params.v4_prune_every_samples:
     text_format.Merge(params.v4_prune_every_samples,
@@ -174,6 +175,8 @@ class V4ForestHParams(object):
     self.v4_checkpoint_stats = getattr(self, 'v4_checkpoint_stats', False)
     self.v4_use_running_stats_method = getattr(
         self, 'v4_use_running_stats_method', False)
+    self.v4_initialize_average_splits = getattr(
+        self, 'v4_initialize_average_splits', False)
 
     self.v4_param_file = getattr(self, 'v4_param_file', None)
 

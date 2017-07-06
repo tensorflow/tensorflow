@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import re
 import threading
 
@@ -60,6 +61,7 @@ class SessionInterface(object):
   def partial_run(self, handle, fetches, feed_dict=None):
     """Continues the execution with additional feeds and fetches."""
     raise NotImplementedError('partial_run')
+
 
 def _get_indexed_slices_value_from_fetches(fetched_vals):
   return ops.IndexedSlicesValue(fetched_vals[0], fetched_vals[1],
@@ -884,12 +886,9 @@ class BaseSession(SessionInterface):
       ValueError: If `fetches` or `feed_dict` keys are invalid or refer to a
         `Tensor` that doesn't exist.
     """
-    run_metadata_ptr = tf_session.TF_NewBuffer()
-    if options:
-      options_ptr = tf_session.TF_NewBufferFromString(
-          compat.as_bytes(options.SerializeToString()))
-    else:
-      options_ptr = None
+    options_ptr = tf_session.TF_NewBufferFromString(
+        compat.as_bytes(options.SerializeToString())) if options else None
+    run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
 
     try:
       result = self._run(None, fetches, feed_dict, options_ptr,
@@ -898,7 +897,8 @@ class BaseSession(SessionInterface):
         proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
         run_metadata.ParseFromString(compat.as_bytes(proto_data))
     finally:
-      tf_session.TF_DeleteBuffer(run_metadata_ptr)
+      if run_metadata_ptr:
+        tf_session.TF_DeleteBuffer(run_metadata_ptr)
       if options:
         tf_session.TF_DeleteBuffer(options_ptr)
     return result
@@ -1126,7 +1126,10 @@ class BaseSession(SessionInterface):
       results = []
     return fetch_handler.build_results(self, results)
 
-  def make_callable(self, fetches, feed_list=None):
+  def make_callable(self,
+                    fetches,
+                    feed_list=None,
+                    accept_options=False):
     """Returns a Python callable that runs a particular step.
 
     The returned callable will take `len(feed_list)` arguments whose types
@@ -1146,6 +1149,12 @@ class BaseSession(SessionInterface):
         for details of the allowable fetch types.
       feed_list: (Optional.) A list of `feed_dict` keys. See
         @{tf.Session.run} for details of the allowable feed key types.
+      accept_options: (Optional.) Iff `True`, the returned `Callable` will be
+        able to accept @{tf.RunOptions} and @{tf.RunMetadata} as optional
+        keyword arguments `options` and `run_metadata`, respectively, with
+        the same syntax and semantics as @{tf.Session.run}, which is useful
+        for certain use cases (profiling and debugging) but will result in
+        measurable slowdown of the `Callable`'s performance. Default: `False`.
 
     Returns:
       A function that when called will execute the step defined by
@@ -1165,10 +1174,10 @@ class BaseSession(SessionInterface):
       # TODO(mrry): Refactor the feed handling logic from
       # `Session._run()` so that we can convert the feeds to a list of
       # strings here.
-      def _generic_run(*feed_args):
+      def _generic_run(*feed_args, **kwargs):
         feed_dict = {feed: feed_val
                      for feed, feed_val in zip(feed_list, feed_args)}
-        return self.run(fetches, feed_dict=feed_dict)
+        return self.run(fetches, feed_dict=feed_dict, **kwargs)
       return _generic_run
 
     # Ensure any changes to the graph are reflected in the runtime.
@@ -1182,7 +1191,40 @@ class BaseSession(SessionInterface):
     fetch_list_as_strings = _name_list(fetch_handler.fetches())
     target_list_as_strings = _name_list(fetch_handler.targets())
 
-    if isinstance(fetches, ops.Operation):
+    def _callable_template_with_options_and_metadata(
+        fetch_list_as_strings,
+        target_list_as_strings,
+        fetch_handler,
+        options=None,
+        run_metadata=None):
+      """Template callable that accepts RunOptions and RunMetadata."""
+      options_ptr = tf_session.TF_NewBufferFromString(
+          compat.as_bytes(options.SerializeToString())) if options else None
+      run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
+      try:
+        with errors.raise_exception_on_not_ok_status() as status:
+          results = tf_session.TF_Run(
+              self._session, options_ptr, {}, fetch_list_as_strings,
+              target_list_as_strings, status, run_metadata_ptr)
+          if fetch_handler:
+            results = fetch_handler.build_results(self, results)
+          else:
+            results = results[0] if results else None
+        if run_metadata:
+          proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
+          run_metadata.ParseFromString(compat.as_bytes(proto_data))
+      finally:
+        if run_metadata_ptr:
+          tf_session.TF_DeleteBuffer(run_metadata_ptr)
+        if options:
+          tf_session.TF_DeleteBuffer(options_ptr)
+      return results
+
+    if accept_options:
+      return functools.partial(
+          _callable_template_with_options_and_metadata, fetch_list_as_strings,
+          target_list_as_strings, fetch_handler)
+    elif isinstance(fetches, ops.Operation):
       # Special case for fetching a single operation, because the
       # function will have no return value.
       assert not fetch_list_as_strings

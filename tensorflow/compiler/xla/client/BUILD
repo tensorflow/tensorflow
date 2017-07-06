@@ -62,6 +62,7 @@ cc_library(
     deps = [
         ":computation",
         ":global_data",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:status_macros",
@@ -70,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service:session_proto",
         "//tensorflow/core:lib",
     ],

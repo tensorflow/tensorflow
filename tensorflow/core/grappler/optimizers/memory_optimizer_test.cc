@@ -69,6 +69,33 @@ TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   EXPECT_EQ("^gradients/d", recompute_trigger->input(0));
 }
 
+TEST_F(RecomputeSubgraphTest, NoFeedsRecomputed) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Variable(s.WithOpName("a"), {2, 3, 4}, DT_FLOAT);
+  Output b = ops::Identity(s.WithOpName("b"), a);  // Would be recomputed, but
+                                                   // for being fed
+  Output c = ops::Identity(s.WithOpName("c"), b);
+  Output d = ops::AddN(s.WithOpName("gradients/d"), {c});
+  Output e = ops::AddN(s.WithOpName("gradients/e"), {d, b});
+  Output f = ops::AddN(s.WithOpName("gradients/f"), {e, a});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.feed.emplace_back("b", Tensor());
+  EXPECT_EQ(6, item.graph.node_size());
+  NodeMap pre_transform_node_map(&item.graph);
+  (*pre_transform_node_map.GetNode("b")->mutable_attr())["_recompute_hint"]
+      .set_i(0);
+
+  MemoryOptimizer optimizer(RewriterConfig::MANUAL);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(6, output.node_size());
+}
+
 TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 

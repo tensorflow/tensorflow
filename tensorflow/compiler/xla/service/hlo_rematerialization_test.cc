@@ -357,7 +357,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(
         vec1024_shape_, concat, /*start_indices=*/{0},
-        /*limit_indices=*/{1024}, /*slices=*/{1}));
+        /*limit_indices=*/{1024}, /*strides=*/{1}));
     subcomputation = module->AddEmbeddedComputation(builder.Build());
   }
 
@@ -473,7 +473,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(
         vec1024_shape_, concat, /*start_indices=*/{0},
-        /*limit_indices=*/{1024}, /*slices=*/{1}));
+        /*limit_indices=*/{1024}, /*strides=*/{1}));
     subcomputation = module->AddEmbeddedComputation(builder.Build());
   }
 

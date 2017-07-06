@@ -6,4 +6,6 @@ package third_party.tensorflow.core.debug;
 message DebuggerEventMetadata {
   string device = 1;
   int32 output_slot = 2;
+  int32 num_chunks = 3;
+  int32 chunk_index = 4;
 };

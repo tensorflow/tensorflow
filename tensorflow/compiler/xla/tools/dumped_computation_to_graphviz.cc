@@ -53,8 +53,12 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
     TF_CHECK_OK(
         tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
     Computation computation = client->LoadSnapshot(module).ConsumeValueOrDie();
+    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+    debug_options.set_xla_generate_hlo_graph(".*");
+    debug_options.set_xla_hlo_graph_layout(true);
     ComputationStats stats =
-        client->GetComputationStats(computation).ConsumeValueOrDie();
+        client->GetComputationStats(computation, debug_options)
+            .ConsumeValueOrDie();
     fprintf(stdout, ">>> %s :: %s\n", arg, stats.DebugString().c_str());
   }
 }

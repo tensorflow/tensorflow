@@ -69,6 +69,24 @@ TEST_F(ConvertTest, ConvertR1S32ToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
+TEST_F(ConvertTest, ConvertR1PREDToR1S32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<bool>({true, false, true});
+  builder.ConvertElementType(a, S32);
+
+  std::vector<int32> expected = {1, 0, 1};
+  ComputeAndCompareR1<int32>(&builder, expected, {});
+}
+
+TEST_F(ConvertTest, ConvertR1PREDToR1F32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<bool>({true, false, true});
+  builder.ConvertElementType(a, F32);
+
+  std::vector<float> expected = {1., 0., 1.};
+  ComputeAndCompareR1<float>(&builder, expected, {});
+}
+
 XLA_TEST_F(ConvertTest, ConvertR1S0S32ToR1S0F32) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<int32>({});

@@ -1173,9 +1173,11 @@ tensorflow::Status Service::GetComputationStats(
   VersionedComputationHandle versioned_handle =
       user_computation->GetVersionedHandle();
 
+  HloModuleConfig config;
+  config.set_debug_options(arg->debug_options());
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig()));
+      computation_tracker_.BuildHloModule(versioned_handle, config));
 
   hlo_graph_dumper::MaybeDumpHloModule(*module,
                                        "computation statistics subject");

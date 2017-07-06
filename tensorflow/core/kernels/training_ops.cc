@@ -25,7 +25,7 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ inline T sgn(const T x) {
   T one(1);
   return (x == zero ? zero : (x < zero ? -one : one));
 }
-}
+}  // namespace
 
 namespace functor {
 template <typename T>
@@ -55,8 +55,8 @@ struct ApplyGradientDescent<CPUDevice, T> {
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
 struct ApplyGradientDescentSYCL {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
-                  T lr, typename TTypes<T>::ConstFlat grad) {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var, T lr,
+                  typename TTypes<T>::ConstFlat grad) {
     var.device(d) -= grad * lr;
   }
 };
@@ -197,6 +197,47 @@ struct ApplyProximalAdagrad<CPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyFtrlV2<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar l2_shrinkage,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    auto grad_with_shrinkage = grad + static_cast<T>(2) * l2_shrinkage() * var;
+    auto new_accum = accum + grad_with_shrinkage.square();
+    // special case for which lr_power=-0.5.
+    if (lr_power() == static_cast<T>(-0.5)) {
+      linear.device(d) +=
+          grad_with_shrinkage - (new_accum.sqrt() - accum.sqrt()) / lr() * var;
+    } else {
+      linear.device(d) +=
+          grad_with_shrinkage -
+          (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) / lr() * var;
+    }
+    auto x = (linear.constant(l1()) * linear.sign() - linear);
+    if (lr_power() == static_cast<T>(-0.5)) {
+      auto y = new_accum.sqrt() / new_accum.constant(lr()) +
+               linear.constant(static_cast<T>(2) * l2());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+
+    } else {
+      auto y = new_accum.pow(-lr_power()) / new_accum.constant(lr()) +
+               linear.constant(static_cast<T>(2) * l2());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+    }
+    accum.device(d) += grad_with_shrinkage.square();
+  }
+};
+
+template <typename T>
 struct ApplyFtrl<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
@@ -284,16 +325,16 @@ template <typename T>
 struct ApplyAdamSYCL {
   void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
-                  T beta1_power, T beta2_power, T lr, T beta1, T beta2, T epsilon,
-                  typename TTypes<T>::ConstFlat grad) {
-    const T alpha = lr * Eigen::numext::sqrt(T(1) - beta2_power) /
-                    (T(1) - beta1_power);
+                  T beta1_power, T beta2_power, T lr, T beta1, T beta2,
+                  T epsilon, typename TTypes<T>::ConstFlat grad) {
+    const T alpha =
+        lr * Eigen::numext::sqrt(T(1) - beta2_power) / (T(1) - beta1_power);
     m.device(d) += (grad - m) * (T(1) - beta1);
     v.device(d) += (grad.square() - v) * (T(1) - beta2);
     var.device(d) -= (m * alpha) / (v.sqrt() + epsilon);
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
@@ -333,7 +374,6 @@ struct ApplyCenteredRMSProp<CPUDevice, T> {
 };
 
 }  // namespace functor
-
 
 template <typename Device, typename T>
 class ApplyGradientDescentOp : public OpKernel {
@@ -377,16 +417,18 @@ class ApplyGradientDescentOp : public OpKernel {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-class ApplyGradientDescentOp < SYCLDevice, T > : public OpKernel {
+class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
  public:
   explicit ApplyGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -407,10 +449,10 @@ class ApplyGradientDescentOp < SYCLDevice, T > : public OpKernel {
     auto size = sizeof(T);
     T alpha = T(0);
     auto src_ptr = GetBase(&alpha_dev);
-    device.memcpyDeviceToHost(&alpha, static_cast<const T *>(src_ptr), size);
+    device.memcpyDeviceToHost(&alpha, static_cast<const T*>(src_ptr), size);
 
-    functor::ApplyGradientDescentSYCL<T>()(device, var.flat<T>(),
-        alpha, delta.flat<T>());
+    functor::ApplyGradientDescentSYCL<T>()(device, var.flat<T>(), alpha,
+                                           delta.flat<T>());
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -418,7 +460,7 @@ class ApplyGradientDescentOp < SYCLDevice, T > : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -461,7 +503,7 @@ REGISTER_KERNELS(GPU, double);
 TF_CALL_float(REGISTER_SYCL_KERNELS);
 TF_CALL_double(REGISTER_SYCL_KERNELS);
 #undef REGISTER_SYCL_KERNELS
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -469,14 +511,17 @@ TF_CALL_double(REGISTER_SYCL_KERNELS);
 template <typename Device, typename T>
 class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
  public:
-  explicit ApplyDelayCompensatedGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit ApplyDelayCompensatedGradientDescentOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 4});
+    auto locks =
+        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 4});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -496,7 +541,8 @@ class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
                 errors::InvalidArgument("lambda is not a scalar: ",
                                         lambda.shape().DebugString()));
     Tensor shadow;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 4, use_exclusive_lock_, &shadow));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 4, use_exclusive_lock_, &shadow));
     OP_REQUIRES(
         ctx, shadow.shape().IsSameSize(var.shape()),
         errors::InvalidArgument("shadow and var do not have the same shape",
@@ -506,8 +552,7 @@ class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyDelayCompensatedGradientDescent<Device, T>()(
         device, var.flat<T>(), alpha.scalar<T>(), delta.flat<T>(),
-        lambda.scalar<T>(), shadow.flat<T>()
-    );
+        lambda.scalar<T>(), shadow.flat<T>());
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -516,13 +561,13 @@ class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#define REGISTER_KERNELS(D, T)                                 \
-  REGISTER_KERNEL_BUILDER(                                     \
-      Name("ApplyDelayCompensatedGradientDescent")             \
-          .Device(DEVICE_##D)                                  \
-          .HostMemory("var")                                   \
-          .HostMemory("shadow")                                \
-          .TypeConstraint<T>("T"),                             \
+#define REGISTER_KERNELS(D, T)                     \
+  REGISTER_KERNEL_BUILDER(                         \
+      Name("ApplyDelayCompensatedGradientDescent") \
+          .Device(DEVICE_##D)                      \
+          .HostMemory("var")                       \
+          .HostMemory("shadow")                    \
+          .TypeConstraint<T>("T"),                 \
       ApplyDelayCompensatedGradientDescentOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
@@ -1851,7 +1896,7 @@ REGISTER_KERNELS(double, int32);
 REGISTER_KERNELS(double, int64);
 #undef REGISTER_KERNELS
 
-template <typename Device, typename T>
+template <typename Device, typename T, bool has_l2_shrinkage>
 class ApplyFtrlOp : public OpKernel {
  public:
   explicit ApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -1921,7 +1966,8 @@ class ApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
-    const Tensor& lr_power = ctx->input(7);
+    const int lr_power_index = has_l2_shrinkage ? 8 : 7;
+    const Tensor& lr_power = ctx->input(lr_power_index);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(lr_power.shape()) &&
                     lr_power.scalar<T>()() <= static_cast<T>(0),
@@ -1930,10 +1976,25 @@ class ApplyFtrlOp : public OpKernel {
                                         lr_power.shape().DebugString()));
 
     const Device& device = ctx->template eigen_device<Device>();
-    functor::ApplyFtrl<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
-                                    linear.flat<T>(), grad.flat<T>(),
-                                    lr.scalar<T>(), l1.scalar<T>(),
-                                    l2.scalar<T>(), lr_power.scalar<T>());
+    if (has_l2_shrinkage) {
+      const Tensor& l2_shrinkage = ctx->input(7);
+      OP_REQUIRES(
+          ctx,
+          TensorShapeUtils::IsScalar(l2_shrinkage.shape()) &&
+              l2_shrinkage.scalar<T>()() >= static_cast<T>(0),
+          errors::InvalidArgument("l2 shrinkage regularization strength "
+                                  "is not a non-negative scalar: ",
+                                  l2_shrinkage.shape().DebugString()));
+      functor::ApplyFtrlV2<Device, T>()(
+          device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
+          grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
+          l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
+    } else {
+      functor::ApplyFtrl<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
+                                      linear.flat<T>(), grad.flat<T>(),
+                                      lr.scalar<T>(), l1.scalar<T>(),
+                                      l2.scalar<T>(), lr_power.scalar<T>());
+    }
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -1948,14 +2009,36 @@ using GPUDevice = Eigen::GpuDevice;
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyFtrl").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyFtrlOp<D##Device, T>);                                  \
-  REGISTER_KERNEL_BUILDER(Name("ResourceApplyFtrl")                \
-                              .HostMemory("var")                   \
-                              .HostMemory("accum")                 \
-                              .HostMemory("linear")                \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<T>("T"),             \
-                          ApplyFtrlOp<D##Device, T>);
+      ApplyFtrlOp<D##Device, T, /*has_l2_shrinkage=*/false>);      \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("ResourceApplyFtrl")                                    \
+          .HostMemory("var")                                       \
+          .HostMemory("accum")                                     \
+          .HostMemory("linear")                                    \
+          .Device(DEVICE_##D)                                      \
+          .TypeConstraint<T>("T"),                                 \
+      ApplyFtrlOp<D##Device, T, /*has_l2_shrinkage=*/false>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#undef REGISTER_CPU_KERNELS
+#undef REGISTER_KERNELS
+
+#define REGISTER_KERNELS(D, T)                                       \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("ApplyFtrlV2").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyFtrlOp<D##Device, T, /*has_l2_shrinkage=*/true>);         \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("ResourceApplyFtrlV2")                                    \
+          .HostMemory("var")                                         \
+          .HostMemory("accum")                                       \
+          .HostMemory("linear")                                      \
+          .Device(DEVICE_##D)                                        \
+          .TypeConstraint<T>("T"),                                   \
+      ApplyFtrlOp<D##Device, T, /*has_l2_shrinkage=*/true>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
@@ -1966,7 +2049,7 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_KERNELS
 
 // Note, this op works on cpu only.
-template <typename Device, typename T, typename Tindex>
+template <typename Device, typename T, typename Tindex, bool has_l2_shrinkage>
 class SparseApplyFtrlOp : public OpKernel {
  public:
   explicit SparseApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -2036,14 +2119,14 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
-    const Tensor& lr_power = ctx->input(8);
+    const int lr_power_index = has_l2_shrinkage ? 9 : 8;
+    const Tensor& lr_power = ctx->input(lr_power_index);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(lr_power.shape()) &&
                     lr_power.scalar<T>()() <= static_cast<T>(0),
                 errors::InvalidArgument("lr_power is not a "
                                         "non-positive scalar: ",
                                         lr_power.shape().DebugString()));
-
     int64 inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
@@ -2061,6 +2144,18 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument(
                     "Inner dimension should be greater than zero."));
 
+    const Tensor* l2_shrinkage;
+    if (has_l2_shrinkage) {
+      l2_shrinkage = &ctx->input(8);
+      OP_REQUIRES(
+          ctx,
+          TensorShapeUtils::IsScalar(l2_shrinkage->shape()) &&
+              l2_shrinkage->scalar<T>()() >= static_cast<T>(0),
+          errors::InvalidArgument("l2 shrinkage regularization strength "
+                                  "is not a non-negative scalar: ",
+                                  l2_shrinkage->shape().DebugString()));
+    }
+
     if (N > 0) {
       if (inner_dim > 1) {
         const Tindex first_dim_size = var.dim_size(0);
@@ -2072,6 +2167,10 @@ class SparseApplyFtrlOp : public OpKernel {
         T lr_scalar = lr.scalar<T>()();
         T l1_scalar = l1.scalar<T>()();
         T l2_scalar = l2.scalar<T>()();
+        T l2_shrinkage_scalar;
+        if (has_l2_shrinkage) {
+          l2_shrinkage_scalar = l2_shrinkage->scalar<T>()();
+        }
         T lr_power_scalar = lr_power.scalar<T>()();
 
         for (Tindex i = 0; i < N; i++) {
@@ -2085,41 +2184,56 @@ class SparseApplyFtrlOp : public OpKernel {
           auto grad = grad_flat.template chip<0>(i);
           auto var = var_flat.template chip<0>(index);
 
-          auto new_accum = accum + grad.square();
-          if (lr_power_scalar == static_cast<T>(-0.5)) {
-            linear +=
-                grad - (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;
+// Use a macro to implement the computation here due to the templating of the
+// eigen tensor library.
+#define COMPUTE_FTRL(grad_to_use)                                              \
+  auto new_accum = accum + grad_to_use.square();                               \
+  if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
+    linear +=                                                                  \
+        grad_to_use - (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;     \
+  } else {                                                                     \
+    linear += grad_to_use - (new_accum.pow(-lr_power_scalar) -                 \
+                             accum.pow(-lr_power_scalar)) /                    \
+                                lr_scalar * var;                               \
+  }                                                                            \
+  auto x = (linear.constant(l1_scalar) * linear.sign() - linear);              \
+  if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
+    auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +                \
+             linear.constant(static_cast<T>(2) * l2_scalar);                   \
+    var = x / y;                                                               \
+  } else {                                                                     \
+    auto y = new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) + \
+             linear.constant(static_cast<T>(2) * l2_scalar);                   \
+    var = x / y;                                                               \
+  }                                                                            \
+  var = (linear.abs() > linear.constant(l1_scalar))                            \
+            .select(var, var.constant(static_cast<T>(0)));                     \
+  accum += grad_to_use.square();
+
+          if (has_l2_shrinkage) {
+            auto grad_with_shrinkage =
+                grad + static_cast<T>(2) * l2_shrinkage_scalar * var;
+            COMPUTE_FTRL(grad_with_shrinkage);
           } else {
-            linear += grad -
-                      (new_accum.pow(-lr_power_scalar) -
-                       accum.pow(-lr_power_scalar)) /
-                          lr_scalar * var;
+            COMPUTE_FTRL(grad);
           }
-          auto x = (linear.constant(l1_scalar) * linear.sign() - linear);
-          if (lr_power_scalar == static_cast<T>(-0.5)) {
-            auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +
-                     linear.constant(static_cast<T>(2) * l2_scalar);
-            var = x / y;
-          } else {
-            auto y = new_accum.pow(-lr_power_scalar) /
-                         new_accum.constant(lr_scalar) +
-                     linear.constant(static_cast<T>(2) * l2_scalar);
-            var = x / y;
-          }
-          var = (linear.abs() > linear.constant(l1_scalar))
-                    .select(var, var.constant(static_cast<T>(0)));
-          accum += grad.square();
         }
+#undef COMPUTE_FTRL
       } else {
+        T lr_scalar = lr.scalar<T>()();
+        T l1_scalar = l1.scalar<T>()();
+        T l2_scalar = l2.scalar<T>()();
+        T lr_power_scalar = lr_power.scalar<T>()();
+        T l2_shrinkage_scalar;
+        if (has_l2_shrinkage) {
+          l2_shrinkage_scalar = l2_shrinkage->scalar<T>()();
+        }
+
         auto indices_vec = indices.vec<Tindex>();
         auto var_flat = var.flat<T>();
         auto accum_flat = accum.flat<T>();
         auto linear_flat = linear.flat<T>();
         auto grad_flat = grad.flat<T>();
-        T lr_scalar = lr.scalar<T>()();
-        T l1_scalar = l1.scalar<T>()();
-        T l2_scalar = l2.scalar<T>()();
-        T lr_power_scalar = lr_power.scalar<T>()();
         const Tindex first_dim_size = accum_flat.size();
 
         for (Tindex i = 0; i < N; i++) {
@@ -2131,7 +2245,13 @@ class SparseApplyFtrlOp : public OpKernel {
           T& a = accum_flat(index);
           T& l = linear_flat(index);
           T& v = var_flat(index);
-          const T& g = grad_flat(i);
+          T g;
+          if (has_l2_shrinkage) {
+            g = grad_flat(i) +
+                (static_cast<T>(2) * l2_shrinkage_scalar * var_flat(i));
+          } else {
+            g = grad_flat(i);
+          }
 
           T updated_a = a + g * g;
           using Eigen::numext::pow;
@@ -2153,17 +2273,43 @@ class SparseApplyFtrlOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                 \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyFtrl")                     \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<T>("T")                 \
-                              .TypeConstraint<Tindices>("Tindices"),  \
-                          SparseApplyFtrlOp<CPUDevice, T, Tindices>); \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyFtrl")             \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<T>("T")                 \
-                              .TypeConstraint<Tindices>("Tindices"),  \
-                          SparseApplyFtrlOp<CPUDevice, T, Tindices>);
+#define REGISTER_KERNELS(T, Tindices)                                         \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("SparseApplyFtrl")                                                 \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<T>("T")                                             \
+          .TypeConstraint<Tindices>("Tindices"),                              \
+      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/false>); \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("ResourceSparseApplyFtrl")                                         \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<T>("T")                                             \
+          .TypeConstraint<Tindices>("Tindices"),                              \
+      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/false>);
+#define REGISTER_CPU_KERNELS(T) \
+  REGISTER_KERNELS(T, int32);   \
+  REGISTER_KERNELS(T, int64);
+
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
+
+#undef REGISTER_CPU_KERNELS
+#undef REGISTER_KERNELS
+
+#define REGISTER_KERNELS(T, Tindices)                                        \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("SparseApplyFtrlV2")                                              \
+          .Device(DEVICE_CPU)                                                \
+          .TypeConstraint<T>("T")                                            \
+          .TypeConstraint<Tindices>("Tindices"),                             \
+      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/true>); \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("ResourceSparseApplyFtrlV2")                                      \
+          .Device(DEVICE_CPU)                                                \
+          .TypeConstraint<T>("T")                                            \
+          .TypeConstraint<Tindices>("Tindices"),                             \
+      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/true>);
 #define REGISTER_CPU_KERNELS(T) \
   REGISTER_KERNELS(T, int32);   \
   REGISTER_KERNELS(T, int64);
@@ -2487,21 +2633,25 @@ class ApplyAdamOp : public OpKernel {
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-class ApplyAdamOp < SYCLDevice, T> : public OpKernel {
+class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
  public:
   explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1, 2});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
+                                                      {0, 1, 2});
 
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     Tensor m;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &m));
+    OP_REQUIRES_OK(ctx,
+                   GetInputTensorFromVariable(ctx, 1, use_exclusive_lock_, &m));
     Tensor v;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &v));
+    OP_REQUIRES_OK(ctx,
+                   GetInputTensorFromVariable(ctx, 2, use_exclusive_lock_, &v));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2532,23 +2682,24 @@ class ApplyAdamOp < SYCLDevice, T> : public OpKernel {
     auto device = ctx->eigen_sycl_device();
     auto size = sizeof(T);
     auto src_ptr = GetBase(&beta1_power_dev);
-    device.memcpyDeviceToHost(&beta1_power, static_cast<const T *>(src_ptr), size);
+    device.memcpyDeviceToHost(&beta1_power, static_cast<const T*>(src_ptr),
+                              size);
 
     src_ptr = GetBase(&beta2_power_dev);
-    device.memcpyDeviceToHost(&beta2_power, static_cast<const T *>(src_ptr), size);
+    device.memcpyDeviceToHost(&beta2_power, static_cast<const T*>(src_ptr),
+                              size);
 
     src_ptr = GetBase(&lr_dev);
-    device.memcpyDeviceToHost(&lr, static_cast<const T *>(src_ptr), size);
+    device.memcpyDeviceToHost(&lr, static_cast<const T*>(src_ptr), size);
 
     src_ptr = GetBase(&beta1_dev);
-    device.memcpyDeviceToHost(&beta1, static_cast<const T *>(src_ptr), size);
+    device.memcpyDeviceToHost(&beta1, static_cast<const T*>(src_ptr), size);
 
     src_ptr = GetBase(&beta2_dev);
-    device.memcpyDeviceToHost(&beta2, static_cast<const T *>(src_ptr), size);
+    device.memcpyDeviceToHost(&beta2, static_cast<const T*>(src_ptr), size);
 
     src_ptr = GetBase(&epsilon_dev);
-    device.memcpyDeviceToHost(&epsilon, static_cast<const T *>(src_ptr), size);
-
+    device.memcpyDeviceToHost(&epsilon, static_cast<const T*>(src_ptr), size);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_dev.shape()),
                 errors::InvalidArgument("beta1_power is not a scalar: ",
@@ -2585,11 +2736,9 @@ class ApplyAdamOp < SYCLDevice, T> : public OpKernel {
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
 
-    functor::ApplyAdamSYCL<T>()(device, var.flat<T>(), m.flat<T>(),
-                                    v.flat<T>(), beta1_power,
-                                    beta2_power, lr,
-                                    beta1, beta2,
-                                    epsilon, grad.flat<T>());
+    functor::ApplyAdamSYCL<T>()(device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
+                                beta1_power, beta2_power, lr, beta1, beta2,
+                                epsilon, grad.flat<T>());
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2597,7 +2746,7 @@ class ApplyAdamOp < SYCLDevice, T> : public OpKernel {
  private:
   bool use_exclusive_lock_;
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;

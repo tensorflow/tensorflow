@@ -49,7 +49,6 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
     ],
 )
@@ -60,7 +59,6 @@ cc_test(
     srcs = ["utils/sparse_column_iterable_test.cc"],
     deps = [
         ":utils",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -73,7 +71,6 @@ cc_test(
     srcs = ["utils/examples_iterable_test.cc"],
     deps = [
         ":utils",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -99,7 +96,6 @@ cc_test(
     srcs = ["utils/dropout_utils_test.cc"],
     deps = [
         ":utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
