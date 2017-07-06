@@ -52,12 +52,12 @@ BinaryNode MakeSplit(const string& feat, float val) {
 
 void RunBatch(GrowStats* stats,
               const TestableInputTarget* target) {
-  stats->AddSplit(MakeSplit("0", 10.0));
-  stats->AddSplit(MakeSplit("1", 4.0));
-
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
       new tensorflow::tensorforest::TestableDataSet(
           {1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, 2));
+
+  stats->AddSplit(MakeSplit("0", 10.0), dataset, target, 0);
+  stats->AddSplit(MakeSplit("1", 4.0), dataset, target, 0);
 
   for (int i = 0; i < target->NumItems(); ++i) {
     stats->AddExample(dataset, target, i);
@@ -225,11 +225,6 @@ TEST(GrowStatsDenseClassificationTest, TestCheckPruneHoeffding) {
   params.mutable_pruning_type()->mutable_prune_every_samples()
       ->set_constant_value(1);
 
-  DenseClassificationGrowStats stats(params, 1);
-  stats.Initialize();
-  stats.AddSplit(MakeSplit("0", 0.0));
-  stats.AddSplit(MakeSplit("1", 0.0));
-
   // On each iteration, we add two examples, one of class 0 and one
   // of class 1.  Split #0 classifies them perfectly, while split #1
   // sends them both to the left.
@@ -239,6 +234,11 @@ TEST(GrowStatsDenseClassificationTest, TestCheckPruneHoeffding) {
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
       new tensorflow::tensorforest::TestableDataSet(
           {-1.0, -1.0, 1.0, -1.0}, 2));
+
+  DenseClassificationGrowStats stats(params, 1);
+  stats.Initialize();
+  stats.AddSplit(MakeSplit("0", 0.0), dataset, &target, 0);
+  stats.AddSplit(MakeSplit("1", 0.0), dataset, &target, 0);
 
   // Math time!
   // After 2n samples,
