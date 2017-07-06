@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import json
 import os
 
@@ -263,6 +264,9 @@ def get_uid(prefix=''):
   ```
   """
   graph = ops.get_default_graph()
+  if graph not in tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS:
+    tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS[graph] = collections.defaultdict(
+      int)
   layer_name_uids = tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS[graph]
   layer_name_uids[prefix] += 1
   return layer_name_uids[prefix]
