@@ -108,8 +108,8 @@ class MapStageTest(test.TestCase):
       with ops.device(gpu_dev):
         stager = data_flow_ops.MapStagingArea([dtypes.float32])
         y = stager.put(1, [v], [0])
-        self.assertEqual(y.device, '/device:GPU:0' if gpu_dev
-                                                   else gpu_dev)
+        expected_name = gpu_dev if 'gpu' not in gpu_dev else '/device:GPU:0'
+        self.assertEqual(y.device, expected_name)
       with ops.device('/cpu:0'):
         _, x = stager.get(1)
         y = stager.peek(1)
