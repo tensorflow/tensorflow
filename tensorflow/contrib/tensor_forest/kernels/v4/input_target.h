@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace tensorforest {
 
 typedef Eigen::TensorMap<
-    Eigen::Tensor<const float, 1, 1, long>, 0>  // NOLINT(runtime/int)
+    Eigen::Tensor<const float, 1, 1>, 0>  // NOLINT(runtime/int)
     SingleDimStorageType;
 
 // Base class for classes that hold labels and weights. Mostly for testing
