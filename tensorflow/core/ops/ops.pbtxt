@@ -2949,6 +2949,8 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -11799,6 +11801,8 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
