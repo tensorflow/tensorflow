@@ -1494,7 +1494,7 @@ string HloInstruction::ToString(bool compact_operands,
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
-    if (ShapeUtil::ElementsIn(shape()) <= 10) {
+    if (!ShapeUtil::IsTuple(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) {
       // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
       string tmp = literal().ToString();
@@ -1511,7 +1511,7 @@ string HloInstruction::ToString(bool compact_operands,
         first = false;
       }
     } else {
-      // Do not show large constants.
+      // Do not show large constants or tuples.
       operands = "{...}";
     }
   } else if (opcode() == HloOpcode::kParameter) {

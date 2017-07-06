@@ -1958,6 +1958,26 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 }
 
+// Test that a constant with tuple shape becomes a tuple of constants.
+TEST_F(AlgebraicSimplifierTest, ConstantTupleBecomesTupleOfConstants) {
+  HloComputation::Builder builder(TestName());
+  const float constant_scalar = 7.3f;
+  std::initializer_list<float> constant_vector = {1.1f, 2.0f, 3.3f};
+  std::unique_ptr<Literal> value =
+      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar).get(),
+                          Literal::CreateR1<float>(constant_vector).get()});
+  builder.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(),
+              op::Tuple(op::Constant(), op::Constant()));
+}
+
 }  // namespace
 }  // namespace xla
 
