@@ -131,9 +131,11 @@ Status XlaCompiler::CompileFunction(
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
 
-  if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile(
-        strings::StrCat("xla_compile_function_input_", function_id), *graph);
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "XlaCompiler::CompileFunction: "
+            << dump_graph::DumpGraphToFile(
+                   strings::StrCat("xla_compile_function_", function_id),
+                   *graph);
   }
 
   // Optimize the graph before running the compiler.
@@ -144,12 +146,6 @@ Status XlaCompiler::CompileFunction(
   GraphOptimizer optimizer(opts);
   optimizer.Optimize(flib_runtime_.get(), flib_runtime_->env(),
                      /*device=*/nullptr, &graph);
-
-  if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile(
-        strings::StrCat("xla_compile_function_optimized_", function_id),
-        *graph);
-  }
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
@@ -412,6 +408,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  const std::vector<XlaCompiler::Argument>& args,
                                  CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate ComputationBuilder.";
+
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "XlaCompiler::CompileGraph: "
+            << dump_graph::DumpGraphToFile(
+                   strings::StrCat("xla_compile_graph_", name), *graph);
+  }
 
   // Report the error here if initialization failed.
   TF_RETURN_IF_ERROR(initialization_status_);
