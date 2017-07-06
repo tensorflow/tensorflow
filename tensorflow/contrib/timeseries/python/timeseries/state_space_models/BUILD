@@ -60,6 +60,9 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
 )
 
 py_library(
@@ -95,6 +98,9 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
     ],
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
 )
 
 py_library(
@@ -129,6 +135,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
     ],
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
 )
 
 py_library(
@@ -158,6 +167,9 @@ tf_py_test(
         ":state_space_model",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+    ],
+    tags = [
+        "no_pip_gpu",  # b/63391119
     ],
 )
 
@@ -192,6 +204,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+    ],
+    tags = [
+        "no_pip_gpu",  # b/63391119
     ],
 )
 
@@ -228,6 +243,9 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
     ],
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
 )
 
 py_library(
@@ -257,6 +275,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+    ],
+    tags = [
+        "no_pip_gpu",  # b/63391119
     ],
 )
 

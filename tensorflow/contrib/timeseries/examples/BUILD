@@ -62,6 +62,9 @@ py_test(
         "known_anomaly_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
     deps = [
         ":known_anomaly",
     ],
@@ -90,6 +93,9 @@ py_test(
         "multivariate_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
     deps = [
         ":multivariate",
     ],
