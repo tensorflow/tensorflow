@@ -23,7 +23,7 @@
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
-# NO_TEST_ON_INSTALL
+# NO_TEST_ON_INSTALL, PIP_TEST_ROOT
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
@@ -40,6 +40,9 @@
 #
 # If NO_TEST_TFDBG_BINARIES has any non-empty and non-0 value, the testing of
 # TensorFlow Debugger (tfdbg) binaries and examples will be skipped.
+#
+# If PIP_TEST_ROOT has a non-empty and a non-0 value, the whl files will be
+# placed in that directory.
 #
 # Any flags not listed in the usage above will be passed directly to Bazel.
 #
@@ -162,7 +165,10 @@ echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
 
 # Build PIP Wheel file
-PIP_TEST_ROOT="pip_test"
+# Set default pip file folder unless specified by env variable
+if [ -z "$PIP_TEST_ROOT" ]; then
+  PIP_TEST_ROOT="pip_test"
+fi
 PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
 PIP_WHL_DIR=$(realpath ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
