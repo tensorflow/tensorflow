@@ -525,11 +525,6 @@ class HloInstruction {
   // or "elementwise".
   string ToCategory() const;
 
-  // Returns the string concatenation of parent name and this instructions
-  // name. This name is guaranteed to be unique among all instructions in the
-  // HloModule.
-  string FullyQualifiedName() const;
-
   // Returns a logging instruction, if the output of this instruction is logged.
   //
   // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace
@@ -795,9 +790,9 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
-  // Returns the opcode string for this instruction. Compared with
-  // HloOpcodeString method, this wrapper dumps additional information
-  // such as fusion kind.
+  // Returns the opcode string for this instruction. This is the result from
+  // HloOpcodeString plus, for fusion nodes, the fusion kind, separated by a
+  // ':'.
   string ExtendedOpcodeStr() const;
 
   // Returns a string identifier for this instruction. If no string identifier

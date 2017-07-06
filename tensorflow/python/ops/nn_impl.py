@@ -580,15 +580,16 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   return (mean, variance)
 
 
-def moments(x, axes, shift=None, name=None, keep_dims=False):
+def moments(x, axes,
+            shift=None,  # pylint: disable=unused-argument
+            name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
-  Note: for numerical stability, when shift=None, the true mean
-  would be computed and used as shift.
+  Note: shift is currently not used, the true mean is computed and used.
 
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):
@@ -601,35 +602,26 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     x: A `Tensor`.
     axes: Array of ints.  Axes along which to compute mean and
       variance.
-    shift: A `Tensor` containing the value by which to shift the data for
-      numerical stability, or `None` in which case the true mean of the data is
-      used as shift. A shift close to the true mean provides the most
-      numerically stable results.
+    shift: Not used in the current implementation
     name: Name used to scope the operations that compute the moments.
     keep_dims: produce moments with the same dimensionality as the input.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.name_scope(name, "moments", [x, axes, shift]):
+  with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
     # on 32-bit floats before converting the mean and variance back to fp16
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
-    if shift is None:
-      # Compute true mean while keeping the dims for proper broadcasting.
-      shift = array_ops.stop_gradient(
-          math_ops.reduce_mean(y, axes, keep_dims=True))
-    else:
-      shift = math_ops.cast(shift, y.dtype)
-    shifted_mean = math_ops.reduce_mean(
-        math_ops.subtract(y, shift), axes, keep_dims=True, name="shifted_mean")
-    variance = math_ops.subtract(
-        math_ops.reduce_mean(
-            math_ops.squared_difference(y, shift), axes, keep_dims=True),
-        math_ops.square(shifted_mean),
+    # Compute true mean while keeping the dims for proper broadcasting.
+    mean = math_ops.reduce_mean(y, axes, keep_dims=True, name="mean")
+    # sample variance, not unbiased variance
+    variance = math_ops.reduce_mean(
+        math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
+        axes,
+        keep_dims=True,
         name="variance")
-    mean = math_ops.add(shifted_mean, shift, name="mean")
     if not keep_dims:
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)

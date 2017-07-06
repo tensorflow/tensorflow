@@ -39,6 +39,25 @@ class TupleTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.0001};
 };
 
+// Tests a tuple-shaped constant.
+XLA_TEST_F(TupleTest, TupleConstant) {
+  ComputationBuilder builder(client_, TestName());
+
+  const float constant_scalar = 7.3f;
+  std::initializer_list<float> constant_vector = {1.1f, 2.0f, 3.3f};
+  std::initializer_list<std::initializer_list<float>> constant_matrix = {
+      {1.1f, 2.2f, 3.5f},  // row 0
+      {4.8f, 5.0f, 6.7f},  // row 1
+  };
+  auto value =
+      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar).get(),
+                          Literal::CreateR1<float>(constant_vector).get(),
+                          Literal::CreateR2<float>(constant_matrix).get()});
+
+  auto result = builder.ConstantLiteral(*value);
+  ComputeAndCompareTuple(&builder, *value, {}, error_spec_);
+}
+
 // Tests the creation of tuple data.
 XLA_TEST_F(TupleTest, TupleCreate) {
   ComputationBuilder builder(client_, TestName());

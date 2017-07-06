@@ -323,8 +323,6 @@ class Affine(bijector.Bijector):
                                          scale_perturb_factor is None)
     # When no args are specified, pretend the scale matrix is the identity
     # matrix.
-    if self._is_only_identity_multiplier and scale_identity_multiplier is None:
-      scale_identity_multiplier = 1.
     with self._name_scope("init", values=[
         shift, scale_identity_multiplier, scale_diag, scale_tril,
         scale_perturb_diag, scale_perturb_factor, event_ndims]):
@@ -336,6 +334,13 @@ class Affine(bijector.Bijector):
         event_ndims = control_flow_ops.with_dependencies(
             [is_less_than_two], event_ndims)
       self._shift = _as_tensor(shift, "shift")
+      if (self._is_only_identity_multiplier
+          and scale_identity_multiplier is None):
+        if self._shift is not None:
+          scale_identity_multiplier = ops.convert_to_tensor(
+              1., dtype=self._shift.dtype)
+        else:
+          scale_identity_multiplier = 1.
       # self._create_scale_operator returns an OperatorPD in all cases except if
       # self._is_only_identity_multiplier; in which case it returns a scalar
       # Tensor.
@@ -563,8 +568,9 @@ class Affine(bijector.Bijector):
       # TODO(jvdillon): We don't pad in this case and instead let the fldj be
       # applied via broadcast.
       d = math_ops.cast(array_ops.shape(x)[-1], dtype=self._scale.dtype)
+      one = ops.convert_to_tensor(1., self._scale.dtype)
       return math_ops.log(math_ops.abs(self._scale)) * array_ops.where(
-          math_ops.equal(self._shaper.event_ndims, 0), 1., d)
+          math_ops.equal(self._shaper.event_ndims, 0), one, d)
     fldj = self._scale.sqrt_log_abs_det()
     # We need to squeeze off the padded dimension.
     start = array_ops.where(self._rank_two_event_ndims_one, 1, 0)

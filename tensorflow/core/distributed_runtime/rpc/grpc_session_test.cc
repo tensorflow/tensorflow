@@ -183,6 +183,33 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
   }
 }
 
+TEST(GrpcSessionTest, FetchMultipleTimes) {
+  GraphDef graph;
+  string node_names[3];
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  std::unique_ptr<Session> session(
+      NewRemote(Options(cluster->targets()[0], 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+  const std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+
+  const string node = node_names[2] + ":0";
+  TF_CHECK_OK(session->Run(inputs, {node, node}, {}, &outputs));
+  EXPECT_EQ(2, outputs.size());
+  for (int i = 0; i < outputs.size(); ++i) {
+    const Tensor& t = outputs[i];
+    ASSERT_TRUE(t.IsInitialized()) << i;
+    ASSERT_EQ(4.0, t.flat<float>()(0)) << i;
+  }
+  TF_CHECK_OK(session->Close());
+}
+
 // A = [3 2; -1 0]; x = rand(2, 1); We want to compute the largest
 // eigenvalue for A, which is 2.0. Iteratively, we do
 //   repeat x = y / y.norm(); y = A * x; end

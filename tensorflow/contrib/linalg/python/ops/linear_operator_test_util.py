@@ -169,10 +169,6 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          if dtype.is_complex:
-            self.skipTest(
-                "tf.matrix_determinant does not work with complex, so this "
-                "test is being skipped.")
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
@@ -190,10 +186,6 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
-          if dtype.is_complex:
-            self.skipTest(
-                "tf.matrix_determinant does not work with complex, so this "
-                "test is being skipped.")
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
             operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(

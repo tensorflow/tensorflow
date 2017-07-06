@@ -178,7 +178,10 @@ config_setting(
 
 package_group(
     name = "internal",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/protonn/llgtm/...",
+        "//tensorflow/...",
+    ],
 )
 
 filegroup(
@@ -313,7 +316,11 @@ filegroup(
         "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/text:all_files",
-        "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
+        "//tensorflow/contrib/tfprof:all_files",
+        "//tensorflow/contrib/timeseries:all_files",
+        "//tensorflow/contrib/timeseries/examples:all_files",
+        "//tensorflow/contrib/timeseries/python/timeseries:all_files",
+        "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:all_files",
         "//tensorflow/contrib/tpu:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
@@ -336,6 +343,9 @@ filegroup(
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
         "//tensorflow/core/platform/hadoop:all_files",
+        "//tensorflow/core/profiler:all_files",
+        "//tensorflow/core/profiler/internal:all_files",
+        "//tensorflow/core/profiler/internal/advisor:all_files",
         "//tensorflow/core/util/ctc:all_files",
         "//tensorflow/core/util/tensor_bundle:all_files",
         "//tensorflow/examples/android:all_files",
@@ -360,6 +370,8 @@ filegroup(
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/kernel_tests/distributions:all_files",
         "//tensorflow/python/ops/distributions:all_files",
+        "//tensorflow/python/profiler:all_files",
+        "//tensorflow/python/profiler/internal:all_files",
         "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
         "//tensorflow/tools/api/golden:all_files",
@@ -372,12 +384,10 @@ filegroup(
         "//tensorflow/tools/docker/notebooks:all_files",
         "//tensorflow/tools/docs:all_files",
         "//tensorflow/tools/git:all_files",
+        "//tensorflow/tools/mlpbtxt:all_files",
         "//tensorflow/tools/proto_text:all_files",
         "//tensorflow/tools/quantization:all_files",
         "//tensorflow/tools/test:all_files",
-        "//tensorflow/tools/tfprof:all_files",
-        "//tensorflow/tools/tfprof/internal:all_files",
-        "//tensorflow/tools/tfprof/internal/advisor:all_files",
         "//tensorflow/user_ops:all_files",
         "//third_party/hadoop:all_files",
         "//third_party/sycl:all_files",

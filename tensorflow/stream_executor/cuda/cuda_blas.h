@@ -118,16 +118,14 @@ class CUDABlas : public blas::BlasSupport {
   // and we want to avoid pulling in a dependency on Eigen.  When we pass the
   // references to cublas, we essentially reinterpret_cast to __half, which is
   // safe because Eigen::half inherits from __half.
-  template <typename T>
-  bool DoBlasGemmWithAlgorithmImpl(Stream *stream, blas::Transpose transa,
-                                   blas::Transpose transb, uint64 m, uint64 n,
-                                   uint64 k, const T &alpha,
-                                   const DeviceMemory<T> &a, int lda,
-                                   const DeviceMemory<T> &b, int ldb,
-                                   const T &beta, DeviceMemory<T> *c, int ldc,
-                                   blas::ComputationType computation_type,
-                                   blas::AlgorithmType algorithm,
-                                   blas::ProfileResult *output_profile_result);
+  template <typename InT, typename OutT, typename CompT>
+  bool DoBlasGemmWithAlgorithmImpl(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+      uint64 n, uint64 k, const CompT &alpha, const DeviceMemory<InT> &a,
+      int lda, const DeviceMemory<InT> &b, int ldb, const CompT &beta,
+      DeviceMemory<OutT> *c, int ldc, blas::ComputationType computation_type,
+      blas::AlgorithmType algorithm,
+      blas::ProfileResult *output_profile_result);
 
   // mutex that guards the cuBLAS handle for this device.
   mutex mu_;

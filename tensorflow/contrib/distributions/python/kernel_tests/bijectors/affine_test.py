@@ -111,27 +111,50 @@ class AffineBijectorTest(test.TestCase):
         self.assertAllClose(-np.log(2.),
                             run(bijector.inverse_log_det_jacobian, x))
 
-  def testOneBatchScalarViaIdentity(self):
+  def testOneBatchScalarViaIdentityIn64BitUserProvidesShiftOnly(self):
     with self.test_session() as sess:
 
       def static_run(fun, x):
         return fun(x).eval()
 
       def dynamic_run(fun, x_value):
-        x_value = np.array(x_value)
-        x = array_ops.placeholder(dtypes.float32, name="x")
+        x_value = np.array(x_value).astype(np.float64)
+        x = array_ops.placeholder(dtypes.float64, name="x")
         return sess.run(fun(x), feed_dict={x: x_value})
 
       for run in (static_run, dynamic_run):
-        mu = [1.]
+        mu = np.float64([1.])
         # One batch, scalar.
         # Corresponds to scale = 1.
         bijector = Affine(shift=mu, event_ndims=0)
         self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
-        x = [1.]  # One sample from one batches.
+        x = np.float64([1.])  # One sample from one batches.
         self.assertAllClose([2.], run(bijector.forward, x))
         self.assertAllClose([0.], run(bijector.inverse, x))
         self.assertAllClose(0., run(bijector.inverse_log_det_jacobian, x))
+
+  def testOneBatchScalarViaIdentityIn64BitUserProvidesMultiplierOnly(self):
+    with self.test_session() as sess:
+
+      def static_run(fun, x):
+        return fun(x).eval()
+
+      def dynamic_run(fun, x_value):
+        x_value = np.array(x_value).astype(np.float64)
+        x = array_ops.placeholder(dtypes.float64, name="x")
+        return sess.run(fun(x), feed_dict={x: x_value})
+
+      for run in (static_run, dynamic_run):
+        multiplier = np.float64([2.])
+        # One batch, scalar.
+        # Corresponds to scale = 2, shift = 0.
+        bijector = Affine(scale_identity_multiplier=multiplier, event_ndims=0)
+        self.assertEqual(0, bijector.event_ndims.eval())  # "is scalar"
+        x = np.float64([1.])  # One sample from one batches.
+        self.assertAllClose([2.], run(bijector.forward, x))
+        self.assertAllClose([0.5], run(bijector.inverse, x))
+        self.assertAllClose([np.log(0.5)],
+                            run(bijector.inverse_log_det_jacobian, x))
 
   def testOneBatchScalarViaDiag(self):
     with self.test_session() as sess:

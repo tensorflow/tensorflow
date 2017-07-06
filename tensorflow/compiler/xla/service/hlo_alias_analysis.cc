@@ -141,7 +141,7 @@ void HloAliasAnalysis::FlattenInstructionBufferSets(
   VLOG(4) << "Flattening buffer sets of instructions: "
           << Join(instructions, ", ",
                   [this](string* out, const HloInstruction* instruction) {
-                    StrAppend(out, instruction->FullyQualifiedName());
+                    StrAppend(out, instruction->name());
                   });
   if (instructions.size() < 2) {
     return;
@@ -183,7 +183,7 @@ string HloAliasAnalysis::ToString() const {
        module_->computations()) {
     for (const std::unique_ptr<HloInstruction>& instruction :
          computation->instructions()) {
-      StrAppend(&out, "    ", instruction->FullyQualifiedName(), ":\n");
+      StrAppend(&out, "    ", instruction->name(), ":\n");
       auto buffer_str = [this](const HloBuffer& buffer) {
         return StrCat(
             "Buffer ", buffer.id(), ", values: ",

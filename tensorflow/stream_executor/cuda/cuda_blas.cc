@@ -33,6 +33,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_blas.h"
 
+#include <assert.h>
 #include <complex>
 
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
@@ -484,6 +485,11 @@ struct CUDADataType<std::complex<double>> {
 };
 
 template <>
+struct CUDADataType<int> {
+  static constexpr cudaDataType_t type = CUDA_R_32I;
+};
+
+template <>
 struct CUDADataType<int8> {
   static constexpr cudaDataType_t type = CUDA_R_8I;
 };
@@ -511,6 +517,8 @@ cudaDataType_t CUDAComputationType(blas::ComputationType ty) {
       return CUDA_R_32F;
     case blas::ComputationType::kF64:
       return CUDA_R_64F;
+    case blas::ComputationType::kI32:
+      return CUDA_R_32I;
     case blas::ComputationType::kComplexF32:
       return CUDA_C_32F;
     case blas::ComputationType::kComplexF64:
@@ -1849,12 +1857,12 @@ bool CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
       CUDAComplex(CUDAMemoryMutable(c)), ldc);
 }
 
-template <typename T>
+template <typename InT, typename OutT, typename CompT>
 bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-    uint64 n, uint64 k, const T &alpha, const DeviceMemory<T> &a, int lda,
-    const DeviceMemory<T> &b, int ldb, const T &beta, DeviceMemory<T> *c,
-    int ldc, blas::ComputationType computation_type,
+    uint64 n, uint64 k, const CompT &alpha, const DeviceMemory<InT> &a, int lda,
+    const DeviceMemory<InT> &b, int ldb, const CompT &beta,
+    DeviceMemory<OutT> *c, int ldc, blas::ComputationType computation_type,
     blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
 // CUDA < version 8 and GPUs < sm_50 don't support cublasGemmEx.
 #if CUDA_VERSION < 8000
@@ -1881,12 +1889,15 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     }
   }
 
-  cudaDataType_t data_type = CUDADataType<T>::type;
+  cudaDataType_t cuda_in_type = CUDADataType<InT>::type;
+  // Since we are converting 'algorithm' to cublasGemmAlgo_t by static_cast,
+  // we do the following compile-time check on the default value:
+  static_assert(blas::kDefaultGemmAlgo == CUBLAS_GEMM_DFALT, "");
   bool result = DoBlasInternalFailureOK(
       wrap::cublasGemmEx, stream, /* pointer_mode_host = */ true,
       CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
-      CUDAMemory(a), data_type, lda, CUDAMemory(b), data_type, ldb, &beta,
-      CUDAMemoryMutable(c), data_type, ldc,
+      CUDAMemory(a), cuda_in_type, lda, CUDAMemory(b), cuda_in_type, ldb, &beta,
+      CUDAMemoryMutable(c), CUDADataType<OutT>::type, ldc,
       CUDAComputationType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm));
 
@@ -1918,6 +1929,17 @@ bool CUDABlas::GetBlasGemmAlgorithms(
   }
 #endif
   return true;
+}
+
+bool CUDABlas::DoBlasGemmWithAlgorithm(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, int alpha, const DeviceMemory<int8> &a, int lda,
+    const DeviceMemory<int8> &b, int ldb, int beta, DeviceMemory<int> *c,
+    int ldc, blas::ComputationType computation_type,
+    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithAlgorithmImpl(
+      stream, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc,
+      computation_type, algorithm, output_profile_result);
 }
 
 bool CUDABlas::DoBlasGemmWithAlgorithm(

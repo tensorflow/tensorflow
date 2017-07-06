@@ -796,8 +796,7 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    if (!debug_options.xla_enable_buffer_reuse() || is_thread_local ||
-        instruction->opcode() == HloOpcode::kCustomCall) {
+    if (is_thread_local || instruction->opcode() == HloOpcode::kCustomCall) {
       // Custom call operations never have reusable buffers. Also we do not
       // reuse thread-local buffers for now, because they are dynamically
       // allocated and their lifetimes are hard to compute.

@@ -74,7 +74,9 @@ Status MaybeInitializeTensorArray(xla::ComputationBuilder* builder,
     if (!shape_or_status.ok()) {
       return shape_or_status.status();
     }
-    TensorShape shape = XLAShapeToTensorShape(*shape_or_status.ValueOrDie());
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(
+        XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), &shape));
     if (ta_shape != shape) {
       return errors::InvalidArgument(
           "Mismatched TensorArray sizes: ", ta_shape.DebugString(), " vs ",
@@ -115,7 +117,8 @@ Status GetTensorArrayShape(const XlaResource* resource,
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
-  *shape = XLAShapeToTensorShape(*shape_or_status.ValueOrDie());
+  TF_RETURN_IF_ERROR(
+      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), shape));
   if (shape->dims() < 1) {
     return errors::InvalidArgument("TensorArray rank must be >= 1");
   }

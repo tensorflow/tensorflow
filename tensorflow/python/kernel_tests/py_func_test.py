@@ -113,8 +113,8 @@ class PyOpTest(test.TestCase):
     # returns a tuple, Tout and inp a tuple
     with self.test_session():
       x = constant_op.constant(0.0, dtypes.float64)
-      y, z = script_ops.py_func(tuple_func, (x,),
-                                (dtypes.float64, dtypes.float64))
+      y, z = script_ops.py_func(tuple_func, (x,), (dtypes.float64,
+                                                   dtypes.float64))
       self.assertAllClose(y.eval(), 0.0)
       self.assertAllClose(z.eval(), 1.0)
 
@@ -194,6 +194,21 @@ class PyOpTest(test.TestCase):
                                    "Unsupported object type"):
         z.eval()
 
+  def testReturnInput(self):
+    with self.test_session():
+
+      def ident(x):
+        return x[0]
+
+      p = array_ops.placeholder(dtypes.float32)
+
+      # Create a numpy array aliasing a tensor and a tensor aliasing this array
+      z, = script_ops.py_func(ident, [p], [dtypes.float32])
+      z += 0.0  # Makes sure we release the tensor aliasing the numpy array x[0]
+                # above instead of using its memory as the return value of
+                # session.run
+      self.assertEqual(0.0, z.eval(feed_dict={p: [0.0]}))
+
   def testStateful(self):
     # Not using self.test_session(), which disables optimization.
     with session_lib.Session() as sess:
@@ -225,7 +240,8 @@ class PyOpTest(test.TestCase):
   def testCOrder(self):
     with self.test_session():
       val = [[1, 2], [3, 4]]
-      x, = script_ops.py_func(lambda: np.array(val, order="F"), [], [dtypes.int64])
+      x, = script_ops.py_func(lambda: np.array(val, order="F"), [],
+                              [dtypes.int64])
       self.assertAllEqual(val, x.eval())
 
   def testParallel(self):
