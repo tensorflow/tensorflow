@@ -975,11 +975,12 @@ class RNNCellTest(test.TestCase):
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
+        cell = contrib_rnn_cell.MultiplicativeIntegrationRNNCell(
+            num_units=num_units, bias_start=1.0, alpha_start=1.0,
+            beta_start=1.0)
         x = array_ops.zeros([batch_size, input_size])
         h = array_ops.zeros([batch_size, state_size])
-        output, state = rnn_cell.MultiplicativeIntegrationRNNCell(
-            num_units=num_units, bias_start=1.0, alpha_start=1.0, 
-            beta_start=1.0)(x, h)
+        output, state = cell(x, h)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([output, state], {
             x.name:
@@ -1015,7 +1016,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([batch_size, input_size])
         h = array_ops.zeros([batch_size, state_size])
-        cell = rnn_cell.MultiplicativeIntegrationGRUCell(
+        cell = contrib_rnn_cell.MultiplicativeIntegrationGRUCell(
             num_units=num_units, bias_start=1.0, alpha_start=1.0, 
             beta_start=1.0)
         output, state = cell(x, h)
@@ -1060,7 +1061,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([batch_size, input_size])
         c = array_ops.zeros([batch_size, state_size])
         h = array_ops.zeros([batch_size, state_size])
-        output, (state_c, state_h) = rnn_cell.MultiplicativeIntegrationLSTMCell(
+        output, (state_c, state_h) = contrib_rnn_cell.MultiplicativeIntegrationLSTMCell(
             num_units=num_units, bias_start=1.0, alpha_start=1.0, 
             beta_start=1.0)(x, (c, h))
         sess.run([variables.global_variables_initializer()])
@@ -1089,7 +1090,7 @@ class RNNCellTest(test.TestCase):
         state_size = num_units
         x = array_ops.zeros([batch_size, num_units])
         h = array_ops.zeros([batch_size, state_size])
-        mi = rnn_cell._multiplicative_integration([x, h], [num_units, num_units], True, 
+        mi = contrib_rnn_cell._multiplicative_integration([x, h], [num_units, num_units], True,
             bias_start=0.1, alpha_start=0.2, beta_start=0.3)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([mi], {
