@@ -871,7 +871,7 @@ def _embedding_lookup_with_distributed_aggregation(params,
           p_segment_ids = array_ops.gather(segment_ids, pindices[p])
           # Number the p_segment_ids to meet segment_sum's requirements. Note
           # that unique_p_segment_ids contains unique segment ids of this
-          # partiton and these ids' order is unchanged.
+          # partition and these ids' order is unchanged.
           unique_p_segment_ids, unique_p_segment_idx = array_ops.unique(
               p_segment_ids)
           partitioned_segment_ids.append(unique_p_segment_ids)
