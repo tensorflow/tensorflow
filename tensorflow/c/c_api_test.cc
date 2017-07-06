@@ -912,11 +912,13 @@ class CSession {
     for (TF_Operation* o : outputs) {
       outputs_.emplace_back(TF_Output{o, 0});
     }
+    output_values_.resize(outputs_.size());
   }
 
   void SetOutputs(const std::vector<TF_Output>& outputs) {
     ResetOutputValues();
     outputs_ = outputs;
+    output_values_.resize(outputs_.size());
   }
 
   void SetTargets(std::initializer_list<TF_Operation*> targets) {
