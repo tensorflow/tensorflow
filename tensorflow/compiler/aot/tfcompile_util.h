@@ -16,11 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_AOT_TFCOMPILE_UTIL_H_
 #define TENSORFLOW_COMPILER_AOT_TFCOMPILE_UTIL_H_
 
-#include <unordered_map>
-
 #include "tensorflow/compiler/aot/tfcompile.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 
@@ -34,22 +31,10 @@ Status ValidateCppIdent(StringPiece ident, StringPiece msg);
 // ValidateConfig returns OK iff config is valid.
 Status ValidateConfig(const Config& config);
 
-// Modifies <graph_def> to include placeholders for each fed tensor, and
-// update references to the fed tensors to refer to the placeholders.
-// The existing nodes referenced by the feeds are not removed or modified
-// (except where their input edges are modified by the replacement of other
-// feeds).
-Status AddPlaceholdersForFeeds(
-    const Config& config, const OpRegistryInterface* op_registry,
-    std::unordered_map<string, string>* feed_remapping, GraphDef* graph_def);
-
 // Returns in <out> a copy of <in>, pruned to only include fetches from
 // <config>.
 Status PruneGraphDefInto(const Config& config, const GraphDef& in,
                          GraphDef* out);
-
-// Returns node:port for the given <id>.
-string TensorIdToString(const TensorId& id);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

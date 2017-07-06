@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -120,97 +119,10 @@ Status ValidateConfig(const Config& config) {
   return Status::OK();
 }
 
-Status AddPlaceholdersForFeeds(
-    const Config& config, const OpRegistryInterface* op_registry,
-    std::unordered_map<string, string>* feed_remapping, GraphDef* graph_def) {
-  struct PlaceholderInfo {
-    const Feed* feed = nullptr;  // point to Feed in <config>.
-    string placeholder_name;
-    DataType data_type = DT_INVALID;
-  };
-
-  // Put each fed tensor into a map by name:port. A map is used for determinism
-  // when creating placeholders (genrules want deterministic output).
-  std::map<string, PlaceholderInfo> placeholder_info;
-  for (int i = 0; i < config.feed_size(); ++i) {
-    const Feed* feed = &config.feed(i);
-    const string name_port = TensorIdToString(feed->id());
-    auto& info = placeholder_info[name_port];
-    info.feed = feed;
-    info.placeholder_name = strings::StrCat(
-        "aot_feed_", feed->id().output_index(), "/", feed->id().node_name());
-    (*feed_remapping)[name_port] = info.placeholder_name;
-  }
-
-  // Verify node exists and determine data type.
-  std::unordered_map<string, const NodeDef*> name_to_node;
-  for (int i = 0; i < graph_def->node_size(); ++i) {
-    name_to_node[graph_def->node(i).name()] = &graph_def->node(i);
-  }
-  for (auto it = placeholder_info.begin(); it != placeholder_info.end(); ++it) {
-    PlaceholderInfo& info = it->second;
-    const TensorId& feed_id = info.feed->id();
-
-    // Find the existing node and determine data type.
-    auto node_it = name_to_node.find(feed_id.node_name());
-    if (node_it == name_to_node.end()) {
-      return errors::NotFound("Can't find feed node: ",
-                              TensorIdToString(feed_id));
-    }
-    const NodeDef* existing = node_it->second;
-
-    if (info.feed->type() != DT_INVALID) {
-      info.data_type = info.feed->type();
-    } else {
-      // Build the node in order to infer its type.
-      Graph g(op_registry);
-      Status status;
-      Node* feed_node = g.AddNode(*existing, &status);
-      TF_RETURN_IF_ERROR(status);
-      info.data_type =
-          BaseType(feed_node->output_type(info.feed->id().output_index()));
-    }
-  }
-
-  // Create placeholders. Note that we could avoid creating a placeholder for
-  // feeds which are already placeholders, but we omit that to avoid more cases
-  // in this code.
-  for (auto it = placeholder_info.begin(); it != placeholder_info.end(); ++it) {
-    const PlaceholderInfo& info = it->second;
-    NodeDef* d = graph_def->add_node();
-    d->set_name(info.placeholder_name);
-    d->set_op("PlaceholderV2");
-    auto& attr_map = *d->mutable_attr();
-    attr_map["dtype"].set_type(info.data_type);
-    *attr_map["shape"].mutable_shape() = info.feed->shape();
-  }
-
-  // Rewrite references to the fed tensors to refer to the placeholder.
-  for (int i = 0; i < graph_def->node_size(); ++i) {
-    NodeDef* node_def = graph_def->mutable_node(i);
-    for (int j = 0; j < node_def->input_size(); ++j) {
-      auto id = ParseTensorName(node_def->input(j));
-      auto it = placeholder_info.find(id.ToString());
-      if (it != placeholder_info.end()) {
-        node_def->set_input(j, it->second.placeholder_name);
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
 Status PruneGraphDefInto(const Config& config, const GraphDef& in,
                          GraphDef* out) {
   *out = in;
   out->clear_node();
-
-  // Tensors needed for feeding.
-  std::set<std::pair<string, int>> feed_tensors;
-  for (const auto& feed_config : config.feed()) {
-    feed_tensors.insert(std::make_pair(feed_config.id().node_name(),
-                                       feed_config.id().output_index()));
-  }
 
   // Maps node name to reachability.
   std::unordered_map<string, std::pair<bool, const NodeDef*>> node_by_name;
@@ -218,7 +130,6 @@ Status PruneGraphDefInto(const Config& config, const GraphDef& in,
     node_by_name[node.name()] = std::pair<bool, const NodeDef*>(false, &node);
   }
 
-  // Traverse.
   std::queue<string> name_queue;
   for (int i = 0; i < config.fetch_size(); ++i) {
     name_queue.push(config.fetch(i).id().node_name());
@@ -238,19 +149,8 @@ Status PruneGraphDefInto(const Config& config, const GraphDef& in,
     }
     map_entry.first = true;
 
-    // Push input nodes of the currently visited node to name_queue.
     for (const string& in_edge : map_entry.second->input()) {
-      auto id = ParseTensorName(in_edge);
-      const string node_name = id.first.ToString();
-      if (feed_tensors.find(std::make_pair(node_name, id.second)) ==
-          feed_tensors.end()) {
-        name_queue.push(node_name);
-      } else {
-        // The input tensor is from an edge that is being fed. Therefore,
-        // we skip recursing down that edge, to avoid requiring nodes that
-        // may not be needed (note that the input node may still be added
-        // to name_queue later if one of its output edges is not being fed).
-      }
+      name_queue.push(ParseTensorName(in_edge).first.ToString());
     }
   }
 
@@ -263,10 +163,6 @@ Status PruneGraphDefInto(const Config& config, const GraphDef& in,
     }
   }
   return Status::OK();
-}
-
-string TensorIdToString(const TensorId& id) {
-  return strings::StrCat(id.node_name(), ":", id.output_index());
 }
 
 }  // namespace tfcompile
