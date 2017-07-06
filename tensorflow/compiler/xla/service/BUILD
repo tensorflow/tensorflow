@@ -1887,6 +1887,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "reduce_precision_insertion",
+    srcs = ["reduce_precision_insertion.cc"],
+    hdrs = ["reduce_precision_insertion.h"],
+    deps = [
+        ":buffer_liveness",
+        ":hlo",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "reduce_precision_insertion_test",
+    size = "small",
+    srcs = ["reduce_precision_insertion_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":reduce_precision_insertion",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 
 filegroup(
