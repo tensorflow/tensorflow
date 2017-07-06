@@ -17,10 +17,10 @@
 # Example:
 #
 #plugins = {
-#  "poplar": {
+#  "foo": {
 #    "deps": [
-#      "//tensorflow/compiler/plugin/poplar:poplar_lib",
-#      "//tensorflow/compiler/xla/tests:test_macros_cpu",
+#      "//tensorflow/compiler/plugin/foo:foo_lib",
+#      "//tensorflow/compiler/plugin/foo:test_macros",
 #    ],
 #    "copts": [],
 #    "tags": [],
