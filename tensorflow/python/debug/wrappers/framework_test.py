@@ -40,6 +40,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import tf_inspect
 
 
 class TestDebugWrapperSession(framework.BaseDebugWrapperSession):
@@ -393,6 +394,29 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertItemsEqual(
         ["a_init", "b_init"],
         [datum.node_name for datum in dump.dumped_tensor_data])
+
+
+def _is_public_method_name(method_name):
+  return (method_name.startswith("__") and method_name.endswith("__")
+          or not method_name.startswith("_"))
+
+
+class SessionWrapperPublicMethodParityTest(test_util.TensorFlowTestCase):
+
+  def testWrapperHasAllPublicMethodsOfSession(self):
+    session_public_methods = [
+        method_tuple[0] for method_tuple in
+        tf_inspect.getmembers(session.Session, predicate=tf_inspect.ismethod)
+        if _is_public_method_name(method_tuple[0])]
+    wrapper_public_methods = [
+        method_tuple[0] for method_tuple in
+        tf_inspect.getmembers(
+            framework.BaseDebugWrapperSession, predicate=tf_inspect.ismethod)
+        if _is_public_method_name(method_tuple[0])]
+    missing_public_methods = [
+        method for method in session_public_methods
+        if method not in wrapper_public_methods]
+    self.assertFalse(missing_public_methods)
 
 
 if __name__ == "__main__":
