@@ -21,23 +21,6 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-template <typename T>
-bool IsConstantZero(const Literal& literal) {
-  T val = literal.GetFirstElement<T>();
-  return val == (T)0;
-}
-
-bool IsConstantZero(const Literal& literal) {
-  switch (literal.shape().element_type()) {
-    case F16:
-      return IsConstantZero<half>(literal);
-    case F32:
-      return IsConstantZero<float>(literal);
-    default:
-      return false;
-  }
-}
-
 bool FuseOps::ShouldFuse(HloInstruction* consumer, int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   if (producer->IsConstant() &&
@@ -53,7 +36,7 @@ bool FuseOps::ShouldFuse(HloInstruction* consumer, int64 operand_index) {
 
   if (producer->opcode() == HloOpcode::kConstant &&
       consumer->opcode() == HloOpcode::kMaximum &&
-      IsConstantZero(producer->literal())) {
+      producer->literal().IsAll(0)) {
     return true;
   }
   return false;
