@@ -22,7 +22,6 @@
 #include "tensorflow/contrib/tensor_forest/kernels/v4/params.h"
 #include "tensorflow/contrib/tensor_forest/proto/fertile_stats.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -160,20 +159,17 @@ void TraverseTree(const DecisionTreeResource* tree_resource,
 // until they're gone.
 void UpdateStats(FertileStatsResource* fertile_stats_resource,
                  const std::unique_ptr<TensorDataSet>& data,
-                 const Tensor& input_labels, const Tensor& input_weights,
-                 int num_targets, const std::vector<int32>& leaf_ids,
+                 const TensorInputTarget& target, int num_targets,
+                 const std::vector<int32>& leaf_ids,
                  const std::vector<int32>& leaf_depths,
                  std::unordered_map<int32, std::unique_ptr<mutex>>* locks,
                  mutex* set_lock, int32 start, int32 end,
                  std::unordered_set<int32>* ready_to_split) {
-  const auto labels = input_labels.unaligned_flat<float>();
-  const auto weights = input_weights.unaligned_flat<float>();
   // Stores leaf_id, leaf_depth, example_id for examples that are waiting
   // on another to finish.
   std::queue<std::tuple<int32, int32, int32>> waiting;
 
   int32 i = start;
-  TensorInputTarget target(&labels, &weights, input_labels, num_targets);
   while (i < end || !waiting.empty()) {
     int32 leaf_id;
     int32 leaf_depth;
@@ -215,15 +211,11 @@ void UpdateStats(FertileStatsResource* fertile_stats_resource,
 void UpdateStatsCollated(
     FertileStatsResource* fertile_stats_resource,
     DecisionTreeResource* tree_resource,
-    const std::unique_ptr<TensorDataSet>& data, const Tensor& input_labels,
-    const Tensor& input_weights, int num_targets,
+    const std::unique_ptr<TensorDataSet>& data, const TensorInputTarget& target,
+    int num_targets,
     const std::unordered_map<int32, std::vector<int>>& leaf_examples,
     const std::vector<int32>& leaf_depths, mutex* set_lock, int32 start,
     int32 end, std::unordered_set<int32>* ready_to_split) {
-  const auto labels = input_labels.unaligned_flat<float>();
-  const auto weights = input_weights.unaligned_flat<float>();
-
-  TensorInputTarget target(&labels, &weights, input_labels, num_targets);
   auto it = leaf_examples.begin();
   std::advance(it, start);
   auto end_it = leaf_examples.begin();
@@ -336,32 +328,33 @@ class ProcessInputOp : public OpKernel {
     std::unordered_set<int32> ready_to_split;
     mutex set_lock;
 
+    TensorInputTarget target(input_labels, input_weights, num_targets);
+
     // TODO(gilberth): This is a rough approximation based on measurements
     // from a digits run on local desktop.  Heuristics might be necessary
     // if it really matters that much.
     const int64 costPerUpdate = 1000;
-    auto update = [this, &input_labels, &input_weights, &leaf_ids, &leaf_depths,
-                   &num_targets, fertile_stats_resource, &locks, &set_lock,
-                   &ready_to_split, num_data](int64 start, int64 end) {
+    auto update = [this, &target, &leaf_ids, &leaf_depths, &num_targets,
+                   fertile_stats_resource, &locks, &set_lock, &ready_to_split,
+                   num_data](int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_data);
-      UpdateStats(fertile_stats_resource, data_set_, input_labels,
-                  input_weights, num_targets, leaf_ids, leaf_depths, &locks,
-                  &set_lock, static_cast<int32>(start), static_cast<int32>(end),
+      UpdateStats(fertile_stats_resource, data_set_, target, num_targets,
+                  leaf_ids, leaf_depths, &locks, &set_lock,
+                  static_cast<int32>(start), static_cast<int32>(end),
                   &ready_to_split);
     };
 
-    auto update_collated = [this, &input_labels, &input_weights, &leaf_ids,
-                            &num_targets, &leaf_depths, fertile_stats_resource,
-                            tree_resource, &leaf_examples, &set_lock,
-                            &ready_to_split,
+    auto update_collated = [this, &target, &leaf_ids, &num_targets,
+                            &leaf_depths, fertile_stats_resource, tree_resource,
+                            &leaf_examples, &set_lock, &ready_to_split,
                             num_leaves](int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_leaves);
-      UpdateStatsCollated(
-          fertile_stats_resource, tree_resource, data_set_, input_labels,
-          input_weights, num_targets, leaf_examples, leaf_depths, &set_lock,
-          static_cast<int32>(start), static_cast<int32>(end), &ready_to_split);
+      UpdateStatsCollated(fertile_stats_resource, tree_resource, data_set_,
+                          target, num_targets, leaf_examples, leaf_depths,
+                          &set_lock, static_cast<int32>(start),
+                          static_cast<int32>(end), &ready_to_split);
     };
 
     if (param_proto_.collate_examples()) {

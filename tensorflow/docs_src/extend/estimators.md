@@ -77,8 +77,8 @@ for abalone:
 
 The label to predict is number of rings, as a proxy for abalone age.
 
-![Abalone shell](https://www.tensorflow.org/abalone_shell.jpg) **[“Abalone
-shell”](https://www.flickr.com/photos/thenickster/16641048623/) (by [Nicki Dugan
+![Abalone shell](https://www.tensorflow.org/images/abalone_shell.jpg)
+**[“Abalone shell”](https://www.flickr.com/photos/thenickster/16641048623/) (by [Nicki Dugan
 Pogue](https://www.flickr.com/photos/thenickster/), CC BY-SA 2.0)**
 
 ## Setup

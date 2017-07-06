@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -66,22 +67,25 @@ HloComputation::HloComputation(
     HloInstruction* root_instruction, bool is_fusion_computation)
     : name_(name),
       root_instruction_(root_instruction),
-      is_fusion_computation_(is_fusion_computation),
-      instruction_name_uniquer_(/*separator=*/".") {
+      is_fusion_computation_(is_fusion_computation) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
     if (instruction->opcode() == HloOpcode::kParameter) {
       int64 param_no = instruction->parameter_number();
-      CHECK_GE(param_no, 0);
-      CHECK_LT(param_no, param_instructions_.size());
-      CHECK_EQ(nullptr, param_instructions_[param_no]);
+      CHECK(param_no >= 0 && param_no < parameter_count)
+          << "\nERROR: invalid parameter number.  Expected [0, "
+          << parameter_count << "), got " << param_no;
+      CHECK(param_instructions_[param_no] == nullptr)
+          << "\nERROR: parameter number " << param_no
+          << " already allocated in this computation";
       param_instructions_[param_no] = instruction.get();
     }
     root_found |= instruction.get() == root_instruction_;
     AddInstructionInternal(std::move(instruction));
   }
-  CHECK(root_found);
+  CHECK(root_found)
+      << "\nERROR: root instruction is not present in computation.";
 }
 
 HloInstruction* HloComputation::AddInstruction(
@@ -94,8 +98,9 @@ HloInstruction* HloComputation::AddInstruction(
 
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
-  // Generate a unique name for the instruction.
-  instruction->UniquifyName(&instruction_name_uniquer_);
+  if (parent() != nullptr) {
+    instruction->UniquifyName(&parent()->instruction_name_uniquer());
+  }
   Reparent(instruction.get());
   HloInstruction* pinst = instruction.get();
   instruction_iterators_[pinst] =

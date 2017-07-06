@@ -462,6 +462,7 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
     gpu_device_context =
         static_cast<GPUDeviceContext*>(context->op_device_context());
   }
+  gpu::Stream* stream = gpu_device_context->stream();
   const auto stream_id = gpu_device_context->stream_id();
 
   VLOG(1) << "GpuDevice::ComputeAsync " << op_kernel->name() << " op "
@@ -472,6 +473,7 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   // following TraceMe constructor is simply a conditional test of
   // false value. Measurements show that its overhead is negligible.
   port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string());
+  gpu::cuda::ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, done);
 }
 

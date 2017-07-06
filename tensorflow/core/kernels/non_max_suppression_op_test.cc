@@ -143,8 +143,8 @@ TEST_F(NonMaxSuppressionOpTest, TestInconsistentBoxAndScoreShapes) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-              StringPiece(s.ToString()).contains("scores has incompatible shape"))
-    << s;
+      StringPiece(s.ToString()).contains("scores has incompatible shape"))
+      << s;
 }
 
 TEST_F(NonMaxSuppressionOpTest, TestInvalidIOUThreshold) {
@@ -156,8 +156,8 @@ TEST_F(NonMaxSuppressionOpTest, TestInvalidIOUThreshold) {
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-              StringPiece(s.ToString()).contains("iou_threshold must be in [0, 1]"))
-    << s;
+      StringPiece(s.ToString()).contains("iou_threshold must be in [0, 1]"))
+      << s;
 }
 
 TEST_F(NonMaxSuppressionOpTest, TestEmptyInput) {

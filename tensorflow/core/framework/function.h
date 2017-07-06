@@ -287,20 +287,24 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   const FunctionDef* Find(const string& func) const;
 
   // Adds function definition 'fdef' to this function library.
-  // Returns status 'ok' on success, or error otherwise.
+  // Returns status 'ok' on success, or error otherwise. This is a no-op if
+  // 'fdef' already exists in this function library.
   // If 'fdef' is successfully added to the library, it will be accessible
   // from 'LookUp' and included in the proto returned by 'ToProto'.
   Status AddFunctionDef(const FunctionDef& fdef);
 
   // Adds gradient definition 'grad' to this function library.
+  // This is a no-op if 'grad' already exists in this function library.
   // If 'grad' is successfully added, it will be accessible via 'FindGradient'
   // and included in the proto returned by 'ToProto'.
   Status AddGradientDef(const GradientDef& grad);
 
   // Adds the functions and gradients in 'other' to this function library.
+  // Duplicate functions and gradients are ignored.
   Status AddLibrary(const FunctionLibraryDefinition& other);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
+  // Duplicate functions and gradients are ignored.
   Status AddLibrary(const FunctionDefLibrary& lib_def);
 
   // If the gradient function for 'func' is specified explicitly in

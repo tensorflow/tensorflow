@@ -44,6 +44,9 @@ struct DebugNodeKey {
   DebugNodeKey(const string& device_name, const string& node_name,
                const int32 output_slot, const string& debug_op);
 
+  // Converts a device name string to a device path string.
+  // E.g., /job:localhost/replica:0/task:0/cpu:0 will be converted to
+  //   ,job_localhost,replica_0,task_0,cpu_0.
   static const string DeviceNameToDevicePath(const string& device_name);
 
   const string device_name;
@@ -56,6 +59,17 @@ struct DebugNodeKey {
 
 class DebugIO {
  public:
+  static const char* const kDebuggerPluginName;
+
+  static const char* const kMetadataFilePrefix;
+  static const char* const kCoreMetadataTag;
+  static const char* const kDeviceTag;
+  static const char* const kGraphTag;
+  static const char* const kHashTag;
+
+  static const char* const kFileURLScheme;
+  static const char* const kGrpcURLScheme;
+
   static Status PublishDebugMetadata(
       const int64 global_step, const int64 session_run_index,
       const int64 executor_step_index, const std::vector<string>& input_names,
@@ -63,7 +77,7 @@ class DebugIO {
       const std::vector<string>& target_nodes,
       const std::unordered_set<string>& debug_urls);
 
-  // Publish a tensor to a debug target URL.
+  // Publishes a tensor to a debug target URL.
   //
   // Args:
   //   debug_node_key: A DebugNodeKey identifying the debug node.
@@ -84,7 +98,7 @@ class DebugIO {
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string>& debug_urls);
 
-  // Publish a graph to a set of debug URLs.
+  // Publishes a graph to a set of debug URLs.
   //
   // Args:
   //   graph: The graph to be published.
@@ -92,7 +106,7 @@ class DebugIO {
   static Status PublishGraph(const Graph& graph, const string& device_name,
                              const std::unordered_set<string>& debug_urls);
 
-  // Determine whether a copy node needs to perform deep-copy of input tensor.
+  // Determines whether a copy node needs to perform deep-copy of input tensor.
   //
   // The input arguments contain sufficient information about the attached
   // downstream debug ops for this method to determine whether all the said
@@ -109,7 +123,7 @@ class DebugIO {
   static bool IsCopyNodeGateOpen(
       const std::vector<DebugWatchAndURLSpec>& specs);
 
-  // Determine whether a debug node needs to proceed given the current gRPC
+  // Determines whether a debug node needs to proceed given the current gRPC
   // gating status.
   //
   // Args:
@@ -122,7 +136,7 @@ class DebugIO {
   static bool IsDebugNodeGateOpen(const string& watch_key,
                                   const std::vector<string>& debug_urls);
 
-  // Determine whether debug information should be sent through a grpc://
+  // Determines whether debug information should be sent through a grpc://
   // debug URL given the current gRPC gating status.
   //
   // Args:
@@ -138,21 +152,12 @@ class DebugIO {
                                  const string& debug_url);
 
   static Status CloseDebugURL(const string& debug_url);
-
-  static const char* const kMetadataFilePrefix;
-  static const char* const kCoreMetadataTag;
-  static const char* const kDeviceTag;
-  static const char* const kGraphTag;
-  static const char* const kHashTag;
-
-  static const char* const kFileURLScheme;
-  static const char* const kGrpcURLScheme;
 };
 
 // Helper class for debug ops.
 class DebugFileIO {
  public:
-  // Encapsulate the Tensor in an Event protobuf and write it to a directory.
+  // Encapsulates the Tensor in an Event protobuf and write it to a directory.
   // The actual path of the dump file will be a contactenation of
   // dump_root_dir, tensor_name, along with the wall_time.
   //
@@ -189,12 +194,18 @@ class DebugFileIO {
                                 const DebugNodeKey& debug_node_key,
                                 const uint64 wall_time_us);
 
+  // Dumps an Event proto to a file.
+  //
+  // Args:
+  //   event_prot: The Event proto to be dumped.
+  //   dir_name: Directory path.
+  //   file_name: Base file name.
   static Status DumpEventProtoToFile(const Event& event_proto,
                                      const string& dir_name,
                                      const string& file_name);
 
  private:
-  // Encapsulate the Tensor in an Event protobuf and write it to file.
+  // Encapsulates the Tensor in an Event protobuf and write it to file.
   static Status DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
                                       const Tensor& tensor,
                                       const uint64 wall_time_us,
@@ -267,20 +278,23 @@ class DebugGrpcChannel {
 
 class DebugGrpcIO {
  public:
-  // Send a tensor through a debug gRPC stream.
+  static const size_t kGrpcMessageSizeLimitBytes;
+  static const size_t kGrpcMaxVarintLengthSize;
+
+  // Sends a tensor through a debug gRPC stream.
   static Status SendTensorThroughGrpcStream(const DebugNodeKey& debug_node_key,
                                             const Tensor& tensor,
                                             const uint64 wall_time_us,
                                             const string& grpc_stream_url,
                                             const bool gated);
 
-  // Send an Event proto through a debug gRPC stream.
+  // Sends an Event proto through a debug gRPC stream.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to CloseGrpcStream().
   static Status SendEventProtoThroughGrpcStream(const Event& event_proto,
                                                 const string& grpc_stream_url);
 
-  // Check whether a debug watch key is allowed to send data to a given grpc://
+  // Checks whether a debug watch key is allowed to send data to a given grpc://
   // debug URL given the current gating status.
   //
   // Args:
@@ -293,16 +307,16 @@ class DebugGrpcIO {
   //     proceed.
   static bool IsGateOpen(const string& watch_key, const string& grpc_debug_url);
 
-  // Close a gRPC stream to the given address, if it exists.
+  // Closes a gRPC stream to the given address, if it exists.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to SendTensorThroughGrpcStream().
   static Status CloseGrpcStream(const string& grpc_stream_url);
 
-  // Enable a debug watch key at a grpc:// debug URL.
+  // Enables a debug watch key at a grpc:// debug URL.
   static void EnableWatchKey(const string& grpc_debug_url,
                              const string& watch_key);
 
-  // Disable a debug watch key at a grpc:// debug URL.
+  // Disables a debug watch key at a grpc:// debug URL.
   static void DisableWatchKey(const string& grpc_debug_url,
                               const string& watch_key);
 

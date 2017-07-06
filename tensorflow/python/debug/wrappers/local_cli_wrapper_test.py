@@ -21,6 +21,7 @@ import os
 import shutil
 import tempfile
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -315,6 +316,53 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual([3, 4], wrapped_sess.observers["run_end_cli_run_numbers"])
     self.assertEqual(2, len(wrapped_sess.observers["debug_dumps"]))
     self.assertEqual([None, None], wrapped_sess.observers["tf_errors"])
+
+  def testDebuggingMakeCallableTensorRunnerWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [[], []], self.sess, dump_root=self._tmp_dir)
+    v = variables.Variable(42)
+    tensor_runner = wrapped_sess.make_callable(v)
+    self.sess.run(v.initializer)
+
+    self.assertAllClose(42, tensor_runner())
+    self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
+
+  def testDebuggingMakeCallableTensorRunnerWithCustomRunOptionsWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [[], []], self.sess, dump_root=self._tmp_dir)
+    a = constant_op.constant(42)
+    tensor_runner = wrapped_sess.make_callable(a)
+
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+    self.assertAllClose(
+        42, tensor_runner(options=run_options, run_metadata=run_metadata))
+    self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
+    self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
+
+  def testDebuggingMakeCallableOperationRunnerWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [[], []], self.sess, dump_root=self._tmp_dir)
+    v = variables.Variable(10.0)
+    inc_v = state_ops.assign_add(v, 1.0)
+    op_runner = wrapped_sess.make_callable(inc_v.op)
+    self.sess.run(v.initializer)
+
+    op_runner()
+    self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
+    self.assertEqual(11.0, self.sess.run(v))
+
+  def testDebuggingMakeCallableRunnerWithFeedListWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [[], []], self.sess, dump_root=self._tmp_dir)
+    ph1 = array_ops.placeholder(dtypes.float32)
+    ph2 = array_ops.placeholder(dtypes.float32)
+    a = math_ops.add(ph1, ph2)
+    tensor_runner = wrapped_sess.make_callable(a, feed_list=[ph1, ph2])
+
+    self.assertAllClose(42.0, tensor_runner(41.0, 1.0))
+    self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
 
   def testRuntimeErrorShouldBeCaught(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(

@@ -153,6 +153,28 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
   return Index(source_multidim_index);
 }
 
+IrArray::Index IrArray::Index::SourceIndexOfSlice(
+    const Shape& shape, tensorflow::gtl::ArraySlice<int64> starts,
+    tensorflow::gtl::ArraySlice<int64> strides,
+    llvm::IRBuilder<>* builder) const {
+  Index source_index(multidim_.size());
+  for (int i = 0; i < multidim_.size(); ++i) {
+    int64 stride = strides[i];
+    auto type = multidim_[i]->getType();
+
+    if (stride != 1) {
+      source_index[i] = builder->CreateAdd(
+          builder->CreateMul(multidim_[i],
+                             llvm::ConstantInt::get(type, stride)),
+          llvm::ConstantInt::get(type, starts[i]));
+    } else {
+      source_index[i] = builder->CreateAdd(
+          multidim_[i], llvm::ConstantInt::get(type, starts[i]));
+    }
+  }
+  return source_index;
+}
+
 IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
     tensorflow::gtl::ArraySlice<int64> dimension_mapping,
