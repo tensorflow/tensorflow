@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -198,7 +199,10 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     ExecutionProfile* execution_profile) {
   ExecuteRequest request;
   *request.mutable_computation() = computation.handle();
-  if (execution_options != nullptr) {
+
+  if (execution_options == nullptr) {
+    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
+  } else {
     *request.mutable_execution_options() = *execution_options;
   }
   for (GlobalData* argument : arguments) {
@@ -299,7 +303,9 @@ StatusOr<ExecutionHandle> Client::ExecuteAsync(
   for (GlobalData* argument : arguments) {
     *request.add_arguments() = argument->handle();
   }
-  if (execution_options != nullptr) {
+  if (execution_options == nullptr) {
+    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
+  } else {
     *request.mutable_execution_options() = *execution_options;
   }
 

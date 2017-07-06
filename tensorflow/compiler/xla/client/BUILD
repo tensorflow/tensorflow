@@ -62,6 +62,7 @@ cc_library(
     deps = [
         ":computation",
         ":global_data",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:status_macros",
