@@ -370,7 +370,7 @@ PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                            const xla::Shape& shape) {
   if (tensor.rank() != ShapeUtil::Rank(shape)) return false;
   for (size_t d=0; d<tensor.rank(); d++) {
-    if (tensor.dim(d) != shape.dimensions(d)) return false;
+    if (tensor.dim(d) != (unsigned)shape.dimensions(d)) return false;
   }
 
   return true;

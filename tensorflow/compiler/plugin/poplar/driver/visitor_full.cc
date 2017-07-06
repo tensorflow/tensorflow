@@ -258,7 +258,7 @@ Status FullVisitor::HandleSlice(
   if (simple) {
     out = out.slice(begin, end);
   } else {
-    for (int64 d = 0; d < strides.size(); d++) {
+    for (size_t d = 0; d < strides.size(); d++) {
       int64 s = strides[d];
       if (s > 0) {
         out = out.slice(begin[d], end[d], d);
