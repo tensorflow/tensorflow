@@ -147,14 +147,14 @@ class Supervisor(object):
   Example: Start a thread to print losses.  We want this thread to run
   every 60 seconds, so we launch it with `sv.loop()`.
 
-    ```python
-    ...
-    sv = Supervisor(logdir='/tmp/mydir')
-    with sv.managed_session(FLAGS.master) as sess:
-      sv.loop(60, print_loss, (sess, ))
-      while not sv.should_stop():
-        sess.run(my_train_op)
-    ```
+  ```python
+  ...
+  sv = Supervisor(logdir='/tmp/mydir')
+  with sv.managed_session(FLAGS.master) as sess:
+    sv.loop(60, print_loss, (sess, ))
+    while not sv.should_stop():
+      sess.run(my_train_op)
+  ```
 
   ##### Launching fewer services
 
@@ -166,22 +166,22 @@ class Supervisor(object):
 
   Example: Create summaries manually every 100 steps in the chief.
 
-    ```python
-    # Create a Supervisor with no automatic summaries.
-    sv = Supervisor(logdir='/tmp/mydir', is_chief=is_chief, summary_op=None)
-    # As summary_op was None, managed_session() does not start the
-    # summary thread.
-    with sv.managed_session(FLAGS.master) as sess:
-      for step in xrange(1000000):
-        if sv.should_stop():
-          break
-        if is_chief and step % 100 == 0:
-          # Create the summary every 100 chief steps.
-          sv.summary_computed(sess, sess.run(my_summary_op))
-        else:
-          # Train normally
-          sess.run(my_train_op)
-    ```
+  ```python
+  # Create a Supervisor with no automatic summaries.
+  sv = Supervisor(logdir='/tmp/mydir', is_chief=is_chief, summary_op=None)
+  # As summary_op was None, managed_session() does not start the
+  # summary thread.
+  with sv.managed_session(FLAGS.master) as sess:
+    for step in xrange(1000000):
+      if sv.should_stop():
+        break
+      if is_chief and step % 100 == 0:
+        # Create the summary every 100 chief steps.
+        sv.summary_computed(sess, sess.run(my_summary_op))
+      else:
+        # Train normally
+        sess.run(my_train_op)
+  ```
 
   ##### Custom model initialization
 
