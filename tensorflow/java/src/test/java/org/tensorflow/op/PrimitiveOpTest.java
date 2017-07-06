@@ -30,11 +30,12 @@ import java.util.Set;
 
 import org.junit.Test;
 import org.tensorflow.Graph;
-import org.tensorflow.Input;
+import org.tensorflow.Operand;
+import org.tensorflow.Operation;
 import org.tensorflow.Output;
 import org.tensorflow.TestUtil;
 
-public class AbstractSingleOpTest {
+public class PrimitiveOpTest {
 
   @Test
   public void createOp() {
@@ -65,8 +66,8 @@ public class AbstractSingleOpTest {
       List<Output> result = test.output();
       assertNotNull(test.output());
       assertEquals(2, result.size());
-      assertEquals(2, result.get(0).shape().size(0)); // 2 dims
-      assertEquals(1, result.get(1).shape().size(0)); // 1 dim
+      assertEquals(2, result.get(0).asOutput().shape().size(0)); // 2 dims
+      assertEquals(1, result.get(1).asOutput().shape().size(0)); // 1 dim
     }
   }
 
@@ -92,7 +93,7 @@ public class AbstractSingleOpTest {
 
       TestOp test1 = TestOp.create(s, array);
       TestOp test2 = TestOp.create(s, array);
-      AbstractSingleOp test3 = new AbstractSingleOp(test1.operation) {};
+      PrimitiveOp test3 = new PrimitiveOp(test1.operation) {};
 
       // equals() tests
       assertNotEquals(test1, test2);
@@ -101,7 +102,7 @@ public class AbstractSingleOpTest {
       assertNotEquals(test2, test3);
 
       // hashcode() tests
-      Set<AbstractSingleOp> ops = new HashSet<>();
+      Set<PrimitiveOp> ops = new HashSet<>();
       assertTrue(ops.add(test1));
       assertTrue(ops.add(test2));
       assertFalse(ops.add(test3));
@@ -120,32 +121,32 @@ public class AbstractSingleOpTest {
     }
   }
 
-  private static class TestOp extends AbstractSingleOp implements Input {
+  private static class TestOp extends PrimitiveOp implements Operand {
 
     @Override
     public Output asOutput() {
-      return output();
+      return output;
     }
 
     Output output() {
       return output;
     }
 
-    static TestOp create(Scope s, Input input) {
-      OperationHelper shape = OperationHelper.create(s, "Shape");
-      shape.builder().addInput(input.asOutput());
+    static TestOp create(Scope s, Operand input) {
+      Operation shape =
+          s.graph().opBuilder("Shape", s.makeOpName("shape")).addInput(input.asOutput()).build();
       return new TestOp(shape);
     }
 
     private Output output;
 
-    private TestOp(OperationHelper shape) {
-      super(shape.operation());
-      output = shape.nextOutput();
+    private TestOp(Operation shape) {
+      super(shape);
+      output = shape.output(0);
     }
   }
 
-  private static class TestListOp extends AbstractSingleOp implements Iterable<Output> {
+  private static class TestListOp extends PrimitiveOp implements Iterable<Output> {
 
     @Override
     public Iterator<Output> iterator() {
@@ -156,17 +157,21 @@ public class AbstractSingleOpTest {
       return output;
     }
 
-    static TestListOp create(Scope s, Iterable<? extends Input> input) {
-      OperationHelper shapeN = OperationHelper.create(s, "ShapeN");
-      shapeN.builder().addInputList(Inputs.asOutputs(input));
+    static TestListOp create(Scope s, Iterable<? extends Operand> input) {
+      Operation shapeN =
+          s.graph()
+              .opBuilder("ShapeN", s.makeOpName("shapeN"))
+              .addInputList(Operands.asOutputs(input))
+              .build();
       return new TestListOp(shapeN);
     }
 
     private List<Output> output;
 
-    private TestListOp(OperationHelper shapeN) {
-      super(shapeN.operation());
-      output = shapeN.nextOutputList("output");
+    private TestListOp(Operation shapeN) {
+      super(shapeN);
+      int length = shapeN.outputListLength("output");
+      output = Arrays.asList(shapeN.outputList(0, length));
     }
   }
 }

@@ -17,8 +17,13 @@ package org.tensorflow.op;
 
 import org.tensorflow.Operation;
 
-/** A base class for an {@link Op} that wraps a single operation. */
-public abstract class AbstractSingleOp implements Op {
+/**
+ * A base class for {@link Op} implementations that are backed by a single {@link Operation}.
+ *
+ * <p>Each operation registered in the TensorFlow core is a primitive and is provided as a {@code
+ * PrimitiveOp}. Custom operations working with only one primitive may also derive from this class.
+ */
+public abstract class PrimitiveOp implements Op {
 
   @Override
   public int hashCode() {
@@ -32,10 +37,10 @@ public abstract class AbstractSingleOp implements Op {
     }
     // Note: we consider that all objects wrapping the same operation are equal, no matter their
     // implementation
-    if (!(obj instanceof AbstractSingleOp)) {
+    if (!(obj instanceof PrimitiveOp)) {
       return false;
     }
-    return operation.equals(((AbstractSingleOp) obj).operation);
+    return operation.equals(((PrimitiveOp) obj).operation);
   }
 
   @Override
@@ -54,7 +59,7 @@ public abstract class AbstractSingleOp implements Op {
    *
    * @param operation the underlying operation
    */
-  protected AbstractSingleOp(Operation operation) {
+  protected PrimitiveOp(Operation operation) {
     this.operation = operation;
   }
 }

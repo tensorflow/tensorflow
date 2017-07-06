@@ -29,16 +29,16 @@ import org.tensorflow.Operation;
 import org.tensorflow.Output;
 import org.tensorflow.TestUtil;
 
-/** Unit tests for {@link org.tensorflow.op.Inputs}. */
+/** Unit tests for {@link org.tensorflow.op.Operands}. */
 @RunWith(JUnit4.class)
-public class InputsTest {
+public class OperandsTest {
 
   @Test
-  public void createArrayFromInputs() {
+  public void createOutputArrayFromOperandList() {
     try (Graph g = new Graph()) {
       Operation split = TestUtil.split(g, "split", new int[] {0, 1, 2}, 3);
       List<Output> list = Arrays.asList(split.output(0), split.output(2));
-      Output[] array = Inputs.asOutputs(list);
+      Output[] array = Operands.asOutputs(list);
       assertEquals(list.size(), array.length);
       assertSame(array[0], list.get(0));
       assertSame(array[1], list.get(1));

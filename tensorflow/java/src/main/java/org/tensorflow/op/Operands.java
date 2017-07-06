@@ -18,47 +18,30 @@ package org.tensorflow.op;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.tensorflow.Input;
+import org.tensorflow.Operand;
 import org.tensorflow.OperationBuilder;
 import org.tensorflow.Output;
-import org.tensorflow.VariableInput;
 
-/** Utilities for manipulating input related types and lists. */
-public final class Inputs {
+/** Utilities for manipulating operand related types and lists. */
+public final class Operands {
 
   /**
-   * Converts a list of {@link Input} into an array of {@link Output}.
+   * Converts a list of {@link Operand} into an array of {@link Output}.
    *
-   * <p>Some wrappers need to convert back a list of inputs into an array of outputs in order to
-   * build an operation, see {@link OperationBuilder#addInputList(Output[])}.
+   * <p>Operation wrappers need to convert back a list of inputs into an array of outputs in order
+   * to build an operation, see {@link OperationBuilder#addInputList(Output[])}.
    *
    * @param inputs an iteration of input operands
    * @return an array of outputs
    */
-  public static Output[] asOutputs(Iterable<? extends Input> inputs) {
+  public static Output[] asOutputs(Iterable<? extends Operand> inputs) {
     List<Output> outputList = new ArrayList<>();
-    for (Input input : inputs) {
+    for (Operand input : inputs) {
       outputList.add(input.asOutput());
     }
     return outputList.toArray(new Output[outputList.size()]);
   }
 
-  /**
-   * Converts an {@link Output} into a {@link VariableInput}.
-   *
-   * @param output the output of an operation
-   * @return an input that could be passed as a variable operand
-   */
-  public static VariableInput asVariable(final Output output) {
-    return new VariableInput() {
-
-      @Override
-      public Output asOutput() {
-        return output;
-      }
-    };
-  }
-
   // Disabled constructor
-  private Inputs() {}
+  private Operands() {}
 }

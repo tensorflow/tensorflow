@@ -21,7 +21,7 @@ package org.tensorflow.op;
  * <p>Operation wrappers provide strongly typed interfaces for building operations and linking them
  * into a graph without the use of literals and indexes required by the core classes.
  *
- * <p>This interface basically allows keeping references to any operation wrapper using a common type.
+ * <p>This interface allows keeping references to any operation wrapper using a common type.
  *
  * <pre>{@code
  * // All values returned by an Ops call can be referred as a Op

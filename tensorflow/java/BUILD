@@ -163,11 +163,11 @@ java_test(
 )
 
 java_test(
-    name = "AbstractSingleOpTest",
+    name = "PrimitiveOpTest",
     size = "small",
-    srcs = ["src/test/java/org/tensorflow/op/AbstractSingleOpTest.java"],
+    srcs = ["src/test/java/org/tensorflow/op/PrimitiveOpTest.java"],
     javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.op.AbstractSingleOpTest",
+    test_class = "org.tensorflow.op.PrimitiveOpTest",
     deps = [
         ":tensorflow",
         ":testutil",
@@ -176,24 +176,11 @@ java_test(
 )
 
 java_test(
-    name = "OperationHelperTest",
+    name = "OperandsTest",
     size = "small",
-    srcs = ["src/test/java/org/tensorflow/op/OperationHelperTest.java"],
+    srcs = ["src/test/java/org/tensorflow/op/OperandsTest.java"],
     javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.op.OperationHelperTest",
-    deps = [
-        ":tensorflow",
-        ":testutil",
-        "@junit",
-    ],
-)
-
-java_test(
-    name = "InputsTest",
-    size = "small",
-    srcs = ["src/test/java/org/tensorflow/op/InputsTest.java"],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.op.InputsTest",
+    test_class = "org.tensorflow.op.OperandsTest",
     deps = [
         ":tensorflow",
         ":testutil",
