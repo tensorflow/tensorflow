@@ -78,7 +78,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
       if e is None:
         input_data_shape[i] = np.random.randint(1, 4)
     input_data = 10 * np.random.random(input_data_shape)
-    if input_dtype[:4] == 'float':
+    if input_dtype[:5] == 'float':
       input_data -= 0.5
     input_data = input_data.astype(input_dtype)
   elif input_shape is None:
