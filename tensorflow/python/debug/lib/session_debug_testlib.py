@@ -393,9 +393,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Add debug tensor watch for u.
       debug_utils.add_debug_tensor_watch(
-          run_options, "%s" % u_name, 0, debug_urls=debug_urls)
+          run_options, u_name, 0, debug_urls=debug_urls)
       debug_utils.add_debug_tensor_watch(
-          run_options, "%s" % s_name, 0, debug_urls=debug_urls)
+          run_options, s_name, 0, debug_urls=debug_urls)
 
       run_metadata = config_pb2.RunMetadata()
 
