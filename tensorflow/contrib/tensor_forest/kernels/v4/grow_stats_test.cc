@@ -76,7 +76,7 @@ TEST(GrowStatsDenseClassificationTest, Basic) {
   std::vector<float> labels = {1, 0, 1};
   std::vector<float> weights = {2.3, 20.3, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
 
   RunBatch(stat.get(), target.get());
   CHECK(stat->IsFinished());
@@ -127,7 +127,7 @@ TEST(GrowStatsDenseClassificationTest, BasicRunningStats) {
   std::vector<float> labels = {1, 0, 1};
   std::vector<float> weights = {2.3, 20.3, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
 
   RunBatch(stat.get(), target.get());
   CHECK(stat->IsFinished());
@@ -185,7 +185,7 @@ TEST(GrowStatsDenseClassificationTest, TestFinishEarly) {
   std::vector<float> labels = {1, 0, 1};
   std::vector<float> weights = {1, 1, 1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
       new tensorflow::tensorforest::TestableDataSet(
           {1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, 2));
@@ -235,7 +235,7 @@ TEST(GrowStatsDenseClassificationTest, TestCheckPruneHoeffding) {
   // sends them both to the left.
   std::vector<float> labels = {0, 1};
   std::vector<float> weights = {1, 1};
-  TestableInputTarget target(&labels, &weights, 1);
+  TestableInputTarget target(labels, weights, 1);
   std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
       new tensorflow::tensorforest::TestableDataSet(
           {-1.0, -1.0, 1.0, -1.0}, 2));
@@ -306,7 +306,7 @@ TEST(GrowStatsLeastSquaresRegressionTest, Basic) {
 
   std::vector<float> labels = {2.3, 5.6, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, {}, 1));
+      new TestableInputTarget(labels, {}, 1));
   std::vector<int> branches = {1, 0, 1, 1, 0, 0};
 
   RunBatch(stat.get(), target.get());
@@ -340,7 +340,7 @@ TEST(GrowStatsSparseClassificationTest, Basic) {
   std::vector<float> labels = {100, 1000, 1};
   std::vector<float> weights = {2.3, 20.3, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
   std::vector<int> branches = {1, 0, 1, 1, 0, 0};
 
   RunBatch(stat.get(), target.get());
