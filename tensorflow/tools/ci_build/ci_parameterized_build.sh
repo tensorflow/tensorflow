@@ -358,7 +358,7 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
     fi
   done
 else
-  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-benchmark-test"
+  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
     EXTRA_ARGS="${EXTRA_ARGS},-nomac"
   fi
