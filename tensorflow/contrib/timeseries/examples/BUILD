@@ -32,6 +32,9 @@ py_test(
         "data/period_trend.csv",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
     deps = [
         ":predict",
     ],
