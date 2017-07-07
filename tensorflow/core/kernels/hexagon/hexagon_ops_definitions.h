@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// HexagonOpsDefinitions provides ops definitons supported in hexagon library
+// HexagonOpsDefinitions provides ops definitions supported in hexagon library
 // TODO(satok): add a functionality to call functions in hexagon library
 class HexagonOpsDefinitions final : public IGraphTransferOpsDefinitions {
  public:

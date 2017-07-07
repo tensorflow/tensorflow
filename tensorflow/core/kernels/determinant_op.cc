@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/linalg_ops_common.h"
@@ -62,7 +63,14 @@ class DeterminantOp : public LinearAlgebraOp<Scalar> {
 
 REGISTER_LINALG_OP("MatrixDeterminant", (DeterminantOp<float>), float);
 REGISTER_LINALG_OP("MatrixDeterminant", (DeterminantOp<double>), double);
+REGISTER_LINALG_OP("MatrixDeterminant", (DeterminantOp<complex64>), complex64);
+REGISTER_LINALG_OP("MatrixDeterminant", (DeterminantOp<complex128>),
+                   complex128);
 REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<float>), float);
 REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<double>), double);
+REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<complex64>),
+                   complex64);
+REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<complex128>),
+                   complex128);
 
 }  // namespace tensorflow

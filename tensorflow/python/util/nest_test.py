@@ -65,11 +65,80 @@ class NestTest(test.TestCase):
     with self.assertRaises(ValueError):
       nest.pack_sequence_as([5, 6, [7, 8]], ["a", "b", "c"])
 
+  def testFlattenAndPack_withDicts(self):
+    # A nice messy mix of tuples, lists, dicts, and `OrderedDict`s.
+    named_tuple = collections.namedtuple("A", ("b", "c"))
+    mess = [
+        "z",
+        named_tuple(3, 4),
+        {
+            "c": [
+                1,
+                collections.OrderedDict([
+                    ("b", 3),
+                    ("a", 2),
+                ]),
+            ],
+            "b": 5
+        },
+        17
+    ]
+
+    flattened = nest.flatten(mess)
+    self.assertEqual(flattened, ["z", 3, 4, 5, 1, 2, 3, 17])
+
+    structure_of_mess = [
+        14,
+        named_tuple("a", True),
+        {
+            "c": [
+                0,
+                collections.OrderedDict([
+                    ("b", 9),
+                    ("a", 8),
+                ]),
+            ],
+            "b": 3
+        },
+        "hi everybody",
+    ]
+
+    unflattened = nest.pack_sequence_as(structure_of_mess, flattened)
+    self.assertEqual(unflattened, mess)
+
+    # Check also that the OrderedDict was created, with the correct key order.
+    unflattened_ordered_dict = unflattened[2]["c"][1]
+    self.assertIsInstance(unflattened_ordered_dict, collections.OrderedDict)
+    self.assertEqual(list(unflattened_ordered_dict.keys()), ["b", "a"])
+
+  def testFlatten_numpyIsNotFlattened(self):
+    structure = np.array([1, 2, 3])
+    flattened = nest.flatten(structure)
+    self.assertEqual(len(flattened), 1)
+
+  def testFlatten_stringIsNotFlattened(self):
+    structure = "lots of letters"
+    flattened = nest.flatten(structure)
+    self.assertEqual(len(flattened), 1)
+
+  def testPackSequenceAs_notIterableError(self):
+    with self.assertRaisesRegexp(TypeError,
+                                 "flat_sequence must be a sequence"):
+      nest.pack_sequence_as("hi", "bye")
+
+  def testPackSequenceAs_wrongLengthsError(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        "Structure had 2 elements, but flat_sequence had 3 elements."):
+      nest.pack_sequence_as(["hello", "world"],
+                            ["and", "goodbye", "again"])
+
   def testIsSequence(self):
     self.assertFalse(nest.is_sequence("1234"))
     self.assertTrue(nest.is_sequence([1, 3, [4, 5]]))
     self.assertTrue(nest.is_sequence(((7, 8), (5, 6))))
     self.assertTrue(nest.is_sequence([]))
+    self.assertTrue(nest.is_sequence({"a": 1, "b": 2}))
     self.assertFalse(nest.is_sequence(set([1, 2])))
     ones = array_ops.ones([2, 3])
     self.assertFalse(nest.is_sequence(ones))
@@ -145,6 +214,10 @@ class NestTest(test.TestCase):
       nest.assert_same_structure(structure1, structure1_list)
     nest.assert_same_structure(structure1, structure2, check_types=False)
     nest.assert_same_structure(structure1, structure1_list, check_types=False)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "don't have the same set of keys"):
+      nest.assert_same_structure({"a": 1}, {"b": 1})
 
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))

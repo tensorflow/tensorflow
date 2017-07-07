@@ -117,8 +117,13 @@ def load_tensor_from_event(event):
   """
 
   tensor_proto = event.summary.value[0].tensor
-  if tensor_proto.tensor_content or tensor_proto.string_val:
-    # Initialized tensor.
+  shape = tensor_util.TensorShapeProtoToList(tensor_proto.tensor_shape)
+  num_elements = 1
+  for shape_dim in shape:
+    num_elements *= shape_dim
+
+  if tensor_proto.tensor_content or tensor_proto.string_val or not num_elements:
+    # Initialized tensor or empty tensor.
     if tensor_proto.dtype == types_pb2.DT_RESOURCE:
       tensor_value = InconvertibleTensorProto(tensor_proto)
     else:

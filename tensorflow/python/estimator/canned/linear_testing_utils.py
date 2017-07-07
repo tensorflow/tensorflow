@@ -124,7 +124,7 @@ def sigmoid(x):
 
 
 class CheckPartitionerVarHook(session_run_hook.SessionRunHook):
-  """A `SessionRunHook` to check a paritioned variable."""
+  """A `SessionRunHook` to check a partitioned variable."""
 
   def __init__(self, test_case, var_name, var_dim, partitions):
     self._test_case = test_case
