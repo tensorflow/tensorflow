@@ -257,6 +257,16 @@ cc_library(
     includes = ["include"],
 )
 
+# A creator of an empty file include/llvm/Support/VCSRevision.h.
+# This is usually populated by the upstream build infrastructure, but in this
+# case we leave it blank. See upstream revision r300160.
+genrule(
+    name = "vcs_revision_gen",
+    srcs = [],
+    outs = ["include/llvm/Support/VCSRevision.h"],
+    cmd = "echo '' > \"$@\"",
+)
+
 # Rules that apply the LLVM tblgen tool.
 gentbl(
     name = "intrinsics_gen",
@@ -1172,7 +1182,7 @@ cc_library(
         "include/llvm/IR/*.def",
         "include/llvm/IR/*.inc",
         "include/llvm/*.h",
-    ]),
+    ]) + ["include/llvm/Support/VCSRevision.h"],
     deps = [
         ":attributes_compat_gen",
         ":attributes_gen",

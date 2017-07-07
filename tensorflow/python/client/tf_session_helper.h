@@ -158,6 +158,11 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
                             TF_Status* out_status,
                             std::vector<PyObject*>* py_outputs);
 
+// Retrieves control inputs of this operation.
+// control_inputs should be empty.
+std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
+    TF_Operation* oper);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_

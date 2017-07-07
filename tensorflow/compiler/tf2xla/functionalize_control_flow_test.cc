@@ -65,6 +65,9 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
     auto enter =
         ops::internal::Enter(scope.WithOpName("while/Enter"), source, "aloop");
+    // Add an unused Enter node. These should be ignored.
+    auto enter2 =
+        ops::internal::Enter(scope.WithOpName("while/Enter2"), source, "aloop");
     auto merge = ops::Merge(scope.WithOpName("while/Merge"),
                             std::initializer_list<Input>{enter, dummy});
     auto ten = ops::Const<int32>(

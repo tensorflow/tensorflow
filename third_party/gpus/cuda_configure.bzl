@@ -740,19 +740,19 @@ def _create_dummy_repository(repository_ctx):
 
   # Create dummy files for the CUDA toolkit since they are still required by
   # tensorflow/core/platform/default/build_config:cuda.
-  repository_ctx.file("cuda/include/cuda.h", "")
-  repository_ctx.file("cuda/include/cublas.h", "")
-  repository_ctx.file("cuda/include/cudnn.h", "")
-  repository_ctx.file("cuda/extras/CUPTI/include/cupti.h", "")
-  repository_ctx.file("cuda/lib/%s" % _lib_name("cuda", cpu_value))
-  repository_ctx.file("cuda/lib/%s" % _lib_name("cudart", cpu_value))
-  repository_ctx.file("cuda/lib/%s" % _lib_name("cudart_static", cpu_value))
-  repository_ctx.file("cuda/lib/%s" % _lib_name("cublas", cpu_value))
-  repository_ctx.file("cuda/lib/%s" % _lib_name("cusolver", cpu_value))
-  repository_ctx.file("cuda/lib/%s" % _lib_name("cudnn", cpu_value))
-  repository_ctx.file("cuda/lib/%s" % _lib_name("curand", cpu_value))
-  repository_ctx.file("cuda/lib/%s" % _lib_name("cufft", cpu_value))
-  repository_ctx.file("cuda/lib/%s" % _lib_name("cupti", cpu_value))
+  repository_ctx.file("cuda/cuda/include/cuda.h", "")
+  repository_ctx.file("cuda/cuda/include/cublas.h", "")
+  repository_ctx.file("cuda/cuda/include/cudnn.h", "")
+  repository_ctx.file("cuda/cuda/extras/CUPTI/include/cupti.h", "")
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cuda", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cudart", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cudart_static", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cublas", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cusolver", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cudnn", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("curand", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cufft", cpu_value))
+  repository_ctx.file("cuda/cuda/lib/%s" % _lib_name("cupti", cpu_value))
 
   # Set up cuda_config.h, which is used by
   # tensorflow/stream_executor/dso_loader.cc.
@@ -764,7 +764,7 @@ def _create_dummy_repository(repository_ctx):
                "CudaVersion(\"%s\")" % c
                for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES]),
            "%{cuda_toolkit_path}": _DEFAULT_CUDA_TOOLKIT_PATH,
-       })
+       }, "cuda/cuda/cuda_config.h")
 
   # If cuda_configure is not configured to build with GPU support, and the user
   # attempts to build with --config=cuda, add a dummy build rule to intercept
@@ -821,6 +821,13 @@ def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
     dest_files = files.replace(src_dir, '').splitlines()
     src_files = files.splitlines()
   command = []
+  if not _is_windows(repository_ctx):
+    # We clear folders that might have been generated previously to avoid
+    # undesired inclusions
+    command.append('if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi')
+    command.append('if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi')
+    command.append('if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi')
+    command.append('if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi')
   outs = []
   for i in range(len(dest_files)):
     if dest_files[i] != "":
@@ -906,19 +913,19 @@ def _create_local_cuda_repository(repository_ctx):
   cuda_toolkit_path = cuda_config.cuda_toolkit_path
   cuda_include_path = cuda_toolkit_path + "/include"
   genrules = [_symlink_genrule_for_dir(repository_ctx,
-      cuda_include_path, "include", "cuda-include")]
+      cuda_include_path, "cuda/include", "cuda-include")]
   genrules.append(_symlink_genrule_for_dir(repository_ctx,
-      cuda_toolkit_path + "/nvvm", "nvvm", "cuda-nvvm"))
+      cuda_toolkit_path + "/nvvm", "cuda/nvvm", "cuda-nvvm"))
   genrules.append(_symlink_genrule_for_dir(repository_ctx,
       cuda_toolkit_path + "/extras/CUPTI/include",
-      "extras/CUPTI/include", "cuda-extras"))
+      "cuda/extras/CUPTI/include", "cuda-extras"))
 
   cuda_libs = _find_libs(repository_ctx, cuda_config)
   cuda_lib_src = []
   cuda_lib_dest = []
   for lib in cuda_libs.values():
     cuda_lib_src.append(lib.path)
-    cuda_lib_dest.append("lib/" + lib.file_name)
+    cuda_lib_dest.append("cuda/lib/" + lib.file_name)
   genrules.append(_symlink_genrule_for_dir(repository_ctx, None, "", "cuda-lib",
                                        cuda_lib_src, cuda_lib_dest))
 
@@ -927,8 +934,9 @@ def _create_local_cuda_repository(repository_ctx):
   included_files = _read_dir(repository_ctx, cuda_include_path).replace(
       cuda_include_path, '').splitlines()
   if '/cudnn.h' not in included_files:
-    genrules.append(_symlink_genrule_for_dir(repository_ctx, None, "include/",
-        "cudnn-include", [cudnn_header_dir + "/cudnn.h"], ["cudnn.h"]))
+    genrules.append(_symlink_genrule_for_dir(repository_ctx, None,
+        "cuda/include/", "cudnn-include", [cudnn_header_dir + "/cudnn.h"],
+        ["cudnn.h"]))
   else:
     genrules.append(
             'filegroup(\n' +
@@ -1000,7 +1008,7 @@ def _create_local_cuda_repository(repository_ctx):
                ["CudaVersion(\"%s\")" % c
                 for c in cuda_config.compute_capabilities]),
                "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
-       })
+       }, "cuda/cuda/cuda_config.h")
 
 def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
   """Creates pointers to a remotely configured repo set up to build with CUDA."""

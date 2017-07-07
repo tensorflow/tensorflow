@@ -1972,9 +1972,17 @@ def streaming_covariance(predictions,
                       (prev_count * batch_count / update_count))
     update_comoment = state_ops.assign_add(comoment, delta_comoment)
 
-    covariance = _safe_div(comoment, count - 1, 'covariance')
+    covariance = array_ops.where(
+        math_ops.less_equal(count, 1.),
+        float('nan'),
+        math_ops.truediv(comoment, count - 1),
+        name='covariance')
     with ops.control_dependencies([update_comoment]):
-      update_op = _safe_div(comoment, count - 1, 'update_op')
+      update_op = array_ops.where(
+          math_ops.less_equal(count, 1.),
+          float('nan'),
+          math_ops.truediv(comoment, count - 1),
+          name='update_op')
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, covariance)
@@ -2051,16 +2059,16 @@ def streaming_pearson_correlation(predictions,
     var_labels, update_var_labels = streaming_covariance(
         labels, labels, weights=weights, name='variance_labels')
 
-    pearson_r = _safe_div(
+    pearson_r = math_ops.truediv(
         cov,
         math_ops.multiply(math_ops.sqrt(var_predictions),
                           math_ops.sqrt(var_labels)),
-        'pearson_r')
-    update_op = _safe_div(
+        name='pearson_r')
+    update_op = math_ops.truediv(
         update_cov,
         math_ops.multiply(math_ops.sqrt(update_var_predictions),
                           math_ops.sqrt(update_var_labels)),
-        'update_op')
+        name='update_op')
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, pearson_r)

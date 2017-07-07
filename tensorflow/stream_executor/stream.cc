@@ -3484,6 +3484,27 @@ Stream &Stream::ThenBlasGemmWithAlgorithm(
 
 Stream &Stream::ThenBlasGemmWithAlgorithm(
     blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, int alpha, const DeviceMemory<int8> &a, int lda,
+    const DeviceMemory<int8> &b, int ldb, int beta, DeviceMemory<int> *c,
+    int ldc, blas::ComputationType computation_type,
+    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
+            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(computation_type),
+            PARAM(algorithm));
+
+  ThenBlasWithProfileImpl<
+      blas::Transpose, blas::Transpose, uint64, uint64, uint64, int,
+      const DeviceMemory<int8> &, int, const DeviceMemory<int8> &, int, int,
+      DeviceMemory<int> *, int, blas::ComputationType, blas::AlgorithmType>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmWithAlgorithm, transa, transb,
+              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc, computation_type,
+              algorithm, output_profile_result);
+}
+
+Stream &Stream::ThenBlasGemmWithAlgorithm(
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
     uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
     const DeviceMemory<float> &b, int ldb, float beta, DeviceMemory<float> *c,
     int ldc, blas::ComputationType computation_type,
