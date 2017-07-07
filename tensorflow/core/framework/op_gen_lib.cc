@@ -73,7 +73,7 @@ bool ConsumeEquals(StringPiece* description) {
   return false;
 }
 
-// Split `*orig` into two pieces at the first occurence of `split_ch`.
+// Split `*orig` into two pieces at the first occurrence of `split_ch`.
 // Returns whether `split_ch` was found. Afterwards, `*before_split`
 // contains the maximum prefix of the input `*orig` that doesn't
 // contain `split_ch`, and `*orig` contains everything after the

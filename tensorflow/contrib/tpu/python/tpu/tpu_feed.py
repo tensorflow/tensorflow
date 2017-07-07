@@ -298,7 +298,7 @@ class InfeedQueue(object):
     input_tensors is a list of lists of Tensors whose types and shapes are used
     to set the queue configuration. The length of the outer list is the number
     of shards required, and each inner list is the tuple of Tensors to use to
-    determine the types and shapes of the correponding shard. This method
+    determine the types and shapes of the corresponding shard. This method
     depends on the shard dimension, and calling it freezes the shard policy.
 
     Args:

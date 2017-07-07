@@ -150,7 +150,7 @@ class StateInterpolatingAnomalyDetector(FilteringStepPostprocessor):
   This is simply Bayes' theorem, where p(data | anomaly) is the
   alternative/anomaly distribution, p(data | not anomaly) is the model's
   predicted distribution, and anomaly_prior_probability is the prior probability
-  of an anomaly occuring (user-specified, defaulting to 1%).
+  of an anomaly occurring (user-specified, defaulting to 1%).
 
   Rather than computing p(anomaly | data) directly, we use the odds ratio:
 
