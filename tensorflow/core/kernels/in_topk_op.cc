@@ -99,17 +99,35 @@ class InTopK : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("InTopK").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+    Name("InTopK").Device(DEVICE_CPU)
+    .HostMemory("predictions")
+    .HostMemory("targets")
+    .HostMemory("precision")
+    .TypeConstraint<int32>("T"),
     InTopK<float, int32>);
 REGISTER_KERNEL_BUILDER(
-    Name("InTopK").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
+    Name("InTopK").Device(DEVICE_CPU)
+    .HostMemory("predictions")
+    .HostMemory("targets")
+    .HostMemory("precision")
+    .TypeConstraint<int64>("T"),
     InTopK<float, int64>);
 
 REGISTER_KERNEL_BUILDER(
-    Name("InTopKV2").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+    Name("InTopKV2").Device(DEVICE_CPU)
+    .HostMemory("predictions")
+    .HostMemory("targets")
+    .HostMemory("k")
+    .HostMemory("precision")
+    .TypeConstraint<int32>("T"),
     InTopK<float, int32>);
 REGISTER_KERNEL_BUILDER(
-    Name("InTopKV2").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
+    Name("InTopKV2").Device(DEVICE_CPU)
+    .HostMemory("predictions")
+    .HostMemory("targets")
+    .HostMemory("k")
+    .HostMemory("precision")
+    .TypeConstraint<int64>("T"),
     InTopK<float, int64>);
 
 }  // namespace tensorflow
