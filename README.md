@@ -55,7 +55,7 @@ $ python
 'Hello, TensorFlow!'
 >>> a = tf.constant(10)
 >>> b = tf.constant(32)
->>> sess.run(a+b)
+>>> sess.run(a + b)
 42
 >>>
 ```
@@ -63,8 +63,9 @@ $ python
 ## For more information
 
 * [TensorFlow website](https://tensorflow.org)
-* [TensorFlow whitepaper](http://download.tensorflow.org/paper/whitepaper2015.pdf)
+* [TensorFlow whitepaper](https://www.tensorflow.org/about/bib)
 * [TensorFlow Model Zoo](https://github.com/tensorflow/models)
 * [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
+* [TensorFlow course at Stanford](https://web.stanford.edu/class/cs20si)
 
 The TensorFlow community has created amazing things with TensorFlow, please see the [resources section of tensorflow.org](https://www.tensorflow.org/about/#community) for an incomplete list.
