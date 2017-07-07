@@ -36,7 +36,7 @@ void FertileStatsResource::AddExampleToStatsAndInitialize(
     // the top but gradually becomes less of an issue as the tree grows.
     for (int example : examples) {
       collection_op_->CreateAndInitializeCandidateWithExample(
-          input_data, example, node_id);
+          input_data, target, example, node_id);
       if (collection_op_->IsInitialized(node_id)) {
         break;
       }

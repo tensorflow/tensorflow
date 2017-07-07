@@ -34,7 +34,7 @@ tf_class {
   }
   member_method {
     name: "make_callable"
-    argspec: "args=[\'self\', \'fetches\', \'feed_list\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'fetches\', \'feed_list\', \'accept_options\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "partial_run"

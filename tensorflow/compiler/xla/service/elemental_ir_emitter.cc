@@ -63,7 +63,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
-      CHECK(primitive_util::IsIntegralType(from_type));
+      CHECK(primitive_util::IsIntegralType(from_type) || from_type == PRED);
       if (from_type == to_type) {
         return operand_value;
       }
@@ -78,7 +78,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
         }
-        if (primitive_util::IsUnsignedIntegralType(from_type)) {
+        if (primitive_util::IsUnsignedIntegralType(from_type) ||
+            from_type == PRED) {
           return ir_builder_->CreateUIToFP(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
@@ -947,23 +948,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSlice:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        IrArray::Index sliced_index(index.size());
-        for (int i = 0; i < index.size(); ++i) {
-          int64 stride = hlo->slice_stride(i);
-          if (stride != 1) {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                ir_builder_->CreateMul(
-                    index[i], llvm::ConstantInt::get(index[i]->getType(),
-                                                     stride)),
-                llvm::ConstantInt::get(index[i]->getType(),
-                                       hlo->slice_starts(i)));
-          } else {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                    index[i],
-                    llvm::ConstantInt::get(index[i]->getType(),
-                                           hlo->slice_starts(i)));
-          }
-        }
+        IrArray::Index sliced_index = index.SourceIndexOfSlice(
+            /*shape=*/hlo->shape(), /*starts=*/hlo->slice_starts(),
+            /*strides=*/hlo->slice_strides(), /*builder=*/ir_builder_);
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };
     case HloOpcode::kDynamicSlice:

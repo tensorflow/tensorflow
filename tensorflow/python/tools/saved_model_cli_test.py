@@ -391,6 +391,16 @@ Method name is: tensorflow/serving/predict"""
     y_expected = np.array([[2.5], [3.0]])
     self.assertAllClose(y_expected, y_actual)
 
+  def testRunCommandInvalidInputKeyError(self):
+    self.parser = saved_model_cli.create_parser()
+    base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
+    args = self.parser.parse_args([
+        'run', '--dir', base_path, '--tag_set', 'serve', '--signature_def',
+        'regress_x2_to_y3', '--input_exprs', 'x2=np.ones((3,1))'
+    ])
+    with self.assertRaises(ValueError):
+      saved_model_cli.run(args)
+
   def testRunCommandOutputFileExistError(self):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)

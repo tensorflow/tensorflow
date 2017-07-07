@@ -295,7 +295,6 @@ next section.
 The completed trainable linear regression model is shown here:
 
 ```python
-import numpy as np
 import tensorflow as tf
 
 # Model parameters
@@ -305,14 +304,16 @@ b = tf.Variable([-.3], dtype=tf.float32)
 x = tf.placeholder(tf.float32)
 linear_model = W * x + b
 y = tf.placeholder(tf.float32)
+
 # loss
 loss = tf.reduce_sum(tf.square(linear_model - y)) # sum of the squares
 # optimizer
 optimizer = tf.train.GradientDescentOptimizer(0.01)
 train = optimizer.minimize(loss)
+
 # training data
-x_train = [1,2,3,4]
-y_train = [0,-1,-2,-3]
+x_train = [1, 2, 3, 4]
+y_train = [0, -1, -2, -3]
 # training loop
 init = tf.global_variables_initializer()
 sess = tf.Session()
@@ -329,9 +330,9 @@ When run, it produces
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
 
-Notice that the loss is a very small number (close to zero). If you run this
-program your loss will not be exactly the same, because the model is initialized
-with random values.
+Notice that the loss is a very small number (very close to zero). If you run this
+program, your loss may not be the exact same because the model is initialized
+with pseudorandom values.
 
 This more complicated program can still be visualized in TensorBoard
 ![TensorBoard final model visualization](https://www.tensorflow.org/images/getting_started_final.png)
@@ -394,8 +395,8 @@ print("eval metrics: %r"% eval_metrics)
 ```
 When run, it produces
 ```
-    train metrics: {'global_step': 1000, 'loss': 4.3049088e-08}
-    eval metrics: {'global_step': 1000, 'loss': 0.0025487561}
+train metrics: {'loss': 1.2712867e-09, 'global_step': 1000}
+eval metrics: {'loss': 0.0025279333, 'global_step': 1000}
 ```
 Notice how our eval data has a higher loss, but it is still close to zero.
 That means we are learning properly.
@@ -425,7 +426,7 @@ def model_fn(features, labels, mode):
   # Build a linear model and predict values
   W = tf.get_variable("W", [1], dtype=tf.float64)
   b = tf.get_variable("b", [1], dtype=tf.float64)
-  y = W*features['x'] + b
+  y = W * features['x'] + b
   # Loss sub-graph
   loss = tf.reduce_sum(tf.square(y - labels))
   # Training sub-graph
@@ -464,8 +465,8 @@ print("eval metrics: %r"% eval_metrics)
 ```
 When run, it produces
 ```
-train metrics: {'global_step': 1000, 'loss': 4.9380226e-11}
-eval metrics: {'global_step': 1000, 'loss': 0.01010081}
+train metrics: {'loss': 1.227995e-11, 'global_step': 1000}
+eval metrics: {'loss': 0.01010036, 'global_step': 1000}
 ```
 
 Notice how the contents of the custom `model_fn()` function are very similar

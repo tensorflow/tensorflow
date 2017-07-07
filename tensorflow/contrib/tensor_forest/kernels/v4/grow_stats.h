@@ -65,7 +65,12 @@ class GrowStats {
   virtual void PackToProto(FertileSlot* slot) const = 0;
 
   // Add split to the list of candidate splits.
-  void AddSplit(const decision_trees::BinaryNode& split);
+  void AddSplit(const decision_trees::BinaryNode& split,
+                const std::unique_ptr<TensorDataSet>& input_data,
+                const InputTarget* target, int example);
+  virtual void AdditionalInitializationExample(
+      const std::unique_ptr<TensorDataSet>& input_data,
+      const InputTarget* target, int example) {}
   void RemoveSplit(int split_num);
 
   int num_splits() const {
@@ -76,7 +81,7 @@ class GrowStats {
     return weight_sum_;
   }
 
-  bool IsInitialized() const {
+  virtual bool IsInitialized() const {
     return weight_sum_ > 0 || splits_.size() == num_splits_to_consider_;
   }
 
@@ -88,7 +93,7 @@ class GrowStats {
   GrowStats(const TensorForestParams& params, int32 depth);
 
   // Function called by AddSplit for subclasses to initialize stats for a split.
-  virtual void AddSplitStats() = 0;
+  virtual void AddSplitStats(const InputTarget* target, int example) = 0;
 
   virtual void RemoveSplitStats(int split_num) = 0;
 
@@ -134,7 +139,7 @@ class SimpleStats : public GrowStats {
   }
 
  protected:
-  void AddSplitStats() override {}
+  void AddSplitStats(const InputTarget* target, int example) override {}
   void RemoveSplitStats(int split_num) override {}
   void ClearInternal() override {}
 };
@@ -175,6 +180,15 @@ class ClassificationStats : public GrowStats {
   void AddExample(const std::unique_ptr<TensorDataSet>& input_data,
                   const InputTarget* target, int example) override;
 
+  void AdditionalInitializationExample(
+      const std::unique_ptr<TensorDataSet>& input_data,
+      const InputTarget* target, int example) override;
+
+  bool IsInitialized() const override {
+    return weight_sum_ > 0 || (splits_.size() == num_splits_to_consider_ &&
+                               half_initialized_splits_.empty());
+  }
+
  protected:
   virtual float GiniScore(int split, float* left_sum,
                           float* right_sum) const = 0;
@@ -189,10 +203,16 @@ class ClassificationStats : public GrowStats {
   virtual void ClassificationAddSplitStats() = 0;
   virtual void ClassificationRemoveSplitStats(int split) = 0;
 
-  void AddSplitStats() override {
+  void AddSplitStats(const InputTarget* target, int example) override {
     if (left_gini_ != nullptr) {
       left_gini_->add_split();
       right_gini_->add_split();
+    }
+    if (params_.initialize_average_splits()) {
+      if (splits_[splits_.size() - 1].has_inequality_left_child_test()) {
+        half_initialized_splits_[splits_.size() - 1] =
+            target->GetTargetAsClassIndex(example, 0);
+      }
     }
     ClassificationAddSplitStats();
   }
@@ -262,6 +282,9 @@ class ClassificationStats : public GrowStats {
 
   std::unique_ptr<RunningGiniScores> left_gini_;
   std::unique_ptr<RunningGiniScores> right_gini_;
+
+  // Stores split number -> class that was first seen.
+  std::unordered_map<int, int32> half_initialized_splits_;
 };
 
 // Tracks classification stats by storing class counts densely.
@@ -413,7 +436,7 @@ class LeastSquaresRegressionGrowStats : public GrowStats {
   // Returns the variance of split.
   float SplitVariance(int split) const;
 
-  void AddSplitStats() override {
+  void AddSplitStats(const InputTarget* target, int example) override {
     left_sums_.resize(num_outputs_ * num_splits());
     left_squares_.resize(num_outputs_ * num_splits());
     left_counts_.push_back(0);
