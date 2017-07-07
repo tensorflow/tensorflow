@@ -32,6 +32,7 @@ RUN pip --no-cache-dir install \
         sklearn \
         pandas \
         Pillow \
+        h5py \
         && \
     python -m ipykernel.kernelspec
 
