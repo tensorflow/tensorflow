@@ -48,7 +48,14 @@ class GraphRewriter {
   bool IsDrivenByControlDependency(const NodeDef& node) const;
 
  private:
+  void RecordControlDependencyDrivers(const NodeDef& node);
+  void ForwardInputsInternal(
+      const NodeDef& original_node,
+      const std::unordered_set<const NodeDef*>& nodes_to_delete,
+      NodeDef* new_node);
+
   std::unordered_map<string, const NodeDef*> nodes_;
+  std::unordered_map<string, const NodeDef*> optimized_nodes_;
   std::unordered_set<const NodeDef*> control_dependency_drivers_;
 };
 

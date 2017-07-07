@@ -29,16 +29,7 @@ GraphRewriter::GraphRewriter(const GrapplerItem& item) {
   }
 
   for (auto& node : item.graph.node()) {
-    for (const auto& input : node.input()) {
-      int position = 0;
-      string input_node_name = ParseNodeName(input, &position);
-      if (position < 0) {
-        // This is a control edge
-        auto itr = nodes_.find(input_node_name);
-        CHECK(itr != nodes_.end());
-        control_dependency_drivers_.insert(itr->second);
-      }
-    }
+    RecordControlDependencyDrivers(node);
   }
 }
 
@@ -46,21 +37,9 @@ void GraphRewriter::ForwardInputs(
     const NodeDef& original_node,
     const std::unordered_set<const NodeDef*>& nodes_to_delete,
     NodeDef* new_node) {
-  for (const auto& input : original_node.input()) {
-    string input_node_name = NodeName(input);
-    auto itr = nodes_.find(input_node_name);
-    if (itr == nodes_.end()) {
-      // Invalid input, preserve it as is.
-      *new_node->add_input() = input;
-    }
-    const NodeDef* input_node = itr->second;
-    if ((input_node->device().empty() || original_node.device().empty() ||
-         input_node->device() == original_node.device()) &&
-        nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
-      ForwardInputs(*input_node, nodes_to_delete, new_node);
-    } else {
-      *new_node->add_input() = input;
-    }
+  ForwardInputsInternal(original_node, nodes_to_delete, new_node);
+  if (!new_node->name().empty()) {
+    optimized_nodes_[new_node->name()] = new_node;
   }
 }
 
@@ -77,6 +56,51 @@ bool GraphRewriter::IsDrivenByControlDependency(const NodeDef& node) const {
     }
   }
   return false;
+}
+
+void GraphRewriter::RecordControlDependencyDrivers(const NodeDef& node) {
+  for (const auto& input : node.input()) {
+    int position = 0;
+    string input_node_name = ParseNodeName(input, &position);
+    if (position < 0) {
+      // This is a control edge
+      auto itr = nodes_.find(input_node_name);
+      CHECK(itr != nodes_.end());
+      control_dependency_drivers_.insert(itr->second);
+    }
+  }
+}
+
+void GraphRewriter::ForwardInputsInternal(
+    const NodeDef& node,
+    const std::unordered_set<const NodeDef*>& nodes_to_delete,
+    NodeDef* new_node) {
+  // To speed things up, use the optimized version of the node if
+  // available.
+  auto itr = optimized_nodes_.find(node.name());
+  if (itr != optimized_nodes_.end()) {
+    for (const string& input : itr->second->input()) {
+      *new_node->add_input() = input;
+    }
+    return;
+  }
+  for (const auto& input : node.input()) {
+    string input_node_name = NodeName(input);
+    auto itr = nodes_.find(input_node_name);
+    if (itr == nodes_.end()) {
+      // Invalid input, preserve it as is.
+      *new_node->add_input() = input;
+      continue;
+    }
+    const NodeDef* input_node = itr->second;
+    if ((input_node->device().empty() || node.device().empty() ||
+         input_node->device() == node.device()) &&
+        nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
+      ForwardInputsInternal(*input_node, nodes_to_delete, new_node);
+    } else {
+      *new_node->add_input() = input;
+    }
+  }
 }
 
 }  // end namespace grappler

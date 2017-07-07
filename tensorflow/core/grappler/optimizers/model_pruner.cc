@@ -63,6 +63,11 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
 
+  if (nodes_to_delete.empty()) {
+    *pruned_graph = item.graph;
+    return Status::OK();
+  }
+
   for (auto& node : item.graph.node()) {
     NodeDef* new_node = pruned_graph->add_node();
     *new_node = node;
