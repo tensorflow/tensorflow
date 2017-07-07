@@ -339,6 +339,10 @@ port::StatusOr<poplar::Tensor>
 BroadcastTensor(const poplar::Tensor &in,
                 const xla::Shape& out,
                 const std::vector<int64>& dimensions) {
+  if (PoplarShapeMatchesXLAShape(in, out)) {
+    return in;
+  }
+
   tensorflow::BCast::Vec bcast_shape =
           convert_array<tensorflow::BCast::Vec>(out.dimensions());
 
@@ -370,7 +374,7 @@ PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
                            const xla::Shape& shape) {
   if (tensor.rank() != ShapeUtil::Rank(shape)) return false;
   for (size_t d=0; d<tensor.rank(); d++) {
-    if (tensor.dim(d) != shape.dimensions(d)) return false;
+    if (tensor.dim(d) != (unsigned)shape.dimensions(d)) return false;
   }
 
   return true;

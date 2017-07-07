@@ -33,6 +33,12 @@ bool FuseOps::ShouldFuse(HloInstruction* consumer, int64 operand_index) {
       consumer->while_condition()->name().substr(0, 16) == "truncated_normal") {
     return true;
   }
+
+  if (producer->opcode() == HloOpcode::kConstant &&
+      consumer->opcode() == HloOpcode::kMaximum &&
+      producer->literal().IsAll(0)) {
+    return true;
+  }
   return false;
 }
 

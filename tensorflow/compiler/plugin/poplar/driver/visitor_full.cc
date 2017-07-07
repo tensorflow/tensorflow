@@ -209,6 +209,18 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
         sequence.add(prog);
         return Status::OK();
       }
+      case HloOpcode::kMaximum:
+      {
+        poplar::program::Program prog;
+        TF_ASSIGN_OR_RETURN(prog,
+                            CreateReluOp(*graph_,
+                                         resources_,
+                                         inst,
+                                         GetOutputShape(inst),
+                                         tensor_map));
+        sequence.add(prog);
+        return Status::OK();
+      }
       default:
         return Unimplemented(inst);
     }
@@ -246,7 +258,7 @@ Status FullVisitor::HandleSlice(
   if (simple) {
     out = out.slice(begin, end);
   } else {
-    for (int64 d = 0; d < strides.size(); d++) {
+    for (size_t d = 0; d < strides.size(); d++) {
       int64 s = strides[d];
       if (s > 0) {
         out = out.slice(begin[d], end[d], d);

@@ -60,7 +60,7 @@ Status PoplarTransferManager::TransferLiteralFromDevice(
             ShallowCopyTupleFromDevice(executor, source, device_shape));
     TF_RET_CHECK(element_buffers.size() ==
                  ShapeUtil::TupleElementCount(device_shape));
-    for (int64 i = 0; i < element_buffers.size(); ++i) {
+    for (size_t i = 0; i < element_buffers.size(); ++i) {
       const Shape& element_device_shape = device_shape.tuple_shapes(i);
       const Shape& element_literal_shape = literal_shape.tuple_shapes(i);
       Literal* element_literal = literal->add_tuple_literals();
@@ -107,10 +107,10 @@ PoplarTransferManager::ShallowCopyTupleFromDevice(
 
   // Create a DeviceMemoryBase from each void* pointer.
   std::vector<se::DeviceMemoryBase> destination;
-  for (int i = 0; i < element_pointers.size(); ++i) {
+  for (size_t i = 0; i < element_pointers.size(); ++i) {
     if (element_pointers[i] == nullptr &&
         !ShapeUtil::HasZeroElements(shape.tuple_shapes(i))) {
-      return FailedPrecondition("tuple contains nullptr at element %d", i);
+      return FailedPrecondition("tuple contains nullptr at element %lu", i);
     }
     int64 buffer_size = ShapeUtil::ByteSizeOf(shape.tuple_shapes(i),
             sizeof(void*));

@@ -273,6 +273,24 @@ tf_custom_op_py_library(
     ],
 )
 
+cc_test(
+    name = "model_ops_test",
+    size = "small",
+    srcs = [
+        "kernels/model_ops_test.cc",
+        "ops/model_ops.cc",
+    ],
+    deps = [
+        ":model_ops_lib",
+        "//tensorflow/core",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//third_party/eigen3",
+    ],
+)
+
 # Stats Ops.
 cc_library(
     name = "stats_ops_lib",
@@ -335,6 +353,24 @@ tf_custom_op_py_library(
         ":gen_stats_ops_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+cc_test(
+    name = "stats_ops_test",
+    size = "small",
+    srcs = [
+        "kernels/stats_ops_test.cc",
+        "ops/stats_ops.cc",
+    ],
+    deps = [
+        ":stats_ops_lib",
+        "//tensorflow/core",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//third_party/eigen3",
     ],
 )
 

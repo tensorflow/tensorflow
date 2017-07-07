@@ -19,7 +19,6 @@
 #include "tensorflow/contrib/tensor_forest/kernels/v4/input_data.h"
 #include "tensorflow/contrib/tensor_forest/proto/tensor_forest_params.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"

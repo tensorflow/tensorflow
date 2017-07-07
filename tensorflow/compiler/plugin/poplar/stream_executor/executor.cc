@@ -364,10 +364,10 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
       // a) the engine has changed
       // b) it is not on the device
       // c) it is on the device, but in the wrong place
-      for (int64 a = 0; a < args.size(); a++) {
+      for (size_t a = 0; a < args.size(); a++) {
         auto mem = args[a];
         TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
-        if (tc->on_device == false || tc->input_handle != a || engine_changed) {
+        if (tc->on_device == false || tc->input_handle != (int64)a || engine_changed) {
           void *buf(static_cast<void *>(tc->data));
           if (input_convertors[a]) {
             std::vector<char> converted = input_convertors[a](buf, tc->size, 0);

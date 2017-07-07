@@ -317,6 +317,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     graph->outputComputeGraph(stream);
   }
 
+  hlo_module->mutable_entry_computation_layout()->SetToDefaultLayout();
+
   std::unique_ptr<Executable> executable;
   executable.reset(
           new PoplarExecutable(std::move(hlo_module),

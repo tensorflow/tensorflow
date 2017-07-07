@@ -238,13 +238,12 @@ class EstimatorConstructorTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'features'):
       estimator.Estimator(model_fn=model_fn)
 
-  def test_model_fn_args_must_include_labels(self):
+  def test_model_fn_args_labels_is_optional(self):
 
-    def model_fn(features, y):
-      _, _ = features, y
+    def model_fn(features):
+      _ = features
 
-    with self.assertRaisesRegexp(ValueError, 'labels'):
-      estimator.Estimator(model_fn=model_fn)
+    estimator.Estimator(model_fn=model_fn)
 
   def test_if_params_provided_then_model_fn_should_accept_it(self):
 
@@ -309,16 +308,21 @@ def model_fn_global_step_incrementer(features, labels, mode):
       train_op=state_ops.assign_add(global_step, 1))
 
 
-def _estimator_spec(
-    expected_features, expected_labels, actual_features, actual_labels, mode):
-  assert_ops = tuple([
+def assert_features_op(expected_features, actual_features):
+  return [
       check_ops.assert_equal(
           expected_features[k], actual_features[k], name='assert_%s' % k)
       for k in expected_features
-  ] + [
-      check_ops.assert_equal(
-          expected_labels, actual_labels, name='assert_labels')
-  ])
+  ]
+
+
+def _estimator_spec(
+    expected_features, expected_labels, actual_features, actual_labels, mode):
+  assert_ops = tuple(
+      assert_features_op(expected_features, actual_features) + [
+          check_ops.assert_equal(
+              expected_labels, actual_labels, name='assert_labels')
+      ])
   global_step = training.get_global_step()
   with ops.control_dependencies(assert_ops):
     return model_fn_lib.EstimatorSpec(
@@ -413,27 +417,56 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(1, input_fn_call_count[0])
 
   def test_minimal_model_fn_args(self):
-    expected_features = {'x': 42., 'y': 43.}
-    expected_labels = 44.
+    expected_features = {'x': 4, 'y': 5}
 
-    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
-    # doesn't work with mock fns.
+    def _input_fn():
+      return expected_features
+
     model_fn_call_count = [0]
-
-    def _model_fn(features, labels):
+    def _model_fn(features):
       model_fn_call_count[0] += 1
       self.assertItemsEqual(expected_features.keys(), features.keys())
-      return _estimator_spec(
-          expected_features, expected_labels, features, labels,
-          model_fn_lib.ModeKeys.TRAIN)
+      with ops.control_dependencies(
+          assert_features_op(expected_features, features)):
+        return model_fn_lib.EstimatorSpec(
+            mode=None,
+            predictions=constant_op.constant(0.),
+            loss=constant_op.constant(0.),
+            train_op=state_ops.assign_add(training.get_global_step(), 1))
 
-    with self.assertRaisesRegexp(ValueError, 'does not include params'):
-      estimator.Estimator(model_fn=_model_fn, params={'a': 'b'})
-    est = estimator.Estimator(model_fn=_model_fn, config=run_config.RunConfig())
+    est = estimator.Estimator(model_fn=_model_fn)
     self.assertEqual(0, model_fn_call_count[0])
-    est.train(
-        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    est.train(input_fn=_input_fn, steps=1)
     self.assertEqual(1, model_fn_call_count[0])
+
+  def test_labels_should_be_none_if_model_fn_does_not_use_labels(self):
+
+    def _input_fn_with_labels():
+      return {'x': 4, 'y': 5}, [4]
+
+    def _model_fn(features):
+      _ = features
+      return model_fn_lib.EstimatorSpec(
+          mode=None,
+          predictions=constant_op.constant(0.),
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    with self.assertRaisesRegexp(ValueError, 'model_fn does not take labels'):
+      est.train(input_fn=_input_fn_with_labels, steps=1)
+
+  def test_input_fn_len_should_be_2_if_tuple_or_list(self):
+
+    def _input_fn():
+      return 4, 5, 6
+
+    def _model_fn(features):
+      _ = features
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    with self.assertRaisesRegexp(ValueError, 'len 2 tuple'):
+      est.train(input_fn=_input_fn, steps=1)
 
   def test_all_model_fn_args(self):
     expected_features = {'x': 42., 'y': 43.}

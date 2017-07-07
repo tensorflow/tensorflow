@@ -813,7 +813,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # pylint: enable=invalid-name
 
 
-def create_local_cluster(num_workers, num_ps, protocol="grpc"):
+def create_local_cluster(num_workers, num_ps, protocol="grpc",
+                         worker_config=None, ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
   Example:
@@ -839,6 +840,9 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
     num_ps: Number of PS servers to start.
     protocol: Communication protocol.  Allowed values are documented in
       the documentation of `tf.train.Server`.
+    worker_config: (optional) ConfigProto to initialize workers. Can be used
+      to instantiate multiple devices etc.
+    ps_config: (optional) ConfigProto to initialize PS servers.
 
   Returns:
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
@@ -860,12 +864,14 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
 
   workers = [
       server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
+          cs, job_name="worker", protocol=protocol, task_index=ix,
+          config=worker_config, start=True)
       for ix in range(num_workers)
   ]
   ps_servers = [
       server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
+          cs, job_name="ps", protocol=protocol, task_index=ix,
+          config=ps_config, start=True)
       for ix in range(num_ps)
   ]
 

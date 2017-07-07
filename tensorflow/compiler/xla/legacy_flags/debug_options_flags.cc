@@ -189,6 +189,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_hlo_graph_addresses(flag_values->xla_hlo_graph_addresses);
   options.set_xla_hlo_graph_layout(flag_values->xla_hlo_graph_layout);
   options.set_xla_hlo_graph_path(flag_values->xla_hlo_graph_path);
+  options.set_xla_hlo_dump_as_graphdef(flag_values->xla_hlo_dump_as_graphdef);
   options.set_xla_log_hlo_text(flag_values->xla_log_hlo_text);
   options.set_xla_generate_hlo_text_to(flag_values->xla_generate_hlo_text_to);
 

@@ -20,6 +20,7 @@
 #include <popstd/SubtractFrom.hpp>
 #include <popstd/HadamardProduct.hpp>
 #include <poplin/MatMul.hpp>
+#include <popnn/NonLinearity.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -166,6 +167,8 @@ CreateUnaryElementwiseOp(poplar::Graph &graph,
   poplar::program::Sequence seq;
   poplar::Tensor out = fn(graph, in, seq, inst->name());
 
+  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;
@@ -227,6 +230,9 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
     poplar::Tensor out = fn(graph, in0, in1, seq, inst->name());
 
     out = out.reshape(PoplarShapeFromXlaShape(output_shape));
+
+    TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
     return seq;
@@ -296,6 +302,8 @@ CreateSelectOp(poplar::Graph &graph,
   poplar::program::Sequence seq;
   poplar::Tensor out = popstd::select(graph, in0, in1, pred, seq, inst->name());
 
+  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   return seq;
@@ -317,6 +325,8 @@ CreateCastOp(poplar::Graph &graph,
 
   poplar::program::Sequence seq;
   poplar::Tensor out = popstd::cast(graph, in, poplar_type, seq, inst->name());
+
+  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -350,6 +360,30 @@ CreateClampOp(poplar::Graph &graph,
 
   poplar::program::Sequence seq;
   poplar::Tensor out = popstd::clamp(graph, arg, min, max, seq, inst->name());
+
+  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
+}
+
+port::StatusOr<poplar::program::Program>
+CreateReluOp(poplar::Graph &graph,
+             CompilerResources& res,
+             const HloInstruction *inst,
+             const xla::Shape& output_shape,
+             TensorMap& tensor_map) {
+  poplar::Tensor t;
+  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0, 0));
+
+  poplar::program::Sequence seq;
+  poplar::Tensor out = graph.clone(t);
+
+  seq.add(poplar::program::Copy(t, out));
+  popnn::relu(graph, out, seq, inst->name());
+
+  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 

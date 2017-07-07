@@ -276,7 +276,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
 
   // Find the number of windows in each dimension
   std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));
-  for (unsigned d=0; d<window.dimensions().size(); d++) {
+  for (int64 d=0; d<window.dimensions().size(); d++) {
     std::size_t input_dim(to_reduce.dim(d));
     input_dim += window.dimensions(d).padding_low();
     input_dim += window.dimensions(d).padding_high();
@@ -421,7 +421,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
 
   // Find the number of windows in each dimension
   std::vector<unsigned> window_count(ShapeUtil::Rank(output_shape));
-  for (unsigned d=0; d<window.dimensions().size(); d++) {
+  for (int64 d=0; d<window.dimensions().size(); d++) {
     std::size_t input_dim(operand.dim(d));
     input_dim += window.dimensions(d).padding_low();
     input_dim += window.dimensions(d).padding_high();
