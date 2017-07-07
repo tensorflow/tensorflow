@@ -52,17 +52,16 @@ SendOp::SendOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_name", &tensor_name));
   key_prefix_ = GetRendezvousKeyPrefix(send_device, recv_device,
                                        send_device_incarnation, tensor_name);
+  // The vast majority of Send nodes are outside any loop context, so
+  // proactively cache the rendezvous key for the top-level.
+  GetRendezvousKey(key_prefix_, {0, 0}, &parsed_key_.buf_);
+  OP_REQUIRES_OK(ctx, Rendezvous::ParseKey(parsed_key_.buf_, &parsed_key_));
 }
 
 void SendOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(
       ctx, ctx->rendezvous() != nullptr,
       errors::Internal("Op kernel context needs to provide a rendezvous."));
-  Rendezvous::ParsedKey parsed;
-  GetRendezvousKey(key_prefix_, ctx->frame_iter(), &parsed.buf_);
-  VLOG(2) << "Send " << parsed.buf_;
-
-  OP_REQUIRES_OK(ctx, Rendezvous::ParseKey(parsed.buf_, &parsed));
 
   // The device context may be passed between the Send/Recv
   // boundary, so that the device context used to produce the Tensor
@@ -71,18 +70,34 @@ void SendOp::Compute(OpKernelContext* ctx) {
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->input_alloc_attr(0);
-  OP_REQUIRES_OK(ctx, ctx->rendezvous()->Send(parsed, args, ctx->input(0),
-                                              ctx->is_input_dead()));
+
+  if (ctx->frame_iter() == FrameAndIter(0, 0)) {
+    // Use the cached rendezvous key.
+    VLOG(2) << "Send " << parsed_key_.buf_;
+    OP_REQUIRES_OK(ctx,
+                   ctx->rendezvous()->Send(parsed_key_, args, ctx->input(0),
+                                           ctx->is_input_dead()));
+  } else {
+    Rendezvous::ParsedKey in_loop_parsed;
+    GetRendezvousKey(key_prefix_, ctx->frame_iter(), &in_loop_parsed.buf_);
+    VLOG(2) << "Send " << in_loop_parsed.buf_;
+    OP_REQUIRES_OK(ctx,
+                   Rendezvous::ParseKey(in_loop_parsed.buf_, &in_loop_parsed));
+
+    OP_REQUIRES_OK(ctx,
+                   ctx->rendezvous()->Send(in_loop_parsed, args, ctx->input(0),
+                                           ctx->is_input_dead()));
+  }
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_GPU), SendOp);
 
-#if TENSORFLOW_USE_SYCL
+#ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_SYCL), SendOp);
 REGISTER_KERNEL_BUILDER(
     Name("_HostSend").Device(DEVICE_SYCL).HostMemory("tensor"), SendOp);
-#endif
+#endif // TENSORFLOW_USE_SYCL
 
 REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(
@@ -101,17 +116,16 @@ RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_name", &tensor_name));
   key_prefix_ = GetRendezvousKeyPrefix(send_device, recv_device,
                                        send_device_incarnation, tensor_name);
+  // The vast majority of Recv nodes are outside any loop context, so
+  // proactively cache the rendezvous key for the top-level.
+  GetRendezvousKey(key_prefix_, {0, 0}, &parsed_key_.buf_);
+  OP_REQUIRES_OK(ctx, Rendezvous::ParseKey(parsed_key_.buf_, &parsed_key_));
 }
 
 void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES(
       ctx, ctx->rendezvous() != nullptr,
       errors::Internal("Op kernel context needs to provide a rendezvous."));
-  Rendezvous::ParsedKey parsed;
-  GetRendezvousKey(key_prefix_, ctx->frame_iter(), &parsed.buf_);
-  VLOG(2) << "Recv " << parsed.buf_;
-
-  OP_REQUIRES_OK_ASYNC(ctx, Rendezvous::ParseKey(parsed.buf_, &parsed), done);
 
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
@@ -136,23 +150,35 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         done();
       },
       std::move(done), _1, _2, _3, _4, _5);
-  ctx->rendezvous()->RecvAsync(parsed, args, std::move(done_cb));
+
+  if (ctx->frame_iter() == FrameAndIter(0, 0)) {
+    VLOG(2) << "Recv " << parsed_key_.buf_;
+    ctx->rendezvous()->RecvAsync(parsed_key_, args, std::move(done_cb));
+  } else {
+    Rendezvous::ParsedKey in_loop_parsed;
+    GetRendezvousKey(key_prefix_, ctx->frame_iter(), &in_loop_parsed.buf_);
+    VLOG(2) << "Recv " << in_loop_parsed.buf_;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, Rendezvous::ParseKey(in_loop_parsed.buf_, &in_loop_parsed), done);
+
+    ctx->rendezvous()->RecvAsync(in_loop_parsed, args, std::move(done_cb));
+  }
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_GPU), RecvOp);
 
-#if TENSORFLOW_USE_SYCL
+#ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_SYCL), RecvOp);
-#endif
+#endif // TENSORFLOW_USE_SYCL
 
 REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(
     Name("_HostRecv").Device(DEVICE_GPU).HostMemory("tensor"), RecvOp);
 
-#if TENSORFLOW_USE_SYCL
+#ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(
     Name("_HostRecv").Device(DEVICE_SYCL).HostMemory("tensor"), RecvOp);
-#endif
+#endif // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

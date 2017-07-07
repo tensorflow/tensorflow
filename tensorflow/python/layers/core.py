@@ -244,7 +244,7 @@ class Dropout(base.Layer):
                name=None,
                **kwargs):
     super(Dropout, self).__init__(name=name, **kwargs)
-    self.rate = min(1., max(0., rate))
+    self.rate = rate
     self.noise_shape = noise_shape
     self.seed = seed
 

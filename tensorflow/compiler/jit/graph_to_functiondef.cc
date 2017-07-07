@@ -120,14 +120,12 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   std::unordered_map<string, string> return_values;
   NodeNameMapping node_names;
 
-  for (Node const* node : graph.nodes()) {
-    if (!node->IsOp()) continue;
-
+  for (Node const* node : graph.op_nodes()) {
     if (node->type_string() == kArgOp) {
       int index;
       DataType type;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &type));
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &type));
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
       while (fdef->signature().input_arg_size() <= index) {
         fdef->mutable_signature()->add_input_arg();
       }
@@ -143,8 +141,8 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
     if (node->type_string() == kRetValOp) {
       int index;
       DataType type;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &type));
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &type));
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
       while (fdef->signature().output_arg_size() <= index) {
         fdef->mutable_signature()->add_output_arg();
       }
@@ -161,7 +159,10 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
     }
 
     NodeDef* node_def = fdef->add_node_def();
-    node_def->CopyFrom(node->def());
+    *node_def = node->def();
+    if (!node->assigned_device_name().empty()) {
+      node_def->set_device(node->assigned_device_name());
+    }
     node_def->set_name(node_names.Uniquify(node->name()));
 
     // Reset input names based on graph rather than the NodeDef.
@@ -203,8 +204,8 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
 
     // Populate tensor_renaming.
     NameRangeMap output_ranges;
-    TF_RETURN_IF_ERROR(NameRangesForNode(node->def(), node->op_def(), nullptr,
-                                         &output_ranges));
+    TF_RETURN_IF_ERROR(
+        NameRangesForNode(*node, node->op_def(), nullptr, &output_ranges));
     for (const auto& output : output_ranges) {
       for (int i = output.second.first; i < output.second.second; ++i) {
         const string tensor_name = strings::StrCat(

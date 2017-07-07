@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -41,13 +42,7 @@ class ColumnInterface {
   virtual int64 FeatureCount(int64 batch) const = 0;
 
   // Returns the fingerprint of nth feature from the specified batch.
-  InternalType Feature(int64 batch, int64 n) const {
-    InternalType not_used = InternalType();
-    return DoFeature(batch, n, not_used);
-  }
-
-  virtual InternalType DoFeature(int64 batch, int64 n,
-                                 InternalType not_used) const = 0;
+  virtual InternalType Feature(int64 batch, int64 n) const = 0;
 
   virtual ~ColumnInterface() {}
 };
@@ -68,26 +63,7 @@ class SparseTensorColumn : public ColumnInterface<InternalType> {
     return feature_counts_[batch];
   }
 
-  // InternalType is int64 only when using HashCrosser.
-  int64 DoFeature(int64 batch, int64 n, int64 not_used) const {
-    const int64 start = feature_start_indices_[batch];
-    if (DT_STRING == values_.dtype())
-      return Fingerprint64(values_.vec<string>().data()[start + n]);
-    return values_.vec<int64>().data()[start + n];
-  }
-
-  // InternalType is string or StringPiece when using StringCrosser.
-  string DoFeature(int64 batch, int64 n, string not_used) const {
-    const int64 start = feature_start_indices_[batch];
-    if (DT_STRING == values_.dtype())
-      return values_.vec<string>().data()[start + n];
-    return std::to_string(values_.vec<int64>().data()[start + n]);
-  }
-
-  StringPiece DoFeature(int64 batch, int64 n, StringPiece not_used) const {
-    const int64 start = feature_start_indices_[batch];
-    return values_.vec<string>().data()[start + n];
-  }
+  InternalType Feature(int64 batch, int64 n) const override;
 
   ~SparseTensorColumn() override {}
 
@@ -97,6 +73,31 @@ class SparseTensorColumn : public ColumnInterface<InternalType> {
   std::vector<int64> feature_start_indices_;
 };
 
+// InternalType is int64 only when using HashCrosser.
+template <>
+int64 SparseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
+  const int64 start = feature_start_indices_[batch];
+  if (DT_STRING == values_.dtype())
+    return Fingerprint64(values_.vec<string>().data()[start + n]);
+  return values_.vec<int64>().data()[start + n];
+}
+
+// InternalType is string or StringPiece when using StringCrosser.
+template <>
+string SparseTensorColumn<string>::Feature(int64 batch, int64 n) const {
+  const int64 start = feature_start_indices_[batch];
+  if (DT_STRING == values_.dtype())
+    return values_.vec<string>().data()[start + n];
+  return std::to_string(values_.vec<int64>().data()[start + n]);
+}
+
+template <>
+StringPiece SparseTensorColumn<StringPiece>::Feature(int64 batch,
+                                                     int64 n) const {
+  const int64 start = feature_start_indices_[batch];
+  return values_.vec<string>().data()[start + n];
+}
+
 // A column that is backed by a dense tensor.
 template <typename InternalType>
 class DenseTensorColumn : public ColumnInterface<InternalType> {
@@ -105,28 +106,34 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
 
   int64 FeatureCount(int64 batch) const override { return tensor_.dim_size(1); }
 
-  // InternalType is int64 only when using HashCrosser.
-  int64 DoFeature(int64 batch, int64 n, int64 not_used) const {
-    if (DT_STRING == tensor_.dtype())
-      return Fingerprint64(tensor_.matrix<string>()(batch, n));
-    return tensor_.matrix<int64>()(batch, n);
-  }
-
-  // Internal type is string or StringPiece when using StringCrosser.
-  string DoFeature(int64 batch, int64 n, string not_used) const {
-    if (DT_STRING == tensor_.dtype()) return tensor_.matrix<string>()(batch, n);
-    return std::to_string(tensor_.matrix<int64>()(batch, n));
-  }
-
-  StringPiece DoFeature(int64 batch, int64 n, StringPiece not_used) const {
-    return tensor_.matrix<string>()(batch, n);
-  }
+  InternalType Feature(int64 batch, int64 n) const override;
 
   ~DenseTensorColumn() override {}
 
  private:
   const Tensor& tensor_;
 };
+
+// InternalType is int64 only when using HashCrosser.
+template <>
+int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
+  if (DT_STRING == tensor_.dtype())
+    return Fingerprint64(tensor_.matrix<string>()(batch, n));
+  return tensor_.matrix<int64>()(batch, n);
+}
+
+// Internal type is string or StringPiece when using StringCrosser.
+template <>
+string DenseTensorColumn<string>::Feature(int64 batch, int64 n) const {
+  if (DT_STRING == tensor_.dtype()) return tensor_.matrix<string>()(batch, n);
+  return std::to_string(tensor_.matrix<int64>()(batch, n));
+}
+
+template <>
+StringPiece DenseTensorColumn<StringPiece>::Feature(int64 batch,
+                                                    int64 n) const {
+  return tensor_.matrix<string>()(batch, n);
+}
 
 // Updates Output tensors with sparse crosses.
 template <typename OutType>
@@ -170,7 +177,7 @@ class StringCrosser {
     static const auto k_feature_separator = "_X_";
 
     gtl::InlinedVector<InternalType, 6> cross_vec(columns_.size());
-    for (int i = 0; i < permutation.size(); i++) {
+    for (size_t i = 0; i < permutation.size(); i++) {
       cross_vec[i] = columns_[i]->Feature(batch_index, permutation[i]);
     }
     // TODO(zakaria): this will copy the string twice, might effect
@@ -260,7 +267,7 @@ class ProductIterator {
     next_permutation_.resize(columns_.size(), 0);
     // Sets has_next_ to false if any feature column has 0 features.
     has_next_ = true;
-    for (int i = 0; i < columns_.size(); i++) {
+    for (size_t i = 0; i < columns_.size(); i++) {
       if (columns_[i]->FeatureCount(batch_index_) == 0) {
         has_next_ = false;
         break;
@@ -494,6 +501,7 @@ class SparseFeatureCrossOp : public OpKernel {
     ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
                        &feature_start_indices);
 
+    columns.reserve(values_list_in.size());
     for (int i = 0; i < values_list_in.size(); ++i) {
       columns.emplace_back(new SparseTensorColumn<InternalType>(
           values_list_in[i], std::move(feature_counts[i]),
@@ -573,7 +581,7 @@ class SparseFeatureCrossOp : public OpKernel {
           columns,
       int batch_index) {
     int64 cross_count = 1;
-    for (int i = 0; i < columns.size(); i++) {
+    for (size_t i = 0; i < columns.size(); i++) {
       const auto feature_count = columns[i]->FeatureCount(batch_index);
       // If one column is missing any feature, there won't be any cross.
       if (feature_count == 0) {

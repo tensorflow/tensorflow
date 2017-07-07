@@ -23,7 +23,7 @@
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
-# NO_TEST_ON_INSTALL
+# NO_TEST_ON_INSTALL, PIP_TEST_ROOT
 #
 # TF_BUILD_BAZEL_CLEAN, if set to any non-empty and non-0 value, directs the
 # script to perform bazel clean prior to main build and test steps.
@@ -40,6 +40,9 @@
 #
 # If NO_TEST_TFDBG_BINARIES has any non-empty and non-0 value, the testing of
 # TensorFlow Debugger (tfdbg) binaries and examples will be skipped.
+#
+# If PIP_TEST_ROOT has a non-empty and a non-0 value, the whl files will be
+# placed in that directory.
 #
 # Any flags not listed in the usage above will be passed directly to Bazel.
 #
@@ -162,7 +165,10 @@ echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
 
 # Build PIP Wheel file
-PIP_TEST_ROOT="pip_test"
+# Set default pip file folder unless specified by env variable
+if [ -z "$PIP_TEST_ROOT" ]; then
+  PIP_TEST_ROOT="pip_test"
+fi
 PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
 PIP_WHL_DIR=$(realpath ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
@@ -205,14 +211,17 @@ if [[ -n "${PY_TAGS}" ]]; then
 $(echo ${WHL_BASE_NAME} | cut -d \- -f 2)-${PY_TAGS}-${PLATFORM_TAG}.whl
 
   if [[ ! -f "${WHL_DIR}/${NEW_WHL_BASE_NAME}" ]]; then
-    cp "${WHL_DIR}/${WHL_BASE_NAME}" "${WHL_DIR}/${NEW_WHL_BASE_NAME}" && \
-      echo "Copied wheel file: ${WHL_BASE_NAME} --> ${NEW_WHL_BASE_NAME}" || \
+    if cp "${WHL_DIR}/${WHL_BASE_NAME}" "${WHL_DIR}/${NEW_WHL_BASE_NAME}"
+    then
+      echo "Copied wheel file: ${WHL_BASE_NAME} --> ${NEW_WHL_BASE_NAME}"
+    else
       die "ERROR: Failed to copy wheel file to ${NEW_WHL_BASE_NAME}"
+    fi
   fi
 fi
 
 if [[ $(uname) == "Linux" ]]; then
-  AUDITED_WHL_NAME="${WHL_DIR}/$(echo ${WHL_BASE_NAME} | sed "s/linux/manylinux1/")"
+  AUDITED_WHL_NAME="${WHL_DIR}/$(echo ${WHL_BASE_NAME//linux/manylinux1})"
 
   # Repair the wheels for cpu manylinux1
   if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
@@ -240,14 +249,20 @@ echo "Installing pip whl file: ${WHL_PATH}"
 VENV_DIR="${PIP_TEST_ROOT}/venv"
 
 if [[ -d "${VENV_DIR}" ]]; then
-  rm -rf "${VENV_DIR}" && \
-      echo "Removed existing virtualenv directory: ${VENV_DIR}" || \
-      die "Failed to remove existing virtualenv directory: ${VENV_DIR}"
+  if rm -rf "${VENV_DIR}"
+  then
+    echo "Removed existing virtualenv directory: ${VENV_DIR}"
+  else
+    die "Failed to remove existing virtualenv directory: ${VENV_DIR}"
+  fi
 fi
 
-mkdir -p ${VENV_DIR} && \
-    echo "Created virtualenv directory: ${VENV_DIR}" || \
-    die "FAILED to create virtualenv directory: ${VENV_DIR}"
+if mkdir -p ${VENV_DIR}
+then
+  echo "Created virtualenv directory: ${VENV_DIR}"
+else
+  die "FAILED to create virtualenv directory: ${VENV_DIR}"
+fi
 
 # Verify that virtualenv exists
 if [[ -z $(which virtualenv) ]]; then

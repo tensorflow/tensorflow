@@ -7,6 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
@@ -123,6 +124,7 @@ py_library(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
@@ -392,12 +394,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "normalization_test",
     size = "small",
     srcs = ["python/keras/layers/normalization_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         ":testing_utils",
         "//tensorflow/python:client_testlib",
@@ -422,6 +423,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/gru_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/62136390
     deps = [
         ":keras",
         ":testing_utils",
@@ -434,6 +436,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/lstm_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/62189182
     deps = [
         ":keras",
         ":testing_utils",

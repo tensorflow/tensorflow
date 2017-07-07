@@ -72,7 +72,7 @@ TransferManager::GetPlatformTransferManagers() {
     it->second.manager = (*it->second.creation_function)();
   }
 
-  return it->second.manager;
+  return it->second.manager.get();
 }
 
 Status TransferManager::TransferBufferFromDevice(

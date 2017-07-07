@@ -57,7 +57,7 @@ class ExampleParser(transform.TensorFlowTransform):
   def _output_names(self):
     return list(self._ordered_features.keys())
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def feature_definitions(self):
     return self._ordered_features
 

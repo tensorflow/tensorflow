@@ -75,7 +75,7 @@ class ScalarBinaryTransform(transform.TensorFlowTransform):
     super(ScalarBinaryTransform, self).__init__()
     self._scalar = scalar
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def scalar(self):
     return self._scalar
 

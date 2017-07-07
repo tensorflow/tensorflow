@@ -17,8 +17,12 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 

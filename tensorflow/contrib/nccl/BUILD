@@ -10,11 +10,11 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cuda_cc_test",
     "tf_custom_op_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
@@ -45,11 +45,14 @@ tf_cuda_cc_test(
         ],
         [],
     ),
-    tags = ["manual"],  # Disabled until errors finding nvmlShutdown are found.
+    # Disabled on jenkins until errors finding nvmlShutdown are found.
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = if_cuda(
         [
             "@nccl_archive//:nccl",
-            "//tensorflow/core",
             "//tensorflow/core:cuda",
         ],
         [],
@@ -109,23 +112,25 @@ tf_custom_op_py_library(
     ],
 )
 
-cuda_py_test(
-    name = "nccl_ops_test",
-    size = "small",
-    srcs = ["python/ops/nccl_ops_test.py"],
-    additional_deps = [
-        ":nccl_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-    tags = [
-        "manual",
-        "requires_cudnn5",
-    ],
-)
+# http://b/62064807
+# cuda_py_test(
+#     name = "nccl_ops_test",
+#     size = "small",
+#     srcs = ["python/ops/nccl_ops_test.py"],
+#     additional_deps = [
+#         ":nccl_py",
+#         "//tensorflow/python:array_ops",
+#         "//tensorflow/python:client_testlib",
+#         "//tensorflow/python:framework_for_generated_wrappers",
+#         "//tensorflow/python:framework_test_lib",
+#         "//tensorflow/python:platform_test",
+#     ],
+#     # Disabled on jenkins until errors finding nvmlShutdown are found.
+#     tags = [
+#         "manual",
+#         "notap",
+#     ],
+# )
 
 filegroup(
     name = "all_files",

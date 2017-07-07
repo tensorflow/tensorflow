@@ -31,7 +31,7 @@ namespace tensorflow {
 bool LocalDevice::use_global_threadpool_ = true;
 
 struct LocalDevice::EigenThreadPoolInfo {
-  EigenThreadPoolInfo(const SessionOptions& options) {
+  explicit EigenThreadPoolInfo(const SessionOptions& options) {
     int32 intra_op_parallelism_threads =
         options.config.intra_op_parallelism_threads();
     if (intra_op_parallelism_threads == 0) {

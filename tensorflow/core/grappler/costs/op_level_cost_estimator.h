@@ -32,11 +32,11 @@ class OpLevelCostEstimator {
   OpLevelCostEstimator();
   virtual ~OpLevelCostEstimator() {}
 
-  Costs PredictCosts(const OpInfo& op_features) const;
+  virtual Costs PredictCosts(const OpInfo& op_features) const;
 
  protected:
   // Returns an estimate of device performance (in billions of operations
-  // executed per second) and memory bandwith (in GigaBytes/second) for the
+  // executed per second) and memory bandwidth (in GigaBytes/second) for the
   // specified device.
   virtual std::pair<double, double> GetDeviceInfo(
       const DeviceProperties& device) const;
@@ -80,6 +80,8 @@ class OpLevelCostEstimator {
   int64 CountMatMulOperations(const OpInfo& op_features,
                               MatMulDimensions* mat_mul,
                               bool* found_unknown_shapes) const;
+  int64 CountBatchMatMulOperations(const OpInfo& op_features,
+                                   bool* found_unknown_shapes) const;
   int64 CountConv2DBackPropInputOperations(const OpInfo& op_features,
                                            ConvolutionDimensions* conv_info,
                                            bool* found_unknown_shapes) const;
@@ -87,17 +89,26 @@ class OpLevelCostEstimator {
                                             ConvolutionDimensions* conv_info,
                                             bool* found_unknown_shapes) const;
 
-  // Calculate the total size in bytes of a single input to a TensorFlow op.
-  int64 CalculateSingleInputSize(const OpInfo::TensorProperties& input,
-                                 bool* found_unknown_shapes) const;
+  // Calculate the element count of an input/output tensor.
+  int64 CalculateTensorElementCount(const OpInfo::TensorProperties& tensor,
+                                    bool* found_unknown_shapes) const;
+
+  // Calculate the total size in bytes of an input/output tensor.
+  int64 CalculateTensorSize(const OpInfo::TensorProperties& tensor,
+                            bool* found_unknown_shapes) const;
+
+  // Calculate the element count of the largest
+  // input of specified TensorFlow op.
+  int64 CalculateLargestInputCount(const OpInfo& op_features,
+                                   bool* found_unknown_shapes) const;
 
   // Calculate the total size in bytes of the all
-  // the inputs of specified TensorFlow Op
+  // the inputs of specified TensorFlow op.
   int64 CalculateInputSize(const OpInfo& op_features,
                            bool* found_unknown_shapes) const;
 
   // Calculate the total size in bytes of the all
-  // the outputs of specified TensorFlow Op
+  // the outputs of specified TensorFlow op.
   int64 CalculateOutputSize(const OpInfo& op_features,
                             bool* found_unknown_shapes) const;
 
@@ -112,10 +123,13 @@ class OpLevelCostEstimator {
   // execution_time is optional, depending on the
   // device.
   Costs PredictConv2D(const OpInfo& op_features) const;
+  Costs PredictCwiseOp(const OpInfo& op_features) const;
   Costs PredictConv2DBackPropInput(const OpInfo& op_features) const;
   Costs PredictConv2DBackPropFilter(const OpInfo& op_features) const;
   Costs PredictMatMul(const OpInfo& op_features) const;
   Costs PredictNoOp(const OpInfo& op_features) const;
+  Costs PredictBatchMatMul(const OpInfo& op_features) const;
+  Costs PredictMetadata(const OpInfo& op_features) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -133,8 +147,12 @@ class OpLevelCostEstimator {
       bool* found_unknown_shapes);
 
  protected:
+  std::map<string, int> elementwise_ops_;
   typedef std::function<Costs(const OpInfo& op_feature)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
+
+ private:
+  friend class OpLevelCostEstimatorTest;
 };
 
 }  // end namespace grappler

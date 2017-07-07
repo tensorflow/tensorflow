@@ -24,7 +24,7 @@ import types
 
 
 class LazyLoader(types.ModuleType):
-  """Lazily import a module, mainly to avoid pulling in large dependancies.
+  """Lazily import a module, mainly to avoid pulling in large dependencies.
 
   `contrib`, and `ffmpeg` are examples of modules that are large and not always
   needed, and this allows them to only be loaded when they are used.

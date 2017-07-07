@@ -44,6 +44,10 @@ from tensorflow.python.training import session_run_hook
 _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
 
 
+# Value that indicates no value was provided.
+USE_DEFAULT = object()
+
+
 # TODO(touts): Share that with the Supervisor.
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
@@ -129,19 +133,23 @@ class Scaffold(object):
       copy_from_scaffold: Optional scaffold object to copy fields from. Its
         fields will be overwritten by the provided fields in this function.
     """
-    if copy_from_scaffold:
+    if copy_from_scaffold is not None:
       if not isinstance(copy_from_scaffold, Scaffold):
         raise TypeError('copy_from_scaffold is not a Scaffold instance.')
-      init_op = init_op or copy_from_scaffold.init_op
-      init_feed_dict = init_feed_dict or copy_from_scaffold.init_feed_dict
+      # We need _coalesce since Tensor is not converted to bool automatically,
+      # so the common idiom of (a or b) does not work.
+      coalesce = lambda a, b: a if a is not None else b
+      init_op = coalesce(init_op, copy_from_scaffold.init_op)
+      init_feed_dict = coalesce(init_feed_dict,
+                                copy_from_scaffold.init_feed_dict)
       # Use the original init_fn provided by the user to init the new Scaffold.
-      init_fn = init_fn or copy_from_scaffold._user_init_fn  # pylint: disable=protected-access
-      ready_op = ready_op or copy_from_scaffold.ready_op
-      ready_for_local_init_op = ready_for_local_init_op or (
-          copy_from_scaffold.ready_for_local_init_op)
-      local_init_op = local_init_op or copy_from_scaffold.local_init_op
-      summary_op = summary_op or copy_from_scaffold.summary_op
-      saver = saver or copy_from_scaffold.saver
+      init_fn = coalesce(init_fn, copy_from_scaffold._user_init_fn)  # pylint: disable=protected-access
+      ready_op = coalesce(ready_op, copy_from_scaffold.ready_op)
+      ready_for_local_init_op = coalesce(
+          ready_for_local_init_op, copy_from_scaffold.ready_for_local_init_op)
+      local_init_op = coalesce(local_init_op, copy_from_scaffold.local_init_op)
+      summary_op = coalesce(summary_op, copy_from_scaffold.summary_op)
+      saver = coalesce(saver, copy_from_scaffold.saver)
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
     # hack to make it easy to find the saver.  Is there a better way?
@@ -152,12 +160,12 @@ class Scaffold(object):
       self._init_fn = None
 
     self._init_op = init_op
+    self._init_feed_dict = init_feed_dict
     self._ready_op = ready_op
     self._ready_for_local_init_op = ready_for_local_init_op
     self._local_init_op = local_init_op
     self._summary_op = summary_op
     self._saver = saver
-    self._init_feed_dict = init_feed_dict
 
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
@@ -265,8 +273,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              hooks=None,
                              chief_only_hooks=None,
                              save_checkpoint_secs=600,
-                             save_summaries_steps=100,
-                             save_summaries_secs=None,
+                             save_summaries_steps=USE_DEFAULT,
+                             save_summaries_secs=USE_DEFAULT,
                              config=None,
                              stop_grace_period_secs=120,
                              log_step_count_steps=100):
@@ -275,7 +283,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   For a chief, this utility sets proper session initializer/restorer. It also
   creates hooks related to checkpoint and summary saving. For workers, this
   utility sets proper session creator which waits for the chief to
-  initialize/restore.
+  initialize/restore. Please check `tf.train.MonitoredSession` for more
+  information.
 
 
   Args:
@@ -296,11 +305,11 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     save_summaries_steps: The frequency, in number of global steps, that the
       summaries are written to disk using a default summary saver. If both
       `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
-      the default summary saver isn't used.
+      the default summary saver isn't used. Default 100.
     save_summaries_secs: The frequency, in secs, that the summaries are written
       to disk using a default summary saver.  If both `save_summaries_steps` and
       `save_summaries_secs` are set to `None`, then the default summary saver
-      isn't used.
+      isn't used. Default not enabled.
     config: an instance of `tf.ConfigProto` proto used to configure the session.
       It's the `config` argument of constructor of `tf.Session`.
     stop_grace_period_secs: Number of seconds given to threads to stop after
@@ -311,6 +320,14 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   Returns:
     A `MonitoredSession` object.
   """
+  if save_summaries_steps == USE_DEFAULT and save_summaries_secs == USE_DEFAULT:
+    save_summaries_steps = 100
+    save_summaries_secs = None
+  elif save_summaries_secs == USE_DEFAULT:
+    save_summaries_secs = None
+  elif save_summaries_steps == USE_DEFAULT:
+    save_summaries_steps = None
+
   scaffold = scaffold or Scaffold()
   if not is_chief:
     session_creator = WorkerSessionCreator(
@@ -592,6 +609,7 @@ class MonitoredSession(_MonitoredSession):
   * initializes the model via initialization ops provided by `Scaffold`
   * restores variables if a checkpoint exists
   * launches queue runners
+  * calls `hook.after_create_session()`
 
   Run: When `run()` is called, the monitored session does following things:
 
@@ -627,6 +645,12 @@ class MonitoredSession(_MonitoredSession):
   ```
 
   See `MonitoredTrainingSession` for an example usage based on chief or worker.
+
+  Note: This is not a `tf.Session`. For example, it cannot do following:
+
+  * it cannot be set as default session.
+  * it cannot be sent to saver.save.
+  * it cannot be sent to tf.train.start_queue_runners.
 
   Args:
     session_creator: A factory object to create session. Typically a

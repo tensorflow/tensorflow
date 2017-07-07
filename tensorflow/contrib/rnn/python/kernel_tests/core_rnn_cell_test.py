@@ -25,8 +25,7 @@ import numpy as np
 # TODO(ebrevdo): Remove once _linear is fully deprecated.
 # pylint: disable=protected-access
 
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
-from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear as linear
+from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,12 +36,14 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
 
 # pylint: enable=protected-access
+linear = rnn_cell_impl._linear
 
 
 class RNNCellTest(test.TestCase):
@@ -74,14 +75,12 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 2])
-        cell = core_rnn_cell_impl.BasicRNNCell(2)
+        cell = rnn_cell_impl.BasicRNNCell(2)
         g, _ = cell(x, m)
-        self.assertEqual(
-            ["root/basic_rnn_cell/%s:0"
-             % core_rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
-             "root/basic_rnn_cell/%s:0"
-             % core_rnn_cell_impl._BIAS_VARIABLE_NAME],
-            [v.name for v in cell.trainable_variables])
+        self.assertEqual([
+            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._BIAS_VARIABLE_NAME
+        ], [v.name for v in cell.trainable_variables])
         self.assertFalse(cell.non_trainable_variables)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
@@ -100,15 +99,13 @@ class RNNCellTest(test.TestCase):
           custom_getter=not_trainable_getter):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 2])
-        cell = core_rnn_cell_impl.BasicRNNCell(2)
+        cell = rnn_cell_impl.BasicRNNCell(2)
         g, _ = cell(x, m)
         self.assertFalse(cell.trainable_variables)
-        self.assertEqual(
-            ["root/basic_rnn_cell/%s:0"
-             % core_rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
-             "root/basic_rnn_cell/%s:0"
-             % core_rnn_cell_impl._BIAS_VARIABLE_NAME],
-            [v.name for v in cell.non_trainable_variables])
+        self.assertEqual([
+            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._BIAS_VARIABLE_NAME
+        ], [v.name for v in cell.non_trainable_variables])
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
             [g], {x.name: np.array([[1., 1.]]),
@@ -121,7 +118,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 2])
-        g, _ = core_rnn_cell_impl.GRUCell(2)(x, m)
+        g, _ = rnn_cell_impl.GRUCell(2)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
             [g], {x.name: np.array([[1., 1.]]),
@@ -133,7 +130,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros(
             [1, 3])  # Test GRUCell with input_size != num_units.
         m = array_ops.zeros([1, 2])
-        g, _ = core_rnn_cell_impl.GRUCell(2)(x, m)
+        g, _ = rnn_cell_impl.GRUCell(2)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
             [g],
@@ -148,20 +145,23 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 8])
-        cell = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.BasicLSTMCell(
-                2, state_is_tuple=False) for _ in range(2)],
+        cell = rnn_cell_impl.MultiRNNCell(
+            [
+                rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=False)
+                for _ in range(2)
+            ],
             state_is_tuple=False)
         g, out_m = cell(x, m)
         expected_variable_names = [
-            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0"
-            % core_rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
-            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0"
-            % core_rnn_cell_impl._BIAS_VARIABLE_NAME,
-            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0"
-            % core_rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
-            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0"
-            % core_rnn_cell_impl._BIAS_VARIABLE_NAME]
+            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
+            rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
+            rnn_cell_impl._BIAS_VARIABLE_NAME,
+            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
+            rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
+            rnn_cell_impl._BIAS_VARIABLE_NAME
+        ]
         self.assertEqual(
             expected_variable_names, [v.name for v in cell.trainable_variables])
         self.assertFalse(cell.non_trainable_variables)
@@ -185,8 +185,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros(
             [1, 3])  # Test BasicLSTMCell with input_size != num_units.
         m = array_ops.zeros([1, 4])
-        g, out_m = core_rnn_cell_impl.BasicLSTMCell(
-            2, state_is_tuple=False)(x, m)
+        g, out_m = rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=False)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
             [g, out_m],
@@ -206,7 +205,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size - 1, state_size])
         with self.assertRaises(ValueError):
-          g, out_m = core_rnn_cell_impl.BasicLSTMCell(
+          g, out_m = rnn_cell_impl.BasicLSTMCell(
               num_units, state_is_tuple=False)(x, m)
           sess.run([variables_lib.global_variables_initializer()])
           sess.run([g, out_m],
@@ -225,7 +224,7 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
         with self.assertRaises(ValueError):
-          g, out_m = core_rnn_cell_impl.BasicLSTMCell(
+          g, out_m = rnn_cell_impl.BasicLSTMCell(
               num_units, state_is_tuple=False)(x, m)
           sess.run([variables_lib.global_variables_initializer()])
           sess.run([g, out_m],
@@ -239,31 +238,29 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([1, 2])
         m0 = (array_ops.zeros([1, 2]),) * 2
         m1 = (array_ops.zeros([1, 2]),) * 2
-        cell = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.BasicLSTMCell(2) for _ in range(2)],
+        cell = rnn_cell_impl.MultiRNNCell(
+            [rnn_cell_impl.BasicLSTMCell(2) for _ in range(2)],
             state_is_tuple=True)
         self.assertTrue(isinstance(cell.state_size, tuple))
         self.assertTrue(
-            isinstance(cell.state_size[0], core_rnn_cell_impl.LSTMStateTuple))
+            isinstance(cell.state_size[0], rnn_cell_impl.LSTMStateTuple))
         self.assertTrue(
-            isinstance(cell.state_size[1], core_rnn_cell_impl.LSTMStateTuple))
+            isinstance(cell.state_size[1], rnn_cell_impl.LSTMStateTuple))
 
         # Pass in regular tuples
         _, (out_m0, out_m1) = cell(x, (m0, m1))
-        self.assertTrue(isinstance(out_m0, core_rnn_cell_impl.LSTMStateTuple))
-        self.assertTrue(isinstance(out_m1, core_rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(out_m0, rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(out_m1, rnn_cell_impl.LSTMStateTuple))
 
         # Pass in LSTMStateTuples
         variable_scope.get_variable_scope().reuse_variables()
         zero_state = cell.zero_state(1, dtypes.float32)
         self.assertTrue(isinstance(zero_state, tuple))
-        self.assertTrue(
-            isinstance(zero_state[0], core_rnn_cell_impl.LSTMStateTuple))
-        self.assertTrue(
-            isinstance(zero_state[1], core_rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(zero_state[0], rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(zero_state[1], rnn_cell_impl.LSTMStateTuple))
         _, (out_m0, out_m1) = cell(x, zero_state)
-        self.assertTrue(isinstance(out_m0, core_rnn_cell_impl.LSTMStateTuple))
-        self.assertTrue(isinstance(out_m1, core_rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(out_m0, rnn_cell_impl.LSTMStateTuple))
+        self.assertTrue(isinstance(out_m1, rnn_cell_impl.LSTMStateTuple))
 
   def testBasicLSTMCellWithStateTuple(self):
     with self.test_session() as sess:
@@ -272,9 +269,11 @@ class RNNCellTest(test.TestCase):
         x = array_ops.zeros([1, 2])
         m0 = array_ops.zeros([1, 4])
         m1 = array_ops.zeros([1, 4])
-        cell = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.BasicLSTMCell(
-                2, state_is_tuple=False) for _ in range(2)],
+        cell = rnn_cell_impl.MultiRNNCell(
+            [
+                rnn_cell_impl.BasicLSTMCell(2, state_is_tuple=False)
+                for _ in range(2)
+            ],
             state_is_tuple=True)
         g, (out_m0, out_m1) = cell(x, (m0, m1))
         sess.run([variables_lib.global_variables_initializer()])
@@ -306,7 +305,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
-        cell = core_rnn_cell_impl.LSTMCell(
+        cell = rnn_cell_impl.LSTMCell(
             num_units=num_units,
             num_proj=num_proj,
             forget_bias=1.0,
@@ -340,7 +339,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([batch_size, input_size])
         m = array_ops.zeros([batch_size, state_size])
-        cell = core_rnn_cell_impl.LSTMCell(
+        cell = rnn_cell_impl.LSTMCell(
             num_units=num_units,
             num_proj=num_proj,
             forget_bias=1.0,
@@ -358,8 +357,7 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 3])
         m = array_ops.zeros([1, 3])
-        cell = core_rnn_cell_impl.OutputProjectionWrapper(
-            core_rnn_cell_impl.GRUCell(3), 2)
+        cell = contrib_rnn.OutputProjectionWrapper(rnn_cell_impl.GRUCell(3), 2)
         g, new_m = cell(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run([g, new_m], {
@@ -376,8 +374,8 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 3])
-        cell = core_rnn_cell_impl.InputProjectionWrapper(
-            core_rnn_cell_impl.GRUCell(3), num_proj=3)
+        cell = contrib_rnn.InputProjectionWrapper(
+            rnn_cell_impl.GRUCell(3), num_proj=3)
         g, new_m = cell(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
@@ -394,10 +392,10 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 3])
         m = array_ops.zeros([1, 3])
-        base_cell = core_rnn_cell_impl.GRUCell(3)
+        base_cell = rnn_cell_impl.GRUCell(3)
         g, m_new = base_cell(x, m)
         variable_scope.get_variable_scope().reuse_variables()
-        g_res, m_new_res = core_rnn_cell_impl.ResidualWrapper(base_cell)(x, m)
+        g_res, m_new_res = rnn_cell_impl.ResidualWrapper(base_cell)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run([g, g_res, m_new, m_new_res], {
             x: np.array([[1., 1., 1.]]),
@@ -413,8 +411,7 @@ class RNNCellTest(test.TestCase):
         "root", initializer=init_ops.constant_initializer(0.5)):
       x = array_ops.zeros([1, 3])
       m = array_ops.zeros([1, 3])
-      cell = core_rnn_cell_impl.DeviceWrapper(
-          core_rnn_cell_impl.GRUCell(3), "/cpu:14159")
+      cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), "/cpu:14159")
       outputs, _ = cell(x, m)
       self.assertTrue("cpu:14159" in outputs.device.lower())
 
@@ -427,8 +424,7 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 1, 3])
-        cell = core_rnn_cell_impl.DeviceWrapper(
-            core_rnn_cell_impl.GRUCell(3), "/gpu:0")
+        cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), "/gpu:0")
         with ops.device("/cpu:0"):
           outputs, _ = rnn.dynamic_rnn(
               cell=cell, inputs=x, dtype=dtypes.float32)
@@ -446,39 +442,14 @@ class RNNCellTest(test.TestCase):
       self.assertFalse([s for s in cpu_stats if "gru_cell" in s.node_name])
       self.assertTrue([s for s in gpu_stats if "gru_cell" in s.node_name])
 
-  # def testUsingSecondCellInScopeWithExistingVariablesFails(self):
-  #   # This test should go away when this behavior is no longer an
-  #   # error (Approx. May 2017)
-  #   cell1 = core_rnn_cell_impl.LSTMCell(3)
-  #   cell2 = core_rnn_cell_impl.LSTMCell(3)
-  #   x = array_ops.zeros([1, 3])
-  #   m = core_rnn_cell_impl.LSTMStateTuple(*[array_ops.zeros([1, 3])] * 2)
-  #   cell1(x, m)
-  #   with self.assertRaisesRegexp(ValueError, r"LSTMCell\(..., reuse=True\)"):
-  #     cell2(x, m)
-
-  # def testUsingCellInDifferentScopeFromFirstCallFails(self):
-  #   # This test should go away when this behavior is no longer an
-  #   # error (Approx. May 2017)
-  #   cell = core_rnn_cell_impl.LSTMCell(3)
-  #   x = array_ops.zeros([1, 3])
-  #   m = core_rnn_cell_impl.LSTMStateTuple(*[array_ops.zeros([1, 3])] * 2)
-  #   with variable_scope.variable_scope("scope1"):
-  #     cell(x, m)
-  #   with variable_scope.variable_scope("scope2"):
-  #     with self.assertRaisesRegexp(ValueError, r"Attempt to reuse RNNCell"):
-  #       cell(x, m)
-
   def testEmbeddingWrapper(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 1], dtype=dtypes.int32)
         m = array_ops.zeros([1, 2])
-        embedding_cell = core_rnn_cell_impl.EmbeddingWrapper(
-            core_rnn_cell_impl.GRUCell(2),
-            embedding_classes=3,
-            embedding_size=2)
+        embedding_cell = contrib_rnn.EmbeddingWrapper(
+            rnn_cell_impl.GRUCell(2), embedding_classes=3, embedding_size=2)
         self.assertEqual(embedding_cell.output_size, 2)
         g, new_m = embedding_cell(x, m)
         sess.run([variables_lib.global_variables_initializer()])
@@ -495,9 +466,8 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope("root"):
         inputs = ops.convert_to_tensor([[[0], [0]]], dtype=dtypes.int64)
         input_lengths = ops.convert_to_tensor([2], dtype=dtypes.int64)
-        embedding_cell = core_rnn_cell_impl.EmbeddingWrapper(
-            core_rnn_cell_impl.BasicLSTMCell(
-                1, state_is_tuple=True),
+        embedding_cell = contrib_rnn.EmbeddingWrapper(
+            rnn_cell_impl.BasicLSTMCell(1, state_is_tuple=True),
             embedding_classes=1,
             embedding_size=2)
         outputs, _ = rnn.dynamic_rnn(
@@ -515,9 +485,9 @@ class RNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
         m = array_ops.zeros([1, 4])
-        _, ml = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.GRUCell(2) for _ in range(2)],
-            state_is_tuple=False)(x, m)
+        _, ml = rnn_cell_impl.MultiRNNCell(
+            [rnn_cell_impl.GRUCell(2)
+             for _ in range(2)], state_is_tuple=False)(x, m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(ml, {
             x.name: np.array([[1., 1.]]),
@@ -536,13 +506,13 @@ class RNNCellTest(test.TestCase):
 
         # Test incorrectness of state
         with self.assertRaisesRegexp(ValueError, "Expected state .* a tuple"):
-          core_rnn_cell_impl.MultiRNNCell(
-              [core_rnn_cell_impl.GRUCell(2) for _ in range(2)],
-              state_is_tuple=True)(x, m_bad)
+          rnn_cell_impl.MultiRNNCell(
+              [rnn_cell_impl.GRUCell(2)
+               for _ in range(2)], state_is_tuple=True)(x, m_bad)
 
-        _, ml = core_rnn_cell_impl.MultiRNNCell(
-            [core_rnn_cell_impl.GRUCell(2) for _ in range(2)],
-            state_is_tuple=True)(x, m_good)
+        _, ml = rnn_cell_impl.MultiRNNCell(
+            [rnn_cell_impl.GRUCell(2)
+             for _ in range(2)], state_is_tuple=True)(x, m_good)
 
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(ml, {
@@ -571,23 +541,23 @@ class DropoutWrapperTest(test.TestCase):
           time_steps = 2
           x = constant_op.constant(
               [[[2., 2., 2.]], [[1., 1., 1.]]], dtype=dtypes.float32)
-          m = core_rnn_cell_impl.LSTMStateTuple(
-              *[constant_op.constant([[0.1, 0.1, 0.1]],
-                                     dtype=dtypes.float32)] * 2)
+          m = rnn_cell_impl.LSTMStateTuple(
+              *[constant_op.constant([[0.1, 0.1, 0.1]], dtype=dtypes.float32)
+               ] * 2)
         else:
           x = constant_op.constant(
               np.random.randn(time_steps, batch_size, 3).astype(np.float32))
-          m = core_rnn_cell_impl.LSTMStateTuple(
-              *[constant_op.constant([[0.1, 0.1, 0.1]] * batch_size,
-                                     dtype=dtypes.float32)] * 2)
+          m = rnn_cell_impl.LSTMStateTuple(*[
+              constant_op.constant(
+                  [[0.1, 0.1, 0.1]] * batch_size, dtype=dtypes.float32)
+          ] * 2)
         outputs, final_state = rnn.dynamic_rnn(
-            cell=core_rnn_cell_impl.DropoutWrapper(
-                core_rnn_cell_impl.LSTMCell(3),
-                dtype=x.dtype,
-                **kwargs),
+            cell=rnn_cell_impl.DropoutWrapper(
+                rnn_cell_impl.LSTMCell(3), dtype=x.dtype, **kwargs),
             time_major=True,
             parallel_iterations=parallel_iterations,
-            inputs=x, initial_state=m)
+            inputs=x,
+            initial_state=m)
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run([outputs, final_state])
         self.assertEqual(res[0].shape, (time_steps, batch_size, 3))
@@ -775,7 +745,7 @@ class SlimRNNCellTest(test.TestCase):
         m = array_ops.zeros([1, 2])
         my_cell = functools.partial(basic_rnn_cell, num_units=2)
         # pylint: disable=protected-access
-        g, _ = core_rnn_cell_impl._SlimRNNCell(my_cell)(x, m)
+        g, _ = rnn_cell_impl._SlimRNNCell(my_cell)(x, m)
         # pylint: enable=protected-access
         sess.run([variables_lib.global_variables_initializer()])
         res = sess.run(
@@ -792,12 +762,12 @@ class SlimRNNCellTest(test.TestCase):
           "root", initializer=init_ops.constant_initializer(0.5)):
         inputs = random_ops.random_uniform((batch_size, input_size))
         _, initial_state = basic_rnn_cell(inputs, None, num_units)
-        rnn_cell = core_rnn_cell_impl.BasicRNNCell(num_units)
+        rnn_cell = rnn_cell_impl.BasicRNNCell(num_units)
         outputs, state = rnn_cell(inputs, initial_state)
         variable_scope.get_variable_scope().reuse_variables()
         my_cell = functools.partial(basic_rnn_cell, num_units=num_units)
         # pylint: disable=protected-access
-        slim_cell = core_rnn_cell_impl._SlimRNNCell(my_cell)
+        slim_cell = rnn_cell_impl._SlimRNNCell(my_cell)
         # pylint: enable=protected-access
         slim_outputs, slim_state = slim_cell(inputs, initial_state)
         self.assertEqual(slim_outputs.get_shape(), outputs.get_shape())

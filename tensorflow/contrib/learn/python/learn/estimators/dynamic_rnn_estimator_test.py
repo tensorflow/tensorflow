@@ -31,7 +31,6 @@ from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_f
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.estimators import rnn_common
 from tensorflow.contrib.learn.python.learn.estimators import run_config
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -42,6 +41,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -107,7 +107,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
 
   def setUp(self):
     super(DynamicRnnEstimatorTest, self).setUp()
-    self.rnn_cell = core_rnn_cell_impl.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
+    self.rnn_cell = rnn_cell.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
     self.mock_target_column = MockTargetColumn(
         num_label_columns=self.NUM_LABEL_COLUMNS)
 
@@ -312,19 +312,19 @@ class DynamicRnnEstimatorTest(test.TestCase):
     # A MultiRNNCell of LSTMCells is both a common choice and an interesting
     # test case, because it has two levels of nesting, with an inner class that
     # is not a plain tuple.
-    cell = core_rnn_cell_impl.MultiRNNCell(
-        [core_rnn_cell_impl.LSTMCell(i) for i in cell_sizes])
+    cell = rnn_cell.MultiRNNCell(
+        [rnn_cell.LSTMCell(i) for i in cell_sizes])
     state_dict = {
         dynamic_rnn_estimator._get_state_name(i):
         array_ops.expand_dims(math_ops.range(cell_size), 0)
         for i, cell_size in enumerate([5, 5, 3, 3, 7, 7])
     }
-    expected_state = (core_rnn_cell_impl.LSTMStateTuple(
+    expected_state = (rnn_cell.LSTMStateTuple(
         np.reshape(np.arange(5), [1, -1]), np.reshape(np.arange(5), [1, -1])),
-                      core_rnn_cell_impl.LSTMStateTuple(
+                      rnn_cell.LSTMStateTuple(
                           np.reshape(np.arange(3), [1, -1]),
                           np.reshape(np.arange(3), [1, -1])),
-                      core_rnn_cell_impl.LSTMStateTuple(
+                      rnn_cell.LSTMStateTuple(
                           np.reshape(np.arange(7), [1, -1]),
                           np.reshape(np.arange(7), [1, -1])))
     actual_state = dynamic_rnn_estimator.dict_to_state_tuple(state_dict, cell)

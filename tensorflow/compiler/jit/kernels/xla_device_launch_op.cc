@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -55,7 +56,7 @@ XlaDeviceLaunchOp::XlaDeviceLaunchOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr("function", &func));
   function_ = *func;
   VLOG(1) << "XlaDeviceLaunch created function="
-          << Canonicalize(function_.name(), function_.attr());
+          << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
   DataTypeVector constant_types;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tconstants", &constant_types));
   num_constant_args_ = constant_types.size();
@@ -81,7 +82,7 @@ std::vector<OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
 
 void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XlaDeviceLaunch::Compute "
-          << Canonicalize(function_.name(), function_.attr());
+          << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
   // We store information about the JIT-compiled XLA computation
   // in the ResourceMgr.
   ResourceMgr* rm = ctx->resource_manager();
@@ -149,6 +150,8 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
     xla::ExecutionOptions execution_options;
     *execution_options.mutable_shape_with_output_layout() =
         kernel->xla_output_shape;
+    *execution_options.mutable_debug_options() =
+        xla::legacy_flags::GetDebugOptionsFromFlags();
     Env* env = Env::Default();
     auto start_time = env->NowMicros();
     VLOG(1) << "Executing XLA Computation...";
@@ -202,8 +205,8 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
 
   // Apply variable updates, if any.
   VLOG(2) << "Applying variable updates";
-  for (int i = 0; i < kernel->variable_updates.size(); ++i) {
-    const XlaCompiler::VariableUpdate& write = kernel->variable_updates[i];
+  for (int i = 0; i < kernel->resource_updates.size(); ++i) {
+    const XlaCompiler::ResourceUpdate& write = kernel->resource_updates[i];
     OP_REQUIRES(ctx,
                 write.input_index >= 0 && write.input_index < ctx->num_inputs(),
                 errors::Internal("Invalid input index for variable write."));

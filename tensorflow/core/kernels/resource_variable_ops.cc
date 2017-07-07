@@ -39,7 +39,7 @@ class ReadVariableOp : public OpKernel {
  public:
   explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
 
-  void Compute(OpKernelContext* ctx) {
+  void Compute(OpKernelContext* ctx) override {
     Var* variable = nullptr;
     ResourceHandle handle = HandleFromInput(ctx, 0);
     OP_REQUIRES(
@@ -94,7 +94,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
                               .HostMemory("resource"),         \
                           ReadVariableOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -148,7 +148,7 @@ REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
 template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {
  public:
-  AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
   }
 
@@ -230,7 +230,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
                               .HostMemory("resource"),         \
                           AssignVariableOp<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -306,6 +306,14 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
                         IsResourceInitialized<Var>);
+
+#if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resource")
+                            .HostMemory("is_initialized"),
+                        IsResourceInitialized<Var>);
+#endif  // GOOGLE_CUDA
 
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {
@@ -387,6 +395,7 @@ class ResourceScatterUpdateOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     Var* v = nullptr;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+    core::ScopedUnref unref_v(v);
     mutex_lock ml(*v->mu());
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);

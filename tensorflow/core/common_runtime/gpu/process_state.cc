@@ -127,7 +127,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options, int gpu_id,
         gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
     int bus_id = se->GetDeviceDescription().numa_node();
     if (bus_id >= 0 && bus_id < static_cast<int64>(gpu_visitors_.size())) {
-      for (auto v : gpu_visitors_[bus_id]) {
+      for (const auto& v : gpu_visitors_[bus_id]) {
         gpu_allocators_[gpu_id]->AddAllocVisitor(v);
       }
     }

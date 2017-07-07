@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/named_tensor.pb.h"
 
 namespace tensorflow {
 
@@ -516,7 +520,7 @@ CostGraphDef* InMemoryRunGraphResponse::mutable_cost_graph() {
 
 RunGraphResponse* InMemoryRunGraphResponse::get_proto() {
   LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunGraphResponse";
-  return NULL;
+  return nullptr;
 }
 
 size_t OwnedProtoRunGraphResponse::num_recvs() const {
@@ -635,7 +639,7 @@ RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
 
 RunStepResponse* InMemoryRunStepResponse::get_proto() {
   LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunStepResponse";
-  return NULL;
+  return nullptr;
 }
 
 size_t OwnedProtoRunStepResponse::num_tensors() const {

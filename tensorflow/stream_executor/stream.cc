@@ -59,6 +59,10 @@ string ToVlogString(dnn::ActivationMode mode) {
   return dnn::ActivationModeString(mode);
 }
 
+string ToVlogString(const dnn::AlgorithmConfig &algo_config) {
+  return algo_config.ToString();
+}
+
 string ToVlogString(dnn::ElementwiseOperation op) {
   return dnn::ElementwiseOperationString(op);
 }
@@ -164,6 +168,19 @@ string ToVlogString(dnn::DepthToSpaceLayout depth_to_space_layout) {
       return "DepthToSpaceLayout::DepthHeightWidth";
   }
   return "unknown DepthToSpaceLayout";
+}
+
+string ToVlogString(dnn::DataType data_type) {
+  switch (data_type) {
+    case dnn::DataType::kFloat:
+      return "dnn::DataType::kFloat";
+    case dnn::DataType::kDouble:
+      return "dnn::DataType::kDouble";
+    case dnn::DataType::kHalf:
+      return "dnn::DataType::kHalf";
+    case dnn::DataType::kInt8:
+      return "dnn::DataType::kInt8";
+  }
 }
 
 // Used together with PARAM to VLOG calls made to the stream. Intended
@@ -350,9 +367,65 @@ Stream &Stream::ThenConvolveWithScratch(
     const dnn::FilterDescriptor &filter_descriptor,
     const DeviceMemory<Eigen::half> &filter_data,
     const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const DeviceMemory<Eigen::half> &biases,
+    dnn::ActivationMode activation_mode,
     const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<Eigen::half> *output,
+    DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(biases),
+            PARAM(activation_mode), PARAM(output_descriptor), PARAM(output));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, biases, activation_mode, output_descriptor,
+          output, scratch_allocator, dnn::AlgorithmConfig(),
+          /*output_profile_result=*/nullptr));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithScratch(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<float> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output,
     ScratchAllocator *scratch_allocator) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(biases),
+            PARAM(activation_mode), PARAM(output_descriptor), PARAM(output));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, biases, activation_mode, output_descriptor,
+          output, scratch_allocator, dnn::AlgorithmConfig(),
+          /*output_profile_result=*/nullptr));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithScratch(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<Eigen::half> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator) {
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(filter_descriptor), PARAM(filter_data),
             PARAM(convolution_descriptor), PARAM(output_descriptor),
@@ -362,9 +435,9 @@ Stream &Stream::ThenConvolveWithScratch(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoConvolve(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
-          convolution_descriptor, output_descriptor, output,
-          /*scratch_allocator=*/scratch_allocator, dnn::AlgorithmConfig(),
-          nullptr));
+          convolution_descriptor, output_descriptor, output, scratch_allocator,
+          dnn::AlgorithmConfig(),
+          /*output_profile_result=*/nullptr));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -389,9 +462,76 @@ Stream &Stream::ThenConvolveWithScratch(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoConvolve(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
-          convolution_descriptor, output_descriptor, output,
-          /*scratch_allocator=*/scratch_allocator, dnn::AlgorithmConfig(),
-          nullptr));
+          convolution_descriptor, output_descriptor, output, scratch_allocator,
+          dnn::AlgorithmConfig(),
+          /*output_profile_result=*/nullptr));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithAlgorithm(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<float> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(biases),
+            PARAM(activation_mode), PARAM(output_descriptor), PARAM(output),
+            PARAM(algorithm_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, biases, activation_mode, output_descriptor,
+          output, scratch_allocator, algorithm_config, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithAlgorithm(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<Eigen::half> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const DeviceMemory<Eigen::half> &biases,
+    dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(biases),
+            PARAM(activation_mode), PARAM(output_descriptor), PARAM(output),
+            PARAM(algorithm_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, biases, activation_mode, output_descriptor,
+          output, scratch_allocator, algorithm_config, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -412,7 +552,7 @@ Stream &Stream::ThenConvolveWithAlgorithm(
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(filter_descriptor), PARAM(filter_data),
             PARAM(convolution_descriptor), PARAM(output_descriptor),
-            PARAM(output));
+            PARAM(output), PARAM(algorithm_config));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -443,7 +583,7 @@ Stream &Stream::ThenConvolveWithAlgorithm(
   VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
             PARAM(filter_descriptor), PARAM(filter_data),
             PARAM(convolution_descriptor), PARAM(output_descriptor),
-            PARAM(output));
+            PARAM(output), PARAM(algorithm_config));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -459,6 +599,21 @@ Stream &Stream::ThenConvolveWithAlgorithm(
     }
   }
   return *this;
+}
+
+Stream &Stream::ThenConvolve(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<float> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<float> *output) {
+  return ThenConvolveWithScratch(
+      input_descriptor, input_data, filter_descriptor, filter_data,
+      convolution_descriptor, biases, activation_mode, output_descriptor,
+      output, /*scratch_allocator=*/nullptr);
 }
 
 Stream &Stream::ThenConvolve(
@@ -582,7 +737,7 @@ Stream &Stream::ThenConvolveBackwardDataWithScratch(
           this, filter_descriptor, filter_data, output_descriptor,
           backward_output_data, convolution_descriptor, input_descriptor,
           backward_input_data, scratch_allocator, dnn::AlgorithmConfig(),
-          nullptr));
+          /*output_profile_result=*/nullptr));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -676,7 +831,7 @@ Stream &Stream::ThenConvolveBackwardDataWithScratch(
           this, filter_descriptor, filter_data, output_descriptor,
           backward_output_data, convolution_descriptor, input_descriptor,
           backward_input_data, scratch_allocator, dnn::AlgorithmConfig(),
-          nullptr));
+          /*output_profile_result=*/nullptr));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -718,7 +873,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithScratch(
           this, input_descriptor, input_data, output_descriptor,
           backward_output_data, convolution_descriptor, filter_descriptor,
           backward_filter_data, scratch_allocator, dnn::AlgorithmConfig(),
-          nullptr));
+          /*output_profile_result=*/nullptr));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -779,7 +934,7 @@ Stream &Stream::ThenConvolveBackwardFilterWithScratch(
           this, input_descriptor, input_data, output_descriptor,
           backward_output_data, convolution_descriptor, filter_descriptor,
           backward_filter_data, scratch_allocator, dnn::AlgorithmConfig(),
-          nullptr));
+          /*output_profile_result=*/nullptr));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -3329,6 +3484,27 @@ Stream &Stream::ThenBlasGemmWithAlgorithm(
 
 Stream &Stream::ThenBlasGemmWithAlgorithm(
     blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, int alpha, const DeviceMemory<int8> &a, int lda,
+    const DeviceMemory<int8> &b, int ldb, int beta, DeviceMemory<int> *c,
+    int ldc, blas::ComputationType computation_type,
+    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
+            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(computation_type),
+            PARAM(algorithm));
+
+  ThenBlasWithProfileImpl<
+      blas::Transpose, blas::Transpose, uint64, uint64, uint64, int,
+      const DeviceMemory<int8> &, int, const DeviceMemory<int8> &, int, int,
+      DeviceMemory<int> *, int, blas::ComputationType, blas::AlgorithmType>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmWithAlgorithm, transa, transb,
+              m, n, k, alpha, a, lda, b, ldb, beta, c, ldc, computation_type,
+              algorithm, output_profile_result);
+}
+
+Stream &Stream::ThenBlasGemmWithAlgorithm(
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
     uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
     const DeviceMemory<float> &b, int ldb, float beta, DeviceMemory<float> *c,
     int ldc, blas::ComputationType computation_type,
@@ -3868,7 +4044,7 @@ Stream &Stream::ThenBlasGemmBatched(
     int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
-                                        nullptr);
+                                        /*scratch_allocator=*/nullptr);
 }
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
@@ -3900,7 +4076,7 @@ Stream &Stream::ThenBlasGemmBatched(
     int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
-                                        nullptr);
+                                        /*scratch_allocator=*/nullptr);
 }
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
@@ -3934,7 +4110,7 @@ Stream &Stream::ThenBlasGemmBatched(
     int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
-                                        nullptr);
+                                        /*scratch_allocator=*/nullptr);
 }
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
@@ -3973,7 +4149,7 @@ Stream &Stream::ThenBlasGemmBatched(
     int batch_count) {
   return ThenBlasGemmBatchedWithScratch(transa, transb, m, n, k, alpha, a, lda,
                                         b, ldb, beta, c, ldc, batch_count,
-                                        nullptr);
+                                        /*scratch_allocator=*/nullptr);
 }
 
 Stream &Stream::ThenBlasGemmBatchedWithScratch(
@@ -4166,7 +4342,7 @@ Stream &Stream::ThenMemZero(DeviceMemoryBase *location, uint64 size) {
   return *this;
 }
 
-Stream &Stream::ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,
+Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32 pattern,
                              uint64 size) {
   VLOG_CALL(PARAM(location), PARAM(pattern), PARAM(size));
 
@@ -4248,6 +4424,27 @@ Stream &Stream::ThenRnnBackward(
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnBackward without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                                    dnn::DataType input_type,
+                                    const DeviceMemoryBase &input_data,
+                                    const dnn::BatchDescriptor &output_desc,
+                                    dnn::DataType output_type, float scale,
+                                    DeviceMemoryBase *output_data) {
+  VLOG_CALL(PARAM(input_desc), PARAM(input_type), PARAM(input_data),
+            PARAM(output_desc), PARAM(output_type), PARAM(scale),
+            PARAM(output_data));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoTransformTensor(this, input_desc, input_type,
+                                        input_data, output_desc, output_type,
+                                        scale, output_data));
+    } else {
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;

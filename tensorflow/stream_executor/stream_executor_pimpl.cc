@@ -285,30 +285,36 @@ bool StreamExecutor::SupportsDnn() const {
 }
 
 bool StreamExecutor::GetConvolveAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveAlgorithms(out_algorithms);
+  return dnn_support->GetConvolveAlgorithms(with_winograd_nonfused,
+                                            out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardDataAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveBackwardDataAlgorithms(out_algorithms);
+  return dnn_support->GetConvolveBackwardDataAlgorithms(with_winograd_nonfused,
+                                                        out_algorithms);
 }
 
 bool StreamExecutor::GetConvolveBackwardFilterAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;
   }
-  return dnn_support->GetConvolveBackwardFilterAlgorithms(out_algorithms);
+  return dnn_support->GetConvolveBackwardFilterAlgorithms(
+      with_winograd_nonfused, out_algorithms);
 }
 
 bool StreamExecutor::GetBlasGemmAlgorithms(

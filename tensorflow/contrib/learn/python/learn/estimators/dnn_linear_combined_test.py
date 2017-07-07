@@ -1042,9 +1042,15 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
         dnn_hidden_units=[3, 3],
         fix_global_step_increment_bug=False)
     classifier.fit(input_fn=input_fn, steps=100, monitors=[step_counter])
+    global_step = classifier.get_variable_value('global_step')
 
-    # Expected is 100, but because of the global step increment bug, this is 51.
-    self.assertEqual(51, step_counter.steps)
+    if global_step == 100:
+      # Expected is 100, but because of the global step increment bug, is 50.
+      self.assertEqual(50, step_counter.steps)
+    else:
+      # Occasionally, training stops when global_step == 101, due to a race
+      # condition.
+      self.assertEqual(51, step_counter.steps)
 
   def testGlobalStepDNNLinearCombinedBugFixed(self):
     """Tests global step update for dnn-linear combined model."""
@@ -1785,14 +1791,14 @@ class FeatureEngineeringFunctionTest(test.TestCase):
         dnn_hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1),
         feature_engineering_fn=feature_engineering_fn)
-    estimator_with_fe_fn.fit(input_fn=input_fn, steps=100)
+    estimator_with_fe_fn.fit(input_fn=input_fn, steps=110)
 
     estimator_without_fe_fn = dnn_linear_combined.DNNLinearCombinedRegressor(
         linear_feature_columns=[feature_column.real_valued_column('x')],
         dnn_feature_columns=[feature_column.real_valued_column('x')],
         dnn_hidden_units=[3, 3],
         config=run_config.RunConfig(tf_random_seed=1))
-    estimator_without_fe_fn.fit(input_fn=input_fn, steps=100)
+    estimator_without_fe_fn.fit(input_fn=input_fn, steps=110)
 
     # predictions = y
     prediction_with_fe_fn = next(

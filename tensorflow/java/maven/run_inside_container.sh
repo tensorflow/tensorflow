@@ -23,7 +23,7 @@ IS_SNAPSHOT="false"
 if [[ "${TF_VERSION}" == *"-SNAPSHOT" ]]; then
   IS_SNAPSHOT="true"
 fi
-PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.2.0/protoc-3.2.0-linux-x86_64.zip"
+PROTOC_RELEASE_URL="https://github.com/google/protobuf/releases/download/v3.3.0/protoc-3.3.0-linux-x86_64.zip"
 
 set -ex
 

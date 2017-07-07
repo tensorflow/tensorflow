@@ -12,21 +12,43 @@ message AutoParallelOptions {
 }
 
 message RewriterConfig {
+  // Graph rewriting is experimental and subject to change, not covered by any
+  // API stability guarantees.
+
+  // Configuration options for the meta-optimizer. Unless otherwise noted, these
+  // configuration options do not apply to explicitly triggered optimization
+  // passes in the optimizers field.
+
   bool optimize_tensor_layout = 1;
   bool disable_model_pruning = 2;
   bool constant_folding = 3;
 
   enum MemOptType {
-    // Fully disabled
+    // Disabled in the meta-optimizer.
     NO_MEM_OPT = 0;
-    // Driven by manual annotations
+    // Driven by manual op-level annotations.
     MANUAL = 1;
+    // Driven by heuristics. The behavior of these heuristics is subject to
+    // change. Currently includes an experimental recomputation heuristic.
+    HEURISTICS = 2;
   }
+  // Configures memory optimization passes through the meta-optimizer. Has no
+  // effect on manually requested memory optimization passes in the optimizers
+  // field.
   MemOptType memory_optimization = 4;
 
+  // Configures AutoParallel optimization passes either through the
+  // meta-optimizer or when manually specified through the optimizers field.
   AutoParallelOptions auto_parallel = 5;
 
   // If non-empty, will use this as an alternative way to specify a list of
-  // optimizations to turn on and the order of the optimizations.
+  // optimizations to turn on and the order of the optimizations (replacing the
+  // meta-optimizer).
+  //
+  // Of the RewriterConfig options, only the AutoParallel configuration options
+  // (the auto_parallel field) apply to manually requested optimization passes
+  // ("autoparallel"). Memory optimization passes ("memory") invoked here are
+  // not configurable (in contrast to memory optimization passes through the
+  // meta-optimizer) and act only on manual op annotations.
   repeated string optimizers = 100;
 }

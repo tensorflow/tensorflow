@@ -37,8 +37,11 @@ def load_data(path='boston_housing.npz', seed=113, test_split=0.2):
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
   """
   assert 0 <= test_split < 1
+  fh = 'f553886a1f8d56431e820c5b82552d9d95cfcb96d1e678153f8839538947dff5'
   path = get_file(
-      path, origin='https://s3.amazonaws.com/keras-datasets/boston_housing.npz')
+      path,
+      origin='https://s3.amazonaws.com/keras-datasets/boston_housing.npz',
+      file_hash=fh)
   f = np.load(path)
   x = f['x']
   y = f['y']

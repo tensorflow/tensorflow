@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -170,6 +171,12 @@ class Session {
                       const std::vector<string>& output_names,
                       std::vector<Tensor>* outputs);
 
+  /// \brief List devices in the session.
+  ///
+  /// Retrieves the list of available devices within the session, and populates
+  /// *response. This API is optional. If it is unimplemented, Status will
+  /// return a corresponding error message, and *response will be unmodified.
+  virtual Status ListDevices(std::vector<DeviceAttributes>* response) = 0;
   /// \brief Closes this session.
   ///
   /// Closing a session releases the resources used by this session
@@ -199,7 +206,7 @@ Status NewSession(const SessionOptions& options, Session** out_session);
 /// Old sessions may continue to have side-effects on resources not in
 /// containers listed in "containers", and thus may affect future
 /// sessions' results in ways that are hard to predict.  Thus, if well-defined
-/// behaviour is desired, it is recommended that all containers be listed in
+/// behavior is desired, it is recommended that all containers be listed in
 /// "containers".
 ///
 /// `containers` is a vector of string representation of resource container

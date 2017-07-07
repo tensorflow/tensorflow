@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -164,6 +163,7 @@ static Graph* Gather(int dim) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   std::vector<Index> indices_vec;
+  indices_vec.reserve(kLookups);
   for (int i = 0; i < kLookups; i++) {
     indices_vec.push_back(rnd.Uniform(kRows));
   }

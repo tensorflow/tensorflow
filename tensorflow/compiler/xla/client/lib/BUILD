@@ -32,6 +32,7 @@ cc_library(
     srcs = ["testing.cc"],
     hdrs = ["testing.h"],
     deps = [
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",

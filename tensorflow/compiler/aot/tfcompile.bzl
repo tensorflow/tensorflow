@@ -279,9 +279,11 @@ def target_llvm_triple():
   # TODO(toddw): Add target_triple for other targets.  For details see:
   # http://llvm.org/docs/doxygen/html/Triple_8h_source.html
   return select({
+      "//tensorflow:android_armeabi": "armv5-none-android",
       "//tensorflow:android_arm": "armv7-none-android",
       "//tensorflow:android_arm64": "aarch64-none-android",
       "//tensorflow:android_x86": "i686-none-android",
       "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
+      "//tensorflow:darwin": "x86_64-none-darwin",
       "//conditions:default": "x86_64-pc-linux",
   })

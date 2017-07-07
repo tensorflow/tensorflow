@@ -49,14 +49,28 @@ class ArgOp : public XlaOpKernel {
       return;
     }
 
-    XlaContext& tc = XlaContext::Get(ctx);
-    const XlaContext::Argument& arg = tc.args()[index_];
-    if (arg.is_variable) {
-      // We use the argument position of the variable input as a unique ID.
+    XlaContext& xc = XlaContext::Get(ctx);
+    const XlaContext::Argument& arg = xc.args()[index_];
+    if (arg.is_resource) {
+      XlaResource::Kind kind;
+      switch (arg.kind) {
+        case XlaCompiler::Argument::kVariable:
+          kind = XlaResource::kVariable;
+          break;
+        case XlaCompiler::Argument::kTensorArray:
+          kind = XlaResource::kTensorArray;
+          break;
+        default:
+          CHECK(false);
+      }
+
       // TODO(phawkins): this code assumes that variables do not alias.
-      OP_REQUIRES_OK(ctx, tc.CreateVariable(index_, arg.name, arg.value.type,
-                                            arg.value.handle));
-      ctx->SetVariableOutput(0, index_);
+      XlaResource* resource;
+      OP_REQUIRES_OK(ctx,
+                     xc.CreateResource(kind, index_, arg.name, arg.value.type,
+                                       arg.value.handle, &resource));
+      resource->tensor_array_size = arg.tensor_array_size;
+      ctx->SetResourceOutput(0, resource);
     } else if (arg.value.is_constant) {
       ctx->SetConstantOutput(0, arg.value.constant_value);
     } else {

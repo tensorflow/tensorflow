@@ -54,9 +54,8 @@ class CompileOnlyService : public Service {
       const AotCompilationOptions& Options);
 
   // Override Service methods that require or imply the existence of an
-  // execute backend.  Note that this does not include TransferToClient and
-  // TransferToClientInProcess, as computing contants produces global data
-  // that we may wish to transfer.
+  // execute backend.  Note that this does not include TransferToClient, as
+  // computing constants produces global data that we may wish to transfer.
   tensorflow::Status Execute(const ExecuteRequest* arg,
                              ExecuteResponse* result) override {
     return Unimplemented("CompileOnlyService does not support execution.");
@@ -97,12 +96,6 @@ class CompileOnlyService : public Service {
     return Unimplemented(
         "CompileOnlyService does not support device data transfers.");
   }
-  tensorflow::Status TransferToServerInProcess(
-      const TransferToServerInProcessRequest* arg,
-      TransferToServerInProcessResponse* result) override {
-    return Unimplemented(
-        "CompileOnlyService does not support device data transfers.");
-  }
   tensorflow::Status ResetDevice(const ResetDeviceRequest* arg,
                                  ResetDeviceResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");
@@ -110,7 +103,8 @@ class CompileOnlyService : public Service {
 
  private:
   explicit CompileOnlyService(
-      Compiler* compiler, std::unique_ptr<Backend> compute_constant_backend);
+      const ServiceOptions& options, Compiler* compiler,
+      std::unique_ptr<Backend> compute_constant_backend);
   CompileOnlyService(const CompileOnlyService&) = delete;
   void operator=(const CompileOnlyService&) = delete;
 

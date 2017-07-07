@@ -41,6 +41,8 @@
 @@import_graph_def
 @@load_file_system_library
 @@load_op_library
+@@make_tensor_proto
+@@make_ndarray
 
 ## Graph collections
 
@@ -97,6 +99,10 @@ from tensorflow.python.framework.random_seed import set_random_seed
 from tensorflow.python.framework.sparse_tensor import convert_to_tensor_or_sparse_tensor
 from tensorflow.python.framework.subscribe import subscribe
 from tensorflow.python.framework.importer import import_graph_def
+
+# Utilities for working with Tensors
+from tensorflow.python.framework.tensor_util import make_tensor_proto
+from tensorflow.python.framework.tensor_util import MakeNdarray as make_ndarray
 
 # Needed when you defined a new Op in C++.
 from tensorflow.python.framework.ops import RegisterGradient

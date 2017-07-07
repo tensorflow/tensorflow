@@ -51,6 +51,7 @@ OPTIMIZER_SUMMARIES = [
     "loss",
     "gradients",
     "gradient_norm",
+    "global_gradient_norm",
 ]
 
 
@@ -182,7 +183,7 @@ def optimize_loss(loss,
                          "Got %s of type %s" % (str(learning_rate),
                                                 str(type(learning_rate))))
     if summaries is None:
-      summaries = ["loss", "learning_rate"]
+      summaries = ["loss", "learning_rate", "global_gradient_norm"]
     else:
       for summ in summaries:
         if summ not in OPTIMIZER_SUMMARIES:
@@ -250,7 +251,7 @@ def optimize_loss(loss,
             "Empty list of (gradient, var) pairs encountered. This is most "
             "likely to be caused by an improper value of gradient_multipliers.")
 
-    if "gradient_norm" in summaries:
+    if "global_gradient_norm" in summaries or "gradient_norm" in summaries:
       summary.scalar("global_norm/gradient_norm",
                      clip_ops.global_norm(list(zip(*gradients))[0]))
 
@@ -282,7 +283,8 @@ def optimize_loss(loss,
           summary.scalar("gradient_norm/%s" % var_name,
                          clip_ops.global_norm([grad_values]))
 
-    if clip_gradients is not None and "gradient_norm" in summaries:
+    if clip_gradients is not None and ("global_gradient_norm" in summaries or
+                                       "gradient_norm" in summaries):
       summary.scalar("global_norm/clipped_gradient_norm",
                      clip_ops.global_norm(list(zip(*gradients))[0]))
 

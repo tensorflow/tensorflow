@@ -33,7 +33,7 @@ namespace gpu {
 enum class PartitionStrategy {
   // Optimized for latency by allowing maximum number of registers per thread.
   kLatency,
-  // Optimized for throughtput. This may limit registers per thread and cause
+  // Optimized for throughput. This may limit registers per thread and cause
   // longer latency.
   kThroughput
 };

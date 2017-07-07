@@ -149,4 +149,99 @@ TEST(DataFlowOpsTest, TensorArrayV3) {
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[2]");
 }
 
+TEST(DataFlowOpsTest, QueueDequeueV2ShapeFn) {
+  ShapeInferenceTestOp op("QueueDequeueV2");
+  TF_ASSERT_OK(NodeDefBuilder("test", op.name)
+                   .Input("handle", 0, DT_RESOURCE)
+                   .Attr("component_types", {DT_FLOAT, DT_INT32})
+                   .Finalize(&op.node_def));
+
+  INFER_OK(op, "?", "?;?");
+
+  std::vector<ShapeInferenceTestOp::ShapeAndType> shapes_and_types;
+  op.input_resource_handle_shapes_and_types.push_back(&shapes_and_types);
+  INFER_OK(op, "?", "?;?");
+
+  // Wrong number of shapes provided by handle.
+  shapes_and_types.emplace_back("[1,?,3]", DT_FLOAT);
+  INFER_OK(op, "?", "?;?");
+
+  // Correct number of shapes provided by handle.
+  shapes_and_types.emplace_back("[?,2]", DT_FLOAT);
+  INFER_OK(op, "?", "[1,?,3];[?,2]");
+}
+
+TEST(DataFlowOpsTest, QueueDequeueManyV2ShapeFn) {
+  ShapeInferenceTestOp op("QueueDequeueManyV2");
+  TF_ASSERT_OK(NodeDefBuilder("test", op.name)
+                   .Input("handle", 0, DT_RESOURCE)
+                   .Input("n", 0, DT_INT32)
+                   .Attr("component_types", {DT_FLOAT, DT_INT32})
+                   .Finalize(&op.node_def));
+
+  ////////////////////////////
+  // Input n is not a constant.
+  INFER_OK(op, "?;?", "?;?");
+  std::vector<ShapeInferenceTestOp::ShapeAndType> shapes_and_types;
+  op.input_resource_handle_shapes_and_types.push_back(&shapes_and_types);
+  op.input_resource_handle_shapes_and_types.push_back(nullptr);
+  // Wrong number of shapes provided by handle.
+  shapes_and_types.emplace_back("[1,?,3]", DT_FLOAT);
+  INFER_OK(op, "?;?", "?;?");
+  // Correct number of shapes provided by handle.
+  shapes_and_types.emplace_back("[?,2]", DT_FLOAT);
+  INFER_OK(op, "?;?", "[?,1,?,3];[?,?,2]");
+
+  ////////////////////////////
+  // Input n is a constant. (set up test and repeat the cases from above).
+  Tensor n_tensor = test::AsScalar(12);
+  op.input_tensors.push_back(nullptr);
+  op.input_tensors.push_back(&n_tensor);
+  op.input_resource_handle_shapes_and_types.clear();
+  shapes_and_types.clear();
+
+  INFER_OK(op, "?;?", "?;?");
+  op.input_resource_handle_shapes_and_types.push_back(&shapes_and_types);
+  op.input_resource_handle_shapes_and_types.push_back(nullptr);
+  // Wrong number of shapes provided by handle.
+  shapes_and_types.emplace_back("[1,?,3]", DT_FLOAT);
+  INFER_OK(op, "?;?", "?;?");
+  // Correct number of shapes provided by handle.
+  shapes_and_types.emplace_back("[?,2]", DT_FLOAT);
+  INFER_OK(op, "?;?", "[12,1,?,3];[12,?,2]");
+
+  n_tensor = test::AsScalar<int32>(-1);  // invalid value of n.
+  INFER_ERROR("must be >= 0", op, "?;?");
+}
+
+TEST(DataFlowOpsTest, QueueDequeueUpToV2ShapeFn) {
+  // Results are the same regardless of what value is passed for n.
+  for (int pass = 0; pass < 2; ++pass) {
+    ShapeInferenceTestOp op("QueueDequeueUpToV2");
+    TF_ASSERT_OK(NodeDefBuilder("test", op.name)
+                     .Input("handle", 0, DT_RESOURCE)
+                     .Input("n", 0, DT_INT32)
+                     .Attr("component_types", {DT_FLOAT, DT_INT32})
+                     .Finalize(&op.node_def));
+
+    Tensor n_tensor = test::AsScalar(12);
+    if (pass == 1) {
+      // Second pass, pass value of <n> as a constant.
+      op.input_tensors.push_back(nullptr);
+      op.input_tensors.push_back(&n_tensor);
+    }
+
+    INFER_OK(op, "?;?", "?;?");
+    std::vector<ShapeInferenceTestOp::ShapeAndType> shapes_and_types;
+    op.input_resource_handle_shapes_and_types.push_back(&shapes_and_types);
+    op.input_resource_handle_shapes_and_types.push_back(nullptr);
+    // Wrong number of shapes provided by handle.
+    shapes_and_types.emplace_back("[1,?,3]", DT_FLOAT);
+    INFER_OK(op, "?;?", "?;?");
+    // Correct number of shapes provided by handle.
+    shapes_and_types.emplace_back("[?,2]", DT_FLOAT);
+    INFER_OK(op, "?;?", "[?,1,?,3];[?,?,2]");
+  }
+}
+
 }  // end namespace tensorflow

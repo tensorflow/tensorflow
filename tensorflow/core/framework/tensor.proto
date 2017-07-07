@@ -71,5 +71,5 @@ message TensorProto {
   repeated double dcomplex_val = 12 [packed = true];
 
   // DT_RESOURCE
-  repeated ResourceHandle resource_handle_val = 14;
+  repeated ResourceHandleProto resource_handle_val = 14;
 };

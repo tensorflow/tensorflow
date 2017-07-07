@@ -726,7 +726,7 @@ def _assert_ranks_condition(
 
   # Attempt to statically defined rank.
   ranks_static = tuple([tensor_util.constant_value(rank) for rank in ranks])
-  if None not in ranks_static:
+  if not any(r is None for r in ranks_static):
     for rank_static in ranks_static:
       if rank_static.ndim != 0:
         raise ValueError('Rank must be a scalar.')

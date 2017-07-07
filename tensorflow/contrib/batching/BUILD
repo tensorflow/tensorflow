@@ -7,8 +7,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 cc_library(
     name = "batch_scheduler_hdrs",
     hdrs = ["batch_scheduler.h"],
@@ -21,19 +19,20 @@ cc_library(
     name = "batch_scheduler",
     hdrs = ["batch_scheduler.h"],
     deps = [
-        ":batch_scheduler_hdrs",
         "//tensorflow/core:lib",
     ],
 )
 
 cc_test(
     name = "batch_scheduler_test",
+    size = "small",
     srcs = [
         "batch_scheduler_test.cc",
     ],
     deps = [
         ":batch_scheduler",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -54,7 +53,7 @@ cc_library(
     deps = [
         ":batch_scheduler",
         ":shared_batch_scheduler_hdrs",
-        "//tensorflow/contrib/batching/util:periodic_function",
+        "//tensorflow/contrib/batching/util:periodic_function_dynamic",
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
@@ -62,6 +61,7 @@ cc_library(
 
 cc_test(
     name = "shared_batch_scheduler_test",
+    size = "small",
     srcs = [
         "shared_batch_scheduler_test.cc",
     ],
@@ -85,6 +85,7 @@ cc_library(
 
 cc_test(
     name = "basic_batch_scheduler_test",
+    size = "small",
     srcs = [
         "basic_batch_scheduler_test.cc",
     ],
@@ -188,12 +189,11 @@ py_test(
     ],
     deps = [
         ":batch_py",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:gradients",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:script_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
     ],
 )
 

@@ -1169,7 +1169,7 @@ class AUCTest(test.TestCase):
       self.assertAlmostEqual(1, auc.eval(), 6)
 
   def np_auc(self, predictions, labels, weights):
-    """Computes the AUC explicitely using Numpy.
+    """Computes the AUC explicitly using Numpy.
 
     Args:
       predictions: an ndarray with shape [N].

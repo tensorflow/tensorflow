@@ -326,6 +326,42 @@ TEST(BufferedInputStream, Seek) {
   }
 }
 
+TEST(BufferedInputStream, ReadAll_Empty) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  const string expected = "";
+  TF_ASSERT_OK(WriteStringToFile(env, fname, expected));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    RandomAccessInputStream input_stream(file.get());
+    string read;
+    BufferedInputStream in(&input_stream, buf_size);
+    string contents;
+    TF_ASSERT_OK(in.ReadAll(&contents));
+    EXPECT_EQ(expected, contents);
+  }
+}
+
+TEST(BufferedInputStream, ReadAll_Text) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/buffered_inputstream_test";
+  const string expected = "line one\nline two\nline three";
+  TF_ASSERT_OK(WriteStringToFile(env, fname, expected));
+  std::unique_ptr<RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file));
+
+  for (auto buf_size : BufferSizes()) {
+    RandomAccessInputStream input_stream(file.get());
+    string read;
+    BufferedInputStream in(&input_stream, buf_size);
+    string contents;
+    TF_ASSERT_OK(in.ReadAll(&contents));
+    EXPECT_EQ(expected, contents);
+  }
+}
+
 }  // anonymous namespace
 }  // namespace io
 }  // namespace tensorflow

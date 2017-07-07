@@ -84,6 +84,17 @@ TEST(Array2dTest, IndexingReadWrite) {
   EXPECT_EQ(arr(1, 2), 61);
 }
 
+TEST(Array2dTest, IndexingReadWriteBool) {
+  Array2D<bool> arr = {{false, true, false}, {true, true, false}};
+
+  EXPECT_EQ(arr(1, 1), true);
+  EXPECT_EQ(arr(1, 2), false);
+  arr(1, 1) = false;
+  arr(1, 2) = true;
+  EXPECT_EQ(arr(1, 1), false);
+  EXPECT_EQ(arr(1, 2), true);
+}
+
 TEST(Array2dTest, Fill) {
   Array2D<int> fullof7(2, 3, 7);
   for (int64 n1 = 0; n1 < fullof7.n1(); ++n1) {

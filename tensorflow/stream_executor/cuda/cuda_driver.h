@@ -77,7 +77,7 @@ class CUDADriver {
 
   // Destroys a CUDA stream associated with the given context.
   // stream is owned by the caller, must not be null, and *stream is set to null
-  // if the stream is successfuly destroyed.
+  // if the stream is successfully destroyed.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g244c8833de4596bcd31a06cdf21ee758
   static void DestroyStream(CudaContext* context, CUstream *stream);
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -101,7 +102,7 @@ Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
 class TensorArrayCreationOp : public OpKernel {
  public:
   explicit TensorArrayCreationOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context), device_type_(context->device_type()) {}
 
   void Compute(OpKernelContext* ctx) override {
     Tensor tensor_array_output_handle;
@@ -133,6 +134,12 @@ class TensorArrayCreationOp : public OpKernel {
       // Create the flow output.
       Tensor* flow;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &flow));
+      if (device_type_ == DEVICE_CPU) {
+        // Value doesn't matter, but this makes msan not complaint about
+        // copying an uninitialized value. To do this on GPU would require
+        // a kernel launch or a host->device memcpy, so we avoid that.
+        flow->flat<float>()(0) = 0;
+      }
     }
   }
 
@@ -140,6 +147,9 @@ class TensorArrayCreationOp : public OpKernel {
   virtual Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
                                    Tensor* tensor_array_output_handle,
                                    TensorArray** output_tensor_array) = 0;
+
+ private:
+  const DeviceType device_type_;
 };
 
 // A per-run local tensor array. The tensor array uses a "per-step" resource
@@ -156,7 +166,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
                    context->GetAttr("clear_after_read", &clear_after_read_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("tensor_array_name", &tensor_array_name_));
-    if (tensor_array_name_ == "") tensor_array_name_ = name();
+    if (tensor_array_name_.empty()) tensor_array_name_ = name();
   }
 
   Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,

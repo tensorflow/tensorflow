@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_GRAPH_EQUAL_GRAPH_DEF_H_
 #define TENSORFLOW_GRAPH_EQUAL_GRAPH_DEF_H_
 
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+class GraphDef;
+class NodeDef;
 
 struct EqualGraphDefOptions {
   // Should internal attributes (attribute names that start with '_') be

@@ -44,7 +44,6 @@ EIGEN_STRONG_INLINE void argmax_float_1d_xla_impl(void* out, void** data) {
 
 // Implements argmax on CPU. This is called by an XLA custom call, set up by
 // index_ops.cc.
-extern "C" void TF_EXPORT
-argmax_float_1d_xla_impl(void* out, void** data) {
+extern "C" void TF_EXPORT argmax_float_1d_xla_impl(void* out, void** data) {
   tensorflow::argmax_float_1d_xla_impl(out, data);
 }

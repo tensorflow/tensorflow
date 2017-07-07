@@ -25,8 +25,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
-
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.contrib.keras.python.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
@@ -77,7 +75,7 @@ def VGG16(include_top=True,
       input_shape: optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
-          or `(3, 224, 244)` (with `channels_first` data format).
+          or `(3, 224, 224)` (with `channels_first` data format).
           It should have exactly 3 inputs channels,
           and width and height should be no smaller than 48.
           E.g. `(200, 200, 3)` would be one valid value.
@@ -210,14 +208,4 @@ def VGG16(include_top=True,
         dense = model.get_layer(name='fc1')
         layer_utils.convert_dense_weights_data_format(dense, shape,
                                                       'channels_first')
-
-      if K.backend() == 'tensorflow':
-        warnings.warn('You are using the TensorFlow backend, yet you '
-                      'are using the Theano '
-                      'image data format convention '
-                      '(`image_data_format="channels_first"`). '
-                      'For best performance, set '
-                      '`image_data_format="channels_last"` in '
-                      'your Keras config '
-                      'at ~/.keras/keras.json.')
   return model

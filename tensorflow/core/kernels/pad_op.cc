@@ -212,12 +212,7 @@ REGISTER_KERNEL_BUILDER(Name("Pad")
                               .HostMemory("paddings"),            \
                           PadOp<SYCLDevice, T>)
 
-REGISTER_SYCL_KERNEL(float);
-REGISTER_SYCL_KERNEL(double);
-
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
 REGISTER_KERNEL_BUILDER(Name("Pad")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -226,6 +221,7 @@ REGISTER_KERNEL_BUILDER(Name("Pad")
                             .HostMemory("paddings")
                             .HostMemory("output"),
                         PadOp<CPUDevice, int32>);
+#undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

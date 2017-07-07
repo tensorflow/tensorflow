@@ -544,7 +544,9 @@ def convolution(input, filter,  # pylint: disable=redefined-builtin
                          x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
                          q]
   ```
-  where `padded_input` is obtained by zero padding the input using an effective
+  where b is the index into the batch, k is the output channel number, q is the
+  input channel number, and z is the N-D spatial offset within the filter. Here,
+  `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
   @{tf.nn.convolution$comment here}.
@@ -1534,8 +1536,9 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  `logits` and `labels` must have the same shape `[batch_size, num_classes]`
-  and the same dtype (either `float16`, `float32`, or `float64`).
+  `logits` and `labels` must have the same shape, e.g.
+  `[batch_size, num_classes]` and the same dtype (either `float16`, `float32`,
+  or `float64`).
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**

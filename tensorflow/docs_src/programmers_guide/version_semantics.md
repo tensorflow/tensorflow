@@ -43,7 +43,7 @@ patch versions.  The public APIs consist of
   [`event`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/event.proto),
   [`graph`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/graph.proto),
   [`op_def`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op_def.proto),
-  [`reader_base`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/reader_base.proto),
+  [`reader_base`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/reader_base.proto),
   [`summary`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto),
   [`tensor`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/tensor.proto),
   [`tensor_shape`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/tensor_shape.proto),
@@ -118,7 +118,7 @@ Many users of TensorFlow will be saving graphs and trained models to disk for
 later evaluation or more training, often changing versions of TensorFlow in the
 process.  First, following semver, any graph or checkpoint written out with one
 version of TensorFlow can be loaded and evaluated with a later version of
-TensorFlow with the same major release.  However, we will endeavour to preserve
+TensorFlow with the same major release.  However, we will endeavor to preserve
 backwards compatibility even across major releases when possible, so that the
 serialized files are usable over long periods of time.
 

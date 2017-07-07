@@ -270,7 +270,7 @@ class SessionBundleTest : public ::testing::Test {
   // MetaGraphDef.
   // Returns the path of the export.
   // ** Should only be called once per test **
-  string SetupExport(MetaGraphDefTwiddler twiddler) {
+  string SetupExport(const MetaGraphDefTwiddler& twiddler) {
     return SetupExport(twiddler, kVariablesFilename, kMetaGraphDefFilename);
   }
   // SetupExport that allows for the variables and meta_graph_def filenames

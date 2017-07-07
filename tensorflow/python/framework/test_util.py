@@ -29,9 +29,11 @@ import threading
 import numpy as np
 import six
 
+_portpicker_import_error = None
 try:
   import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _portpicker_import_error:
+except ImportError as _error:
+  _portpicker_import_error = _error
   portpicker = None
 
 # pylint: disable=g-import-not-at-top
@@ -225,6 +227,31 @@ def NCHWToNHWC(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+# TODO(skyewm): remove this eventually
+def disable_c_api(fn):
+  """Decorator for disabling the C API on a test.
+
+  Note this disables the C API after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+  # pylint: disable=protected-access
+  def disable_c_api_wrapper(*args, **kwargs):
+    prev_value = ops._USE_C_API
+    ops._USE_C_API = False
+    try:
+      fn(*args, **kwargs)
+    finally:
+      ops._USE_C_API = prev_value
+  # pylint: disable=protected-access
+  return disable_c_api_wrapper
+
+
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
@@ -355,16 +382,17 @@ class TensorFlowTestCase(googletest.TestCase):
     `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
 
     Example:
-
-      class MyOperatorTest(test_util.TensorFlowTestCase):
-        def testMyOperator(self):
-          with self.test_session(use_gpu=True):
-            valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
-            result = MyOperator(valid_input).eval()
-            self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
-            invalid_input = [-1.0, 2.0, 7.0]
-            with self.assertRaisesOpError("negative input not supported"):
-              MyOperator(invalid_input).eval()
+    ```python
+    class MyOperatorTest(test_util.TensorFlowTestCase):
+      def testMyOperator(self):
+        with self.test_session(use_gpu=True):
+          valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
+          result = MyOperator(valid_input).eval()
+          self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
+          invalid_input = [-1.0, 2.0, 7.0]
+          with self.assertRaisesOpError("negative input not supported"):
+            MyOperator(invalid_input).eval()
+    ```
 
     Args:
       graph: Optional graph to use during the returned session.
@@ -599,7 +627,7 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
-      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, err_msg=msg)
+      np.testing.assert_allclose(b, a, rtol=rtol, atol=atol, err_msg=msg)
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
     """Asserts that two numpy arrays, or dicts of same, have near values.
@@ -607,10 +635,10 @@ class TensorFlowTestCase(googletest.TestCase):
     This does not support nested dicts.
 
     Args:
-      a: A numpy ndarray (or anything can be converted to one), or dict of same.
-        Must be a dict iff `b` is a dict.
-      b: A numpy ndarray (or anything can be converted to one), or dict of same.
-        Must be a dict iff `a` is a dict.
+      a: The expected numpy ndarray (or anything can be converted to one), or
+        dict of same. Must be a dict iff `b` is a dict.
+      b: The actual numpy ndarray (or anything can be converted to one), or
+        dict of same. Must be a dict iff `a` is a dict.
       rtol: relative tolerance.
       atol: absolute tolerance.
 
@@ -646,8 +674,8 @@ class TensorFlowTestCase(googletest.TestCase):
     one of the arguments is of type float16.
 
     Args:
-      a: a numpy ndarray or anything can be converted to one.
-      b: a numpy ndarray or anything can be converted to one.
+      a: the expected numpy ndarray or anything can be converted to one.
+      b: the actual numpy ndarray or anything can be converted to one.
       rtol: relative tolerance.
       atol: absolute tolerance.
       float_rtol: relative tolerance for float32.
@@ -671,8 +699,8 @@ class TensorFlowTestCase(googletest.TestCase):
     """Asserts that two numpy arrays have the same values.
 
     Args:
-      a: a numpy ndarray or anything can be converted to one.
-      b: a numpy ndarray or anything can be converted to one.
+      a: the expected numpy ndarray or anything can be converted to one.
+      b: the actual numpy ndarray or anything can be converted to one.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -694,7 +722,7 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       print("not equal lhs = ", x)
       print("not equal rhs = ", y)
-      np.testing.assert_array_equal(a, b)
+      np.testing.assert_array_equal(b, a)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
@@ -785,7 +813,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # pylint: enable=invalid-name
 
 
-def create_local_cluster(num_workers, num_ps, protocol="grpc"):
+def create_local_cluster(num_workers, num_ps, protocol="grpc",
+                         worker_config=None, ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
   Example:
@@ -811,6 +840,9 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
     num_ps: Number of PS servers to start.
     protocol: Communication protocol.  Allowed values are documented in
       the documentation of `tf.train.Server`.
+    worker_config: (optional) ConfigProto to initialize workers. Can be used
+      to instantiate multiple devices etc.
+    ps_config: (optional) ConfigProto to initialize PS servers.
 
   Returns:
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
@@ -820,8 +852,8 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
   Raises:
     ImportError: if portpicker module was not found at load time
   """
-  if not portpicker:
-    raise _portpicker_import_error
+  if _portpicker_import_error:
+    raise _portpicker_import_error  # pylint: disable=raising-bad-type
   worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
@@ -832,12 +864,14 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
 
   workers = [
       server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
+          cs, job_name="worker", protocol=protocol, task_index=ix,
+          config=worker_config, start=True)
       for ix in range(num_workers)
   ]
   ps_servers = [
       server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
+          cs, job_name="ps", protocol=protocol, task_index=ix,
+          config=ps_config, start=True)
       for ix in range(num_ps)
   ]
 

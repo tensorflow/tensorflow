@@ -64,7 +64,6 @@ EIGEN_STRONG_INLINE void gather_float_int32_xla_impl(float* out, void** data) {
 
 // Implements gather on CPU. This is called by an XLA custom call, set up by
 // gather_op.cc.
-extern "C" void TF_EXPORT
-gather_float_int32_xla_impl(float* out, void** data) {
+extern "C" void TF_EXPORT gather_float_int32_xla_impl(float* out, void** data) {
   tensorflow::gather_float_int32_xla_impl(out, data);
 }

@@ -73,11 +73,6 @@ def _global_report_benchmark(
                  cpu_time is not None else -1, throughput if
                  throughput is not None else -1, str(extras) if extras else "")
 
-  test_env = os.environ.get(TEST_REPORTER_TEST_ENV, None)
-  if test_env is None:
-    # Reporting was not requested
-    return
-
   entries = test_log_pb2.BenchmarkEntries()
   entry = entries.entry.add()
   entry.name = name
@@ -95,6 +90,12 @@ def _global_report_benchmark(
         entry.extras[k].double_value = v
       else:
         entry.extras[k].string_value = str(v)
+
+  test_env = os.environ.get(TEST_REPORTER_TEST_ENV, None)
+  if test_env is None:
+    # Reporting was not requested, just print the proto
+    print(str(entries))
+    return
 
   serialized_entry = entries.SerializeToString()
 

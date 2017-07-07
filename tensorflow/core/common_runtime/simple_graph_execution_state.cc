@@ -25,9 +25,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -74,8 +77,8 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   std::unique_ptr<SimpleGraphExecutionState> ret(
       new SimpleGraphExecutionState(graph_def, options));
 
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&ret->original_graph_def_,
-                                               *ret->flib_def_.get(), 0));
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
   // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
   // pass an empty BuildGraphOptions (that isn't going to be used when
   // place_pruned_graph is false).
@@ -103,8 +106,8 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   GraphDef temp(graph_def);
   std::unique_ptr<SimpleGraphExecutionState> ret(
       new SimpleGraphExecutionState(&temp, options));
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&ret->original_graph_def_,
-                                               *ret->flib_def_.get(), 0));
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(subgraph_options));
   TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
   *out_state = std::move(ret);
@@ -139,7 +142,7 @@ Status SimpleGraphExecutionState::Extend(
   int old_node_size = gdef.node_size();
   gdef.mutable_node()->MergeFrom(extension_def.node());
   TF_RETURN_IF_ERROR(
-      AddDefaultAttrsToGraphDef(&gdef, *flib_def_.get(), old_node_size));
+      AddDefaultAttrsToGraphDef(&gdef, *flib_def_, old_node_size));
   // Merge versions
   if (gdef.has_versions()) {
     if (gdef.versions().producer() != extension_def.versions().producer()) {
@@ -181,7 +184,7 @@ Status SimpleGraphExecutionState::Extend(
   if (gdef.versions().producer() >= 5) {
     // Validate the graph: we assume that merging two valid graphs
     // should maintain graph validity.
-    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *flib_def_.get()));
+    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *flib_def_));
   }
 
   // 6. Add the extension.
@@ -196,7 +199,7 @@ Status SimpleGraphExecutionState::Extend(
       new SimpleGraphExecutionState(&gdef, combined_options));
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
-      &new_execution_state->original_graph_def_, *flib_def_.get(), 0));
+      &new_execution_state->original_graph_def_, *flib_def_, 0));
   if (!session_options_->config.graph_options().place_pruned_graph()) {
     // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
     // pass an empty BuildGraphOptions (that isn't going to be used
@@ -236,60 +239,6 @@ Status SimpleGraphExecutionState::InitBaseGraph(
     const BuildGraphOptions& options) {
   const GraphDef* graph_def = &original_graph_def_;
 
-#ifndef IS_MOBILE_PLATFORM
-  GraphDef optimized_graph;
-
-  const RewriterConfig& rewrite_options =
-      session_options_->config.graph_options().rewrite_options();
-
-  if (grappler::MetaOptimizerEnabled(rewrite_options)) {
-    // Adding this functionalty in steps. The first step is to make sure
-    // we don't break dependencies. The second step will be to turn the
-    // functionality on by default.
-    grappler::GrapplerItem item;
-    item.id = "tf_graph";
-    item.graph = original_graph_def_;
-
-    item.fetch = options.fetch_endpoints;
-    item.fetch.insert(item.fetch.end(), options.target_nodes.begin(),
-                      options.target_nodes.end());
-
-    Status s;
-    if (!options.feed_endpoints.empty()) {
-      std::unordered_set<string> feeds(options.feed_endpoints.begin(),
-                                       options.feed_endpoints.end());
-      for (const NodeDef& node : original_graph_def_.node()) {
-        if (feeds.find(node.name()) == feeds.end()) {
-          continue;
-        }
-        if (node.attr().count("dtype") == 0 ||
-            node.attr().count("shape") == 0) {
-          s = errors::InvalidArgument("Missing node shape or type");
-          break;
-        }
-        TensorShape shape(node.attr().at("shape").shape());
-        DataType type = node.attr().at("dtype").type();
-        Tensor fake_input(type, shape);
-        item.feed.emplace_back(node.name(), fake_input);
-      }
-    }
-
-    if (s.ok()) {
-      std::unordered_map<string, DeviceProperties> device_map;
-      for (const auto& device : device_set_->devices()) {
-        device_map[device->name()] =
-            grappler::GetDeviceInfo(device->parsed_name());
-      }
-      grappler::VirtualCluster cluster(device_map);
-      s = grappler::RunMetaOptimizer(item, rewrite_options, &cluster,
-                                     &optimized_graph);
-    }
-    if (s.ok()) {
-      graph_def = &optimized_graph;
-    }
-  }
-#endif  // IS_MOBILE_PLATFORM
-
   std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
@@ -313,7 +262,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   CostModel costs(true /*is_global*/);
   {
     mutex_lock l(mu_);
-    costs_.InitFromGraph(*new_graph.get());
+    costs_.InitFromGraph(*new_graph);
     costs.MergeFromGlobal(costs_);
   }
 
@@ -339,6 +288,92 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   return Status::OK();
 }
 
+Status SimpleGraphExecutionState::OptimizeGraph(
+    const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph) {
+#ifndef IS_MOBILE_PLATFORM
+  const RewriterConfig& rewrite_options =
+      session_options_->config.graph_options().rewrite_options();
+
+  if (grappler::MetaOptimizerEnabled(rewrite_options)) {
+    // Adding this functionality in steps. The first step is to make sure
+    // we don't break dependencies. The second step will be to turn the
+    // functionality on by default.
+    grappler::GrapplerItem item;
+    item.id = "tf_graph";
+    graph_->ToGraphDef(&item.graph);
+
+    item.fetch = options.fetch_endpoints;
+    item.fetch.insert(item.fetch.end(), options.target_nodes.begin(),
+                      options.target_nodes.end());
+
+    if (!options.feed_endpoints.empty()) {
+      std::unordered_set<string> feeds;
+      for (const string& feed : options.feed_endpoints) {
+        TensorId id = ParseTensorName(feed);
+        if (id.second != 0) {
+          return errors::InvalidArgument("Unsupported feed: ", feed);
+        }
+        feeds.insert(id.first.ToString());
+      }
+      for (const NodeDef& node : original_graph_def_.node()) {
+        if (feeds.find(node.name()) == feeds.end()) {
+          continue;
+        }
+        if (node.attr().count("dtype") == 0 ||
+            node.attr().count("shape") == 0) {
+          return errors::InvalidArgument("Missing node shape or type");
+        }
+        TensorShapeProto shape_proto(node.attr().at("shape").shape());
+        // If the shape of the placeholder value is only partially known, we're
+        // free to use any dimension we want to feed the placeholder. We choose
+        // 1 to minimize the memory impact. Note that this only matters if an
+        // optimizer choose to run the graph to build its cost model, which
+        // doesn't happen (yet)
+        if (shape_proto.unknown_rank()) {
+          shape_proto.set_unknown_rank(false);
+        }
+        for (auto& dim : *shape_proto.mutable_dim()) {
+          if (dim.size() < 0) {
+            dim.set_size(1);
+          }
+        }
+        TensorShape shape(shape_proto);
+        DataType type = node.attr().at("dtype").type();
+        Tensor fake_input(type, shape);
+        item.feed.emplace_back(node.name(), fake_input);
+      }
+    }
+
+    std::unordered_map<string, DeviceProperties> device_map;
+    for (const auto& device : device_set_->devices()) {
+      device_map[device->name()] =
+          grappler::GetDeviceInfo(device->parsed_name());
+    }
+    grappler::VirtualCluster cluster(device_map);
+    GraphDef new_graph;
+    TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(item, rewrite_options,
+                                                  &cluster, &new_graph));
+    GraphConstructorOptions opts;
+    opts.allow_internal_ops = true;
+    optimized_graph->reset(new Graph(OpRegistry::Global()));
+    TF_RETURN_IF_ERROR(
+        ConvertGraphDefToGraph(opts, new_graph, optimized_graph->get()));
+    // The graph conversion sets the requested device names but not the assigned
+    // device names. However, since at this point the graph is placed TF expects
+    // an assigned device name for every node. Therefore we copy the requested
+    // device into the assigned device field.
+    for (Node* node : optimized_graph->get()->nodes()) {
+      node->set_assigned_device_name(node->requested_device());
+    }
+    return Status::OK();
+  } else {
+    return errors::InvalidArgument("Meta Optimizer disabled");
+  }
+#else
+  return errors::InvalidArgument("Mobile platforms not supported");
+#endif  // IS_MOBILE_PLATFORM
+}
+
 Status SimpleGraphExecutionState::BuildGraph(
     const BuildGraphOptions& options, std::unique_ptr<SimpleClientGraph>* out) {
   VLOG(1) << "BuildGraph";
@@ -348,8 +383,14 @@ Status SimpleGraphExecutionState::BuildGraph(
     return errors::Internal(
         "Attempted to prune a graph that has not been fully initialized.");
   }
-  std::unique_ptr<Graph> ng(new Graph(flib_def_.get()));
-  CopyGraph(*graph_, ng.get());
+
+  std::unique_ptr<Graph> ng;
+  Status s = OptimizeGraph(options, &ng);
+  if (!s.ok()) {
+    // Simply copy the original graph if we couldn't optimize it.
+    ng.reset(new Graph(flib_def_.get()));
+    CopyGraph(*graph_, ng.get());
+  }
 
   subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||

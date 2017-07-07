@@ -47,8 +47,8 @@ if __name__ == '__main__':
   doc_generator.set_py_modules([('tf', tf), ('tfdbg', tf_debug)])
 
   doc_generator.set_do_not_descend_map({
-      '': ['cli', 'lib', 'wrappers'],
-      'contrib': [
+      'tf': ['cli', 'lib', 'wrappers'],
+      'tf.contrib': [
           'compiler',
           'factorization',
           'grid_rnn',
@@ -65,18 +65,18 @@ if __name__ == '__main__':
           'training',
           'tfprof',
       ],
-      'contrib.bayesflow': [
+      'tf.contrib.bayesflow': [
           'entropy', 'monte_carlo', 'special_math',
           'stochastic_gradient_estimators', 'stochastic_graph',
           'stochastic_tensor', 'stochastic_variables', 'variational_inference'
       ],
-      'contrib.distributions': ['bijector'],
-      'contrib.ffmpeg': ['ffmpeg_ops'],
-      'contrib.graph_editor': [
+      'tf.contrib.distributions': ['bijector'],
+      'tf.contrib.ffmpeg': ['ffmpeg_ops'],
+      'tf.contrib.graph_editor': [
           'edit', 'match', 'reroute', 'subgraph', 'transform', 'select', 'util'
       ],
-      'contrib.layers': ['feature_column', 'summaries'],
-      'contrib.learn': [
+      'tf.contrib.layers': ['feature_column', 'summaries'],
+      'tf.contrib.learn': [
           'datasets',
           'head',
           'graph_actions',
@@ -87,7 +87,7 @@ if __name__ == '__main__':
           'preprocessing',
           'utils',
       ],
-      'contrib.util': ['loader'],
+      'tf.contrib.util': ['loader'],
   })
 
   sys.exit(doc_generator.build(flags))

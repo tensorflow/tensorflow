@@ -101,13 +101,14 @@ print(dataset1.output_types)  # ==> "tf.float32"
 print(dataset1.output_shapes)  # ==> "(10,)"
 
 dataset2 = tf.contrib.data.Dataset.from_tensor_slices(
-   (tf.random_uniform([4]), tf.random_uniform([4, 100], dtype=tf.int32)))
+   (tf.random_uniform([4]),
+    tf.random_uniform([4, 100], maxval=100, dtype=tf.int32)))
 print(dataset2.output_types)  # ==> "(tf.float32, tf.int32)"
 print(dataset2.output_shapes)  # ==> "((), (100,))"
 
 dataset3 = tf.contrib.data.Dataset.zip((dataset1, dataset2))
 print(dataset3.output_types)  # ==> (tf.float32, (tf.float32, tf.int32))
-print(dataset3.output_shapes)  # ==> "((), (100,))"
+print(dataset3.output_shapes)  # ==> "(10, ((), (100,)))"
 ```
 
 The `Dataset` transformations support datasets of any structure. When using the
@@ -456,12 +457,12 @@ batched into a fixed size.
 # to a fixed shape.
 def _parse_function(filename, label):
   image_string = tf.read_file(filename)
-  image_decoded = tf.image.decode_image(filename)
+  image_decoded = tf.image.decode_image(image_string)
   image_resized = tf.image.resize_images(image_decoded, [28, 28])
   return image_resized, label
 
-filenames = ["/var/data/image1.jpg", "/var/data/image2.jpg", ...]
-labels = [0, 37, 29, 1, ...]
+filenames = tf.constant(["/var/data/image1.jpg", "/var/data/image2.jpg", ...])
+labels = tf.constant([0, 37, 29, 1, ...])
 
 dataset = tf.contrib.data.Dataset.from_tensor_slices((filenames, labels))
 dataset = dataset.map(_parse_function)
@@ -542,7 +543,7 @@ padded.
 ```python
 dataset = tf.contrib.data.Dataset.range(100)
 dataset = dataset.map(lambda x: tf.fill([tf.cast(x, tf.int32)], x))
-dataset = dataset.padded_batch(4, padded_shapes=[None])
+batched_dataset = dataset.padded_batch(4, padded_shapes=[None])
 
 iterator = batched_dataset.make_one_shot_iterator()
 next_element = iterator.get_next()

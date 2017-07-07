@@ -47,6 +47,7 @@ ops.NotDifferentiable('RGBToHSV')
 ops.NotDifferentiable('HSVToRGB')
 ops.NotDifferentiable('DrawBoundingBoxes')
 ops.NotDifferentiable('SampleDistortedBoundingBox')
+ops.NotDifferentiable('SampleDistortedBoundingBoxV2')
 # TODO(bsteiner): Implement the gradient function for extract_glimpse
 # TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
@@ -282,7 +283,7 @@ def flip_left_right(image):
 
 
 def flip_up_down(image):
-  """Flip an image horizontally (upside down).
+  """Flip an image vertically (upside down).
 
   Outputs the contents of `image` flipped along the first dimension, which is
   `height`.
@@ -1313,16 +1314,18 @@ def adjust_saturation(image, saturation_factor, name=None):
 
 
 def decode_image(contents, channels=None, name=None):
-  """Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
+  """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
+  and `decode_png`.
 
-  Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate
-  operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
+  Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
+  appropriate operation to convert the input bytes `string` into a `Tensor` of
+  type `uint8`.
 
   Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
-  opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays
-  `[height, width, num_channels]`. Make sure to take this into account when
-  constructing your graph if you are intermixing GIF files with JPEG and/or PNG
-  files.
+  opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
+  arrays `[height, width, num_channels]`. Make sure to take this into account
+  when constructing your graph if you are intermixing GIF files with BMP, JPEG,
+  and/or PNG files.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
@@ -1332,8 +1335,8 @@ def decode_image(contents, channels=None, name=None):
 
   Returns:
     `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
-      JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
-      images.
+      BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
+      GIF images.
 
   Raises:
     ValueError: On incorrect number of channels.
@@ -1343,12 +1346,21 @@ def decode_image(contents, channels=None, name=None):
       raise ValueError('channels must be in (None, 0, 1, 3, 4)')
     substr = string_ops.substr(contents, 0, 3)
 
-    def _gif():
+    def _bmp():
       """Decodes a GIF image."""
-      # Create assert op to check that bytes are GIF decodable
-      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
-      decode_msg = 'Unable to decode bytes as JPEG, PNG, or GIF'
-      assert_decode = control_flow_ops.Assert(is_gif, [decode_msg])
+      signature = string_ops.substr(contents, 0, 2)
+      # Create assert op to check that bytes are BMP decodable
+      is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
+      decode_msg = 'Unable to decode bytes as JPEG, PNG, GIF, or BMP'
+      assert_decode = control_flow_ops.Assert(is_bmp, [decode_msg])
+      bmp_channels = 0 if channels is None else channels
+      good_channels = math_ops.not_equal(bmp_channels, 1, name='check_channels')
+      channels_msg = 'Channels must be in (None, 0, 3) when decoding BMP images'
+      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
+      with ops.control_dependencies([assert_decode, assert_channels]):
+        return gen_image_ops.decode_bmp(contents)
+
+    def _gif():
       # Create assert to make sure that channels is not set to 1
       # Already checked above that channels is in (None, 0, 1, 3)
 
@@ -1359,8 +1371,13 @@ def decode_image(contents, channels=None, name=None):
       )
       channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
-      with ops.control_dependencies([assert_decode, assert_channels]):
+      with ops.control_dependencies([assert_channels]):
         return gen_image_ops.decode_gif(contents)
+
+    def check_gif():
+      # Create assert op to check that bytes are GIF decodable
+      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
+      return control_flow_ops.cond(is_gif, _gif, _bmp, name='cond_gif')
 
     def _png():
       """Decodes a PNG image."""
@@ -1369,7 +1386,7 @@ def decode_image(contents, channels=None, name=None):
     def check_png():
       """Checks if an image is PNG."""
       is_png = math_ops.equal(substr, b'\211PN', name='is_png')
-      return control_flow_ops.cond(is_png, _png, _gif, name='cond_png')
+      return control_flow_ops.cond(is_png, _png, check_gif, name='cond_png')
 
     def _jpeg():
       """Decodes a jpeg image."""
@@ -1456,3 +1473,104 @@ def total_variation(images, name=None):
                math_ops.reduce_sum(math_ops.abs(pixel_dif2), axis=sum_axis))
 
   return tot_var
+
+
+def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
+                                  seed2=None, min_object_covered=None,
+                                  aspect_ratio_range=None, area_range=None,
+                                  max_attempts=None,
+                                  use_image_if_no_bounding_boxes=None,
+                                  name=None):
+  """Generate a single randomly distorted bounding box for an image.
+
+  Bounding box annotations are often supplied in addition to ground-truth labels
+  in image recognition or object localization tasks. A common technique for
+  training such a system is to randomly distort an image while preserving
+  its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+  localization of an object, i.e. bounding box, given an `image_size`,
+  `bounding_boxes` and a series of constraints.
+
+  The output of this Op is a single bounding box that may be used to crop the
+  original image. The output is returned as 3 tensors: `begin`, `size` and
+  `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+  image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
+  what the bounding box looks like.
+
+  Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
+  bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+  height of the underlying image.
+
+  For example,
+
+  ```python
+      # Generate a single distorted bounding box.
+      begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+          tf.shape(image),
+          bounding_boxes=bounding_boxes)
+
+      # Draw the bounding box in an image summary.
+      image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                    bbox_for_draw)
+      tf.image_summary('images_with_box', image_with_box)
+
+      # Employ the bounding box to distort the image.
+      distorted_image = tf.slice(image, begin, size)
+  ```
+
+  Note that if no bounding box information is available, setting
+  `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+  bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+  false and no bounding boxes are supplied, an error is raised.
+
+  Args:
+    image_size: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`.
+      1-D, containing `[height, width, channels]`.
+    bounding_boxes: A `Tensor` of type `float32`.
+      3-D with shape `[batch, N, 4]` describing the N bounding boxes
+      associated with the image.
+    seed: An optional `int`. Defaults to `0`.
+      If either `seed` or `seed2` are set to non-zero, the random number
+      generator is seeded by the given `seed`.  Otherwise, it is seeded by a random
+      seed.
+    seed2: An optional `int`. Defaults to `0`.
+      A second seed to avoid seed collision.
+    min_object_covered: An optional `float`. Defaults to `0.1`.
+      The cropped area of the image must contain at least this
+      fraction of any bounding box supplied. The value of this parameter should be
+      non-negative. In the case of 0, the cropped area does not need to overlap
+      any of the bounding boxes supplied.
+    aspect_ratio_range: An optional list of `floats`. Defaults to `[0.75, 1.33]`.
+      The cropped area of the image must have an aspect ratio =
+      width / height within this range.
+    area_range: An optional list of `floats`. Defaults to `[0.05, 1]`.
+      The cropped area of the image must contain a fraction of the
+      supplied image within in this range.
+    max_attempts: An optional `int`. Defaults to `100`.
+      Number of attempts at generating a cropped region of the image
+      of the specified constraints. After `max_attempts` failures, return the entire
+      image.
+    use_image_if_no_bounding_boxes: An optional `bool`. Defaults to `False`.
+      Controls behavior if no bounding boxes supplied.
+      If true, assume an implicit bounding box covering the whole input. If false,
+      raise an error.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of `Tensor` objects (begin, size, bboxes).
+
+    begin: A `Tensor`. Has the same type as `image_size`. 1-D, containing `[offset_height, offset_width, 0]`. Provide as input to
+      `tf.slice`.
+    size: A `Tensor`. Has the same type as `image_size`. 1-D, containing `[target_height, target_width, -1]`. Provide as input to
+      `tf.slice`.
+    bboxes: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
+      Provide as input to `tf.image.draw_bounding_boxes`.
+  """
+  with ops.name_scope(name, 'sample_distorted_bounding_box'):
+    # TODO (yongtang): Need to switch to v2 after 3 weeks.
+    return gen_image_ops._sample_distorted_bounding_box(image_size,
+                bounding_boxes, seed=seed,
+                seed2=seed2, min_object_covered=min_object_covered,
+                aspect_ratio_range=aspect_ratio_range, area_range=area_range,
+                max_attempts=max_attempts,
+                use_image_if_no_bounding_boxes=use_image_if_no_bounding_boxes,
+                name=name)

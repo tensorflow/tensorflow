@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -86,6 +87,29 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
   return Status::OK();
 }
 
+static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
+                             Tensor* output) {
+
+  tensorflow::uint64 file_size = 0;
+  TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
+
+  string contents;
+  contents.resize(file_size);
+
+  std::unique_ptr<tensorflow::RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
+
+  tensorflow::StringPiece data;
+  TF_RETURN_IF_ERROR(file->Read(0, file_size, &data, &(contents)[0]));
+  if (data.size() != file_size) {
+    return tensorflow::errors::DataLoss("Truncated read of '", filename,
+                                        "' expected ", file_size, " got ",
+                                        data.size());
+  }
+  output->scalar<string>()() = data.ToString();
+  return Status::OK();
+}
+
 // Given an image file name, read in the data, try to decode it as an image,
 // resize it to the requested size, and then scale the values as desired.
 Status ReadTensorFromImageFile(const string& file_name, const int input_height,
@@ -97,8 +121,20 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
 
   string input_name = "file_reader";
   string output_name = "normalized";
-  auto file_reader =
-      tensorflow::ops::ReadFile(root.WithOpName(input_name), file_name);
+
+  // read file_name into a tensor named input
+  Tensor input(tensorflow::DT_STRING, tensorflow::TensorShape());
+  TF_RETURN_IF_ERROR(ReadEntireFile(tensorflow::Env::Default(), file_name,
+                                    &input));
+
+  // use a placeholder to read input data
+  auto file_reader = Placeholder(root.WithOpName("input"),
+                                 tensorflow::DataType::DT_STRING);
+
+  std::vector<std::pair<string, tensorflow::Tensor>> inputs = {
+    {"input", input},
+  };
+
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
   tensorflow::Output image_reader;
@@ -107,9 +143,11 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
                              DecodePng::Channels(wanted_channels));
   } else if (tensorflow::StringPiece(file_name).ends_with(".gif")) {
     // gif decoder returns 4-D tensor, remove the first dim
-    image_reader = Squeeze(root.WithOpName("squeeze_first_dim"),
-                           DecodeGif(root.WithOpName("gif_reader"),
-                                     file_reader));
+    image_reader =
+        Squeeze(root.WithOpName("squeeze_first_dim"),
+                DecodeGif(root.WithOpName("gif_reader"), file_reader));
+  } else if (tensorflow::StringPiece(file_name).ends_with(".bmp")) {
+    image_reader = DecodeBmp(root.WithOpName("bmp_reader"), file_reader);
   } else {
     // Assume if it's neither a PNG nor a GIF then it must be a JPEG.
     image_reader = DecodeJpeg(root.WithOpName("jpeg_reader"), file_reader,
@@ -139,7 +177,7 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
   std::unique_ptr<tensorflow::Session> session(
       tensorflow::NewSession(tensorflow::SessionOptions()));
   TF_RETURN_IF_ERROR(session->Create(graph));
-  TF_RETURN_IF_ERROR(session->Run({}, {output_name}, {}, out_tensors));
+  TF_RETURN_IF_ERROR(session->Run({inputs}, {output_name}, {}, out_tensors));
   return Status::OK();
 }
 
