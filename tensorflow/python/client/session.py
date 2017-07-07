@@ -985,7 +985,10 @@ class BaseSession(SessionInterface):
     if self.graph.version == 0:
       raise RuntimeError('The Session graph is empty.  Add operations to the '
                          'graph before calling run().')
-
+    
+    if feeds is None:
+      feeds = []
+    
     # Create request.
     feed_list = []
 
