@@ -713,10 +713,10 @@ def _SliceHelperVar(var, slice_spec):
   A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    print sess.run(A[:2, :2]) # => [[1,2], [4,5]]
+    print(sess.run(A[:2, :2]))  # => [[1,2], [4,5]]
 
     op = A[:2,:2].assign(22. * tf.ones((2, 2)))
-    print sess.run(op) # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
+    print(sess.run(op))  # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
   ```
 
   Note that assignments currently do not support NumPy broadcasting
