@@ -5747,6 +5747,23 @@ func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []t
 	return op.Output(0)
 }
 
+// Creates a dataset that concatenates `input_dataset` with `another_dataset`.
+func ConcatenateDataset(scope *Scope, input_dataset tf.Output, another_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ConcatenateDataset",
+		Input: []tf.Input{
+			input_dataset, another_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a dataset that splits a SparseTensor into elements row-wise.
 func SparseTensorSliceDataset(scope *Scope, indices tf.Output, values tf.Output, dense_shape tf.Output) (handle tf.Output) {
 	if scope.Err() != nil {
