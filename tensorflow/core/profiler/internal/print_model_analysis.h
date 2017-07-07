@@ -43,7 +43,7 @@ string Profile(const string* command, const string* options);
 //
 // Interface defined for Python API swig. Calls the tfprof core API.
 // 'graph', 'run_meta', 'op_log' are serialized GraphDef, RunMetadata,
-// OpLog strings, respectively.
+// OpLogProto strings, respectively.
 // 'graph', 'command' and 'options' are required. Others can be nullptr
 // if not available.
 string PrintModelAnalysis(const string* graph, const string* run_meta,

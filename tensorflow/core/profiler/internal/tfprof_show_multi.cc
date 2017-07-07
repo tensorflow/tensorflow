@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const TFMultiGraphNodeProto& TFMultiShow::Show(const Options& opts) {
+const MultiGraphNodeProto& TFMultiShow::Show(const Options& opts) {
   if (opts.output_type == kOutput[3]) {
     return ShowInternal(opts, nullptr)->proto();
   } else if (opts.output_type == kOutput[0]) {
@@ -144,12 +144,11 @@ string TFMultiShow::FormatLegend(const Options& opts) const {
                          str_util::Join(legends, " | ").c_str());
 }
 
-string TFMultiShow::FormatInputShapes(
-    const TFMultiGraphNodeProto& proto) const {
+string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
   // input_shape string -> (static defined count, run count, run_micros)
   std::map<string, std::tuple<int64, int64, int64>> input_shapes_attr;
   for (int i = 0; i < proto.graph_nodes_size(); ++i) {
-    const TFGraphNodeProto& gnode = proto.graph_nodes(i);
+    const GraphNodeProto& gnode = proto.graph_nodes(i);
     // Convert and sort by input_idx.
     std::map<int, std::vector<int64>> input_shapes;
     for (const auto& inp : gnode.input_shapes()) {
