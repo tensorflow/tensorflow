@@ -4562,6 +4562,35 @@ op {
   summary: "Concatenates tensors along one dimension."
 }
 op {
+  name: "ConcatenateDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "another_dataset"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that concatenates `input_dataset` with `another_dataset`."
+  is_stateful: true
+}
+op {
   name: "ConditionalAccumulator"
   output_arg {
     name: "handle"
