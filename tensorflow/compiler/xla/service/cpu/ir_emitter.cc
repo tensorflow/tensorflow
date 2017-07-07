@@ -1321,6 +1321,12 @@ Status IrEmitter::HandleBatchNormTraining(HloInstruction* batch_norm_training) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleBatchNormGrad(HloInstruction* batch_norm_grad) {
+  // TODO(b/62843645) Implement BatchNormGrad on CPU backend.
+  return Unimplemented(
+      "BatchNormGrad is not implemented on CPU. See b/62843645.");
+}
+
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   VLOG(2) << "HandleParameter: " << parameter->ToString();
   auto param_number = parameter->parameter_number();
