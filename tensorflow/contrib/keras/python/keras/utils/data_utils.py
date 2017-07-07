@@ -17,19 +17,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from abc import abstractmethod
 import hashlib
+import multiprocessing
+import multiprocessing.managers
+from multiprocessing.pool import ThreadPool
 import os
+import random
 import shutil
 import sys
 import tarfile
+import threading
+import time
 import zipfile
 
+import numpy as np
 import six
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
 from six.moves.urllib.request import urlopen
 
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import Progbar
+
+try:
+  import queue  # pylint:disable=g-import-not-at-top
+except ImportError:
+  import Queue as queue  # pylint:disable=g-import-not-at-top
 
 
 if sys.version_info[0] == 2:
@@ -300,3 +313,375 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
     return True
   else:
     return False
+
+
+class HolderManager(multiprocessing.managers.BaseManager):
+  """Custom manager to share a Holder object."""
+  pass
+
+
+class Holder(object):
+  """Object to encapsulate a Sequence.
+
+  This allows the Sequence to be shared across multiple workers.
+
+  Arguments:
+      seq: Sequence object to be shared.
+  """
+
+  def __init__(self, seq):
+    self.seq = seq
+
+  def __getitem__(self, idx):
+    return self.seq[idx]
+
+  def __len__(self):
+    return len(self.seq)
+
+
+# Register the Holder class using the ListProxy (allows __len__ and __getitem__)
+HolderManager.register('Holder', Holder, multiprocessing.managers.ListProxy)
+
+
+class Sequence(object):
+  """Base object for fitting to a sequence of data, such as a dataset.
+
+  Every `Sequence` must implements the `__getitem__` and the `__len__` methods.
+
+  Examples:
+
+  ```python
+  from skimage.io import imread
+  from skimage.transform import resize
+  import numpy as np
+
+  # Here, `x_set` is list of path to the images
+  # and `y_set` are the associated classes.
+
+  class CIFAR10Sequence(Sequence):
+      def __init__(self, x_set, y_set, batch_size):
+          self.X,self.y = x_set,y_set
+          self.batch_size = batch_size
+
+      def __len__(self):
+          return len(self.X) // self.batch_size
+
+      def __getitem__(self,idx):
+          batch_x = self.X[idx*self.batch_size:(idx+1)*self.batch_size]
+          batch_y = self.y[idx*self.batch_size:(idx+1)*self.batch_size]
+
+          return np.array([
+              resize(imread(file_name), (200,200))
+                 for file_name in batch_x]), np.array(batch_y)
+  ```
+  """
+
+  @abstractmethod
+  def __getitem__(self, index):
+    """Gets batch at position `index`.
+
+    Arguments:
+        index: position of the batch in the Sequence.
+
+    Returns:
+        A batch
+    """
+    raise NotImplementedError
+
+  @abstractmethod
+  def __len__(self):
+    """Number of batch in the Sequence.
+
+    Returns:
+        The number of batches in the Sequence.
+    """
+    raise NotImplementedError
+
+
+def get_index(ds, i):
+  """Quick fix for Python2, otherwise, it cannot be pickled.
+
+  Arguments:
+      ds: a Holder or Sequence object.
+      i: index
+
+  Returns:
+      The value at index `i`.
+  """
+  return ds[i]
+
+
+class SequenceEnqueuer(object):
+  """Base class to enqueue inputs.
+
+  The task of an Enqueuer is to use parallelism to speed up preprocessing.
+  This is done with processes or threads.
+
+  Examples:
+
+  ```python
+  enqueuer = SequenceEnqueuer(...)
+  enqueuer.start()
+  datas = enqueuer.get()
+  for data in datas:
+      # Use the inputs; training, evaluating, predicting.
+      # ... stop sometime.
+  enqueuer.close()
+  ```
+
+  The `enqueuer.get()` should be an infinite stream of datas.
+
+  """
+
+  @abstractmethod
+  def is_running(self):
+    raise NotImplementedError
+
+  @abstractmethod
+  def start(self, workers=1, max_queue_size=10):
+    """Starts the handler's workers.
+
+    Arguments:
+        workers: number of worker threads
+        max_queue_size: queue size
+            (when full, threads could block on `put()`).
+    """
+    raise NotImplementedError
+
+  @abstractmethod
+  def stop(self, timeout=None):
+    """Stop running threads and wait for them to exit, if necessary.
+
+    Should be called by the same thread which called start().
+
+    Arguments:
+        timeout: maximum time to wait on thread.join()
+    """
+    raise NotImplementedError
+
+  @abstractmethod
+  def get(self):
+    """Creates a generator to extract data from the queue.
+
+    Skip the data if it is `None`.
+
+    Returns:
+        Generator yielding tuples `(inputs, targets)`
+            or `(inputs, targets, sample_weights)`.
+    """
+    raise NotImplementedError
+
+
+class OrderedEnqueuer(SequenceEnqueuer):
+  """Builds a Enqueuer from a Sequence.
+
+  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
+
+  Arguments:
+      sequence: A `keras.utils.data_utils.Sequence` object.
+      use_multiprocessing: use multiprocessing if True, otherwise threading
+      scheduling: Sequential querying of datas if 'sequential', random
+        otherwise.
+  """
+
+  def __init__(self,
+               sequence,
+               use_multiprocessing=False,
+               scheduling='sequential'):
+    self.manager = HolderManager()
+    self.manager.start()
+    self.sequence = self.manager.Holder(sequence)
+    self.use_multiprocessing = use_multiprocessing
+    self.scheduling = scheduling
+    self.workers = 0
+    self.executor = None
+    self.queue = None
+    self.run_thread = None
+    self.stop_signal = None
+
+  def is_running(self):
+    return self.stop_signal is not None and not self.stop_signal.is_set()
+
+  def start(self, workers=1, max_queue_size=10):
+    """Start the handler's workers.
+
+    Arguments:
+        workers: number of worker threads
+        max_queue_size: queue size
+            (when full, workers could block on `put()`)
+    """
+    if self.use_multiprocessing:
+      self.executor = multiprocessing.Pool(workers)
+    else:
+      self.executor = ThreadPool(workers)
+    self.queue = queue.Queue(max_queue_size)
+    self.stop_signal = threading.Event()
+    self.run_thread = threading.Thread(target=self._run)
+    self.run_thread.daemon = True
+    self.run_thread.start()
+
+  def _run(self):
+    """Submits requests to the executor and queues the `Future` objects."""
+    sequence = list(range(len(self.sequence)))
+    while True:
+      if self.scheduling is not 'sequential':
+        random.shuffle(sequence)
+      for i in sequence:
+        if self.stop_signal.is_set():
+          return
+        self.queue.put(
+            self.executor.apply_async(get_index, (self.sequence, i)),
+            block=True)
+
+  def get(self):
+    """Creates a generator to extract data from the queue.
+
+    Skip the data if it is `None`.
+
+    Yields:
+        Tuples (inputs, targets)
+            or (inputs, targets, sample_weights)
+    """
+    try:
+      while self.is_running():
+        inputs = self.queue.get(block=True).get()
+        if inputs is not None:
+          yield inputs
+    except Exception as e:
+      self.stop()
+      raise StopIteration(e)
+
+  def stop(self, timeout=None):
+    """Stops running threads and wait for them to exit, if necessary.
+
+    Should be called by the same thread which called `start()`.
+
+    Arguments:
+        timeout: maximum time to wait on `thread.join()`
+    """
+    self.stop_signal.set()
+    with self.queue.mutex:
+      self.queue.queue.clear()
+      self.queue.unfinished_tasks = 0
+      self.queue.not_full.notify()
+    self.executor.close()
+    self.executor.join()
+    self.run_thread.join(timeout)
+
+
+class GeneratorEnqueuer(SequenceEnqueuer):
+  """Builds a queue out of a data generator.
+
+  Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
+
+  Arguments:
+      generator: a generator function which endlessly yields data
+      use_multiprocessing: use multiprocessing if True, otherwise threading
+      wait_time: time to sleep in-between calls to `put()`
+      random_seed: Initial seed for workers,
+          will be incremented by one for each workers.
+  """
+
+  def __init__(self,
+               generator,
+               use_multiprocessing=False,
+               wait_time=0.05,
+               random_seed=None):
+    self.wait_time = wait_time
+    self._generator = generator
+    self._use_multiprocessing = use_multiprocessing
+    self._threads = []
+    self._stop_event = None
+    self.queue = None
+    self.random_seed = random_seed
+
+  def start(self, workers=1, max_queue_size=10):
+    """Kicks off threads which add data from the generator into the queue.
+
+    Arguments:
+        workers: number of worker threads
+        max_queue_size: queue size
+            (when full, threads could block on `put()`)
+    """
+
+    def data_generator_task():
+      while not self._stop_event.is_set():
+        try:
+          if self._use_multiprocessing or self.queue.qsize() < max_queue_size:
+            generator_output = next(self._generator)
+            self.queue.put(generator_output)
+          else:
+            time.sleep(self.wait_time)
+        except Exception:
+          self._stop_event.set()
+          raise
+
+    try:
+      if self._use_multiprocessing:
+        self.queue = multiprocessing.Queue(maxsize=max_queue_size)
+        self._stop_event = multiprocessing.Event()
+      else:
+        self.queue = queue.Queue()
+        self._stop_event = threading.Event()
+
+      for _ in range(workers):
+        if self._use_multiprocessing:
+          # Reset random seed else all children processes
+          # share the same seed
+          np.random.seed(self.random_seed)
+          thread = multiprocessing.Process(target=data_generator_task)
+          thread.daemon = True
+          if self.random_seed is not None:
+            self.random_seed += 1
+        else:
+          thread = threading.Thread(target=data_generator_task)
+        self._threads.append(thread)
+        thread.start()
+    except:
+      self.stop()
+      raise
+
+  def is_running(self):
+    return self._stop_event is not None and not self._stop_event.is_set()
+
+  def stop(self, timeout=None):
+    """Stops running threads and wait for them to exit, if necessary.
+
+    Should be called by the same thread which called `start()`.
+
+    Arguments:
+        timeout: maximum time to wait on `thread.join()`.
+    """
+    if self.is_running():
+      self._stop_event.set()
+
+    for thread in self._threads:
+      if thread.is_alive():
+        if self._use_multiprocessing:
+          thread.terminate()
+        else:
+          thread.join(timeout)
+
+    if self._use_multiprocessing:
+      if self.queue is not None:
+        self.queue.close()
+
+    self._threads = []
+    self._stop_event = None
+    self.queue = None
+
+  def get(self):
+    """Creates a generator to extract data from the queue.
+
+    Skip the data if it is `None`.
+
+    Yields:
+        Data arrays.
+    """
+    while self.is_running():
+      if not self.queue.empty():
+        inputs = self.queue.get()
+        if inputs is not None:
+          yield inputs
+      else:
+        time.sleep(self.wait_time)

@@ -12,40 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for noise layers."""
+"""Tests for MobileNet application."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.keras.python import keras
-from tensorflow.contrib.keras.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
-class NoiseLayersTest(test.TestCase):
+class MobileNetTest(test.TestCase):
 
-  def test_GaussianNoise(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.GaussianNoise,
-          kwargs={'stddev': 1.},
-          input_shape=(3, 2, 3))
+  def test_with_top(self):
+    model = keras.applications.MobileNet(weights=None)
+    self.assertEqual(model.output_shape, (None, 1000))
 
-  def test_GaussianDropout(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.GaussianDropout,
-          kwargs={'rate': 0.5},
-          input_shape=(3, 2, 3))
+  def test_no_top(self):
+    model = keras.applications.MobileNet(weights=None, include_top=False)
+    self.assertEqual(model.output_shape, (None, None, None, 1024))
 
-  def test_AlphaDropout(self):
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.AlphaDropout,
-          kwargs={'rate': 0.2},
-          input_shape=(3, 2, 3))
-
+  def test_with_pooling(self):
+    model = keras.applications.MobileNet(weights=None,
+                                         include_top=False,
+                                         pooling='avg')
+    self.assertEqual(model.output_shape, (None, 1024))
 
 if __name__ == '__main__':
   test.main()
