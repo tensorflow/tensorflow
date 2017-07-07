@@ -20,7 +20,6 @@ from __future__ import print_function
 from abc import abstractmethod
 import hashlib
 import multiprocessing
-import multiprocessing.managers
 from multiprocessing.pool import ThreadPool
 import os
 import random
@@ -315,34 +314,6 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
     return False
 
 
-class HolderManager(multiprocessing.managers.BaseManager):
-  """Custom manager to share a Holder object."""
-  pass
-
-
-class Holder(object):
-  """Object to encapsulate a Sequence.
-
-  This allows the Sequence to be shared across multiple workers.
-
-  Arguments:
-      seq: Sequence object to be shared.
-  """
-
-  def __init__(self, seq):
-    self.seq = seq
-
-  def __getitem__(self, idx):
-    return self.seq[idx]
-
-  def __len__(self):
-    return len(self.seq)
-
-
-# Register the Holder class using the ListProxy (allows __len__ and __getitem__)
-HolderManager.register('Holder', Holder, multiprocessing.managers.ListProxy)
-
-
 class Sequence(object):
   """Base object for fitting to a sequence of data, such as a dataset.
 
@@ -488,9 +459,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
                sequence,
                use_multiprocessing=False,
                scheduling='sequential'):
-    self.manager = HolderManager()
-    self.manager.start()
-    self.sequence = self.manager.Holder(sequence)
+    self.sequence = sequence
     self.use_multiprocessing = use_multiprocessing
     self.scheduling = scheduling
     self.workers = 0
