@@ -1,28 +1,44 @@
 # Threading and Queues
 
-Queues are a powerful mechanism for asynchronous computation using TensorFlow.
+Note: In versions of TensorFlow before 1.2, we recommended using multi-threaded,
+queue-based input pipelines for performance. Beginning with TensorFlow 1.2,
+however, we recommend using the `tf.contrib.data` module instead. (See
+[Datasets](datasets) for details.) The `tf.contrib.data` module offers an
+easier-to-use interface for constructing efficient input pipelines. Furthermore,
+we've stopped developing the old multi-threaded, queue-based input pipelines.
+We've retained the documentation in this file to help developers who are still
+maintaining older code.
 
-Like everything in TensorFlow, a queue is a node in a TensorFlow graph. It's a
-stateful node, like a variable: other nodes can modify its content. In
-particular, nodes can enqueue new items in to the queue, or dequeue existing
-items from the queue.
+Multithreaded queues are a powerful and widely used mechanism supporting
+asynchronous computation.
 
-To get a feel for queues, let's consider a simple example. We will create a
-"first in, first out" queue (`FIFOQueue`) and fill it with zeros.
-Then we'll construct a graph
-that takes an item off the queue, adds one to that item, and puts it back on the
-end of the queue. Slowly, the numbers on the queue increase.
+Following the [dataflow programming model](graphs.md), TensorFlow's queues are
+implemented using nodes in the computation graph.  A queue is a stateful node,
+like a variable: other nodes can modify its content. In particular, nodes can
+enqueue new items in to the queue, or dequeue existing items from the
+queue. TensorFlow's queues provide a way to coordinate multiple steps of a
+computation: a queue will **block** any step that attempts to dequeue from it
+when it is empty, or enqueue to it when it is full. When that condition no
+longer holds, the queue will unblock the step and allow execution to proceed.
+
+TensorFlow implements several classes of queue. The principal difference between
+these classes is the order that items are removed from the queue.  To get a feel
+for queues, let's consider a simple example. We will create a "first in, first
+out" queue (@{tf.FIFOQueue}) and fill it with zeros.  Then we'll construct a
+graph that takes an item off the queue, adds one to that item, and puts it back
+on the end of the queue. Slowly, the numbers on the queue increase.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/IncremeterFifoQueue.gif">
 </div>
 
 `Enqueue`, `EnqueueMany`, and `Dequeue` are special nodes. They take a pointer
-to the queue instead of a normal value, allowing them to change it. We recommend
-you think of these as being like methods of the queue. In fact, in the Python
-API, they are methods of the queue object (e.g. `q.enqueue(...)`).
+to the queue instead of a normal value, allowing them to mutate its state. We
+recommend that you think of these operations as being like methods of the queue
+in an object-oriented sense. In fact, in the Python API, these operations are
+created by calling methods on a queue object (e.g. `q.enqueue(...)`).
 
-**N.B.** Queue methods (such as `q.enqueue(...)`) *must* run on the same device
+Note: Queue methods (such as `q.enqueue(...)`) *must* run on the same device
 as the queue. Incompatible device placement directives will be ignored when
 creating these operations.
 
@@ -32,13 +48,13 @@ Now that you have a bit of a feel for queues, let's dive into the details...
 
 Queues, such as @{tf.FIFOQueue}
 and @{tf.RandomShuffleQueue},
-are important TensorFlow objects for computing tensors asynchronously in a
-graph.
+are important TensorFlow objects that aid in computing tensors asynchronously
+in a graph.
 
-For example, a typical input architecture is to use a `RandomShuffleQueue` to
+For example, a typical input pipeline uses a `RandomShuffleQueue` to
 prepare inputs for training a model:
 
-* Multiple threads prepare training examples and push them in the queue.
+* Multiple threads prepare training examples and enqueue them in the queue.
 * A training thread executes a training op that dequeues mini-batches from the
   queue
 
@@ -46,7 +62,8 @@ This architecture has many benefits, as highlighted in the
 @{$reading_data$Reading data how to}, which also gives an overview of
 functions that simplify the construction of input pipelines.
 
-The TensorFlow `Session` object is multithreaded, so multiple threads can
+The TensorFlow `Session` object is multithreaded and thread-safe, so multiple
+threads can
 easily use the same session and run ops in parallel.  However, it is not always
 easy to implement a Python program that drives threads as described above.  All
 threads must be able to stop together, exceptions must be caught and
@@ -62,11 +79,12 @@ enqueue tensors in the same queue.
 
 ## Coordinator
 
-The `Coordinator` class helps multiple threads stop together.
+The @{tf.train.Coordinator} class manages background threads in a TensorFlow
+program and helps multiple threads stop together.
 
 Its key methods are:
 
-* @{tf.train.Coordinator.should_stop}: returns True if the threads should stop.
+* @{tf.train.Coordinator.should_stop}: returns `True` if the threads should stop.
 * @{tf.train.Coordinator.request_stop}: requests that threads should stop.
 * @{tf.train.Coordinator.join}: waits until the specified threads have stopped.
 
@@ -105,10 +123,10 @@ also has support to capture and report exceptions.  See the @{tf.train.Coordinat
 
 ## QueueRunner
 
-The `QueueRunner` class creates a number of threads that repeatedly run an
-enqueue op.  These threads can use a coordinator to stop together.  In
-addition, a queue runner runs a *closer thread* that automatically closes the
-queue if an exception is reported to the coordinator.
+The @{tf.train.QueueRunner} class creates a number of threads that repeatedly
+run an enqueue op.  These threads can use a coordinator to stop together.  In
+addition, a queue runner will run a *closer operation* that closes the queue if
+an exception is reported to the coordinator.
 
 You can use a queue runner to implement the architecture described above.
 
