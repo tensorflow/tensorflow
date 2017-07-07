@@ -267,7 +267,9 @@ class DNNClassifier(estimator.Estimator):
   def input_fn_eval: # returns x, y (where y is one of label_keys).
     pass
   estimator.evaluate(input_fn=input_fn_eval)
+  
   def input_fn_predict: # returns x, None
+    pass
   # predict_classes returns one of label_keys.
   estimator.predict_classes(input_fn=input_fn_predict)
   ```
