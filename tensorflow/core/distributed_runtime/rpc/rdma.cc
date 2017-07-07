@@ -5,16 +5,16 @@
 #include <list>
 #include <memory>
 #include <functional>
-#include <thread>
 
 #include <sys/fcntl.h>
-#include <sys/epoll.h>
 
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 
-#include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
+#include "tensorflow/core/common_runtime/bfc_allocator.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
+#endif
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -78,22 +78,33 @@ static int TryToReadNumaNode(ibv_device* device) {
   return -kUnknownNumaNode;
 }
 
-class PoolRdmaCPUAllocator : public PoolAllocator {
+class BasicCPUAllocator : public SubAllocator {
  public:
-  PoolRdmaCPUAllocator()
-    : PoolAllocator(10, true, new BasicCPUAllocator(), new NoopRounder(), "cpu_rdma_pool") {}
+  ~BasicCPUAllocator() override {}
 
+  void* Alloc(size_t alignment, size_t num_bytes) override {
+    return port::AlignedMalloc(num_bytes, alignment);
+  }
+  void Free(void* ptr, size_t) override { port::AlignedFree(ptr); }
 };
 
-REGISTER_MEM_ALLOCATOR("PoolRdmaCPUAllocator", 300, PoolRdmaCPUAllocator);
+class BFCRdmaAllocator : public BFCAllocator {
+ public:
+  BFCRdmaAllocator() :
+    BFCAllocator(new BasicCPUAllocator(), 1LL << 36, true, "cpu_rdma_bfc") {}
+};
+
+REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 300, BFCRdmaAllocator);
 
 class RdmaMemoryManager {
  public:
   RdmaMemoryManager() : pd_(nullptr) {
 
     using namespace std::placeholders;
-    VisitableAllocator::Visitor visitor =
+    VisitableAllocator::Visitor alloc_visitor =
       std::bind(&RdmaMemoryManager::InsertMemoryRegion, this, _1, _2);
+    VisitableAllocator::Visitor free_visitor =
+      std::bind(&RdmaMemoryManager::EvictMemoryRegion, this, _1, _2);
 
     // Bind GPU using bus_id
     int num_device;
@@ -108,8 +119,10 @@ class RdmaMemoryManager {
     std::set<Allocator*> instrumented_;
 
     Allocator* allocators[] = {
+#if GOOGLE_CUDA
       ProcessState::singleton()->GetCUDAHostAllocator(0),
       ProcessState::singleton()->GetCPUAllocator(0),
+#endif
       cpu_allocator(),
     };
 
@@ -118,18 +131,21 @@ class RdmaMemoryManager {
       auto* visitable_allocator = dynamic_cast<VisitableAllocator*>(allocator);
       if (visitable_allocator &&
           instrumented_.find(allocator) == std::end(instrumented_)) {
-        visitable_allocator->AddAllocVisitor(visitor);
+        visitable_allocator->AddAllocVisitor(alloc_visitor);
+        visitable_allocator->AddFreeVisitor(free_visitor);
         instrumented_.insert(allocator);
         LOG(INFO) << "Instrumenting allocator " << allocator->Name();
       }
     }
 
-    // Used for GPU memory
+#if GOOGLE_CUDA
+    // Note we don't free allocated GPU memory so there is no free visitor
     for (int i = 0; i < num_device; i++) {
       ibv_context* verbs = devices[i];
       int bus_id = TryToReadNumaNode(verbs->device) + 1;
-      ProcessState::singleton()->AddGPUAllocVisitor(bus_id, visitor);
+      ProcessState::singleton()->AddGPUAllocVisitor(bus_id, alloc_visitor);
     }
+#endif
   }
 
   ~RdmaMemoryManager() {
@@ -147,20 +163,34 @@ class RdmaMemoryManager {
                                    end, &Comparator);
       mrs_.insert(iter, {mr, &MRDeleter});
     } else {
-      LOG(WARNING) << "Cannot register MR";
+      LOG(WARNING) << "Cannot register memory region";
     }
   }
 
-  ibv_mr* FindMemoryRegion(const TensorBuffer* buffer) {
-    const void* end = reinterpret_cast<char*>(buffer->data()) + buffer->size();
+  void EvictMemoryRegion(void* addr, size_t length) {
+    if (length == 0) return;
+    const void* end = reinterpret_cast<char*>(addr) + length;
     mutex_lock l(mu_);
     auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
                                  end, &Comparator);
-    if (iter == std::end(mrs_) || iter->get()->addr > buffer->data()) {
-      return nullptr;
+    if (iter != std::end(mrs_) && iter->get()->addr == addr) {
+      mrs_.erase(iter);
+    } else {
+      LOG(WARNING) << "Failed to de-register memory region";
     }
-    ibv_mr* mr = iter->get();
-    return mr;
+  }
+
+  ibv_mr* FindMemoryRegion(void* addr, size_t length) {
+    if (length == 0) return nullptr;
+    const void* end = reinterpret_cast<char*>(addr) + length;
+    mutex_lock l(mu_);
+    auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
+                                 end, &Comparator);
+    if (iter == std::end(mrs_) || iter->get()->addr > addr) {
+      return nullptr;
+    } else {
+      return iter->get();
+    }
   }
 
   static RdmaMemoryManager* Get() {
@@ -206,7 +236,9 @@ class RdmaReadClient : public RdmaClient {
     }
     rdma_cm_id* id = iter->second.get();
 
-    ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(buffer);
+    void* addr = buffer->data();
+    size_t length = buffer->size();
+    ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
     if (mr == nullptr) {
       return errors::Unavailable("Cannot find pinned memory region");
     }
@@ -410,7 +442,13 @@ class RdmaReadServer : public RdmaServer {
   virtual Status RegisterTensorDMA(const TensorBuffer* buffer,
                                    Any* mutable_transport_options) override {
 
-    ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(buffer);
+    void* addr = buffer->data();
+    size_t length = buffer->size();
+    if (length == 0) {
+      return errors::Unavailable("Cannot register tensor buffer of size 0");
+    }
+
+    ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
     if (mr == nullptr) {
       return errors::Unavailable("Cannot find pinned memory region");
     }

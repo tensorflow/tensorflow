@@ -244,7 +244,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "rdma",
     srcs = ["rdma.cc"],
     hdrs = ["rdma.h"],
@@ -255,13 +255,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
     ],
-    copts = [ "-g" ],
     linkopts = select({
         "//conditions:default": ["-libverbs", "-lrdmacm"],
     }),
 )
 
-cc_library(
+tf_cuda_library(
     name = "rpc_rendezvous_mgr",
     srcs = ["rpc_rendezvous_mgr.cc"],
     hdrs = ["rpc_rendezvous_mgr.h"],

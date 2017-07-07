@@ -338,79 +338,81 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
                                      const Rendezvous::Args& recv_args,
                                      const Tensor& val, const bool is_dead) {
         opts->ClearCancelCallback();
-        if (status.ok()) {
-          bool use_dma = false;
-          RecvTensorResponse proto;
-          if (val.TotalBytes() >= 4096 &&
-              dma_ok && DMAHelper::CanUseDMA(&val)) {
-            const TensorBuffer* buffer = DMAHelper::buffer(&val);
-            Status s = rdma_server->RegisterTensorDMA(buffer,
-                proto.mutable_transport_options());
-            if (s.ok()) {
-              use_dma = true;
-            } else {
-              LOG(ERROR) << s.ToString() << " with allocator "
-                         << src_dev->GetAllocator(send_args.alloc_attrs)->Name();
-            }
-          }
-          if (use_dma) {
-              proto.set_is_dead(is_dead);
-              proto.set_send_start_micros(Env::Default()->NowMicros());
-              TensorProto* tensor = proto.mutable_tensor();
-              tensor->set_dtype(val.dtype());
-              val.shape().AsProto(tensor->mutable_tensor_shape());
-              grpc::EncodeRecvTensorResponseToByteBuffer(proto, response);
-              done(Status::OK());
-          } else {
-            // DMA can only be used for Tensors that do not fall into
-            // the following three odd edge cases: 1) a zero-size
-            // buffer, 2) a dead tensor which has an uninit value, and
-            // 3) the tensor has the on_host allocation attribute,
-            // i.e. it's in CPU RAM *independent of its assigned
-            // device type*.
-            const bool on_host = send_args.alloc_attrs.on_host();
-            // Non-DMA cases.
-            if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
+        if (!status.ok()) {
+          done(status);
+          return;
+        }
+        RecvTensorResponse *proto = new RecvTensorResponse;
+        proto->set_is_dead(is_dead);
+        const bool on_host = send_args.alloc_attrs.on_host();
+        if (val.TotalBytes() > 0 && (!is_dead) &&
+            DMAHelper::CanUseDMA(&val) && dma_ok) {
+          const TensorBuffer* buffer = DMAHelper::buffer(&val);
+          auto transport_options = proto->mutable_transport_options();
+          Status s = rdma_server->RegisterTensorDMA(buffer, transport_options);
+          if (s.ok()) {
+            // Direct RDMA path
+            VLOG(0) << "Direct RDMA path";
+            proto->set_send_start_micros(Env::Default()->NowMicros());
+            TensorProto* tensor = proto->mutable_tensor();
+            tensor->set_dtype(val.dtype());
+            val.shape().AsProto(tensor->mutable_tensor_shape());
+            grpc::EncodeRecvTensorResponseToByteBuffer(*proto, response);
+            done(Status::OK());
+            delete proto;
+          } else if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
 #if GOOGLE_CUDA
-              const DeviceContext* send_dev_context = send_args.device_context;
-              RecvTensorResponse* tmp = new RecvTensorResponse;
-              tmp->set_is_dead(is_dead);
-              CHECK(send_dev_context)
+              AllocatorAttributes alloc_attrs;
+              alloc_attrs.set_gpu_compatible(true);
+              alloc_attrs.set_on_host(true);
+              Allocator* alloc = src_dev->GetAllocator(alloc_attrs);
+              Tensor* copy = new Tensor(alloc, val.dtype(), val.shape());
+              CHECK(send_args.device_context)
                   << "send dev name: " << src_dev->name()
                   << " gpu_info: " << src_dev->tensorflow_gpu_device_info();
-              // "val" is on a GPU. Uses GPUUtil to fill the response proto.
-              StatusCallback response_ready = [response, done,
-                                               tmp](const Status& s) {
-                // The value is now ready to be returned on the wire.
-                tmp->set_send_start_micros(Env::Default()->NowMicros());
-
-                grpc::EncodeRecvTensorResponseToByteBuffer(*tmp, response);
+              StatusCallback copy_ready = [proto, rdma_server, response, copy,
+                                           is_dead, done] (const Status& s) {
+                if (s.ok()) {
+                  const TensorBuffer* buffer = DMAHelper::buffer(copy);
+                  auto status = rdma_server->RegisterTensorDMA(buffer,
+                      proto->mutable_transport_options());
+                  if (status.ok()) {
+                    // GPU to host memory then RDMA
+                    VLOG(0) << "RDMA path when GPU direct is not available";
+                    proto->set_send_start_micros(Env::Default()->NowMicros());
+                    TensorProto* tensor = proto->mutable_tensor();
+                    tensor->set_dtype(copy->dtype());
+                    copy->shape().AsProto(tensor->mutable_tensor_shape());
+                    grpc::EncodeRecvTensorResponseToByteBuffer(*proto, response);
+                  } else {
+                    // GPU to host memory then gRPC
+                    VLOG(0) << "gRPC path when tensor buffer is not pinned";
+                    grpc::EncodeTensorToByteBuffer(is_dead, *copy, response);
+                  }
+                }
                 done(s);
-                delete tmp;
+                delete proto;
+                delete copy;
               };
-
-              // TODO (jeff,sanjay,mrry): Avoid copy on GPU path by
-              // modifying GPUUtil::SetProtoFromGPU to accept a
-              // ::grpc::ByteBuffer to serialize to, rather than
-              // encoding into a protocol buffer and then
-              // serializing that (i.e. figure out how to use
-              // EncodeTensorToByteBuffer on this path rather than
-              // EncodeRecvTensorResponseToByteBuffer)
-              GPUUtil::SetProtoFromGPU(val, src_dev, send_dev_context,
-                                       tmp->mutable_tensor(), is_dead,
-                                       response_ready);
+              GPUUtil::CopyGPUTensorToCPU(src_dev, send_args.device_context,
+                                          &val, copy, copy_ready);
 #else
               done(errors::Internal("No GPU device in process"));
-#endif  // GOOGLE_CUDA
+#endif
             } else {
+              // Host memory then gRPC path
+              VLOG(0) << "gRPC path when tensor buffer is not pinned";
               grpc::EncodeTensorToByteBuffer(is_dead, val, response);
               done(Status::OK());
+              delete proto;
             }
+          } else {
+            // Host memory then gRPC path
+            VLOG(0) << "gRPC path when tensor is not suitable for DMA";
+            grpc::EncodeTensorToByteBuffer(is_dead, val, response);
+            done(Status::OK());
+            delete proto;
           }
-        } else {
-          //  !s.ok()
-          done(status);
-        }
       });
 }
 
