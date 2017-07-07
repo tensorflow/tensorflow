@@ -218,8 +218,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       An instance of `OnRunStartResponse`.
     """
     self._is_run_start = True
-    self._update_run_calls_state(request.run_call_count, request.fetches,
-                                 request.feed_dict)
+    self._update_run_calls_state(
+        request.run_call_count, request.fetches, request.feed_dict,
+        is_callable_runner=request.is_callable_runner)
 
     if self._active_tensor_filter:
       # If we are running till a filter passes, we just need to keep running
@@ -532,7 +533,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     return ["file://" + self._dump_root]
 
-  def _update_run_calls_state(self, run_call_count, fetches, feed_dict):
+  def _update_run_calls_state(self,
+                              run_call_count,
+                              fetches,
+                              feed_dict,
+                              is_callable_runner=False):
     """Update the internal state with regard to run() call history.
 
     Args:
@@ -542,18 +547,24 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         call.
       feed_dict: None of a dict. This is the feed_dict argument to the run()
         call.
+      is_callable_runner: (bool) whether a runner returned by
+        Session.make_callable is being run.
     """
 
     self._run_call_count = run_call_count
-    self._run_description = cli_shared.get_run_short_description(run_call_count,
-                                                                 fetches,
-                                                                 feed_dict)
+    self._run_description = cli_shared.get_run_short_description(
+        run_call_count,
+        fetches,
+        feed_dict,
+        is_callable_runner=is_callable_runner)
     self._run_through_times -= 1
 
-    self._run_info = cli_shared.get_run_start_intro(run_call_count,
-                                                    fetches,
-                                                    feed_dict,
-                                                    self._tensor_filters)
+    self._run_info = cli_shared.get_run_start_intro(
+        run_call_count,
+        fetches,
+        feed_dict,
+        self._tensor_filters,
+        is_callable_runner=is_callable_runner)
 
   def invoke_node_stepper(self,
                           node_stepper,

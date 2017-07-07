@@ -68,6 +68,27 @@ tensorflow::ImportNumpy();
   $result = PyUnicode_FromString($1);
 }
 
+// We use TF_OperationGetControlInputs_wrapper instead of
+// TF_OperationGetControlInputs
+%ignore TF_OperationGetControlInputs;
+%unignore TF_OperationGetControlInputs_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_OperationGetControlInputs_wrapper;
+
+// Build a Python list of TF_Operation* and return it.
+%typemap(out) std::vector<TF_Operation*> tensorflow::TF_OperationGetControlInputs_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, SWIG_NewPointerObj(
+                            $1[i], SWIGTYPE_p_TF_Operation, 0));
+  }
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////

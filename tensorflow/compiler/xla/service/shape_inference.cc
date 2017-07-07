@@ -1149,6 +1149,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                            starts.size(), limits.size());
   }
 
+  if (starts.size() != strides.size()) {
+    return InvalidArgument("slice start and strides sizes differ: %zu vs %zu",
+                           starts.size(), strides.size());
+  }
+
   if (starts.size() != ShapeUtil::Rank(arg)) {
     return InvalidArgument(
         "slice index count does not match argument rank: %zu vs %lld",
@@ -1164,9 +1169,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InvalidArgument("negative start index to slice: %lld",
                              start_index);
     }
-    if (stride == 0) {
-      return InvalidArgument("Zero stride");
-    }
     if (limit_index > arg.dimensions(dimension)) {
       return InvalidArgument(
           "limit index (%lld) must be less than or equal to dimension "
@@ -1177,17 +1179,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                                            start_index);
     VLOG(2) << tensorflow::strings::Printf("limits[%lld] = %lld", dimension,
                                            limit_index);
-    if (stride > 0) {
-      if (start_index > limit_index) {
-        return InvalidArgument(
-            "limit index (%lld) must be greater or equal to "
-            "start index (%lld) in slice with positive stride",
-            limit_index, start_index);
-      }
-      sizes.push_back((limit_index - start_index + stride - 1) / stride);
-    } else {
-      return InvalidArgument("Negative strides not supported");
+    if (start_index > limit_index) {
+      return InvalidArgument(
+          "limit index (%lld) must be greater or equal to "
+          "start index (%lld) in slice with positive stride",
+          limit_index, start_index);
     }
+    if (stride <= 0) {
+      return InvalidArgument("stride (%lld) must be positive", stride);
+    }
+    sizes.push_back((limit_index - start_index + stride - 1) / stride);
   }
 
   return ShapeUtil::MakeShape(arg.element_type(), sizes);

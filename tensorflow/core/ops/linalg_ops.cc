@@ -189,7 +189,7 @@ Status SvdShapeFn(InferenceContext* c) {
 REGISTER_OP("MatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
@@ -560,7 +560,7 @@ REGISTER_OP("BatchSelfAdjointEig")
 REGISTER_OP("BatchMatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double, complex64, complex128}")
     .Deprecated(13, "Use MatrixDeterminant instead.");
 
 REGISTER_OP("BatchMatrixInverse")
