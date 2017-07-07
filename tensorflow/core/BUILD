@@ -419,6 +419,7 @@ tf_cuda_library(
 
 cc_binary(
     name = "libframework.so",
+    srcs = [":libtflib.so"],
     linkshared = 1,
     linkstatic = 1,
     deps = [
@@ -1224,15 +1225,29 @@ tf_proto_library_cc(
     ],
 )
 
-LIB_INTERNAL_WINDOWS_DEPS = glob(
+LIB_INTERNAL_WINDOWS_H_DEPS = glob(
     [
         "lib/**/*.h",
-        "lib/**/*.cc",
         "platform/*.h",
-        "platform/*.cc",
         "platform/profile_utils/**/*.h",
-        "platform/profile_utils/**/*.cc",
         "framework/resource_handle.h",
+    ],
+    exclude = [
+        "**/*test*",
+        "lib/gif/**/*",
+        "lib/jpeg/**/*",
+        "platform/gif.h",
+        "platform/jpeg.h",
+        "platform/**/cuda.h",
+        "platform/**/stream_executor.h",
+    ],
+)
+
+LIB_INTERNAL_WINDOWS_CC_DEPS = glob(
+    [
+        "lib/**/*.cc",
+        "platform/*.cc",
+        "platform/profile_utils/**/*.cc",
         "framework/resource_handle.cc",
     ],
     exclude = [
@@ -1240,45 +1255,114 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
         "lib/hash/crc32c_accelerate.cc",
         "lib/gif/**/*",
         "lib/jpeg/**/*",
-        "platform/gif.h",
-        "platform/jpeg.h",
         "platform/**/env_time.cc",
-        "platform/**/cuda.h",
         "platform/**/cuda_libdevice_path.cc",
-        "platform/**/stream_executor.h",
         "platform/load_library.cc",
     ],
 )
 
+LIB_INTERNAL_DEFAULT_H_DEPS = glob(
+    [
+        "lib/**/*.h",
+        "platform/*.h",
+        "platform/profile_utils/**/*.h",
+        "framework/resource_handle.h",
+    ],
+    exclude = [
+        "**/*test*",
+        "lib/gif/**/*",
+        "lib/jpeg/**/*",
+        "platform/gif.h",
+        "platform/jpeg.h",
+        "platform/**/cuda.h",
+        "platform/**/stream_executor.h",
+    ],
+)
+
+LIB_INTERNAL_DEFAULT_CC_DEPS = glob(
+    [
+        "lib/**/*.cc",
+        "platform/*.cc",
+        "platform/profile_utils/**/*.cc",
+        "framework/resource_handle.cc",
+    ],
+    exclude = [
+        "**/*test*",
+        "lib/hash/crc32c_accelerate.cc",
+        "lib/gif/**/*",
+        "lib/jpeg/**/*",
+        "platform/**/env_time.cc",
+        "platform/**/cuda_libdevice_path.cc",
+    ],
+)
+
+LIB_INTERNAL_HEADERS = tf_additional_lib_hdrs() + [
+    "lib/core/blocking_counter.h",
+    "lib/core/refcount.h",
+    "lib/gtl/edit_distance.h",
+    "lib/gtl/int_type.h",
+    "lib/gtl/iterator_range.h",
+    "lib/gtl/manual_constructor.h",
+    "lib/gtl/map_util.h",
+    "lib/gtl/stl_util.h",
+    "lib/gtl/top_n.h",
+    "lib/hash/hash.h",
+    "lib/io/inputbuffer.h",
+    "lib/io/iterator.h",
+    "lib/io/snappy/snappy_inputbuffer.h",
+    "lib/io/snappy/snappy_outputbuffer.h",
+    "lib/io/zlib_compression_options.h",
+    "lib/io/zlib_inputstream.h",
+    "lib/io/zlib_outputbuffer.h",
+    "lib/monitoring/collected_metrics.h",
+    "lib/monitoring/collection_registry.h",
+    "lib/monitoring/metric_def.h",
+    "lib/monitoring/mobile_counter.h",
+    "lib/monitoring/mobile_sampler.h",
+    "lib/png/png_io.h",
+    "lib/random/random.h",
+    "lib/random/random_distributions.h",
+    "lib/random/weighted_picker.h",
+    "lib/strings/base64.h",
+    "lib/strings/ordered_code.h",
+    "lib/strings/proto_text_util.h",
+    "lib/strings/scanner.h",
+    "lib/wav/wav_io.h",
+    "platform/demangle.h",
+    "platform/denormal.h",
+    "platform/host_info.h",
+    "platform/platform.h",
+    "platform/protobuf_internal.h",
+    "platform/setround.h",
+    "platform/tensor_coding.h",
+    "platform/tracing.h",
+]
+
 cc_library(
     name = "lib_internal",
     srcs = select({
-        "//tensorflow:windows": LIB_INTERNAL_WINDOWS_DEPS,
-        "//tensorflow:windows_msvc": LIB_INTERNAL_WINDOWS_DEPS,
-        "//conditions:default": glob(
-            [
-                "lib/**/*.h",
-                "lib/**/*.cc",
-                "platform/*.h",
-                "platform/*.cc",
-                "platform/profile_utils/**/*.h",
-                "platform/profile_utils/**/*.cc",
-                "framework/resource_handle.h",
-                "framework/resource_handle.cc",
-            ],
-            exclude = [
-                "**/*test*",
-                "lib/hash/crc32c_accelerate.cc",
-                "lib/gif/**/*",
-                "lib/jpeg/**/*",
-                "platform/gif.h",
-                "platform/jpeg.h",
-                "platform/**/env_time.cc",
-                "platform/**/cuda.h",
-                "platform/**/cuda_libdevice_path.cc",
-                "platform/**/stream_executor.h",
-            ],
-        ),
+        "//tensorflow:windows": LIB_INTERNAL_WINDOWS_H_DEPS,
+        "//tensorflow:windows_msvc": LIB_INTERNAL_WINDOWS_H_DEPS,
+        "//conditions:default": LIB_INTERNAL_DEFAULT_H_DEPS,
+    }),
+    hdrs = LIB_INTERNAL_HEADERS,
+    copts = tf_copts(),
+    defines = tf_additional_lib_defines() + [
+                  "SNAPPY",
+              ] + tf_additional_verbs_lib_defines() +
+              tf_additional_mpi_lib_defines(),
+    deps = [
+        "//tensorflow/core/platform/default/build_config:platformlib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "lib_internal_impl",
+    srcs = select({
+        "//tensorflow:windows": LIB_INTERNAL_WINDOWS_CC_DEPS,
+        "//tensorflow:windows_msvc": LIB_INTERNAL_WINDOWS_CC_DEPS,
+        "//conditions:default": LIB_INTERNAL_DEFAULT_CC_DEPS,
     }) + tf_additional_lib_srcs(
         exclude = [
             "**/*test*",
@@ -1291,47 +1375,7 @@ cc_library(
         # dependency.
         tf_additional_proto_srcs(),
     ),
-    hdrs = tf_additional_lib_hdrs() + [
-        "lib/core/blocking_counter.h",
-        "lib/core/refcount.h",
-        "lib/gtl/edit_distance.h",
-        "lib/gtl/int_type.h",
-        "lib/gtl/iterator_range.h",
-        "lib/gtl/manual_constructor.h",
-        "lib/gtl/map_util.h",
-        "lib/gtl/stl_util.h",
-        "lib/gtl/top_n.h",
-        "lib/hash/hash.h",
-        "lib/io/inputbuffer.h",
-        "lib/io/iterator.h",
-        "lib/io/snappy/snappy_inputbuffer.h",
-        "lib/io/snappy/snappy_outputbuffer.h",
-        "lib/io/zlib_compression_options.h",
-        "lib/io/zlib_inputstream.h",
-        "lib/io/zlib_outputbuffer.h",
-        "lib/monitoring/collected_metrics.h",
-        "lib/monitoring/collection_registry.h",
-        "lib/monitoring/metric_def.h",
-        "lib/monitoring/mobile_counter.h",
-        "lib/monitoring/mobile_sampler.h",
-        "lib/png/png_io.h",
-        "lib/random/random.h",
-        "lib/random/random_distributions.h",
-        "lib/random/weighted_picker.h",
-        "lib/strings/base64.h",
-        "lib/strings/ordered_code.h",
-        "lib/strings/proto_text_util.h",
-        "lib/strings/scanner.h",
-        "lib/wav/wav_io.h",
-        "platform/demangle.h",
-        "platform/denormal.h",
-        "platform/host_info.h",
-        "platform/platform.h",
-        "platform/protobuf_internal.h",
-        "platform/setround.h",
-        "platform/tensor_coding.h",
-        "platform/tracing.h",
-    ],
+    hdrs = LIB_INTERNAL_HEADERS,
     copts = tf_copts(),
     defines = tf_additional_lib_defines() + [
                   "SNAPPY",
@@ -1345,13 +1389,21 @@ cc_library(
         ],
     }),
     deps = tf_additional_lib_deps() + [
-        ":lib_hash_crc32c_accelerate_internal",
-        ":lib_proto_parsing",
-        ":protos_all_cc",
-        "//third_party/eigen3",
-        "//tensorflow/core/platform/default/build_config:platformlib",
         "@snappy",
         "@zlib_archive//:zlib",
+        ":lib_hash_crc32c_accelerate_internal",
+        ":lib_proto_parsing",
+        ":lib_internal",
+    ],
+)
+
+cc_binary(
+    name = "libtflib.so",
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        ":lib",
+        ":lib_internal_impl",
     ],
 )
 
@@ -1442,6 +1494,20 @@ cc_library(
     copts = tf_copts(),
 )
 
+FRAMEWORK_INTERNAL_HEADERS = [
+    "framework/op_segment.h",
+    "framework/rendezvous.h",  # only needed for tests
+    "framework/tensor_reference.h",
+    "framework/tracking_allocator.h",  # only needed for tests
+    "framework/unique_tensor_references.h",
+    "util/command_line_flags.h",
+    "util/env_var.h",
+    "util/equal_graph_def.h",
+    "util/presized_cuckoo_map.h",
+    "util/tensor_slice_set.h",
+    "util/tensor_slice_util.h",
+]
+
 tf_cuda_library(
     name = "framework_internal",
     srcs = glob(
@@ -1473,19 +1539,7 @@ tf_cuda_library(
             "util/memmapped_file_system_writer.h",
         ],
     }),
-    hdrs = [
-        "framework/op_segment.h",
-        "framework/rendezvous.h",  # only needed for tests
-        "framework/tensor_reference.h",
-        "framework/tracking_allocator.h",  # only needed for tests
-        "framework/unique_tensor_references.h",
-        "util/command_line_flags.h",
-        "util/env_var.h",
-        "util/equal_graph_def.h",
-        "util/presized_cuckoo_map.h",
-        "util/tensor_slice_set.h",
-        "util/tensor_slice_util.h",
-    ],
+    hdrs = FRAMEWORK_INTERNAL_HEADERS,
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
@@ -1495,8 +1549,8 @@ tf_cuda_library(
     ],
     deps = [
         ":framework_internal_headers_lib",
-        ":protos_all_cc",
         "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )
@@ -1506,7 +1560,6 @@ cc_header_only_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
         ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
     ],
@@ -1516,23 +1569,17 @@ tf_cuda_library(
     name = "framework_internal_impl",
     srcs = glob(
         [
-            "example/**/*.h",
             "example/**/*.cc",
-            "framework/**/*.h",
             "framework/**/*.cc",
-            "util/**/*.h",
             "util/**/*.cc",
         ] + [
-            "graph/edgeset.h",
             "graph/edgeset.cc",
-            "graph/graph.h",
             "graph/graph.cc",
         ],
         exclude = [
             "**/*test*",
             "**/*main.cc",
             "example/example_parser_configuration.*",
-            "util/reporter.h",
             "util/reporter.cc",
             "framework/fake_input.*",
             "framework/op_gen_lib.*",
@@ -1546,25 +1593,11 @@ tf_cuda_library(
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
-            "util/memmapped_file_system.h",
             "util/memmapped_file_system.cc",
-            "util/memmapped_file_system_writer.h",
             "util/memmapped_file_system_writer.cc",
         ],
-    }) + proto_text_hdrs_and_srcs.srcs,
-    hdrs = [
-        "framework/op_segment.h",
-        "framework/rendezvous.h",  # only needed for tests
-        "framework/tensor_reference.h",
-        "framework/tracking_allocator.h",  # only needed for tests
-        "framework/unique_tensor_references.h",
-        "util/command_line_flags.h",
-        "util/env_var.h",
-        "util/equal_graph_def.h",
-        "util/presized_cuckoo_map.h",
-        "util/tensor_slice_set.h",
-        "util/tensor_slice_util.h",
-    ] + proto_text_hdrs_and_srcs.hdrs,
+    }) + proto_text_hdrs_and_srcs.srcs + [":libtflib.so"],
+    hdrs = FRAMEWORK_INTERNAL_HEADERS,
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
@@ -1573,6 +1606,7 @@ tf_cuda_library(
         "-lm",
     ],
     deps = [
+        ":framework_internal",
         ":lib",
         ":lib_internal",
         #":framework_internal_headers_lib",

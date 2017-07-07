@@ -266,7 +266,10 @@ cc_library(
 
 cc_binary(
     name = "framework/test_file_system.so",
-    srcs = ["framework/test_file_system.cc"],
+    srcs = [
+        "framework/test_file_system.cc",
+        "//tensorflow/core:libframework.so",
+    ],
     copts = if_not_windows(["-Wno-sign-compare"]),
     linkopts = select({
         "//conditions:default": [
@@ -276,7 +279,8 @@ cc_binary(
     }),
     linkshared = 1,
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "@protobuf//:protobuf_headers",
     ],
 )

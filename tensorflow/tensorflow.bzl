@@ -342,6 +342,7 @@ def tf_gen_op_wrapper_py(name,
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
       deps=([
           clean_dep("//tensorflow/core:framework_internal_impl"),
+          clean_dep("//tensorflow/core:lib_internal_impl"),
           clean_dep("//tensorflow/python:python_op_gen_main"),
       ] + deps),
       visibility=[clean_dep("//tensorflow:internal")],)
@@ -411,7 +412,8 @@ def tf_cc_test(name,
       args=args,
       copts=tf_copts() + extra_copts,
       data=data,
-      deps=deps + [clean_dep("//tensorflow/core:framework_internal_impl")],
+      deps=deps + [clean_dep("//tensorflow/core:framework_internal_impl"),
+                   clean_dep("//tensorflow/core:lib_internal_impl")],
       linkopts=["-lpthread", "-lm"] + linkopts,
       linkstatic=linkstatic,
       tags=tags)
