@@ -70,7 +70,7 @@ class StructuralEnsemble(state_space_model.StateSpaceIndependentEnsemble):
 
   `observation_noise`, `level_noise`, `trend noise`, `seasonality_noise`, and
   `transient` are (typically scalar) Gaussian random variables whose variance is
-  learned from data, and that variance is not time dependant in this
+  learned from data, and that variance is not time dependent in this
   implementation. Level noise is optional due to its similarity with observation
   noise in some cases. Seasonality is enforced by constraining a full cycle of
   seasonal variables to have zero expectation, allowing seasonality to adapt

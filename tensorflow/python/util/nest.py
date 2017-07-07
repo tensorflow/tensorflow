@@ -180,7 +180,7 @@ def assert_same_structure(nest1, nest2, check_types=True):
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
     check_types: if `True` (default) types of sequences are checked as
-        well, incuding the keys of dictionaries. If set to `False`, for example
+        well, including the keys of dictionaries. If set to `False`, for example
         a list and a tuple of objects will look the same if they have the same
         size.
 
