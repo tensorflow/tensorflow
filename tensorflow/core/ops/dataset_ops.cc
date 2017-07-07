@@ -75,6 +75,17 @@ REGISTER_OP("ZipDataset")
 Creates a dataset that zips together `input_datasets`.
 )doc");
 
+REGISTER_OP("ConcatenateDataset")
+    .Input("input_dataset: resource")
+    .Input("another_dataset: resource")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that concatenates `input_dataset` with `another_dataset`.
+)doc");
+
 REGISTER_OP("RepeatDataset")
     .Input("input_dataset: resource")
     .Input("count: int64")

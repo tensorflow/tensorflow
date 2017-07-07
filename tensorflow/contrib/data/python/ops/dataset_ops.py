@@ -554,6 +554,32 @@ class Dataset(object):
     """
     return ZipDataset(datasets)
 
+  def concatenate(self, dataset):
+    """Creates a `Dataset` by concatenating given dataset with this dataset.
+
+    ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset.
+    a = { 1, 2, 3 }
+    b = { 4, 5, 6, 7 }
+
+    # Input dataset and dataset to be concatenated should have same
+    # nested structures and output types.
+    # c = { (8, 9), (10, 11), (12, 13) }
+    # d = { 14.0, 15.0, 16.0 }
+    # a.concatenate(c) and a.concatenate(d) would result in error.
+
+    a.concatenate(b) == { 1, 2, 3, 4, 5, 6, 7 }
+    ```
+
+    Args:
+      dataset: `Dataset` to be concatenated.
+
+    Returns:
+      A `Dataset`.
+    """
+    return ConcatenateDataset(self, dataset)
+
   @staticmethod
   def read_batch_features(file_pattern,
                           batch_size,
@@ -1036,6 +1062,45 @@ class ZipDataset(Dataset):
     return nest.pack_sequence_as(self._datasets, [
         ds.output_types for ds in nest.flatten(self._datasets)
     ])
+
+
+class ConcatenateDataset(Dataset):
+  """A `Dataset` that concatenates its input with given dataset."""
+
+  def __init__(self, input_dataset, dataset_to_concatenate):
+    """See `Dataset.concatenate()` for details."""
+    super(ConcatenateDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._dataset_to_concatenate = dataset_to_concatenate
+    nest.assert_same_structure(input_dataset.output_types,
+                               dataset_to_concatenate.output_types)
+    for a, b in zip(
+        nest.flatten(input_dataset.output_types),
+        nest.flatten(dataset_to_concatenate.output_types)):
+      if a != b:
+        raise TypeError(
+            "Two datasets to concatenate have different types %s and %s" %
+            (input_dataset.output_types, dataset_to_concatenate.output_types))
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.concatenate_dataset(
+        self._input_dataset.make_dataset_resource(),
+        self._dataset_to_concatenate.make_dataset_resource(),
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
+
+  @property
+  def output_shapes(self):
+    return nest.pack_sequence_as(self._input_dataset.output_shapes, [
+        ts1.most_specific_compatible_shape(ts2)
+        for (ts1, ts2) in zip(
+            nest.flatten(self._input_dataset.output_shapes),
+            nest.flatten(self._dataset_to_concatenate.output_shapes))
+    ])
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
 
 
 class RepeatDataset(Dataset):

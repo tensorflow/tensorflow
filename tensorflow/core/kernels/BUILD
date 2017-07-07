@@ -5521,6 +5521,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "concatenate_dataset_op",
+    srcs = ["concatenate_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "reader_dataset_ops",
     srcs = ["reader_dataset_ops.cc"],
     deps = [
@@ -5564,6 +5576,7 @@ tf_kernel_library(
     deps = [
         ":batch_dataset_op",
         ":cache_dataset_ops",
+        ":concatenate_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
