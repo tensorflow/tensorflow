@@ -229,9 +229,14 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
     poplar::program::Sequence seq;
     poplar::Tensor out = fn(graph, in0, in1, seq, inst->name());
 
-    out = out.reshape(PoplarShapeFromXlaShape(output_shape));
+    // Occasionally, due to an interplay of implicit broadcasting and
+    // arithmetic re-arrangement, the output of an op is larger than the inputs
+    // generate
+    if (ShapeUtil::ElementsIn(output_shape) != out.numElements()) {
+      TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+    }
 
-    TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+    out = out.reshape(PoplarShapeFromXlaShape(output_shape));
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 

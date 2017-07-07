@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/util/bcast.h"
 
 #include <poplar/Engine.hpp>
-#include <popstd/ActivationMapping.hpp>
+#include <popstd/TileMapping.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -85,7 +85,7 @@ AddPlainTensor(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
   out = graph.addTensor(poplar_type, dim, inst->name());
-  popstd::mapTensor(graph, out);
+  popstd::mapTensorLinearly(graph, out);
   return out;
 }
 

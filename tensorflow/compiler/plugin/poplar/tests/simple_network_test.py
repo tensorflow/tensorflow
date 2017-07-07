@@ -79,5 +79,32 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
                 self.assertAllClose(result,
                                     [[[1,2],[3,5],[6,7]]])
 
+    def testAlgebraicSimplificationWithBroadcastIssue(self):
+        # XLA re-arranges (a/b) / (c/d) -> (a*d) / (b*c)
+        # however the re-arranged graph doesn't take into account the
+        # broadcast:
+        #
+        # f32[32]{0} multiply(f32[] %convert.1, f32[] %reduce.1)
+        #
+        # It has an output which doesn't match it's inputs.  (and it doesn't
+        # have any meta-information either)
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                a = tf.placeholder(tf.float32, [])
+                b = tf.placeholder(tf.float32, [2])
+                c = tf.placeholder(tf.float32, [2])
+                d = tf.placeholder(tf.float32, [])
+                e = ( a / b ) / ( c / d )
+
+                fd = {
+                    a: 4.0,
+                    b: [1.0, 1.0],
+                    c: [4.0, 4.0],
+                    d: 1.0,
+                }
+                result = sess.run(e, fd)
+                self.assertAllClose(result,
+                                    [1.0, 1.0])
+
 if __name__ == "__main__":
     googletest.main()

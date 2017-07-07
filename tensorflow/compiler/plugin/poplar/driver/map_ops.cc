@@ -19,7 +19,6 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
-#include <popstd/ActivationMapping.hpp>
 
 namespace xla {
 namespace poplarplugin {

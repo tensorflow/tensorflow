@@ -11,7 +11,6 @@
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
 
-#include <popstd/ActivationMapping.hpp>
 #include <popconv/Convolution.hpp>
 
 #include <poplar/Graph.hpp>
