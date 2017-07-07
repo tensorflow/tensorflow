@@ -38,11 +38,23 @@ GrowStats::GrowStats(const TensorForestParams& params, int32 depth)
           ResolveParam(params.num_splits_to_consider(), depth)),
       num_outputs_(params.num_outputs()) {}
 
-void GrowStats::AddSplit(const decision_trees::BinaryNode& split) {
-  splits_.push_back(split);
-  evaluators_.emplace_back(
-      CreateBinaryDecisionNodeEvaluator(split, LEFT_INDEX, RIGHT_INDEX));
-  AddSplitStats();
+void GrowStats::AddSplit(const decision_trees::BinaryNode& split,
+                         const std::unique_ptr<TensorDataSet>& input_data,
+                         const InputTarget* target, int example) {
+  // It's possible that the split collection calls AddSplit, but we actually
+  // have all the splits we need and are just waiting for them to be fully
+  // initialized.
+  if (splits_.size() < num_splits_to_consider_) {
+    splits_.push_back(split);
+    evaluators_.emplace_back(
+        CreateBinaryDecisionNodeEvaluator(split, LEFT_INDEX, RIGHT_INDEX));
+    AddSplitStats(target, example);
+  }
+
+  if (input_data != nullptr && target != nullptr &&
+      params_.initialize_average_splits()) {
+    AdditionalInitializationExample(input_data, target, example);
+  }
 }
 
 void GrowStats::RemoveSplit(int split_num) {
@@ -116,6 +128,34 @@ ClassificationStats::ClassificationStats(const TensorForestParams& params,
       new random::PhiloxRandom(time_seed));
   rng_ = std::unique_ptr<random::SimplePhilox>(
       new random::SimplePhilox(single_rand_.get()));
+}
+
+void ClassificationStats::AdditionalInitializationExample(
+    const std::unique_ptr<TensorDataSet>& input_data, const InputTarget* target,
+    int example) {
+  const int32 new_target = target->GetTargetAsClassIndex(example, 0);
+  std::unordered_set<int> to_erase;
+  for (auto it = half_initialized_splits_.begin();
+       it != half_initialized_splits_.end(); ++it) {
+    if (it->second != new_target) {
+      auto& split = splits_[it->first];
+      if (split.has_inequality_left_child_test()) {
+        auto& test = split.inequality_left_child_test();
+        auto* thresh =
+            split.mutable_inequality_left_child_test()->mutable_threshold();
+        if (test.has_feature_id()) {
+          const float val =
+              input_data->GetExampleValue(example, test.feature_id());
+          thresh->set_float_value((thresh->float_value() + val) / 2);
+        }
+      }
+      to_erase.insert(it->first);
+    }
+  }
+
+  for (const int split_id : to_erase) {
+    half_initialized_splits_.erase(split_id);
+  }
 }
 
 bool ClassificationStats::IsFinished() const {
@@ -353,7 +393,7 @@ void DenseClassificationGrowStats::ExtractFromProto(const FertileSlot& slot) {
   // Candidate counts and splits.
   int split_num = 0;
   for (const auto& cand : slot.candidates()) {
-    AddSplit(cand.split());
+    AddSplit(cand.split(), nullptr, nullptr, -1);
     const auto& left_stats = cand.left_stats().classification().dense_counts();
     for (int i = 0; i < num_classes; ++i) {
       const float val = left_stats.value(i).float_value();
@@ -474,7 +514,7 @@ void SparseClassificationGrowStats::ExtractFromProto(const FertileSlot& slot) {
   // Candidate counts and splits.
   int split_num = 0;
   for (const auto& cand : slot.candidates()) {
-    AddSplit(cand.split());
+    AddSplit(cand.split(), nullptr, nullptr, -1);
     const auto& left_stats = cand.left_stats().classification().sparse_counts();
     for (auto const& entry : left_stats.sparse_value()) {
       const float val = entry.second.float_value();
@@ -622,7 +662,7 @@ void LeastSquaresRegressionGrowStats::ExtractFromProto(
   // Candidate counts and splits.
   int split_num = 0;
   for (const auto& cand : slot.candidates()) {
-    AddSplit(cand.split());
+    AddSplit(cand.split(), nullptr, nullptr, -1);
     const auto& sums = cand.left_stats().regression().mean_output();
     const auto& squares = cand.left_stats().regression().mean_output_squares();
     for (int i = 0; i < num_outputs; ++i) {

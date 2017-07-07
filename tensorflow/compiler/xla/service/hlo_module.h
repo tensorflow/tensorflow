@@ -124,13 +124,16 @@ class HloModule {
     return computation_name_uniquer_.GetUniqueName(prefix);
   }
 
+  // Returns the NameUniquer for uniquing instruction names in this module.
+  NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation);
 
   const string name_;
   HloModuleConfig config_;
-  HloComputation* entry_computation_;
+  HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 
   // Random number generator engine to use when generating random numbers per
@@ -144,8 +147,10 @@ class HloModule {
   bool has_entry_computation_handle_ = false;
   VersionedComputationHandle entry_computation_handle_;
 
-  // Unique name generator for computation names, which are unique per module.
-  NameUniquer computation_name_uniquer_;
+  // Unique name generator for computation and instruction names, which are
+  // unique per module.
+  NameUniquer computation_name_uniquer_{/*separator=*/"."};
+  NameUniquer instruction_name_uniquer_{/*separator=*/"."};
 };
 
 }  // namespace xla

@@ -138,7 +138,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | Command            | Syntax or Option | Explanation  | Example                   |
 |:-------------------|:---------------- |:------------ |:------------------------- |
 | **`lt`** | | **List dumped tensors.** | `lt` |
-| | `-n <name_pattern>` | List dumped tensors with names matching given regular-expression pattern. | `lt -n softmax.*` |
+| | `-n <name_pattern>` | List dumped tensors with names matching given regular-expression pattern. | `lt -n Softmax.*` |
 | | `-t <op_pattern>` | List dumped tensors with op types matching given regular-expression pattern. | `lt -t MatMul` |
 | | `s <sort_key>` | Sort the output by given `sort_key`, whose possible values are `timestamp` (default), `dump_size`, `op_type` and `tensor_name`. | `lt -s dump_size` |
 | | `-r` | Sort in reverse order. | `lt -r -s dump_size` |
@@ -164,7 +164,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-c` | Include recipients via control edges. | `lo -c -r hidden/Relu:0` |
 | **`ls`** | | **List Python source files involved in node creation.** | |
 | | `-p <path_pattern>` | Limit output to source files matching given regular-expression path pattern. | `ls -p .*debug_mnist.*` |
-| | `-n` | Limit output to node names matching given regular-expression pattern. | `ls -n softmax.*` |
+| | `-n` | Limit output to node names matching given regular-expression pattern. | `ls -n Softmax.*` |
 | **`ps`** | | **Print Python source file.** | |
 | | `ps <file_path>` | Print given Python source file source.py, with the lines annotated with the nodes created at each of them (if any). | `ps /path/to/source.py` |
 | | `-t` | Perform annotation with respect to Tensors, instead of the default, nodes. | `ps -t /path/to/source.py` |
@@ -174,7 +174,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `-n` | Execute through the next `Session.run` without debugging, and drop to CLI right before the run after that. | `run -n` |
 | | `-t <T>` | Execute `Session.run` `T - 1` times without debugging, followed by a run with debugging. Then drop to CLI right after the debugged run. | `run -t 10` |
 | | `-f <filter_name>` | Continue executing `Session.run` until any intermediate tensor triggers the specified Tensor filter (causes the filter to return `True`). | `run -f has_inf_or_nan` |
-| | `--node_name_filter <pattern>` | Execute the next `Session.run`, watching only nodes with names matching the given regular-expression pattern. | `run --node_name_filter softmax.*` |
+| | `--node_name_filter <pattern>` | Execute the next `Session.run`, watching only nodes with names matching the given regular-expression pattern. | `run --node_name_filter Softmax.*` |
 | | `--op_type_filter <pattern>` | Execute the next `Session.run`, watching only nodes with op types matching the given regular-expression pattern. | `run --op_type_filter Variable.*` |
 | | `--tensor_dtype_filter <pattern>` | Execute the next `Session.run`, dumping only Tensors with data types (`dtype`s) matching the given regular-expression pattern. | `run --tensor_dtype_filter int.*` |
 | **`ri`** | | **Display information about the run the current run, including fetches and feeds.** | `ri` |
@@ -543,7 +543,7 @@ The `watch_fn` argument accepts a `Callable` that allows you to configure what
 
 ### C++ and other languages
 
-If you model code is written in C++ or other languages, you can also
+If your model code is written in C++ or other languages, you can also
 modify the `debug_options` field of `RunOptions` to generate debug dumps that
 can be inspected offline. See
 [the proto definition](https://www.tensorflow.org/code/tensorflow/core/protobuf/debug.proto)
@@ -587,7 +587,7 @@ python -m tensorflow.python.debug.cli.offline_analyzer \
        graph to record the values of intermediate tensors. These nodes
        slow down the graph execution. If you are interested in profiling your
        model, check out
-       [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tfprof)
+       [tfprof](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler)
        and other profiling tools for TensorFlow.
 
 **Q**: _How do I link tfdbg against my `Session` in Bazel? Why do I see an

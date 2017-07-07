@@ -218,6 +218,39 @@ class FtrlOptimizerTest(XLATestCase):
         self.assertAllClose(np.array([-0.24059935, -0.46829352]), var0.eval())
         self.assertAllClose(np.array([-0.02406147, -0.04830509]), var1.eval())
 
+  def testFtrlWithL1_L2_L2Shrinkage(self):
+    """Test the new FTRL op with support for l2 shrinkage.
+
+    The addition of this parameter which places a constant pressure on weights
+    towards the origin causes the gradient descent trajectory to differ. The
+    weights will tend to have smaller magnitudes with this parameter set.
+    """
+    for dtype in self.float_types:
+      with self.test_session(), self.test_scope():
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([4.0, 3.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
+        opt = ftrl.FtrlOptimizer(
+            3.0,
+            initial_accumulator_value=0.1,
+            l1_regularization_strength=0.001,
+            l2_regularization_strength=2.0,
+            l2_shrinkage_regularization_strength=0.1)
+        ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        variables.global_variables_initializer().run()
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([4.0, 3.0], var1.eval())
+
+        # Run 10 steps FTRL
+        for _ in range(10):
+          ftrl_update.run()
+
+        # Validate updated params
+        self.assertAllClose(np.array([-0.21931979, -0.40642974]), var0.eval())
+        self.assertAllClose(np.array([-0.0282721, -0.07188385]), var1.eval())
+
   # When variables are initialized with Zero, FTRL-Proximal has two properties:
   # 1. Without L1&L2 but with fixed learning rate, FTRL-Proximal is identical
   # with GradientDescent.

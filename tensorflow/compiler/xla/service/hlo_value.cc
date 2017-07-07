@@ -45,7 +45,7 @@ const Shape& HloLocation::shape() const {
 string HloLocation::ToString() const {
   string index_str =
       ShapeUtil::IsTuple(instruction->shape()) ? (" " + index.ToString()) : "";
-  return StrCat(instruction->FullyQualifiedName(), index_str);
+  return StrCat(instruction->name(), index_str);
 }
 
 std::ostream& operator<<(std::ostream& out, const HloLocation& location) {
@@ -58,8 +58,7 @@ string HloUse::ToString() const {
       ShapeUtil::IsTuple(instruction->operand(operand_number)->shape())
           ? (" " + operand_index.ToString())
           : "";
-  return StrCat(instruction->FullyQualifiedName(), ", operand ", operand_number,
-                index_str);
+  return StrCat(instruction->name(), ", operand ", operand_number, index_str);
 }
 
 std::ostream& operator<<(std::ostream& out, const HloUse& use) {
@@ -90,8 +89,8 @@ string HloValue::ToShortString() const {
   string index_str = ShapeUtil::IsTuple(defining_instruction()->shape())
                          ? defining_index().ToString()
                          : "";
-  return StrCat(is_phi_ ? "PHI " : "",
-                defining_instruction()->FullyQualifiedName(), index_str);
+  return StrCat(is_phi_ ? "PHI " : "", defining_instruction()->name(),
+                index_str);
 }
 
 string HloValue::ToString(int indent) const {
