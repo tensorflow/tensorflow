@@ -26553,6 +26553,14 @@ op {
   }
 }
 op {
+  name: "StackCloseV2"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
   name: "StackPop"
   input_arg {
     name: "handle"
@@ -26567,6 +26575,22 @@ op {
     name: "elem_type"
     type: "type"
   }
+}
+op {
+  name: "StackPopV2"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "elem"
+    type_attr: "elem_type"
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+  }
+  is_stateful: true
 }
 op {
   name: "StackPush"
@@ -26594,6 +26618,56 @@ op {
       b: false
     }
   }
+}
+op {
+  name: "StackPushV2"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "elem"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "swap_memory"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StackV2"
+  input_arg {
+    name: "max_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+  }
+  attr {
+    name: "stack_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "Stage"

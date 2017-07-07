@@ -26770,14 +26770,12 @@ op {
   name: "Stack"
   output_arg {
     name: "handle"
-    description: "The handle to the stack."
     type: DT_STRING
     is_ref: true
   }
   attr {
     name: "elem_type"
     type: "type"
-    description: "The type of the elements on the stack."
   }
   attr {
     name: "stack_name"
@@ -26785,28 +26783,52 @@ op {
     default_value {
       s: ""
     }
-    description: "Overrides the name used for the temporary stack resource. Default\nvalue is the name of the \'Stack\' op (which is guaranteed unique)."
   }
-  summary: "A stack that produces elements in first-in last-out order."
+  summary: "Deprecated, use StackV2."
   is_stateful: true
 }
 op {
   name: "StackClose"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
   }
+  summary: "Deprecated, use StackCloseV2."
+}
+op {
+  name: "StackCloseV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
+  }
   summary: "Delete the stack from its resource container."
+  is_stateful: true
 }
 op {
   name: "StackPop"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "elem"
+    type_attr: "elem_type"
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+  }
+  summary: "Deprecated, use StackPopV2."
+}
+op {
+  name: "StackPopV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "elem"
@@ -26819,14 +26841,42 @@ op {
     description: "The type of the elem that is popped."
   }
   summary: "Pop the element at the top of the stack."
+  is_stateful: true
 }
 op {
   name: "StackPush"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "elem"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "swap_memory"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  summary: "Deprecated, use StackPushV2."
+}
+op {
+  name: "StackPushV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "elem"
@@ -26851,6 +26901,35 @@ op {
     description: "Swap `elem` to CPU. Default to false."
   }
   summary: "Push an element onto the stack."
+  is_stateful: true
+}
+op {
+  name: "StackV2"
+  input_arg {
+    name: "max_size"
+    description: "The maximum size of the stack if non-negative. If negative, the stack\nsize is unlimited."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle to the stack."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+    description: "The type of the elements on the stack."
+  }
+  attr {
+    name: "stack_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary stack resource. Default\nvalue is the name of the \'Stack\' op (which is guaranteed unique)."
+  }
+  summary: "A stack that produces elements in first-in last-out order."
+  is_stateful: true
 }
 op {
   name: "Stage"
