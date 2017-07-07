@@ -266,7 +266,12 @@ class TensorFlowTestCase(googletest.TestCase):
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
-    ops.reset_default_graph()
+    # Note: we avoid calling ops.reset_default_graph() here due to the fact that
+    # under certain Python versions, test methods that error out from within
+    # nested graph contexts may leave ops._default_graph_stack non-empty,
+    # which would cause ops.reset_default_graph() to throw an exception if it
+    # were used in the following line.
+    ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
 
   def tearDown(self):
