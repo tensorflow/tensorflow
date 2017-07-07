@@ -339,6 +339,10 @@ port::StatusOr<poplar::Tensor>
 BroadcastTensor(const poplar::Tensor &in,
                 const xla::Shape& out,
                 const std::vector<int64>& dimensions) {
+  if (PoplarShapeMatchesXLAShape(in, out)) {
+    return in;
+  }
+
   tensorflow::BCast::Vec bcast_shape =
           convert_array<tensorflow::BCast::Vec>(out.dimensions());
 
