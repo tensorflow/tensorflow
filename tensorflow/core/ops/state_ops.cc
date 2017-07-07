@@ -18,7 +18,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
@@ -30,11 +29,11 @@ REGISTER_OP("VariableV2")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      TensorShapeProto shape_proto;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(
-          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
       c->set_output(0, output_shape);
       return Status::OK();
     })
@@ -72,10 +71,8 @@ REGISTER_OP("Variable")
         return shape_inference::UnknownShape(c);
       }
 
-      TensorShapeProto shape_proto;
-      shape.AsProto(&shape_proto);
       ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);
       return Status::OK();
     })
@@ -103,10 +100,10 @@ REGISTER_OP("TemporaryVariable")
     .Attr("var_name: string = ''")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      TensorShapeProto shape_proto;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &output));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
       c->set_output(0, output);
       return Status::OK();
     })
@@ -516,7 +513,7 @@ The resulting update to ref would look like this:
 
     [1, 11, 3, 10, 9, 6, 7, 12]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -573,7 +570,7 @@ The resulting update to ref would look like this:
 
     [1, 13, 3, 14, 14, 6, 7, 20]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -630,7 +627,7 @@ The resulting update to ref would look like this:
 
     [1, -9, 3, -6, -4, 6, 7, -4]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
+See @{tf.scatter_nd} for more details about how to make updates to
 slices.
 
 ref: A mutable Tensor. Should be from a Variable node.
@@ -690,7 +687,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 
 //     [1, 22, 3, 40, 45, 6, 7, 96]
 
-// See [tf.scatter_nd](#scatter_nd) for more details about how to make updates
+// See @{tf.scatter_nd} for more details about how to make updates
 // to slices.
 
 // ref: A mutable Tensor. Should be from a Variable node.
@@ -746,7 +743,7 @@ output_ref: Same as ref. Returned as a convenience for operations that want
 
 //     [10, 5, 30, 13, 25, 60, 70, 16]
 
-// See [tf.scatter_nd](#scatter_nd) for more details about how to make updates
+// See @{tf.scatter_nd} for more details about how to make updates
 // to slices.
 
 // ref: A mutable Tensor. Should be from a Variable node.

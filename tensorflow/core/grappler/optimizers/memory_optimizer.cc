@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -416,7 +417,7 @@ void RecomputeSubgraph(
 }
 
 void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
-                                GraphDef* graph) {
+                                GraphDef* graph, const GrapplerItem& item) {
   // The topological numberings and NodeMap will be stale as soon as we start
   // modifying the graph in RecomputeSubgraph. However, RecomputeSubgraph only
   // looks up nodes which were in the original graph, and preserves the graph
@@ -427,6 +428,12 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
   TopologicalSort(graph);
   NodeMap node_map(graph);
   std::vector<RecomputedSubGraph> recomputed_subgraphs;
+  // Do not recompute nodes which are fed, since the recomputed node would not
+  // take on the fed value (i.e. gradients would be incorrect).
+  std::unordered_set<string> feeds;
+  for (const auto& feed : item.feed) {
+    feeds.insert(NodeName(feed.first));
+  }
   if (optimization_level == RewriterConfig::HEURISTICS) {
     // TODO(allenl): Handle ResNet-like architectures better. Right now all of
     // the cheap forward ops get grouped into a single subgraph which must
@@ -435,15 +442,17 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
     std::unordered_set<string> cheap_to_recompute_ops =
         GetCheapToRecomputeOps();
     recomputed_subgraphs = GetOpGroupsToRecompute(
-        graph, node_map, [&cheap_to_recompute_ops](const NodeDef& node) {
-          return !IsTargetOp(node) &&
+        graph, node_map,
+        [&cheap_to_recompute_ops, &feeds](const NodeDef& node) {
+          return !IsTargetOp(node) && feeds.count(node.name()) == 0 &&
                  (cheap_to_recompute_ops.count(node.op()) > 0 ||
                   node.attr().count(kRecomputeHint) > 0);
         });
   } else {  // optimization_level == RewriterConfig::MANUAL
     recomputed_subgraphs =
-        GetOpGroupsToRecompute(graph, node_map, [](const NodeDef& node) {
-          return !IsTargetOp(node) && node.attr().count(kRecomputeHint) > 0;
+        GetOpGroupsToRecompute(graph, node_map, [&feeds](const NodeDef& node) {
+          return !IsTargetOp(node) && feeds.count(node.name()) == 0 &&
+                 node.attr().count(kRecomputeHint) > 0;
         });
   }
   if (!recomputed_subgraphs.empty()) {
@@ -587,7 +596,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
 
-  RecomputationRewritingPass(optimization_level_, optimized_graph);
+  RecomputationRewritingPass(optimization_level_, optimized_graph, item);
 
   // Figure out what needs to be swapped;
   std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;

@@ -22,7 +22,6 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/buffer_assignment_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
@@ -328,8 +327,9 @@ void BufferAssignment::CombineTempAllocations() {
       // Each temp allocation is placed end-to-end, accounting for alignment.
       // The offset of each buffer in the combined allocation is computed from
       // the base offset of the allocation.
+      int64 alignment = color_alignment_(color);
       const int64 base =
-          RoundUpToNearest(combined_allocation->size(), alignment_);
+          RoundUpToNearest(combined_allocation->size(), alignment);
       combined_allocation->set_size(base + temp_allocation.size());
       for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
         const LogicalBuffer* buffer = buffer_offset_size.first;
@@ -583,12 +583,13 @@ Status GatherComputationsByAllocationType(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+    LogicalBuffer::SizeFunction buffer_size,
+    LogicalBuffer::AlignmentFunction color_alignment,
     bool allow_input_output_aliasing, TuplePointsToAnalysis::Colorer colorer) {
-  BufferAssigner assigner(alignment, allow_input_output_aliasing,
-                          std::move(colorer));
+  BufferAssigner assigner(allow_input_output_aliasing, std::move(colorer));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
-                                   std::move(buffer_size));
+                                   std::move(buffer_size),
+                                   std::move(color_alignment));
 }
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
@@ -670,7 +671,8 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 }
 
 Status BufferAssigner::AssignBuffersForComputation(
-    const HloComputation* computation, bool is_thread_local,
+    const HloComputation* computation, const DebugOptions& debug_options,
+    bool is_thread_local,
     const FlatSet<const LogicalBuffer*>& colocated_buffers,
     const FlatSet<BufferAllocation::Index>& colocated_allocations,
     FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>*
@@ -794,10 +796,7 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    legacy_flags::BufferAssignmentFlags* flags =
-        legacy_flags::GetBufferAssignmentFlags();
-    if (!flags->xla_enable_buffer_reuse || is_thread_local ||
-        instruction->opcode() == HloOpcode::kCustomCall) {
+    if (is_thread_local || instruction->opcode() == HloOpcode::kCustomCall) {
       // Custom call operations never have reusable buffers. Also we do not
       // reuse thread-local buffers for now, because they are dynamically
       // allocated and their lifetimes are hard to compute.
@@ -946,11 +945,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     }
     auto color_map = SplitBuffersByColor(all_buffers_to_assign);
     for (auto& single_colored_set : color_map) {
-      VLOG(2) << "Simulating heap for color " << single_colored_set.first;
+      auto color = single_colored_set.first;
+      VLOG(2) << "Simulating heap for color " << color;
+      int64 alignment = assignment->color_alignment_(color);
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
           HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                 MakeUnique<LazyBestFitHeap>(alignment_)),
+                                 MakeUnique<LazyBestFitHeap>(alignment)),
                              assignment->module(), module_sequence,
                              assignment->points_to_analysis(),
                              assignment->buffer_size_,
@@ -971,11 +972,13 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       CHECK(instruction_sequence != nullptr) << computation->name();
       auto color_map = SplitBuffersByColor(buffers_to_assign);
       for (auto& single_colored_set : color_map) {
-        VLOG(2) << "Simulating heap for color " << single_colored_set.first;
+        auto color = single_colored_set.first;
+        VLOG(2) << "Simulating heap for color " << color;
+        int64 alignment = assignment->color_alignment_(color);
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                   MakeUnique<LazyBestFitHeap>(alignment_)),
+                                   MakeUnique<LazyBestFitHeap>(alignment)),
                                *computation, *instruction_sequence,
                                assignment->points_to_analysis(),
                                assignment->buffer_size_,
@@ -1324,7 +1327,8 @@ void BufferAssigner::AssignColocatedBufferSets(
 
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size) {
+    LogicalBuffer::SizeFunction buffer_size,
+    LogicalBuffer::AlignmentFunction color_alignment) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
                       BufferLiveness::Run(module, std::move(hlo_ordering)));
 
@@ -1334,8 +1338,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
 
   // Can't use MakeUnique because BufferAssignment constructor is private.
-  std::unique_ptr<BufferAssignment> assignment(new BufferAssignment(
-      module, std::move(liveness), alignment_, std::move(buffer_size)));
+  std::unique_ptr<BufferAssignment> assignment(
+      new BufferAssignment(module, std::move(liveness), std::move(buffer_size),
+                           std::move(color_alignment)));
 
   // Assign buffers with the tightest constraints first (colocated buffer sets).
   // Once b/32491382 enables module-level liveness analysis, we may be able
@@ -1364,9 +1369,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, /*is_thread_local=*/false, colocated_buffers,
-        colocated_allocations, &buffers_to_assign_sequentially,
-        assignment.get()));
+        computation, module->config().debug_options(),
+        /*is_thread_local=*/false, colocated_buffers, colocated_allocations,
+        &buffers_to_assign_sequentially, assignment.get()));
   }
   // Assign buffers with sequential ordering, if any. If all global computations
   // are sequential, we can run heap simuation on the whole module, which
@@ -1382,9 +1387,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   for (auto* computation : thread_local_computations) {
     TF_RET_CHECK(computation != module->entry_computation());
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, /*is_thread_local=*/true, colocated_buffers,
-        colocated_allocations, /*buffers_to_assign_sequentially=*/nullptr,
-        assignment.get()));
+        computation, module->config().debug_options(),
+        /*is_thread_local=*/true, colocated_buffers, colocated_allocations,
+        /*buffers_to_assign_sequentially=*/nullptr, assignment.get()));
   }
 
   // Mark all buffers which may be live out of the entry computation as

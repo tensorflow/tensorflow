@@ -74,10 +74,10 @@ class HloBuffer {
  public:
   using Id = int64;
 
-  HloBuffer(int64 id) : id_(id) {}
+  HloBuffer(Id id) : id_(id) {}
 
   // Return the unique identifier for this HloBuffer.
-  int64 id() const { return id_; }
+  Id id() const { return id_; }
 
   // Add a value to the set of values held by this buffer. Also adds the
   // HloLocations of the value to the locations vector of the buffer. If the
@@ -101,7 +101,7 @@ class HloBuffer {
   // Unique identifier for this HloBuffer.
   const Id id_;
 
-  // The set of values contained in the this buffer.
+  // The set of values contained in this buffer.
   std::vector<HloValue::Id> value_ids_;
 
   // The set of locations where this buffer is used.

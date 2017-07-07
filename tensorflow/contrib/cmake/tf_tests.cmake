@@ -141,17 +141,18 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/debug/lib/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
+    "${tensorflow_source_dir}/tensorflow/python/profiler/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/profiler/internal/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/stateless/python/kernel_tests/*_test.py"
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/internal/*_test.py"
   )
 
   # exclude the ones we don't want
@@ -165,11 +166,15 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/__init__.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/resource_variable_ops_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/profiler/pprof_profiler_test.py"
+    # flaky test
+    "${tensorflow_source_dir}/tensorflow/python/profiler/internal/run_metadata_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
     # requires scipy
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
-    # flaky test
+    # flaky tests
+    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/internal/run_metadata_test.py"
   )
   if (WIN32)
@@ -377,9 +382,9 @@ if (tensorflow_BUILD_CC_TESTS)
     ${tf_cc_saved_model_test_srcs}
   )
 
-  file(GLOB tf_tools_tfprof_test_srcs
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/*_test.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/advisor/*_test.cc"
+  file(GLOB tf_core_profiler_test_srcs
+    "${tensorflow_source_dir}/tensorflow/core/profiler/internal/*_test.cc"
+    "${tensorflow_source_dir}/tensorflow/core/profiler/internal/advisor/*_test.cc"
   )
 
   set(tf_test_lib tf_test_lib)
@@ -427,13 +432,13 @@ if (tensorflow_BUILD_CC_TESTS)
     LIBS ${tf_test_libs}
   )
 
-  file(GLOB_RECURSE tf_tools_tfprof_test_data
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/testdata/*"
+  file(GLOB_RECURSE tf_core_profiler_test_data
+    "${tensorflow_source_dir}/tensorflow/core/profiler/testdata/*"
   )
 
   AddTests(
-    SOURCES ${tf_tools_tfprof_test_srcs}
-    DATA ${tf_tools_tfprof_test_data}
+    SOURCES ${tf_core_profiler_test_srcs}
+    DATA ${tf_core_profiler_test_data}
     OBJECTS ${tf_obj_test}
     LIBS ${tf_test_libs}
   )

@@ -91,6 +91,7 @@ cc_library(
     deps = [
         ":ir_array",
         ":llvm_loop",
+        ":ops",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

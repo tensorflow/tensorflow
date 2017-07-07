@@ -145,9 +145,8 @@ bool EffectivelyUnary(HloInstruction* hlo) {
 }  // namespace
 
 bool InstructionFusion::CanFuseOnAllPaths(
-    const HloComputation::ReachabilityMap& reachability_map,
-    HloInstruction* producer, HloInstruction* consumer,
-    DoNotFuseSet* do_not_fuse) {
+    const HloReachabilityMap& reachability_map, HloInstruction* producer,
+    HloInstruction* consumer, DoNotFuseSet* do_not_fuse) {
   auto could_fuse_on_all_paths = [&] {
     // First check to see if we have already marked this producer as infeasible
     // to fuse into consumer.

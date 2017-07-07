@@ -355,12 +355,12 @@ class BufferAssignment {
 
   explicit BufferAssignment(const HloModule* module,
                             std::unique_ptr<BufferLiveness> liveness,
-                            int64 alignment,
-                            LogicalBuffer::SizeFunction buffer_size)
+                            LogicalBuffer::SizeFunction buffer_size,
+                            LogicalBuffer::AlignmentFunction color_alignment)
       : module_(module),
         liveness_(std::move(liveness)),
-        alignment_(alignment),
-        buffer_size_(std::move(buffer_size)) {}
+        buffer_size_(std::move(buffer_size)),
+        color_alignment_(std::move(color_alignment)) {}
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
@@ -406,10 +406,12 @@ class BufferAssignment {
 
   const HloModule* module_;
   const std::unique_ptr<BufferLiveness> liveness_;
-  const int64 alignment_;
 
   // Function which returns the buffer size for a given logical buffer (shape).
   LogicalBuffer::SizeFunction buffer_size_;
+
+  // Function which returns the alignment for a given logical buffer color.
+  LogicalBuffer::AlignmentFunction color_alignment_;
 
   Stats stats_;
   std::vector<HeapSimulatorTrace> heap_simulator_traces_;
@@ -421,36 +423,38 @@ class BufferAssignment {
 class BufferAssigner {
  public:
   // Build and return a BufferAssignment for the given module. The given
-  // HloOrdering is used to determine buffer liveness. buffer_size is a function
-  // which returns the size of a LogicalBuffer. Alignment is the minimum
-  // alignment of any buffer. allow_input_output_aliasing specifies whether
-  // input buffer are allowed to be reused as outbut buffers by the client code.
+  // HloOrdering is used to determine buffer liveness. buffer_size and
+  // color_alignment are functions which returns the size and alignment of a
+  // LogicalBuffer.  allow_input_output_aliasing specifies whether input buffer
+  // are allowed to be reused as outbut buffers by the client code.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+      LogicalBuffer::SizeFunction buffer_size,
+      LogicalBuffer::AlignmentFunction color_alignment,
       bool allow_input_output_aliasing = false,
       TuplePointsToAnalysis::Colorer colorer =
           TuplePointsToAnalysis::DefaultColorer());
 
  private:
-  BufferAssigner(int64 alignment, bool allow_input_output_aliasing,
+  BufferAssigner(bool allow_input_output_aliasing,
                  TuplePointsToAnalysis::Colorer colorer)
-      : alignment_(alignment),
-        allow_input_output_aliasing_(allow_input_output_aliasing),
+      : allow_input_output_aliasing_(allow_input_output_aliasing),
         colorer_(colorer) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
   StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      LogicalBuffer::SizeFunction buffer_size);
+      LogicalBuffer::SizeFunction buffer_size,
+      LogicalBuffer::AlignmentFunction color_alignment);
 
   // Assigns buffers to the instructions in the given computation. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
   // true, then all assigned buffers have the is_thread_local flag set to
   // true.
   Status AssignBuffersForComputation(
-      const HloComputation* computation, bool is_thread_local,
+      const HloComputation* computation, const DebugOptions& debug_options,
+      bool is_thread_local,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
       const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
           colocated_allocations,
@@ -528,9 +532,6 @@ class BufferAssigner {
                            LogicalBuffer::Color::Hasher>
   SplitBuffersByColor(
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& buffers);
-
-  // Minimum alignment of any buffer.
-  int64 alignment_;
 
   // If true, buffer assignments assumes that input parameter buffers and output
   // buffers can be shared if their sizes match.

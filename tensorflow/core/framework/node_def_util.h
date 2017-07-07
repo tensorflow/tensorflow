@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -30,8 +30,9 @@ namespace tensorflow {
 
 class Node;
 
-// We forward declare NodeDef so that kernels don't need to depend on protos
+// We forward declare protos so that kernels don't need to depend on them
 class NodeDef;
+class OpDef;
 
 // Name of the attribute used to encode node colocation constraints.
 //

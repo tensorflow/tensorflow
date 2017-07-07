@@ -184,6 +184,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_hlo_graph_addresses(flag_values->xla_hlo_graph_addresses);
   options.set_xla_hlo_graph_layout(flag_values->xla_hlo_graph_layout);
   options.set_xla_hlo_graph_path(flag_values->xla_hlo_graph_path);
+  options.set_xla_hlo_dump_as_graphdef(flag_values->xla_hlo_dump_as_graphdef);
   options.set_xla_log_hlo_text(flag_values->xla_log_hlo_text);
   options.set_xla_generate_hlo_text_to(flag_values->xla_generate_hlo_text_to);
 
@@ -202,6 +203,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_eliminate_hlo_implicit_broadcast(
       flag_values->xla_eliminate_hlo_implicit_broadcast);
   options.set_xla_dump_debug_json_to(flag_values->xla_dump_debug_json_to);
+
   options.set_xla_cpu_multi_thread_eigen(
       flag_values->xla_cpu_multi_thread_eigen);
   options.set_xla_gpu_cuda_data_dir(flag_values->xla_gpu_cuda_data_dir);

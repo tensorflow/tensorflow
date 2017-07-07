@@ -66,6 +66,41 @@ class DeterminantOpTest(test.TestCase):
     # A multidimensional batch of 2x2 matrices
     self._compareDeterminant(np.random.rand(3, 4, 5, 2, 2).astype(np.float64))
 
+  def testBasicComplex64(self):
+    # 2x2 matrices
+    self._compareDeterminant(
+        np.array([[2., 3.], [3., 4.]]).astype(np.complex64))
+    self._compareDeterminant(
+        np.array([[0., 0.], [0., 0.]]).astype(np.complex64))
+    self._compareDeterminant(
+        np.array([[1. + 1.j, 1. - 1.j], [-1. + 1.j, -1. - 1.j]]).astype(
+            np.complex64))
+    # 5x5 matrices (Eigen forces LU decomposition)
+    self._compareDeterminant(
+        np.array([[2., 3., 4., 5., 6.], [3., 4., 9., 2., 0.], [
+            2., 5., 8., 3., 8.
+        ], [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.complex64))
+    # A multidimensional batch of 2x2 matrices
+    self._compareDeterminant(np.random.rand(3, 4, 5, 2, 2).astype(np.complex64))
+
+  def testBasicComplex128(self):
+    # 2x2 matrices
+    self._compareDeterminant(
+        np.array([[2., 3.], [3., 4.]]).astype(np.complex128))
+    self._compareDeterminant(
+        np.array([[0., 0.], [0., 0.]]).astype(np.complex128))
+    self._compareDeterminant(
+        np.array([[1. + 1.j, 1. - 1.j], [-1. + 1.j, -1. - 1.j]]).astype(
+            np.complex128))
+    # 5x5 matrices (Eigen forces LU decomposition)
+    self._compareDeterminant(
+        np.array([[2., 3., 4., 5., 6.], [3., 4., 9., 2., 0.], [
+            2., 5., 8., 3., 8.
+        ], [1., 6., 7., 4., 7.], [2., 3., 4., 5., 6.]]).astype(np.complex128))
+    # A multidimensional batch of 2x2 matrices
+    self._compareDeterminant(
+        np.random.rand(3, 4, 5, 2, 2).astype(np.complex128))
+
   def testOverflow(self):
     max_double = np.finfo("d").max
     huge_matrix = np.array([[max_double, 0.0], [0.0, max_double]])

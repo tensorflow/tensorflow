@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -38,6 +39,10 @@ ShapeRefiner::ShapeRefiner(int graph_def_version,
     : graph_def_version_(graph_def_version),
       ops_registry_(ops),
       graph_runner_(Env::Default()) {}
+
+ShapeRefiner::ShapeRefiner(const VersionDef& versions,
+                           const OpRegistryInterface* ops)
+    : ShapeRefiner(versions.producer(), ops) {}
 
 ShapeRefiner::~ShapeRefiner() {
   // The lifetime of the tensors are bound to the GraphRunner, so the tensors

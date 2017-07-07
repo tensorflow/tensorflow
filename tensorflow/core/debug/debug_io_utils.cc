@@ -27,7 +27,9 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -44,27 +46,36 @@ namespace tensorflow {
 
 namespace {
 
-// Encapsulate the tensor value inside a Summary proto, and then inside an
-// Event proto.
-Event WrapTensorAsEvent(const DebugNodeKey& debug_node_key,
-                        const Tensor& tensor, const uint64 wall_time_us) {
+// Creates an Event proto representing a chunk of a Tensor. This method only
+// populates the field of the Event proto that represent the envelope
+// informaion (e.g., timestmap, device_name, num_chunks, chunk_index, dtype,
+// shape). It does not set the value.tensor field, which should be set by the
+// caller separately.
+Event PrepareChunkEventProto(const DebugNodeKey& debug_node_key,
+                             const uint64 wall_time_us, const size_t num_chunks,
+                             const size_t chunk_index,
+                             const DataType& tensor_dtype,
+                             const TensorShapeProto& tensor_shape) {
   Event event;
   event.set_wall_time(static_cast<double>(wall_time_us));
-  Summary::Value* summ_val = event.mutable_summary()->add_value();
+  Summary::Value* value = event.mutable_summary()->add_value();
 
   // Create the debug node_name in the Summary proto.
   // For example, if tensor_name = "foo/node_a:0", and the debug_op is
   // "DebugIdentity", the debug node_name in the Summary proto will be
   // "foo/node_a:0:DebugIdentity".
-  summ_val->set_node_name(debug_node_key.debug_node_name);
+  value->set_node_name(debug_node_key.debug_node_name);
 
-  // Tag by the node name. This allows TensorBoard to quickly fetch data per op.
-  summ_val->set_tag(debug_node_key.node_name);
+  // Tag by the node name. This allows TensorBoard to quickly fetch data
+  // per op.
+  value->set_tag(debug_node_key.node_name);
 
   // Store data within debugger metadata to be stored for each event.
   third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
   metadata.set_device(debug_node_key.device_name);
   metadata.set_output_slot(debug_node_key.output_slot);
+  metadata.set_num_chunks(num_chunks);
+  metadata.set_chunk_index(chunk_index);
 
   // Encode the data in JSON.
   string json_output;
@@ -75,8 +86,8 @@ Event WrapTensorAsEvent(const DebugNodeKey& debug_node_key,
   if (status.ok()) {
     // Store summary metadata. Set the plugin to use this data as "debugger".
     SummaryMetadata::PluginData* plugin_data =
-        summ_val->mutable_metadata()->add_plugin_data();
-    plugin_data->set_plugin_name("debugger");
+        value->mutable_metadata()->add_plugin_data();
+    plugin_data->set_plugin_name(DebugIO::kDebuggerPluginName);
     plugin_data->set_content(json_output);
   } else {
     LOG(WARNING) << "Failed to convert DebuggerEventMetadata proto to JSON. "
@@ -84,19 +95,129 @@ Event WrapTensorAsEvent(const DebugNodeKey& debug_node_key,
                  << ".";
   }
 
-  if (tensor.dtype() == DT_STRING) {
-    // Treat DT_STRING specially, so that tensor_util.MakeNdarray can convert
-    // the TensorProto to string-type numpy array. MakeNdarray does not work
-    // with strings encoded by AsProtoTensorContent() in tensor_content.
-    tensor.AsProtoField(summ_val->mutable_tensor());
-  } else {
-    tensor.AsProtoTensorContent(summ_val->mutable_tensor());
-  }
+  value->mutable_tensor()->set_dtype(tensor_dtype);
+  *value->mutable_tensor()->mutable_tensor_shape() = tensor_shape;
 
   return event;
 }
 
-// Append an underscore and a timestamp to a file path. If the path already
+// Translates the length of a string to number of bytes when the string is
+// encoded as bytes in protobuf. Note that this makes a conservative estimate
+// (i.e., an estimate that is usually too large, but never too small under the
+// gRPC message size limit) of the Varint-encoded length, to workaround the lack
+// of a portable length function.
+const size_t StringValMaxBytesInProto(const string& str) {
+#if defined(PLATFORM_GOOGLE)
+  return str.size() + DebugGrpcIO::kGrpcMaxVarintLengthSize;
+#else
+  return str.size();
+#endif
+}
+
+// Breaks a string Tensor (represented as a TensorProto) as a vector of Event
+// protos.
+Status WrapStringTensorAsEvents(const DebugNodeKey& debug_node_key,
+                                const uint64 wall_time_us,
+                                const size_t chunk_size_limit,
+                                TensorProto* tensor_proto,
+                                std::vector<Event>* events) {
+  const protobuf::RepeatedPtrField<string>& strs = tensor_proto->string_val();
+  const size_t num_strs = strs.size();
+  const size_t chunk_size_ub = chunk_size_limit > 0
+                                   ? chunk_size_limit
+                                   : std::numeric_limits<size_t>::max();
+
+  // E.g., if cutoffs is {j, k, l}, the chunks will have index ranges:
+  //   [0:a), [a:b), [c:<end>].
+  std::vector<size_t> cutoffs;
+  size_t chunk_size = 0;
+  for (size_t i = 0; i < num_strs; ++i) {
+    // Take into account the extra bytes in proto buffer.
+    if (StringValMaxBytesInProto(strs[i]) > chunk_size_ub) {
+      return errors::FailedPrecondition(
+          "string value at index ", i, " from debug node ",
+          debug_node_key.debug_node_name,
+          " does not fit gRPC message size limit (", chunk_size_ub, ")");
+    }
+    if (chunk_size + StringValMaxBytesInProto(strs[i]) > chunk_size_ub) {
+      cutoffs.push_back(i);
+      chunk_size = 0;
+    }
+    chunk_size += StringValMaxBytesInProto(strs[i]);
+  }
+  cutoffs.push_back(num_strs);
+  const size_t num_chunks = cutoffs.size();
+
+  for (size_t i = 0; i < num_chunks; ++i) {
+    Event event = PrepareChunkEventProto(debug_node_key, wall_time_us,
+                                         num_chunks, i, tensor_proto->dtype(),
+                                         tensor_proto->tensor_shape());
+    Summary::Value* value = event.mutable_summary()->mutable_value(0);
+
+    if (cutoffs.size() == 1) {
+      value->mutable_tensor()->mutable_string_val()->Swap(
+          tensor_proto->mutable_string_val());
+    } else {
+      const size_t begin = (i == 0) ? 0 : cutoffs[i - 1];
+      const size_t end = cutoffs[i];
+      for (size_t j = begin; j < end; ++j) {
+        value->mutable_tensor()->add_string_val(strs[j]);
+      }
+    }
+
+    events->push_back(std::move(event));
+  }
+
+  return Status::OK();
+}
+
+// Encapsulates the tensor value inside a vector of Event protos. Large tensors
+// are broken up to multiple protos to fit the chunk_size_limit. In each Event
+// proto the field summary.tensor carries the content of the tensor.
+// If chunk_size_limit <= 0, the tensor will not be broken into chunks, i.e., a
+// length-1 vector will be returned, regardless of the size of the tensor.
+Status WrapTensorAsEvents(const DebugNodeKey& debug_node_key,
+                          const Tensor& tensor, const uint64 wall_time_us,
+                          const size_t chunk_size_limit,
+                          std::vector<Event>* events) {
+  TensorProto tensor_proto;
+  if (tensor.dtype() == DT_STRING) {
+    // Treat DT_STRING specially, so that tensor_util.MakeNdarray in Python can
+    // convert the TensorProto to string-type numpy array. MakeNdarray does not
+    // work with strings encoded by AsProtoTensorContent() in tensor_content.
+    tensor.AsProtoField(&tensor_proto);
+
+    TF_RETURN_IF_ERROR(WrapStringTensorAsEvents(
+        debug_node_key, wall_time_us, chunk_size_limit, &tensor_proto, events));
+  } else {
+    tensor.AsProtoTensorContent(&tensor_proto);
+
+    const size_t total_length = tensor_proto.tensor_content().size();
+    const size_t chunk_size_ub =
+        chunk_size_limit > 0 ? chunk_size_limit : total_length;
+    const size_t num_chunks =
+        (total_length == 0)
+            ? 1
+            : (total_length + chunk_size_ub - 1) / chunk_size_ub;
+    for (size_t i = 0; i < num_chunks; ++i) {
+      const size_t pos = i * chunk_size_ub;
+      const size_t len =
+          (i == num_chunks - 1) ? (total_length - pos) : chunk_size_ub;
+      Event event = PrepareChunkEventProto(debug_node_key, wall_time_us,
+                                           num_chunks, i, tensor_proto.dtype(),
+                                           tensor_proto.tensor_shape());
+      event.mutable_summary()
+          ->mutable_value(0)
+          ->mutable_tensor()
+          ->set_tensor_content(tensor_proto.tensor_content().substr(pos, len));
+      events->push_back(std::move(event));
+    }
+  }
+
+  return Status::OK();
+}
+
+// Appends an underscore and a timestamp to a file path. If the path already
 // exists on the file system, append a hyphen and a 1-up index. Consecutive
 // values of the index will be tried until the first unused one is found.
 // TOCTOU race condition is not of concern here due to the fact that tfdbg
@@ -114,23 +235,28 @@ string AppendTimestampToFilePath(const string& in, const uint64 timestamp) {
 }
 
 #if defined(PLATFORM_GOOGLE)
+// Publishes encoded GraphDef through a gRPC debugger stream, in chunks,
+// conforming to the gRPC message size limit.
 Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
                                       const string& device_name,
                                       const int64 wall_time,
                                       const string& debug_url) {
-  static const size_t kChunkSizeLimitBytes = 4000 * 1024;
   const uint64 hash = ::tensorflow::Hash64(encoded_graph_def);
   const size_t total_length = encoded_graph_def.size();
-  const size_t num_chunks = static_cast<size_t>(
-      std::ceil(static_cast<float>(total_length) / kChunkSizeLimitBytes));
+  const size_t num_chunks =
+      static_cast<size_t>(std::ceil(static_cast<float>(total_length) /
+                                    DebugGrpcIO::kGrpcMessageSizeLimitBytes));
   for (size_t i = 0; i < num_chunks; ++i) {
-    const size_t pos = i * kChunkSizeLimitBytes;
-    const size_t len =
-        (i == num_chunks - 1) ? (total_length - pos) : kChunkSizeLimitBytes;
+    const size_t pos = i * DebugGrpcIO::kGrpcMessageSizeLimitBytes;
+    const size_t len = (i == num_chunks - 1)
+                           ? (total_length - pos)
+                           : DebugGrpcIO::kGrpcMessageSizeLimitBytes;
     Event event;
     event.set_wall_time(static_cast<double>(wall_time));
     // Prefix the chunk with
     //   <hash64>,<device_name>,<wall_time>|<index>|<num_chunks>|.
+    // TODO(cais): Use DebuggerEventMetadata to store device_name, num_chunks
+    // and chunk_index, instead.
     event.set_graph_def(strings::StrCat(hash, ",", device_name, ",", wall_time,
                                         "|", i, "|", num_chunks, "|",
                                         encoded_graph_def.substr(pos, len)));
@@ -145,6 +271,9 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
 #endif
 
 }  // namespace
+
+// static
+const char* const DebugIO::kDebuggerPluginName = "debugger";
 
 // static
 const char* const DebugIO::kMetadataFilePrefix = "_tfdbg_";
@@ -214,6 +343,7 @@ const char* const DebugIO::kFileURLScheme = "file://";
 // static
 const char* const DebugIO::kGrpcURLScheme = "grpc://";
 
+// Publishes debug metadata to a set of debug URLs.
 // static
 Status DebugIO::PublishDebugMetadata(
     const int64 global_step, const int64 session_run_index,
@@ -531,9 +661,11 @@ Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
                                           const Tensor& tensor,
                                           const uint64 wall_time_us,
                                           const string& file_path) {
-  return DumpEventProtoToFile(
-      WrapTensorAsEvent(debug_node_key, tensor, wall_time_us),
-      io::Dirname(file_path).ToString(), io::Basename(file_path).ToString());
+  std::vector<Event> events;
+  TF_RETURN_IF_ERROR(
+      WrapTensorAsEvents(debug_node_key, tensor, wall_time_us, 0, &events));
+  return DumpEventProtoToFile(events[0], io::Dirname(file_path).ToString(),
+                              io::Basename(file_path).ToString());
 }
 
 // static
@@ -641,6 +773,12 @@ int64 DebugGrpcIO::channel_connection_timeout_micros = 900 * 1000 * 1000;
 // TODO(cais): Make this configurable?
 
 // static
+const size_t DebugGrpcIO::kGrpcMessageSizeLimitBytes = 4000 * 1024;
+
+// static
+const size_t DebugGrpcIO::kGrpcMaxVarintLengthSize = 6;
+
+// static
 std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
 DebugGrpcIO::GetStreamChannels() {
   static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
@@ -657,9 +795,14 @@ Status DebugGrpcIO::SendTensorThroughGrpcStream(
   if (gated && !IsGateOpen(debug_node_key.debug_node_name, grpc_stream_url)) {
     return Status::OK();
   } else {
-    return SendEventProtoThroughGrpcStream(
-        WrapTensorAsEvent(debug_node_key, tensor, wall_time_us),
-        grpc_stream_url);
+    std::vector<Event> events;
+    TF_RETURN_IF_ERROR(WrapTensorAsEvents(debug_node_key, tensor, wall_time_us,
+                                          kGrpcMessageSizeLimitBytes, &events));
+    for (const Event& event : events) {
+      TF_RETURN_IF_ERROR(
+          SendEventProtoThroughGrpcStream(event, grpc_stream_url));
+    }
+    return Status::OK();
   }
 }
 

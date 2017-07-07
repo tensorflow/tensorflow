@@ -78,7 +78,7 @@ class StatsAccumulator(saver.BaseSaverBuilder.SaveableObject):
             self._resource_handle, stamp_token, gradient_shape.as_list(),
             hessian_shape.as_list())
         is_initialized_op = (
-            gen_stats_accumulator_ops.stats_accumulator_scalar_is_initialized(
+            gen_stats_accumulator_ops.stats_accumulator_tensor_is_initialized(
                 self._resource_handle))
 
     self._create_op = create_op

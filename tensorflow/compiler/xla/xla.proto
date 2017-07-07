@@ -201,6 +201,7 @@ message ResetDeviceResponse {
 
 message ComputationStatsRequest {
   ComputationHandle computation = 1;
+  DebugOptions debug_options = 2;
 }
 
 message ComputationStatsResponse {

@@ -1583,7 +1583,14 @@ class Operation(object):
       A list of `Operation` objects.
 
     """
-    return self._control_inputs
+    if _USE_C_API:
+      control_c_ops = c_api.TF_OperationGetControlInputs_wrapper(self._c_op)
+      # pylint: disable=protected-access
+      return [self.graph._get_operation_by_name_unsafe(
+          c_api.TF_OperationName(c_op)) for c_op in control_c_ops]
+      # pylint: enable=protected-access
+    else:
+      return self._control_inputs
 
   @property
   def type(self):
@@ -2781,6 +2788,29 @@ class Graph(object):
                       % type(name).__name__)
     return self.as_graph_element(name, allow_tensor=False, allow_operation=True)
 
+  def _get_operation_by_name_unsafe(self, name):
+    """Returns the `Operation` with the given `name`.
+
+    This is a internal unsafe version of get_operation_by_name. It skips many
+    checks and does not have user friedly error messages but runs considerably
+    faster. This method may be called concurrently from multiple threads.
+
+    Args:
+      name: The name of the `Operation` to return.
+
+    Returns:
+      The `Operation` with the given `name`.
+
+    Raises:
+      KeyError: If `name` does not correspond to an operation in this graph.
+    """
+
+    if self._finalized:
+      return self._nodes_by_name[name]
+
+    with self._lock:
+      return self._nodes_by_name[name]
+
   def get_tensor_by_name(self, name):
     """Returns the `Tensor` with the given `name`.
 
@@ -3873,6 +3903,9 @@ class _DefaultStack(threading.local):
   def reset(self):
     self.stack = []
 
+  def is_cleared(self):
+    return self.stack == []
+
   @property
   def enforce_nesting(self):
     return self._enforce_nesting
@@ -4078,7 +4111,13 @@ def reset_default_graph():
   a `tf.Session` or `tf.InteractiveSession` is active will result in undefined
   behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
   after calling this function will result in undefined behavior.
+  Raises:
+    AssertionError: If this function is called within a nested graph.
   """
+  if not _default_graph_stack.is_cleared():
+    raise AssertionError("Do not use tf.reset_default_graph() to clear "
+                         "nested graphs. If you need a cleared graph, "
+                         "exit the nesting and create a new graph.")
   _default_graph_stack.reset()
 
 

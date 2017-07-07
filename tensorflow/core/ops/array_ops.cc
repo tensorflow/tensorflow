@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/strided_slice_op.h"
@@ -172,11 +173,11 @@ REGISTER_OP("ParallelConcat")
     .Attr("shape: shape")
     .SetShapeFn([](InferenceContext* c) {
       // Validate that the shape attr is correct.
-      TensorShapeProto passed_shape_proto;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &passed_shape_proto));
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle passed_shape;
       TF_RETURN_IF_ERROR(
-          c->MakeShapeFromShapeProto(passed_shape_proto, &passed_shape));
+          c->MakeShapeFromPartialTensorShape(shape, &passed_shape));
       if (!c->FullyDefined(passed_shape)) {
         return errors::InvalidArgument("shape attr must be fully defined.");
       }
@@ -637,11 +638,9 @@ REGISTER_OP("ImmutableConst")
     .SetShapeFn([](InferenceContext* c) {
       TensorShape shape_from_attr;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_from_attr));
-      TensorShapeProto shape_proto;
-      shape_from_attr.AsProto(&shape_proto);
       ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(
-          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+          c->MakeShapeFromPartialTensorShape(shape_from_attr, &output_shape));
       c->set_output(0, output_shape);
       return Status::OK();
     })
@@ -1306,11 +1305,11 @@ REGISTER_OP("_ParallelConcatStart")
     .Attr("dtype: type")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
-      TensorShapeProto shape_proto;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
+      PartialTensorShape shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(
-          c->MakeShapeFromShapeProto(shape_proto, &output_shape));
+          c->MakeShapeFromPartialTensorShape(shape, &output_shape));
       c->set_output(0, output_shape);
       return Status::OK();
     })
@@ -1434,15 +1433,25 @@ REGISTER_OP("GatherNd")
       return Status::OK();
     })
     .Doc(R"doc(
-Gather values or slices from `params` according to `indices`.
+Gather slices from `params` into a Tensor with shape specified by `indices`.
 
-`indices` is an integer tensor containing indices into `params`.  The last
-dimension of `indices` can be at most the rank of `params`:
+`indices` is an K-dimensional integer tensor, best thought of as a
+(K-1)-dimensional tensor of indices into `params`, where each element defines a
+slice of `params`:
+
+    output[i_0, ..., i_{K-2}] = params[indices[i0, ..., i_{K-2}]]
+
+Whereas in @{tf.gather} `indices` defines slices into the first
+dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+
+The last dimension of `indices` can be at most the rank of
+`params`:
 
     indices.shape[-1] <= params.rank
 
 The last dimension of `indices` corresponds to elements
-(if `indices.shape[-1] = params.rank`) or slices
+(if `indices.shape[-1] == params.rank`) or slices
 (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
 of `params`.  The output tensor has shape
 
@@ -2266,11 +2275,10 @@ REGISTER_OP("StridedSlice")
         return Status::OK();
       }
 
-      TensorShapeProto input_shape_proto;
+      PartialTensorShape input_shape({});
       for (int i = 0; i < c->Rank(input); ++i) {
         auto dim = c->Dim(input, i);
-        input_shape_proto.add_dim()->set_size(c->ValueKnown(dim) ? c->Value(dim)
-                                                                 : -1);
+        input_shape.AddDim(c->ValueKnown(dim) ? c->Value(dim) : -1);
       }
 
       int32 begin_mask, end_mask, ellipsis_mask, new_axis_mask,
@@ -2288,7 +2296,7 @@ REGISTER_OP("StridedSlice")
       bool is_identity, is_simple_slice, slice_dim0;
       gtl::InlinedVector<int64, 4> begin, end, strides;
       TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
-          begin_value, end_value, *strides_value, input_shape_proto, begin_mask,
+          begin_value, end_value, *strides_value, input_shape, begin_mask,
           end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
           &processing_shape, &final_shape, &is_identity, &is_simple_slice,
           &slice_dim0, &begin, &end, &strides));
@@ -2866,10 +2874,8 @@ REGISTER_OP("Placeholder")
         return shape_inference::UnknownShape(c);
       }
 
-      TensorShapeProto shape_proto;
-      shape.AsProto(&shape_proto);
       ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);
       return Status::OK();
     })
@@ -2894,10 +2900,10 @@ REGISTER_OP("PlaceholderV2")
     .Attr("dtype: type")
     .Attr("shape: shape")
     .SetShapeFn([](InferenceContext* c) {
-      TensorShapeProto shape;
+      PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape, &output));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &output));
       c->set_output(0, output);
       return Status::OK();
     })
@@ -2925,10 +2931,8 @@ REGISTER_OP("PlaceholderWithDefault")
       ShapeHandle input = c->input(0);
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      TensorShapeProto shape_proto;
-      shape.AsProto(&shape_proto);
       ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
 
       // We merge for compatibility checking, but return the output,
       // since output_shape may be less precise than input_shape.
@@ -3899,9 +3903,8 @@ REGISTER_OP("SpaceToDepth")
       TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, 3), block_size * block_size,
                                      &output_depth));
 
-      c->set_output(0,
-                    c->MakeShape({c->Dim(input, 0), output_height, output_width,
-                                  output_depth}));
+      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
+                                     output_width, output_depth}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -4005,9 +4008,8 @@ REGISTER_OP("DepthToSpace")
       TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 3), block_size * block_size,
                                    true /* evenly_divisible */, &output_depth));
 
-      c->set_output(0,
-                    c->MakeShape({c->Dim(input, 0), output_height, output_width,
-                                  output_depth}));
+      c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
+                                     output_width, output_depth}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -4187,7 +4189,8 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
 images: 4-D Tensor with shape `[batch, in_rows, in_cols, depth]`.
 patches: 4-D Tensor with shape `[batch, out_rows, out_cols, ksize_rows *
   ksize_cols * depth]` containing image patches with size
-  `ksize_rows x ksize_cols x depth` vectorized in the "depth" dimension.
+  `ksize_rows x ksize_cols x depth` vectorized in the "depth" dimension. Note
+  `out_rows` and `out_cols` are the dimensions of the output patches.
 ksizes: The size of the sliding window for each dimension of `images`.
 strides: 1-D of length 4. How far the centers of two consecutive patches are in
   the images. Must be: `[1, stride_rows, stride_cols, 1]`.
@@ -4195,7 +4198,8 @@ rates: 1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the
   input stride, specifying how far two consecutive patch samples are in the
   input. Equivalent to extracting patches with
   `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by
-  subsampling them spatially by a factor of `rates`.
+  subsampling them spatially by a factor of `rates`. This is equivalent to
+  `rate` in dilated (a.k.a. Atrous) convolutions.
 padding: The type of padding algorithm to use.
 
 We specify the size-related attributes as:
@@ -4860,8 +4864,8 @@ Scatter `updates` into a new (initially zero) tensor according to `indices`.
 
 Creates a new tensor by applying sparse `updates` to individual
 values or slices within a zero tensor of the given `shape` according to
-indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
-operator which extracts values or slices from a given tensor.
+indices.  This operator is the inverse of the @{tf.gather_nd} operator which
+extracts values or slices from a given tensor.
 
 **WARNING**: The order in which updates are applied is nondeterministic, so the
 output will be nondeterministic if `indices` contains duplicates.
@@ -4981,8 +4985,7 @@ The resulting value `output` would look like this:
 
     [1, 13, 3, 14, 14, 6, 7, 20]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
-slices.
+See @{tf.scatter_nd} for more details about how to make updates to slices.
 
 input: A Tensor.
 indices: A Tensor. Must be one of the following types: `int32`, `int64`.

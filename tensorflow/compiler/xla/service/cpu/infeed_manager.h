@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_INFEED_MANAGER_H_
 
 #include <deque>
+#include <vector>
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -52,11 +53,12 @@ class InfeedManager {
   // condition is to call Reset when no computation is taking place.
   void Reset();
 
-  // Adds buffer to the infeed queue. buffer->Done will be called when
-  // the buffer will no longer be accessed by the InfeedManager,
-  // either as a result of a call to Reset or because the runtime has
-  // dequeued and used the buffer.
-  void EnqueueBuffer(InfeedBuffer* buffer);
+  // Adds a set of buffers to the infeed queue
+  // atomically. buffer->Done will be called when the buffer will no
+  // longer be accessed by the InfeedManager, either as a result of a
+  // call to Reset or because the runtime has dequeued and used the
+  // buffer.
+  void EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers);
 
   // Blocks until the infeed queue is non-empty, then returns the
   // buffer at the head of the queue. Sets the current buffer to be

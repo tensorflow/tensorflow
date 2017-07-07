@@ -580,15 +580,16 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   return (mean, variance)
 
 
-def moments(x, axes, shift=None, name=None, keep_dims=False):
+def moments(x, axes,
+            shift=None,  # pylint: disable=unused-argument
+            name=None, keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
   across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
   and variance of a vector.
 
-  Note: for numerical stability, when shift=None, the true mean
-  would be computed and used as shift.
+  Note: shift is currently not used, the true mean is computed and used.
 
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):
@@ -601,35 +602,26 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
     x: A `Tensor`.
     axes: Array of ints.  Axes along which to compute mean and
       variance.
-    shift: A `Tensor` containing the value by which to shift the data for
-      numerical stability, or `None` in which case the true mean of the data is
-      used as shift. A shift close to the true mean provides the most
-      numerically stable results.
+    shift: Not used in the current implementation
     name: Name used to scope the operations that compute the moments.
     keep_dims: produce moments with the same dimensionality as the input.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
-  with ops.name_scope(name, "moments", [x, axes, shift]):
+  with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
     # on 32-bit floats before converting the mean and variance back to fp16
     y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
-    if shift is None:
-      # Compute true mean while keeping the dims for proper broadcasting.
-      shift = array_ops.stop_gradient(
-          math_ops.reduce_mean(y, axes, keep_dims=True))
-    else:
-      shift = math_ops.cast(shift, y.dtype)
-    shifted_mean = math_ops.reduce_mean(
-        math_ops.subtract(y, shift), axes, keep_dims=True, name="shifted_mean")
-    variance = math_ops.subtract(
-        math_ops.reduce_mean(
-            math_ops.squared_difference(y, shift), axes, keep_dims=True),
-        math_ops.square(shifted_mean),
+    # Compute true mean while keeping the dims for proper broadcasting.
+    mean = math_ops.reduce_mean(y, axes, keep_dims=True, name="mean")
+    # sample variance, not unbiased variance
+    variance = math_ops.reduce_mean(
+        math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
+        axes,
+        keep_dims=True,
         name="variance")
-    mean = math_ops.add(shifted_mean, shift, name="mean")
     if not keep_dims:
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
@@ -881,70 +873,6 @@ def _sum_rows(x):
   return array_ops.reshape(math_ops.matmul(x, ones), [-1])
 
 
-def _retrieve_weights(weights, inputs, labels_flat, sampled, all_ids,
-                      partition_strategy, colocate_logits):
-  """Helper function for _compute_sampled_logits.
-
-  Retrieves the true weights and the logits of the sampled weights.
-
-  Args:
-    weights: See _compute_sampled_logits.
-    inputs: See _compute_sampled_logits.
-    labels_flat: A [batch_size * num_true] tensor.
-    sampled: A [num_sampled] tensor.
-    all_ids: The concatenation of labels_flat and sampled.
-    partition_strategy: See _compute_sampled_logits.
-    colocate_logits: See _compute_sampled_logits.
-
-  Returns:
-    A pair of a [batch_size * num_true, dim] tensor of the true weights
-    and a [batch_size, num_sampled] tensor of the sampled logits.
-  """
-  if len(weights) > 1 and colocate_logits:
-    # This codepath makes two calls to lookup the embeddings, one for the true
-    # weights and one to compute the sampled logits. Because we take this
-    # codepath only if len(weights) > 1, we will only incur the double-lookup
-    # cost if we can benefit from the co-located logit computation.
-
-    true_w = embedding_ops.embedding_lookup(
-        weights, labels_flat, partition_strategy=partition_strategy)
-
-    def logit(embeddings):
-      return math_ops.matmul(embeddings, inputs, transpose_b=True)
-
-    # pylint: disable=protected-access
-    sampled_logits = embedding_ops._embedding_lookup_and_transform(
-        weights,
-        sampled,
-        partition_strategy=partition_strategy,
-        transform_fn=logit)
-    # pylint: enable=protected-access
-    sampled_logits = array_ops.transpose(sampled_logits)
-
-  else:
-    # This codepath retrieves the weights by performing a single call to
-    # embedding_lookup and slicing out the true weights and sampled weights.
-    # Because the call to embedding_lookup is shared, the sampled logit
-    # computation is done here after the slice.
-
-    # weights shape is [num_classes, dim]
-    all_w = embedding_ops.embedding_lookup(
-        weights, all_ids, partition_strategy=partition_strategy)
-
-    true_w = array_ops.slice(all_w, [0, 0],
-                             array_ops.stack(
-                                 [array_ops.shape(labels_flat)[0], -1]))
-
-    sampled_w = array_ops.slice(
-        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
-    # inputs has shape [batch_size, dim]
-    # sampled_w has shape [num_sampled, dim]
-    # Apply X*W', which yields [batch_size, num_sampled]
-    sampled_logits = math_ops.matmul(inputs, sampled_w, transpose_b=True)
-
-  return true_w, sampled_logits
-
-
 def _compute_sampled_logits(weights,
                             biases,
                             labels,
@@ -956,7 +884,6 @@ def _compute_sampled_logits(weights,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
                             partition_strategy="mod",
-                            colocate_logits=False,
                             name=None):
   """Helper function for nce_loss and sampled_softmax_loss functions.
 
@@ -994,9 +921,6 @@ def _compute_sampled_logits(weights,
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
-    colocate_logits: A `bool`, relevant if `len(weights) > 1`, specifying
-        whether to colocate the computation of the sampled logits with the
-        weights.
     name: A name for the operation (optional).
   Returns:
     out_logits, out_labels: `Tensor` objects each with shape
@@ -1039,11 +963,22 @@ def _compute_sampled_logits(weights,
     all_ids = array_ops.concat([labels_flat, sampled], 0)
 
     # Retrieve the true weights and the logits of the sampled weights.
-    # - true_w shape is [batch_size * num_true, dim]
-    # - sampled_logits shape is [batch_size, num_sampled]
-    true_w, sampled_logits = _retrieve_weights(
-        weights, inputs, labels_flat, sampled, all_ids, partition_strategy,
-        colocate_logits)
+
+    # weights shape is [num_classes, dim]
+    all_w = embedding_ops.embedding_lookup(
+        weights, all_ids, partition_strategy=partition_strategy)
+
+    # true_w shape is [batch_size * num_true, dim]
+    true_w = array_ops.slice(all_w, [0, 0],
+                             array_ops.stack(
+                                 [array_ops.shape(labels_flat)[0], -1]))
+
+    sampled_w = array_ops.slice(
+        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
+    # inputs has shape [batch_size, dim]
+    # sampled_w has shape [num_sampled, dim]
+    # Apply X*W', which yields [batch_size, num_sampled]
+    sampled_logits = math_ops.matmul(inputs, sampled_w, transpose_b=True)
 
     # Retrieve the true and sampled biases, compute the true logits, and
     # add the biases to the true and sampled logits.
@@ -1213,7 +1148,6 @@ def nce_loss(weights,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
-      colocate_logits=False,
       name=name)
   sampled_losses = sigmoid_cross_entropy_with_logits(
       labels=labels, logits=logits, name="sampled_losses")
@@ -1310,7 +1244,6 @@ def sampled_softmax_loss(weights,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
-      colocate_logits=False,
       name=name)
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(
       labels=labels, logits=logits)
