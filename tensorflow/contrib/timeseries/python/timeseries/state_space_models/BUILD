@@ -1,5 +1,6 @@
 # State space components and ensembles
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = [
@@ -188,25 +189,26 @@ py_library(
     ],
 )
 
-tf_py_test(
+py_test(
     name = "structural_ensemble_test",
+    timeout = "long",  # Moderate but for asan/tsan timeouts
     srcs = [
         "structural_ensemble_test.py",
     ],
-    additional_deps = [
-        ":structural_ensemble",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
+    deps = [
         ":state_space_model",
-        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
-        "//tensorflow/contrib/timeseries/python/timeseries:estimators",
-        "//third_party/py/numpy",
+        ":structural_ensemble",
         "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/timeseries/python/timeseries:estimators",
+        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-    ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
+        "//third_party/py/numpy",
     ],
 )
 
