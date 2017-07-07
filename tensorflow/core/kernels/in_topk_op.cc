@@ -26,9 +26,9 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T, typename TARGET_T>
-class InTopKV2 : public OpKernel {
+class InTopK : public OpKernel {
  public:
-  explicit InTopKV2(OpKernelConstruction* context) : OpKernel(context) {
+  explicit InTopK(OpKernelConstruction* context) : OpKernel(context) {
     if (context->num_inputs() == 2) {
       OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
     }
@@ -37,7 +37,7 @@ class InTopKV2 : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const auto& predictions_in = context->input(0);
     const auto& targets_in = context->input(1);
-    int k_val = k_;
+    int64 k_val = k_;
     if (context->num_inputs() == 3) {
       const auto& k_in = context->input(2);
 
@@ -45,7 +45,11 @@ class InTopKV2 : public OpKernel {
                   errors::InvalidArgument("k must be 0-D, got shape ",
                                           k_in.shape().DebugString()));
 
-      k_val = k_in.scalar<int>()();
+      if (k_in.dtype() == DT_INT32) {
+        k_val = k_in.scalar<int32>()();
+      } else {
+        k_val = k_in.scalar<int64>()();
+      }
     }
 
     OP_REQUIRES(context, predictions_in.dims() == 2,
@@ -96,16 +100,16 @@ class InTopKV2 : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(
     Name("InTopK").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
-    InTopKV2<float, int32>);
+    InTopK<float, int32>);
 REGISTER_KERNEL_BUILDER(
     Name("InTopK").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
-    InTopKV2<float, int64>);
+    InTopK<float, int64>);
 
 REGISTER_KERNEL_BUILDER(
     Name("InTopKV2").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
-    InTopKV2<float, int32>);
+    InTopK<float, int32>);
 REGISTER_KERNEL_BUILDER(
     Name("InTopKV2").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
-    InTopKV2<float, int64>);
+    InTopK<float, int64>);
 
 }  // namespace tensorflow

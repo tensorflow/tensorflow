@@ -2018,7 +2018,7 @@ $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
 predictions: A `batch_size` x `classes` tensor.
 targets: A `batch_size` vector of class ids.
 k: Number of top elements to look at for computing precision.
-precision: Computed Precision at `k` as a `bool Tensor`.
+precision: Computed precision at `k` as a `bool Tensor`.
 
 )doc");
 
