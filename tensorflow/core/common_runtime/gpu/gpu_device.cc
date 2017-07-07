@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/errors.h"
