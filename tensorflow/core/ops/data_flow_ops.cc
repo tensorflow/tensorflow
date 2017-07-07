@@ -1114,8 +1114,9 @@ dtype: The data type of accumulated gradients. Needs to correspond to the type
 
 // --------------------------------------------------------------------------
 
-REGISTER_OP("Stack")
-    .Output("handle: Ref(string)")
+REGISTER_OP("StackV2")
+    .Input("max_size: int32")
+    .Output("handle: resource")
     .Attr("elem_type: type")
     .Attr("stack_name: string = ''")
     .SetIsStateful()
@@ -1123,14 +1124,16 @@ REGISTER_OP("Stack")
     .Doc(R"doc(
 A stack that produces elements in first-in last-out order.
 
+max_size: The maximum size of the stack if non-negative. If negative, the stack
+  size is unlimited.
 handle: The handle to the stack.
 elem_type: The type of the elements on the stack.
 stack_name: Overrides the name used for the temporary stack resource. Default
 value is the name of the 'Stack' op (which is guaranteed unique).
 )doc");
 
-REGISTER_OP("StackPush")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPushV2")
+    .Input("handle: resource")
     .Input("elem: T")
     .Output("output: T")
     .Attr("T: type")
@@ -1148,8 +1151,8 @@ output: The same tensor as the input 'elem'.
 swap_memory: Swap `elem` to CPU. Default to false.
 )doc");
 
-REGISTER_OP("StackPop")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPopV2")
+    .Input("handle: resource")
     .Output("elem: elem_type")
     .Attr("elem_type: type")
     .SetShapeFn(shape_inference::UnknownShape)
@@ -1161,13 +1164,55 @@ elem: The tensor that is popped from the top of the stack.
 elem_type: The type of the elem that is popped.
 )doc");
 
-REGISTER_OP("StackClose")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackCloseV2")
+    .Input("handle: resource")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
     .Doc(R"doc(
 Delete the stack from its resource container.
 
 handle: The handle to a stack.
+)doc");
+
+// Deprecated ref-typed variants of stack.
+
+REGISTER_OP("Stack")
+    .Output("handle: Ref(string)")
+    .Attr("elem_type: type")
+    .Attr("stack_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+Deprecated, use StackV2.
+)doc");
+
+REGISTER_OP("StackPush")
+    .Input("handle: Ref(string)")
+    .Input("elem: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("swap_memory: bool = false")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Deprecated, use StackPushV2.
+)doc");
+
+REGISTER_OP("StackPop")
+    .Input("handle: Ref(string)")
+    .Output("elem: elem_type")
+    .Attr("elem_type: type")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Deprecated, use StackPopV2.
+)doc");
+
+REGISTER_OP("StackClose")
+    .Input("handle: Ref(string)")
+    .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
+    .Doc(R"doc(
+Deprecated, use StackCloseV2.
 )doc");
 
 // --------------------------------------------------------------------------
