@@ -736,7 +736,7 @@ class Variable(object):
         return initial_value
     elif isinstance(initial_value, ops.Operation):
       if initial_value.node_def.op in [
-          "IsVariableInitialized", "ReadVariableOp"
+          "IsVariableInitialized", "VarIsInitializedOp", "ReadVariableOp"
       ]:
         return initial_value
       if initial_value.node_def.op in ["Variable", "VariableV2", "VarHandleOp"]:
