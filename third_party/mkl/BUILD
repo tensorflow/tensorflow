@@ -1,5 +1,7 @@
 licenses(["notice"])  # 3-Clause BSD
 
+exports_files(["LICENSE"])
+
 config_setting(
     name = "using_mkl",
     values = {
