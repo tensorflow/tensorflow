@@ -670,7 +670,7 @@ class HloInstruction {
   // Returns the stride in the given dimension for a slice node.
   //
   // Precondition: opcode() == HloOpcode::kSlice
-  int64 slice_stride(int64 dimension) const {
+  int64 slice_strides(int64 dimension) const {
     CHECK_EQ(HloOpcode::kSlice, opcode_);
     return slice_strides_[dimension];
   }
