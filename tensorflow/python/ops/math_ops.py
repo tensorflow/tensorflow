@@ -135,10 +135,6 @@ See the @{$python/math_ops} guide.
 @@unique
 @@edit_distance
 @@invert_permutation
-@@reduce_slice_sum
-@@reduce_slice_prod
-@@reduce_slice_min
-@@reduce_slice_max
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1687,8 +1683,8 @@ def matmul(a,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must, following any transpositions, be tensors of rank >= 2 
-  where the inner 2 dimensions specify valid matrix multiplication arguments, 
+  The inputs must, following any transpositions, be tensors of rank >= 2
+  where the inner 2 dimensions specify valid matrix multiplication arguments,
   and any further outer dimensions match.
 
   Both matrices must be of the same type. The supported types are:

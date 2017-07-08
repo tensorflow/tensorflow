@@ -514,24 +514,4 @@ TEST(MathOpstest, RequantizationRange_ShapeFn) {
   INFER_ERROR("must be rank 0", op, "?;?;[2]");
 }
 
-TEST(MathOpstest, ReduceSliceSum_ShapeFn) {
-  ShapeInferenceTestOp op("ReduceSliceSum");
-  INFER_OK(op, "?;?;?", "?");
-  INFER_OK(op, "[10,20];[100,2];[]", "[?,?]");
-  INFER_OK(op, "[10,20];[?,2];[]", "[?,?]");
-  INFER_OK(op, "[10,20];[0];[]", "[?,?]");
-  INFER_OK(op, "[10,20];[1];[]", "[?,?]");
-  INFER_OK(op, "[10,20];[?];[]", "[?,?]");
-  INFER_OK(op, "[?,?];[?,2];[]", "[?,?]");
-  INFER_OK(op, "[?,?];[25,2];[]", "[?,?]");
-  INFER_OK(op, "[?];[123,2];[]", "[?]");
-  INFER_OK(op, "[1,2,3,4];[100,2];[]", "[?,?,?,?]");
-
-  INFER_ERROR("must be rank 0", op, "?;[?,2];[?]");
-  INFER_ERROR("must be at least rank 1", op, "?;[];[]");
-  INFER_ERROR("must be at most rank 2", op, "?;[1,2,3];[]");
-  INFER_ERROR("must be equal, but are 1 and 2", op, "?;[?,1];[]");
-  INFER_ERROR("must be at least rank 1", op, "[];?;[]");
-}
-
 }  // end namespace tensorflow

@@ -2294,7 +2294,6 @@ cc_library(
         ":cwise_op",
         ":fft_ops",
         ":matmul_op",
-        ":reduce_slice_ops",
         ":reduction_ops",
         ":scan_ops",
         ":segment_reduction_ops",
@@ -2402,12 +2401,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "segment_reduction_ops",
     prefix = "segment_reduction_ops",
-    deps = MATH_DEPS,
-)
-
-tf_kernel_library(
-    name = "reduce_slice_ops",
-    prefix = "reduce_slice_ops",
     deps = MATH_DEPS,
 )
 
