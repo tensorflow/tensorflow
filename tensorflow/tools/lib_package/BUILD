@@ -4,6 +4,7 @@
 package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
     name = "libtensorflow_proto",
