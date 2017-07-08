@@ -1493,12 +1493,12 @@ class PartialFlattenTest(test.TestCase):
 
   def testSparsePartialFlatten(self):
     """Test `_inner_flatten` on `SparseTensor`s."""
-    shape = [4, 3, 11, 6, 1, 3]
+    shape = [4, 3, 11, 6]
     np.random.seed(10301)
     random_ = np.random.rand(*shape)
     indices, values, _ = _sparsify(random_)
 
-    for new_rank in [1, 2, 3, 4, 5]:
+    for new_rank in [1, 2, 3]:
       expected_shape = (shape[:new_rank - 1] + [np.prod(shape[new_rank - 1:])])
       reshaped_random_ = np.reshape(random_, expected_shape)
       expected_indices, expected_values, _ = _sparsify(reshaped_random_)

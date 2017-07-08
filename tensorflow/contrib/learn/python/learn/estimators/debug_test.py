@@ -363,6 +363,23 @@ class DebugClassifierTest(test.TestCase):
     scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
 
+  def testMultiClass_StringLabel(self):
+    """Tests multi-class classification with string labels."""
+
+    def _input_fn_train():
+      labels = constant_op.constant([['foo'], ['bar'], ['baz'], ['bar']])
+      features = {
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
+      }
+      return features, labels
+
+    classifier = debug.DebugClassifier(
+        n_classes=3, label_keys=['foo', 'bar', 'baz'])
+
+    classifier.fit(input_fn=_input_fn_train, steps=5)
+    scores = classifier.evaluate(input_fn=_input_fn_train, steps=1)
+    self.assertIn('loss', scores)
+
   def testLoss(self):
     """Tests loss calculation."""
 

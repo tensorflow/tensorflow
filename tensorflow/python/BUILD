@@ -41,7 +41,6 @@ py_library(
         "//tensorflow/contrib/learn/python/learn/datasets:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/tensorboard/scripts:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
@@ -88,6 +87,7 @@ py_library(
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
     ] + if_not_windows([
         "//tensorflow/contrib:contrib_py",
@@ -177,6 +177,19 @@ cc_library(
 )
 
 cc_library(
+    name = "model_analyzer_lib",
+    srcs = ["grappler/model_analyzer.cc"],
+    hdrs = ["grappler/model_analyzer.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/costs:utils",
+    ],
+)
+
+cc_library(
     name = "numpy_lib",
     srcs = ["lib/core/numpy.cc"],
     hdrs = ["lib/core/numpy.h"],
@@ -220,6 +233,7 @@ cc_library(
         ":numpy_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:script_ops_op_lib",
         "//third_party/py/numpy:headers",
         "//util/python:python_headers",
@@ -253,7 +267,7 @@ cc_library(
 cc_binary(
     name = "framework/test_file_system.so",
     srcs = ["framework/test_file_system.cc"],
-    copts = ["-Wno-sign-compare"],
+    copts = if_not_windows(["-Wno-sign-compare"]),
     linkopts = select({
         "//conditions:default": [
             "-lm",
@@ -2675,7 +2689,7 @@ cc_library(
     name = "cpp_shape_inference",
     srcs = ["framework/cpp_shape_inference.cc"],
     hdrs = ["framework/cpp_shape_inference.h"],
-    copts = ["-Wno-sign-compare"],
+    copts = if_not_windows(["-Wno-sign-compare"]),
     visibility = ["//visibility:public"],
     deps = [
         ":cpp_shape_inference_proto_cc",
@@ -2743,6 +2757,7 @@ tf_py_wrap_cc(
         "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
         "grappler/cost_analyzer.i",
+        "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
@@ -2756,10 +2771,12 @@ tf_py_wrap_cc(
         "util/port.i",
         "util/py_checkpoint_reader.i",
         "util/stat_summarizer.i",
+        "util/tfprof.i",
         "util/transform_graph.i",
     ],
     deps = [
         ":cost_analyzer_lib",
+        ":model_analyzer_lib",
         ":cpp_shape_inference",
         ":kernel_registry",
         ":numpy_lib",
@@ -2781,8 +2798,8 @@ tf_py_wrap_cc(
         "//tensorflow/core:reader_base",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
-        "//tensorflow/tools/tfprof/internal:print_model_analysis",
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
@@ -2965,6 +2982,9 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "no_oss",  # b/62956105: port conflicts.
+    ],
 )
 
 tf_py_test(
@@ -2978,6 +2998,10 @@ tf_py_test(
         ":framework_for_generated_wrappers",
         ":training",
         ":variables",
+    ],
+    tags = [
+        "no_oss",  # b/62956105: port conflicts.
+        "notsan",  # data race due to b/62910646
     ],
 )
 
@@ -3040,6 +3064,7 @@ py_test(
     srcs = ["client/session_clusterspec_prop_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_gpu",
         "no_pip_gpu",
     ],
     deps = [
@@ -3064,7 +3089,9 @@ py_test(
     srcs = ["client/session_list_devices_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_gpu",
         "no_pip_gpu",
+        "notsan",  # data race due to b/62910646
     ],
     deps = [
         ":client",
@@ -3770,26 +3797,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "conv2d_benchmark",
-    size = "large",
-    srcs = ["ops/conv2d_benchmark.py"],
-    additional_deps = [
-        ":client",
-        ":client_testlib",
-        ":control_flow_ops",
-        ":framework_for_generated_wrappers",
-        ":nn_ops",
-        ":platform",
-        ":platform_benchmark",
-        ":random_ops",
-        ":variables",
-        "//third_party/py/numpy",
-        "//tensorflow/core:protos_all_py",
-    ],
-    main = "ops/conv2d_benchmark.py",
-)
-
-cuda_py_test(
     name = "split_benchmark",
     srcs = ["ops/split_benchmark.py"],
     additional_deps = [
@@ -3948,6 +3955,33 @@ py_test(
         ":state_ops",
         ":training",
         ":variables",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "model_analyzer",
+    srcs = [
+        "grappler/model_analyzer.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [":pywrap_tensorflow_internal"],
+)
+
+py_test(
+    name = "model_analyzer_test",
+    size = "small",
+    srcs = ["grappler/model_analyzer_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":model_analyzer",
+        ":state_ops",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
     ],

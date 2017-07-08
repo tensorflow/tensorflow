@@ -157,6 +157,8 @@ ResizeBilinearGrad
 ResizeNearestNeighborGrad
 AdjustContrastv2
 ScaleImageGrad
+SampleDistortedBoundingBox
+SampleDistortedBoundingBoxV2
 
 # io_ops
 FixedLengthRecordReader

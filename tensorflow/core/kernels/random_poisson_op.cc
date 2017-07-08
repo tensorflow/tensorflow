@@ -303,10 +303,6 @@ class RandomPoissonOp : public OpKernel {
 
     const auto rate_flat = rate_t.flat<T>().data();
     const int64 num_rate = rate_t.NumElements();
-    OP_REQUIRES(
-        ctx, num_rate > 0,
-        errors::InvalidArgument(
-            "Input rate should have non-zero element count, got: ", num_rate));
     auto samples_flat = samples_t->flat<T>().data();
     random::PhiloxRandom rng = generator_.ReserveRandomOutputs(
         num_samples * num_rate, kReservedSamplesPerOutput);

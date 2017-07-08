@@ -174,8 +174,7 @@ for more information on how to use them.
 
 ## Variables
 
-See also the how-to documentation on @{$variables$variables}
-and @{$variable_scope$variable scopes}, and
+See also the how-to documentation on @{$variables$variables} and
 @{$python/state_ops$the API documentation for variables}.
 
 #### What is the lifetime of a variable?

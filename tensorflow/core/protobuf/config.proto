@@ -171,6 +171,23 @@ message ThreadPoolOptionProto {
   // 0 means the system picks a value based on where this option proto is used
   // (see the declaration of the specific field for more info).
   int32 num_threads = 1;
+
+  // The global name of the threadpool.
+  //
+  // If empty, then the threadpool is made and used according to the scope it's
+  // in - e.g., for a session threadpool, it is used by that session only.
+  //
+  // If non-empty, then:
+  // - a global threadpool associated with this name is looked
+  //   up or created. This allows, for example, sharing one threadpool across
+  //   many sessions (e.g., like the default behavior, if
+  //   inter_op_parallelism_threads is not configured), but still partitioning
+  //   into a large and small pool.
+  // - if the threadpool for this global_name already exists, then it is an
+  //   error if the existing pool was created using a different num_threads
+  //   value as is specified on this call.
+  // - threadpools created this way are never garbage collected.
+  string global_name = 2;
 };
 
 message RPCOptions {
@@ -218,13 +235,24 @@ message ConfigProto {
   bool use_per_session_threads = 9;
 
   // This option is experimental - it may be replaced with a different mechanism
-  // in the future. The intended use is for when some session invocations need
-  // to run in a background pool limited to a small number of threads.
+  // in the future.
   //
   // Configures session thread pools. If this is configured, then RunOptions for
   // a Run call can select the thread pool to use.
   //
-  // If a pool's num_threads is 0, then inter_op_parallelism_threads is used.
+  // The intended use is for when some session invocations need to run in a
+  // background pool limited to a small number of threads:
+  // - For example, a session may be configured to have one large pool (for
+  // regular compute) and one small pool (for periodic, low priority work);
+  // using the small pool is currently the mechanism for limiting the inter-op
+  // parallelism of the low priority work.  Note that it does not limit the
+  // parallelism of work spawned by a single op kernel implementation.
+  // - Using this setting is normally not needed in training, but may help some
+  // serving use cases.
+  // - It is also generally recommended to set the global_name field of this
+  // proto, to avoid creating multiple large pools. It is typically better to
+  // run the non-low-priority work, even across sessions, in a single large
+  // pool.
   repeated ThreadPoolOptionProto session_inter_op_thread_pool = 12;
 
   // Assignment of Nodes to Devices is recomputed every placement_period

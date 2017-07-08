@@ -57,6 +57,8 @@ class RemoteFusedGraphExecuteUtils {
       "border_inputs";
   static constexpr const char* const TRANSFORM_ARG_BORDER_OUTPUTS =
       "border_outputs";
+  static constexpr const char* const TRANSFORM_ARG_FUSED_OP_TYPES =
+      "fused_op_types";
   static constexpr const char* const TRANSFORM_ARG_INPUT_TYPES = "input_types";
   static constexpr const char* const TRANSFORM_ARG_INPUT_SHAPES =
       "input_shapes";
@@ -230,12 +232,22 @@ class RemoteFusedGraphExecuteUtils {
       const string& remote_graph_executor_name, const bool require_shape_type,
       GraphDef* output_graph_def);
 
+  // Fuse subgraph of specified op types.
+  static Status FuseRemoteGraphByOpTypes(
+      const GraphDef& input_graph_def, const std::vector<string>& inputs,
+      const std::vector<string>& outputs,
+      const string& remote_fused_graph_node_name_prefix,
+      const std::unordered_set<string>& fused_op_types,
+      const string& remote_fused_graph_executor_name,
+      const bool require_shape_type, GraphDef* output_graph_def);
+
   // Place arguments to fuse remote graph.
   static Status PlaceRemoteGraphArguments(
       const std::vector<string>& inputs, const std::vector<string>& outputs,
       const std::unordered_set<string>& fused_node_names,
       const std::vector<string>& border_inputs,
       const std::vector<string>& border_outputs,
+      const std::unordered_set<string>& fused_op_types,
       const string& remote_fused_graph_node_name,
       const string& remote_graph_executor_name, GraphDef* graph_def);
 
@@ -257,6 +269,9 @@ class RemoteFusedGraphExecuteUtils {
   // remote fused graph needs to overwrite the tensor data by a byte array.
   static Status CopyByteArrayToTensor(const void* src_ptr, const int src_size,
                                       Tensor* tensor);
+
+  static std::unordered_set<string> BuildNodeMapFromOpTypes(
+      const GraphDef& graph_def, const std::unordered_set<string>& op_types);
 
  private:
   static void EmplaceTensorShapeType(const string& name, const Tensor& tensor,

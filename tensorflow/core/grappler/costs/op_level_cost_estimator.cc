@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 
 namespace tensorflow {
@@ -35,6 +37,9 @@ constexpr char kRecv[] = "_Recv";
 constexpr char kBatchMatMul[] = "BatchMatMul";
 constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
+constexpr char kRank[] = "Rank";
+constexpr char kShape[] = "Shape";
+constexpr char kSize[] = "Size";
 
 namespace {
 
@@ -155,7 +160,10 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)}};
+      {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+      {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
+      {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
+      {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)}};
 
   elementwise_ops_ = {
       // Unary ops alphabetically sorted
@@ -841,6 +849,18 @@ Costs OpLevelCostEstimator::PredictBatchMatMul(
       CountBatchMatMulOperations(op_features, &found_unknown_shapes),
       op_features);
   costs.inaccurate = found_unknown_shapes;
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictMetadata(const OpInfo& op_features) const {
+  Costs costs;
+  costs.max_memory = CalculateOutputSize(op_features, &costs.inaccurate);
+  // Metadata operations are so cheap we assume they take the minimum amount of
+  // time we can represent (1 ns).
+  costs.execution_time = 1;
+  costs.compute_time = 1;
+  costs.memory_time = 0;
+
   return costs;
 }
 

@@ -690,7 +690,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
 
   // Convert outputs to ndarrays (in scoped containers)
   std::vector<Safe_PyObjectPtr> py_outputs_safe;
-  for (int i = 0; i < outputs.size(); ++i) {
+  for (size_t i = 0; i < outputs.size(); ++i) {
     PyObject* py_array;
     s = TFTensorToPyArray(std::move(output_vals_safe[i]), &py_array);
     if (!s.ok()) {
@@ -702,7 +702,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
 
   // If we reach this point, we have successfully built a list of objects so we
   // can release them from the safe container into the return vector.
-  for (int i = 0; i < outputs.size(); ++i) {
+  for (size_t i = 0; i < outputs.size(); ++i) {
     py_outputs->push_back(py_outputs_safe[i].release());
   }
 }
@@ -764,6 +764,14 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
   // Release any unused ndarray references (see memory management comment in
   // TF_SessionRun_wrapper_helper)
   ClearDecrefCache();
+}
+
+std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
+    TF_Operation* oper) {
+  std::vector<TF_Operation*> control_inputs(TF_OperationNumControlInputs(oper));
+  TF_OperationGetControlInputs(oper, control_inputs.data(),
+                               control_inputs.size());
+  return control_inputs;
 }
 
 }  // namespace tensorflow

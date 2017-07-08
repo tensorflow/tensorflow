@@ -586,6 +586,12 @@ def _QuantizeAndDequantizeV2Grad(_, grad):
   return [grad, None, None]
 
 
+@ops.RegisterGradient("QuantizeAndDequantizeV3")
+def _QuantizeAndDequantizeV3Grad(_, grad):
+  # Only propagate the gradient for the unquantized input.
+  return [grad, None, None, None]
+
+
 @ops.RegisterGradient("ExtractImagePatches")
 def _ExtractImagePatchesGrad(op, grad):
 
@@ -670,3 +676,10 @@ def _ScatterNdGrad(op, grad):
   indices = op.inputs[0]
   updates_grad = array_ops.gather_nd(grad, indices)
   return [None, updates_grad, None]
+
+
+@ops.RegisterGradient("ScatterNdNonAliasingAdd")
+def _ScatterNdNonAliasingAddGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  return [grad, None, updates_grad]

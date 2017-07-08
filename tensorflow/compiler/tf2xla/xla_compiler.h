@@ -209,12 +209,6 @@ class XlaCompiler {
     // stored in device memory.
     bool local_executable_has_hybrid_result = false;
 
-    // If 'resolve_compile_time_constants' is true, then outputs of a
-    // computation that are known to be compile-time constants will be returned
-    // as Tensors at compile-time, rather than as run-time outputs of the
-    // computation.
-    bool resolve_compile_time_constants = true;
-
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
     // device is created, and can be used to create metadata objects
@@ -238,6 +232,12 @@ class XlaCompiler {
     // modified by the computation. Used when compiling loop bodies to ensure
     // the input and output signatures match.
     bool return_updated_values_for_all_resources = false;
+
+    // If 'resolve_compile_time_constants' is true, then outputs of a
+    // computation that are known to be compile-time constants will be returned
+    // as Tensors at compile-time, rather than as run-time outputs of the
+    // computation.
+    bool resolve_compile_time_constants = true;
   };
 
   // Compiles a Tensorflow function `fn_name_attrs` into an XLA computation.

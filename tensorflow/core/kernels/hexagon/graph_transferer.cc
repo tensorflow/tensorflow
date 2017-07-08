@@ -87,7 +87,7 @@ Status GraphTransferer::LoadGraphFromProto(
     const std::vector<string>& output_node_names,
     const bool shape_inference_for_unknown_shape) {
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   Status status = ImportGraphDef({}, graph_def, &graph, &shape_refiner);
   if (!status.ok()) {
     return status;

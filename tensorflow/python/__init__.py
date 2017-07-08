@@ -84,6 +84,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.profiler import profiler
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
 from tensorflow.python.saved_model import saved_model
@@ -235,6 +236,7 @@ _allowed_symbols.extend([
     'train',
     'user_ops',
     'layers',
+    'profiler',
 ])
 
 # Variables framework.versions:
@@ -251,7 +253,7 @@ remove_undocumented(__name__, _allowed_symbols, [
     control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
     losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
     session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
-    train, layers
+    train, layers, profiler
 ])
 
 # Special dunders that we choose to export:

@@ -50,28 +50,37 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
     buffer_slice = *slices.begin();
   }
 
-  llvm::MDNode*& alias_scope_md = alias_scope_metadata_[buffer_slice];
-  if (alias_scope_md == nullptr) {
-    alias_scope_md =
-        GetAliasScopeMetadataForBuffer(buffer_slice, GetAliasDomain());
+  if (module_.config().debug_options().xla_llvm_enable_alias_scope_metadata()) {
+    llvm::MDNode*& alias_scope_md = alias_scope_metadata_[buffer_slice];
+    if (alias_scope_md == nullptr) {
+      alias_scope_md =
+          GetAliasScopeMetadataForBuffer(buffer_slice, GetAliasDomain());
+    }
+    array->AddAliasScopeMetadata(alias_scope_md);
   }
-  array->AddAliasScopeMetadata(alias_scope_md);
 
-  llvm::MDNode*& noalias_md = noalias_metadata_[buffer_slice];
-  if (noalias_md == nullptr) {
-    noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
-                                             assignment_, hlo);
+  if (module_.config().debug_options().xla_llvm_enable_noalias_metadata()) {
+    llvm::MDNode*& noalias_md = noalias_metadata_[buffer_slice];
+    if (noalias_md == nullptr) {
+      noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
+                                               assignment_, hlo);
+    }
+    array->AddNoaliasMetadata(noalias_md);
   }
-  array->AddNoaliasMetadata(noalias_md);
 
-  // Parameters of the entry computation are never stored to, loading from a
-  // parameter pointer should always return the same result within a loop.
-  if (hlo.opcode() == HloOpcode::kParameter) {
-    const std::vector<HloInstruction*>& parameter_instructions =
-        module_.entry_computation()->parameter_instructions();
-    if (std::find(parameter_instructions.begin(), parameter_instructions.end(),
-                  &hlo) != parameter_instructions.end()) {
-      array->AddInvariantLoad(llvm::MDNode::get(*context_, /*MDs=*/{}));
+  if (module_.config()
+          .debug_options()
+          .xla_llvm_enable_invariant_load_metadata()) {
+    // Parameters of the entry computation are never stored to, loading from a
+    // parameter pointer should always return the same result within a loop.
+    if (hlo.opcode() == HloOpcode::kParameter) {
+      const std::vector<HloInstruction*>& parameter_instructions =
+          module_.entry_computation()->parameter_instructions();
+      if (std::find(parameter_instructions.begin(),
+                    parameter_instructions.end(),
+                    &hlo) != parameter_instructions.end()) {
+        array->AddInvariantLoad(llvm::MDNode::get(*context_, /*MDs=*/{}));
+      }
     }
   }
 }

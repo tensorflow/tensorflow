@@ -279,7 +279,8 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
   }
-  *shape = XLAShapeToTensorShape(*shape_or_status.ValueOrDie());
+  TF_RETURN_IF_ERROR(
+      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), shape));
   return Status::OK();
 }
 
@@ -296,10 +297,11 @@ void XlaOpKernelContext::SetOutput(int index,
   // The step's default allocator is the dummy XlaCompilationAllocator which
   // simply allocates a metadata buffer to hold the expression to which it
   // corresponds.
-  OP_REQUIRES_OK(
-      context_,
-      context_->allocate_output(
-          index, XLAShapeToTensorShape(*shape.ValueOrDie()), &output));
+  TensorShape tensor_shape;
+  OP_REQUIRES_OK(context_,
+                 XLAShapeToTensorShape(*shape.ValueOrDie(), &tensor_shape));
+  OP_REQUIRES_OK(context_,
+                 context_->allocate_output(index, tensor_shape, &output));
 
   // The expression is stored in the tensor's data buffer. Fill in the
   // fields now.
@@ -389,11 +391,6 @@ const xla::Computation* XlaOpKernelContext::GetOrCreateMax(
 const xla::Computation* XlaOpKernelContext::GetOrCreateAdd(
     const DataType type) {
   return XlaContext::Get(context_).GetOrCreateAdd(type);
-}
-
-const xla::Computation* XlaOpKernelContext::GetOrCreateSigmoid(
-    const DataType type) {
-  return XlaContext::Get(context_).GetOrCreateSigmoid(type);
 }
 
 XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}

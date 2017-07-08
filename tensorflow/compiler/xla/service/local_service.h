@@ -35,11 +35,7 @@ namespace xla {
 // in the same process as the client.
 class LocalService : public Service {
  public:
-  // Factory for creating a LocalService. The parameter platform is the platform
-  // that the service should target. If platform is null then the default
-  // platform is used.
-  static StatusOr<std::unique_ptr<LocalService>> NewService(
-      perftools::gputools::Platform* platform);
+  // Factory for creating a LocalService.
   static StatusOr<std::unique_ptr<LocalService>> NewService(
       const ServiceOptions& options);
 

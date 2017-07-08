@@ -15,7 +15,10 @@ package_group(
 )
 
 package(
-    default_visibility = [":internal"],
+    default_visibility = [
+        ":internal",
+        "//tensorflow/compiler/plugin/executor:__pkg__",
+    ],
 )
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
@@ -136,6 +139,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core/kernels:constant_op",

@@ -508,7 +508,7 @@ class NearComparator {
   *shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
 
   // Allocate space in the new literal.
-  new_literal.get()->Reserve(ShapeUtil::ElementsIn(literal.shape()));
+  new_literal->Reserve(ShapeUtil::ElementsIn(literal.shape()));
 
   // Copy data into new literal, element-by-element.
   for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
@@ -518,36 +518,36 @@ class NearComparator {
         IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
     switch (literal.shape().element_type()) {
       case PRED:
-        new_literal.get()->Set<bool>(to_multi_index,
-                                     literal.Get<bool>(from_multi_index));
+        new_literal->Set<bool>(to_multi_index,
+                               literal.Get<bool>(from_multi_index));
         break;
       case U8:
-        new_literal.get()->Set<uint8>(to_multi_index,
-                                      literal.Get<uint8>(from_multi_index));
+        new_literal->Set<uint8>(to_multi_index,
+                                literal.Get<uint8>(from_multi_index));
         break;
       case U32:
-        new_literal.get()->Set<uint32>(to_multi_index,
-                                       literal.Get<uint32>(from_multi_index));
+        new_literal->Set<uint32>(to_multi_index,
+                                 literal.Get<uint32>(from_multi_index));
         break;
       case S32:
-        new_literal.get()->Set<int32>(to_multi_index,
-                                      literal.Get<int32>(from_multi_index));
+        new_literal->Set<int32>(to_multi_index,
+                                literal.Get<int32>(from_multi_index));
         break;
       case U64:
-        new_literal.get()->Set<uint64>(to_multi_index,
-                                       literal.Get<uint64>(from_multi_index));
+        new_literal->Set<uint64>(to_multi_index,
+                                 literal.Get<uint64>(from_multi_index));
         break;
       case S64:
-        new_literal.get()->Set<int64>(to_multi_index,
-                                      literal.Get<int64>(from_multi_index));
+        new_literal->Set<int64>(to_multi_index,
+                                literal.Get<int64>(from_multi_index));
         break;
       case F32:
-        new_literal.get()->Set<float>(to_multi_index,
-                                      literal.Get<float>(from_multi_index));
+        new_literal->Set<float>(to_multi_index,
+                                literal.Get<float>(from_multi_index));
         break;
       case F64:
-        new_literal.get()->Set<double>(to_multi_index,
-                                       literal.Get<double>(from_multi_index));
+        new_literal->Set<double>(to_multi_index,
+                                 literal.Get<double>(from_multi_index));
         break;
       default:
         LOG(FATAL) << "Unhandled primitive element type: "

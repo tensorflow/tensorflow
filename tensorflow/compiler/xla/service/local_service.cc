@@ -48,13 +48,6 @@ namespace se = ::perftools::gputools;
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
-    perftools::gputools::Platform* platform) {
-  ServiceOptions default_options;
-  default_options.set_platform(platform);
-  return NewService(default_options);
-}
-
-/* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
     const ServiceOptions& options) {
   perftools::gputools::Platform* platform = options.platform();
   if (platform == nullptr) {
@@ -78,9 +71,7 @@ LocalService::LocalService(const ServiceOptions& options,
                            std::unique_ptr<Backend> execute_backend,
                            std::unique_ptr<Backend> compute_constant_backend)
     : Service(options, std::move(execute_backend),
-              std::move(compute_constant_backend)) {
-  runs_in_client_process_ = true;
-}
+              std::move(compute_constant_backend)) {}
 
 namespace {
 // Returns the space required to allocate a shape. If

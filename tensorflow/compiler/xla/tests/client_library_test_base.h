@@ -72,6 +72,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       ComputationBuilder* builder,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+  StatusOr<ExecutionHandle> ExecuteAsync(
+      const Computation& computation,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       ComputationBuilder* builder,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,

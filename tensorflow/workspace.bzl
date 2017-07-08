@@ -484,11 +484,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/e156d99231a7735d06a97b5b83de70bf4ce4f034.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/e156d99231a7735d06a97b5b83de70bf4ce4f034.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9e886358ff35a13de549b4adf49b52f933b9ec37.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/9e886358ff35a13de549b4adf49b52f933b9ec37.tar.gz",
       ],
-      sha256 = "72e34e2411a06d4200a2688ee83832805fbef23a12ea481f31c2b8866fde007a",
-      strip_prefix = "llvm-e156d99231a7735d06a97b5b83de70bf4ce4f034",
+      sha256 = "5a56369e906e5af2d4baf5a92317a3db085800e848def7114aba176c80432ea0",
+      strip_prefix = "llvm-9e886358ff35a13de549b4adf49b52f933b9ec37",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -520,7 +520,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@jsoncpp_git//:jsoncpp",
   )
 
-  native.http_archive(
+  patched_http_archive(
       name = "boringssl",
       urls = [
           "http://mirror.bazel.build/github.com/google/boringssl/archive/bbcaa15b0647816b9a1a9b9e0d209cd6712f0105.tar.gz",
@@ -528,6 +528,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "025264d6e9a7ad371f2f66d17a28b6627de0c9592dc2eb54afd062f68f1f9aa3",
       strip_prefix = "boringssl-bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",
+
+      # Add patch to boringssl code to support s390x
+      patch_file = str(Label("//third_party/boringssl:add_boringssl_s390x.patch")),
   )
 
   native.new_http_archive(
@@ -642,4 +645,20 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "e0928ca4aa10ea1e0551e2d7ce4d1d7ea2d84b2abbdef082b0da84268791d0c4",
       strip_prefix = "pprof-c0fb62ec88c411cc91194465e54db2632845b650",
       build_file = str(Label("//third_party:pprof.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "cub_archive",
+      urls = [
+          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.6.4.zip",
+          "https://github.com/NVlabs/cub/archive/1.6.4.zip",
+      ],
+      sha256 = "966d0c4f41e2bdc81aebf9ccfbf0baffaac5a74f00b826b06f4dee79b2bb8cee",
+      strip_prefix = "cub-1.6.4",
+      build_file = str(Label("//third_party:cub.BUILD")),
+  )
+
+  native.bind(
+      name = "cub",
+      actual = "@cub_archive//:cub",
   )

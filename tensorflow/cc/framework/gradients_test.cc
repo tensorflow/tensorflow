@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

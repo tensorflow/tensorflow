@@ -19,6 +19,7 @@ limitations under the License.
 #include <regex>
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 
@@ -45,7 +46,8 @@ class ConstantFolding : public GraphOptimizer {
 
  private:
   string AddControlDependency(const string& input_name);
-  Status MaterializeShapes(const GrapplerItem& item);
+  Status MaterializeShapes(const GrapplerItem& item,
+                           const GraphProperties& properties);
 
   bool IsFoldable(const NodeDef& node) const;
 
@@ -63,7 +65,9 @@ class ConstantFolding : public GraphOptimizer {
   Status FoldGraph(GraphDef* output);
 
   bool IsSimplifiableReduction(const NodeDef& node) const;
-  Status SimplifyGraph(GraphDef* output);
+  bool IsSimplifiableReshape(const NodeDef& node,
+                             const GraphProperties& properties) const;
+  Status SimplifyGraph(GraphDef* output, const GraphProperties& properties);
 
   std::unique_ptr<DeviceBase> device_;
   GraphDef graph_;

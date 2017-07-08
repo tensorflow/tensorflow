@@ -917,7 +917,7 @@ def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
     aggregation_method: See `gradients()` documentation for details.
 
   Returns:
-    A list of Hessian matrices of `sum(y)` for each `x` in `xs`.
+    A list of Hessian matrices of `sum(ys)` for each `x` in `xs`.
 
   Raises:
     LookupError: if one of the operations between `xs` and `ys` does not

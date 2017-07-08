@@ -44,6 +44,20 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "import_pb_to_tensorboard",
+    srcs = ["import_pb_to_tensorboard.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+    ],
+)
+
 py_test(
     name = "freeze_graph_test",
     size = "small",

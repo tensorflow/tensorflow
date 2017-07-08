@@ -25,21 +25,6 @@ namespace tensorflow {
 
 namespace internal {
 
-// Helper to compute 'strides' given a tensor 'shape'. I.e.,
-// strides[i] = prod(shape.dim_size[(i+1):])
-template <typename Index>
-gtl::InlinedVector<Index, 8> ComputeStride(const TensorShape& shape) {
-  const int ndims = shape.dims();
-  gtl::InlinedVector<Index, 8> strides(ndims);
-  Index stride = 1;
-  for (int i = ndims - 1; i >= 0; --i) {
-    strides[i] = stride;
-    stride *= static_cast<Index>(shape.dim_size(i));
-  }
-  return strides;
-}
-
-
 // Device-specific naive implementation for tile.
 template <typename Device, typename T>
 void TileSimple(const Device& d, Tensor* out, const Tensor& in);

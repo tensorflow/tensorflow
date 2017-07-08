@@ -139,7 +139,7 @@ public final class Operation {
    *
    * @param name identifier of the list of tensors (of which there may be many) inputs to this
    *     operation.
-   * @returns the size of the list of Tensors produced by this named input.
+   * @return the size of the list of Tensors produced by this named input.
    * @throws IllegalArgumentException if this operation has no input with the provided name.
    */
   public int inputListLength(final String name) {

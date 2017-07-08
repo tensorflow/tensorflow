@@ -24,12 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -72,8 +68,8 @@ class HloOrdering {
   std::unique_ptr<CallGraph> call_graph_;
 };
 
-// Base class for partial orderings implemented by a map of strict predecessors
-// for each instruction. Subclasses should fill in strict_predecessors_.
+// Base class for partial orderings implemented by a map of predecessors for
+// each instruction. Subclasses should fill in predecessors_.
 class PredecessorHloOrdering : public HloOrdering {
  public:
   ~PredecessorHloOrdering() override = default;
@@ -93,13 +89,12 @@ class PredecessorHloOrdering : public HloOrdering {
                                        const HloInstruction* b) const override;
 
   // For each computation in the module, this is the set of the instruction's
-  // strict predecessors. An instruction is not an element of its own strict
-  // predecessor set.
+  // predecessors. An instruction is an element of its own predecessor set.
   //
   // Subclasses should fill this in to define the desired ordering.
   tensorflow::gtl::FlatMap<const HloComputation*,
-                           std::unique_ptr<HloComputation::ReachabilityMap>>
-      strict_predecessors_;
+                           std::unique_ptr<HloReachabilityMap>>
+      predecessors_;
 };
 
 // An HLO ordering based on data dependencies in the HLO graph. In this partial
@@ -190,24 +185,6 @@ class SequentialHloOrdering : public HloOrdering {
 std::ostream& operator<<(
     std::ostream& out,
     const SequentialHloOrdering::HloModuleSequence& module_sequence);
-
-// Returns the minimum memory required to compute the given module sequence,
-// assuming no fragmentation.
-StatusOr<int64> MinimumMemoryForSequence(
-    const SequentialHloOrdering::HloModuleSequence& module_sequence,
-    const LogicalBuffer::SizeFunction& size_function);
-
-// Returns an HloModuleSequence which seeks to minimize the memory required for
-// the computation. size_function is the function returning the number of bytes
-// required for a LogicalBuffer.
-StatusOr<SequentialHloOrdering::HloModuleSequence>
-CreateMemoryMinimizingSequence(
-    const HloModule& module, const LogicalBuffer::SizeFunction& size_function);
-
-// Overload of above that computes the sequence for a single computation.
-StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
-    const HloComputation& computation,
-    const LogicalBuffer::SizeFunction& size_function);
 
 }  // namespace xla
 

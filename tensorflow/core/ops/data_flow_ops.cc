@@ -881,6 +881,32 @@ cancel_pending_enqueues: If true, all pending enqueue requests that are
   blocked on the given queue will be canceled.
 )doc");
 
+REGISTER_OP("QueueIsClosed")
+    .Input("handle: Ref(string)")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
+)doc");
+
+REGISTER_OP("QueueIsClosedV2")
+    .Input("handle: resource")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
+)doc");
+
 REGISTER_OP("QueueSize")
     .Input("handle: Ref(string)")
     .Output("size: int32")

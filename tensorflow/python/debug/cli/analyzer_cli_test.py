@@ -25,6 +25,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
@@ -41,6 +42,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
+
+
+def no_rewrite_session_config():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  return config_pb2.ConfigProto(graph_options=graph_options)
 
 
 def line_number_above():
@@ -506,7 +514,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     cls._curr_file_path = os.path.abspath(
         tf_inspect.getfile(tf_inspect.currentframe()))
 
-    cls._sess = session.Session()
+    cls._sess = session.Session(config=no_rewrite_session_config())
     with cls._sess as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       v_init_val = np.array([[2.0], [-1.0]])
@@ -1241,16 +1249,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         [self._curr_file_path, "-b", "3"],
         screen_info={"cols": 80})
 
-    self.assertIn("Omitted 2 source lines", out.lines[0])
-    self.assertTrue(out.lines[0].endswith("+5"))
-    expand_lines_command = out.font_attr_segs[0][-1][2].content
-    self.assertStartsWith(expand_lines_command,
-                          "ps %s " % self._curr_file_path)
-    self.assertIn("-b 1", expand_lines_command)
-
-    self.assertIsNone(self._findSourceLine(out, 1))
-    self.assertIsNone(self._findSourceLine(out, 2))
-    self.assertIsNotNone(self._findSourceLine(out, 3))
+    self.assertEqual(
+        2, out.annotations[debugger_cli_common.INIT_SCROLL_POS_KEY])
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
@@ -1390,7 +1390,7 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
   def setUpClass(cls):
     cls._dump_root = tempfile.mkdtemp()
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       # 2400 elements should exceed the default threshold (2000).
       x = constant_op.constant(np.zeros([300, 8]), name="large_tensors/x")
 
@@ -1467,7 +1467,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       x_init_val = np.array([5.0, 3.0])
       x_init = constant_op.constant(x_init_val, shape=[2])
       x = variables.Variable(x_init, name="control_deps/x")
@@ -1807,7 +1807,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
   def setUpClass(cls):
     cls._dump_root = tempfile.mkdtemp()
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       loop_var = constant_op.constant(0, name="while_loop_test/loop_var")
       cond = lambda loop_var: math_ops.less(loop_var, 10)
       body = lambda loop_var: math_ops.add(loop_var, 1)

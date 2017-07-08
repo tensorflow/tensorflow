@@ -128,6 +128,17 @@ class SessionTest(test_util.TensorFlowTestCase):
       results = s.run([inp])
       self.assertAllEqual([20.0], results)
 
+    pool = config.session_inter_op_thread_pool.add()
+    pool.num_threads = 1
+    pool.global_name = 't1'
+    run_options = config_pb2.RunOptions()
+    run_options.inter_op_thread_pool = (
+        len(config.session_inter_op_thread_pool) - 1)
+    with session.Session(config=config) as s:
+      inp = constant_op.constant(30.0, name='W2')
+      results = s.run([inp], options=run_options)
+      self.assertAllEqual([30.0], results)
+
   def testErrorsReported(self):
     with session.Session() as s:
       constant_op.constant(10.0, name='W1')
@@ -1218,6 +1229,50 @@ class SessionTest(test_util.TensorFlowTestCase):
           out_v, feed_v = feed_fetch_runner(np_array)
           self.assertAllEqual(np_array, out_v)
           self.assertAllEqual(np_array, feed_v)
+
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
+  def testMakeCallableOnTensorWithRunOptions(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      tensor_runner = sess.make_callable(a, accept_options=True)
+      run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertEqual(0, len(run_metadata.step_stats.dev_stats))
+      res = tensor_runner(options=run_options, run_metadata=run_metadata)
+      self.assertEqual(42.0, res)
+      self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
+
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
+  def testMakeCallableOnOperationWithRunOptions(self):
+    with session.Session() as sess:
+      a = variables.Variable(42.0)
+      b = state_ops.assign_add(a, 1.0)
+      sess.run(a.initializer)
+      tensor_runner = sess.make_callable(b.op, accept_options=True)
+      run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertEqual(0, len(run_metadata.step_stats.dev_stats))
+      tensor_runner(options=run_options, run_metadata=run_metadata)
+      self.assertEqual(43.0, sess.run(a))
+      self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
+
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
+  def testMakeCallableWithFeedListAndRunOptions(self):
+    with session.Session() as sess:
+      ph = array_ops.placeholder(dtypes.float32)
+      a = math_ops.add(ph, 1.0)
+      tensor_runner = sess.make_callable(
+          a, feed_list=[ph.name], accept_options=True)
+      run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertEqual(0, len(run_metadata.step_stats.dev_stats))
+      self.assertAllClose(
+          42.0,
+          tensor_runner(41.0, options=run_options, run_metadata=run_metadata))
+      self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
 
   def testFeedError(self):
     with session.Session() as sess:

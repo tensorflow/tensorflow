@@ -550,9 +550,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       ExpectNotTupleOrOpaque(rhs, "rhs of elementwise binary operation"));
 
   if (!ShapeUtil::SameElementType(lhs, rhs)) {
-    return InvalidArgument("binary op with different element types: %s and %s",
-                           ShapeUtil::HumanString(lhs).c_str(),
-                           ShapeUtil::HumanString(rhs).c_str());
+    return InvalidArgument(
+        "binary op %s with different element types: %s and %s",
+        BinaryOperation_Name(operation).c_str(),
+        ShapeUtil::HumanString(lhs).c_str(),
+        ShapeUtil::HumanString(rhs).c_str());
   }
 
   if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
@@ -1147,6 +1149,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                            starts.size(), limits.size());
   }
 
+  if (starts.size() != strides.size()) {
+    return InvalidArgument("slice start and strides sizes differ: %zu vs %zu",
+                           starts.size(), strides.size());
+  }
+
   if (starts.size() != ShapeUtil::Rank(arg)) {
     return InvalidArgument(
         "slice index count does not match argument rank: %zu vs %lld",
@@ -1162,9 +1169,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       return InvalidArgument("negative start index to slice: %lld",
                              start_index);
     }
-    if (stride == 0) {
-      return InvalidArgument("Zero stride");
-    }
     if (limit_index > arg.dimensions(dimension)) {
       return InvalidArgument(
           "limit index (%lld) must be less than or equal to dimension "
@@ -1175,17 +1179,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                                            start_index);
     VLOG(2) << tensorflow::strings::Printf("limits[%lld] = %lld", dimension,
                                            limit_index);
-    if (stride > 0) {
-      if (start_index > limit_index) {
-        return InvalidArgument(
-            "limit index (%lld) must be greater or equal to "
-            "start index (%lld) in slice with positive stride",
-            limit_index, start_index);
-      }
-      sizes.push_back((limit_index - start_index + stride - 1) / stride);
-    } else {
-      return InvalidArgument("Negative strides not supported");
+    if (start_index > limit_index) {
+      return InvalidArgument(
+          "limit index (%lld) must be greater or equal to "
+          "start index (%lld) in slice with positive stride",
+          limit_index, start_index);
     }
+    if (stride <= 0) {
+      return InvalidArgument("stride (%lld) must be positive", stride);
+    }
+    sizes.push_back((limit_index - start_index + stride - 1) / stride);
   }
 
   return ShapeUtil::MakeShape(arg.element_type(), sizes);
@@ -1522,10 +1525,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const ProgramShape& to_apply) {
   // The applied function's arity equals the number of arguments.
   if (arg_shapes.size() != to_apply.parameters_size()) {
+    string computation_signature = ShapeUtil::HumanString(to_apply);
+    string argument_shapes = tensorflow::str_util::Join(
+        arg_shapes, ", ", [](string* out, const Shape* shape) {
+          tensorflow::strings::StrAppend(out, ShapeUtil::HumanString(*shape));
+        });
     return InvalidArgument(
         "Call applied function arity must match number of arguments; got: "
-        "arity: %d, arguments: %zu",
-        to_apply.parameters_size(), arg_shapes.size());
+        "arity: %d, arguments: %zu; computation signature: %s; argument "
+        "shapes: [%s]",
+        to_apply.parameters_size(), arg_shapes.size(),
+        computation_signature.c_str(), argument_shapes.c_str());
   }
 
   // All arguments must be compatible with the program shape.

@@ -165,7 +165,7 @@ class _LinearEmbeddingLookupArguments(
                             "combiner"])):
   """Represents the information needed from a column for embedding lookup.
 
-  Used to to compute DNN inputs and weighted sum.
+  Used to compute DNN inputs and weighted sum.
   """
   pass
 
@@ -184,7 +184,7 @@ class _DeepEmbeddingLookupArguments(
                             "trainable"])):
   """Represents the information needed from a column for embedding lookup.
 
-  Used to to compute DNN inputs and weighted sum.
+  Used to compute DNN inputs and weighted sum.
   """
   pass
 

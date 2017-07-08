@@ -332,48 +332,64 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
 using FusionCostAnalysis = ::testing::Test;
 
 TEST_F(FusionCostAnalysis, LoopFusion) {
-  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  // Do this 4 times with different per-second rates to test the computation of
+  // bottleneck time on fusion nodes.
+  for (int i = 0; i < 4; ++i) {
+    Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
 
-  // Fuse all instructions in complicated expression:
-  //
-  //   add = Add(C1, C2)
-  //   clamp = Clamp(C2, add, add)
-  //   exp = Exp(add)
-  //   mul = Mul(exp, C3)
-  //   sub = Sub(mul, clamp)
-  //   tuple = Tuple({sub, sub, mul, C1})
-  auto c1 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
-      /*from=*/0.0f, /*to=*/1.0f, /*rows=*/2, /*cols=*/2));
-  auto c2 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
-      /*from=*/1.0f, /*to=*/2.0f, /*rows=*/2, /*cols=*/2));
-  auto c3 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
-      /*from=*/2.0f, /*to=*/3.0f, /*rows=*/2, /*cols=*/2));
+    // Fuse all instructions in complicated expression:
+    //
+    //   add = Add(C1, C2)
+    //   clamp = Clamp(C2, add, add)
+    //   exp = Exp(add)
+    //   mul = Mul(exp, C3)
+    //   sub = Sub(mul, clamp)
+    //   tuple = Tuple({sub, sub, mul, C1})
+    auto c1 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+        /*from=*/0.0f, /*to=*/1.0f, /*rows=*/2, /*cols=*/2));
+    auto c2 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+        /*from=*/1.0f, /*to=*/2.0f, /*rows=*/2, /*cols=*/2));
+    auto c3 = HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+        /*from=*/2.0f, /*to=*/3.0f, /*rows=*/2, /*cols=*/2));
 
-  auto add =
-      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, c1.get(), c2.get());
-  auto clamp = HloInstruction::CreateTernary(r2f32, HloOpcode::kClamp, c2.get(),
-                                             add.get(), add.get());
-  auto exp = HloInstruction::CreateUnary(r2f32, HloOpcode::kExp, add.get());
-  auto mul = HloInstruction::CreateBinary(r2f32, HloOpcode::kMultiply,
-                                          exp.get(), c3.get());
-  auto sub = HloInstruction::CreateBinary(r2f32, HloOpcode::kSubtract,
-                                          mul.get(), clamp.get());
-  auto tuple =
-      HloInstruction::CreateTuple({sub.get(), sub.get(), mul.get(), c1.get()});
+    auto add = HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, c1.get(),
+                                            c2.get());
+    auto clamp = HloInstruction::CreateTernary(r2f32, HloOpcode::kClamp,
+                                               c2.get(), add.get(), add.get());
+    auto exp = HloInstruction::CreateUnary(r2f32, HloOpcode::kExp, add.get());
+    auto mul = HloInstruction::CreateBinary(r2f32, HloOpcode::kMultiply,
+                                            exp.get(), c3.get());
+    auto sub = HloInstruction::CreateBinary(r2f32, HloOpcode::kSubtract,
+                                            mul.get(), clamp.get());
+    auto tuple = HloInstruction::CreateTuple(
+        {sub.get(), sub.get(), mul.get(), c1.get()});
 
-  auto fusion = HloInstruction::CreateFusion(
-      r2f32, HloInstruction::FusionKind::kLoop, tuple.get());
-  fusion->FuseInstruction(sub.get());
-  fusion->FuseInstruction(mul.get());
-  fusion->FuseInstruction(exp.get());
-  fusion->FuseInstruction(clamp.get());
-  fusion->FuseInstruction(add.get());
+    auto fusion = HloInstruction::CreateFusion(
+        r2f32, HloInstruction::FusionKind::kLoop, tuple.get());
+    fusion->FuseInstruction(sub.get());
+    fusion->FuseInstruction(mul.get());
+    fusion->FuseInstruction(exp.get());
+    fusion->FuseInstruction(clamp.get());
+    fusion->FuseInstruction(add.get());
 
-  HloCostAnalysis fusion_analysis(ShapeSize);
-  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+    // The time given these rates at i == 0 is exactly even among the properties
+    // at 1.0 seconds. For other values, one of the rates is slower so that it
+    // becomes the bottleneck.
+    HloCostAnalysis fusion_analysis(ShapeSize);
+    fusion_analysis.set_flops_per_second(16 * (i == 1 ? 1 / 2.0 : 1.0));
+    fusion_analysis.set_transcendentals_per_second(4 *
+                                                   (i == 2 ? 1 / 4.0 : 1.0));
+    fusion_analysis.set_bytes_per_second(64 * (i == 3 ? 1 / 8.0 : 1.0));
+    ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
-  EXPECT_EQ(fusion_analysis.flop_count(), 16);
-  EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
+    EXPECT_EQ(fusion_analysis.flop_count(), 16);
+    EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
+    constexpr int64 bytes_accessed = sizeof(float) * 4 * 2 * 2;
+    static_assert(bytes_accessed == 64, "");
+    EXPECT_EQ(fusion_analysis.bytes_accessed(), bytes_accessed);
+
+    EXPECT_EQ(fusion_analysis.seconds(), 1 << i);
+  }
 }
 
 TEST_F(FusionCostAnalysis, NoLayout) {
