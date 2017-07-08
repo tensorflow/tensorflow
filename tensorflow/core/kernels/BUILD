@@ -3392,7 +3392,7 @@ cc_library(
     deps = ["//tensorflow/core:framework_headers_lib"],
 )
 
-cc_test(
+tf_cc_test(
     name = "loss_test",
     size = "small",
     srcs = ["loss_test.cc"],
@@ -3790,7 +3790,7 @@ cc_binary(
     deps = [
         ":spectrogram_test_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_internal_impl",
     ],
 )
 
@@ -4597,7 +4597,8 @@ cc_binary(
             "//tensorflow/core:test",
             "//tensorflow/cc:cc_ops",
             "//tensorflow/cc:client_session",
-            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal_impl",
+            "//tensorflow/core:lib_internal_impl",
             "//tensorflow/core:tensor_testutil",
             "//tensorflow/core:test_main",
         ],
