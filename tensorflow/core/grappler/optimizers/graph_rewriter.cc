@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include <unordered_map>
 #include <unordered_set>
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 
@@ -28,8 +30,13 @@ GraphRewriter::GraphRewriter(const GrapplerItem& item) {
     nodes_[node.name()] = &node;
   }
 
+  std::unordered_set<string> function_names;
+  for (const auto& function : item.graph.library().function()) {
+    function_names.insert(function.signature().name());
+  }
+
   for (auto& node : item.graph.node()) {
-    RecordControlDependencyDrivers(node);
+    RecordConnectivity(node, function_names);
   }
 }
 
@@ -58,15 +65,34 @@ bool GraphRewriter::IsDrivenByControlDependency(const NodeDef& node) const {
   return false;
 }
 
-void GraphRewriter::RecordControlDependencyDrivers(const NodeDef& node) {
+bool GraphRewriter::IsConnectedToFunction(const NodeDef& node) const {
+  return function_neighbors_.find(&node) != function_neighbors_.end();
+}
+
+void GraphRewriter::RecordConnectivity(
+    const NodeDef& node, const std::unordered_set<string>& function_names) {
+  const bool is_function =
+      function_names.find(node.op()) != function_names.end();
+
   for (const auto& input : node.input()) {
     int position = 0;
     string input_node_name = ParseNodeName(input, &position);
+    auto itr = nodes_.find(input_node_name);
+    if (itr == nodes_.end()) {
+      continue;
+    }
+    const NodeDef* fanin = itr->second;
     if (position < 0) {
       // This is a control edge
-      auto itr = nodes_.find(input_node_name);
-      CHECK(itr != nodes_.end());
-      control_dependency_drivers_.insert(itr->second);
+      control_dependency_drivers_.insert(fanin);
+    } else {
+      // This is a regular edge
+      if (function_names.find(fanin->op()) != function_names.end()) {
+        function_neighbors_.insert(&node);
+      }
+      if (is_function) {
+        function_neighbors_.insert(fanin);
+      }
     }
   }
 }

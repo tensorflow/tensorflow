@@ -57,8 +57,11 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     // dependency edges by deleting them (for example, removing a node driven by
     // 10 control edges and driving 10 control edges would result in the
     // creation of 100 edges).
+    // Don't modify nodes that are connected to functions since that can result
+    // in inlining failures later on.
     if (!rewriter.DrivesControlDependency(node) &&
-        !rewriter.IsDrivenByControlDependency(node)) {
+        !rewriter.IsDrivenByControlDependency(node) &&
+        !rewriter.IsConnectedToFunction(node)) {
       nodes_to_delete.insert(&node);
     }
   }
