@@ -47,8 +47,8 @@ extern const char* const DEVICE_XLA_GPU;
 constexpr std::array<DataType, 2> kIntTypes = {{DT_INT32, DT_INT64}};
 constexpr std::array<DataType, 3> kFloatTypes = {
     {DT_HALF, DT_FLOAT, DT_DOUBLE}};
-constexpr std::array<DataType, 4> kNumericTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE}};
+constexpr std::array<DataType, 5> kNumericTypes = {
+    {DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE}};
 
 constexpr std::array<DataType, 5> kCpuAllTypes = {
     {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
