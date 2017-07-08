@@ -15,8 +15,8 @@ tf_custom_op_library(
     name = "python/ops/_reduce_slice_ops.so",
     srcs = [
         "kernels/reduce_slice_ops.cc",
-        "ops/reduce_slice_ops.cc",
         "kernels/reduce_slice_ops.h",
+        "ops/reduce_slice_ops.cc",
     ],
     gpu_srcs = [
         "kernels/reduce_slice_ops.h",
@@ -24,7 +24,7 @@ tf_custom_op_library(
     ],
     deps = [
         #TODO
-    ]
+    ],
 )
 
 tf_kernel_library(
@@ -55,19 +55,6 @@ tf_gen_op_wrapper_py(
     deps = [":reduce_slice_ops_op_lib"],
 )
 
-# py_library(
-#     name = "reduce_slice_ops_py",
-#     srcs = [
-#         "__init__.py",
-#         "python/ops/reduce_slice_ops.py",
-#     ],
-#     srcs_version = "PY2AND3",
-#     visibility = ["//visibility:public"],
-#     deps = [
-#         ":reduce_slice_ops",
-#     ],
-# )
-
 tf_custom_op_py_library(
     name = "reduce_slice_ops_py",
     srcs = [
@@ -78,12 +65,12 @@ tf_custom_op_py_library(
         ":python/ops/_reduce_slice_ops.so",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":reduce_slice_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tf_py_test(
