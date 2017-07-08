@@ -198,6 +198,31 @@ f: A function mapping elements of `input_dataset`, concatenated with
   `output_types` and `output_shapes`.
 )doc");
 
+REGISTER_OP("InterleaveDataset")
+    .Input("input_dataset: resource")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Output("handle: resource")
+    .Attr("f: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that applies `f` to the outputs of `input_dataset`.
+
+Unlike MapDataset, the `f` in InterleaveDataset is expected to return
+a Dataset resource, and InterleaveDataset will flatten successive
+results into a single Dataset. Unlike FlatMapDataset,
+InterleaveDataset will interleave sequences of up to `block_length`
+consecutive elements from `cycle_length` input elements.
+
+f: A function mapping elements of `input_dataset`, concatenated with
+  `other_arguments`, to a Dataset resource that contains elements matching
+  `output_types` and `output_shapes`.
+)doc");
+
 REGISTER_OP("GroupByWindowDataset")
     .Input("input_dataset: resource")
     .Input("key_func_other_arguments: Tkey_func_other_arguments")
