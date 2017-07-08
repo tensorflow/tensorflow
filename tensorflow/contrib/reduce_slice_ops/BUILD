@@ -8,20 +8,42 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_kernel_tests_linkstatic")
 
-tf_custom_op_library(
-    name = "python/ops/_reduce_slice_ops.so",
+# tf_custom_op_library(
+#     name = "python/ops/_reduce_slice_ops.so",
+#     srcs = [
+#         "kernels/reduce_slice_ops.cc",
+#         "ops/reduce_slice_ops.cc",
+#         "kernels/reduce_slice_ops.h",
+#     ],
+#     gpu_srcs = [
+#         "kernels/reduce_slice_ops.h",
+#         "kernels/reduce_slice_ops_gpu.cu.cc",
+#     ],
+#     deps = [
+#         #TODO
+#     ]
+# )
+
+tf_kernel_library(
+    name = "reduce_slice_ops_kernels",
     srcs = [
         "kernels/reduce_slice_ops.cc",
-        "ops/reduce_slice_ops.cc",
+    ],
+    hdrs = [
+        "kernels/reduce_slice_ops.h",
     ],
     gpu_srcs = [
+        "kernels/reduce_slice_ops.h",
         "kernels/reduce_slice_ops_gpu.cu.cc",
     ],
     deps = [
-        #TODO
-    ]
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_gen_op_libs(
@@ -33,21 +55,34 @@ tf_gen_op_wrapper_py(
     deps = [":reduce_slice_ops_op_lib"],
 )
 
-tf_custom_op_py_library(
+py_library(
     name = "reduce_slice_ops_py",
     srcs = [
         "__init__.py",
         "python/ops/reduce_slice_ops.py",
     ],
-    dso = [
-        ":python/ops/_reduce_slice_ops.so",
-    ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":reduce_slice_ops",
     ],
-    visibility = ["//visibility:public"],
 )
+
+# tf_custom_op_py_library(
+#     name = "reduce_slice_ops_py",
+#     srcs = [
+#         "__init__.py",
+#         "python/ops/reduce_slice_ops.py",
+#     ],
+#     dso = [
+#         ":python/ops/_reduce_slice_ops.so",
+#     ],
+#     srcs_version = "PY2AND3",
+#     deps = [
+#         ":reduce_slice_ops",
+#     ],
+#     visibility = ["//visibility:public"],
+# )
 
 tf_py_test(
     name = "reduce_slice_ops_test",
@@ -55,7 +90,7 @@ tf_py_test(
     srcs = ["python/ops/reduce_slice_ops_test.py"],
     additional_deps = [
         ":reduce_slice_ops_py",
-        "//tensorflow/python:platform_test_util",
+        "//tensorflow/python:platform",
         "//third_party/py/numpy",
     ],
 )
@@ -72,7 +107,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ]
+    ],
 )
 
 filegroup(
