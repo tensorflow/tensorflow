@@ -20,74 +20,82 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-    using namespace tensorflow::ops;
+const char kGradientsName[] = "Gradients";
 
-    // processor abstract class
-    class OptimizableVariable {
-        public:
-            virtual ~OptimizableVariable() {}
-            virtual Output UpdateOp(const Scope& scope, const Optimizer& optimizer, const Output& grad) = 0;
-            OptimizableVariable(const Output& v) : variable_(v) {}
-            Output variable() { return variable_; }
-        protected:
-            Output variable_;
-    };
+// processor abstract class
+class OptimizableVariable {
+ public:
+    virtual ~OptimizableVariable() {}
+    virtual Output UpdateOp(const Scope& scope,
+                            const Optimizer& optimizer,
+                            const Output& grad) = 0;
+    explicit OptimizableVariable(const Output& v) : variable_(v) {}
+    Output variable() { return variable_; }
+ protected:
+    Output variable_;
+};
 
-    // processor for a Variable
-    class RefVariableProcessor: public OptimizableVariable {
-        public:
-            ~RefVariableProcessor() {}
-            RefVariableProcessor(const Output& v) : OptimizableVariable(v) {}
-            Output UpdateOp(const Scope& scope, const Optimizer& optimizer, const Output& grad) override {
-                return optimizer.ApplyDense(scope, grad, variable_);
-            }
-    };
-
-    // return the processor regarding the type of the variable
-    OptimizableVariable* GetProcessor(const Scope& scope, const Output& variable) {
-        if(::tensorflow::grappler::IsVariable(variable.node()->def())) {
-            return new RefVariableProcessor(variable);
-        } else {
-            scope.UpdateStatus(Status(::tensorflow::error::Code::INVALID_ARGUMENT, 
-                "No processor yet for this kind of variable: " + variable.node()->def().op()));
-        }
-        return nullptr;
+// processor for a Variable
+class RefVariableProcessor: public OptimizableVariable {
+ public:
+    ~RefVariableProcessor() {}
+    explicit RefVariableProcessor(const Output& v) : OptimizableVariable(v) {}
+    Output UpdateOp(const Scope& scope,
+                    const Optimizer& optimizer,
+                    const Output& grad) override {
+        return optimizer.ApplyDense(scope, grad, variable_);
     }
+};
 
-} // namespace
+// return the processor regarding the type of the variable
+OptimizableVariable* GetProcessor(const Scope& scope, const Output& variable) {
+    if (::tensorflow::grappler::IsVariable(variable.node()->def())) {
+        return new RefVariableProcessor(variable);
+    } else {
+        scope.UpdateStatus(Status(::tensorflow::error::Code::INVALID_ARGUMENT,
+            "No processor yet for this kind of variable: "
+            + variable.node()->def().op()));
+    }
+    return nullptr;
+}
 
-const string Optimizer::GRADIENTS_NAME = "Gradients";
+}  // namespace
 
 void Optimizer::ComputeGradients(const Scope& scope,
                                  const std::vector<Output>& loss,
                                  const std::vector<Output>& var_list,
                                  const std::vector<Output>& grad_loss,
                                  GradAndVar* grads_and_vars) {
-
-    // if a ComputeGradients overload has been called, the scope is already GRADIENTS_NAME
+    // if a ComputeGradients overload has been called,
+    // the scope is already kGradientsName
     Scope scope_gradient = scope;
-    if (scope.Name() != GRADIENTS_NAME) {
-        scope_gradient = scope.NewSubScope(GRADIENTS_NAME);
+    if (scope.Name() != kGradientsName) {
+        scope_gradient = scope.NewSubScope(kGradientsName);
     }
 
     // add the gradients node to the graph
     std::vector<Output> grad_outputs;
-    TF_CHECK_OK(AddSymbolicGradients(scope_gradient, loss, var_list, grad_loss, &grad_outputs));
-    
+    TF_CHECK_OK(AddSymbolicGradients(scope_gradient,
+                                     loss,
+                                     var_list,
+                                     grad_loss,
+                                     &grad_outputs));
+
     // create a vector of pair (grad, var)
     for (int i = 0; i < var_list.size(); ++i) {
         if (::tensorflow::grappler::IsVariable(var_list[i].node()->def())) {
-            grads_and_vars->push_back(std::make_tuple(grad_outputs[i], var_list[i]));
+            grads_and_vars->push_back(std::make_tuple(grad_outputs[i],
+                                                      var_list[i]));
         }
     }
 
-    // if we don't have the same number of pair (grad, var) as the number of vars
-    // it means that at least one var from var_list is not a variable
+    // if we don't have the same number of pair (grad, var)
+    // as the number of vars it means that at least
+    // one var from var_list is not a variable
     if (var_list.size() != grads_and_vars->size()) {
-        scope.UpdateStatus(Status(::tensorflow::error::Code::INVALID_ARGUMENT, 
+        scope.UpdateStatus(Status(::tensorflow::error::Code::INVALID_ARGUMENT,
             "You are trying to compute the gradients of non Variable Output."));
     }
-
 }
 
 std::vector<Output> Optimizer::ApplyGradients(const Scope& scope,
@@ -97,7 +105,8 @@ std::vector<Output> Optimizer::ApplyGradients(const Scope& scope,
     std::vector<Output> update_ops;
 
     if (grads_and_vars.empty()) {
-        scope.UpdateStatus(Status(::tensorflow::error::Code::INVALID_ARGUMENT, "No variable to update provided."));
+        scope.UpdateStatus(Status(::tensorflow::error::Code::INVALID_ARGUMENT,
+                                  "No variable to update provided."));
     }
 
     Scope scope_optimizer = scope.NewSubScope(this->name_);
@@ -107,19 +116,18 @@ std::vector<Output> Optimizer::ApplyGradients(const Scope& scope,
 
     // retrieve the processor for each (gradient, var) tuple
     for (int i = 0; i < grads_and_vars.size(); i++) {
-    
         Output grad = std::get<0>(grads_and_vars[i]);
         Output var = std::get<1>(grads_and_vars[i]);
         OptimizableVariable *processor = GetProcessor(scope_optimizer, var);
 
-        // no processor for this kind of variable, the scope.status() contains more details
+        // no processor for this kind of variable, the scope.status()
+        // contains more details
         if (processor == nullptr) {
             return update_ops;
         }
 
         update_ops.push_back(processor->UpdateOp(scope_optimizer, *this, grad));
         delete processor;
-
     }
 
     return update_ops;
@@ -129,8 +137,7 @@ void Optimizer::ComputeGradients(const Scope& scope,
                                  const std::vector<Output>& loss,
                                  const std::vector<Output>& var_list,
                                  GradAndVar* grads_and_vars) {
-    
-    Scope scope_gradient = scope.NewSubScope(GRADIENTS_NAME);
+    Scope scope_gradient = scope.NewSubScope(kGradientsName);
 
     // fill grad_loss with 'OnesLike' for all shapes in 'loss'
     std::vector<Output> grad_loss;
@@ -146,21 +153,18 @@ void Optimizer::ComputeGradients(const Scope& scope,
 std::vector<Output> Optimizer::Minimize(const Scope& scope,
                                         const std::vector<Output>& loss,
                                         const std::vector<Output>& var_list) {
-
     GradAndVar grad_and_var;
     ComputeGradients(scope, loss, var_list, &grad_and_var);
     return ApplyGradients(scope, grad_and_var);
-
 }
 
 std::vector<Output> Optimizer::Minimize(const Scope& scope,
                                         const std::vector<Output>& loss) {
-    
     // retrieve all the variables from the graph
     std::vector<Output> var_list;
 
     for (Node* node : scope.graph()->nodes()) {
-        if(::tensorflow::grappler::IsVariable(node->def())) {
+        if (::tensorflow::grappler::IsVariable(node->def())) {
             var_list.push_back(Output{node});
         }
     }
@@ -168,7 +172,6 @@ std::vector<Output> Optimizer::Minimize(const Scope& scope,
     GradAndVar grad_and_var;
     ComputeGradients(scope, loss, var_list, &grad_and_var);
     return ApplyGradients(scope, grad_and_var);
-
 }
 
-} /// namespace tensorflow
+}  // namespace tensorflow

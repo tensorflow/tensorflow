@@ -13,29 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_GRADIENT_DESCENT_OPTIMIZER_H_
-#define THIRD_PARTY_TENSORFLOW_CC_GRADIENT_DESCENT_OPTIMIZER_H_
+#ifndef TENSORFLOW_CC_TRAINING_GRADIENT_DESCENT_OPTIMIZER_H_
+#define TENSORFLOW_CC_TRAINING_GRADIENT_DESCENT_OPTIMIZER_H_
 
 #include "tensorflow/cc/training/optimizer.h"
 
 namespace tensorflow {
 
 class GradientDescentOptimizer: public Optimizer {
-    public:
-        GradientDescentOptimizer(float learning_rate) : Optimizer("GradientDescent"), 
-                                                        learning_rate_(learning_rate) {}
-        
-        // Add ops to apply dense gradients to `var`.
-        Output ApplyDense(const Scope& scope, 
-                          const Output& grad, 
-                          const Output& var) const;
+ public:
+    explicit GradientDescentOptimizer(float learning_rate) : Optimizer("GradientDescent"),
+                                                             learning_rate_(learning_rate) {}
 
-        void Prepare(const Scope& scope) {} // useless for gradient descent
+    // Add ops to apply dense gradients to `var`.
+    Output ApplyDense(const Scope& scope,
+                      const Output& grad,
+                      const Output& var) const;
 
-    private:
-        float learning_rate_;
+    void Prepare(const Scope& scope) {}  // useless for gradient descent
+
+ private:
+    float learning_rate_;
 };
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_GRADIENT_DESCENT_OPTIMIZER_H_
+#endif  // TENSORFLOW_CC_TRAINING_GRADIENT_DESCENT_OPTIMIZER_H_
