@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import resource_variable_ops
@@ -26,11 +28,19 @@ from tensorflow.python.platform import test
 from tensorflow.contrib.opt.python.training import delay_compensated_gradient_descent
 
 
+def build_session_config():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  config = config_pb2.ConfigProto(graph_options=graph_options)
+  return config
+
+
 class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
 
   def testBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.test_session(config=build_session_config()):
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -56,7 +66,7 @@ class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.test_session(config=build_session_config()):
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -83,7 +93,7 @@ class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
 
     def testGradWrtRef(self):
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        with self.test_session():
+        with self.test_session(cnofig=build_session_config()):
           optimizer = (delay_compensated_gradient_descent.
                        DelayCompensatedGradientDescentOptimizer)(
                            learning_rate=3.0,
@@ -99,7 +109,7 @@ class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
 
   def testWithGlobalStep(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.test_session(config=build_session_config()):
         global_step = variables.Variable(0, trainable=False)
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
