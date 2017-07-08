@@ -7,7 +7,7 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_kernel_tests_linkstatic")
 
@@ -21,9 +21,6 @@ tf_custom_op_library(
     gpu_srcs = [
         "kernels/reduce_slice_ops.h",
         "kernels/reduce_slice_ops_gpu.cu.cc",
-    ],
-    deps = [
-        #TODO
     ],
 )
 
@@ -73,7 +70,7 @@ tf_custom_op_py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "reduce_slice_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/reduce_slice_ops_test.py"],
