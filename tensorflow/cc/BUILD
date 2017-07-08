@@ -481,10 +481,23 @@ cc_binary(
     name = "tutorials_example_trainer",
     srcs = ["tutorials/example_trainer.cc"],
     copts = tf_copts(),
-    linkopts = [
-        "-lpthread",
-        "-lm",
-    ],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//tensorflow:darwin": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//tensorflow:ios": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//conditions:default": [
+            "-lm",
+            "-lpthread",
+            "-lrt",
+        ],
+    }),
     deps = [
         ":cc_ops",
         "//tensorflow/core:core_cpu",
@@ -574,5 +587,41 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "optimizer_test",
+    size = "small",
+    srcs = ["training/optimizer_test.cc"],
+    deps = [
+        ":grad_ops",
+        ":testutil",
+        ":optimizer",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "optimizer",
+    srcs = [
+        "training/optimizer.cc",
+        "training/gradient_descent_optimizer.cc"
+        ],
+    hdrs = [
+        "training/optimizer.h",
+        "training/gradient_descent_optimizer.h"
+        ],
+    deps = [
+        ":gradients",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )

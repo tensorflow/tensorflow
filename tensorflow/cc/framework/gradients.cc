@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/grappler/op_types.h"
 
 namespace tensorflow {
 namespace {
@@ -204,6 +205,12 @@ Status SymbolicGradientBuilder::Initialize() {
           }
         }
       }
+
+      // if n is a Variable, ignore the Assign node
+      if (::tensorflow::grappler::IsVariable(n->def())) {
+        num_expected_backprops--;
+      }
+
       pending_[n->id()] = num_expected_backprops;
     }
   }

@@ -113,6 +113,10 @@ Scope& Scope::operator=(const Scope& other) {
   return *this;
 }
 
+string Scope::Name() const {
+  return impl()->name_;
+}
+
 Scope::Impl::Impl(Graph* graph, Status* status, NameMap* name_map,
                   ShapeRefiner* refiner)
     : graph_(graph),

@@ -38,6 +38,7 @@ REGISTER_NO_GRADIENT_OP("Rank");
 REGISTER_NO_GRADIENT_OP("Size");
 REGISTER_NO_GRADIENT_OP("BroadcastGradientArgs");
 REGISTER_NO_GRADIENT_OP("OneHot");
+REGISTER_NO_GRADIENT_OP("Assign");
 
 Status PackGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,

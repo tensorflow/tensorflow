@@ -201,6 +201,8 @@ class Scope {
   Status ToGraph(Graph* g) const;
   // END_SKIP_DOXYGEN
 
+  string Name() const;
+
   const std::vector<Operation>& control_deps() const;
 
  private:
