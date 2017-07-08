@@ -97,7 +97,7 @@ TEST_F(OptimizerTest, OneMatMul) {
     } else {
       
       // the gradient nodes and update nodes are added to the graph
-      auto train = GradientDescentOptimizer(0.01).Minimize(scope, {z}, {x, y});
+      auto train = GradientDescentOptimizer(0.01).Minimize(scope, {z});
 
       TF_ASSERT_OK(scope.status());
 
@@ -131,7 +131,7 @@ TEST_F(OptimizerValueTest, NeuralNetworkValues) {
   //auto loss = Mean(scope_, Square(scope_, Subtract(scope_, layer_1, y)), 1);
   //finally compare the decreasing loss
 
-  auto train = GradientDescentOptimizer(0.01).Minimize(scope_, {layer_1}, {w1});
+  auto train = GradientDescentOptimizer(0.01).Minimize(scope_, {layer_1});
 
   TF_ASSERT_OK(scope_.status());
 

@@ -19,11 +19,10 @@ namespace tensorflow {
 
 Output GradientDescentOptimizer::ApplyDense(const Scope& scope, const Output& grad, const Output& var) const {
     // TODO(theflofly): better way to convert a data type ref to a data type then static_cast<DataType>(var.type() - 100)) ?
-    return ApplyGradientDescent(
-        scope.NewSubScope("update"), 
-        {var}, 
-        Cast(scope.NewSubScope("learning_rate"), learning_rate_, static_cast<DataType>(var.type() - 100)), 
-        {grad});
+    return ApplyGradientDescent(scope.NewSubScope("update"), 
+                                {var}, 
+                                Cast(scope.NewSubScope("learning_rate"), learning_rate_, static_cast<DataType>(var.type() - 100)), 
+                                {grad});
 }
 
 } // namespace tensorflow

@@ -36,6 +36,8 @@ class Optimizer {
         // derivatives of some loss function 'L' w.r.t 'loss'), adds gradient nodes
         // to the graph associated with 'scope', which computes (and return in
         // 'grads_and_vars') the symbolic partial derivatives of 'L' w.r.t 'inputs'.
+        // TODO(theflofly): Optional parameters + all options provided by the python counterpart 
+        // (gate_gradients, aggregation_method, colocate_gradients_with_ops)
         void ComputeGradients(const Scope& scope,
                               const std::vector<Output>& loss,
                               const std::vector<Output>& var_list,
@@ -50,6 +52,7 @@ class Optimizer {
         
         // Applies gradients to variables.
         // Return a vector of operations that update the var using the gradient.
+        // TODO(theflofly): Optional parameters + all options provided by the python counterpart (global_step, name)
         std::vector<Output> ApplyGradients(const Scope& scope, 
                                            const GradAndVar& grads_and_vars);
 
@@ -60,9 +63,15 @@ class Optimizer {
 
         // Calls ComputeGradient and ApplyGradient.
         // Return a list of operations that update the Variables using the gradient.
+        // TODO(theflofly): Optional parameters + all options provided by the python counterpart 
+        // (gate_gradients, aggregation_method, colocate_gradients_with_ops, global_step, name)
         std::vector<Output> Minimize(const Scope& scope,
                                      const std::vector<Output>& loss,
                                      const std::vector<Output>& var_list);
+
+        // same as above but the var_list is created using all the vars from the graph
+        std::vector<Output> Minimize(const Scope& scope,
+                                     const std::vector<Output>& loss);
         
     protected:
         string name_;

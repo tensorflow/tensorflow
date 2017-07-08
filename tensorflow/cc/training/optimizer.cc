@@ -58,14 +58,13 @@ namespace {
 
 const string Optimizer::GRADIENTS_NAME = "Gradients";
 
-// TODO(theflofly): add the same options as the python api (gating, aggregation, ...)
-// TODO(theflofly): add the gradient and update scope name (same as python)
 void Optimizer::ComputeGradients(const Scope& scope,
                                  const std::vector<Output>& loss,
                                  const std::vector<Output>& var_list,
                                  const std::vector<Output>& grad_loss,
                                  GradAndVar* grads_and_vars) {
 
+    // if a ComputeGradients overload has been called, the scope is already GRADIENTS_NAME
     Scope scope_gradient = scope;
     if (scope.Name() != GRADIENTS_NAME) {
         scope_gradient = scope.NewSubScope(GRADIENTS_NAME);
@@ -91,7 +90,6 @@ void Optimizer::ComputeGradients(const Scope& scope,
 
 }
 
-// TODO(theflofly): add the same options as the python api (global_step)
 std::vector<Output> Optimizer::ApplyGradients(const Scope& scope,
                                               const GradAndVar& grads_and_vars) {
     // we'll return a list of update ops
@@ -146,8 +144,26 @@ void Optimizer::ComputeGradients(const Scope& scope,
 }
 
 std::vector<Output> Optimizer::Minimize(const Scope& scope,
-                             const std::vector<Output>& loss,
-                             const std::vector<Output>& var_list) {
+                                        const std::vector<Output>& loss,
+                                        const std::vector<Output>& var_list) {
+
+    GradAndVar grad_and_var;
+    ComputeGradients(scope, loss, var_list, &grad_and_var);
+    return ApplyGradients(scope, grad_and_var);
+
+}
+
+std::vector<Output> Optimizer::Minimize(const Scope& scope,
+                                        const std::vector<Output>& loss) {
+    
+    // retrieve all the variables from the graph
+    std::vector<Output> var_list;
+
+    for (Node* node : scope.graph()->nodes()) {
+        if(::tensorflow::grappler::IsVariable(node->def())) {
+            var_list.push_back(Output{node});
+        }
+    }
 
     GradAndVar grad_and_var;
     ComputeGradients(scope, loss, var_list, &grad_and_var);
