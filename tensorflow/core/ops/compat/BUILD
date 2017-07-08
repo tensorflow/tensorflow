@@ -49,8 +49,8 @@ cc_binary(
     srcs = ["update_ops_main.cc"],
     deps = [
         ":op_compatibility_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core:lib_internal_impl",
     ],
 )
 
