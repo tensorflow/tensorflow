@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
+  tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
+
   for (auto& computation : module->computations()) {
     for (const auto& instruction : computation->instructions()) {
       TF_RET_CHECK(instruction->parent() == computation.get());
@@ -30,6 +33,16 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
               << " computation: " << computation.get();
         }
       }
+
+      auto previous = instructions.find(instruction->name());
+      TF_RET_CHECK(previous == instructions.end())
+          << "HLO has name that is not unique within module:\n"
+          << instruction->ToString()
+          << " in computation: " << computation->name()
+          << "\nPrevious HLO with same name:\n"
+          << previous->second->ToString()
+          << " in computation: " << previous->second->parent()->name();
+      instructions[instruction->name()] = instruction.get();
     }
   }
 

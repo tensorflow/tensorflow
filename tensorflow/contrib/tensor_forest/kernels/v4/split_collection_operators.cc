@@ -100,8 +100,8 @@ bool SplitCollectionOperator::IsInitialized(int32 node_id) const {
 }
 
 void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(
-    const std::unique_ptr<TensorDataSet>& input_data, int example,
-    int32 node_id) const {
+    const std::unique_ptr<TensorDataSet>& input_data, const InputTarget* target,
+    int example, int32 node_id) const {
   // Assumes split_initializations_per_input == 1.
   decision_trees::BinaryNode split;
   float bias;
@@ -124,7 +124,7 @@ void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(
     LOG(ERROR) << "Unknown feature type " << type << ", not sure which "
                << "node type to use.";
   }
-  stats_.at(node_id)->AddSplit(split);
+  stats_.at(node_id)->AddSplit(split, input_data, target, example);
 }
 
 bool SplitCollectionOperator::BestSplit(int32 node_id,
@@ -134,6 +134,5 @@ bool SplitCollectionOperator::BestSplit(int32 node_id,
   *depth = slot->depth();
   return slot->BestSplit(best);
 }
-
 }  // namespace tensorforest
 }  // namespace tensorflow

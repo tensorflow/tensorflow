@@ -314,7 +314,7 @@ classifier.train(input_fn=train_input_fn, steps=1000)
 ```
 
 However, if you're looking to track the model while it trains, you'll likely
-want to instead use a TensorFlow @{tf.SessionRunHook$`SessionRunHook`}
+want to instead use a TensorFlow @{tf.train.SessionRunHook$`SessionRunHook`}
 to perform logging operations. See the tutorial
 @{$monitors$Logging and Monitoring Basics with tf.estimator}
 for more on this topic.

@@ -90,8 +90,8 @@ struct NumTrue<GPUDevice, TIndex> {
     if (second_success != cudaSuccess) {
       return errors::Internal(
           "WhereOp: Could not launch cub::DeviceReduce::Sum to count "
-          "number of true indices, status: ",
-          cudaGetErrorString(second_success));
+          "number of true indices.  temp_storage_bytes: ",
+          temp_storage_bytes, ", status: ", cudaGetErrorString(second_success));
     }
 
     return Status::OK();

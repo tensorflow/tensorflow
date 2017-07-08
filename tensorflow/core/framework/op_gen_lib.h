@@ -43,6 +43,11 @@ string WordWrap(StringPiece prefix, StringPiece str, int width);
 // returns false.
 bool ConsumeEquals(StringPiece* description);
 
+// Convert text-serialized protobufs to/from multiline format.
+string PBTxtToMultiline(StringPiece pbtxt,
+                        const std::vector<string>& multi_line_fields);
+string PBTxtFromMultiline(StringPiece multiline_pbtxt);
+
 // Takes a list of files with OpGenOverrides text protos, and allows you to
 // look up the specific override for any given op.
 class OpGenOverrideMap {

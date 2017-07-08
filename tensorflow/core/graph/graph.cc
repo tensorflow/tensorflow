@@ -413,35 +413,7 @@ void Graph::RemoveEdge(const Edge* e) {
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
-  for (const FunctionDef& fdef : fdef_lib.function()) {
-    const FunctionDef* preexisting_fdef = ops_.Find(fdef.signature().name());
-    if (preexisting_fdef != nullptr) {
-      if (!FunctionDefsEqual(*preexisting_fdef, fdef)) {
-        return errors::InvalidArgument(
-            "Cannot add function '", fdef.signature().name(),
-            "' because a different function with the same name already "
-            "exists.");
-      }
-      // Ignore duplicate FunctionDefs
-      continue;
-    }
-    TF_RETURN_IF_ERROR(ops_.AddFunctionDef(fdef));
-  }
-  for (const GradientDef& grad : fdef_lib.gradient()) {
-    string preexisting_grad_func = ops_.FindGradient(grad.function_name());
-    if (!preexisting_grad_func.empty()) {
-      if (preexisting_grad_func != grad.gradient_func()) {
-        return errors::InvalidArgument(
-            "Cannot assign gradient function '", grad.gradient_func(), "' to '",
-            grad.function_name(), "' because it already has gradient function ",
-            "'", preexisting_grad_func, "'");
-      }
-      // Ignore duplicate GradientDefs
-      continue;
-    }
-    TF_RETURN_IF_ERROR(ops_.AddGradientDef(grad));
-  }
-  return Status::OK();
+  return ops_.AddLibrary(fdef_lib);
 }
 
 namespace {

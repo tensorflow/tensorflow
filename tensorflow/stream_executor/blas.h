@@ -97,8 +97,9 @@ enum class ComputationType {
   kF16,         // 16-bit floating-point
   kF32,         // 32-bit floating-point
   kF64,         // 64-bit floating-point
+  kI32,         // 32-bit integer
   kComplexF32,  // Complex number comprised of two f32s.
-  kComplexF64   // Complex number comprised of two f64s.
+  kComplexF64,  // Complex number comprised of two f64s.
 };
 
 // Converts a ComputationType to a string.
@@ -107,6 +108,15 @@ string ComputationTypeString(ComputationType ty);
 // Opaque identifier for an "algorithm" used by a blas routine.  This functions
 // as a hint to the blas library.
 typedef int64 AlgorithmType;
+
+// blas uses -1 to represent the default algorithm. This happens to match up
+// with the CUBLAS_GEMM_DFALT constant, so cuda_blas.cc is using static_cast
+// to convert from AlgorithmType to cublasGemmAlgo_t, and uses a static_assert
+// to ensure that this assumption does not break.
+// If another blas implementation uses a different value for the default
+// algorithm, then it needs to convert kDefaultGemmAlgo to that value
+// (e.g. via a function called ToWhateverGemmAlgo).
+constexpr AlgorithmType kDefaultGemmAlgo = -1;
 
 // Describes the result of a performance experiment, usually timing the speed of
 // a particular AlgorithmType.
@@ -946,6 +956,12 @@ class BlasSupport {
   // creating a new Stream for each attempt.
   virtual bool DoBlasGemmWithAlgorithm(
       Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+      uint64 n, uint64 k, int alpha, const DeviceMemory<int8> &a, int lda,
+      const DeviceMemory<int8> &b, int ldb, int beta, DeviceMemory<int32> *c,
+      int ldc, ComputationType computation_type, AlgorithmType algorithm,
+      ProfileResult *output_profile_result) = 0;
+  virtual bool DoBlasGemmWithAlgorithm(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
       uint64 n, uint64 k, const Eigen::half &alpha,
       const DeviceMemory<Eigen::half> &a, int lda,
       const DeviceMemory<Eigen::half> &b, int ldb, const Eigen::half &beta,
@@ -1737,6 +1753,13 @@ class BlasSupport {
                   DeviceMemory<std::complex<double>> *c, int ldc) override;    \
   bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms) \
       override;                                                                \
+  bool DoBlasGemmWithAlgorithm(                                                \
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
+      uint64 m, uint64 n, uint64 k, int alpha, const DeviceMemory<int8> &a,    \
+      int lda, const DeviceMemory<int8> &b, int ldb, int beta,                 \
+      DeviceMemory<int> *c, int ldc, blas::ComputationType computation_type,   \
+      blas::AlgorithmType algorithm,                                           \
+      blas::ProfileResult *output_profile_result) override;                    \
   bool DoBlasGemmWithAlgorithm(                                                \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64 m, uint64 n, uint64 k, const Eigen::half &alpha,                  \
