@@ -207,6 +207,18 @@ class Array4D {
     }
   }
 
+  // Invokes a callback with the (indices, value) for each cell in the 4D array.
+  void Each(
+      std::function<void(tensorflow::gtl::ArraySlice<int64>, T)> f) const {
+    // We const_cast to be able to use the common non-const implementation,
+    // but prevent modification of the data by passing it by-value to the
+    // caller.
+    const_cast<Array4D*>(this)->Each(
+        [&f](tensorflow::gtl::ArraySlice<int64> indices, T* value) {
+          f(indices, *value);
+        });
+  }
+
   // Fills all of the {p,z} with the array provided, which specifies {y,x}.
   void FillWithYX(const Array2D<T>& value) {
     CHECK_EQ(value.height(), height());

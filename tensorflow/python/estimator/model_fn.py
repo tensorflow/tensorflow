@@ -48,10 +48,8 @@ class ModeKeys(object):
   PREDICT = 'infer'
 
 
-class MetricKeys(object):
-  """Metric key strings."""
-  LOSS = 'loss'
-  AVERAGE_LOSS = 'average_loss'
+LOSS_METRIC_KEY = 'loss'
+AVERAGE_LOSS_METRIC_KEY = 'average_loss'
 
 
 class EstimatorSpec(

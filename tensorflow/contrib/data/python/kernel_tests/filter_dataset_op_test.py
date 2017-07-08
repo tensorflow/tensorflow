@@ -72,6 +72,34 @@ class FilterDatasetTest(test.TestCase):
       # Test an empty dataset.
       do_test(0, 1)
 
+  def testFilterRange(self):
+    dataset = dataset_ops.Dataset.range(100).filter(
+        lambda x: math_ops.not_equal(math_ops.mod(x, 3), 2))
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      self.assertEqual(0, sess.run(get_next))
+      self.assertEqual(1, sess.run(get_next))
+      self.assertEqual(3, sess.run(get_next))
+
+  def testFilterDict(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
+                .filter(lambda d: math_ops.equal(d["bar"] % 2, 0))
+                .map(lambda d: d["foo"] + d["bar"])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        if (i ** 2) % 2 == 0:
+          self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()

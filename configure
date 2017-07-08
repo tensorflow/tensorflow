@@ -25,6 +25,10 @@ function is_windows() {
   [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]
 }
 
+function is_ppc64le() {
+  [[ "${uname -m}" == "ppc64le" ]]
+}
+
 function sed_in_place() {
   sed -e $1 $2 > "$2.bak"
   mv "$2.bak" $2
@@ -294,7 +298,12 @@ fi # TF_NEED_MKL
 
 ## Set up architecture-dependent optimization flags.
 if [ -z "$CC_OPT_FLAGS" ]; then
-  default_cc_opt_flags="-march=native"
+  if [ is_ppc64le ]; then
+    # gcc on ppc64le does not support -march, use mcpu instead
+    default_cc_opt_flags="-mcpu=native"
+  else
+    default_cc_opt_flags="-march=native"
+  fi
   read -p "Please specify optimization flags to use during compilation when bazel option "\
 "\"--config=opt\" is specified [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
   if [ -z "$CC_OPT_FLAGS" ]; then
@@ -539,9 +548,9 @@ done
 # Set default CUDA version if not set
 if [ -z "$TF_CUDA_VERSION" ]; then
   TF_CUDA_VERSION="8.0"
-  export TF_CUDA_VERSION 
+  export TF_CUDA_VERSION
 fi
-write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION" 
+write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
 
 # Set up which gcc nvcc should use as the host compiler
 # No need to set this on Windows
@@ -590,6 +599,9 @@ while true; do
     # Result returned from "read" will be used unexpanded. That make "~" unusable.
     # Going through one more level of expansion to handle that.
     CUDNN_INSTALL_PATH=`"${PYTHON_BIN_PATH}" -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
+    if is_windows; then
+      CUDNN_INSTALL_PATH="$(cygpath -m "$CUDNN_INSTALL_PATH")"
+    fi
   fi
 
   if [[ -z "$TF_CUDNN_VERSION" ]]; then
@@ -656,16 +668,22 @@ write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 
 # Configure the compute capabilities that TensorFlow builds for.
 # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
+function get_native_cuda_compute_capabilities {
+  device_query_bin="$CUDA_TOOLKIT_PATH/extras/demo_suite/deviceQuery" # Also works on Windows without .exe
+  "$device_query_bin" | grep 'Capability' | grep -o '[0-9]*\.[0-9]*' | sed ':a;{N;s/\n/,/};ba'
+  exit 0 # ensure that this function always exit success even if device detection fails, to prevent the whole configure from aborting
+}
 while true; do
   fromuser=""
-  default_cuda_compute_capabilities="3.5,5.2"
+  native_cuda_compute_capabilities=$(get_native_cuda_compute_capabilities)
+  default_cuda_compute_capabilities=${native_cuda_compute_capabilities:-"3.5,5.2"}
   if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
 cat << EOF
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
 EOF
-    read -p "[Default is: \"3.5,5.2\"]: " TF_CUDA_COMPUTE_CAPABILITIES
+    read -p "[Default is: \"$default_cuda_compute_capabilities\"]: " TF_CUDA_COMPUTE_CAPABILITIES
     fromuser=1
   fi
   if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
@@ -705,8 +723,13 @@ if is_windows; then
   write_to_bazelrc "test --config=win-cuda"
 else
   # If CUDA is enabled, always use GPU during build and test.
-  write_to_bazelrc "build --config=cuda"
-  write_to_bazelrc "test --config=cuda"
+  if [ "$TF_CUDA_CLANG" == "1" ]; then
+    write_to_bazelrc "build --config=cuda_clang"
+    write_to_bazelrc "test --config=cuda_clang"
+  else
+    write_to_bazelrc "build --config=cuda"
+    write_to_bazelrc "test --config=cuda"
+  fi
 fi
 
 # end of if "$TF_NEED_CUDA" == "1"
@@ -836,17 +859,17 @@ while true; do
     if [ -e "$MPI_HOME/include" ] && [ -e "$MPI_HOME/lib" ]; then
         break
     fi
- 
+
     echo "Invalid path to the MPI Toolkit. ${MPI_HOME}/include or ${MPI_HOME}/lib cannot be found."
     if [ -z "$fromuser" ]; then
         exit 1
     fi
 
     # Retry
-    MPI_HOME="" 
+    MPI_HOME=""
 done
-    
-    
+
+
 if [ "$TF_NEED_MPI" == "1" ]; then
   write_to_bazelrc 'build --define with_mpi_support=true'
 
@@ -854,11 +877,11 @@ if [ "$TF_NEED_MPI" == "1" ]; then
   ln -sf "${MPI_HOME}/include/mpi.h" third_party/mpi/mpi.h
 
 
-  #Determine if we use OpenMPI or MVAPICH, these require different header files 
+  #Determine if we use OpenMPI or MVAPICH, these require different header files
   #to be included here to make bazel dependency checker happy
 
   if [ -e "${MPI_HOME}/include/mpi_portable_platform.h" ]; then
-        #OpenMPI 
+        #OpenMPI
         ln -sf "${MPI_HOME}/include/mpi_portable_platform.h" third_party/mpi/
         sed -i -e "s/MPI_LIB_IS_OPENMPI=False/MPI_LIB_IS_OPENMPI=True/" third_party/mpi/mpi.bzl
  else
@@ -868,7 +891,7 @@ if [ "$TF_NEED_MPI" == "1" ]; then
         sed -i -e "s/MPI_LIB_IS_OPENMPI=True/MPI_LIB_IS_OPENMPI=False/" third_party/mpi/mpi.bzl
  fi
 
-  
+
   if [ -e "${MPI_HOME}/lib/libmpi.so" ]; then
     ln -sf "${MPI_HOME}/lib/libmpi.so" third_party/mpi/
   else

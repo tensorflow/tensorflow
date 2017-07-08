@@ -62,7 +62,17 @@ Literal::StrideConfig::StrideConfig(
 std::unique_ptr<Literal> Literal::CreateFromShape(const Shape& shape) {
   auto literal = MakeUnique<Literal>();
   *literal->mutable_shape() = shape;
-  literal->Reserve(ShapeUtil::ElementsIn(literal->shape()));
+  if (ShapeUtil::IsTuple(shape)) {
+    int64 num_elements = ShapeUtil::TupleElementCount(shape);
+    literal->tuple_literals_.resize(num_elements);
+    for (int i = 0; i < num_elements; ++i) {
+      std::unique_ptr<Literal> elem =
+          CreateFromShape(ShapeUtil::GetTupleElementShape(shape, i));
+      literal->tuple_literals_[i] = std::move(*elem);
+    }
+  } else {
+    literal->Reserve(ShapeUtil::ElementsIn(literal->shape()));
+  }
   return literal;
 }
 
@@ -321,6 +331,7 @@ Status Literal::Copy(const Literal& src_literal,
 }
 
 std::unique_ptr<Literal> Literal::Relayout(const Layout& layout) const {
+  CHECK(ShapeUtil::IsArray(shape()));
   std::unique_ptr<Literal> result = CloneToUnique();
   *result->mutable_shape()->mutable_layout() = layout;
 
@@ -754,10 +765,30 @@ void Literal::EachCellAsString(
 }
 
 namespace {
+template <typename NativeSrcT, typename NativeDestT>
+std::unique_ptr<Literal> ConvertBetweenNativeTypes(const Literal& src_literal) {
+  auto result_literal = MakeUnique<Literal>();
+  Shape* result_shape = result_literal->mutable_shape();
+  *result_shape = src_literal.shape();
+  result_shape->set_element_type(
+      primitive_util::NativeToPrimitiveType<NativeDestT>());
+  result_literal->Reserve(ShapeUtil::ElementsIn(*result_shape));
+  tensorflow::gtl::ArraySlice<NativeSrcT> src_data =
+      src_literal.GetArraySlice<NativeSrcT>();
+  tensorflow::gtl::MutableArraySlice<NativeDestT> dest_data =
+      result_literal->GetMutableArraySlice<NativeDestT>();
+  int64 num_elements = ShapeUtil::ElementsIn(src_literal.shape());
+
+  for (int64 i = 0; i < num_elements; ++i) {
+    dest_data[i] = static_cast<NativeDestT>(src_data[i]);
+  }
+  return result_literal;
+}
+
 template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>
 std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
   CHECK_EQ(primitive_src_type, src_literal.shape().element_type());
-  return LiteralUtil::Convert<
+  return ConvertBetweenNativeTypes<
       typename primitive_util::PrimitiveTypeToNative<primitive_src_type>::type,
       typename primitive_util::PrimitiveTypeToNative<
           primitive_dest_type>::type>(src_literal);
@@ -782,19 +813,20 @@ StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
 #undef CONVERT_IF_TYPES_MATCH
     // Other types are not yet supported.
     default:
-      return tensorflow::errors::InvalidArgument(
-          "Unimplemented: ConvertIfDestTypeMatches for type " +
-          PrimitiveType_Name(src_literal.shape().element_type()));
+      return InvalidArgument(
+          "Unimplemented: Convert from type %s to type %s",
+          PrimitiveType_Name(src_literal.shape().element_type()).c_str(),
+          PrimitiveType_Name(primitive_dest_type).c_str());
   }
 }
-}
+}  // namespace
 
-StatusOr<std::unique_ptr<Literal>> LiteralUtil::ConvertIfSrcTypeMatches(
-    const Literal& src_literal, PrimitiveType primitive_dest_type) {
-  switch (src_literal.shape().element_type()) {
+StatusOr<std::unique_ptr<Literal>> Literal::Convert(
+    PrimitiveType primitive_dest_type) const {
+  switch (shape().element_type()) {
 #define CONVERT_IF_DEST_TYPE_MATCHES(type) \
   case (type):                             \
-    return ConvertIfDestTypeMatches<(type)>(src_literal, primitive_dest_type);
+    return ConvertIfDestTypeMatches<(type)>(*this, primitive_dest_type);
     CONVERT_IF_DEST_TYPE_MATCHES(PRED)
     CONVERT_IF_DEST_TYPE_MATCHES(S8)
     CONVERT_IF_DEST_TYPE_MATCHES(S32)
@@ -807,9 +839,9 @@ StatusOr<std::unique_ptr<Literal>> LiteralUtil::ConvertIfSrcTypeMatches(
 #undef CONVERT_IF_DEST_TYPE_MATCHES
     // Other types are not yet supported.
     default:
-      return tensorflow::errors::InvalidArgument(
-          "Unimplemented: ConvertIfSrcTypeMatches for type " +
-          PrimitiveType_Name(src_literal.shape().element_type()));
+      return InvalidArgument("Unimplemented: Convert from type %s to type %s",
+                             PrimitiveType_Name(shape().element_type()).c_str(),
+                             PrimitiveType_Name(primitive_dest_type).c_str());
   }
 }
 
@@ -971,7 +1003,7 @@ tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice<half>() {
   //        support in protobuf
   auto values = mutable_f16s();
   return tensorflow::gtl::MutableArraySlice<half>(
-      reinterpret_cast<half*>(&(*values)[0]), values->size() / sizeof(half));
+      reinterpret_cast<half*>(&(*values)[0]), values->size());
 }
 
 template <>

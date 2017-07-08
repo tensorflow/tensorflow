@@ -1068,7 +1068,7 @@ get_variable_or_local_docstring = (
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-@{$variable_scope$Variable Scope How To}
+@{$variables$Variable Scope How To}
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1444,7 +1444,7 @@ def variable_scope(name_or_scope,
 
   Variable scope allows to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the @{$variable_scope$Variable Scope How To},
+  see the @{$variables$Variable Scope How To},
   here we present only a few basic examples.
 
   Simple example of how to create a new variable:
@@ -1500,6 +1500,11 @@ def variable_scope(name_or_scope,
 
   A note about name scoping: Setting `reuse` does not impact the naming of other
   ops such as mult. See related discussion on [github#6189](https://github.com/tensorflow/tensorflow/issues/6189)
+
+  Note that up to and including version 1.0, it was allowed (though
+  explicitly discouraged) to pass False to the reuse argument, yielding
+  undocumented behaviour slightly different from None. Starting at 1.1.0
+  passing None and False as reuse has exactly the same effect.
 
   Args:
     name_or_scope: `string` or `VariableScope`: the scope to open.

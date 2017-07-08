@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -37,8 +38,21 @@ class GpuTransferManager : public GenericTransferManager {
 
   Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
                                  const Literal& literal) override;
+  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
+                                int64 size, const void* source) override;
 
  private:
+  // Initiates the infeed data transfers. InfeedBuffer->Done() must be
+  // called to clean up the memory allocated for InfeedBuffer.
+  StatusOr<gpu::InfeedBuffer*> TransferBufferToInfeedInternal(
+      perftools::gputools::StreamExecutor* executor, int64 size,
+      const void* source);
+
+  // Enqueues infeed data buffers with the infeed manager after their
+  // transfer completes.
+  Status EnqueueBuffersToInfeed(perftools::gputools::StreamExecutor* executor,
+                                std::vector<gpu::InfeedBuffer*> buffers);
+
   TF_DISALLOW_COPY_AND_ASSIGN(GpuTransferManager);
 };
 

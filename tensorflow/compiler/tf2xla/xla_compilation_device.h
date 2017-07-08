@@ -64,26 +64,35 @@ class XlaCompilationDevice : public LocalDevice {
   std::unique_ptr<XlaCompilationAllocator> allocator_;
 };
 
-struct XlaVariable {
-  // If this variable is visible externally, what was its argument number?
+// Represents a resource, such as a Variable or TensorArray.
+struct XlaResource {
+  enum Kind {
+    kInvalid,
+    kVariable,
+    kTensorArray,
+  };
+
+  Kind kind = kInvalid;
+
+  // If this resource is visible externally, what was its argument number?
   int arg_num = -1;
 
-  // A descriptive name for the variable, used in error messages.
+  // A descriptive name for the resource, used in error messages.
   string name;
 
-  // Current type and value of the variable. Uninitialized variables are
+  // Current type and value of the resource. Uninitialized resources are
   // represented by a default (zero) handle and type DT_INVALID.
-  // While the type of a variable is notionally fixed during execution, when
-  // a variable is first initialized we do not yet know its type, so we keep
+  // While the type of a resource is notionally fixed during execution, when
+  // a resource is first initialized we do not yet know its type, so we keep
   // track of its type dynamically.
   DataType type = DT_INVALID;
   xla::ComputationDataHandle value;
 
-  // Value of the variable at computation entry. Used to detect which
+  // Value of the resource at computation entry. Used to detect which
   // variables have new values that need to be written back.
   xla::ComputationDataHandle initial_value;
 
-  // We treat TensorArrays as a Variable with some extra metadata.
+  // TensorArray-specific fields
 
   // 'tensor_array_size' stores the expected size of the TensorArray. We need
   // to store this since sometimes TensorArrays must be initialized lazily since
@@ -91,10 +100,10 @@ struct XlaVariable {
   int64 tensor_array_size = -1;
 
   // 'tensor_array_gradient' is a map from TensorArrayGradV3 'source' attributes
-  // to an XlaVariable containing the gradient TensorArrays. We store a pointer
+  // to an XlaResource containing the gradient TensorArrays. We store a pointer
   // here since there should only be one gradient TensorArray per 'source'
   // string, irrespective of the number of calls to TensorArrayGrad.
-  std::unordered_map<string, XlaVariable*> tensor_array_gradient;
+  std::unordered_map<string, XlaResource*> tensor_array_gradient;
 };
 
 // A XlaExpression wraps an XLA computation. Each Tensor on an
@@ -115,8 +124,8 @@ class XlaExpression {
   bool has_constant_value() const { return has_constant_value_; }
   const Tensor& constant_value() const { return constant_value_; }
 
-  void set_variable(XlaVariable* variable) { variable_ = variable; }
-  XlaVariable* variable() const { return variable_; }
+  void set_resource(XlaResource* resource) { resource_ = resource; }
+  XlaResource* resource() const { return resource_; }
 
  private:
   // The XLA handle of the expression's computation.
@@ -128,7 +137,7 @@ class XlaExpression {
   bool has_constant_value_ = false;
   Tensor constant_value_;
 
-  XlaVariable* variable_ = nullptr;  // Not owned.
+  XlaResource* resource_ = nullptr;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
 };

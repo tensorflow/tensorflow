@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -58,7 +61,9 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
 VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
                                    const bool use_static_shapes,
                                    Cluster* cluster)
-    :  // TODO(dyoon): Use a better way than FIFO.
+    :  // Allow LIFO as well as FIFO. LIFO allows an output node of an node to
+       // follow it in execution, saving addition memory time from having to
+       // write and read. For default cases, use FIFO for performance.
       ready_nodes_(new FIFOManager()),
       graph_costs_(Costs::ZeroCosts()),
       graph_properties_(*grappler_item),
@@ -244,8 +249,8 @@ string VirtualScheduler::DeviceName(const NodeDef* node) const {
 string VirtualScheduler::ChannelDeviceName(const NodeDef* from,
                                            const NodeDef* to) const {
   CHECK(!initialized_) << "ChannelDeviceName is called after Init().";
-
-  return kChannelDevice + ": " + DeviceName(from) + " to " + DeviceName(to);
+  return kChannelDevice + ": from " + DeviceName(from) + " to " +
+         DeviceName(to);
 }
 
 std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
@@ -318,8 +323,8 @@ NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
   }
 
   // Construct NodeInfo.
-  const auto& node_state = node_map_.at(node);
   NodeInfo node_info;
+  const auto& node_state = node_map_.at(node);
   node_info.name = node->name();
   node_info.device_name = node_state.device_name;
   auto& op_info = node_info.op_info;
@@ -360,7 +365,7 @@ NodeState& VirtualScheduler::GetNodeStateOrCreateIt(const NodeDef* node) {
     // Initialize output port related data:
     // Assume the size of OutputProperties represents the number of output ports
     // of this node.
-    for (int i = 0; i < node_state.output_properties.size(); ++i) {
+    for (size_t i = 0; i < node_state.output_properties.size(); ++i) {
       node_state.time_no_references[i] = Costs::Duration::max();
       node_state.num_outputs_executed[i] = 0;
       // Populate an empty vector for each port. The caller will add nodes
@@ -577,6 +582,7 @@ Costs VirtualScheduler::Summary() const {
             << " GB, at the end: " << state.memory_usage << " B";
 
     VLOG(1) << "Per-op execution time (and memory usage at peak memory usage):";
+
     // Profile non-persistent op memory usage.
     for (const auto& node_port : state.mem_usage_snapshot_at_peak) {
       const auto* node = node_port.first;
@@ -615,6 +621,43 @@ Costs VirtualScheduler::Summary() const {
   VLOG(1) << "Critical path execution time: "
           << critical_path_costs.execution_time.count();
   return critical_path_costs;
+}
+
+Costs VirtualScheduler::Summary(RunMetadata* metadata) {
+  if (metadata != nullptr) {
+    StepStats* stepstats = metadata->mutable_step_stats();
+    for (const auto& device : device_) {
+      GraphDef* device_partition_graph =
+          metadata->mutable_partition_graphs()->Add();
+      DeviceStepStats* device_stepstats = stepstats->add_dev_stats();
+      device_stepstats->set_device(device.first);
+      for (const auto& node_def : device.second.nodes_executed) {
+        const NodeState& nodestate = node_map_.at(node_def);
+        NodeExecStats* node_stats = device_stepstats->add_node_stats();
+        for (int slot = 0; slot < nodestate.output_properties.size(); slot++) {
+          const auto& properties = nodestate.output_properties[slot];
+          NodeOutput* no = node_stats->add_output();
+          no->set_slot(slot);
+          TensorDescription* tensor_descr = no->mutable_tensor_description();
+          tensor_descr->set_dtype(properties.dtype());
+          *tensor_descr->mutable_shape() = properties.shape();
+        }
+        node_stats->set_timeline_label(node_def->op());
+        node_stats->set_node_name(node_def->name());
+        node_stats->set_op_start_rel_micros(0);
+        node_stats->set_all_start_micros(
+            nodestate.time_scheduled.asMicroSeconds().count());
+        node_stats->set_op_end_rel_micros(
+            nodestate.time_finished.asMicroSeconds().count() -
+            nodestate.time_scheduled.asMicroSeconds().count());
+        node_stats->set_all_end_rel_micros(
+            nodestate.time_finished.asMicroSeconds().count() -
+            nodestate.time_scheduled.asMicroSeconds().count());
+        *device_partition_graph->mutable_node()->Add() = *node_def;
+      }
+    }
+  }
+  return Summary();
 }
 
 }  // end namespace grappler

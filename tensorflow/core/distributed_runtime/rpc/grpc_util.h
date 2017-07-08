@@ -43,6 +43,8 @@ inline ::grpc::Status ToGrpcStatus(const ::tensorflow::Status& s) {
 
 typedef std::shared_ptr<::grpc::Channel> SharedGrpcChannelPtr;
 
+inline string GrpcIdKey() { return "tf-rpc"; }
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_UTIL_H_

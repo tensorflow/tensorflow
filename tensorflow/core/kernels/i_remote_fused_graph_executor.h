@@ -25,10 +25,6 @@ namespace tensorflow {
 
 class IRemoteFusedGraphExecutor {
  public:
-  using ByteArray =
-      std::tuple<uint8* /* data */, uint64 /* size */, DataType /* type */>;
-  using ConstByteArray = std::tuple<const uint8* /* data */, uint64 /* size */,
-                                    DataType /* type */>;
   using TensorAllocatorFunc = std::function<Tensor*(const TensorShape& shape)>;
 
   IRemoteFusedGraphExecutor() = default;

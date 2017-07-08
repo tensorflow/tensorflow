@@ -28,7 +28,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndOperandElementReusingConsumerNotFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* broadcast2 =
@@ -49,7 +49,7 @@ TEST_F(InstructionFusionTest,
        NonCostlyProducerAndOperandElementReusingConsumerFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
   HloInstruction* negate1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, const0));
   HloInstruction* broadcast2 =
@@ -70,7 +70,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Reshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* reshape2 = builder.AddInstruction(
@@ -90,7 +90,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
+      HloInstruction::CreateConstant(Literal::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* transpose2 = builder.AddInstruction(

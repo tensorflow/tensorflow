@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -45,10 +45,8 @@ Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
 }  // namespace
 
 ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
-    : client_(GetOrCreateLocalClientOrDie(platform)) {
-  *(execution_options_.mutable_debug_options()) =
-      legacy_flags::GetDebugOptionsFromFlags();
-
+    : client_(GetOrCreateLocalClientOrDie(platform)),
+      execution_options_(CreateDefaultExecutionOptions()) {
   // Disabling constant_folding so that tests (usually written using Constants)
   // will exercise the intended code paths, instead of being constant folded.
   //
@@ -71,13 +69,16 @@ StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
   return client_->Execute(computation, arguments, &execution_options_);
 }
 
+StatusOr<ExecutionHandle> ClientLibraryTestBase::ExecuteAsync(
+    const Computation& computation,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+  return client_->ExecuteAsync(computation, arguments, &execution_options_);
+}
+
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
-    ComputationBuilder* builder,
+    const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_output_layout) {
-  // Build the computation, as a convenience.
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-
   ExecutionOptions execution_options = execution_options_;
   if (shape_with_output_layout != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
@@ -85,6 +86,15 @@ StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
   }
   return client_->ExecuteAndTransfer(computation, arguments,
                                      &execution_options);
+}
+
+StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
+    ComputationBuilder* builder,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const Shape* shape_with_output_layout) {
+  // Build the computation, as a convenience.
+  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  return ExecuteAndTransfer(computation, arguments, shape_with_output_layout);
 }
 
 std::unique_ptr<GlobalData> ClientLibraryTestBase::ExecuteOrDie(
@@ -113,14 +123,14 @@ string ClientLibraryTestBase::ExecuteToString(
   if (!result.ok()) {
     return result.status().ToString();
   } else {
-    return LiteralUtil::ToString(*result.ValueOrDie());
+    return result.ValueOrDie()->ToString();
   }
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
     ComputationBuilder* builder, const tensorflow::core::Bitmap& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1(expected);
+  std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -179,10 +189,10 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   auto actual = actual_status.ConsumeValueOrDie();
 
   // Turn the expected value into a literal.
-  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1U8(expected);
+  std::unique_ptr<Literal> expected_literal = Literal::CreateR1U8(expected);
 
-  VLOG(1) << "expected: " << LiteralUtil::ToString(*expected_literal);
-  VLOG(1) << "actual:   " << LiteralUtil::ToString(*actual);
+  VLOG(1) << "expected: " << expected_literal->ToString();
+  VLOG(1) << "actual:   " << actual->ToString();
 
   EXPECT_EQ(expected, actual->u8s_string());
 }

@@ -463,7 +463,7 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
     ((PASS_COUNTER++))
   fi
 
-  IFS=" " read -r -a STEP_EXIT_CODES <<< "${RESULT}"
+  STEP_EXIT_CODES+=(${RESULT})
 
   echo ""
   ((COUNTER++))

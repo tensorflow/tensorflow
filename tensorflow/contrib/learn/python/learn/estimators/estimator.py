@@ -530,7 +530,7 @@ class BaseEstimator(
     """
     _verify_input_args(x, y, input_fn, feed_fn, batch_size)
     if x is not None:
-      return SKCompat(self).score(x, y, batch_size, steps, metrics)
+      return SKCompat(self).score(x, y, batch_size, steps, metrics, name)
 
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
@@ -1353,7 +1353,7 @@ class SKCompat(sklearn.BaseEstimator):
                         monitors=all_monitors)
     return self
 
-  def score(self, x, y, batch_size=128, steps=None, metrics=None):
+  def score(self, x, y, batch_size=128, steps=None, metrics=None, name=None):
     input_fn, feed_fn = _get_input_fn(x, y, input_fn=None,
                                       feed_fn=None, batch_size=batch_size,
                                       shuffle=False, epochs=1)
@@ -1365,7 +1365,7 @@ class SKCompat(sklearn.BaseEstimator):
         feed_fn=feed_fn,
         steps=steps,
         metrics=metrics,
-        name='score')
+        name=name)
     if eval_results is not None:
       eval_results.update({'global_step': global_step})
     return eval_results

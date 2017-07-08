@@ -51,9 +51,9 @@ TEST_F(HloCseTest, CombineTwoConstants) {
   // Test that two identical constants are commoned.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
@@ -67,10 +67,10 @@ TEST_F(HloCseTest, CombineTwoConstants) {
 
   EXPECT_EQ(2, computation->instruction_count());
   HloInstruction* constant = computation->instructions().begin()->get();
-  EXPECT_EQ(42.0f, LiteralUtil::Get<float>(constant->literal(), {}));
+  EXPECT_EQ(42.0f, constant->literal().Get<float>({}));
 
   auto result = ExecuteAndTransfer(std::move(module), {});
-  auto expected = LiteralUtil::CreateR0<float>(84.0);
+  auto expected = Literal::CreateR0<float>(84.0);
   LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
 }
 
@@ -102,7 +102,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
   EXPECT_THAT(add, op::Add(first_operand, first_operand));
 
   auto result = ExecuteAndTransfer(std::move(module), {});
-  auto expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
+  auto expected = Literal::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
   LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
 }
 
@@ -132,7 +132,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
   EXPECT_THAT(add, op::Add(constant1, constant2));
 
   auto result = ExecuteAndTransfer(std::move(module), {});
-  auto expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
+  auto expected = Literal::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
   LiteralTestUtil::ExpectNear(*expected, *result, ErrorSpec(1e-4));
 }
 
@@ -141,20 +141,20 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
   // commoned.
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(42)));
+      HloInstruction::CreateConstant(Literal::CreateR0<uint32>(42)));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(42)));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint64>(42.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<uint64>(42.0)));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(42.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int64>(42.0)));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<double>(42.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<double>(42.0)));
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   // Duplicate the float constant to verify something happens.
   builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -171,13 +171,13 @@ TEST_F(HloCseTest, NonscalarConstants) {
   // Test that identical nonscalar constants are merged.
   auto builder = HloComputation::Builder(TestName());
   auto common_constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   auto common_constant2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   // Create a constant which has the same shape but a different value.
   auto uncommon_constant =
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}})));
+          Literal::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}})));
 
   // Tie the constants together with a tuple. This makes it easier to refer to
   // the constant instructions via their use.
@@ -206,7 +206,7 @@ TEST_F(HloCseTest, IdenticalInstructions) {
   // Test that three identical instructions are commoned.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
   auto exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kExp, constant));
   auto exp2 = builder.AddInstruction(HloInstruction::CreateUnary(
@@ -236,7 +236,7 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsSensitive) {
   // commoned if the pass is layout sensitive.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
 
   auto exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kExp, constant));
@@ -267,7 +267,7 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsInsensitive) {
   // the pass is layout insensitive.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
 
   auto exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kExp, constant));
@@ -311,7 +311,7 @@ TEST_F(HloCseTest, IdenticalExpressions) {
   // The *1 instructions should be merged with the *2 instructions.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
 
   auto negate1 = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kNegate, constant));
@@ -349,9 +349,9 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   // Test that two RNG ops are not commoned.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
   auto rng1 = builder.AddInstruction(HloInstruction::CreateRng(
       ShapeUtil::MakeShape(F32, {}), RandomDistribution::RNG_UNIFORM,
       {constant1, constant2}));
@@ -392,9 +392,9 @@ TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
     Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
     auto builder = HloComputation::Builder(TestName() + "_rng_fun");
     auto constant1 = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
     auto constant2 = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
     auto rng = builder.AddInstruction(HloInstruction::CreateRng(
         scalar_shape, RandomDistribution::RNG_UNIFORM, {constant1, constant2}));
     auto param = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -409,7 +409,7 @@ TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
   {
     auto builder = HloComputation::Builder(TestName());
     auto constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({5.0f})));
+        HloInstruction::CreateConstant(Literal::CreateR1<float>({5.0f})));
     auto rng1 = builder.AddInstruction(
         HloInstruction::CreateMap(constant->shape(), {constant}, rng_function));
     auto rng2 = builder.AddInstruction(

@@ -91,9 +91,9 @@ def parse_values(values, type_map):
           % (name, type_.__name__, value, values))
     if type_ == bool:
       def parse_bool(value):
-        if value == 'true':
+        if value in ['true', 'True']:
           return True
-        elif value == 'false':
+        elif value in ['false', 'False']:
           return False
         else:
           try:

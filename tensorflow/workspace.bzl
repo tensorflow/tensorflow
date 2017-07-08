@@ -4,13 +4,7 @@ load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
-
-load("//third_party:polymer.bzl", "tensorboard_polymer_workspace")
-load("//third_party:python.bzl", "tensorboard_python_workspace")
-load("//third_party:js.bzl", "tensorboard_js_workspace")
-load("//third_party:typings.bzl", "tensorboard_typings_workspace")
 
 
 def _is_windows(repository_ctx):
@@ -150,12 +144,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
     print("path_prefix was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
 
-  # TODO(dandelion): Take these out when TB exits TF
-  tensorboard_polymer_workspace()
-  tensorboard_python_workspace()
-  tensorboard_typings_workspace()
-  tensorboard_js_workspace()
-
   native.new_http_archive(
       name = "eigen_archive",
       urls = [
@@ -291,11 +279,44 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "six_archive",
       urls = [
           "http://mirror.bazel.build/pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
-          "http://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
+          "https://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
       ],
       sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
       strip_prefix = "six-1.10.0",
       build_file = str(Label("//third_party:six.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "org_python_pypi_backports_weakref",
+      urls = [
+          "http://mirror.bazel.build/pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
+          "https://pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
+      ],
+      sha256 = "8813bf712a66b3d8b85dc289e1104ed220f1878cf981e2fe756dfaabe9a82892",
+      strip_prefix = "backports.weakref-1.0rc1/src",
+      build_file = str(Label("//third_party:backports_weakref.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "com_github_andreif_codegen",
+      urls = [
+          "http://mirror.bazel.build/github.com/andreif/codegen/archive/1.0.tar.gz",
+          "https://github.com/andreif/codegen/archive/1.0.tar.gz",
+      ],
+      sha256 = "2dadd04a2802de27e0fe5a19b76538f6da9d39ff244036afa00c1bba754de5ee",
+      strip_prefix = "codegen-1.0",
+      build_file = str(Label("//third_party:codegen.BUILD")),
+  )
+
+  filegroup_external(
+      name = "org_python_license",
+      licenses = ["notice"],  # Python 2.0
+      sha256_urls = {
+          "b5556e921715ddb9242c076cae3963f483aa47266c5e37ea4c187f77cc79501c": [
+              "http://mirror.bazel.build/docs.python.org/2.7/_sources/license.txt",
+              "https://docs.python.org/2.7/_sources/license.txt",
+          ],
+      },
   )
 
   native.bind(
@@ -306,11 +327,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   patched_http_archive(
       name = "protobuf",
       urls = [
-          "http://mirror.bazel.build/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
-          "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+          "http://mirror.bazel.build/github.com/google/protobuf/archive/v3.3.1.tar.gz",
+          "https://github.com/google/protobuf/archive/v3.3.1.tar.gz",
       ],
-      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
-      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
+      sha256 = "30f23a45c6f4515598702a6d19c4295ba92c4a635d7ad8d331a4db9fccff392d",
+      strip_prefix = "protobuf-3.3.1",
       # TODO: remove patching when tensorflow stops linking same protos into
       #       multiple shared libraries loaded in runtime by python.
       #       This patch fixes a runtime crash when tensorflow is compiled
@@ -324,21 +345,21 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "com_google_protobuf",
       urls = [
-          "http://mirror.bazel.build/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
-          "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+          "http://mirror.bazel.build/github.com/google/protobuf/archive/v3.3.1.tar.gz",
+          "https://github.com/google/protobuf/archive/v3.3.1.tar.gz",
       ],
-      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
-      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
+      sha256 = "30f23a45c6f4515598702a6d19c4295ba92c4a635d7ad8d331a4db9fccff392d",
+      strip_prefix = "protobuf-3.3.1",
   )
 
   native.http_archive(
       name = "com_google_protobuf_cc",
       urls = [
-          "http://mirror.bazel.build/github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
-          "https://github.com/google/protobuf/archive/2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a.tar.gz",
+          "http://mirror.bazel.build/github.com/google/protobuf/archive/v3.3.1.tar.gz",
+          "https://github.com/google/protobuf/archive/v3.3.1.tar.gz",
       ],
-      sha256 = "e5d3d4e227a0f7afb8745df049bbd4d55474b158ca5aaa2a0e31099af24be1d0",
-      strip_prefix = "protobuf-2b7430d96aeff2bb624c8d52182ff5e4b9f7f18a",
+      sha256 = "30f23a45c6f4515598702a6d19c4295ba92c4a635d7ad8d331a4db9fccff392d",
+      strip_prefix = "protobuf-3.3.1",
   )
 
   native.new_http_archive(
@@ -463,11 +484,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/e156d99231a7735d06a97b5b83de70bf4ce4f034.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/e156d99231a7735d06a97b5b83de70bf4ce4f034.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9e886358ff35a13de549b4adf49b52f933b9ec37.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/9e886358ff35a13de549b4adf49b52f933b9ec37.tar.gz",
       ],
-      sha256 = "72e34e2411a06d4200a2688ee83832805fbef23a12ea481f31c2b8866fde007a",
-      strip_prefix = "llvm-e156d99231a7735d06a97b5b83de70bf4ce4f034",
+      sha256 = "5a56369e906e5af2d4baf5a92317a3db085800e848def7114aba176c80432ea0",
+      strip_prefix = "llvm-9e886358ff35a13de549b4adf49b52f933b9ec37",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -499,7 +520,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       actual = "@jsoncpp_git//:jsoncpp",
   )
 
-  native.http_archive(
+  patched_http_archive(
       name = "boringssl",
       urls = [
           "http://mirror.bazel.build/github.com/google/boringssl/archive/bbcaa15b0647816b9a1a9b9e0d209cd6712f0105.tar.gz",
@@ -507,6 +528,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "025264d6e9a7ad371f2f66d17a28b6627de0c9592dc2eb54afd062f68f1f9aa3",
       strip_prefix = "boringssl-bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",
+
+      # Add patch to boringssl code to support s390x
+      patch_file = str(Label("//third_party/boringssl:add_boringssl_s390x.patch")),
   )
 
   native.new_http_archive(
@@ -623,3 +647,18 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party:pprof.BUILD")),
   )
 
+  native.new_http_archive(
+      name = "cub_archive",
+      urls = [
+          "http://mirror.bazel.build/github.com/NVlabs/cub/archive/1.6.4.zip",
+          "https://github.com/NVlabs/cub/archive/1.6.4.zip",
+      ],
+      sha256 = "966d0c4f41e2bdc81aebf9ccfbf0baffaac5a74f00b826b06f4dee79b2bb8cee",
+      strip_prefix = "cub-1.6.4",
+      build_file = str(Label("//third_party:cub.BUILD")),
+  )
+
+  native.bind(
+      name = "cub",
+      actual = "@cub_archive//:cub",
+  )

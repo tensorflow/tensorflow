@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_op_test_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -79,6 +80,13 @@ class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
         /*require_shape_type=*/false, &result_graph_def_);
   }
 
+  Status FuseByOpTypes() {
+    return RemoteFusedGraphExecuteUtils::FuseRemoteGraphByOpTypes(
+        graph_def_, inputs_, outputs_, "remote_fused_graph_node_names",
+        subgraph_op_types_, "remote_graph_executor_name",
+        /*require_shape_type=*/false, &result_graph_def_);
+  }
+
   Status BuildAndAddTensorShape() {
     return RemoteFusedGraphExecuteUtils::BuildAndAddTensorShapes(
         input_tensors_, /*dry_run_inference=*/true, &graph_def_);
@@ -87,8 +95,9 @@ class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
   Status PlaceRemoteGraphArguments() {
     return RemoteFusedGraphExecuteUtils::PlaceRemoteGraphArguments(
         inputs_, outputs_, subgraph_node_names_, subgraph_input_names_,
-        subgraph_output_names_, "remote_fused_graph_node_names",
-        "remote_graph_executor_name", &graph_def_);
+        subgraph_output_names_, subgraph_op_types_,
+        "remote_fused_graph_node_names", "remote_graph_executor_name",
+        &graph_def_);
   }
 
   Status FuseByPlacedArguments() {
@@ -104,6 +113,15 @@ class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
                                                      input_tensors_);
   }
 
+  void ReplaceOpType(const std::unordered_set<string>& op_name,
+                     const string& new_op_type) {
+    for (NodeDef& node_def : *graph_def_.mutable_node()) {
+      if (op_name.count(node_def.name()) > 0) {
+        node_def.set_op(new_op_type);
+      }
+    }
+  }
+
  public:
   const std::vector<std::pair<string, Tensor>> input_tensors_{
       {"A", {DT_FLOAT, {1, 1, 1, 1}}}};
@@ -114,6 +132,7 @@ class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
   std::vector<string> subgraph_input_names_;
   std::vector<string> subgraph_output_names_;
   std::unordered_set<string> subgraph_node_names_;
+  std::unordered_set<string> subgraph_op_types_;
 };
 
 void SetSubgraphArguments(const std::vector<string>& input_names,
@@ -289,7 +308,7 @@ TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
       NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   Status status = ImportGraphDef(opts, def, &graph, &shape_refiner);
   ASSERT_TRUE(RemoteFusedGraphExecuteUtils::PropagateShapeInference(
                   def, inputs, &graph, &shape_refiner)
@@ -408,7 +427,7 @@ TEST(RemoteFusedGraphExecuteUtils, BuildRemoteFusedGraphExecuteOpNode) {
       NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
 
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
   TF_ASSERT_OK(ImportGraphDef({}, def, &graph, &shape_refiner));
 
   Node* node;
@@ -649,6 +668,32 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_ABCDEFGHIJK) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByOpTypes_HIJ) {
+  subgraph_op_types_ = {"Mul"};
+  ReplaceOpType({"H", "I", "J"}, "Mul");
+
+  TF_ASSERT_OK(FuseByOpTypes());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+  EXPECT_EQ(9, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByOpTypes_FGHIJ) {
+  subgraph_op_types_ = {"Const", "Mul"};
+  ReplaceOpType({"F", "G", "H", "I", "J"}, "Mul");
+
+  TF_ASSERT_OK(FuseByOpTypes());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+  EXPECT_EQ(3, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
 TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_H) {
   subgraph_node_names_ = {"H"};
 
@@ -750,6 +795,42 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_ABCDE_K) {
   TF_ASSERT_OK(FuseByPlacedArguments());
 
   EXPECT_EQ(7, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_MUL_HIJ) {
+  ReplaceOpType({"H", "I", "J"}, "Mul");
+  subgraph_op_types_ = {"Mul"};
+
+  TF_ASSERT_OK(PlaceRemoteGraphArguments());
+  ASSERT_TRUE(IsFuseReady());
+  TF_ASSERT_OK(BuildAndAddTensorShape());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+
+  TF_ASSERT_OK(FuseByPlacedArguments());
+
+  EXPECT_EQ(9, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_CONST_MUL_FGHIJ) {
+  ReplaceOpType({"F", "G", "H", "I", "J"}, "Mul");
+  subgraph_op_types_ = {"Const", "Mul"};
+
+  TF_ASSERT_OK(PlaceRemoteGraphArguments());
+  ASSERT_TRUE(IsFuseReady());
+  TF_ASSERT_OK(BuildAndAddTensorShape());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+
+  TF_ASSERT_OK(FuseByPlacedArguments());
+
+  EXPECT_EQ(3, result_graph_def_.node_size())
       << "=== Before: \n"
       << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
       << SummarizeGraphDef(result_graph_def_);

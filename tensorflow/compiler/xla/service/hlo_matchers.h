@@ -95,6 +95,7 @@ HLO_MATCHER(Parameter);
 HLO_MATCHER(Power);
 HLO_MATCHER(Recv);
 HLO_MATCHER(Reduce);
+HLO_MATCHER(ReducePrecision);
 HLO_MATCHER(ReduceWindow);
 HLO_MATCHER(Remainder);
 HLO_MATCHER(Reshape);

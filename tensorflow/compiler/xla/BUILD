@@ -46,21 +46,18 @@ xla_proto_library(
     ],
 )
 
-# This is a headers target that extra XLA devices can use to prevent
-# circular dependencies.  Devices that are compiled as separate shared
-# objects can also use it to prevent linking of library code.
-cc_header_only_library(
-    name = "xla_headers_lib",
-    visibility = ["//visibility:public"],
+cc_library(
+    name = "execution_options_util",
+    srcs = [
+        "execution_options_util.cc",
+    ],
+    hdrs = [
+        "execution_options_util.h",
+    ],
+    visibility = [":friends"],
     deps = [
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_evaluator",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:stream_executor_headers_lib",
+        ":xla_proto",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
     ],
 )
 
@@ -601,4 +598,19 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+# This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.
+cc_header_only_library(
+    name = "xla_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_data_proto",
+        ":xla_proto",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:stream_executor_headers_lib",
+    ],
 )

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import os
+import sys
 
 import six
 
@@ -90,6 +91,7 @@ def write_docs(output_dir, parser_config, yaml_toc):
 
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
   for full_name, py_object in six.iteritems(parser_config.index):
+    parser_config.reference_resolver.current_doc_full_name = full_name
 
     if full_name in parser_config.duplicate_of:
       continue
@@ -181,7 +183,7 @@ def add_dict_to_dict(add_from, add_to):
 
 # Exclude some libaries in contrib from the documentation altogether.
 def _get_default_private_map():
-  return {}
+  return {'tf.test': ['mock']}
 
 
 # Exclude members of some libaries.
@@ -390,6 +392,9 @@ def _other_docs(src_dir, output_dir, reference_resolver):
         print('Skipping excluded file %s...' % base_name)
         continue
       full_in_path = os.path.join(dirpath, base_name)
+
+      reference_resolver.current_doc_full_name = full_in_path
+
       suffix = os.path.relpath(path=full_in_path, start=src_dir)
       full_out_path = os.path.join(output_dir, suffix)
       if not base_name.endswith('.md'):
@@ -415,6 +420,8 @@ class DocGenerator(object):
   """Main entry point for generating docs."""
 
   def __init__(self):
+    if sys.version_info >= (3, 0):
+      sys.exit('Doc generation is not supported from python3.')
     self.argument_parser = argparse.ArgumentParser()
     self._py_modules = None
     self._private_map = _get_default_private_map()
@@ -442,7 +449,7 @@ class DocGenerator(object):
         '--base_dir',
         type=str,
         default=default_base_dir,
-        help='Base directory to to strip from file names referenced in docs.')
+        help='Base directory to strip from file names referenced in docs.')
 
   def parse_known_args(self):
     flags, _ = self.argument_parser.parse_known_args()
@@ -505,7 +512,6 @@ class DocGenerator(object):
     write_docs(output_dir, parser_config, yaml_toc=self.yaml_toc)
     _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
 
-    if parser.all_errors:
-      print('Errors during processing:\n  ' + '\n  '.join(parser.all_errors))
-      return 1
-    return 0
+    parser_config.reference_resolver.log_errors()
+
+    return parser_config.reference_resolver.num_errors()

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -378,9 +379,16 @@ Status CompileXla(xla::CompileOnlyClient* client,
 Status InitGraph(const GraphDef& graph_def, const Config& config,
                  const MainFlags& flags, std::unique_ptr<Graph>* graph) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
+
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), graph_def.library());
   std::unique_ptr<Graph> g(new Graph(flib_def));
-  GraphDef copy_def(graph_def);
+
+  GraphDef copy_def;
+
+  // Prune the GraphDef first so that unknown ops that we aren't compiling get
+  // filtered out.
+  TF_RETURN_IF_ERROR(PruneGraphDefInto(config, graph_def, &copy_def));
+
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&copy_def, *g->op_registry(),
                                                0 /*node_offset*/));
   TF_RETURN_IF_ERROR(

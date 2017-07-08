@@ -96,7 +96,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant,
                         const Literal& literal) override;
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element,
                                HloInstruction* operand) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
@@ -106,6 +106,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                    HloInstruction* rhs) override;
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
+  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* infeed) override;
@@ -192,6 +193,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // computation function being emitted by this emitter.
   llvm::Value* GetTempBuffersArgument();
 
+  // Emit ir to read and return the ir value for the dynamic loop bound at
+  // 'offset' from the "dynamic_loop_bounds" argument of the computation
+  // function being emitted by this emitter.
+  llvm::Value* GetDynamicLoopBound(const int64 offset);
+
   // Emits code that computes the address of the given temporary buffer to the
   // function. target_shape is the shape of this temporary buffer.
   // The returned Value's type is a pointer to element_type.
@@ -262,6 +268,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       HloInstruction* target_op,
       const llvm_ir::ElementGenerator& element_generator);
 
+  // Emit IR to perform a computation for every element in a partition/slice of
+  // 'target_shape'. The loop bounds for the outer-dimension partitions are
+  // passed into the compute function as a runtime argument (accessible from
+  // GetDynamicLoopBound).
+  Status EmitParallelTargetElementLoop(
+      const Shape& target_shape,
+      const llvm_ir::ElementGenerator& element_generator,
+      llvm_ir::IrArray* target_array);
+
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the
   // emitted_value_ table.
@@ -271,7 +286,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Emit IR to compute the target address of the buffer for the given op.
   // The returned Value is a pointer to a IR type that represents the op's
   // element type.
-  StatusOr<llvm::Value*> EmitTargetAddressForOp(const HloInstruction* op);
+  StatusOr<llvm::Value*> EmitTargetAddressForOp(
+      const HloInstruction* op, const ShapeIndex& shape_index = {});
 
   // Structurizes "array_elements" into an MD array that represents "shape".
   // This is a recursive function, and "dimension_index" indicates the index of
@@ -318,6 +334,10 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   std::unordered_map<const HloInstruction*, llvm::Value*> emitted_value_;
 
   llvm_ir::AliasAnalysis alias_analysis_;
+
+  // The number of root instruction outer dimensions used in parallel loop
+  // emission (EmitParallelTargetElementLoop).
+  int64 num_dynamic_loop_bounds_ = 0;
 
   // This struct contains all the state needed to emit instructions for
   // profiling a computation.
@@ -403,6 +423,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
+
+  // Emit IR to transfer an infeed buffer to the target address.
+  Status EmitInfeedTransfer(int64 length, llvm::Value* target_address);
 
   const HloModuleConfig& hlo_module_config_;
 

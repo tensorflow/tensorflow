@@ -61,6 +61,42 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## Clamp
+
+See also
+[`ComputationBuilder::Clamp`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+Clamps an operand to within the range between a minimum and maximum value.
+
+<b> `Clamp(computation, args...)` </b>
+
+| Arguments     | Type                    | Semantics                        |
+| ------------- | ----------------------- | -------------------------------- |
+| `computation` | `Computation`           | computation of type `T_0, T_1,   |
+:               :                         : ..., T_N -> S` with N parameters :
+:               :                         : of arbitrary type                :
+| `operand`     | `ComputationDataHandle` | array of type T                  |
+| `min`         | `ComputationDataHandle` | array of type T                  |
+| `max`         | `ComputationDataHandle` | array of type T                  |
+
+Given an operand and minimum and maximum values, returns the operand if it is in
+the range between the minimum and maximum, else returns the minimum value if the
+operand is below this range or the maximum value if the operand is above this
+range.  That is, `clamp(x, a, b) =  max(min(x, a), b)`.
+
+All three arrays must be the same shape. Alternately, as a restricted form of
+[broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
+
+Example with scalar `min` and `max`:
+
+```
+let operand: s32[3] = {-1, 5, 9};
+let min: s32 = 0;
+let max: s32 = 6;
+==>
+Clamp(operand, min, max) = s32[3]{0, 5, 6};
+```
+
 ## Collapse
 
 See also
@@ -547,6 +583,8 @@ ComputationBuilder supports these element-wise unary functions:
 
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
 
+<b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
+
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
@@ -586,7 +624,7 @@ See also
 [`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented on GPU backend yet. </b>
 
 Normalizes an array across batch and spatial dimensions.
 
@@ -643,7 +681,7 @@ spatial dimensions using the formulars above.
 See also
 [`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented yet. </b>
 
 Normalizes an array across batch and spatial dimensions.
 
@@ -680,11 +718,11 @@ The output is a n dimensional, normalized array with the same shape as input
 See also
 [`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented yet. </b>
 
 Calculates gradients of batch norm.
 
-<b> `BatchNormGrad(x, scale, mean, variance, epsilon, grad_y, feature_index)` </b>
+<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
 
 | Arguments       | Type                    | Semantics                        |
 | --------------  | ----------------------- | -------------------------------- |

@@ -193,7 +193,7 @@ class OnRunStartRequest(object):
   """
 
   def __init__(self, fetches, feed_dict, run_options, run_metadata,
-               run_call_count):
+               run_call_count, is_callable_runner=False):
     """Constructor of `OnRunStartRequest`.
 
     Args:
@@ -205,12 +205,15 @@ class OnRunStartRequest(object):
         run() method of a non-wrapped TensorFlow session.
       run_call_count: 1-based count of how many run calls (including this one)
         has been invoked.
+      is_callable_runner: (bool) whether a runner returned by
+        Session.make_callable is being run.
     """
     self.fetches = fetches
     self.feed_dict = feed_dict
     self.run_options = run_options
     self.run_metadata = run_metadata
     self.run_call_count = run_call_count
+    self.is_callable_runner = is_callable_runner
 
 
 class OnRunStartAction(object):
@@ -394,7 +397,13 @@ class BaseDebugWrapperSession(session.SessionInterface):
   def as_default(self):
     return ops.default_session(self)
 
-  def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
+  def run(self,
+          fetches,
+          feed_dict=None,
+          options=None,
+          run_metadata=None,
+          callable_runner=None,
+          callable_runner_args=None):
     """Wrapper around Session.run() that inserts tensor watch options.
 
     Args:
@@ -402,25 +411,39 @@ class BaseDebugWrapperSession(session.SessionInterface):
       feed_dict: Same as the `feed_dict` arg to regular `Session.run()`.
       options: Same as the `options` arg to regular `Session.run()`.
       run_metadata: Same as the `run_metadata` arg to regular `Session.run()`.
+      callable_runner: A `callable` returned by `Session.make_callable()`.
+        If not `None`, `fetches` and `feed_dict` must both be `None`.
+      callable_runner_args: An optional list of arguments to `callable_runner`.
 
     Returns:
       Simply forwards the output of the wrapped `Session.run()` call.
 
     Raises:
-      ValueError: On invalid `OnRunStartAction` value.
+      ValueError: On invalid `OnRunStartAction` value. Or if `callable_runner`
+        is not `None` and either or both of `fetches` and `feed_dict` is `None`.
     """
+    if not callable_runner:
+      self._run_call_count += 1
+    else:
+      if fetches or feed_dict:
+        raise ValueError(
+            "callable_runner and fetches/feed_dict are mutually exclusive, but "
+            "are used simultaneously.")
 
-    self._run_call_count += 1
     if self._is_disabled_thread():
-      return self._sess.run(fetches,
-                            feed_dict=feed_dict,
-                            options=options,
-                            run_metadata=run_metadata)
+      if callable_runner:
+        return callable_runner(*callable_runner_args)
+      else:
+        return self._sess.run(fetches,
+                              feed_dict=feed_dict,
+                              options=options,
+                              run_metadata=run_metadata)
 
     # Invoke on-run-start callback and obtain response.
     run_start_resp = self.on_run_start(
         OnRunStartRequest(fetches, feed_dict, options, run_metadata,
-                          self._run_call_count))
+                          self._run_call_count,
+                          is_callable_runner=bool(callable_runner)))
     _check_type(run_start_resp, OnRunStartResponse)
 
     if run_start_resp.action == OnRunStartAction.DEBUG_RUN:
@@ -443,10 +466,15 @@ class BaseDebugWrapperSession(session.SessionInterface):
       # runtime errors.
       tf_error = None
       try:
-        retvals = self._sess.run(fetches,
-                                 feed_dict=feed_dict,
-                                 options=decorated_run_options,
-                                 run_metadata=run_metadata)
+        if callable_runner:
+          retvals = callable_runner(*callable_runner_args,
+                                    options=decorated_run_options,
+                                    run_metadata=run_metadata)
+        else:
+          retvals = self._sess.run(fetches,
+                                   feed_dict=feed_dict,
+                                   options=decorated_run_options,
+                                   run_metadata=run_metadata)
       except errors.OpError as op_error:
         tf_error = op_error
         retvals = op_error
@@ -461,17 +489,26 @@ class BaseDebugWrapperSession(session.SessionInterface):
       decorated_run_options = options or config_pb2.RunOptions()
       run_metadata = run_metadata or config_pb2.RunMetadata()
       self._decorate_run_options_for_profile(decorated_run_options)
-      retvals = self._sess.run(fetches,
-                               feed_dict=feed_dict,
-                               options=decorated_run_options,
-                               run_metadata=run_metadata)
+      if callable_runner:
+        retvals = callable_runner(*callable_runner_args,
+                                  options=decorated_run_options,
+                                  run_metadata=run_metadata)
+      else:
+        retvals = self._sess.run(fetches,
+                                 feed_dict=feed_dict,
+                                 options=decorated_run_options,
+                                 run_metadata=run_metadata)
       run_end_req = OnRunEndRequest(
           run_start_resp.action,
           run_metadata=run_metadata,
           client_graph_def=self._sess.graph.as_graph_def())
-
     elif (run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN or
           run_start_resp.action == OnRunStartAction.INVOKE_STEPPER):
+      if callable_runner:
+        raise NotImplementedError(
+            "Stepper mode is not implemented for callables created by "
+            "Session.make_callable().")
+
       if run_start_resp.action == OnRunStartAction.INVOKE_STEPPER:
         with stepper.NodeStepper(
             self._sess, fetches, feed_dict) as node_stepper:
@@ -511,6 +548,28 @@ class BaseDebugWrapperSession(session.SessionInterface):
   def partial_run(self, handle, fetches, feed_dict=None):
     raise NotImplementedError(
         "partial_run is not implemented for debug-wrapper sessions.")
+
+  def list_devices(self, *args, **kwargs):
+    return self._sess.list_devices(*args, **kwargs)
+
+  def reset(self, *args, **kwargs):
+    return self._sess.reset(*args, **kwargs)
+
+  def make_callable(self,
+                    fetches,
+                    feed_list=None,
+                    accept_options=False):
+    runner = self._sess.make_callable(
+        fetches, feed_list=feed_list, accept_options=True)
+    def wrapped_runner(*runner_args, **kwargs):
+      return self.run(None,
+                      feed_dict=None,
+                      options=kwargs.get("options", None),
+                      run_metadata=kwargs.get("run_metadata", None),
+                      callable_runner=runner,
+                      callable_runner_args=runner_args)
+
+    return wrapped_runner
 
   def _decorate_run_options_for_debug(
       self,
@@ -617,6 +676,9 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
   def __exit__(self, exec_type, exec_value, exec_tb):
     self._sess.__exit__(exec_type, exec_value, exec_tb)
+
+  def __del__(self):
+    self._sess.__del__()
 
   def close(self):
     self._sess.close()

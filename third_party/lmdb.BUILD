@@ -19,8 +19,8 @@ cc_library(
         "-w",
     ],
     linkopts = select({
-        ":windows": ["-Wl,advapi32.lib"],  # InitializeSecurityDescriptor, SetSecurityDescriptorDacl
-        ":windows_msvc": ["-Wl,advapi32.lib"],
+        ":windows": ["-DEFAULTLIB:advapi32.lib"], # InitializeSecurityDescriptor, SetSecurityDescriptorDacl
+        ":windows_msvc": ["-DEFAULTLIB:advapi32.lib"],
         "//conditions:default": ["-lpthread"],
     }),
     visibility = ["//visibility:public"],

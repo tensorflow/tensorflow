@@ -40,6 +40,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:variables",
     ],
 )
@@ -174,6 +175,11 @@ tf_xla_py_test(
     name = "slice_ops_test",
     size = "small",
     srcs = ["slice_ops_test.py"],
+    # TODO(b/62962492): Test fails with assertion error.
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -323,7 +329,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "reverse_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["reverse_ops_test.py"],
     deps = [
         ":xla_test",
@@ -455,6 +461,11 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
     ],
+    # TODO(b/62961789): Test fails with SIGABRT
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 cc_library(
@@ -523,8 +534,12 @@ cuda_py_test(
 # --dump_graph_dir, and the config file was written by hand.
 #
 # Run the following to build a minimal benchmark of the computation on Android:
-# $ bazel build -c opt --config=android_arm \
-#       third_party/tensorflow/compiler/tests:lstm_layer_inference_benchmark
+# $ bazel build -c opt --cxxopt='-std=c++11' --linkopt='-lm' \
+#   --cpu=armeabi-v7a \
+#   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+#   --crosstool_top=//external:android/crosstool \
+#   //tensorflow/compiler/tests:lstm_layer_inference_benchmark
+
 #
 # Currently the resulting binary size is ~190KB
 tf_library(

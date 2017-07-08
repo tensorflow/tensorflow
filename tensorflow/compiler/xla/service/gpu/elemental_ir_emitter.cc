@@ -55,7 +55,7 @@ using tensorflow::strings::StrAppend;
 // Returns whether operand is a floating-point literal with the given value.
 bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
   return operand->opcode() == HloOpcode::kConstant &&
-         LiteralUtil::IsAllFloat(operand->literal(), value);
+         operand->literal().IsAllFloat(value);
 }
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(

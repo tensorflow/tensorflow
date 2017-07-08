@@ -9,10 +9,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "AutoParallelOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "COMPILER_VERSION"
     mtype: "<type \'str\'>"
   }
@@ -113,6 +109,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LMDBReader"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LogMessage"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -167,10 +167,6 @@ tf_module {
   member {
     name: "RegisterGradient"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "RewriterConfig"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "RunMetadata"
@@ -259,6 +255,10 @@ tf_module {
   member {
     name: "bfloat16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "bitwise"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "bool"
@@ -381,6 +381,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "profiler"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "python_io"
     mtype: "<type \'module\'>"
   }
@@ -477,6 +481,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "variance_scaling_initializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "zeros_initializer"
     mtype: "<type \'type\'>"
   }
@@ -509,6 +517,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "acosh"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "add"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -530,19 +542,19 @@ tf_module {
   }
   member_method {
     name: "arg_max"
-    argspec: "args=[\'input\', \'dimension\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "arg_min"
-    argspec: "args=[\'input\', \'dimension\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "argmax"
-    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\', \'output_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "argmin"
-    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\', \'output_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
     name: "as_dtype"
@@ -554,6 +566,10 @@ tf_module {
   }
   member_method {
     name: "asin"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "asinh"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
@@ -647,6 +663,10 @@ tf_module {
   member_method {
     name: "atan2"
     argspec: "args=[\'y\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "atanh"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "batch_to_space"
@@ -1031,6 +1051,14 @@ tf_module {
   member_method {
     name: "global_variables_initializer"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "glorot_normal_initializer"
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
+  }
+  member_method {
+    name: "glorot_uniform_initializer"
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "gradients"
@@ -1705,6 +1733,14 @@ tf_module {
     argspec: "args=[\'dtype\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "sparse_reduce_max"
+    argspec: "args=[\'sp_input\', \'axis\', \'keep_dims\', \'reduction_axes\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "sparse_reduce_max_sparse"
+    argspec: "args=[\'sp_input\', \'axis\', \'keep_dims\', \'reduction_axes\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "sparse_reduce_sum"
     argspec: "args=[\'sp_input\', \'axis\', \'keep_dims\', \'reduction_axes\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
@@ -1739,6 +1775,10 @@ tf_module {
   member_method {
     name: "sparse_segment_sum"
     argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "sparse_slice"
+    argspec: "args=[\'sp_input\', \'start\', \'size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "sparse_softmax"

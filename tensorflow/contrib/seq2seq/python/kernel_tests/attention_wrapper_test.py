@@ -28,9 +28,11 @@ from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.contrib.seq2seq.python.ops import attention_wrapper as wrapper
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
@@ -174,6 +176,7 @@ class AttentionWrapperTest(test.TestCase):
                                              sess_results['final_outputs'])
       final_state_info = nest.map_structure(get_result_summary,
                                             sess_results['final_state'])
+      print(name)
       print('Copy/paste:\nexpected_final_output = %s' % str(final_output_info))
       print('expected_final_state = %s' % str(final_state_info))
       nest.map_structure(self.assertAllCloseOrEqual, expected_final_output,
@@ -334,6 +337,285 @@ class AttentionWrapperTest(test.TestCase):
         expected_final_state,
         attention_layer_size=None,
         name='testNotUseAttentionLayer')
+
+  def test_safe_cumprod(self):
+    # Create some random test input
+    test_input = np.random.uniform(size=(10, 20))
+
+    for axis in [0, 1]:
+      for exclusive in [True, False]:
+        with self.test_session():
+          # Compute cumprod with regular tf.cumprod
+          cumprod_output = math_ops.cumprod(
+              test_input, axis=axis, exclusive=exclusive).eval()
+          # Compute cumprod with safe_cumprod
+          safe_cumprod_output = wrapper.safe_cumprod(
+              test_input, axis=axis, exclusive=exclusive).eval()
+        for x, y in zip(cumprod_output.shape, safe_cumprod_output.shape):
+          self.assertEqual(x, y)
+        for x, y in zip(cumprod_output.flatten(),
+                        safe_cumprod_output.flatten()):
+          # Use assertAlmostEqual for the actual values due to floating point
+          self.assertAlmostEqual(x, y, places=5)
+
+  def test_monotonic_attention(self):
+    def monotonic_attention_explicit(p_choose_i, previous_attention):
+      """Explicitly compute monotonic attention distribution using numpy."""
+      # Base case for recurrence relation
+      out = [previous_attention[0]]
+      # Explicitly follow the recurrence relation
+      for j in range(1, p_choose_i.shape[0]):
+        out.append((1 - p_choose_i[j - 1])*out[j - 1] + previous_attention[j])
+      return p_choose_i*np.array(out)
+
+    # Generate a random batch of choosing probabilities for seq. len. 20
+    p_choose_i = np.random.uniform(size=(10, 20)).astype(np.float32)
+    # Generate random previous attention distributions
+    previous_attention = np.random.uniform(size=(10, 20)).astype(np.float32)
+    previous_attention /= previous_attention.sum(axis=1).reshape((-1, 1))
+
+    # Create the output to test against
+    explicit_output = np.array([
+        monotonic_attention_explicit(p, a)
+        for p, a in zip(p_choose_i, previous_attention)])
+
+    # Compute output with TensorFlow function, for both calculation types
+    with self.test_session():
+      recursive_output = wrapper.monotonic_attention(
+          p_choose_i, previous_attention, 'recursive').eval()
+
+    self.assertEqual(recursive_output.ndim, explicit_output.ndim)
+    for x, y in zip(recursive_output.shape, explicit_output.shape):
+      self.assertEqual(x, y)
+    for x, y in zip(recursive_output.flatten(), explicit_output.flatten()):
+      # Use assertAlmostEqual for the actual values due to floating point
+      self.assertAlmostEqual(x, y, places=5)
+
+    # Generate new p_choose_i for parallel, which is unstable when p_choose_i[n]
+    # is close to 1
+    p_choose_i = np.random.uniform(0, 0.9, size=(10, 20)).astype(np.float32)
+
+    # Create new output to test against
+    explicit_output = np.array([
+        monotonic_attention_explicit(p, a)
+        for p, a in zip(p_choose_i, previous_attention)])
+
+    # Compute output with TensorFlow function, for both calculation types
+    with self.test_session():
+      parallel_output = wrapper.monotonic_attention(
+          p_choose_i, previous_attention, 'parallel').eval()
+
+    self.assertEqual(parallel_output.ndim, explicit_output.ndim)
+    for x, y in zip(parallel_output.shape, explicit_output.shape):
+      self.assertEqual(x, y)
+    for x, y in zip(parallel_output.flatten(), explicit_output.flatten()):
+      # Use assertAlmostEqual for the actual values due to floating point
+      self.assertAlmostEqual(x, y, places=5)
+
+    # Now, test hard mode, where probabilities must be 0 or 1
+    p_choose_i = np.random.choice(np.array([0, 1], np.float32), (10, 20))
+    previous_attention = np.zeros((10, 20), np.float32)
+    # Randomly choose input sequence indices at each timestep
+    random_idx = np.random.randint(0, previous_attention.shape[1],
+                                   previous_attention.shape[0])
+    previous_attention[np.arange(previous_attention.shape[0]), random_idx] = 1
+
+    # Create the output to test against
+    explicit_output = np.array([
+        monotonic_attention_explicit(p, a)
+        for p, a in zip(p_choose_i, previous_attention)])
+
+    # Compute output with TensorFlow function, for both calculation types
+    with self.test_session():
+      hard_output = wrapper.monotonic_attention(
+          # TensorFlow is unhappy when these are not wrapped as tf.constant
+          constant_op.constant(p_choose_i),
+          constant_op.constant(previous_attention),
+          'hard').eval()
+
+    self.assertEqual(hard_output.ndim, explicit_output.ndim)
+    for x, y in zip(hard_output.shape, explicit_output.shape):
+      self.assertEqual(x, y)
+    for x, y in zip(hard_output.flatten(), explicit_output.flatten()):
+      # Use assertAlmostEqual for the actual values due to floating point
+      self.assertAlmostEqual(x, y, places=5)
+
+    # Now, test recursively computing attention distributions vs. sampling
+    def sample(p_choose_i):
+      """Generate a sequence of emit-ingest decisions from p_choose_i."""
+      output = np.zeros(p_choose_i.shape)
+      t_im1 = 0
+      for i in range(p_choose_i.shape[0]):
+        for j in range(t_im1, p_choose_i.shape[1]):
+          if np.random.uniform() <= p_choose_i[i, j]:
+            output[i, j] = 1
+            t_im1 = j
+            break
+        else:
+          t_im1 = p_choose_i.shape[1]
+      return output
+
+    # Now, the first axis is output timestep and second is input timestep
+    p_choose_i = np.random.uniform(size=(4, 5)).astype(np.float32)
+    # Generate the average of a bunch of samples
+    n_samples = 100000
+    sampled_output = np.mean(
+        [sample(p_choose_i) for _ in range(n_samples)], axis=0)
+
+    # Create initial previous_attention base case
+    recursive_output = [np.array([1] + [0]*(p_choose_i.shape[1] - 1),
+                                 np.float32)]
+    # Compute output with TensorFlow function, for both calculation types
+    with self.test_session():
+      for j in range(p_choose_i.shape[0]):
+        # Compute attention distribution for this output time step
+        recursive_output.append(wrapper.monotonic_attention(
+            # newaxis is for adding the expected batch dimension
+            p_choose_i[j][np.newaxis],
+            recursive_output[-1][np.newaxis], 'recursive').eval()[0])
+      # Stack together distributions; remove basecase
+      recursive_output = np.array(recursive_output[1:])
+
+    self.assertEqual(recursive_output.ndim, sampled_output.ndim)
+    for x, y in zip(recursive_output.shape, sampled_output.shape):
+      self.assertEqual(x, y)
+    for x, y in zip(recursive_output.flatten(), sampled_output.flatten()):
+      # Use a very forgiving threshold since we are sampling
+      self.assertAlmostEqual(x, y, places=2)
+
+  def testBahdanauMonotonicNotNormalized(self):
+    create_attention_mechanism = functools.partial(
+        wrapper.BahdanauMonotonicAttention, sigmoid_noise=1.0,
+        sigmoid_noise_seed=3)
+
+    expected_final_output = BasicDecoderOutput(
+        rnn_output=ResultSummary(
+            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.002122893),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=1.7333333333333334))
+    expected_final_state = AttentionWrapperState(
+        cell_state=LSTMStateTuple(
+            c=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0040002423),
+            h=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0019968653)),
+        attention=ResultSummary(
+            shape=(5, 6), dtype=dtype('float32'), mean=-5.9313523e-05),
+        time=3,
+        alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032228071),
+        alignment_history=())
+    expected_final_alignment_history = ResultSummary(
+        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050430927)
+
+    self._testWithAttention(
+        create_attention_mechanism,
+        expected_final_output,
+        expected_final_state,
+        alignment_history=True,
+        expected_final_alignment_history=expected_final_alignment_history,
+        name='testBahdanauMonotonicNotNormalized')
+
+  def testBahdanauMonotonicNormalized(self):
+    create_attention_mechanism = functools.partial(
+        wrapper.BahdanauMonotonicAttention, normalize=True,
+        sigmoid_noise=1.0, sigmoid_noise_seed=3)
+
+    expected_final_output = BasicDecoderOutput(
+        rnn_output=ResultSummary(
+            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0025896581),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=1.8666666666666667))
+    expected_final_state = AttentionWrapperState(
+        cell_state=LSTMStateTuple(
+            c=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0040013152),
+            h=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0019973689)),
+        attention=ResultSummary(
+            shape=(5, 6), dtype=dtype('float32'), mean=-0.00069823361),
+        time=3,
+        alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.028698336),
+        alignment_history=())
+    expected_final_alignment_history = ResultSummary(
+        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.046009291)
+
+    self._testWithAttention(
+        create_attention_mechanism,
+        expected_final_output,
+        expected_final_state,
+        alignment_history=True,
+        expected_final_alignment_history=expected_final_alignment_history,
+        name='testBahdanauMonotonicNormalized')
+
+  def testLuongMonotonicNotNormalized(self):
+    create_attention_mechanism = functools.partial(
+        wrapper.LuongMonotonicAttention, sigmoid_noise=1.0,
+        sigmoid_noise_seed=3)
+
+    expected_final_output = BasicDecoderOutput(
+        rnn_output=ResultSummary(
+            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0021257224),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=1.7333333333333334))
+    expected_final_state = AttentionWrapperState(
+        cell_state=LSTMStateTuple(
+            c=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0040003359),
+            h=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.001996913)),
+        attention=ResultSummary(
+            shape=(5, 6), dtype=dtype('float32'), mean=-5.2024145e-05),
+        time=3,
+        alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
+        alignment_history=())
+    expected_final_alignment_history = ResultSummary(
+        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050387777)
+
+    self._testWithAttention(
+        create_attention_mechanism,
+        expected_final_output,
+        expected_final_state,
+        attention_mechanism_depth=9,
+        alignment_history=True,
+        expected_final_alignment_history=expected_final_alignment_history,
+        name='testLuongMonotonicNotNormalized')
+
+  def testLuongMonotonicScaled(self):
+    create_attention_mechanism = functools.partial(
+        wrapper.LuongMonotonicAttention, scale=True, sigmoid_noise=1.0,
+        sigmoid_noise_seed=3)
+
+    expected_final_output = BasicDecoderOutput(
+        rnn_output=ResultSummary(
+            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0021257224),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=1.7333333333333334))
+    expected_final_state = AttentionWrapperState(
+        cell_state=LSTMStateTuple(
+            c=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0040003359),
+            h=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.001996913)),
+        attention=ResultSummary(
+            shape=(5, 6), dtype=dtype('float32'), mean=-5.2024145e-05),
+        time=3,
+        alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
+        alignment_history=())
+    expected_final_alignment_history = ResultSummary(
+        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050387777)
+
+    self._testWithAttention(
+        create_attention_mechanism,
+        expected_final_output,
+        expected_final_state,
+        attention_mechanism_depth=9,
+        alignment_history=True,
+        expected_final_alignment_history=expected_final_alignment_history,
+        name='testLuongMonotonicScaled')
 
 
 if __name__ == '__main__':

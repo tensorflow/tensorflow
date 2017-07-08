@@ -156,3 +156,21 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_dtype(JNIEnv* env,
 
   return static_cast<jint>(TF_OperationOutputType(TF_Output{op, output_index}));
 }
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_inputListLength(JNIEnv* env,
+                                                                      jclass clazz,
+                                                                      jlong handle,
+                                                                      jstring name) {
+  TF_Operation* op = requireHandle(env, handle);
+  if (op == nullptr) return 0;
+
+  TF_Status* status = TF_NewStatus();
+
+  const char* cname = env->GetStringUTFChars(name, nullptr);
+  int result = TF_OperationInputListLength(op, cname, status);
+  env->ReleaseStringUTFChars(name, cname);
+
+  throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
+  return result;
+}

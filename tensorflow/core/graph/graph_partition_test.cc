@@ -22,10 +22,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -38,6 +40,14 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
+
+using strings::StrCat;
+
+// from graph_partition.cc
+extern Status TopologicalSortNodesWithTimePriority(
+    const GraphDef* gdef, std::vector<std::pair<const NodeDef*, int64>>* nodes,
+    std::unordered_map<const NodeDef*, int64>* node_to_start_time_out);
+
 namespace {
 
 const char gpu_device[] = "/job:a/replica:0/task:0/gpu:0";
@@ -51,7 +61,7 @@ string DeviceName(const Node* node) {
   } else {
     const string cpu_prefix = "/job:a/replica:0/task:0/cpu:";
     int index = first - 'A';
-    return strings::StrCat(cpu_prefix, index);
+    return StrCat(cpu_prefix, index);
   }
 }
 
@@ -433,6 +443,186 @@ TEST_F(GraphPartitionTest, Functions) {
   string b = "/job:a/replica:0/task:0/cpu:1";
   ExpectFunctions(partitions_[a].library(), {"XTimesTwo", "XTimesFour"});
   ExpectFunctions(partitions_[b].library(), {"XTimesTwo", "XTimesFour"});
+}
+
+TEST(TopologicalSortNodesWithTimePriorityTest, NoDependencies) {
+  // Create placeholders, shuffle them so the order in the graph is not strictly
+  // increasing.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  std::vector<int> indexes;
+  for (int i = 0; i < 20; ++i) {
+    indexes.push_back((i + 2001) % 20);
+  }
+  std::vector<ops::Placeholder> placeholders;
+  for (int i : indexes) {
+    placeholders.emplace_back(root.WithOpName(StrCat("p", i)), DT_FLOAT);
+    placeholders.back().node()->AddAttr("_start_time", i + 1);
+  }
+
+  GraphDef gdef;
+  TF_EXPECT_OK(root.ToGraphDef(&gdef));
+
+  std::vector<std::pair<const NodeDef*, int64>> nodes;
+  std::unordered_map<const NodeDef*, int64> node_to_start_time;
+  TF_CHECK_OK(
+      TopologicalSortNodesWithTimePriority(&gdef, &nodes, &node_to_start_time));
+  ASSERT_EQ(nodes.size(), 20);
+  for (int i = 0; i < nodes.size(); ++i) {
+    EXPECT_EQ(StrCat("p", i), nodes[i].first->name());
+    EXPECT_EQ(i + 1, nodes[i].second);
+  }
+}
+
+TEST(TopologicalSortNodesWithTimePriority, Dependencies) {
+  // Create placeholders, shuffle them so the order in the graph is not strictly
+  // increasing.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  std::vector<int> indexes;
+  std::vector<ops::Placeholder> placeholders_in_order;
+  const int num_leaves = 20;
+  for (int i = 0; i < num_leaves; ++i) {
+    indexes.push_back((i + 2001) % num_leaves);
+    placeholders_in_order.emplace_back(root.WithOpName(StrCat("p", i)),
+                                       DT_FLOAT);
+    placeholders_in_order.back().node()->AddAttr("_start_time", i + 1);
+  }
+  std::vector<ops::Placeholder> placeholders;
+  for (int i : indexes) {
+    placeholders.push_back(placeholders_in_order[i]);
+  }
+
+  // Create ops that depend on the placeholders. We give start times to these
+  // that are in descending order (e.g., the op that depends on the first
+  // placeholder runs last).
+  std::vector<ops::Square> squares;
+  for (int i : indexes) {
+    squares.emplace_back(root.WithOpName(StrCat("s", i)), placeholders[i]);
+    squares.back().node()->AddAttr("_start_time", 50 - (i + 1));
+  }
+
+  // Create addn to sum all squares.
+  std::vector<Input> inputs;
+  for (const auto& s : squares) inputs.push_back(s);
+  ops::AddN addn = ops::AddN(root.WithOpName("addn"),
+                             tensorflow::gtl::ArraySlice<Input>(inputs));
+  // Start times is actually listed earlier than the nodes it depends on.
+  // But because of dependency ordering, it is last in the list.
+  addn.node()->AddAttr("_start_time", 1);
+
+  GraphDef gdef;
+  TF_EXPECT_OK(root.ToGraphDef(&gdef));
+
+  std::vector<std::pair<const NodeDef*, int64>> nodes;
+  std::unordered_map<const NodeDef*, int64> node_to_start_time;
+  TF_CHECK_OK(
+      TopologicalSortNodesWithTimePriority(&gdef, &nodes, &node_to_start_time));
+  ASSERT_EQ(1 + squares.size() + placeholders.size(), nodes.size());
+  for (int i = 0; i < placeholders.size(); ++i) {
+    const NodeDef* node = nodes[i].first;
+    EXPECT_EQ(StrCat("p", i), node->name());
+    EXPECT_EQ(i + 1, nodes[i].second);
+    EXPECT_EQ(i + 1, node_to_start_time[node]);
+  }
+  for (int i = 0; i < squares.size(); ++i) {
+    int node_index = placeholders.size() + i;
+    int square_index = num_leaves - 1 - i;
+    const NodeDef* node = nodes[node_index].first;
+    EXPECT_EQ(StrCat("s", square_index), node->name());
+    EXPECT_EQ(50 - (square_index + 1), nodes[node_index].second);
+    EXPECT_EQ(50 - (square_index + 1), node_to_start_time[node]);
+  }
+  EXPECT_EQ("addn", nodes.back().first->name());
+  EXPECT_EQ(50, nodes.back().second);
+  EXPECT_EQ(50, node_to_start_time[nodes.back().first]);
+}
+
+TEST(TopologicalSortNodesWithTimePriority, WhileLoop) {
+  using namespace ::tensorflow::ops;            // NOLINT(build/namespaces)
+  using namespace ::tensorflow::ops::internal;  // NOLINT(build/namespaces)
+
+  // Create placeholders.
+  Scope root = Scope::NewRootScope().ExitOnError();
+  std::vector<int> indexes;
+  std::vector<Placeholder> placeholders_in_order;
+  const int num_leaves = 20;
+  for (int i = 0; i < num_leaves; ++i) {
+    indexes.push_back((i + 2001) % num_leaves);
+    placeholders_in_order.emplace_back(root.WithOpName(StrCat("p", i)),
+                                       DT_FLOAT);
+    placeholders_in_order.back().node()->AddAttr("_start_time", i + 1);
+  }
+  std::vector<Placeholder> placeholders;
+  for (int i : indexes) {
+    placeholders.push_back(placeholders_in_order[i]);
+  }
+
+  // Add a while loop above each placeholder.
+  std::vector<Exit> while_exits;
+  const int nodes_per_loop = 8;
+  for (int i : indexes) {
+    Scope scope = root.NewSubScope(StrCat("while", i));
+    auto dummy = Placeholder(scope, DT_FLOAT);
+
+    Enter enter(scope, placeholders[i], StrCat("frame", i));
+    Merge merge(scope, std::initializer_list<Input>{enter, dummy});
+    auto cv = Const(scope.WithControlDependencies({merge.output}), false);
+    LoopCond loop_cond(scope, cv);
+    Switch switch_node(scope, merge.output, loop_cond);
+    Identity identity(scope, switch_node.output_true);
+    NextIteration next_iteration(scope, identity);
+    while_exits.emplace_back(scope.WithOpName("exit"),
+                             switch_node.output_false);
+
+    // Complete loop by removing dummy node and attaching NextIteration to
+    // that input of the merge node.
+    scope.graph()->RemoveNode(dummy.node());
+    scope.graph()->AddEdge(next_iteration.node(), 0, merge.output.node(), 1);
+
+    int base_start_time = i * 10 + 100;
+    for (auto op : std::vector<Output>{enter, merge.output, cv, loop_cond,
+                                       switch_node.output_false, identity,
+                                       next_iteration, while_exits.back()}) {
+      op.node()->AddAttr("_start_time", base_start_time++);
+    }
+  }
+
+  // Create ops that depend on the loop exits.
+  std::vector<Square> squares;
+  for (int i : indexes) {
+    squares.emplace_back(root.WithOpName(StrCat("s", i)), while_exits[i]);
+    squares.back().node()->AddAttr("_start_time", 500 - (i + 1));
+  }
+
+  GraphDef gdef;
+  TF_EXPECT_OK(root.ToGraphDef(&gdef));
+
+  // Run the sort. The while loop nodes do not appear in the output <nodes>.
+  std::vector<std::pair<const NodeDef*, int64>> nodes;
+  std::unordered_map<const NodeDef*, int64> node_to_start_time;
+  TF_CHECK_OK(
+      TopologicalSortNodesWithTimePriority(&gdef, &nodes, &node_to_start_time));
+  ASSERT_LT(while_exits.size() + squares.size() + placeholders.size(),
+            nodes.size());
+  int node_index = 0;
+  for (int i = 0; i < placeholders.size(); ++i, ++node_index) {
+    const NodeDef* node = nodes[i].first;
+    EXPECT_EQ(StrCat("p", i), node->name());
+    EXPECT_EQ(i + 1, nodes[i].second);
+    EXPECT_EQ(i + 1, node_to_start_time[node]);
+  }
+  for (int i = 0; i < while_exits.size(); ++i, node_index += nodes_per_loop) {
+    const NodeDef* node = nodes[node_index].first;
+    EXPECT_EQ(StrCat("while", i, "/Enter"), node->name());
+    EXPECT_EQ(100 + i * 10, nodes[node_index].second);
+    EXPECT_EQ(100 + i * 10, node_to_start_time[node]);
+  }
+  for (int i = 0; i < squares.size(); ++i, ++node_index) {
+    int square_index = num_leaves - 1 - i;
+    const NodeDef* node = nodes[node_index].first;
+    EXPECT_EQ(StrCat("s", square_index), node->name());
+    EXPECT_EQ(500 - (square_index + 1), nodes[node_index].second);
+    EXPECT_EQ(500 - (square_index + 1), node_to_start_time[node]);
+  }
 }
 
 }  // namespace

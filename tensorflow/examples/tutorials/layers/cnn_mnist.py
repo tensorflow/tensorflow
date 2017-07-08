@@ -20,9 +20,6 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib import learn
-from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
-
 tf.logging.set_verbosity(tf.logging.INFO)
 
 
@@ -31,7 +28,7 @@ def cnn_model_fn(features, labels, mode):
   # Input Layer
   # Reshape X to 4-D tensor: [batch_size, width, height, channels]
   # MNIST images are 28x28 pixels, and have one color channel
-  input_layer = tf.reshape(features, [-1, 28, 28, 1])
+  input_layer = tf.reshape(features["x"], [-1, 28, 28, 1])
 
   # Convolutional Layer #1
   # Computes 32 features using a 5x5 filter with ReLU activation.
@@ -82,53 +79,53 @@ def cnn_model_fn(features, labels, mode):
 
   # Add dropout operation; 0.6 probability that element will be kept
   dropout = tf.layers.dropout(
-      inputs=dense, rate=0.4, training=mode == learn.ModeKeys.TRAIN)
+      inputs=dense, rate=0.4, training=mode == tf.estimator.ModeKeys.TRAIN)
 
   # Logits layer
   # Input Tensor Shape: [batch_size, 1024]
   # Output Tensor Shape: [batch_size, 10]
   logits = tf.layers.dense(inputs=dropout, units=10)
 
-  loss = None
-  train_op = None
+  # Generate Predictions (for PREDICT mode)
+  predicted_classes = tf.argmax(input=logits, axis=1)
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    predictions = {
+        "classes": predicted_classes,
+        "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
+    }
+    return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
   # Calculate Loss (for both TRAIN and EVAL modes)
-  if mode != learn.ModeKeys.INFER:
-    onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-    loss = tf.losses.softmax_cross_entropy(
-        onehot_labels=onehot_labels, logits=logits)
+  onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
+  loss = tf.losses.softmax_cross_entropy(
+      onehot_labels=onehot_labels, logits=logits)
 
   # Configure the Training Op (for TRAIN mode)
-  if mode == learn.ModeKeys.TRAIN:
-    train_op = tf.contrib.layers.optimize_loss(
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+    train_op = optimizer.minimize(
         loss=loss,
-        global_step=tf.contrib.framework.get_global_step(),
-        learning_rate=0.001,
-        optimizer="SGD")
+        global_step=tf.train.get_global_step())
+    return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
 
-  # Generate Predictions
-  predictions = {
-      "classes": tf.argmax(
-          input=logits, axis=1),
-      "probabilities": tf.nn.softmax(
-          logits, name="softmax_tensor")
-  }
-
-  # Return a ModelFnOps object
-  return model_fn_lib.ModelFnOps(
-      mode=mode, predictions=predictions, loss=loss, train_op=train_op)
+  # Add evaluation metrics (for EVAL mode)
+  eval_metric_ops = {
+      "accuracy": tf.metrics.accuracy(
+          labels=labels, predictions=predicted_classes)}
+  return tf.estimator.EstimatorSpec(
+      mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 
 
 def main(unused_argv):
   # Load training and eval data
-  mnist = learn.datasets.load_dataset("mnist")
+  mnist = tf.contrib.learn.datasets.load_dataset("mnist")
   train_data = mnist.train.images  # Returns np.array
   train_labels = np.asarray(mnist.train.labels, dtype=np.int32)
   eval_data = mnist.test.images  # Returns np.array
   eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
 
   # Create the Estimator
-  mnist_classifier = learn.Estimator(
+  mnist_classifier = tf.estimator.Estimator(
       model_fn=cnn_model_fn, model_dir="/tmp/mnist_convnet_model")
 
   # Set up logging for predictions
@@ -138,23 +135,24 @@ def main(unused_argv):
       tensors=tensors_to_log, every_n_iter=50)
 
   # Train the model
-  mnist_classifier.fit(
-      x=train_data,
+  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={"x": train_data},
       y=train_labels,
       batch_size=100,
+      num_epochs=None,
+      shuffle=True)
+  mnist_classifier.train(
+      input_fn=train_input_fn,
       steps=20000,
-      monitors=[logging_hook])
-
-  # Configure the accuracy metric for evaluation
-  metrics = {
-      "accuracy":
-          learn.MetricSpec(
-              metric_fn=tf.metrics.accuracy, prediction_key="classes"),
-  }
+      hooks=[logging_hook])
 
   # Evaluate the model and print results
-  eval_results = mnist_classifier.evaluate(
-      x=eval_data, y=eval_labels, metrics=metrics)
+  eval_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={"x": eval_data},
+      y=eval_labels,
+      num_epochs=1,
+      shuffle=False)
+  eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
   print(eval_results)
 
 

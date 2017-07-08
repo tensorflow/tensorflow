@@ -41,7 +41,7 @@ class WhileTransformerTest : public HloTestBase {
       const int64 tuple_index, const int64 limit) {
     auto builder = HloComputation::Builder(TestName() + ".Condition");
     auto limit_const = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(limit)));
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(limit)));
     auto loop_state = builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape_, "loop_state"));
     auto induction_variable =
@@ -64,8 +64,8 @@ class WhileTransformerTest : public HloTestBase {
     auto induction_variable =
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             induction_variable_shape_, loop_state, ind_var_tuple_index));
-    auto inc = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(increment)));
+    auto inc = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(increment)));
     auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
         induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
     // Update data GTE(data_tuple_index).
@@ -88,12 +88,10 @@ class WhileTransformerTest : public HloTestBase {
                                         const int64 ind_var_tuple_index,
                                         const int64 ind_var_init) {
     auto builder = HloComputation::Builder(TestName() + ".While");
-    auto induction_var_init =
-        builder.AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::CreateR0<int32>(ind_var_init)));
-    auto data_init = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
-            {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
+    auto induction_var_init = builder.AddInstruction(
+        HloInstruction::CreateConstant(Literal::CreateR0<int32>(ind_var_init)));
+    auto data_init = builder.AddInstruction(HloInstruction::CreateConstant(
+        Literal::CreateR1<float>({0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f})));
     auto loop_state_init =
         ind_var_tuple_index == 0
             ? builder.AddInstruction(

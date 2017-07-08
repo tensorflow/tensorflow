@@ -3,6 +3,7 @@
 load("@protobuf//:protobuf.bzl", "cc_proto_library")
 load("@protobuf//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -45,11 +46,11 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       srcs = srcs,
       deps = tf_deps(protodeps, "_cc") + ["@protobuf//:cc_wkt_protos"],
       cc_libs = cc_libs + ["@protobuf//:protobuf"],
-      copts = [
+      copts = if_not_windows([
           "-Wno-unknown-warning-option",
           "-Wno-unused-but-set-variable",
           "-Wno-sign-compare",
-      ],
+      ]),
       protoc = "@protobuf//:protoc",
       default_runtime = "@protobuf//:protobuf",
       use_grpc_plugin = use_grpc_plugin,

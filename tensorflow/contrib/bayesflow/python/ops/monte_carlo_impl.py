@@ -32,6 +32,7 @@ from tensorflow.python.ops import nn
 
 __all__ = [
     'expectation',
+    'expectation_v2',
     'expectation_importance_sampler',
     'expectation_importance_sampler_logspace',
 ]
@@ -249,6 +250,100 @@ def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
   with ops.name_scope(name, values=[n, z]):
     z = _get_samples(p, z, n, seed)
     return _sample_mean(f(z))
+
+
+def expectation_v2(f, samples, log_prob=None, use_reparametrization=True,
+                   axis=0, keep_dims=False, name=None):
+  """Computes the Monte-Carlo approximation of `E_p[f(X)]`.
+
+  This function computes the Monte-Carlo approximation of an expectation, i.e.,
+
+  ```none
+  E_p[f(X)] approx= m**-1 sum_i^m f(x_j),  x_j ~iid p(X)
+  ```
+
+  where:
+
+  - `x_j = samples[j, ...]`,
+  - `log(p(samples)) = log_prob(samples)` and
+  - `m = prod(shape(samples)[axis])`.
+
+  Tricks: Reparameterization and Score-Gradient
+
+  When p is "reparameterized", i.e., a diffeomorphic transformation of a
+  parameterless distribution (e.g.,
+  `Normal(Y; m, s) <=> Y = sX + m, X ~ Normal(0,1)`), we can swap gradient and
+  expectation, i.e.,
+  `grad[ Avg{ s_i : i=1...n } ] = Avg{ grad[s_i] : i=1...n }` where
+  `S_n = Avg{s_i}` and `s_i = f(x_i), x_i ~ p`.
+
+  However, if p is not reparameterized, TensorFlow's gradient will be incorrect
+  since the chain-rule stops at samples of unreparameterized distributions. In
+  this circumstance using the Score-Gradient trick results in an unbiased
+  gradient, i.e.,
+
+  ```none
+  grad[ E_p[f(X)] ]
+  = grad[ int dx p(x) f(x) ]
+  = int dx grad[ p(x) f(x) ]
+  = int dx [ p'(x) f(x) + p(x) f'(x) ]
+  = int dx p(x) [p'(x) / p(x) f(x) + f'(x) ]
+  = int dx p(x) grad[ f(x) p(x) / stop_grad[p(x)] ]
+  = E_p[ grad[ f(x) p(x) / stop_grad[p(x)] ] ]
+  ```
+
+  Unless p is not reparametrized, it is usually preferable to
+  `use_reparametrization = True`.
+
+  Warning: users are responsible for verifying `p` is a "reparameterized"
+  distribution.
+
+  Args:
+    f: Python callable which can return `f(samples)`.
+    samples: `Tensor` of samples used to form the Monte-Carlo approximation of
+      `E_p[f(X)]`.  A batch of samples should be indexed by `axis` dimensions.
+    log_prob: Python callable which can return `log_prob(samples)`. Must
+      correspond to the natural-logarithm of the pdf/pmf of each sample. Only
+      required/used if `use_reparametrization=False`.
+    use_reparametrization: Python `bool` indicating that the approximation
+      should use the fact that the gradient of samples is unbiased.
+    axis: The dimensions to average. If `None` (the default), averages all
+      dimensions.
+    keep_dims: If true, retains averaged dimensions with length 1.
+    name: A `name_scope` for operations created by this function (optional).
+      Default value: "expectation_v2".
+
+  Returns:
+    approx_expectation: `Tensor` corresponding to the Monte-Carlo approximation
+      of `E_p[f(X)]`.
+
+  Raises:
+    ValueError: if `f` is not `callable`.
+    ValueError: if `use_reparametrization=False` and `log_prob` is not
+      `callable`.
+  """
+
+  with ops.name_scope(name, 'expectation_v2', [samples]):
+    if not callable(f):
+      raise ValueError('`f` must be a callable function.')
+    if use_reparametrization:
+      return math_ops.reduce_mean(f(samples), axis=axis, keep_dims=keep_dims)
+    else:
+      if not callable(log_prob):
+        raise ValueError('`log_prob` must be a callable function.')
+      x = array_ops.stop_gradient(samples)
+      logpx = log_prob(x)
+      # Numerically, exp(g(x) - stop[g(x)]) is always 1, even if exp(g(x)) is
+      # unstable. But the gradient is also stable, ie,
+      # d/dx exp(g(x) - stop[g(x)])
+      # = exp(g(x) - stop[g(x)]) d/dx g(x)
+      # = d/dx g(x)   [numerically exact since IEEE754 has the property
+      #                that for any finite floating-point number x:
+      #                x - x == 0.0]
+      return math_ops.reduce_mean(
+          f(x) * math_ops.exp(logpx - array_ops.stop_gradient(logpx)),
+          axis=axis,
+          keep_dims=keep_dims)
 
 
 def _sample_mean(values):

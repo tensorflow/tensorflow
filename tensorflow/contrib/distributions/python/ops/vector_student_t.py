@@ -160,7 +160,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   #### Examples
 
   A single instance of a "Vector Student's t-distribution" is defined by a mean
-  vector of of length `k` and a scale matrix of shape `k x k`.
+  vector of length `k` and a scale matrix of shape `k x k`.
 
   Extra leading dimensions, if provided, allow for batches.
 

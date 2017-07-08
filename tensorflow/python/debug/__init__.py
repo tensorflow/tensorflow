@@ -21,6 +21,7 @@ See the @{$python/tfdbg} guide.
 @@watch_graph_with_blacklists
 @@DebugTensorDatum
 @@DebugDumpDir
+@@load_tensor_from_event
 @@load_tensor_from_event_file
 @@has_inf_or_nan
 @@DumpingDebugHook
@@ -40,6 +41,7 @@ from __future__ import print_function
 from tensorflow.python.debug.lib.debug_data import DebugDumpDir
 from tensorflow.python.debug.lib.debug_data import DebugTensorDatum
 from tensorflow.python.debug.lib.debug_data import has_inf_or_nan
+from tensorflow.python.debug.lib.debug_data import load_tensor_from_event
 from tensorflow.python.debug.lib.debug_data import load_tensor_from_event_file
 
 from tensorflow.python.debug.lib.debug_utils import add_debug_tensor_watch

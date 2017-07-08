@@ -23,8 +23,10 @@ limitations under the License.
 // bazel-bin/tensorflow/tools/graph_transforms/summarize_graph \
 // --in_graph=my_graph.pb
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"

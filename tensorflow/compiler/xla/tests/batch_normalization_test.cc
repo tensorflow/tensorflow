@@ -23,13 +23,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/reference_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -48,7 +57,7 @@ class BatchNormalizationTest : public ClientLibraryTestBase {
         {5.0f, 4.4f},   // p2
     });
     input_array_.FillWithPZ(pz);
-    input_literal_ = *LiteralUtil::CreateR4FromArray4D(input_array_);
+    input_literal_ = *Literal::CreateR4FromArray4D(input_array_);
     CHECK_EQ(kSamples, input_array_.planes());
     CHECK_EQ(kZ, input_array_.depth());
     CHECK_EQ(kY, input_array_.height());
@@ -190,13 +199,258 @@ TEST_F(BatchNormalizationTest, SpecComparisonForward) {
   ComputeAndCompareR4<float>(&builder, expected, {}, error_spec_);
 }
 
+struct BatchNormTestParam {
+  std::vector<int64> bounds;
+  int64 feature_index;
+  float random_value_mean;
+  float random_value_var;
+};
+
+// Tests to test the fused operation of BatchNorm.
+class BatchNormTest : public ClientLibraryTestBase,
+                      public ::testing::WithParamInterface<BatchNormTestParam> {
+};
+
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_P(BatchNormTest, DISABLED_ON_GPU(RandomizedTests)) {
+  float epsilon = 0.001;
+  ComputationBuilder builder(client_, TestName());
+  const std::vector<int64>& bounds = GetParam().bounds;
+  Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
+  input_array.FillRandom(GetParam().random_value_var,
+                         GetParam().random_value_mean);
+
+  const int64 feature_index = GetParam().feature_index;
+  const int64 num_elements_per_feature =
+      Product(bounds) / bounds[feature_index];
+  const int64 feature_bound = bounds[feature_index];
+  std::vector<float> offset(feature_bound, 1);
+  std::vector<float> scale(feature_bound, 2);
+
+  auto input_squared =
+      ReferenceUtil::MapArray4D(input_array, [](float a) { return a * a; });
+  std::vector<int64> reduce_dims;
+  for (int64 i = 0; i < bounds.size(); ++i) {
+    if (i != feature_index) {
+      reduce_dims.push_back(i);
+    }
+  }
+
+  auto sum =
+      ReferenceUtil::Reduce4DTo1D(input_array, /*init=*/0.0f, reduce_dims,
+                                  [](float a, float b) { return a + b; });
+
+  auto sum_squared =
+      ReferenceUtil::Reduce4DTo1D(*input_squared, /*init=*/0.0f, reduce_dims,
+                                  [](float a, float b) { return a + b; });
+
+  std::vector<float> mean(feature_bound);
+
+  for (int64 i = 0; i < feature_bound; ++i) {
+    mean[i] = sum[i] / num_elements_per_feature;
+  }
+
+  std::vector<float> mean_square(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    mean_square[i] = mean[i] * mean[i];
+  }
+
+  std::vector<float> square_mean(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    square_mean[i] = sum_squared[i] / num_elements_per_feature;
+  }
+
+  std::vector<float> var(feature_bound);
+  for (int64 i = 0; i < feature_bound; ++i) {
+    var[i] = square_mean[i] - mean_square[i];
+  }
+
+  Array4D<float> mean_4D =
+      *ReferenceUtil::Broadcast1DTo4D(mean, bounds, feature_index);
+  auto var_4D = *ReferenceUtil::Broadcast1DTo4D(var, bounds, feature_index);
+  auto scale_4D = *ReferenceUtil::Broadcast1DTo4D(scale, bounds, feature_index);
+  auto offset_4D =
+      *ReferenceUtil::Broadcast1DTo4D(offset, bounds, feature_index);
+
+  auto normalized = *ReferenceUtil::BatchNorm4D(input_array, mean_4D, var_4D,
+                                                scale_4D, offset_4D, epsilon);
+
+  auto expected_normalized = Literal::CreateR4FromArray4D<float>(normalized);
+
+  auto offset_literal = Literal::CreateR1<float>(offset);
+  auto scale_literal = Literal::CreateR1<float>(scale);
+  auto input_literal = Literal::CreateR4FromArray4D<float>(input_array);
+
+  auto input_activations =
+      builder.Parameter(0, input_literal->shape(), "input");
+  auto scale_activations =
+      builder.Parameter(1, scale_literal->shape(), "offset");
+  auto offset_activations =
+      builder.Parameter(2, offset_literal->shape(), "scale");
+
+  auto expected = *Literal::MakeTuple({expected_normalized.get(),
+                                       Literal::CreateR1<float>(mean).get(),
+                                       Literal::CreateR1<float>(var).get()});
+
+  std::unique_ptr<GlobalData> input_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> scale_data =
+      client_->TransferToServer(*scale_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> offset_data =
+      client_->TransferToServer(*offset_literal).ConsumeValueOrDie();
+
+  builder.BatchNormTraining(input_activations, scale_activations,
+                            offset_activations, epsilon, feature_index);
+
+  ComputeAndCompareTuple(
+      &builder, expected,
+      {input_data.get(), scale_data.get(), offset_data.get()},
+      ErrorSpec(0.01, 1));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    BatchNormTest_Instantiation, BatchNormTest,
+    ::testing::Values(BatchNormTestParam{{2, 2, 2, 2}, 0, 100.2f, 200.0f},
+                      BatchNormTestParam{{2, 2, 2, 2}, 3, 300.f, 400.0f},
+
+                      BatchNormTestParam{{1, 10, 1, 1}, 0, 10.1f, 20.1f},
+                      BatchNormTestParam{{10, 10, 10, 10}, 1, 3.14f, 314.15f},
+                      BatchNormTestParam{{10, 10, 10, 10}, 2, 666.6f, 777.7f},
+                      BatchNormTestParam{{10, 10, 10, 10}, 1, -666.6f, 777.7f},
+                      BatchNormTestParam{{10, 10, 10, 10}, 2, 0.f, 777.7f},
+                      BatchNormTestParam{{1, 1, 10, 1}, 3, 888.8f, 9.9f},
+
+                      BatchNormTestParam{{24, 129, 1, 2}, 2, 10000, 10000},
+                      BatchNormTestParam{{24, 129, 1, 2}, 3, 10000, 10000},
+
+                      // Feature on low dimension to trigger relayout, test
+                      // internal logical to physical dimension calculation
+                      // is correct after relayout.
+                      BatchNormTestParam{{1, 2, 3, 4}, 0, 100, 100}));
+
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTraining)) {
+  const int kFeatureIndex = 3;
+  ComputationBuilder builder(client_, TestName());
+
+  auto operand = builder.ConstantR4FromArray4D<float>(
+      {{{{1.f, 2.f}}, {{3.f, 4.f}}}, {{{5.f, 6.f}}, {{7.f, 8.f}}}});
+
+  auto scale = builder.ConstantR1<float>({2.0f, 3.0f});
+
+  auto offset = builder.ConstantR1<float>({1.0f, 2.0f});
+
+  auto tuple = builder.BatchNormTraining(operand, scale, offset,
+                                         /*epsilon=*/0.001, kFeatureIndex);
+
+  auto expected = *Literal::MakeTuple(
+      {Literal::CreateR4<float>({{{{-1.6f, -2.0f}}, {{0.1f, 0.6f}}},
+                                 {{{1.9f, 3.3f}}, {{3.7f, 6.0f}}}})
+           .get(),
+       Literal::CreateR1<float>({4, 5}).get(),
+       Literal::CreateR1<float>({5, 5}).get()});
+
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
+}
+
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTrainingOnSublane)) {
+  const int kFeatureIndex = 2;
+  ComputationBuilder builder(client_, TestName());
+
+  auto operand = builder.ConstantR4FromArray4D<float>(
+      {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}});
+
+  auto scale = builder.ConstantR1<float>({2.0f, 3.0f});
+
+  auto offset = builder.ConstantR1<float>({1.0f, 2.0f});
+
+  auto tuple = builder.BatchNormTraining(operand, scale, offset,
+                                         /*epsilon=*/0.001, kFeatureIndex);
+
+  auto expected = *Literal::MakeTuple(
+      {Literal::CreateR4<float>({{{{-1.6f}, {-2.0f}}, {{0.1f}, {0.6f}}},
+                                 {{{1.9f}, {3.3f}}, {{3.7f}, {6.0f}}}})
+           .get(),
+       Literal::CreateR1<float>({4, 5}).get(),
+       Literal::CreateR1<float>({5, 5}).get()});
+
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
+}
+
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(TrainingWithFeatureOnLowDimension)) {
+  // Use 0 dimension as feature, tests layout analyzer.
+  const int kFeatureIndex = 0;
+  ComputationBuilder builder(client_, TestName());
+
+  ComputationDataHandle h0;
+  auto operand = CreateR3Parameter<float>(Array3D<float>(260, 2, 2, 1.0f),
+                                          /*parameter_number=*/0, "operand",
+                                          &builder, &h0);
+  ComputationDataHandle h1;
+  auto scale =
+      CreateR1Parameter<float>(std::vector<float>(260, 1.0f),
+                               /*parameter_number=*/1, "scale", &builder, &h1);
+  ComputationDataHandle h2;
+  auto offset =
+      CreateR1Parameter<float>(std::vector<float>(260, 1.0f),
+                               /*parameter_number=*/2, "offset", &builder, &h2);
+
+  auto tuple = builder.BatchNormTraining(h0, h1, h2,
+                                         /*epsilon=*/1, kFeatureIndex);
+
+  auto expected = *Literal::MakeTuple(
+      {Literal::CreateR3FromArray3D<float>(Array3D<float>(260, 2, 2, 1.0f))
+           .get(),
+       Literal::CreateR1<float>(std::vector<float>(260, 1.0f)).get(),
+       Literal::CreateR1<float>(std::vector<float>(260, 0.0f)).get()});
+
+  ComputeAndCompareTuple(&builder, expected,
+                         {operand.get(), scale.get(), offset.get()},
+                         ErrorSpec(0.1));
+}
+
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(LargeEpsilonTest)) {
+  // Test the correctness of choosing a large epsilon value.
+  const int kFeatureIndex = 2;
+  ComputationBuilder builder(client_, TestName());
+
+  ComputationDataHandle h0;
+  auto operand = CreateR3Parameter<float>({{{0.0f}, {10.0f}, {20.0f}, {30.0f}}},
+                                          /*parameter_number=*/0, "operand",
+                                          &builder, &h0);
+  ComputationDataHandle h1;
+  auto scale =
+      CreateR1Parameter<float>(std::vector<float>(1, 1.0f),
+                               /*parameter_number=*/1, "scale", &builder, &h1);
+  ComputationDataHandle h2;
+  auto offset =
+      CreateR1Parameter<float>(std::vector<float>(1, 0.0f),
+                               /*parameter_number=*/2, "offset", &builder, &h2);
+
+  // var = 125, mean = 15, epsilon = -100
+  auto tuple = builder.BatchNormTraining(h0, h1, h2,
+                                         /*epsilon=*/-100, kFeatureIndex);
+
+  auto expected = *Literal::MakeTuple(
+      {Literal::CreateR3FromArray3D<float>({{{-3.0f}, {-1.0f}, {1.0f}, {3.0f}}})
+           .get(),
+       Literal::CreateR1<float>(std::vector<float>(1, 15.0f)).get(),
+       Literal::CreateR1<float>(std::vector<float>(1, 125.0f)).get()});
+
+  ComputeAndCompareTuple(&builder, expected,
+                         {operand.get(), scale.get(), offset.get()},
+                         ErrorSpec(0.1));
+}
+
 }  // namespace
 }  // namespace xla
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

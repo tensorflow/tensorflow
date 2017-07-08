@@ -42,5 +42,5 @@ int main(int argc, char **argv) {
                                           &literal_proto));
   xla::Literal literal(literal_proto);
   LOG(INFO) << "literal: " << literal_proto.ShortDebugString();
-  fprintf(stderr, "%s\n", xla::LiteralUtil::ToString(literal).c_str());
+  fprintf(stderr, "%s\n", literal.ToString().c_str());
 }

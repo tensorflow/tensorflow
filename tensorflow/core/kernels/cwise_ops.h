@@ -43,6 +43,39 @@ struct functor_traits<scalar_fmod2_op<T>> {
   };
 };
 
+template<typename T> struct scalar_asinh_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+    return std::asinh(a);
+  }
+};
+template<typename T>
+struct functor_traits<scalar_asinh_op<T>> {
+  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
+};
+
+template<typename T> struct scalar_acosh_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+    return std::acosh(a);
+  }
+};
+template<typename T>
+struct functor_traits<scalar_acosh_op<T>> {
+  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
+};
+
+template<typename T> struct scalar_atanh_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+    return std::atanh(a);
+  }
+};
+template<typename T>
+struct functor_traits<scalar_atanh_op<T>> {
+  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
+};
+
 // TODO(rmlarsen): This is a workaround for upstream change
 // https://bitbucket.org/eigen/eigen/commits/f339468d04d0f87caeb6cab9aef568627e9f6ea9
 // that renamed scalar_binary_pow_op to scalar_pow_op and deleted the unary
@@ -493,6 +526,15 @@ template <typename T>
 struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
 
 template <typename T>
+struct asinh : base<T, Eigen::internal::scalar_asinh_op<T> > {};
+
+template <typename T>
+struct acosh : base<T, Eigen::internal::scalar_acosh_op<T> > {};
+
+template <typename T>
+struct atanh : base<T, Eigen::internal::scalar_atanh_op<T> > {};
+
+template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};
 
 template <typename T>
@@ -528,6 +570,17 @@ struct atan : base<T, Eigen::internal::scalar_atan_op<T> > {};
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool> > {
 };
 
+// Flip all bits. Named invert to be consistent with numpy.
+template <typename T>
+struct invert_op {
+  EIGEN_EMPTY_STRUCT_CTOR(invert_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+    return ~a;
+  }
+};
+
+template <typename T>
+struct invert : base<T, invert_op<T>> {};
 
 // NOTE: std::isinf, std::isnan, std::isfinite are plain function.
 // Therefore we need to wrap them in functors to be used with Eigen's
@@ -707,6 +760,42 @@ struct not_equal_to : base<T, Eigen::internal::not_equal_to<T>, bool> {};
 struct logical_and : base<bool, Eigen::internal::scalar_boolean_and_op> {};
 
 struct logical_or : base<bool, Eigen::internal::scalar_boolean_or_op> {};
+
+template <typename T>
+struct bitwise_and_op {
+  EIGEN_EMPTY_STRUCT_CTOR(bitwise_and_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    return x & y;
+  }
+};
+
+template <typename T>
+struct bitwise_or_op {
+  EIGEN_EMPTY_STRUCT_CTOR(bitwise_or_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    return x | y;
+  }
+};
+
+template <typename T>
+struct bitwise_xor_op {
+  EIGEN_EMPTY_STRUCT_CTOR(bitwise_xor_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    return x ^ y;
+  }
+};
+
+template <typename T>
+struct bitwise_and : base<T, bitwise_and_op<T>> {};
+
+template <typename T>
+struct bitwise_or : base<T, bitwise_or_op<T>> {};
+
+template <typename T>
+struct bitwise_xor : base<T, bitwise_xor_op<T>> {};
 
 template <typename T>
 struct make_complex_func {

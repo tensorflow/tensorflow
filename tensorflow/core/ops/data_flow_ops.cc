@@ -24,6 +24,25 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+namespace {
+
+Status DequeueManyV2Shape(InferenceContext* c, ShapeHandle n_shape) {
+  auto* t = c->input_handle_shapes_and_types(0);
+  if (t != nullptr && t->size() == c->num_outputs()) {
+    for (int i = 0; i < c->num_outputs(); ++i) {
+      ShapeHandle combined_shape;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(n_shape, (*t)[i].shape, &combined_shape));
+      c->set_output(i, combined_shape);
+    }
+    return Status::OK();
+  } else {
+    return shape_inference::UnknownShape(c);
+  }
+}
+
+}  // namespace
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("DynamicPartition")
@@ -711,7 +730,19 @@ REGISTER_OP("QueueDequeueManyV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle n_shape;
+      if (c->input_tensor(1) == nullptr) {
+        n_shape = c->Vector(InferenceContext::kUnknownDim);
+      } else {
+        const int32 n = c->input_tensor(1)->scalar<int32>()();
+        if (n < 0) {
+          return errors::InvalidArgument("Input 'n' must be >= 0, but is ", n);
+        }
+        n_shape = c->Vector(n);
+      }
+      return DequeueManyV2Shape(c, n_shape);
+    })
     .Doc(R"doc(
 Dequeues `n` tuples of one or more tensors from the given queue.
 
@@ -781,7 +812,9 @@ REGISTER_OP("QueueDequeueUpToV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      return DequeueManyV2Shape(c, c->Vector(InferenceContext::kUnknownDim));
+    })
     .Doc(R"doc(
 Dequeues `n` tuples of one or more tensors from the given queue.
 
@@ -846,6 +879,32 @@ operations that would block will fail immediately.
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
   blocked on the given queue will be canceled.
+)doc");
+
+REGISTER_OP("QueueIsClosed")
+    .Input("handle: Ref(string)")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
+)doc");
+
+REGISTER_OP("QueueIsClosedV2")
+    .Input("handle: resource")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
 )doc");
 
 REGISTER_OP("QueueSize")

@@ -147,7 +147,9 @@ file(GLOB tf_core_platform_srcs
     "${tensorflow_source_dir}/tensorflow/core/platform/*.h"
     "${tensorflow_source_dir}/tensorflow/core/platform/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/*.h"
-    "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc")
+    "${tensorflow_source_dir}/tensorflow/core/platform/default/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.h"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc")
 if (NOT tensorflow_ENABLE_GPU)
   file(GLOB tf_core_platform_gpu_srcs
       "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
@@ -223,6 +225,10 @@ set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.c
 file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
@@ -231,18 +237,19 @@ file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/public/*.h"
 )
 
-file(GLOB_RECURSE tf_core_framework_test_srcs
+file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/framework/*testutil.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*testutil.cc"
     "${tensorflow_source_dir}/tensorflow/core/framework/*main.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
 )
 
-list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs})
+list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})
 
 add_library(tf_core_framework OBJECT
     ${tf_core_framework_srcs}
