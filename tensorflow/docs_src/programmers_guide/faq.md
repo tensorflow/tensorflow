@@ -149,6 +149,8 @@ TensorFlow also has a
 to help build support for more client languages.  We invite contributions of new
 language bindings.
 
+An experimental Scala API that replicates a lot of the Python API functionality using the C API is located at [eaplatanios/tensorflow_scala](https://github.com/eaplatanios/tensorflow_scala).
+
 #### Does TensorFlow make use of all the devices (GPUs and CPUs) available on my machine?
 
 TensorFlow supports multiple GPUs and CPUs. See the how-to documentation on
