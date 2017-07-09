@@ -145,6 +145,9 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
             if (!status.ok()) {
               mutex_lock l(mu_);
               status_.Update(status);
+              LOG(WARNING)
+                << "Cannot find pinned memory region from allocator "
+                << dst_device_->GetAllocator(recv_args().alloc_attrs)->Name();
             }
           }
           if (!s.ok()) {

@@ -141,7 +141,7 @@ class RdmaMemoryManager {
         visitable_allocator->AddAllocVisitor(alloc_visitor);
         visitable_allocator->AddFreeVisitor(free_visitor);
         instrumented_.insert(allocator);
-        LOG(INFO) << "Instrumenting allocator " << allocator->Name();
+        LOG(INFO) << "Instrumenting CPU allocator " << allocator->Name();
       }
     }
 
@@ -163,13 +163,12 @@ class RdmaMemoryManager {
 
   void InsertMemoryRegion(void* addr, size_t length) {
     if (length == 0) return;
-    const void* end = reinterpret_cast<char*>(addr) + length;
     int access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
     ibv_mr* mr = ibv_reg_mr(pd_, addr, length, access_flags);
     if (mr != nullptr) {
       mutex_lock l(mu_);
       auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
-                                   end, &Comparator);
+                                   addr, &Comparator);
       mrs_.insert(iter, {mr, &MRDeleter});
     } else {
       LOG(WARNING) << "Cannot register memory region";
@@ -178,10 +177,9 @@ class RdmaMemoryManager {
 
   void EvictMemoryRegion(void* addr, size_t length) {
     if (length == 0) return;
-    const void* end = reinterpret_cast<char*>(addr) + length;
     mutex_lock l(mu_);
     auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
-                                 end, &Comparator);
+                                 addr, &Comparator);
     if (iter != std::end(mrs_) && iter->get()->addr == addr) {
       mrs_.erase(iter);
     } else {
@@ -191,10 +189,9 @@ class RdmaMemoryManager {
 
   ibv_mr* FindMemoryRegion(void* addr, size_t length) {
     if (length == 0) return nullptr;
-    const void* end = reinterpret_cast<char*>(addr) + length;
     mutex_lock l(mu_);
     auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
-                                 end, &Comparator);
+                                 addr, &Comparator);
     if (iter == std::end(mrs_) || iter->get()->addr > addr) {
       return nullptr;
     } else {
@@ -261,7 +258,7 @@ class RdmaReadClient : public RdmaClient {
       host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
       buffer = DMAHelper::buffer(&host_copy);
       addr = buffer->data();
-      buffer->size();
+      length = buffer->size();
       mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
 #endif
     }
@@ -310,34 +307,9 @@ class RdmaReadClient : public RdmaClient {
     }
 #endif
 
-    // TODO: Remove code used for debugging purposes only
-    string tensor_debug_string;
-    if (dst_device->tensorflow_gpu_device_info() && (!on_host)) {
-#if GOOGLE_CUDA
-      tensor_debug_string = GPUUtil::MemoryDebugString(dst_device, tensor);
-#else
-      return errors::Internal("No GPU device in process");
-#endif
-    } else {
-      tensor_debug_string = tensor->DebugString();
-    }
-
-    uint64_t checksum = 0;
-#if GOOGLE_CUDA
-    if (dst_device->tensorflow_gpu_device_info() && (!on_host)) {
-      checksum = GPUUtil::Checksum(dst_device, dst_device_context, *tensor);
-    } else {
-      checksum = GPUUtil::Checksum(*tensor);
-    }
-    CHECK(checksum == remote_mr.checksum())
-        << "Checksum mismatch for "
-        << tensor_debug_string;
-#endif
-
     uint64_t end = Env::Default()->NowMicros();
 
     VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
-            << " to " << tensor_debug_string
             << " of size " << buffer->size()
             << " with tensor key " << remote_mr.tensor_key()
             << " took " << (end - start) << " micros";
@@ -546,7 +518,7 @@ class RdmaReadServer : public RdmaServer {
       }
       buffer = DMAHelper::buffer(&host_copy);
       addr = buffer->data();
-      buffer->size();
+      length = buffer->size();
       mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
 #endif
     }
@@ -562,23 +534,12 @@ class RdmaReadServer : public RdmaServer {
       tensor_buffers_.insert({tensor_key, buffer});
     }
 
-    // TODO: Remove code used for debugging purposes only
-    uint64_t checksum = 0;
-#if GOOGLE_CUDA
-    if (src_device->tensorflow_gpu_device_info() && (!on_host)) {
-      checksum = GPUUtil::Checksum(src_device, src_device_context, tensor);
-    } else {
-      checksum = GPUUtil::Checksum(tensor);
-    }
-#endif
-
     RemoteMemoryRegion remote_mr;
     remote_mr.set_host(host_);
     remote_mr.set_port(port_);
     remote_mr.set_addr(reinterpret_cast<uint64_t>(addr));
     remote_mr.set_rkey(mr->rkey);
     remote_mr.set_tensor_key(tensor_key);
-    remote_mr.set_checksum(checksum);
     mutable_transport_options->PackFrom(remote_mr);
 
     return Status::OK();
