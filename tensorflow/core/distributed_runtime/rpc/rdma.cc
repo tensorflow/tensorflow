@@ -296,17 +296,17 @@ class RdmaReadClient : public RdmaClient {
             << " with tensor key " << remote_mr.tensor_key()
             << " took " << (end - start) << " micros";
 
-    uint64_t checksum;
-    if (dst_device->tensorflow_gpu_device_info() && (!on_host)) {
+    uint64_t checksum = 0;
 #if GOOGLE_CUDA
+    if (dst_device->tensorflow_gpu_device_info() && (!on_host)) {
       checksum = GPUUtil::Checksum(dst_device, dst_device_context, *tensor);
-#else
-      return errors::Internal("No GPU device in process");
-#endif
     } else {
       checksum = GPUUtil::Checksum(*tensor);
     }
-    CHECK(checksum == remote_mr.checksum()) << "Checksum mismatch";
+    CHECK(checksum == remote_mr.checksum())
+        << "Checksum mismatch for "
+        << tensor_debug_string;
+#endif
 
     return Status::OK();
   }
@@ -500,12 +500,14 @@ class RdmaReadServer : public RdmaServer {
       tensor_buffers_.insert({tensor_key, buffer});
     }
 
-    uint64_t checksum;
+    uint64_t checksum = 0;
+#if GOOGLE_CUDA
     if (src_device->tensorflow_gpu_device_info() && (!on_host)) {
       checksum = GPUUtil::Checksum(src_device, src_device_context, tensor);
     } else {
       checksum = GPUUtil::Checksum(tensor);
     }
+#endif
 
     RemoteMemoryRegion remote_mr;
     remote_mr.set_host(host_);
