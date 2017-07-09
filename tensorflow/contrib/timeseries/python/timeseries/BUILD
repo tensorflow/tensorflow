@@ -82,6 +82,9 @@ py_test(
         "estimators_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
     deps = [
         ":estimators",
         ":feature_keys",
@@ -122,6 +125,9 @@ py_test(
         "model_utils_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
     deps = [
         ":model_utils",
         ":state_management",
@@ -153,6 +159,9 @@ py_test(
         "state_management_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
     deps = [
         ":input_pipeline",
         ":model",
@@ -203,6 +212,9 @@ py_test(
         "input_pipeline_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
     deps = [
         ":input_pipeline",
         ":test_utils",
@@ -315,6 +327,9 @@ py_test(
         "math_utils_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
     deps = [
         ":math_utils",
         "//tensorflow/python:array_ops",
