@@ -92,6 +92,12 @@ def _SanitizedMRO(obj):
     if 'tensorflow' not in str_repr:
       break
 
+    # Hack - tensorflow.test.StubOutForTesting may or may not be type <object>
+    # depending on the environment. To avoid inconsistency, break after we add
+    # StubOutForTesting to the return_list.
+    if 'StubOutForTesting' in str_repr:
+      break
+
   return return_list
 
 

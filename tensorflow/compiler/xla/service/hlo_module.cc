@@ -33,37 +33,21 @@ limitations under the License.
 namespace xla {
 
 HloModule::HloModule(const string& name,
-                     const VersionedComputationHandle& entry_computation_handle)
-    : name_(name),
-      config_(nullptr),
-      entry_computation_(nullptr),
-      has_entry_computation_handle_(true),
-      entry_computation_handle_(entry_computation_handle),
-      computation_name_uniquer_(/*separator=*/".") {}
-
-HloModule::HloModule(const string& name,
                      const VersionedComputationHandle& entry_computation_handle,
                      const HloModuleConfig& config)
     : name_(name),
-      config_(MakeUnique<HloModuleConfig>(config)),
-      entry_computation_(nullptr),
+      config_(config),
       has_entry_computation_handle_(true),
-      entry_computation_handle_(entry_computation_handle),
-      computation_name_uniquer_(/*separator=*/".") {}
+      entry_computation_handle_(entry_computation_handle) {}
 
-HloModule::HloModule(const string& name)
-    : name_(name),
-      config_(nullptr),
-      entry_computation_(nullptr),
-      computation_name_uniquer_(/*separator=*/".") {}
-
-void HloModule::set_config(const HloModuleConfig& config) {
-  config_ = MakeUnique<HloModuleConfig>(config);
-}
+HloModule::HloModule(const string& name) : name_(name) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
   computation->UniquifyName(&computation_name_uniquer_);
+  for (auto& instruction : computation->instructions()) {
+    instruction->UniquifyName(&instruction_name_uniquer_);
+  }
   computation->set_parent(this);
   computations_.push_back(std::move(computation));
   return computations_.back().get();
@@ -73,6 +57,13 @@ HloComputation* HloModule::AddEntryComputation(
     std::unique_ptr<HloComputation> computation) {
   CHECK_EQ(nullptr, entry_computation_);
   entry_computation_ = computation.get();
+
+  // If the module configuration has no entry layout computation set, create a
+  // default one based on the program shape.
+  if (!config_.has_entry_computation_layout()) {
+    config_.SetDefaultComputationLayout(
+        entry_computation_->ComputeProgramShape());
+  }
   return AddComputationInternal(std::move(computation));
 }
 
@@ -155,6 +146,17 @@ string HloModule::ToString() const {
     }
   }
   return s.str();
+}
+
+HloModuleProto HloModule::ToProto() const {
+  HloModuleProto proto;
+  proto.set_name(name_);
+  proto.set_entry_computation_name(entry_computation_->name());
+  for (const HloComputation* computation : MakeComputationPostOrder()) {
+    HloComputationProto computation_proto = computation->ToProto();
+    proto.add_computations()->Swap(&computation_proto);
+  }
+  return proto;
 }
 
 namespace {
@@ -295,6 +297,36 @@ std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   }
   CHECK_EQ(post_order.size(), computations_.size());
   return post_order;
+}
+
+std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) {
+  VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
+  auto module = MakeUnique<HloModule>(name_ + "-" + suffix);
+  module->config_ = config_;
+  module->entry_computation_handle_ = entry_computation_handle_;
+  module->has_entry_computation_handle_ = has_entry_computation_handle_;
+
+  std::unordered_map<HloComputation*, HloComputation*> clone_map;
+  for (auto& computation : computations_) {
+    auto cloned_computation = computation->Clone(suffix);
+    InsertOrDie(&clone_map, computation.get(), cloned_computation.get());
+
+    if (entry_computation_ == computation.get()) {
+      module->AddEntryComputation(std::move(cloned_computation));
+    } else {
+      module->AddEmbeddedComputation(std::move(cloned_computation));
+    }
+  }
+
+  for (auto& cloned_computation : module->computations_) {
+    for (auto& instruction : cloned_computation->instructions()) {
+      // Rewrite instruction's called_computation to point to the cloned
+      // computations.
+      instruction->ReplaceCalledComputations(
+          [&](HloComputation* hlo) { return FindOrDie(clone_map, hlo); });
+    }
+  }
+  return module;
 }
 
 uint64 HloModule::RandomNew64() const {

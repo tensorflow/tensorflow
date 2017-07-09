@@ -48,7 +48,10 @@ namespace xla {
 // the corresponding buffer.
 class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
  public:
-  explicit PointsToSet(const Shape& shape)
+  // Construct our ShapeTree with a pointer rather than a reference to a Shape
+  // because this is very hot code, and copying (and then destroying) all these
+  // Shapes is slow.
+  explicit PointsToSet(const Shape* shape)
       : ShapeTree<std::vector<const LogicalBuffer*>>(shape),
         tuple_sources_(shape) {}
 
@@ -142,6 +145,9 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 // the potential sources of each buffer in each instruction's output.
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
+  using Colorer =
+      std::function<Status(TuplePointsToAnalysis* points_to_analysis)>;
+
   // Runs points-to analysis on 'module'.
   static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
       const HloModule* module);
@@ -200,13 +206,21 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* get_tuple_element,
                                HloInstruction* operand) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
-  Status HandleFusion(HloInstruction* fusion) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                       HloInstruction* on_true,
                       HloInstruction* on_false) override;
 
   string ToString() const;
+
+  static Colorer DefaultColorer() {
+    return [](TuplePointsToAnalysis* points_to_analysis) {
+      for (auto& buffer : points_to_analysis->logical_buffers()) {
+        buffer->set_color(LogicalBuffer::Color(0));
+      }
+      return Status::OK();
+    };
+  }
 
  private:
   explicit TuplePointsToAnalysis(const HloModule* module) : module_(module) {}

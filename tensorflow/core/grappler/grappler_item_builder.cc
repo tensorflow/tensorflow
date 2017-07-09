@@ -12,32 +12,38 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variable.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace grappler {
 
 namespace {
+
 void InitializeTensor(DataType type, Tensor* tensor) {
   const int period = 7;
   if (type == DT_FLOAT) {
@@ -58,96 +64,66 @@ void InitializeTensor(DataType type, Tensor* tensor) {
   }
 }
 
-// Helper function that returns a bool indicating if there are function
-// call nodes in graph.
-bool HasFunctionInGraph(const Graph& graph) {
-  for (const Node* n : graph.nodes()) {
-    if (graph.flib_def().Find(n->type_string()) != nullptr) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// Wrapper around FunctionDefToBodyHelper that creates a FunctionBody
-// for function_def.
-Status CreateFunctionBody(const FunctionLibraryDefinition& function_library,
-                          const FunctionDef& function_def,
-                          const NodeDef& node_def,
-                          FunctionBody** function_body) {
-  std::function<Status(const string&, const OpDef**)> get_function_signature =
-      [&function_library](const string& name, const OpDef** signature) {
-        return function_library.LookUpOpDef(name, signature);
-      };
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      function_def, AttrSlice(node_def), &function_library,
-      get_function_signature, function_body));
-  return Status::OK();
-}
-
-// Inlines all functions in a Graph.  Does not recursively inline, so if graph
-// contains Function A that calls Function B, calling InlineFunctions once will
-// produce a graph with A inlined but not B.  Calling InlineFunctions a second
-// time will produce a graph with both A and B inlined.
-Status InlineFunctions(Graph* graph) {
-  const FunctionLibraryDefinition& function_library = graph->flib_def();
-  std::vector<std::pair<Node*, FunctionBody*>> nodes_and_funcs_to_inline;
-  std::unordered_map<string, std::unique_ptr<FunctionBody>>
-      function_name_to_body;
-  std::function<Status(const string&, const OpDef**)> get_function_signature =
-      [&function_library](const string& name, const OpDef** signature) {
-        return function_library.LookUpOpDef(name, signature);
-      };
-
-  for (Node* node : graph->nodes()) {
-    const FunctionDef* function_def =
-        function_library.Find(node->type_string());
-    if (!function_def) {
-      // Not a function node.
-      continue;
-    }
-    FunctionBody* function_body = nullptr;
-    const string key = Canonicalize(node->def().op(), AttrSlice(node->def()));
-    if (function_name_to_body.find(key) == function_name_to_body.end()) {
-      TF_RETURN_IF_ERROR(CreateFunctionBody(function_library, *function_def,
-                                            node->def(), &function_body));
-      function_name_to_body.emplace(
-          key, std::unique_ptr<FunctionBody>(function_body));
-    }
-    function_body = function_name_to_body[key].get();
-    if (function_body) {
-      nodes_and_funcs_to_inline.emplace_back(node, function_body);
-    }
+// Optimize the graph def (including function inlining and other optimizations).
+// This is a temporary change that optimizes the graph in context of a single
+// gpu machine. Down the line, we may want to make grappler_item_builder aware
+// of the cluster type (E.g: single cpu, multiple gpu, etc)  being simulated in
+// order to get the correct session options and environment, and performing the
+// correct optimizations.
+Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
+                     const ItemConfig& cfg) {
+  if (!cfg.apply_optimizations && !cfg.inline_functions) {
+    return Status::OK();
   }
 
-  for (const auto& iter : nodes_and_funcs_to_inline) {
-    InlineFunctionBody(function_library, graph, iter.first, iter.second);
-  }
-  return Status::OK();
-}
+  // Create a session option for a single GPU device.
+  SessionOptions options;
 
-// Sets *inlined_graph to be graph with all function NodeDefs in graph inlined.
-// Recursively inlines, so if graph contains Function A that calls Function B,
-// calling InlineAllFunctions once will produce a graph with both A and B
-// inlined.
-Status InlineAllFunctions(const GraphDef& graph_def,
-                          GraphDef* inlined_graph_def) {
-  *inlined_graph_def = GraphDef::default_instance();
-  // Create a Graph from graph_def. Inlining needs to happen
-  // on a single Graph object in order to guarantee unique
-  // names of nodes created during the inlining process.
+  // Inline all functions.
+  GraphDef inlined_graph_def(graph_def);
+  for (int i = 0; i < inlined_graph_def.library().function().size(); i++) {
+    FunctionDef* fdef =
+        inlined_graph_def.mutable_library()->mutable_function(i);
+    SetAttrValue(false, &((*fdef->mutable_attr())[kNoInlineAttr]));
+  }
+
+  // Instantiate all variables for function library runtime creation.
+  std::vector<Device*> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
+      options, "/job:localhost/replica:0/task:0", &devices));
+  std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(devices));
+  FunctionLibraryDefinition function_library(OpRegistry::Global(),
+                                             inlined_graph_def.library());
+  Env* env = Env::Default();
+
+  // Optimizer options: L1 and inlining. L1 is default.
+  OptimizerOptions* optimizer_opts =
+      options.config.mutable_graph_options()->mutable_optimizer_options();
+  if (cfg.apply_optimizations) {
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L1);
+  } else {
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L0);
+  }
+  optimizer_opts->set_do_function_inlining(cfg.inline_functions);
+
+  // Create the function library runtime.
+  std::unique_ptr<FunctionLibraryRuntime> flib(NewFunctionLibraryRuntime(
+      dvc_mgr.get(), env, devices[0], inlined_graph_def.versions().producer(),
+      &function_library, *optimizer_opts));
+
+  // Create the GraphOptimizer to optimize the graph def.
   GraphConstructorOptions graph_ctor_opts;
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
-  FunctionLibraryDefinition function_library(OpRegistry::Global(),
-                                             graph_def.library());
-  Graph inlined_graph(function_library);
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, &inlined_graph));
-  while (HasFunctionInGraph(inlined_graph)) {
-    TF_RETURN_IF_ERROR(InlineFunctions(&inlined_graph));
-  }
-  inlined_graph.ToGraphDef(inlined_graph_def);
+  std::unique_ptr<Graph> graphptr(new Graph(function_library));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_ctor_opts, inlined_graph_def,
+                                            graphptr.get()));
+
+  // Optimize the graph.
+  GraphOptimizer optimizer(*optimizer_opts);
+  optimizer.Optimize(flib.get(), env, devices[0], &graphptr);
+  graphptr->ToGraphDef(output_graph_def);
+
   return Status::OK();
 }
 }  // namespace
@@ -162,15 +138,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
   new_item->id = id;
   new_item->graph = meta_graph.graph_def();
-
-  if (cfg.inline_functions) {
-    Status s = InlineAllFunctions(meta_graph.graph_def(), &new_item->graph);
-    if (!s.ok()) {
-      LOG(ERROR) << "Unable to inline functions: " << s.error_message()
-                 << ", skipping this input.";
-      return nullptr;
-    }
-  }
 
   // Attempt to detect the fetch node(s).
   if (meta_graph.collection_def().count("train_op") > 0) {
@@ -213,13 +180,17 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       // from it. We do this because in newer protos, the input placeholder
       // shape is not empty if the shape is partially defined.
       TensorShape shape;
+      TensorShapeProto shape_proto;
       std::vector<int32> dims;
       for (const auto& dim_proto : node.attr().at("shape").shape().dim()) {
         if (cfg.placeholder_unknown_output_shape_dim >= 0 &&
             dim_proto.size() == -1) {
           dims.push_back(cfg.placeholder_unknown_output_shape_dim);
+          shape_proto.add_dim()->set_size(
+              cfg.placeholder_unknown_output_shape_dim);
         } else {
-          dims.push_back(dim_proto.size());
+          dims.push_back(std::max<int32>(1, dim_proto.size()));
+          shape_proto.add_dim()->set_size(dim_proto.size());
         }
       }
       Status make_shape_status =
@@ -244,6 +215,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           (shape.dims() == 0) && (node.attr().count("_output_shapes") == 1) &&
           (node.attr().at("_output_shapes").list().shape(0).dim_size() != 0)) {
         shape.Clear();
+        shape_proto.clear_dim();
         for (int dim_i = 0;
              dim_i <
              node.attr().at("_output_shapes").list().shape(0).dim_size();
@@ -252,20 +224,32 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
               node.attr().at("_output_shapes").list().shape(0).dim(dim_i);
           if (dim.size() == -1) {
             shape.AddDim(cfg.placeholder_unknown_output_shape_dim);
+            shape_proto.add_dim()->set_size(
+                cfg.placeholder_unknown_output_shape_dim);
           } else {
-            shape.AddDim(node.attr()
-                             .at("_output_shapes")
-                             .list()
-                             .shape(0)
-                             .dim(dim_i)
-                             .size());
+            int size = node.attr()
+                           .at("_output_shapes")
+                           .list()
+                           .shape(0)
+                           .dim(dim_i)
+                           .size();
+            shape.AddDim(size);
+            shape_proto.add_dim()->set_size(size);
           }
         }
       }
       Tensor fake_input(type, shape);
       InitializeTensor(type, &fake_input);
       new_item->feed.emplace_back(node.name(), fake_input);
+      // Set the shape of the node in the graph. This is needed for statically
+      // inferring shapes and is a no-op when dynamically inferring shapes as
+      // the Placeholder shape will match the shape passed from new_item->feed.
+      *(node.mutable_attr()->at("shape").mutable_shape()) = shape_proto;
     }
+
+    // Erase the recorded result of any previous shape inference to start again
+    // from scratch.
+    node.mutable_attr()->erase("_output_shapes");
 
     // Delete user specified placement if requested.
     if (cfg.ignore_user_placement) {
@@ -346,6 +330,37 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     }
   }
 
+  // Optimize the graph (function inlining, l1 optimizations, etc).
+  Status optimize_status =
+      OptimizeGraph(new_item->graph, &new_item->graph, cfg);
+  if (!optimize_status.ok()) {
+    LOG(ERROR) << "Graph preprocessing failed: " << optimize_status;
+    return nullptr;
+  }
+
+  // Validate feed, fetch and init nodes
+  std::unordered_set<string> nodes;
+  for (const auto& node : new_item->graph.node()) {
+    nodes.insert(node.name());
+  }
+  for (const auto& feed : new_item->feed) {
+    if (nodes.find(feed.first) == nodes.end()) {
+      LOG(ERROR) << "Feed node " << feed.first << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
+  for (const auto& fetch : new_item->fetch) {
+    if (nodes.find(fetch) == nodes.end()) {
+      LOG(ERROR) << "Fetch node " << fetch << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
+  for (const auto& init : new_item->init_ops) {
+    if (nodes.find(init) == nodes.end()) {
+      LOG(ERROR) << "Init node " << init << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
   return new_item;
 }
 

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import hashlib
 import os
 import shutil
@@ -54,8 +53,10 @@ if sys.version_info[0] == 2:
     """
 
     def chunk_read(response, chunk_size=8192, reporthook=None):
-      total_size = response.info().get('Content-Length').strip()
-      total_size = int(total_size)
+      content_type = response.info().get('Content-Length')
+      total_size = -1
+      if content_type is not None:
+        total_size = int(content_type.strip())
       count = 0
       while 1:
         chunk = response.read(chunk_size)
@@ -204,19 +205,24 @@ def get_file(fname,
 
   if download:
     print('Downloading data from', origin)
-    progbar = None
 
-    def dl_progress(count, block_size, total_size, progbar=None):
-      if progbar is None:
-        progbar = Progbar(total_size)
+    class ProgressTracker(object):
+      # Maintain progbar for the lifetime of download.
+      # This design was chosen for Python 2.7 compatibility.
+      progbar = None
+
+    def dl_progress(count, block_size, total_size):
+      if ProgressTracker.progbar is None:
+        if total_size is -1:
+          total_size = None
+        ProgressTracker.progbar = Progbar(total_size)
       else:
-        progbar.update(count * block_size)
+        ProgressTracker.progbar.update(count * block_size)
 
     error_msg = 'URL fetch failure on {}: {} -- {}'
     try:
       try:
-        urlretrieve(origin, fpath,
-                    functools.partial(dl_progress, progbar=progbar))
+        urlretrieve(origin, fpath, dl_progress)
       except URLError as e:
         raise Exception(error_msg.format(origin, e.errno, e.reason))
       except HTTPError as e:
@@ -225,7 +231,7 @@ def get_file(fname,
       if os.path.exists(fpath):
         os.remove(fpath)
       raise
-    progbar = None
+    ProgressTracker.progbar = None
 
   if untar:
     if not os.path.exists(untar_fpath):

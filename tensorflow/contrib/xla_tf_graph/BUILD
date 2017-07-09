@@ -41,6 +41,7 @@ cc_library(
 
 cc_test(
     name = "xla_tf_graph_util_test",
+    size = "small",
     srcs = ["xla_tf_graph_util_test.cc"],
     linkstatic = 1,
     deps = [
@@ -50,8 +51,8 @@ cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:ops",

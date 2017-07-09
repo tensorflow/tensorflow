@@ -55,7 +55,7 @@ namespace xla {
 template <typename T>
 class Array4D {
  public:
-  // Creates a 4D array, unitialized values.
+  // Creates a 4D array, uninitialized values.
   Array4D(int64 planes, int64 depth, int64 height, int64 width)
       : planes_(planes),
         depth_(depth),
@@ -205,6 +205,18 @@ class Array4D {
         }
       }
     }
+  }
+
+  // Invokes a callback with the (indices, value) for each cell in the 4D array.
+  void Each(
+      std::function<void(tensorflow::gtl::ArraySlice<int64>, T)> f) const {
+    // We const_cast to be able to use the common non-const implementation,
+    // but prevent modification of the data by passing it by-value to the
+    // caller.
+    const_cast<Array4D*>(this)->Each(
+        [&f](tensorflow::gtl::ArraySlice<int64> indices, T* value) {
+          f(indices, *value);
+        });
   }
 
   // Fills all of the {p,z} with the array provided, which specifies {y,x}.

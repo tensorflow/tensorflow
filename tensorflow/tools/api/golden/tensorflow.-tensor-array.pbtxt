@@ -16,7 +16,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'dtype\', \'size\', \'dynamic_size\', \'clear_after_read\', \'tensor_array_name\', \'handle\', \'flow\', \'infer_shape\', \'element_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'dtype\', \'size\', \'dynamic_size\', \'clear_after_read\', \'tensor_array_name\', \'handle\', \'flow\', \'infer_shape\', \'element_shape\', \'colocate_with_first_write_call\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "close"

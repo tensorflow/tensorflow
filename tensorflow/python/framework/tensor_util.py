@@ -770,13 +770,46 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       # and concatenate it with `ret`.
       ret = ret.concatenate(constant_value_as_shape(concat_input))
     return ret
-  else:
-    ret = tensor_shape.unknown_shape(shape[0].value)
-    value = constant_value(tensor)
-    if value is not None:
-      ret = ret.merge_with(tensor_shape.TensorShape(
-          [d if d != -1 else None for d in value]))
-    return ret
+  elif tensor.op.type == "StridedSlice":
+    try:
+      begin = constant_value(tensor.op.inputs[1])
+      end = constant_value(tensor.op.inputs[2])
+      strides = constant_value(tensor.op.inputs[3])
+      if begin is not None and end is not None and strides is not None:
+        begin = begin[0]
+        end = end[0]
+        strides = strides[0]
+        begin_mask = tensor.op.get_attr("begin_mask")
+        if begin_mask == 1:
+          begin = None
+        end_mask = tensor.op.get_attr("end_mask")
+        if end_mask == 1:
+          end = None
+
+        ellipsis_mask = tensor.op.get_attr("ellipsis_mask")
+        new_axis_mask = tensor.op.get_attr("new_axis_mask")
+        shrink_axis_mask = tensor.op.get_attr("shrink_axis_mask")
+        valid_attributes = (not ellipsis_mask and not new_axis_mask and
+                            not shrink_axis_mask and
+                            (not begin_mask or (begin_mask == 1)) and
+                            (not end_mask or (end_mask == 1)))
+        if valid_attributes:  # additional inputs not supported
+          prev = constant_value_as_shape(tensor.op.inputs[0])
+          prev = prev[begin:end:strides]
+          ret = tensor_shape.TensorShape(prev)
+          return ret
+
+    except ValueError:  # Could come from get_attr or slicing prev.
+      pass
+    except TypeError:  # Could come from slicing prev.
+      pass
+
+  ret = tensor_shape.unknown_shape(shape[0].value)
+  value = constant_value(tensor)
+  if value is not None:
+    ret = ret.merge_with(tensor_shape.TensorShape(
+        [d if d >= 0 else None for d in value]))
+  return ret
 
 
 def is_tensor(x):  # pylint: disable=invalid-name

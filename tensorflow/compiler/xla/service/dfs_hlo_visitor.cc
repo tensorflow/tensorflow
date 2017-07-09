@@ -24,49 +24,27 @@ limitations under the License.
 namespace xla {
 
 Status DfsHloVisitor::HandleElementwiseUnary(HloInstruction* hlo,
-                                             HloOpcode opcode,
-                                             HloInstruction* operand) {
+                                             HloOpcode opcode) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseUnary: %s",
                        HloOpcodeString(opcode).c_str());
 }
 
 Status DfsHloVisitor::HandleElementwiseBinary(HloInstruction* hlo,
-                                              HloOpcode opcode,
-                                              HloInstruction* lhs,
-                                              HloInstruction* rhs) {
+                                              HloOpcode opcode) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseBinary: %s",
                        HloOpcodeString(opcode).c_str());
 }
 
 void DfsHloVisitor::SetVisiting(const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visiting: ";
-  CHECK(NotVisited(instruction));
+  DCHECK(NotVisited(instruction));
   visit_state_[&instruction] = VisitState::kVisiting;
 }
 
 void DfsHloVisitor::SetVisited(const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visited: ";
-  CHECK(NotVisited(instruction) || IsVisiting(instruction));
+  DCHECK(NotVisited(instruction) || IsVisiting(instruction));
   visit_state_[&instruction] = VisitState::kVisited;
-}
-
-bool DfsHloVisitor::IsVisiting(const HloInstruction& instruction) {
-  if (visit_state_.count(&instruction) == 0) {
-    return false;
-  }
-  return visit_state_[&instruction] == VisitState::kVisiting;
-}
-
-bool DfsHloVisitor::DidVisit(const HloInstruction& instruction) {
-  if (visit_state_.count(&instruction) == 0) {
-    return false;
-  }
-  return visit_state_[&instruction] == VisitState::kVisited;
-}
-
-bool DfsHloVisitor::NotVisited(const HloInstruction& instruction) {
-  return visit_state_.count(&instruction) == 0 ||
-         visit_state_[&instruction] == VisitState::kNotVisited;
 }
 
 Status DfsHloVisitor::Preprocess(HloInstruction* hlo) { return Status::OK(); }

@@ -42,6 +42,7 @@ _DEFAULT_UID_WHITE_LIST = [
     'session_config',
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
+    'log_step_count_steps',
 ]
 
 
@@ -230,6 +231,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
                save_checkpoints_steps=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
+               log_step_count_steps=100,
                evaluation_master='',
                model_dir=None,
                session_config=None):
@@ -261,6 +263,8 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
       keep_checkpoint_every_n_hours: Number of hours between each checkpoint
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
+      log_step_count_steps: The frequency, in number of global steps, that the
+        global step/sec will be logged during training.
       evaluation_master: the master on which to perform evaluation.
       model_dir: directory where model parameters, graph etc are saved. If
         `None`, will use `model_dir` property in `TF_CONFIG` environment
@@ -284,6 +288,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     self._tf_random_seed = tf_random_seed
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
+    self._log_step_count_steps = log_step_count_steps
     self._session_config = session_config
     if save_checkpoints_secs == RunConfig._USE_DEFAULT:
       if save_checkpoints_steps is None:
@@ -366,6 +371,10 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
   @property
   def keep_checkpoint_every_n_hours(self):
     return self._keep_checkpoint_every_n_hours
+
+  @property
+  def log_step_count_steps(self):
+    return self._log_step_count_steps
 
 
 def _count_ps(cluster_spec):

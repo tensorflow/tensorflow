@@ -39,8 +39,8 @@ _LEARNING_RATE = 0.05
 
 
 def _add_hidden_layer_summary(value, tag):
-  summary.scalar('%s_fraction_of_zero_values' % tag, nn.zero_fraction(value))
-  summary.histogram('%s_activation' % tag, value)
+  summary.scalar('%s/fraction_of_zero_values' % tag, nn.zero_fraction(value))
+  summary.histogram('%s/activation' % tag, value)
 
 
 def _dnn_model_fn(
@@ -178,8 +178,8 @@ class DNNClassifier(estimator.Estimator):
   Input of `train` and `evaluate` should have following features,
   otherwise there will be a `KeyError`:
 
-  * if `weight_feature_key` is not `None`, a feature with
-    `key=weight_feature_key` whose value is a `Tensor`.
+  * if `weight_column` is not `None`, a feature with
+    `key=weight_column` whose value is a `Tensor`.
   * for each `column` in `feature_columns`:
     - if `column` is a `_CategoricalColumn`, a feature with `key=column.name`
       whose `value` is a `SparseTensor`.
@@ -188,6 +188,8 @@ class DNNClassifier(estimator.Estimator):
       name. Both features' `value` must be a `SparseTensor`.
     - if `column` is a `_DenseColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
+
+  Loss is calculated by using softmax cross entropy.
   """
 
   def __init__(self,
@@ -195,7 +197,8 @@ class DNNClassifier(estimator.Estimator):
                feature_columns,
                model_dir=None,
                n_classes=2,
-               weight_feature_key=None,
+               weight_column=None,
+               label_vocabulary=None,
                optimizer='Adagrad',
                activation_fn=nn.relu,
                dropout=None,
@@ -215,11 +218,22 @@ class DNNClassifier(estimator.Estimator):
         continue training a previously saved model.
       n_classes: Number of label classes. Defaults to 2, namely binary
         classification. Must be > 1.
-      weight_feature_key: A string defining feature column name representing
+      weight_column: A string or a `_NumericColumn` created by
+        `tf.feature_column.numeric_column` defining feature column representing
         weights. It is used to down weight or boost examples during training. It
-        will be multiplied by the loss of the example.
-      optimizer: An instance of `tf.Optimizer` used to train the model. If
-        `None`, will use an Adagrad optimizer.
+        will be multiplied by the loss of the example. If it is a string, it is
+        used as a key to fetch weight tensor from the `features`. If it is a
+        `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
+        then weight_column.normalizer_fn is applied on it to get weight tensor.
+      label_vocabulary: A list of strings represents possible label values. If
+        given, labels must be string type and have any value in
+        `label_vocabulary`. If it is not given, that means labels are
+        already encoded as integer or float within [0, 1] for `n_classes=2` and
+        encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
+        Also there will be errors if vocabulary is not provided and labels are
+        string.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
+        to Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
         use `tf.nn.relu`.
       dropout: When not `None`, the probability we will drop out a given
@@ -230,10 +244,12 @@ class DNNClassifier(estimator.Estimator):
     """
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
-          weight_feature_key=weight_feature_key)
+          weight_column=weight_column,
+          label_vocabulary=label_vocabulary)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes, weight_feature_key=weight_feature_key)
+          n_classes, weight_column=weight_column,
+          label_vocabulary=label_vocabulary)
     def _model_fn(features, labels, mode, config):
       return _dnn_model_fn(
           features=features,
@@ -295,8 +311,8 @@ class DNNRegressor(estimator.Estimator):
   Input of `train` and `evaluate` should have following features,
   otherwise there will be a `KeyError`:
 
-  * if `weight_feature_key` is not `None`, a feature with
-    `key=weight_feature_key` whose value is a `Tensor`.
+  * if `weight_column` is not `None`, a feature with
+    `key=weight_column` whose value is a `Tensor`.
   * for each `column` in `feature_columns`:
     - if `column` is a `_CategoricalColumn`, a feature with `key=column.name`
       whose `value` is a `SparseTensor`.
@@ -305,6 +321,8 @@ class DNNRegressor(estimator.Estimator):
       name. Both features' `value` must be a `SparseTensor`.
     - if `column` is a `_DenseColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
+
+  Loss is calculated by using mean squared error.
   """
 
   def __init__(self,
@@ -312,7 +330,7 @@ class DNNRegressor(estimator.Estimator):
                feature_columns,
                model_dir=None,
                label_dimension=1,
-               weight_feature_key=None,
+               weight_column=None,
                optimizer='Adagrad',
                activation_fn=nn.relu,
                dropout=None,
@@ -333,11 +351,15 @@ class DNNRegressor(estimator.Estimator):
       label_dimension: Number of regression targets per example. This is the
         size of the last dimension of the labels and logits `Tensor` objects
         (typically, these have shape `[batch_size, label_dimension]`).
-      weight_feature_key: A string defining feature column name representing
+      weight_column: A string or a `_NumericColumn` created by
+        `tf.feature_column.numeric_column` defining feature column representing
         weights. It is used to down weight or boost examples during training. It
-        will be multiplied by the loss of the example.
-      optimizer: An instance of `tf.Optimizer` used to train the model. If
-        `None`, will use an Adagrad optimizer.
+        will be multiplied by the loss of the example. If it is a string, it is
+        used as a key to fetch weight tensor from the `features`. If it is a
+        `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
+        then weight_column.normalizer_fn is applied on it to get weight tensor.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
+        to Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
         use `tf.nn.relu`.
       dropout: When not `None`, the probability we will drop out a given
@@ -351,9 +373,9 @@ class DNNRegressor(estimator.Estimator):
           features=features,
           labels=labels,
           mode=mode,
-          head=head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
-              label_dimension=label_dimension,
-              weight_feature_key=weight_feature_key),
+          head=head_lib.  # pylint: disable=protected-access
+          _regression_head_with_mean_squared_error_loss(
+              label_dimension=label_dimension, weight_column=weight_column),
           hidden_units=hidden_units,
           feature_columns=tuple(feature_columns or []),
           optimizer=optimizer,

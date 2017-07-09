@@ -226,7 +226,7 @@ void CUPTIManager::InternalBufferCompleted(CUcontext ctx, uint32_t streamId,
                                            size_t validSize) {
   VLOG(2) << "BufferCompleted";
   CUptiResult status;
-  CUpti_Activity *record = NULL;
+  CUpti_Activity *record = nullptr;
   mutex_lock l(mu_);  // Hold mu_ while using client_.
   if (client_ && validSize > 0) {
     do {
@@ -288,7 +288,7 @@ class GPUTracerImpl : public GPUTracer,
                       public port::Tracing::Engine {
  public:
   GPUTracerImpl();
-  ~GPUTracerImpl();
+  ~GPUTracerImpl() override;
 
   // GPUTracer interface:
   Status Start() override;
@@ -308,7 +308,7 @@ class GPUTracerImpl : public GPUTracer,
         // Remember the most recent ScopedAnnotation for each thread.
         tls_current_annotation.get() = annotation.c_str();
       }
-      ~Impl() { tls_current_annotation.get() = nullptr; }
+      ~Impl() override { tls_current_annotation.get() = nullptr; }
     };
     return new Impl(name);
   }
@@ -398,8 +398,8 @@ Status GPUTracerImpl::Start() {
   // There can only be one CUPTI subscriber.  If we can't create one then
   // there is another trace in progress (possibly by external code).
   CUptiResult ret;
-  ret = cupti_wrapper_->Subscribe(&subscriber_, (CUpti_CallbackFunc)ApiCallback,
-                                  this);
+  ret = cupti_wrapper_->Subscribe(
+      &subscriber_, static_cast<CUpti_CallbackFunc>(ApiCallback), this);
   if (ret == CUPTI_ERROR_MAX_LIMIT_REACHED) {
     return errors::Unavailable("CUPTI subcriber limit reached.");
   } else if (ret != CUPTI_SUCCESS) {

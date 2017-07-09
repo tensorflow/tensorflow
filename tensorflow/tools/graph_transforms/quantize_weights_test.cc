@@ -90,13 +90,13 @@ class QuantizeWeightsTest : public ::testing::Test {
     EXPECT_EQ("Const", q_weights_const->op());
     EXPECT_EQ(DT_QUINT8, q_weights_const->attr().at("dtype").type());
 
-    // Run the the original graph.
+    // Run the original graph.
     std::unique_ptr<Session> original_session(NewSession(SessionOptions()));
     TF_ASSERT_OK(original_session->Create(original_graph_def));
     std::vector<Tensor> original_outputs;
     TF_ASSERT_OK(original_session->Run({}, {"output"}, {}, &original_outputs));
 
-    // Run the the quantized graph.
+    // Run the quantized graph.
     std::unique_ptr<Session> quantized_session(NewSession(SessionOptions()));
     TF_ASSERT_OK(quantized_session->Create(quantized_graph_def));
     std::vector<Tensor> quantized_outputs;

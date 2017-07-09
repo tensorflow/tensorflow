@@ -10,7 +10,7 @@
 // setting nativeBuildSystem below to 'makefile'. This will allow building the demo
 // on Windows machines, but note that full equivalence with the Bazel
 // build is not yet guaranteed. See comments below for caveats and tips
-// for speeding up the build, such as as enabling ccache.
+// for speeding up the build, such as enabling ccache.
 // NOTE: Running a make build will cause subsequent Bazel builds to *fail*
 // unless the contrib/makefile/downloads/ and gen/ dirs are deleted afterwards.
 

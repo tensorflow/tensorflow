@@ -74,6 +74,10 @@ See the @{$python/contrib.framework} guide.
 @@list_variables
 @@load_variable
 @@init_from_checkpoint
+@@load_and_remap_matrix_initializer
+@@load_embedding_initializer
+@@load_linear_multiclass_bias_initializer
+@@load_variable_slot_initializer
 """
 
 from __future__ import absolute_import

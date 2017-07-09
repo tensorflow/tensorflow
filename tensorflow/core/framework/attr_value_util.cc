@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb_text.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -286,6 +287,8 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
 
   return ProtoParseFromString(to_parse, out);
 }
+
+void SetAttrValue(const AttrValue& value, AttrValue* out) { *out = value; }
 
 #define DEFINE_SET_ATTR_VALUE_ONE(ARG_TYPE, FIELD) \
   void SetAttrValue(ARG_TYPE value, AttrValue* out) { out->set_##FIELD(value); }

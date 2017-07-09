@@ -30,6 +30,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import queue_runner_impl
 
 
@@ -246,6 +247,33 @@ class QueueRunnerTest(test.TestCase):
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 3.
       self.assertEqual(3, var.eval())
+
+  def testStartQueueRunnersRaisesIfNotASession(self):
+    zero64 = constant_op.constant(0, dtype=dtypes.int64)
+    var = variables.Variable(zero64)
+    count_up_to = var.count_up_to(3)
+    queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+    init_op = variables.global_variables_initializer()
+    qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
+    queue_runner_impl.add_queue_runner(qr)
+    with self.test_session():
+      init_op.run()
+      with self.assertRaisesRegexp(TypeError, "tf.Session"):
+        queue_runner_impl.start_queue_runners("NotASession")
+
+  def testStartQueueRunnersIgnoresMonitoredSession(self):
+    zero64 = constant_op.constant(0, dtype=dtypes.int64)
+    var = variables.Variable(zero64)
+    count_up_to = var.count_up_to(3)
+    queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
+    init_op = variables.global_variables_initializer()
+    qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
+    queue_runner_impl.add_queue_runner(qr)
+    with self.test_session():
+      init_op.run()
+      threads = queue_runner_impl.start_queue_runners(
+          monitored_session.MonitoredSession())
+      self.assertFalse(threads)
 
   def testStartQueueRunnersNonDefaultGraph(self):
     # CountUpTo will raise OUT_OF_RANGE when it reaches the count.

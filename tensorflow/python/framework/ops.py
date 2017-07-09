@@ -27,12 +27,11 @@ import sys
 import threading
 
 import six
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import device as pydev
@@ -88,70 +87,6 @@ def _override_helper(clazz_object, operator, func):
   if operator not in Tensor.OVERLOADABLE_OPERATORS:
     raise ValueError("Overriding %s is disallowed" % operator)
   setattr(clazz_object, operator, func)
-
-
-def _convert_stack(stack, include_func_start_lineno=False):
-  """Converts a stack extracted using _extract_stack() to a traceback stack.
-
-  Args:
-    stack: A list of n 5-tuples,
-      (filename, lineno, name, frame_globals, func_start_lineno).
-    include_func_start_lineno: True if function start line number should be
-      included as the 5th entry in return tuples.
-
-  Returns:
-    A list of n 4-tuples or 5-tuples
-    (filename, lineno, name, code, [optional: func_start_lineno]), where the
-    code tuple element is calculated from the corresponding elements of the
-    input tuple.
-  """
-  ret = []
-  for filename, lineno, name, frame_globals, func_start_lineno in stack:
-    linecache.checkcache(filename)
-    line = linecache.getline(filename, lineno, frame_globals)
-    if line:
-      line = line.strip()
-    else:
-      line = None
-    if include_func_start_lineno:
-      ret.append((filename, lineno, name, line, func_start_lineno))
-    else:
-      ret.append((filename, lineno, name, line))
-  return ret
-
-
-# pylint: disable=line-too-long
-def _extract_stack():
-  """A lightweight re-implementation of traceback.extract_stack.
-
-  NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
-    each stack frame using linecache, which results in an abundance of stat()
-    calls. This implementation does not retrieve the code, and any consumer
-    should apply _convert_stack to the result to obtain a traceback that can
-    be formatted etc. using traceback methods.
-
-  Returns:
-    A list of 5-tuples
-    (filename, lineno, name, frame_globals, func_start_lineno) corresponding to
-    the call stack of the current thread.
-  """
-  # pylint: enable=line-too-long
-  try:
-    raise ZeroDivisionError
-  except ZeroDivisionError:
-    f = sys.exc_info()[2].tb_frame.f_back
-  ret = []
-  while f is not None:
-    lineno = f.f_lineno
-    co = f.f_code
-    filename = co.co_filename
-    name = co.co_name
-    frame_globals = f.f_globals
-    func_start_lineno = co.co_firstlineno
-    ret.append((filename, lineno, name, frame_globals, func_start_lineno))
-    f = f.f_back
-  ret.reverse()
-  return ret
 
 
 def _as_graph_element(obj):
@@ -323,8 +258,8 @@ class Tensor(_TensorLike):
     self._consumers = []
 
     # Attributes used for C++ shape inference. Not inspected, only forwarded.
-    self._handle_shape = tensor_shape_pb2.TensorShapeProto()
-    self._handle_dtype = types_pb2.DT_INVALID
+    # If set, will be a HandleData object from cpp_shape_inference.proto.
+    self._handle_data = None
 
   @property
   def op(self):
@@ -1235,7 +1170,7 @@ class Operation(object):
       a._add_consumer(self)  # pylint: disable=protected-access
     if output_types is None:
       output_types = []
-    self._output_types = output_types
+    self._output_types_val = output_types
     self._outputs = [Tensor(self, i, output_type)
                      for i, output_type in enumerate(output_types)]
     if input_types is None:
@@ -1266,7 +1201,7 @@ class Operation(object):
 
     self._original_op = original_op
     self._op_def = op_def
-    self._traceback = _extract_stack()
+    self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
     # Add this op to the current control flow context:
     self._control_flow_context = g._get_control_flow_context()
     if self._control_flow_context is not None:
@@ -1416,7 +1351,13 @@ class Operation(object):
   @property
   def name(self):
     """The full name of this operation."""
-    return self._node_def.name
+    if _USE_C_API:
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._node_def.name == c_api.TF_OperationName(self._c_op)
+      return c_api.TF_OperationName(self._c_op)
+    else:
+      return self._node_def.name
 
   @property
   def _id(self):
@@ -1432,7 +1373,48 @@ class Operation(object):
       assigned, or an empty string if it has not been assigned to a
       device.
     """
-    return self._node_def.device
+    if _USE_C_API:
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._node_def.device == c_api.TF_OperationDevice(self._c_op)
+      return c_api.TF_OperationDevice(self._c_op)
+    else:
+      return self._node_def.device
+
+  @property
+  def _output_types(self):
+    """List this operation's output types.
+
+    Returns:
+      List of the types of the Tensors computed by this operation.
+      Each element in the list is an integer whose value is one of
+      the TF_DataType enums defined in c_api.h
+      The length of this list indicates the number of output endpoints
+      of the operation.
+    """
+    if _USE_C_API:
+      num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
+      output_types = [c_api.TF_OperationOutputType(self._tf_output(i)) for
+                      i in xrange(num_outputs)]
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._output_types_val == output_types
+      # In all the tests we have output_types that are passed into
+      # Operation.__init__ are a list of ints (which is illegal according
+      # to the docstring), but input_types are instances of DType.
+      # This extra assert is to catch if we ever use DType for output_types.
+      if output_types:
+        assert isinstance(output_types[0], int)
+      return output_types
+    else:
+      return self._output_types_val
+
+  def _tf_output(self, output_idx):
+    """Create and return a new TF_Output for output_idx'th output of this op."""
+    tf_output = c_api.TF_Output()
+    tf_output.oper = self._c_op
+    tf_output.index = output_idx
+    return tf_output
 
   def _set_device(self, device):
     """Set the device of this operation.
@@ -1440,6 +1422,7 @@ class Operation(object):
     Args:
       device: string or device..  The device to set.
     """
+    assert not _USE_C_API, "Operation._set_device doesn't work with C API"
     self._node_def.device = _device_string(device)
 
   def _add_input(self, tensor, dtype=None):
@@ -1600,7 +1583,14 @@ class Operation(object):
       A list of `Operation` objects.
 
     """
-    return self._control_inputs
+    if _USE_C_API:
+      control_c_ops = c_api.TF_OperationGetControlInputs_wrapper(self._c_op)
+      # pylint: disable=protected-access
+      return [self.graph._get_operation_by_name_unsafe(
+          c_api.TF_OperationName(c_op)) for c_op in control_c_ops]
+      # pylint: enable=protected-access
+    else:
+      return self._control_inputs
 
   @property
   def type(self):
@@ -1614,6 +1604,7 @@ class Operation(object):
 
   @property
   def node_def(self):
+    # pylint: disable=line-too-long
     """Returns a serialized `NodeDef` representation of this operation.
 
     Returns:
@@ -1621,10 +1612,12 @@ class Operation(object):
       [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
       protocol buffer.
     """
+    # pylint: enable=line-too-long
     return self._node_def
 
   @property
   def op_def(self):
+    # pylint: disable=line-too-long
     """Returns the `OpDef` proto that represents the type of this op.
 
     Returns:
@@ -1632,12 +1625,13 @@ class Operation(object):
       [`OpDef`](https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto)
       protocol buffer.
     """
+    # pylint: enable=line-too-long
     return self._op_def
 
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    return _convert_stack(self._traceback)
+    return self._graph._convert_stack(self._traceback)  # pylint: disable=protected-access
 
   @property
   def traceback_with_start_lines(self):
@@ -1646,7 +1640,8 @@ class Operation(object):
     Returns:
       A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
     """
-    return _convert_stack(self._traceback, include_func_start_lineno=True)
+    return self._graph._convert_stack(  # pylint: disable=protected-access
+        self._traceback, include_func_start_lineno=True)
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
@@ -1877,12 +1872,10 @@ def set_shapes_for_outputs(op):
     # Returned by call_cpp_shape_fn
     shapes_dict = shapes
     shapes = shapes_dict["shapes"]
-    handle_shapes = shapes_dict["handle_shapes"]
-    handle_dtypes = shapes_dict["handle_dtypes"]
-    for output, handle_shape, handle_dtype in zip(op.outputs, handle_shapes, handle_dtypes):
+    handle_datas = shapes_dict["handle_data"]
+    for output, handle_data in zip(op.outputs, handle_datas):
       # pylint: disable=protected-access
-      output._handle_shape = handle_shape
-      output._handle_dtype = handle_dtype
+      output._handle_data = handle_data
       # pylint: enable=protected-access
 
   if len(op.outputs) != len(shapes):
@@ -2173,6 +2166,76 @@ class Graph(object):
     else:
       self._scoped_c_graph = None
 
+  def _convert_stack(self, stack, include_func_start_lineno=False):
+    """Converts a stack extracted using _extract_stack() to a traceback stack.
+
+    Args:
+      stack: A list of n 5-tuples,
+        (filename, lineno, name, frame_globals, func_start_lineno).
+      include_func_start_lineno: True if function start line number should be
+        included as the 5th entry in return tuples.
+
+    Returns:
+      A list of n 4-tuples or 5-tuples
+      (filename, lineno, name, code, [optional: func_start_lineno]), where the
+      code tuple element is calculated from the corresponding elements of the
+      input tuple.
+    """
+    ret = []
+    for (filename, lineno, name, frame_globals, func_start_lineno,
+         unused_frame_info) in stack:
+      linecache.checkcache(filename)
+      line = linecache.getline(filename, lineno, frame_globals)
+      if line:
+        line = line.strip()
+      else:
+        line = None
+      if include_func_start_lineno:
+        ret.append((filename, lineno, name, line, func_start_lineno))
+      else:
+        ret.append((filename, lineno, name, line))
+    return ret
+
+  def _extract_stack(self):
+    """A lightweight, extensible re-implementation of traceback.extract_stack.
+
+    NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
+      each stack frame using linecache, which results in an abundance of stat()
+      calls. This implementation does not retrieve the code, and any consumer
+      should apply _convert_stack to the result to obtain a traceback that can
+      be formatted etc. using traceback methods.
+
+    Derived classes can implement _extract_frame_info() to add extra information
+    to the traceback.
+
+    Returns:
+      A list of 6-tuples
+      (filename, lineno, name, frame_globals, func_start_lineno, custom_info)
+      corresponding to the call stack of the current thread.
+    """
+    try:
+      raise ZeroDivisionError
+    except ZeroDivisionError:
+      f = sys.exc_info()[2].tb_frame.f_back
+    ret = []
+    while f is not None:
+      lineno = f.f_lineno
+      co = f.f_code
+      filename = co.co_filename
+      name = co.co_name
+      frame_globals = f.f_globals
+      func_start_lineno = co.co_firstlineno
+      frame_info = self._extract_frame_info(f)
+      ret.append((filename, lineno, name, frame_globals, func_start_lineno,
+                  frame_info))
+      f = f.f_back
+    ret.reverse()
+    return ret
+
+  def _extract_frame_info(self, frame):  # pylint: disable=unused-argument
+    """Extracts custom information from a frame in an op traceback."""
+    return None
+
   def _check_not_finalized(self):
     """Check if the graph is finalized.
 
@@ -2229,6 +2292,7 @@ class Graph(object):
 
   @property
   def graph_def_versions(self):
+    # pylint: disable=line-too-long
     """The GraphDef version information of this graph.
 
     For details on the meaning of each version, see
@@ -2237,6 +2301,7 @@ class Graph(object):
     Returns:
       A `VersionDef`.
     """
+    # pylint: enable=line-too-long
     return self._graph_def_versions
 
   @property
@@ -2290,6 +2355,7 @@ class Graph(object):
     self._control_flow_context = context
 
   def _as_graph_def(self, from_version=None, add_shapes=False):
+    # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
@@ -2315,6 +2381,7 @@ class Graph(object):
       ValueError: If the `graph_def` would be too large.
 
     """
+    # pylint: enable=line-too-long
     with self._lock:
       graph = graph_pb2.GraphDef()
       graph.versions.CopyFrom(self._graph_def_versions)
@@ -2344,6 +2411,7 @@ class Graph(object):
       return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
+    # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
@@ -2366,6 +2434,7 @@ class Graph(object):
     Raises:
       ValueError: If the `graph_def` would be too large.
     """
+    # pylint: enable=line-too-long
     result, _ = self._as_graph_def(from_version, add_shapes)
     return result
 
@@ -2719,6 +2788,29 @@ class Graph(object):
                       % type(name).__name__)
     return self.as_graph_element(name, allow_tensor=False, allow_operation=True)
 
+  def _get_operation_by_name_unsafe(self, name):
+    """Returns the `Operation` with the given `name`.
+
+    This is a internal unsafe version of get_operation_by_name. It skips many
+    checks and does not have user friedly error messages but runs considerably
+    faster. This method may be called concurrently from multiple threads.
+
+    Args:
+      name: The name of the `Operation` to return.
+
+    Returns:
+      The `Operation` with the given `name`.
+
+    Raises:
+      KeyError: If `name` does not correspond to an operation in this graph.
+    """
+
+    if self._finalized:
+      return self._nodes_by_name[name]
+
+    with self._lock:
+      return self._nodes_by_name[name]
+
   def get_tensor_by_name(self, name):
     """Returns the `Tensor` with the given `name`.
 
@@ -2933,7 +3025,7 @@ class Graph(object):
     finally:
       self._default_original_op = old_original_op
 
-  # pylint: disable=g-doc-return-or-yield
+  # pylint: disable=g-doc-return-or-yield,line-too-long
   @tf_contextlib.contextmanager
   def name_scope(self, name):
     r"""Returns a context manager that creates hierarchical names for operations.
@@ -3043,7 +3135,7 @@ class Graph(object):
       yield "" if new_stack is None else new_stack + "/"
     finally:
       self._name_stack = old_stack
-  # pylint: enable=g-doc-return-or-yield
+  # pylint: enable=g-doc-return-or-yield,line-too-long
 
   def unique_name(self, name, mark_as_used=True):
     """Return a unique operation name for `name`.
@@ -3184,6 +3276,7 @@ class Graph(object):
 
   @tf_contextlib.contextmanager
   def device(self, device_name_or_function):
+    # pylint: disable=line-too-long
     """Returns a context manager that specifies the default device to use.
 
     The `device_name_or_function` argument may either be a device name
@@ -3240,6 +3333,7 @@ class Graph(object):
       created ops.
 
     """
+    # pylint: enable=line-too-long
     if (device_name_or_function is not None
         and not callable(device_name_or_function)):
       device_function = pydev.merge_device(device_name_or_function)
@@ -3809,6 +3903,9 @@ class _DefaultStack(threading.local):
   def reset(self):
     self.stack = []
 
+  def is_cleared(self):
+    return self.stack == []
+
   @property
   def enforce_nesting(self):
     return self._enforce_nesting
@@ -4014,7 +4111,13 @@ def reset_default_graph():
   a `tf.Session` or `tf.InteractiveSession` is active will result in undefined
   behavior. Using any previously created `tf.Operation` or `tf.Tensor` objects
   after calling this function will result in undefined behavior.
+  Raises:
+    AssertionError: If this function is called within a nested graph.
   """
+  if not _default_graph_stack.is_cleared():
+    raise AssertionError("Do not use tf.reset_default_graph() to clear "
+                         "nested graphs. If you need a cleared graph, "
+                         "exit the nesting and create a new graph.")
   _default_graph_stack.reset()
 
 

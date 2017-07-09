@@ -48,10 +48,6 @@ using tensorforest::TensorForestDataSpec;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
 
-using shape_inference::DimensionHandle;
-using shape_inference::InferenceContext;
-using shape_inference::ShapeHandle;
-
 // A data structure to store the results of parallel tree traversal.
 struct InputDataResult {
   // A list of each node that was visited.

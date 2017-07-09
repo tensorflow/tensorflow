@@ -88,6 +88,14 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       dumping_wrapper.DumpingDebugWrapperSession(
           session.Session(), session_root=file_path, log_usage=False)
 
+  def testConstructWrapperWithNonexistentSessionRootCreatesDirectory(self):
+    new_dir_path = os.path.join(tempfile.mkdtemp(), "new_dir")
+    dumping_wrapper.DumpingDebugWrapperSession(
+        session.Session(), session_root=new_dir_path, log_usage=False)
+    self.assertTrue(gfile.IsDirectory(new_dir_path))
+    # Cleanup.
+    gfile.DeleteRecursively(new_dir_path)
+
   def testDumpingOnASingleRunWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess, session_root=self.session_root, log_usage=False)
@@ -208,7 +216,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(dump_dirs[0])
 
     self.assertAllClose([10.0], dump.get_tensors("v", 0, "DebugIdentity"))
-    self.assertEqual(12,
+    self.assertEqual(14,
                      len(dump.get_tensors("v", 0, "DebugNumericSummary")[0]))
 
   def testDumpingWithWatchFnWithNonDefaultDebugOpsWorks(self):
@@ -235,7 +243,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(dump_dirs[0])
 
     self.assertAllClose([10.0], dump.get_tensors("v", 0, "DebugIdentity"))
-    self.assertEqual(12,
+    self.assertEqual(14,
                      len(dump.get_tensors("v", 0, "DebugNumericSummary")[0]))
 
     dumped_nodes = [dump.node_name for dump in dump.dumped_tensor_data]

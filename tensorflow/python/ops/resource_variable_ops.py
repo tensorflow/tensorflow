@@ -183,6 +183,14 @@ class ResourceVariable(variables.Variable):
         else:
           self._initial_value = ops.convert_to_tensor(
               initial_value, name="initial_value", dtype=dtype)
+          # pylint: disable=protected-access
+          if self._initial_value.op._get_control_flow_context() is not None:
+            raise ValueError(
+                "Initializer for variable %s is from inside a control-flow "
+                "construct, such as a loop or conditional. When creating a "
+                "variable inside a loop or conditional, use a lambda as the "
+                "initializer." % name)
+          # pylint: enable=protected-access
           self._handle = gen_resource_variable_ops.var_handle_op(
               shape=self._initial_value.get_shape(),
               dtype=self._initial_value.dtype.base_dtype,
@@ -195,7 +203,7 @@ class ResourceVariable(variables.Variable):
               gen_resource_variable_ops.var_is_initialized_op(self._handle))
         if initial_value is not None:
           with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
-            self._initialize_op = gen_resource_variable_ops.assign_variable_op(
+            self._initializer_op = gen_resource_variable_ops.assign_variable_op(
                 self._handle, self._initial_value, name=n)
         with ops.name_scope("Read"), ops.colocate_with(self._handle):
           # Manually assign reads to the handle's device to avoid log messages.
@@ -229,7 +237,7 @@ class ResourceVariable(variables.Variable):
     self._handle = g.as_graph_element(
         ops.prepend_name_scope(variable_def.variable_name,
                                import_scope=import_scope))
-    self._initialize_op = g.as_graph_element(
+    self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(variable_def.initializer_name,
                                import_scope=import_scope))
     if variable_def.snapshot_name:
@@ -274,7 +282,7 @@ class ResourceVariable(variables.Variable):
   @property
   def create(self):
     """The op responsible for initializing this variable."""
-    return self._initialize_op
+    return self._initializer_op
 
   @property
   def handle(self):
@@ -297,7 +305,7 @@ class ResourceVariable(variables.Variable):
   @property
   def initializer(self):
     """The op responsible for initializing this variable."""
-    return self._initialize_op
+    return self._initializer_op
 
   @property
   def initial_value(self):
@@ -545,6 +553,16 @@ ops.register_proto_function(
     from_proto=_from_proto_fn)
 ops.register_proto_function(
     ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.LOCAL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.MODEL_VARIABLES,
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)

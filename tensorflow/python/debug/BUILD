@@ -1,5 +1,12 @@
 # Description:
 #   Python Client Code of the TensorFlow Debugger (tfdbg).
+#
+# Public target(s):
+#
+# ":debug_py": Public Python methods and classes of tfdbg.
+#   For API documentation, see https://www.tensorflow.org/api_docs/python/tfdbg
+#   For a user interface walkthrough, see https://www.tensorflow.org/programmers_guide/debugger
+# (Omitted internal-only public target)
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -367,6 +374,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
@@ -472,6 +480,7 @@ py_test(
         "cli/curses_ui_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":curses_ui",
         ":debugger_cli_common",
@@ -543,6 +552,22 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["notsan"],
+)
+
+cuda_py_test(
+    name = "session_debug_multi_gpu_test",
+    size = "small",
+    srcs = ["lib/session_debug_multi_gpu_test.py"],
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
 )
 
 py_test(

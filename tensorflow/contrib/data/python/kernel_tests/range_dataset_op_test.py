@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -156,7 +154,7 @@ class RangeDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testEnumerateDataset(self):
-    components = [np.array(["a", "b"]), np.array([1, 2]), np.array([37.0, 38])]
+    components = (["a", "b"], [1, 2], [37.0, 38])
     start = constant_op.constant(20, dtype=dtypes.int64)
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components).enumerate(
@@ -171,8 +169,8 @@ class RangeDatasetTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(init_op)
-      self.assertEqual((20, [b"a", 1, 37.0]), sess.run(get_next))
-      self.assertEqual((21, [b"b", 2, 38.0]), sess.run(get_next))
+      self.assertEqual((20, (b"a", 1, 37.0)), sess.run(get_next))
+      self.assertEqual((21, (b"b", 2, 38.0)), sess.run(get_next))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)

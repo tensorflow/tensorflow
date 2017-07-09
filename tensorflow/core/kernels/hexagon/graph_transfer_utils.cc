@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
@@ -62,7 +63,7 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
 
   // copy graph
-  execute_info.mutable_remote_graph()->CopyFrom(graph_def);
+  *execute_info.mutable_remote_graph() = graph_def;
 
   for (const std::pair<string, Tensor>& input : inputs) {
     execute_info.add_graph_input_node_name(input.first);

@@ -79,6 +79,9 @@ Any thread can decide that the computation should stop.  It only has to call
 return `True`.
 
 ```python
+# Using Python's threading library.
+import threading
+
 # Thread body: loop until the coordinator indicates a stop was requested.
 # If some condition becomes true, ask the coordinator to stop.
 def MyLoop(coord):
@@ -121,7 +124,7 @@ example = ...ops to create one example...
 # Create a queue, and an op that enqueues examples one at a time in the queue.
 queue = tf.RandomShuffleQueue(...)
 enqueue_op = queue.enqueue(example)
-# Create a training graph that starts by dequeuing a batch of examples.
+# Create a training graph that starts by dequeueing a batch of examples.
 inputs = queue.dequeue_many(batch_size)
 train_op = ...use 'inputs' to build the training part of the graph...
 ```

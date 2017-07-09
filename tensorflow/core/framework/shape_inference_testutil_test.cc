@@ -51,6 +51,7 @@ string RunInferShapes(const string& op_name, const string& ins,
   ShapeInferenceTestOp op(op_name);
   const int num_inputs = 1 + std::count(ins.begin(), ins.end(), ';');
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
   NodeDef node_def;
   TF_CHECK_OK(NodeDefBuilder("dummy", op_name)

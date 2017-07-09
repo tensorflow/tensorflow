@@ -236,7 +236,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :,
   :])`
 
-  ```prettyprint
+  ```python
   # a is a tensor.
   # s is a tensor of singular values.
   # u is a tensor of left singular vectors.

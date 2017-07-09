@@ -86,11 +86,13 @@ class SimplePlacer {
 
   // Assigns 'node's devices to 'assigned_device', and logs the
   // placement if the SessionOptions entry in 'options_' requests it.
-  void AssignAndLog(const string& assigned_device, Node* node) const;
+  void AssignAndLog(int assigned_device, Node* node) const;
+  void LogDeviceAssignment(const Node* node) const;
 
   Graph* const graph_;                           // Not owned.
   const DeviceSet* const devices_;               // Not owned.
   const SessionOptions* options_;                // Not owned.
+  const bool log_device_placement_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SimplePlacer);
 };

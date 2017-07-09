@@ -149,50 +149,22 @@ class _Conv(base.Layer):
     self.built = True
 
   def call(self, inputs):
-    if (self.data_format == 'channels_first' and
-        not framework.test_util.gpu_device_name()):
-      # `nn.convolution` is not implemented on CPU for `channels_first` format.
-      # In cases where we are most likely running on CPU using `channels_first`,
-      # we reshape the inputs to use `channels_last` (and reshape them back
-      # afterwards). This is a temporary fix; a better solution would be a fix
-      # at the op level.
-      # TODO(chollet): remove this when `nn.convolution` is feature-complete.
-      data_format = 'channels_last'
-      if self.rank == 1:
-        inputs = array_ops.transpose(inputs, (0, 2, 1))
-      elif self.rank == 2:
-        inputs = array_ops.transpose(inputs, (0, 2, 3, 1))
-      elif self.rank == 3:
-        inputs = array_ops.transpose(inputs, (0, 2, 3, 4, 1))
-    else:
-      data_format = self.data_format
     outputs = nn.convolution(
         input=inputs,
         filter=self.kernel,
         dilation_rate=self.dilation_rate,
         strides=self.strides,
         padding=self.padding.upper(),
-        data_format=utils.convert_data_format(data_format,
-                                              self.rank + 2))
-    if (self.data_format == 'channels_first' and
-        not framework.test_util.gpu_device_name()):
-      if self.rank == 1:
-        outputs = array_ops.transpose(outputs, (0, 2, 1))
-      elif self.rank == 2:
-        outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
-      elif self.rank == 3:
-        outputs = array_ops.transpose(outputs, (0, 4, 1, 2, 3))
+        data_format=utils.convert_data_format(self.data_format, self.rank + 2))
 
     if self.bias is not None:
       if self.data_format == 'channels_first':
-        # bias_add only supports NHWC.
-        # TODO(fchollet): remove this when `bias_add` is feature-complete.
         if self.rank == 1:
+          # nn.bias_add does not accept a 1D input tensor.
           bias = array_ops.reshape(self.bias, (1, self.filters, 1))
           outputs += bias
         if self.rank == 2:
-          bias = array_ops.reshape(self.bias, (1, self.filters, 1, 1))
-          outputs += bias
+          outputs = nn.bias_add(outputs, self.bias, data_format='NCHW')
         if self.rank == 3:
           # As of Mar 2017, direct addition is significantly slower than
           # bias_add when computing gradients. To use bias_add, we collapse Z
@@ -202,18 +174,10 @@ class _Conv(base.Layer):
                                          [outputs_shape[0], outputs_shape[1],
                                           outputs_shape[2] * outputs_shape[3],
                                           outputs_shape[4]])
-          outputs_4d = nn.bias_add(
-              outputs_4d,
-              self.bias,
-              data_format=utils.convert_data_format(self.data_format, 4))
+          outputs_4d = nn.bias_add(outputs_4d, self.bias, data_format='NCHW')
           outputs = array_ops.reshape(outputs_4d, outputs_shape)
       else:
-        outputs = nn.bias_add(
-            outputs,
-            self.bias,
-            data_format=utils.convert_data_format(self.data_format, 4))
-        # Note that we passed rank=4 because bias_add will only accept
-        # NHWC and NCWH even if the rank of the inputs is 3 or 5.
+        outputs = nn.bias_add(outputs, self.bias, data_format='NHWC')
 
     if self.activation is not None:
       return self.activation(outputs)
@@ -405,6 +369,7 @@ def conv1d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -423,7 +388,7 @@ class Conv2D(_Conv):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-      width and height of the 2D convolution window.
+      height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
@@ -524,7 +489,7 @@ def conv2d(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-      width and height of the 2D convolution window.
+      height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
@@ -580,6 +545,7 @@ def conv2d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -775,7 +741,7 @@ class SeparableConv2D(Conv2D):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -984,7 +950,7 @@ def separable_conv2d(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1067,7 +1033,7 @@ class Conv2DTranspose(Conv2D):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1267,7 +1233,7 @@ def conv2d_transpose(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1311,6 +1277,7 @@ def conv2d_transpose(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1525,7 +1492,7 @@ def conv3d_transpose(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 3 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 3 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1534,8 +1501,9 @@ def conv3d_transpose(inputs,
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, height, width)`.
+      `(batch, depth, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, depth, height, width)`.
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.

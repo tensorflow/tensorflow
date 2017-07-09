@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/protobuf.h"

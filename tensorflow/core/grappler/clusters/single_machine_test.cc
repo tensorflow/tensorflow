@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -132,6 +133,63 @@ TEST_F(SingleMachineTest, MultipleItems) {
     ::tensorflow::protobuf::TextFormat::PrintToString(metadata2, &s2);
     EXPECT_EQ(s1, s2);
   }
+}
+
+TEST_F(SingleMachineTest, GraphOptimizations) {
+  // Create a graph that can be fully precomputed
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto zero = ops::Const(root.WithOpName("zero"), 0.0f, {2, 3});
+  auto one = ops::Const(root.WithOpName("one"), 1.0f, {2, 3});
+  auto add = ops::Add(root.WithOpName("add"), zero, one);
+  auto square = ops::Square(root.WithOpName("square"), add);
+
+  auto new_shape = ops::Const(root.WithOpName("new_shape"), {3, -1}, {2});
+  auto reshaped = ops::Reshape(root.WithOpName("reshaped"), square, new_shape);
+  auto final_shape = ops::Shape(root.WithOpName("final_shape"), reshaped);
+
+  auto expected_shape =
+      ops::Const(root.WithOpName("expected_shape"), {3, 2}, {2});
+  auto valid =
+      ops::Equal(root.WithOpName("valid"), final_shape, expected_shape);
+  auto all_dims = ops::Const(root.WithOpName("all_dims"), {0}, {1});
+
+  auto all_valid = ops::All(root.WithOpName("all_valid"), valid, all_dims);
+  auto assert_valid = ops::Assert(root.WithOpName("assert_valid"), all_valid,
+                                  {final_shape.output});
+
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+  item.fetch.push_back("assert_valid");
+
+  // Force the placement of all the nodes on CPU since TF attempts to use a GPU
+  // when possible event though we created the session to have a single CPU !.
+  for (auto& node : *item.graph.mutable_node()) {
+    node.set_device("/cpu:0");
+  }
+
+  // With optimizations turned on, some nodes could have been optimized away,
+  // and the cost model could be partial. Restart the cluster with optimizations
+  // disabled and make sure we have all the information we're looking for.
+  cluster_.reset();
+  cluster_.reset(new SingleMachine(5, 3, 0));
+  cluster_->DisableOptimizer(true);
+  TF_CHECK_OK(cluster_->Provision());
+
+  RunMetadata metadata;
+  TF_CHECK_OK(cluster_->Initialize(item));
+  TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
+  std::set<string> cost_nodes;
+  for (const auto& node : metadata.cost_graph().node()) {
+    // Skip nodes added by TF internally.
+    if (node.name()[0] != '_') {
+      cost_nodes.insert(node.name());
+    }
+  }
+  const std::set<string> expected_cost_nodes = {
+      "zero",      "one",      "add",         "square",
+      "new_shape", "reshaped", "final_shape", "expected_shape",
+      "valid",     "all_dims", "all_valid",   "assert_valid"};
+  EXPECT_EQ(expected_cost_nodes, cost_nodes);
 }
 
 TEST_F(SingleMachineTest, TimeOuts) {

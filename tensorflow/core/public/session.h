@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -170,6 +171,12 @@ class Session {
                       const std::vector<string>& output_names,
                       std::vector<Tensor>* outputs);
 
+  /// \brief List devices in the session.
+  ///
+  /// Retrieves the list of available devices within the session, and populates
+  /// *response. This API is optional. If it is unimplemented, Status will
+  /// return a corresponding error message, and *response will be unmodified.
+  virtual Status ListDevices(std::vector<DeviceAttributes>* response) = 0;
   /// \brief Closes this session.
   ///
   /// Closing a session releases the resources used by this session

@@ -258,7 +258,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
           }
         }
         if (request->is_last_partial_run()) {
-          partial_run_mgr_.PartialRunDone(step_id, std::move(finish), s);
+          partial_run_mgr_.PartialRunDone(step_id, finish, s);
         } else {
           finish(s);
         }

@@ -31,10 +31,6 @@
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
-using shape_inference::InferenceContext;
-using shape_inference::ShapeHandle;
-
 using tensorforest::CheckTensorBounds;
 using tensorforest::IsAllInitialized;
 
@@ -288,6 +284,8 @@ class SampleInputs : public OpKernel {
             index = rand_feature;
             val = inputs(*it, rand_feature);
           } else {
+            CHECK(sparse_input) << rand_feature << " selected, and dense is "
+                                << input_spec_.dense_features_size();
             const auto indices = sparse_input_indices.matrix<int64>();
             const auto values = sparse_input_values.vec<float>();
             const int32 sparse_index = sparse_input_start + rand_feature -

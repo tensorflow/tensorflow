@@ -48,7 +48,7 @@ OpRegistry::~OpRegistry() {
   for (const auto& e : registry_) delete e.second;
 }
 
-void OpRegistry::Register(OpRegistrationDataFactory op_data_factory) {
+void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
   mutex_lock lock(mu_);
   if (initialized_) {
     TF_QCHECK_OK(RegisterAlreadyLocked(op_data_factory));
@@ -77,9 +77,10 @@ Status OpRegistry::LookUp(const string& op_type_name,
     if (first_unregistered) {
       OpList op_list;
       Export(true, &op_list);
-      VLOG(1) << "All registered Ops:";
-      for (const auto& op : op_list.op()) {
-        VLOG(1) << SummarizeOpDef(op);
+      if (VLOG_IS_ON(3)) {
+         LOG(INFO) << "All registered Ops:";
+         for (const auto& op : op_list.op())
+            LOG(INFO) << SummarizeOpDef(op);
       }
       first_unregistered = false;
     }
@@ -181,7 +182,7 @@ Status OpRegistry::CallDeferred() const {
 }
 
 Status OpRegistry::RegisterAlreadyLocked(
-    OpRegistrationDataFactory op_data_factory) const {
+    const OpRegistrationDataFactory& op_data_factory) const {
   std::unique_ptr<OpRegistrationData> op_reg_data(new OpRegistrationData);
   Status s = op_data_factory(op_reg_data.get());
   if (s.ok()) {

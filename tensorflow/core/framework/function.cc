@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/function.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
@@ -140,7 +142,7 @@ class FunctionInstantiationHelper {
   FunctionInstantiationHelper(GetFunctionSignature get_function,
                               InstantiationResult* result)
       : get_function_(std ::move(get_function)), result_(*result) {
-    result_.gdef.Clear();
+    result_.nodes.clear();
   }
 
   // Builds index for nodes that can be used as node's input arguments.
@@ -151,15 +153,14 @@ class FunctionInstantiationHelper {
     TF_RETURN_IF_ERROR(
         ArgNumType(attr_values, arg_def, &is_type_list, &dtypes));
     CHECK_GE(dtypes.size(), size_t{1});
-    GraphDef* gdef = &result_.gdef;
-    int arg_index = gdef->node_size();
+    int arg_index = result_.nodes.size();
     TF_RETURN_IF_ERROR(
         AddItem(arg_def.name(), {true, arg_index, 0, is_type_list, dtypes}));
-    // Creates dtypes.size() nodes in the gdef.
+    // Creates dtypes.size() nodes in the graph.
     for (size_t i = 0; i < dtypes.size(); ++i) {
       TF_RETURN_IF_ERROR(AddItem(strings::StrCat(arg_def.name(), ":", i),
                                  {true, arg_index, 0, false, {dtypes[i]}}));
-      DCHECK_EQ(arg_index, gdef->node_size());
+      DCHECK_EQ(arg_index, result_.nodes.size());
       string name = arg_def.name();
       if (dtypes.size() > 1) {
         strings::StrAppend(&name, "_", i);
@@ -332,13 +333,13 @@ class FunctionInstantiationHelper {
   // Adds the actual node inputs to the result graph by converting indexes to
   // the node names.
   void AddNodeInputs() {
-    for (int i = 0; i < result_.gdef.node_size(); i++) {
+    for (int i = 0; i < result_.nodes.size(); i++) {
       NodeInfo& node_info = nodes_[i];
       for (const auto& p : node_info.data_inputs) {
-        result_.gdef.mutable_node(i)->add_input(Name(p.first, p.second));
+        result_.nodes[i].add_input(Name(p.first, p.second));
       }
       for (int index : node_info.control_inputs) {
-        result_.gdef.mutable_node(i)->add_input(Dep(index));
+        result_.nodes[i].add_input(Dep(index));
       }
     }
   }
@@ -348,11 +349,10 @@ class FunctionInstantiationHelper {
   // node's input arguments.
   //
   // If is_func_arg is true, the name is a function's argument.  In
-  // this case, the produced graph def has gdef.node[nid ... nid +
-  // dtype.size()).
+  // this case, the produced graph def has node[nid:nid + dtype.size()].
   //
   // Otherwise, the name is a function body's node return value.  In
-  // this case, the produced graph def has one node gdef.node[nid] and
+  // this case, the produced graph def has one node node[nid] and
   // the node's output index [idx ... idx + num) corresponds to the
   // named outputs.
   //
@@ -398,10 +398,11 @@ class FunctionInstantiationHelper {
   }
 
   NodeDef* AddNode(const string& name) {
-    NodeDef* gnode = result_.gdef.add_node();
+    result_.nodes.emplace_back();
+    NodeDef* gnode = &result_.nodes.back();
     gnode->set_name(name);
     nodes_.push_back({name, {}, {}});
-    CHECK_EQ(result_.gdef.node_size(), nodes_.size());
+    CHECK_EQ(result_.nodes.size(), nodes_.size());
     return gnode;
   }
 
@@ -429,7 +430,7 @@ class FunctionInstantiationHelper {
     // Control inputs (dependencies).
     std::vector<int> control_inputs;
   };
-  // nodes_[i] is the information about result_.gdef.node(i).
+  // nodes_[i] is the information about result_.nodes[i].
   std::vector<NodeInfo> nodes_;
 };
 
@@ -545,17 +546,17 @@ string Print(const FunctionDef& fdef) {
   return out;
 }
 
-string Print(const GraphDef& gdef) {
+string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::vector<const NodeDef*> arg;
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
-  for (const NodeDef& n : gdef.node()) {
-    if (n.op() == "_Arg") {
-      arg.push_back(&n);
-    } else if (n.op() == "_Retval") {
-      ret.push_back(&n);
+  for (const NodeDef* n : nodes) {
+    if (n->op() == "_Arg") {
+      arg.push_back(n);
+    } else if (n->op() == "_Retval") {
+      ret.push_back(n);
     } else {
-      body.push_back(&n);
+      body.push_back(n);
     }
   }
   auto comp = [](const NodeDef* x, const NodeDef* y) {
@@ -570,12 +571,11 @@ string Print(const GraphDef& gdef) {
   string out;
   strings::StrAppend(&out, "\n(");
   auto get_type = [](const NodeDef& n) {
-    for (auto a : n.attr()) {
-      if (a.first == "T") {
-        return DataTypeString(a.second.type());
-      }
+    DataType dt;
+    if (!GetNodeAttr(n, "T", &dt).ok()) {
+      dt = DT_INVALID;
     }
-    return DataTypeString(DT_INVALID);
+    return DataTypeString(dt);
   };
   for (size_t i = 0; i < arg.size(); ++i) {
     const NodeDef* n = arg[i];
@@ -663,13 +663,13 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 
   for (int i = 0; i < fdef.node_def_size(); ++i) {
     s = helper.BuildNodeOutputIndex(fdef.node_def(i), AttrSlice(&node_attrs[i]),
-                                    result->gdef.node_size() + i);
+                                    result->nodes.size() + i);
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In ", SummarizeNodeDef(fdef.node_def(i)));
       return s;
     }
   }
-  // Emits one gdef.node for each fdef.node_def.
+  // Emits one node for each fdef.node_def.
   for (int i = 0; i < fdef.node_def_size(); ++i) {
     s = helper.InstantiateNode(fdef.node_def(i), AttrSlice(&node_attrs[i]));
     if (!s.ok()) {
@@ -697,7 +697,19 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 string DebugString(const FunctionDef& func_def) { return Print(func_def); }
 
 string DebugString(const GraphDef& instantiated_func_def) {
-  return Print(instantiated_func_def);
+  std::vector<const NodeDef*> ptrs;
+  for (const NodeDef& n : instantiated_func_def.node()) {
+    ptrs.push_back(&n);
+  }
+  return Print(ptrs);
+}
+
+string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes) {
+  std::vector<const NodeDef*> ptrs;
+  for (const NodeDef& n : instantiated_func_nodes) {
+    ptrs.push_back(&n);
+  }
+  return Print(ptrs);
 }
 
 string DebugStringWhole(const GraphDef& gdef) {
@@ -712,6 +724,23 @@ string DebugStringWhole(const GraphDef& gdef) {
   return ret;
 }
 
+namespace {
+
+// Returns the name -> attr mapping of fdef's attrs that have a value set. In
+// Python, it's possible to access unset attrs, which returns a default value
+// and adds an unset attr to the map.
+std::map<StringPiece, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
+  std::map<StringPiece, AttrValue> set_attrs;
+  for (auto iter : fdef.attr()) {
+    if (iter.second.value_case() != AttrValue::VALUE_NOT_SET) {
+      set_attrs[iter.first] = iter.second;
+    }
+  }
+  return set_attrs;
+}
+
+}  // end namespace
+
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   // NOTE(skyewm): Using MessageDifferencer would be better here, but that is
   // currently not included in tensorflow/core/platform/default/protobuf.h, so
@@ -724,10 +753,12 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   f2.signature().SerializeToString(&sig2);
   if (sig1 != sig2) return false;
 
-  if (f1.attr().size() != f2.attr().size()) return false;
-  for (auto iter1 : f1.attr()) {
-    auto iter2 = f2.attr().find(iter1.first);
-    if (iter2 == f2.attr().end()) return false;
+  std::map<StringPiece, AttrValue> f1_attrs = GetSetAttrs(f1);
+  std::map<StringPiece, AttrValue> f2_attrs = GetSetAttrs(f2);
+  if (f1_attrs.size() != f2_attrs.size()) return false;
+  for (auto iter1 : f1_attrs) {
+    auto iter2 = f2_attrs.find(iter1.first);
+    if (iter2 == f2_attrs.end()) return false;
     if (!AreAttrValuesEqual(iter1.second, iter2->second)) return false;
   }
 
@@ -871,11 +902,17 @@ const FunctionDef* FunctionLibraryDefinition::Find(const string& name) const {
 }
 
 Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
-  auto& ptr = function_defs_[fdef.signature().name()];
-  if (ptr != nullptr) {
-    return errors::InvalidArgument("Function with name: ",
-                                   fdef.signature().name(),
-                                   " already exists in function library.");
+  std::unique_ptr<FunctionDefAndOpRegistration>* entry =
+      &function_defs_[fdef.signature().name()];
+  if (*entry != nullptr) {
+    if (!FunctionDefsEqual((*entry)->fdef, fdef)) {
+      return errors::InvalidArgument(
+          "Cannot add function '", fdef.signature().name(),
+          "' because a different function with the same name already "
+          "exists.");
+    }
+    // Ignore duplicate FunctionDefs
+    return Status::OK();
   }
   const OpDef* op_def;
   if (default_registry_->LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
@@ -883,19 +920,27 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
         "Cannot add function '", fdef.signature().name(),
         "' because an op with the same name already exists.");
   }
-  ptr.reset(new FunctionDefAndOpRegistration(fdef));
+  entry->reset(new FunctionDefAndOpRegistration(fdef));
   return Status::OK();
 }
 
 Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
-  if (func_grad_.count(grad.function_name()) > 0) {
-    return errors::InvalidArgument("Gradient for function '",
-                                   grad.function_name(), "' already exists.");
+  string* entry = &func_grad_[grad.function_name()];
+  if (!entry->empty()) {
+    if (*entry != grad.gradient_func()) {
+      return errors::InvalidArgument(
+          "Cannot assign gradient function '", grad.gradient_func(), "' to '",
+          grad.function_name(), "' because it already has gradient function ",
+          "'", *entry, "'");
+    }
+    // Ignore duplicate GradientDefs
+    return Status::OK();
   }
-  func_grad_[grad.function_name()] = grad.gradient_func();
+  *entry = grad.gradient_func();
   return Status::OK();
 }
 
+// TODO(skyewm): don't modify FunctionLibraryDefinition in case of error
 Status FunctionLibraryDefinition::AddLibrary(
     const FunctionLibraryDefinition& other) {
   for (auto iter : other.function_defs_) {

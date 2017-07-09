@@ -27,6 +27,7 @@ from tensorflow.contrib.keras.python.keras.losses import categorical_crossentrop
 from tensorflow.contrib.keras.python.keras.losses import cosine_proximity
 from tensorflow.contrib.keras.python.keras.losses import hinge
 from tensorflow.contrib.keras.python.keras.losses import kullback_leibler_divergence
+from tensorflow.contrib.keras.python.keras.losses import logcosh
 from tensorflow.contrib.keras.python.keras.losses import mean_absolute_error
 from tensorflow.contrib.keras.python.keras.losses import mean_absolute_percentage_error
 from tensorflow.contrib.keras.python.keras.losses import mean_squared_error

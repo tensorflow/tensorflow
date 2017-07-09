@@ -145,6 +145,22 @@ class ConvParameters {
     // clang-format on
   }
 
+  // TODO(yangzihao): The purpose of this function is to disable winograd
+  // nonfused conv algorithm for certain input parameters so as to avoid a bug
+  // in cuDNNv5 and cuDNNv6. Remove this once switch to cuDNNv7.
+  template <typename T>
+  bool ShouldIncludeWinogradNonfusedAlgo() const {
+    int64 total_size = 16 * std::ceil(batch_ / 16.0) *
+                       std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
+                       sizeof(T);
+    int64 threshold = 1L << 31;
+    if (total_size >= threshold) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+
  private:
   typedef std::tuple<int64, int64, SpatialArray, int64, SpatialArray,
                      SpatialArray, SpatialArray, DataType, int>

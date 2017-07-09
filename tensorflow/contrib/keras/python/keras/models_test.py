@@ -105,7 +105,7 @@ class TestModelSaving(test.TestCase):
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-  def test_fuctional_model_saving(self):
+  def test_functional_model_saving(self):
     if h5py is None:
       return  # Skip test if models cannot be saved.
 

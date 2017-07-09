@@ -35,7 +35,7 @@ class AlgebraicSimplifier : public HloPassInterface {
 
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored. If valid_bitcast_callback
-  // returns true, then the pass will replace reshapes and tranposes with
+  // returns true, then the pass will replace reshapes and transposes with
   // bitcasts.
   AlgebraicSimplifier(bool is_layout_sensitive,
                       ValidBitcastCallback valid_bitcast_callback,

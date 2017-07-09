@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -167,12 +168,16 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
       inputs.push_back(UnknownInput());
     } else {
       const CostGraphDef::Node* input_cost = it->second;
-      const CostGraphDef::Node::OutputInfo& output =
-          input_cost->output_info(output_index);
-      OpInfo::TensorProperties input;
-      input.set_dtype(output.dtype());
-      *input.mutable_shape() = output.shape();
-      inputs.push_back(input);
+      if (input_cost->output_info_size() == 0) {
+        inputs.push_back(UnknownInput());
+      } else {
+        const CostGraphDef::Node::OutputInfo& output =
+            input_cost->output_info(output_index);
+        OpInfo::TensorProperties input;
+        input.set_dtype(output.dtype());
+        *input.mutable_shape() = output.shape();
+        inputs.push_back(input);
+      }
     }
   }
 
@@ -197,14 +202,13 @@ DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
   return GetDeviceInfo(node.device());
 }
 
-OpInfo BuildOpInfo(
-    const NodeDef& node, const string& device_str,
+OpInfo BuildOpInfoWithoutDevice(
+    const NodeDef& node,
     const std::unordered_map<string, const NodeDef*>& name_to_node,
     const std::vector<OpInfo::TensorProperties>& inputs) {
   OpInfo op_info;
   op_info.set_op(node.op());
   *op_info.mutable_attr() = node.attr();
-  *op_info.mutable_device() = GetDeviceInfo(device_str);
   for (auto& input : inputs) {
     *op_info.add_inputs() = input;
   }
@@ -217,6 +221,72 @@ OpInfo BuildOpInfo(
   }
 
   return op_info;
+}
+
+string GetOpDescription(const OpInfo& op_info) {
+  string description = "[";
+  description += "Op=" + op_info.op() + ", ";
+  description += "input_shapes=[";
+  for (auto const& input : op_info.inputs()) {
+    description += PartialTensorShape::DebugString(input.shape());
+  }
+  description += "]";
+  return description;
+}
+
+OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
+                                               const GraphDef& graph) {
+  OpPerformanceList ret;
+  std::unordered_map<string, const CostGraphDef::Node*> name_to_cost;
+  std::unordered_map<string, const NodeDef*> name_to_node;
+  for (auto& node : cost_graph.node()) {
+    name_to_cost[node.name()] = &node;
+  }
+  for (auto& node : graph.node()) {
+    name_to_node[node.name()] = &node;
+  }
+
+  for (const auto& node : graph.node()) {
+    // Skip the nodes that are not in the cost graph: these are nodes that
+    // aren't run, because they aren't in the intersection of transitive
+    // fan-in of a fetch node and the transitive fan-out of an input, or nodes
+    // that were optimized away by the optimizer. Since they don't contribute
+    // to the execution time we simply discard them.
+    auto it = name_to_cost.find(node.name());
+    if (it == name_to_cost.end()) {
+      continue;
+    }
+    const CostGraphDef::Node* cost_node = it->second;
+
+    OpPerformance* perf = ret.add_op_performance();
+    perf->set_node(node.name());
+
+    std::vector<OpInfo::TensorProperties> inputs =
+        FindInputFeatures(node, name_to_cost, name_to_node);
+    *perf->mutable_op() = BuildOpInfoWithoutDevice(node, name_to_node, inputs);
+    *perf->mutable_op()->mutable_device() = GetDeviceInfo(cost_node->device());
+
+    perf->set_temporary_memory_size(cost_node->temporary_memory_size());
+    // Note that CostGraphDef::Node::compute_cost is microseconds, while
+    // OpPerformance.compute_cost is nanoseconds.
+    perf->set_compute_cost(cost_node->compute_cost() * 1000);
+    perf->set_compute_time(cost_node->compute_time() * 1000);
+    perf->set_memory_time(cost_node->memory_time() * 1000);
+
+    for (const auto& output_info : cost_node->output_info()) {
+      perf->mutable_op_memory()->add_output_memory(output_info.size());
+    }
+
+    perf->mutable_op_memory()->set_host_temp_memory(
+        cost_node->host_temp_memory_size());
+    perf->mutable_op_memory()->set_device_temp_memory(
+        cost_node->device_temp_memory_size());
+    perf->mutable_op_memory()->set_host_persistent_memory(
+        cost_node->host_persistent_memory_size());
+    perf->mutable_op_memory()->set_device_persistent_memory(
+        cost_node->device_persistent_memory_size());
+  }
+  return ret;
 }
 
 }  // end namespace grappler

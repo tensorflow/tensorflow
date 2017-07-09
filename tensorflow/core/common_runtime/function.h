@@ -27,6 +27,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+static constexpr const char* const kNoInlineAttr = "_noinline";
+
 // Registers a default customizable kernel creator for a function call.
 //
 // If 'cb()' returns a non-OK, we still fall back to an executor-based

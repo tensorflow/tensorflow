@@ -48,27 +48,9 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 
-class KernelBase;
 class Stream;
 class Timer;
 
-namespace blas {
-class BlasSupport;
-}  // namespace blas
-
-namespace fft {
-class Support;
-}  // namespace fft
-
-namespace rng {
-class RngSupport;
-}  // namespace rng
-
-}  // namespace gputools
-}  // namespace perftools
-
-namespace perftools {
-namespace gputools {
 namespace internal {
 
 // Platform-dependent interface class for the generic Events interface, in

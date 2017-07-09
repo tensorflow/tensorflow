@@ -83,6 +83,7 @@ REGISTER_OP("DebugIdentity")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("device_name: string = ''")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
     .Attr("gated_grpc: bool = false")
@@ -109,6 +110,7 @@ REGISTER_OP("DebugNanCount")
     .Input("input: T")
     .Output("output: int64")  // The debug signal (nan count) is int64
     .Attr("T: type")
+    .Attr("device_name: string = ''")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
     .Attr("gated_grpc: bool = false")
@@ -135,6 +137,7 @@ REGISTER_OP("DebugNumericSummary")
     .Input("input: T")
     .Output("output: double")
     .Attr("T: type")
+    .Attr("device_name: string = ''")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
     .Attr("lower_bound: float = -inf")
@@ -148,7 +151,8 @@ Debug Numeric Summary Op.
 Provide a basic summary of numeric value types, range and distribution.
 
 input: Input tensor, non-Reference type, float or double.
-output: A double tensor of shape [12], the elements of which are:
+output: A double tensor of shape [14 + nDimensions], where nDimensions is the
+  the number of dimensions of the tensor's shape. The elements of output are:
   [0]: is initialized (1.0) or not (0.0).
   [1]: total number of elements
   [2]: NaN element count
@@ -170,6 +174,10 @@ Output elements [1:8] are all zero, if the tensor is uninitialized.
         If uninitialized or no such element exists: NaN.
   [11]: variance of all non-inf and non-NaN elements.
         If uninitialized or no such element exists: NaN.
+  [12]: Data type of the tensor encoded as an enum integer. See the DataType
+        proto for more details.
+  [13]: Number of dimensions of the tensor (ndims).
+  [14+]: Sizes of the dimensions.
 
 tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,

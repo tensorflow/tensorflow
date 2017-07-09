@@ -94,16 +94,12 @@ TEST_F(ModelPrunerTest, IdentityPruning) {
 
   Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
   Output b = ops::AddN(s.WithOpName("b"), {a});
-  Output c = ops::Identity(s.WithOpName("c"), b);
-  Output d = ops::Identity(s.WithOpName("d"), c);
+  Output c = ops::Identity(s.WithOpName("c").WithDevice("CPU:0"), b);
+  Output d = ops::Identity(s.WithOpName("d").WithDevice("GPU:0"), c);
   Output e = ops::AddN(s.WithOpName("e"), {d});
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  // Force the placement of c. This should ensure it is preserved.
-  EXPECT_EQ("c", item.graph.node(2).name());
-  item.graph.mutable_node(2)->set_device("CPU");
 
   ModelPruner pruner;
   GraphDef output;
@@ -136,16 +132,10 @@ TEST_F(ModelPrunerTest, PruningSkipsCtrlDependencies) {
   Output b = ops::AddN(s.WithOpName("b"), {a});
   Output c = ops::Identity(s.WithOpName("c"), b);
   Output d = ops::Identity(s.WithOpName("d"), c);
-  Output e = ops::AddN(s.WithOpName("e"), {d});
+  Output e = ops::AddN(s.WithOpName("e").WithControlDependencies(c), {d});
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  // Add a control dependency between c and e. This should ensure c is
-  // preserved.
-  EXPECT_EQ("c", item.graph.node(2).name());
-  EXPECT_EQ("e", item.graph.node(4).name());
-  *item.graph.mutable_node(4)->add_input() = "^c";
 
   ModelPruner pruner;
   GraphDef output;

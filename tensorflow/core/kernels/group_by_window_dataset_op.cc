@@ -29,26 +29,22 @@ namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
-class GroupByWindowDatasetOp : public OpKernel {
+class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
+      : UnaryDatasetOpKernel(ctx),
+        graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
-  void Compute(OpKernelContext* ctx) override {
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
-    const Tensor* window_size_t;
-    OP_REQUIRES_OK(ctx, ctx->input("window_size", &window_size_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(window_size_t->shape()),
-                errors::InvalidArgument("window_size must be a scalar"));
-    const int64 window_size = window_size_t->flat<int64>()(0);
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
+    int64 window_size;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "window_size", &window_size));
     OP_REQUIRES(
         ctx, window_size > 0,
         errors::InvalidArgument("Window size must be greater than zero."));
@@ -84,16 +80,9 @@ class GroupByWindowDatasetOp : public OpKernel {
                                       std::move(reduce_func_other_arguments),
                                       &captured_reduce_func));
 
-    DatasetBase* dataset = new Dataset(
-        input, window_size, std::move(captured_key_func),
-        std::move(captured_reduce_func), output_types_, output_shapes_);
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(input, window_size, std::move(captured_key_func),
+                          std::move(captured_reduce_func), output_types_,
+                          output_shapes_);
   }
 
  private:

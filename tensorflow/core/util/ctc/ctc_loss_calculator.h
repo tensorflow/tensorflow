@@ -30,8 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace ctc {
 
-using strings::StrCat;
-
 class CTCLossCalculator {
   // Connectionist Temporal Classification Loss
   //

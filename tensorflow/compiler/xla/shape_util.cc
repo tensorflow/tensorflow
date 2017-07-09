@@ -105,6 +105,11 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   return equal;
 }
 
+/* static */ int64 ShapeUtil::Rank(const Shape& shape) {
+  CHECK(!ShapeUtil::IsTuple(shape)) << "Tuples do not have a rank";
+  return shape.dimensions_size();
+}
+
 /* static */ int64 ShapeUtil::TrueRank(const Shape& shape) {
   int64 accum = 0;
   for (int64 dimension : shape.dimensions()) {
@@ -122,7 +127,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   for (const auto& shape : parameters) {
     *program_shape.add_parameters() = shape;
   }
-  *program_shape.mutable_result() = result;
+  *program_shape.mutable_result() = std::move(result);
   return program_shape;
 }
 
@@ -165,6 +170,17 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
   return MakeShapeWithMonotonicDim0MajorLayout(shape.element_type(), dims);
 }
+
+/* static */ Shape ShapeUtil::ShapeWithoutPadding(const Shape& shape) {
+  Shape result = shape;
+  ForEachMutableSubshape(&result, [](Shape* subshape, const ShapeIndex& index) {
+    auto layout = subshape->mutable_layout();
+    layout->clear_padding_value();
+    layout->clear_padded_dimensions();
+  });
+  return result;
+}
+
 /* static */ void ShapeUtil::PopulateShape(
     PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
     Shape* shape) {
@@ -270,7 +286,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsEmptyTuple(shape) || HasZeroElements(shape);
+  return IsTuple(shape) ? IsEmptyTuple(shape) : HasZeroElements(shape);
 }
 
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
@@ -323,6 +339,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
+  CHECK(!IsTuple(shape));
   CHECK_EQ(shape.dimensions_size(), Rank(shape));
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
@@ -534,11 +551,6 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
   if (shape.element_type() == TUPLE) {
-    // Tuple shape.
-    if (Rank(shape) != 0) {
-      return InvalidArgument("tuples must be rank-0; got rank %lld",
-                             Rank(shape));
-    }
     if (shape.dimensions_size() != 0) {
       return InvalidArgument("tuples must not have dimensions specified");
     }
@@ -618,6 +630,11 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   return return_shape;
 }
 
+/* static */
+bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
+  return !IsTuple(GetSubshape(shape, index));
+}
+
 /* static */ Shape ShapeUtil::StripDegenerateDimensions(const Shape& shape) {
   std::vector<int64> dimension_sizes;
   std::vector<int64> degenerate_dimensions;
@@ -676,7 +693,7 @@ namespace {
 // Helper for ForEachSubshape which visits the subshapes of the given shape in
 // DFS pre-order starting with the index.
 Status ForEachSubshapeHelper(const Shape& shape,
-                             const ShapeUtil::VisitorFunction& func,
+                             const ShapeUtil::StatusVisitorFunction& func,
                              ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(shape)) {
@@ -693,7 +710,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
 // Helper for ForEachMutableSubshape which visits the subshapes of the given
 // shape in DFS pre-order starting with the index.
 Status ForEachMutableSubshapeHelper(
-    Shape* shape, const ShapeUtil::MutatingVisitorFunction& func,
+    Shape* shape, const ShapeUtil::MutatingStatusVisitorFunction& func,
     ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(*shape)) {
@@ -709,14 +726,40 @@ Status ForEachMutableSubshapeHelper(
 
 }  // namespace
 
-/* static */ Status ShapeUtil::ForEachSubshape(const Shape& shape,
-                                               const VisitorFunction& func) {
+/* static */ void ShapeUtil::ForEachSubshape(const Shape& shape,
+                                             const VisitorFunction& func) {
+  ShapeIndex index;
+  ForEachSubshapeHelper(
+      shape,
+      [&func](const Shape& subshape, const ShapeIndex& index) {
+        func(subshape, index);
+        return Status::OK();
+      },
+      &index)
+      .IgnoreError();
+}
+
+/* static */ void ShapeUtil::ForEachMutableSubshape(
+    Shape* shape, const MutatingVisitorFunction& func) {
+  ShapeIndex index;
+  ForEachMutableSubshapeHelper(
+      shape,
+      [&func](Shape* subshape, const ShapeIndex& index) {
+        func(subshape, index);
+        return Status::OK();
+      },
+      &index)
+      .IgnoreError();
+}
+
+/* static */ Status ShapeUtil::ForEachSubshapeWithStatus(
+    const Shape& shape, const StatusVisitorFunction& func) {
   ShapeIndex index;
   return ForEachSubshapeHelper(shape, func, &index);
 }
 
-/* static */ Status ShapeUtil::ForEachMutableSubshape(
-    Shape* shape, const MutatingVisitorFunction& func) {
+/* static */ Status ShapeUtil::ForEachMutableSubshapeWithStatus(
+    Shape* shape, const MutatingStatusVisitorFunction& func) {
   ShapeIndex index;
   return ForEachMutableSubshapeHelper(shape, func, &index);
 }
@@ -756,27 +799,28 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
   // and unmodified_dim_pair have size >1. Otherwise, returns true and appends
   // the degerenate input/output dimensions in the gap to
   // deleted_indices/inserted_indices respectively.
-  auto check_modified_dims = [&shape_pre, &shape_post, &deleted_indices,
-                              &inserted_indices](
-      std::pair<int64, int64> prior_unmodified_dim_pair,
-      std::pair<int64, int64> unmodified_dim_pair) {
-    for (int64 modified_input_dim = prior_unmodified_dim_pair.first + 1;
-         modified_input_dim < unmodified_dim_pair.first; ++modified_input_dim) {
-      if (shape_pre.dimensions(modified_input_dim) > 1) {
-        return false;
-      }
-      deleted_indices.push_back(modified_input_dim);
-    }
-    for (int64 modified_output_dim = prior_unmodified_dim_pair.second + 1;
-         modified_output_dim < unmodified_dim_pair.second;
-         ++modified_output_dim) {
-      if (shape_post.dimensions(modified_output_dim) > 1) {
-        return false;
-      }
-      inserted_indices.push_back(modified_output_dim);
-    }
-    return true;
-  };
+  auto check_modified_dims =
+      [&shape_pre, &shape_post, &deleted_indices, &inserted_indices](
+          std::pair<int64, int64> prior_unmodified_dim_pair,
+          std::pair<int64, int64> unmodified_dim_pair) {
+        for (int64 modified_input_dim = prior_unmodified_dim_pair.first + 1;
+             modified_input_dim < unmodified_dim_pair.first;
+             ++modified_input_dim) {
+          if (shape_pre.dimensions(modified_input_dim) > 1) {
+            return false;
+          }
+          deleted_indices.push_back(modified_input_dim);
+        }
+        for (int64 modified_output_dim = prior_unmodified_dim_pair.second + 1;
+             modified_output_dim < unmodified_dim_pair.second;
+             ++modified_output_dim) {
+          if (shape_post.dimensions(modified_output_dim) > 1) {
+            return false;
+          }
+          inserted_indices.push_back(modified_output_dim);
+        }
+        return true;
+      };
 
   std::vector<std::pair<int64, int64>> unmodified_dims =
       DimensionsUnmodifiedByReshape(shape_pre, shape_post);
@@ -1189,6 +1233,9 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     tensorflow::gtl::ArraySlice<int64> count,
     tensorflow::gtl::ArraySlice<int64> incr,
     const IndexVisitorFunction& visitor_function) {
+  if (ShapeUtil::HasZeroElements(shape)) {
+    return;
+  }
   DCHECK_EQ(Rank(shape), base.size());
   DCHECK_EQ(incr.size(), base.size());
   DCHECK_EQ(count.size(), base.size());

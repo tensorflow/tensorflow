@@ -30,15 +30,9 @@
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
-using shape_inference::InferenceContext;
-using shape_inference::Shape;
-
 using gtl::TopN;
 using tensorforest::CheckTensorBounds;
-using tensorforest::Initialize;
 using tensorforest::WeightedGiniImpurity;
-
 
 class UpdateFertileSlots : public OpKernel {
  public:

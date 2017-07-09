@@ -704,7 +704,7 @@ def transpose(labeled_tensor, axis_order=None, name=None):
     axis_names = list(labeled_tensor.axes.keys())
     permutation = [axis_names.index(n) for n in axis_order]
 
-    # Note: TensorFlow doesn't copy data for the identity tranpose.
+    # Note: TensorFlow doesn't copy data for the identity transpose.
     transpose_tensor = array_ops.transpose(
         labeled_tensor.tensor, permutation, name=scope)
 

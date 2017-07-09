@@ -27,6 +27,7 @@ class PredictionKeys(object):
   """
 
   CLASSES = 'classes'
+  CLASS_IDS = 'class_ids'
   LOGISTIC = 'logistic'
   LOGITS = 'logits'
   PREDICTIONS = 'predictions'

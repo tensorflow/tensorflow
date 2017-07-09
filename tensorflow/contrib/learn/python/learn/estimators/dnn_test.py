@@ -126,6 +126,38 @@ class EmbeddingMultiplierTest(test.TestCase):
       self.assertFalse(np.all(np.isclose(wire_value, initial_value)))
 
 
+class ActivationFunctionTest(test.TestCase):
+
+  def _getModelForActivation(self, activation_fn):
+    embedding_language = feature_column.embedding_column(
+        feature_column.sparse_column_with_hash_bucket('language', 10),
+        dimension=1,
+        initializer=init_ops.constant_initializer(0.1))
+    params = {
+        'feature_columns': [embedding_language],
+        'head': head_lib.multi_class_head(2),
+        'hidden_units': [1],
+        'activation_fn': activation_fn,
+    }
+    features = {
+        'language':
+            sparse_tensor.SparseTensor(
+                values=['en', 'fr', 'zh'],
+                indices=[[0, 0], [1, 0], [2, 0]],
+                dense_shape=[3, 1]),
+    }
+    labels = constant_op.constant([[0], [0], [0]], dtype=dtypes.int32)
+    return dnn._dnn_model_fn(features, labels, model_fn.ModeKeys.TRAIN, params)
+
+  def testValidActivation(self):
+    _ = self._getModelForActivation('relu')
+
+  def testRaisesOnBadActivationName(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Activation name should be one of'):
+      self._getModelForActivation('max_pool')
+
+
 class DNNEstimatorTest(test.TestCase):
 
   def _assertInRange(self, expected_min, expected_max, actual):
@@ -157,8 +189,7 @@ class DNNEstimatorTest(test.TestCase):
       # than (y=Not(x)) due to the relative higher weight of the first row.
       labels = constant_op.constant([[1], [0], [0], [0]])
       features = {
-          'x': array_ops.ones(
-              shape=[4, 1], dtype=dtypes.float32),
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
           'w': constant_op.constant([[100.], [3.], [2.], [2.]])
       }
       return features, labels
@@ -167,8 +198,7 @@ class DNNEstimatorTest(test.TestCase):
       # Create 4 rows (y = x)
       labels = constant_op.constant([[1], [1], [1], [1]])
       features = {
-          'x': array_ops.ones(
-              shape=[4, 1], dtype=dtypes.float32),
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
           'w': constant_op.constant([[1.], [1.], [1.], [1.]])
       }
       return features, labels

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_tracker.h"
@@ -30,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 
@@ -53,17 +52,17 @@ CompileOnlyService::NewService(const ServiceOptions& options) {
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
-  std::unique_ptr<CompileOnlyService> service(
-      new CompileOnlyService(compiler, std::move(compute_constant_backend)));
+  std::unique_ptr<CompileOnlyService> service(new CompileOnlyService(
+      options, compiler, std::move(compute_constant_backend)));
   return std::move(service);
 }
 
 CompileOnlyService::CompileOnlyService(
-    Compiler* compiler, std::unique_ptr<Backend> compute_constant_backend)
-    : Service(/*backend=*/nullptr, std::move(compute_constant_backend)),
-      compiler_(compiler) {
-  runs_in_client_process_ = true;
-}
+    const ServiceOptions& options, Compiler* compiler,
+    std::unique_ptr<Backend> compute_constant_backend)
+    : Service(options, /*backend=*/nullptr,
+              std::move(compute_constant_backend)),
+      compiler_(compiler) {}
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
@@ -96,6 +95,8 @@ CompileOnlyService::CompileAheadOfTime(
         user_computation->ComputeProgramShape(versioned_handle.version));
 
     HloModuleConfig hlo_module_config(*program_shape);
+    hlo_module_config.set_debug_options(
+        legacy_flags::GetDebugOptionsFromFlags());
     auto* computation_layout =
         hlo_module_config.mutable_entry_computation_layout();
     if (flags->xla_hlo_profile) {
@@ -116,13 +117,12 @@ CompileOnlyService::CompileAheadOfTime(
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle, &hlo_module_config,
+                            versioned_handle, hlo_module_config,
                             /*include_unreachable_instructions=*/true));
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules),
-                                       MakeHloDumper(), options);
+  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
 }
 
 }  // namespace xla

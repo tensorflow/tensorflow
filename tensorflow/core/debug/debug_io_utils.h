@@ -40,41 +40,65 @@ struct DebugWatchAndURLSpec {
   const bool gated_grpc;
 };
 
+struct DebugNodeKey {
+  DebugNodeKey(const string& device_name, const string& node_name,
+               const int32 output_slot, const string& debug_op);
+
+  // Converts a device name string to a device path string.
+  // E.g., /job:localhost/replica:0/task:0/cpu:0 will be converted to
+  //   ,job_localhost,replica_0,task_0,cpu_0.
+  static const string DeviceNameToDevicePath(const string& device_name);
+
+  const string device_name;
+  const string node_name;
+  const int32 output_slot;
+  const string debug_op;
+  const string debug_node_name;
+  const string device_path;
+};
+
 class DebugIO {
  public:
+  static const char* const kDebuggerPluginName;
+
+  static const char* const kMetadataFilePrefix;
+  static const char* const kCoreMetadataTag;
+  static const char* const kDeviceTag;
+  static const char* const kGraphTag;
+  static const char* const kHashTag;
+
+  static const char* const kFileURLScheme;
+  static const char* const kGrpcURLScheme;
+
   static Status PublishDebugMetadata(
-      const int64 global_step, const int64 session_run_count,
-      const int64 executor_step_count, const std::vector<string>& input_names,
+      const int64 global_step, const int64 session_run_index,
+      const int64 executor_step_index, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
       const std::vector<string>& target_nodes,
       const std::unordered_set<string>& debug_urls);
 
-  // Publish a tensor to a debug target URL.
+  // Publishes a tensor to a debug target URL.
   //
   // Args:
-  //   tensor_name: Name of the tensor being published: node_name followed by
-  //     a colon, followed by the output slot index. E.g., "node_a:0".
-  //     N.B.: Use the original tensor name, i.e., name of the input tensor to
-  //     the debug op, even if the debug_op is not DebugIdentity.
-  //   debug_op: Name of the debug op, e.g., "DebugIdentity".
+  //   debug_node_key: A DebugNodeKey identifying the debug node.
   //   tensor: The Tensor object being published.
   //   wall_time_us: Time stamp for the Tensor. Unit: microseconds (us).
   //   debug_urls: An array of debug target URLs, e.g.,
   //     "file:///foo/tfdbg_dump", "grpc://localhost:11011"
   //   gated_grpc: Whether this call is subject to gRPC gating.
-  static Status PublishDebugTensor(const string& tensor_name,
-                                   const string& debug_op, const Tensor& tensor,
+  static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
+                                   const Tensor& tensor,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string>& debug_urls,
                                    const bool gated_grpc);
 
   // Convenience overload of the method above for no gated_grpc by default.
-  static Status PublishDebugTensor(const string& tensor_name,
-                                   const string& debug_op, const Tensor& tensor,
+  static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
+                                   const Tensor& tensor,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string>& debug_urls);
 
-  // Publish a graph to a set of debug URLs.
+  // Publishes a graph to a set of debug URLs.
   //
   // Args:
   //   graph: The graph to be published.
@@ -82,7 +106,7 @@ class DebugIO {
   static Status PublishGraph(const Graph& graph, const string& device_name,
                              const std::unordered_set<string>& debug_urls);
 
-  // Determine whether a copy node needs to perform deep-copy of input tensor.
+  // Determines whether a copy node needs to perform deep-copy of input tensor.
   //
   // The input arguments contain sufficient information about the attached
   // downstream debug ops for this method to determine whether all the said
@@ -99,7 +123,7 @@ class DebugIO {
   static bool IsCopyNodeGateOpen(
       const std::vector<DebugWatchAndURLSpec>& specs);
 
-  // Determine whether a debug node needs to proceed given the current gRPC
+  // Determines whether a debug node needs to proceed given the current gRPC
   // gating status.
   //
   // Args:
@@ -112,7 +136,7 @@ class DebugIO {
   static bool IsDebugNodeGateOpen(const string& watch_key,
                                   const std::vector<string>& debug_urls);
 
-  // Determine whether debug information should be sent through a grpc://
+  // Determines whether debug information should be sent through a grpc://
   // debug URL given the current gRPC gating status.
   //
   // Args:
@@ -128,15 +152,12 @@ class DebugIO {
                                  const string& debug_url);
 
   static Status CloseDebugURL(const string& debug_url);
-
-  static const char* const kFileURLScheme;
-  static const char* const kGrpcURLScheme;
 };
 
 // Helper class for debug ops.
 class DebugFileIO {
  public:
-  // Encapsulate the Tensor in an Event protobuf and write it to a directory.
+  // Encapsulates the Tensor in an Event protobuf and write it to a directory.
   // The actual path of the dump file will be a contactenation of
   // dump_root_dir, tensor_name, along with the wall_time.
   //
@@ -150,16 +171,12 @@ class DebugFileIO {
   //   /tmp/tfdbg_dump/foo/bar_0_DebugIdentity_1467891234512345.
   //
   // Args:
-  //   node_name: Name of the node from which the tensor is output.
-  //   output_slot: Output slot index.
-  //   debug_op: Name of the debug op, e.g., "DebugIdentity".
-  //   tensor: The Tensor object to be dumped to file.
+  //   debug_node_key: A DebugNodeKey identifying the debug node.
   //   wall_time_us: Wall time at which the Tensor is generated during graph
   //     execution. Unit: microseconds (us).
   //   dump_root_dir: Root directory for dumping the tensor.
   //   dump_file_path: The actual dump file path (passed as reference).
-  static Status DumpTensorToDir(const string& node_name,
-                                const int32 output_slot, const string& debug_op,
+  static Status DumpTensorToDir(const DebugNodeKey& debug_node_key,
                                 const Tensor& tensor, const uint64 wall_time_us,
                                 const string& dump_root_dir,
                                 string* dump_file_path);
@@ -174,19 +191,25 @@ class DebugFileIO {
   //   debug_op: Name of the debug op, e.g., DebugIdentity.
   //   wall_time_us: Time stamp of the dumped tensor, in microseconds (us).
   static string GetDumpFilePath(const string& dump_root_dir,
-                                const string& node_name,
-                                const int32 output_slot, const string& debug_op,
+                                const DebugNodeKey& debug_node_key,
                                 const uint64 wall_time_us);
 
+  // Dumps an Event proto to a file.
+  //
+  // Args:
+  //   event_prot: The Event proto to be dumped.
+  //   dir_name: Directory path.
+  //   file_name: Base file name.
   static Status DumpEventProtoToFile(const Event& event_proto,
                                      const string& dir_name,
                                      const string& file_name);
 
  private:
-  // Encapsulate the Tensor in an Event protobuf and write it to file.
-  static Status DumpTensorToEventFile(
-      const string& node_name, const int32 output_slot, const string& debug_op,
-      const Tensor& tensor, const uint64 wall_time_us, const string& file_path);
+  // Encapsulates the Tensor in an Event protobuf and write it to file.
+  static Status DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
+                                      const Tensor& tensor,
+                                      const uint64 wall_time_us,
+                                      const string& file_path);
 
   // Implemented ad hoc here for now.
   // TODO(cais): Replace with shared implementation once http://b/30497715 is
@@ -255,19 +278,23 @@ class DebugGrpcChannel {
 
 class DebugGrpcIO {
  public:
-  // Send a tensor through a debug gRPC stream.
-  static Status SendTensorThroughGrpcStream(
-      const string& node_name, const int32 output_slot, const string& debug_op,
-      const Tensor& tensor, const uint64 wall_time_us,
-      const string& grpc_stream_url, const bool gated);
+  static const size_t kGrpcMessageSizeLimitBytes;
+  static const size_t kGrpcMaxVarintLengthSize;
 
-  // Send an Event proto through a debug gRPC stream.
+  // Sends a tensor through a debug gRPC stream.
+  static Status SendTensorThroughGrpcStream(const DebugNodeKey& debug_node_key,
+                                            const Tensor& tensor,
+                                            const uint64 wall_time_us,
+                                            const string& grpc_stream_url,
+                                            const bool gated);
+
+  // Sends an Event proto through a debug gRPC stream.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to CloseGrpcStream().
   static Status SendEventProtoThroughGrpcStream(const Event& event_proto,
                                                 const string& grpc_stream_url);
 
-  // Check whether a debug watch key is allowed to send data to a given grpc://
+  // Checks whether a debug watch key is allowed to send data to a given grpc://
   // debug URL given the current gating status.
   //
   // Args:
@@ -280,16 +307,16 @@ class DebugGrpcIO {
   //     proceed.
   static bool IsGateOpen(const string& watch_key, const string& grpc_debug_url);
 
-  // Close a gRPC stream to the given address, if it exists.
+  // Closes a gRPC stream to the given address, if it exists.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to SendTensorThroughGrpcStream().
   static Status CloseGrpcStream(const string& grpc_stream_url);
 
-  // Enable a debug watch key at a grpc:// debug URL.
+  // Enables a debug watch key at a grpc:// debug URL.
   static void EnableWatchKey(const string& grpc_debug_url,
                              const string& watch_key);
 
-  // Disable a debug watch key at a grpc:// debug URL.
+  // Disables a debug watch key at a grpc:// debug URL.
   static void DisableWatchKey(const string& grpc_debug_url,
                               const string& watch_key);
 

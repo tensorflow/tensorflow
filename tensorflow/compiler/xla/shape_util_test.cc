@@ -322,6 +322,30 @@ TEST(ShapeUtilTest, GetSubshape) {
                        ShapeUtil::GetSubshape(nested_tuple_shape, {2, 0})));
 }
 
+TEST(ShapeUtilTest, IsLeafIndex) {
+  // Test array shape.
+  Shape array_shape = ShapeUtil::MakeShape(F32, {42, 42, 123});
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(array_shape, {}));
+
+  // Test tuple shape.
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({array_shape, array_shape});
+  EXPECT_FALSE(ShapeUtil::IsLeafIndex(tuple_shape, {}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(tuple_shape, {0}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(tuple_shape, {1}));
+
+  // Test nested tuple shape.
+  Shape nested_tuple_shape = ShapeUtil::MakeTupleShape(
+      {array_shape, ShapeUtil::MakeTupleShape({array_shape, array_shape}),
+       ShapeUtil::MakeTupleShape(
+           {ShapeUtil::MakeTupleShape({array_shape, array_shape}),
+            array_shape})});
+  EXPECT_FALSE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {0}));
+  EXPECT_FALSE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {1}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {1, 0}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {1, 1}));
+}
+
 TEST(ShapeUtilTest, HumanString) {
   Shape opaque = ShapeUtil::MakeOpaqueShape();
   Shape scalar = ShapeUtil::MakeShape(F32, {});
@@ -380,13 +404,12 @@ TEST(ShapeUtilTest, HumanString) {
 TEST(ShapeUtilTest, ForEachSubshapeArray) {
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   int calls = 0;
-  EXPECT_IS_OK(ShapeUtil::ForEachSubshape(
+  ShapeUtil::ForEachSubshape(
       shape, [&calls, &shape](const Shape& subshape, const ShapeIndex& index) {
         EXPECT_EQ(&shape, &subshape);
         EXPECT_TRUE(index.empty());
         ++calls;
-        return tensorflow::Status::OK();
-      }));
+      });
   EXPECT_EQ(1, calls);
 }
 
@@ -396,7 +419,7 @@ TEST(ShapeUtilTest, ForEachSubshapeNestedTuple) {
        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {101}),
                                   ShapeUtil::MakeShape(PRED, {33})})});
   int calls = 0;
-  EXPECT_IS_OK(ShapeUtil::ForEachSubshape(
+  ShapeUtil::ForEachSubshape(
       shape, [&calls, &shape](const Shape& subshape, const ShapeIndex& index) {
         EXPECT_TRUE(
             ShapeUtil::Equal(subshape, ShapeUtil::GetSubshape(shape, index)));
@@ -408,8 +431,7 @@ TEST(ShapeUtilTest, ForEachSubshapeNestedTuple) {
           EXPECT_EQ(33, ShapeUtil::ElementsIn(subshape));
         }
         ++calls;
-        return tensorflow::Status::OK();
-      }));
+      });
   EXPECT_EQ(5, calls);
 }
 
@@ -419,7 +441,7 @@ TEST(ShapeUtilTest, ForEachMutableSubshapeNestedTuple) {
        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {101}),
                                   ShapeUtil::MakeShape(PRED, {33})})});
   int calls = 0;
-  EXPECT_IS_OK(ShapeUtil::ForEachMutableSubshape(
+  ShapeUtil::ForEachMutableSubshape(
       &shape, [&calls, &shape](const Shape* subshape, const ShapeIndex& index) {
         // Pointer values should be equal
         EXPECT_EQ(subshape, ShapeUtil::GetMutableSubshape(&shape, index));
@@ -431,8 +453,7 @@ TEST(ShapeUtilTest, ForEachMutableSubshapeNestedTuple) {
           EXPECT_EQ(33, ShapeUtil::ElementsIn(*subshape));
         }
         ++calls;
-        return tensorflow::Status::OK();
-      }));
+      });
   EXPECT_EQ(5, calls);
 }
 
@@ -444,6 +465,34 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape1)));
   EXPECT_FALSE(std::get<0>(
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2)));
+}
+
+TEST(ShapeUtilTest, ForEachIndex) {
+  struct ShapeDimensionAndNumberInvocations {
+    std::vector<int64> dimensions;
+    int invocations;
+  } test_data[] = {
+      {{}, 1},     {{0}, 0},      {{16}, 16},          {{3, 0}, 0},
+      {{0, 2}, 0}, {{4, 16}, 64}, {{6, 11, 17}, 1122}, {{6, 11, 5, 17}, 5610},
+  };
+
+  for (const auto& data : test_data) {
+    Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
+    // Increments at every invocation.
+    int invocations = 0;
+    auto increment_func = [&invocations](const std::vector<int64>& indexes) {
+      invocations++;
+      return true;
+    };
+
+    std::vector<int64> zero_base(data.dimensions.size(), 0);
+    std::vector<int64> step(data.dimensions.size(), 1);
+
+    ShapeUtil::ForEachIndex(shape, zero_base, data.dimensions, step,
+                            increment_func);
+
+    EXPECT_EQ(invocations, data.invocations);
+  }
 }
 
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_1x1x1x1_to_1x1x1) {

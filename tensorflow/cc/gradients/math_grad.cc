@@ -162,6 +162,32 @@ Status Log1pGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Log1p", Log1pGrad);
 
+Status SinhGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = sinh(x)
+  // dy/dx = cosh(x)
+  auto dydx = Cosh(scope, op.input(0));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Sinh", SinhGrad);
+
+Status CoshGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = cosh(x)
+  // dy/dx = sinh(x)
+  auto dydx = Sinh(scope, op.input(0));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Cosh", CoshGrad);
+
 Status TanhGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
@@ -176,6 +202,46 @@ Status TanhGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Tanh", TanhGrad);
+
+Status AsinhGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = asinh(x)
+  // dy/dx = 1 / cosh(y)
+  auto dydx = Reciprocal(scope, Cosh(scope, op.output(0)));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Asinh", AsinhGrad);
+
+Status AcoshGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = acosh(x)
+  // dy/dx = 1 / sinh(y)
+  auto dydx = Reciprocal(scope, Sinh(scope, op.output(0)));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Acosh", AcoshGrad);
+
+Status AtanhGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = atanh(x)
+  // dy/dx = 1 / (1 - x^2)
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  auto dydx = Reciprocal(scope, Sub(scope, one, Square(scope, op.input(0))));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Atanh", AtanhGrad);
 
 Status SigmoidGrad(const Scope& scope, const Operation& op,
                    const std::vector<Output>& grad_inputs,

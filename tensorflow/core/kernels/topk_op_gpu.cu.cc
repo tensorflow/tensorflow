@@ -20,6 +20,8 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "external/cub_archive/cub/device/device_segmented_radix_sort.cuh"
+#include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +30,14 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+
+// Required for sorting Eigen::half
+namespace cub {
+template <>
+struct NumericTraits<Eigen::half>
+    : BaseTraits<FLOATING_POINT, true, false, unsigned short int, Eigen::half> {
+};
+}  // namespace cub
 
 namespace tensorflow {
 
@@ -346,16 +356,25 @@ __global__ void TopKKernel(const T* input, int length, int k, bool sorted,
     auto batch_indices = indices + offset;
     Entry<T>* top_k_heap = shared_entries + thread_count * k;
 
+    // TODO(blackhc): Erich says: Performance can likely be improved
+    // significantly by having the merge be done by multiple threads rather than
+    // just one.  ModernGPU has some nice primitives that could help with this.
     mergeShards(thread_count, k, shared_entries, top_k_heap, batch_output,
                 batch_indices);
   }
 }
 
 template <typename T>
-void LaunchTopKKernel(void* stream, int num_shards, const T* input,
-                      int batch_size, int length, int k, bool sorted, T* output,
-                      int* indices) {
-  // As many shards as possible.
+cudaError LaunchTopKKernel(cudaStream_t stream, int num_shards, const T* input,
+                           int batch_size, int length, int k, bool sorted,
+                           T* output, int* indices) {
+  // This code assumes that k is small enough that the computation
+  // fits inside shared memory (hard coded to 48KB).  In practice this
+  // means k <= 3072 for T=float/int32 and k <= 2048 for T=double/int64.
+  // The calculation is:
+  //   shared_memory_size / (2 * (sizeof(int) + sizeof(T))) < k.
+
+  // Use as many shards as possible.
   if (num_shards <= 0) {
     constexpr auto shared_memory_size = 48 << 10;  // 48 KB
     const auto heap_size = k * (sizeof(int) + sizeof(T));
@@ -378,9 +397,133 @@ void LaunchTopKKernel(void* stream, int num_shards, const T* input,
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
 
-  TopKKernel<<<batch_size, num_shards, shared_memory_size,
-               (cudaStream_t)stream>>>(input, length, k, sorted, output,
-                                       indices);
+  TopKKernel<<<batch_size, num_shards, shared_memory_size, stream>>>(
+      input, length, k, sorted, output, indices);
+  return cudaGetLastError();
+}
+
+struct SegmentOffsetCreator {
+  SegmentOffsetCreator(int num_cols) : num_cols_(num_cols) {}
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int operator()(
+      const Eigen::array<int, 1>& ix) const {
+    return ix[0] * num_cols_;
+  };
+  int num_cols_;
+};
+
+struct ColumnIndexCreator {
+  ColumnIndexCreator(int num_cols) : num_cols_(num_cols) {}
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int operator()(
+      const Eigen::array<int, 1>& ix) const {
+    return ix[0] % num_cols_;
+  }
+
+  int num_cols_;
+};
+
+template <typename T>
+Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
+                        int num_cols, int k,
+                        typename TTypes<T, 2>::Tensor values,
+                        TTypes<int, 2>::Tensor indices) {
+  const GPUDevice& d = ctx->eigen_device<GPUDevice>();
+  auto stream = ctx->eigen_gpu_device().stream();
+  size_t temp_storage_bytes = -1;
+
+  // TODO(ebrevdo): Once cub supports iterators for the ValueT and
+  // segment_offsets, replace these tensors with iterators that
+  // directly return the correct value.
+  Tensor input_indices;
+  TF_RETURN_IF_ERROR(ctx->allocate_temp(
+      DT_INT32, TensorShape({num_rows, num_cols}), &input_indices));
+  auto input_indices_t = To32Bit(input_indices.flat<int32>());
+  input_indices_t.device(d) =
+      input_indices_t.generate(ColumnIndexCreator(num_cols));
+
+  Tensor segment_offsets;
+  TF_RETURN_IF_ERROR(ctx->allocate_temp(DT_INT32, TensorShape({num_rows + 1}),
+                                        &segment_offsets));
+  auto segment_offsets_t = To32Bit(segment_offsets.flat<int32>());
+  segment_offsets_t.device(d) =
+      segment_offsets_t.generate(SegmentOffsetCreator(num_cols));
+
+  Tensor temp_values;
+  Tensor temp_indices;
+  T* sorted_values_ptr;
+  int* sorted_indices_ptr;
+  if (k == num_cols) {
+    // Doing a full sort, no intermediate values needed.
+    sorted_values_ptr = values.data();
+    sorted_indices_ptr = indices.data();
+  } else {
+    // Need to create intermediate values for sorting.
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(
+        DT_INT32, TensorShape({num_rows, num_cols}), &temp_indices));
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                          TensorShape({num_rows, num_cols}),
+                                          &temp_values));
+    sorted_indices_ptr = temp_indices.flat<int32>().data();
+    sorted_values_ptr = temp_values.flat<T>().data();
+  }
+
+  auto err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      /* d_temp_storage */ nullptr,
+      /* temp_storage_bytes */ temp_storage_bytes,
+      /* d_keys_in */ input,
+      /* d_keys_out */ sorted_values_ptr,
+      /* d_values_in */ input_indices_t.data(),
+      /* d_values_out */ sorted_indices_ptr,
+      /* num_items */ num_cols * num_rows,
+      /* num_segments */ num_rows,
+      /* d_begin_offsets */ segment_offsets_t.data(),
+      /* d_end_offsets */ segment_offsets_t.data() + 1,
+      /* begin_bit */ 0,
+      /* end_bit */ sizeof(T) * 8,
+      /* stream */ stream);
+  if (err != cudaSuccess) {
+    return errors::Internal(
+        "TopKOp: Could not launch "
+        "cub::DeviceSegmentedRadixSort::SortPairsDescending to calculate "
+        "temp_storage_bytes, status: ",
+        cudaGetErrorString(err));
+  }
+  Tensor temp_storage;
+  TF_RETURN_IF_ERROR(ctx->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+      &temp_storage));
+  err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+      /* d_temp_storage */ temp_storage.flat<int8>().data(),
+      /* temp_storage_bytes */ temp_storage_bytes,
+      /* d_keys_in */ input,
+      /* d_keys_out */ sorted_values_ptr,
+      /* d_values_in */ input_indices_t.data(),
+      /* d_values_out */ sorted_indices_ptr,
+      /* num_items */ num_cols * num_rows,
+      /* num_segments */ num_rows,
+      /* d_begin_offsets */ segment_offsets_t.data(),
+      /* d_end_offsets */ segment_offsets_t.data() + 1,
+      /* begin_bit */ 0,
+      /* end_bit */ sizeof(T) * 8,
+      /* stream */ stream);
+  if (err != cudaSuccess) {
+    return errors::Internal(
+        "TopKOp: Could not launch "
+        "cub::DeviceSegmentedRadixSort::SortPairsDescending to sort input, "
+        "temp_storage_bytes: ",
+        temp_storage_bytes, ", status: ", cudaGetErrorString(err));
+  }
+  if (k < num_cols) {
+    // Need to copy subsets of sorted_indices and sorted_outputs to
+    // indices and outputs.
+    const Eigen::DSizes<Eigen::DenseIndex, 2> slice_indices{0, 0};
+    const Eigen::DSizes<Eigen::DenseIndex, 2> slice_sizes{num_rows, k};
+    To32Bit(indices).device(d) =
+        To32Bit(temp_indices.matrix<int32>()).slice(slice_indices, slice_sizes);
+    To32Bit(values).device(d) =
+        To32Bit(temp_values.matrix<T>()).slice(slice_indices, slice_sizes);
+  }
+  return Status::OK();
 }
 
 }  // end namespace impl
@@ -389,14 +532,30 @@ namespace functor {
 
 template <typename T>
 struct TopKFunctor<GPUDevice, T> {
-  static EIGEN_ALWAYS_INLINE void Compute(
-      OpKernelContext* context, bool sorted, int k,
-      const typename TTypes<T, 2>::ConstTensor& input, const int64 num_rows,
-      const int64 num_cols, typename TTypes<T, 2>::Tensor* values,
-      typename TTypes<int, 2>::Tensor* indices) {
-    auto stream = context->eigen_gpu_device().stream();
-    impl::LaunchTopKKernel(stream, 0, input.data(), num_rows, num_cols, k,
-                           sorted, values->data(), indices->data());
+  static EIGEN_ALWAYS_INLINE Status
+  Compute(OpKernelContext* context, bool sorted, int k,
+          const typename TTypes<T, 2>::ConstTensor& input, const int64 num_rows,
+          const int64 num_cols, typename TTypes<T, 2>::Tensor values,
+          typename TTypes<int, 2>::Tensor indices) {
+    // For small k, use the heap implementation.  For larger k, use
+    // the in-place cub sort.  For k == num_cols, always use the
+    // in-place cub sort.  The thresholds for n and k were determined
+    // empirically.
+    if (num_cols <= 1000 || k == num_cols || k >= 100) {
+      return impl::LaunchSortKernel(context, input.data(), num_rows, num_cols,
+                                    k, values, indices);
+    } else {
+      auto stream = context->eigen_gpu_device().stream();
+      auto err = impl::LaunchTopKKernel(stream, /* num_shards */ 0,
+                                        input.data(), num_rows, num_cols, k,
+                                        sorted, values.data(), indices.data());
+      if (err != cudaSuccess) {
+        return errors::Internal(
+            "Could not launch TopKKernel: ", cudaGetErrorString(err), ".");
+      } else {
+        return Status::OK();
+      }
+    }
   }
 };
 
@@ -405,7 +564,7 @@ struct TopKFunctor<GPUDevice, T> {
 #define INSTANTIATE_TEMPLATE(type) \
   template struct functor::TopKFunctor<GPUDevice, type>;
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(INSTANTIATE_TEMPLATE);
+TF_CALL_GPU_NUMBER_TYPES(INSTANTIATE_TEMPLATE);
 TF_CALL_INTEGRAL_TYPES(INSTANTIATE_TEMPLATE);
 #undef INSTANTIATE_TEMPLATE
 

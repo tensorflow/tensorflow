@@ -17,6 +17,9 @@
 
 See the @{$python/test} guide.
 
+Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
+depending on the python version.
+
 @@main
 @@TestCase
 @@test_src_dir_path
@@ -60,6 +63,9 @@ else:
 
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
+
+# Import StubOutForTesting class
+StubOutForTesting = _googletest.StubOutForTesting  # pylint: disable=invalid-name
 
 
 def main(argv=None):
@@ -117,6 +123,7 @@ _allowed_symbols = [
     # We piggy-back googletest documentation.
     'Benchmark',
     'mock',
+    'StubOutForTesting',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

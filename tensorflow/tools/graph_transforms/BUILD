@@ -217,6 +217,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -239,7 +240,6 @@ cc_binary(
     deps = [
         ":transform_utils",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
@@ -249,7 +249,12 @@ py_library(
     name = "transform_graph_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:pywrap_tensorflow"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
 )
 
 tf_py_test(

@@ -29,11 +29,16 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -42,22 +47,20 @@ py_test(
     name = "delay_compensated_gradient_descent_test",
     srcs = ["python/training/delay_compensated_gradient_descent_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":opt_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
     ],
 )
 
 py_test(
     name = "external_optimizer_test",
+    size = "small",
     srcs = ["python/training/external_optimizer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -75,6 +78,7 @@ py_test(
 
 py_test(
     name = "moving_average_optimizer_test",
+    size = "small",
     srcs = ["python/training/moving_average_optimizer_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -86,7 +90,6 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -97,6 +100,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",  # Flaky: b/29892493
+        "notap",  # data race due to b/62910646
     ],
     deps = [
         ":opt_py",
@@ -111,6 +115,7 @@ py_test(
 
 py_test(
     name = "lazy_adam_optimizer_test",
+    size = "small",
     srcs = ["python/training/lazy_adam_optimizer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -128,16 +133,19 @@ py_test(
 
 py_test(
     name = "nadam_optimizer_test",
+    size = "small",
     srcs = ["python/training/nadam_optimizer_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -145,6 +153,7 @@ py_test(
 
 tf_py_test(
     name = "drop_stale_gradient_optimizer_test",
+    size = "small",
     srcs = ["python/training/drop_stale_gradient_optimizer_test.py"],
     additional_deps = [
         ":opt_py",

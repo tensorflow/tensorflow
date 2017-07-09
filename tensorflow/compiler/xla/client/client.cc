@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -58,14 +60,13 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
         "server provided response without a literal in "
         "TransferToClient request");
   }
-
-  return WrapUnique(response.release_literal());
+  return MakeUnique<Literal>(response.literal());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
     const Literal& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
-  *request.mutable_literal() = literal;
+  *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
     *request.mutable_device_handle() = *device_handle;
   }
@@ -93,7 +94,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
 Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
-  *request.mutable_literal() = literal;
+  *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
     *request.mutable_device_handle() = *device_handle;
   }
@@ -141,7 +142,8 @@ StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
         "TransferToClient request");
   }
 
-  return WrapUnique(response.release_literal());
+  Literal literal(response.literal());
+  return MakeUnique<Literal>(literal);
 }
 
 Status Client::ResetDevice() {
@@ -197,7 +199,10 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     ExecutionProfile* execution_profile) {
   ExecuteRequest request;
   *request.mutable_computation() = computation.handle();
-  if (execution_options != nullptr) {
+
+  if (execution_options == nullptr) {
+    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
+  } else {
     *request.mutable_execution_options() = *execution_options;
   }
   for (GlobalData* argument : arguments) {
@@ -298,7 +303,9 @@ StatusOr<ExecutionHandle> Client::ExecuteAsync(
   for (GlobalData* argument : arguments) {
     *request.add_arguments() = argument->handle();
   }
-  if (execution_options != nullptr) {
+  if (execution_options == nullptr) {
+    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
+  } else {
     *request.mutable_execution_options() = *execution_options;
   }
 
@@ -376,9 +383,10 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 }
 
 StatusOr<ComputationStats> Client::GetComputationStats(
-    const Computation& computation) const {
+    const Computation& computation, const DebugOptions& debug_options) const {
   ComputationStatsRequest request;
   *request.mutable_computation() = computation.handle();
+  *request.mutable_debug_options() = debug_options;
   ComputationStatsResponse response;
 
   VLOG(1) << "making computation stats request";
@@ -427,7 +435,10 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
 
 StatusOr<string> Client::ExecutionStatsAsString(
     const Computation& computation, const ExecutionProfile& profile) {
-  TF_ASSIGN_OR_RETURN(auto computation_stats, GetComputationStats(computation));
+  TF_ASSIGN_OR_RETURN(
+      auto computation_stats,
+      GetComputationStats(computation,
+                          legacy_flags::GetDebugOptionsFromFlags()));
   int64 total_flops =
       computation_stats.flop_count() + computation_stats.transcendental_count();
   if (profile.compute_time_ns() > 0) {

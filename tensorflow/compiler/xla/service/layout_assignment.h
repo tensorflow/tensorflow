@@ -246,6 +246,12 @@ class LayoutAssignment : public HloPassInterface {
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
+  // Called after layouts of an instruction have been finalized to allow
+  // subclasses to check for platform specific assumptions.
+  virtual Status Verify(const HloInstruction* instruction) {
+    return Status::OK();
+  }
+
   // Propagates a buffer layout constraint into the operands that use it.
   Status PropagateBufferConstraintToUses(
       const BufferLayoutConstraint& layout_constraint,

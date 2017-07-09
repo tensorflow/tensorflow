@@ -16,7 +16,6 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/batch_norm_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"

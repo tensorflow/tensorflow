@@ -39,13 +39,22 @@ class CompilerFunctor {
   // Returns a VectorIntrinsics where all intrinsics are available.
   static VectorIntrinsics AllIntrinsics();
 
-  explicit CompilerFunctor(llvm::TargetMachine* target_machine,
-                           const Disassembler* disassembler, int opt_level,
-                           const VectorIntrinsics& available_intrinsics)
+  // A callback of this type can be run before and/or after IR-level
+  // optimization to e.g. dump out the generated IR to disk or gather some
+  // statistics.
+  using OptimizationCallback = std::function<Status(const llvm::Module&)>;
+
+  explicit CompilerFunctor(
+      llvm::TargetMachine* target_machine, const Disassembler* disassembler,
+      int opt_level, const VectorIntrinsics& available_intrinsics,
+      OptimizationCallback pre_optimization_callback = nullptr,
+      OptimizationCallback post_optimization_callback = nullptr)
       : target_machine_(target_machine),
         disassembler_(CHECK_NOTNULL(disassembler)),
         opt_level_(opt_level),
-        available_intrinsics_(available_intrinsics) {}
+        available_intrinsics_(available_intrinsics),
+        pre_optimization_callback_(pre_optimization_callback),
+        post_optimization_callback_(post_optimization_callback) {}
 
   // Compile a Module to an ObjectFile.
   llvm::object::OwningBinary<llvm::object::ObjectFile> operator()(
@@ -61,6 +70,8 @@ class CompilerFunctor {
   const Disassembler* disassembler_;
   const unsigned opt_level_;
   const VectorIntrinsics available_intrinsics_;
+  OptimizationCallback pre_optimization_callback_;
+  OptimizationCallback post_optimization_callback_;
 };
 
 }  // namespace cpu

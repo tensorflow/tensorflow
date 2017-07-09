@@ -68,7 +68,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
       auto range = constants.equal_range(shape_string);
       HloInstruction* match = nullptr;
       for (auto it = range.first; it != range.second; ++it) {
-        if (LiteralUtil::Equal(instruction->literal(), it->second->literal())) {
+        if (instruction->literal().Equal(it->second->literal())) {
           match = it->second;
           break;
         }

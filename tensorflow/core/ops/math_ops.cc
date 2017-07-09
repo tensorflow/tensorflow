@@ -293,8 +293,28 @@ Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
 )doc");
 
+REGISTER_OP("Sinh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic sine of x element-wise.
+)doc");
+
+REGISTER_OP("Cosh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic cosine of x element-wise.
+)doc");
+
 REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
+)doc");
+
+REGISTER_OP("Asinh").UNARY_COMPLEX().Doc(R"doc(
+Computes inverse hyperbolic sine of x element-wise.
+)doc");
+
+REGISTER_OP("Acosh").UNARY_COMPLEX().Doc(R"doc(
+Computes inverse hyperbolic cosine of x element-wise.
+)doc");
+
+REGISTER_OP("Atanh").UNARY_COMPLEX().Doc(R"doc(
+Computes inverse hyperbolic tangent of x element-wise.
 )doc");
 
 REGISTER_OP("TanhGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
@@ -927,18 +947,33 @@ REGISTER_OP("Select")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data_1 = c->input_handle_shapes_and_types(1);
+      auto* handle_data_2 = c->input_handle_shapes_and_types(2);
       // Merge handle shape and dtype if applicable.
-      if (c->input_handle_dtype(1) != c->input_handle_dtype(2)) {
-        // TODO(apassos) resolve this in the manner of b/32476923
-        return errors::InvalidArgument(
-            "Trying to merge handles pointing to different dtypes.");
+      if (handle_data_1 != nullptr && handle_data_2 != nullptr) {
+        const auto size = handle_data_1->size();
+        std::vector<shape_inference::ShapeAndType> merged_handle_data(size);
+        if (size != handle_data_2->size()) {
+          return errors::InvalidArgument(
+              "Trying to merge handles pointing to different numbers of "
+              "tensors.");
+        }
+
+        for (int i = 0; i < size; ++i) {
+          const shape_inference::ShapeAndType& s1 = (*handle_data_1)[i];
+          const shape_inference::ShapeAndType& s2 = (*handle_data_2)[i];
+          if (s1.dtype != s2.dtype) {
+            // TODO(apassos) resolve this in the manner of b/32476923
+            return errors::InvalidArgument(
+                "Trying to merge handles pointing to different dtypes.");
+          }
+          merged_handle_data[i].dtype = s1.dtype;
+          TF_RETURN_IF_ERROR(
+              c->Merge(s1.shape, s2.shape, &merged_handle_data[i].shape));
+        }
+
+        c->set_output_handle_shapes_and_types(0, merged_handle_data);
       }
-      c->set_output_handle_dtype(0, c->input_handle_dtype(1));
-      ShapeHandle output_handle_shape;
-      TF_RETURN_IF_ERROR(c->Merge(c->input_handle_shape(1),
-                                  c->input_handle_shape(2),
-                                  &output_handle_shape));
-      c->set_output_handle_shape(0, output_handle_shape);
 
       // The inputs 'then' and 'else' must have the same shape.
       ShapeHandle data = c->input(1);
@@ -1015,15 +1050,14 @@ element to copy from `t` and `e`.
 
 For example:
 
-```prettyprint
+```python
 # 'condition' tensor is [[True,  False]
 #                        [False, True]]
 # 't' is [[1, 2],
 #         [3, 4]]
 # 'e' is [[5, 6],
 #         [7, 8]]
-select(condition, t, e) ==> [[1, 6],
-                             [7, 4]]
+select(condition, t, e)  # => [[1, 6], [7, 4]]
 
 
 # 'condition' tensor is [True, False]
@@ -1086,6 +1120,9 @@ The inputs must be two-dimensional matrices and the inner dimension of "a" must
 match the outer dimension of "b". This op is optimized for the case where at
 least one of "a" or "b" is sparse. The breakeven for using this versus a dense
 matrix multiply on one platform was 30% zero values in the sparse matrix.
+
+The gradient computation of this operation will only take advantage of sparsity
+in the input gradient when that gradient comes from a Relu.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1264,33 +1301,37 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
 REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: Tidx")
-    .Output("output: int64")
+    .Output("output: output_type")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
 Note that in case of ties the identity of the return value is not guaranteed.
 
-dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
-  of the input Tensor to reduce across. For vectors, use dimension = 0.
+dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
+  which dimension of the input Tensor to reduce across. For vectors,
+  use dimension = 0.
 )doc");
 
 REGISTER_OP("ArgMin")
     .Input("input: T")
     .Input("dimension: Tidx")
-    .Output("output: int64")
+    .Output("output: output_type")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
 
 Note that in case of ties the identity of the return value is not guaranteed.
 
-dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
-  of the input Tensor to reduce across. For vectors, use dimension = 0.
+dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
+  which dimension of the input Tensor to reduce across. For vectors,
+  use dimension = 0.
 )doc");
 
 namespace {
@@ -1646,22 +1687,22 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
 
 For example:
 
-```prettyprint
+```python
 c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
 
 # Select two rows, one segment.
 tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
-  ==> [[0 0 0 0]]
+# => [[0 0 0 0]]
 
 # Select two rows, two segment.
 tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
-  ==> [[ 1  2  3  4]
-       [-1 -2 -3 -4]]
+# => [[ 1  2  3  4]
+#     [-1 -2 -3 -4]]
 
 # Select all rows, two segments.
 tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
-  ==> [[0 0 0 0]
-       [5 6 7 8]]
+# => [[0 0 0 0]
+#     [5 6 7 8]]
 
 # Which is equivalent to:
 tf.segment_sum(c, tf.constant([0, 0, 1]))
@@ -2074,7 +2115,6 @@ REGISTER_OP("Bincount")
     .Output("bins: T")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(1));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(2));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -2112,26 +2152,31 @@ Compute the cumulative sum of the tensor `x` along `axis`.
 
 By default, this op performs an inclusive cumsum, which means that the first
 element of the input is identical to the first element of the output:
-```prettyprint
-tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+
+```python
+tf.cumsum([a, b, c])  # => [a, a + b, a + b + c]
 ```
 
 By setting the `exclusive` kwarg to `True`, an exclusive cumsum is
 performed instead:
-```prettyprint
-tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+
+```python
+tf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumsum is performed in the
 opposite direction:
-```prettyprint
-tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+
+```python
+tf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]
 ```
+
 This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
-```prettyprint
-tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
+
+```python
+tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
 ```
 )doc");
 
@@ -2149,26 +2194,31 @@ Compute the cumulative product of the tensor `x` along `axis`.
 
 By default, this op performs an inclusive cumprod, which means that the first
 element of the input is identical to the first element of the output:
-```prettyprint
-tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+
+```python
+tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
 ```
 
 By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
 performed instead:
-```prettyprint
-tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
+
+```python
+tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumprod is performed in the
 opposite direction:
-```prettyprint
-tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
+
+```python
+tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
 ```
+
 This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
-```prettyprint
-tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
+
+```python
+tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
 ```
 )doc");
 
@@ -2237,7 +2287,12 @@ REGISTER_OP("QuantizedMul")
     .Attr("T2: quantizedtype")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .SetIsCommutative()
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns x * y element-wise, working on quantized buffers.
 
@@ -2266,7 +2321,12 @@ REGISTER_OP("QuantizedAdd")
     .Attr("T2: quantizedtype")
     .Attr("Toutput: quantizedtype = DT_QINT32")
     .SetIsCommutative()
-    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns x + y element-wise, working on quantized buffers.
 

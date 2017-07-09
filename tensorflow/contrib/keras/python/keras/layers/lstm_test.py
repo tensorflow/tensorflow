@@ -189,6 +189,109 @@ class LSTMLayerTest(test.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
+  def test_specify_initial_state_keras_tensor(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    with self.test_session():
+      # Test with Keras tensor
+      inputs = keras.Input((timesteps, embedding_dim))
+      initial_state = [keras.Input((units,)) for _ in range(num_states)]
+      layer = keras.layers.LSTM(units)
+      if len(initial_state) == 1:
+        output = layer(inputs, initial_state=initial_state[0])
+      else:
+        output = layer(inputs, initial_state=initial_state)
+      assert initial_state[0] in layer.inbound_nodes[0].input_tensors
+
+      model = keras.models.Model([inputs] + initial_state, output)
+      model.compile(loss='categorical_crossentropy', optimizer='adam')
+
+      inputs = np.random.random((num_samples, timesteps, embedding_dim))
+      initial_state = [np.random.random((num_samples, units))
+                       for _ in range(num_states)]
+      targets = np.random.random((num_samples, units))
+      model.train_on_batch([inputs] + initial_state, targets)
+
+  def test_specify_initial_state_non_keras_tensor(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    with self.test_session():
+      # Test with non-Keras tensor
+      inputs = keras.Input((timesteps, embedding_dim))
+      initial_state = [keras.backend.random_normal_variable(
+          (num_samples, units), 0, 1)
+                       for _ in range(num_states)]
+      layer = keras.layers.LSTM(units)
+      output = layer(inputs, initial_state=initial_state)
+
+      model = keras.models.Model(inputs, output)
+      model.compile(loss='categorical_crossentropy', optimizer='adam')
+
+      inputs = np.random.random((num_samples, timesteps, embedding_dim))
+      targets = np.random.random((num_samples, units))
+      model.train_on_batch(inputs, targets)
+
+  def test_reset_states_with_values(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    with self.test_session():
+      layer = keras.layers.LSTM(units, stateful=True)
+      layer.build((num_samples, timesteps, embedding_dim))
+      layer.reset_states()
+      assert len(layer.states) == num_states
+      assert layer.states[0] is not None
+      np.testing.assert_allclose(
+          keras.backend.eval(layer.states[0]),
+          np.zeros(keras.backend.int_shape(layer.states[0])),
+          atol=1e-4)
+      state_shapes = [keras.backend.int_shape(state) for state in layer.states]
+      values = [np.ones(shape) for shape in state_shapes]
+      if len(values) == 1:
+        values = values[0]
+      layer.reset_states(values)
+      np.testing.assert_allclose(
+          keras.backend.eval(layer.states[0]),
+          np.ones(keras.backend.int_shape(layer.states[0])),
+          atol=1e-4)
+
+      # Test with invalid data
+      with self.assertRaises(ValueError):
+        layer.reset_states([1] * (len(layer.states) + 1))
+
+  def test_specify_state_with_masking(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    with self.test_session():
+      inputs = keras.Input((timesteps, embedding_dim))
+      _ = keras.layers.Masking()(inputs)
+      initial_state = [keras.Input((units,)) for _ in range(num_states)]
+      output = keras.layers.LSTM(units)(inputs, initial_state=initial_state)
+
+      model = keras.models.Model([inputs] + initial_state, output)
+      model.compile(loss='categorical_crossentropy', optimizer='adam')
+
+      inputs = np.random.random((num_samples, timesteps, embedding_dim))
+      initial_state = [np.random.random((num_samples, units))
+                       for _ in range(num_states)]
+      targets = np.random.random((num_samples, units))
+      model.train_on_batch([inputs] + initial_state, targets)
+
 
 if __name__ == '__main__':
   test.main()

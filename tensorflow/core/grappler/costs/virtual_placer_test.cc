@@ -37,12 +37,50 @@ TEST(VirtualPlacerTest, LocalDevices) {
   NodeDef node;
   node.set_op("Conv2D");
   EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:localhost/replica:0/task:0/gpu:0",
+            placer.get_canonical_device_name(node));
 
   node.set_device("CPU");
   EXPECT_EQ("CPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:localhost/replica:0/task:0/cpu:0",
+            placer.get_canonical_device_name(node));
 
   node.set_device("GPU:0");
   EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:localhost/replica:0/task:0/gpu:0",
+            placer.get_canonical_device_name(node));
+}
+
+TEST(VirtualPlacerTest, FallBackUnknown) {
+  // Virtual placer falls back to "UNKNOWN" only if there are no devices in the
+  // cluster.
+  std::unordered_map<string, DeviceProperties> devices;
+  VirtualCluster cluster(devices);
+  VirtualPlacer placer(&cluster);
+
+  NodeDef node;
+  node.set_op("Conv2D");
+
+  // Device falls back to UNKNOWN since the cluster has no devices.
+  EXPECT_EQ("UNKNOWN", placer.get_device(node).type());
+  EXPECT_EQ("UNKNOWN", placer.get_canonical_device_name(node));
+}
+
+TEST(VirtualPlacerTest, FallBackCPU) {
+  std::unordered_map<string, DeviceProperties> devices;
+  DeviceProperties cpu_device;
+  cpu_device.set_type("CPU");
+  devices["/job:my_job/replica:0/task:0/cpu:0"] = cpu_device;
+  VirtualCluster cluster(devices);
+  VirtualPlacer placer(&cluster);
+
+  NodeDef node;
+  node.set_op("Conv2D");
+
+  // Device falls back to CPU since there is no GPU.
+  EXPECT_EQ("CPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:my_job/replica:0/task:0/cpu:0",
+            placer.get_canonical_device_name(node));
 }
 
 TEST(VirtualPlacerTest, RemoteDevices) {
@@ -58,26 +96,39 @@ TEST(VirtualPlacerTest, RemoteDevices) {
 
   NodeDef node;
   node.set_op("Conv2D");
-  // There is no local device available
-  EXPECT_EQ("UNKNOWN", placer.get_device(node).type());
+
+  // Device falls back to GPU.
+  EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+            placer.get_canonical_device_name(node));
 
   node.set_device("/job:my_job/replica:0/task:0/cpu:0");
   EXPECT_EQ("CPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:my_job/replica:0/task:0/cpu:0",
+            placer.get_canonical_device_name(node));
 
   node.set_device("/job:my_job/replica:0/task:0/gpu:0");
   EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+            placer.get_canonical_device_name(node));
 
-  // There is no local CPU available
+  // There is no local cpu available. Device falls back to GPU.
   node.set_device("CPU");
-  EXPECT_EQ("UNKNOWN", placer.get_device(node).type());
+  EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+            placer.get_canonical_device_name(node));
 
   node.set_device("GPU:0");
-  // There is no local GPU available
-  EXPECT_EQ("UNKNOWN", placer.get_device(node).type());
+  // There is no local GPU available. Fall back to default GPU.
+  EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+            placer.get_canonical_device_name(node));
 
-  // This isn't a valid name
+  // This isn't a valid name. Fall back to GPU.
   node.set_device("/job:my_job/replica:0/task:0");
-  EXPECT_EQ("UNKNOWN", placer.get_device(node).type());
+  EXPECT_EQ("GPU", placer.get_device(node).type());
+  EXPECT_EQ("/job:my_job/replica:0/task:0/gpu:0",
+            placer.get_canonical_device_name(node));
 }
 
 }  // end namespace grappler

@@ -32,8 +32,8 @@ PY_TEST_QUERY = """bazel query 'deps(\
   filter("^((?!benchmark).)*$",\
   kind(py_test,\
   //tensorflow/python/... \
-  + //tensorflow/tensorboard/... \
   + //tensorflow/contrib/... \
+  - //tensorflow/contrib/tensorboard/... \
   - attr(tags, "manual|no_pip", //tensorflow/...))), 1)'"""
 
 # Hard-coded blacklist of files if not included in pip package
@@ -46,6 +46,7 @@ BLACKLIST = [
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
+    "//tensorflow/core:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
@@ -56,8 +57,15 @@ BLACKLIST = [
     "//tensorflow/contrib/factorization/examples:mnist",
     "//tensorflow/contrib/factorization/examples:mnist.py",
     "//tensorflow/contrib/factorization:factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/framework:checkpoint_ops_testdata",
     "//tensorflow/contrib/bayesflow:reinforce_simple_example",
     "//tensorflow/contrib/bayesflow:examples/reinforce_simple/reinforce_simple_example.py",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/timeseries/examples:predict",
+    "//tensorflow/contrib/timeseries/examples:multivariate",
+    "//tensorflow/contrib/timeseries/examples:known_anomaly",
+    "//tensorflow/contrib/timeseries/examples:data/period_trend.csv",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
+    "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:test_utils",  # pylint:disable=line-too-long
 ]
 
 

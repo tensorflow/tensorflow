@@ -51,9 +51,11 @@ from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
 from tensorflow.contrib import quantization
+from tensorflow.contrib import resampler
 from tensorflow.contrib import rnn
 from tensorflow.contrib import saved_model
 from tensorflow.contrib import seq2seq
+from tensorflow.contrib import signal
 from tensorflow.contrib import slim
 from tensorflow.contrib import solvers
 from tensorflow.contrib import sparsemax
@@ -64,14 +66,17 @@ from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing
 from tensorflow.contrib import tfprof
+from tensorflow.contrib import timeseries
+from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.ndlstm import python as ndlstm
+from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
 
 from tensorflow.python.util.lazy_loader import LazyLoader
-ffmpeg = LazyLoader("ffmpeg", globals(),
-                    "tensorflow.contrib.ffmpeg")
+ffmpeg = LazyLoader("ffmpeg",
+                    globals(), "tensorflow.contrib.ffmpeg")
 del LazyLoader
 
 del absolute_import

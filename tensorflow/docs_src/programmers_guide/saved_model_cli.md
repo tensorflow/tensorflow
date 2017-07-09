@@ -189,7 +189,7 @@ inputs that match the dtype and shape of the model signature.
 
 By default, SavedModel CLI will print outputs to console. If a directory is
 passed to `--outdir` option, the outputs will be saved as npy files named after
-output tensor keys under the given directory. Use `--overwite` to overwrite
+output tensor keys under the given directory. Use `--overwrite` to overwrite
 existing output files.
 
 #### TensorFlow Debugger (tfdbg) Integration
