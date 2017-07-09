@@ -364,8 +364,10 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
               val.shape().AsProto(tensor_proto->mutable_tensor_shape());
               grpc::EncodeRecvTensorResponseToByteBuffer(proto, response);
               done(Status::OK());
+              return;
             }
-          } else {
+          }
+          {
             // Non-DMA cases.
             if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
 #if GOOGLE_CUDA

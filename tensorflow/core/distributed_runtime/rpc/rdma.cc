@@ -252,6 +252,20 @@ class RdmaReadClient : public RdmaClient {
     void* addr = buffer->data();
     size_t length = buffer->size();
     ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
+
+    Tensor host_copy;
+    if (mr == nullptr &&
+        dst_device->tensorflow_gpu_device_info() && (!on_host)) {
+#if GOOGLE_CUDA
+      Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+      host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
+      buffer = DMAHelper::buffer(&host_copy);
+      addr = buffer->data();
+      buffer->size();
+      mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
+#endif
+    }
+
     if (mr == nullptr) {
       return errors::Unavailable("Cannot find pinned memory region");
     }
@@ -279,8 +293,24 @@ class RdmaReadClient : public RdmaClient {
       return errors::Unavailable(ibv_wc_status_str(wc.status));
     }
 
-    uint64_t end = Env::Default()->NowMicros();
+#if GOOGLE_CUDA
+    if (host_copy.NumElements() > 0) {
+      Status s;
+      Notification n;
+      GPUUtil::CopyCPUTensorToGPU(&host_copy, dst_device_context,
+                                  dst_device, tensor,
+                                  [&s, &n](const Status& status) {
+                                    s.Update(status);
+                                    n.Notify();
+                                  });
+      n.WaitForNotification();
+      if (!s.ok()) {
+        return s;
+      }
+    }
+#endif
 
+    // TODO: Remove code used for debugging purposes only
     string tensor_debug_string;
     if (dst_device->tensorflow_gpu_device_info() && (!on_host)) {
 #if GOOGLE_CUDA
@@ -291,10 +321,6 @@ class RdmaReadClient : public RdmaClient {
     } else {
       tensor_debug_string = tensor->DebugString();
     }
-    VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
-            << " to " << tensor_debug_string
-            << " with tensor key " << remote_mr.tensor_key()
-            << " took " << (end - start) << " micros";
 
     uint64_t checksum = 0;
 #if GOOGLE_CUDA
@@ -307,6 +333,14 @@ class RdmaReadClient : public RdmaClient {
         << "Checksum mismatch for "
         << tensor_debug_string;
 #endif
+
+    uint64_t end = Env::Default()->NowMicros();
+
+    VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
+            << " to " << tensor_debug_string
+            << " of size " << buffer->size()
+            << " with tensor key " << remote_mr.tensor_key()
+            << " took " << (end - start) << " micros";
 
     return Status::OK();
   }
@@ -489,6 +523,34 @@ class RdmaReadServer : public RdmaServer {
     }
 
     ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
+
+    Tensor host_copy;
+    if (mr == nullptr &&
+        src_device->tensorflow_gpu_device_info() && (!on_host)) {
+#if GOOGLE_CUDA
+      Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+      host_copy = Tensor(alloc, tensor.dtype(), tensor.shape());
+      Status s;
+      Notification n;
+      GPUUtil::CopyGPUTensorToCPU(src_device,
+                                  src_device_context,
+                                  &tensor,
+                                  &host_copy,
+                                  [&s, &n](const Status& status) {
+                                    s.Update(status);
+                                    n.Notify();
+                                  });
+      n.WaitForNotification();
+      if (!s.ok()) {
+        return s;
+      }
+      buffer = DMAHelper::buffer(&host_copy);
+      addr = buffer->data();
+      buffer->size();
+      mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
+#endif
+    }
+
     if (mr == nullptr) {
       return errors::Unavailable("Cannot find pinned memory region");
     }
@@ -500,6 +562,7 @@ class RdmaReadServer : public RdmaServer {
       tensor_buffers_.insert({tensor_key, buffer});
     }
 
+    // TODO: Remove code used for debugging purposes only
     uint64_t checksum = 0;
 #if GOOGLE_CUDA
     if (src_device->tensorflow_gpu_device_info() && (!on_host)) {
