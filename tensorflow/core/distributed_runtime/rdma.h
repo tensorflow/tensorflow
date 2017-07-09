@@ -11,12 +11,17 @@ class Any;
 
 namespace tensorflow {
 
-class TensorBuffer;
+class Device;
+class DeviceContext;
+class Tensor;
 
 class RdmaClient {
  public:
   using Any = ::google::protobuf::Any;
-  virtual Status ReadTensorViaDMA(const TensorBuffer* buffer,
+  virtual Status ReadTensorViaDMA(Tensor* tensor,
+                                  Device* dst_device,
+                                  DeviceContext* dst_device_context,
+                                  bool on_host,
                                   const Any& transport_options) = 0;
 };
 
@@ -29,7 +34,10 @@ class RdmaServer {
   virtual void Stop() = 0;
 
   using Any = ::google::protobuf::Any;
-  virtual Status RegisterTensorDMA(const TensorBuffer* buffer,
+  virtual Status RegisterTensorDMA(const Tensor& tensor,
+                                   Device* src_device,
+                                   DeviceContext* src_device_context,
+                                   bool on_host,
                                    Any* mutable_transport_options) = 0;
 };
 

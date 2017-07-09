@@ -1,10 +1,12 @@
 #include "tensorflow/core/distributed_runtime/rpc/rdma.h"
 
 #include <atomic>
-#include <map>
-#include <list>
-#include <memory>
+#include <fstream>
 #include <functional>
+#include <iostream>
+#include <list>
+#include <map>
+#include <memory>
 
 #include <sys/fcntl.h>
 
@@ -12,7 +14,10 @@
 #include <rdma/rdma_verbs.h>
 
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 #endif
 #include "tensorflow/core/framework/allocator_registry.h"
@@ -43,25 +48,28 @@ using RdmaEndpointPtr = std::unique_ptr<rdma_cm_id, decltype(&EndpointDeleter)>;
 
 using MemoryRegionPtr = std::unique_ptr<ibv_mr, decltype(&MRDeleter)>;
 
+bool IsGDRAvailable() {
+  std::ifstream ifs("/proc/modules");
+  string line;
+  while (std::getline(ifs, line)) {
+    auto sep = line.find(' ');
+    CHECK_NE(sep, std::string::npos);
+    if (line.substr(0, sep) == "nv_peer_mem") {
+      return true;
+    }
+  }
+  return false;
+}
+
 static int TryToReadNumaNode(ibv_device* device) {
 
   static const int kUnknownNumaNode = -1;
-  LOG(INFO) << "Trying to read NUMA node for device: " << device->name;
 
   string filename = string(device->ibdev_path) + "/device/numa_node";
 
-  FILE *file = fopen(filename.c_str(), "r");
-  if (file == nullptr) {
-    LOG(ERROR) << "Could not open file to read NUMA node: " << filename
-               << "\nYour kernel may have been built without NUMA support.";
-    return -kUnknownNumaNode;
-  }
-
+  std::ifstream ifs(filename.c_str());
   string content;
-  char buf[32];
-  size_t did_read = fread(buf, sizeof(buf[0]), sizeof(buf) - 1, file);
-  buf[did_read] = '\0';
-  content = buf;
+  CHECK(std::getline(ifs, content));
 
   int32 value;
   if (strings::safe_strto32(content, &value)) {
@@ -69,10 +77,9 @@ static int TryToReadNumaNode(ibv_device* device) {
       LOG(INFO) << "Successful NUMA node read from SysFS had negative value ("
                 << value << "), but there must be at least one NUMA node"
                             ", so returning NUMA node zero";
-      fclose(file);
       return 0;
     }
-    fclose(file);
+    LOG(INFO) << "NUMA node for device: " << device->name << " is " << value;
     return value;
   }
   return -kUnknownNumaNode;
@@ -139,11 +146,13 @@ class RdmaMemoryManager {
     }
 
 #if GOOGLE_CUDA
-    // Note we don't free allocated GPU memory so there is no free visitor
-    for (int i = 0; i < num_device; i++) {
-      ibv_context* verbs = devices[i];
-      int bus_id = TryToReadNumaNode(verbs->device) + 1;
-      ProcessState::singleton()->AddGPUAllocVisitor(bus_id, alloc_visitor);
+    if (IsGDRAvailable()) {
+      // Note we don't free allocated GPU memory so there is no free visitor
+      for (int i = 0; i < num_device; i++) {
+        ibv_context* verbs = devices[i];
+        int bus_id = TryToReadNumaNode(verbs->device) + 1;
+        ProcessState::singleton()->AddGPUAllocVisitor(bus_id, alloc_visitor);
+      }
     }
 #endif
   }
@@ -214,7 +223,10 @@ class RdmaMemoryManager {
 
 class RdmaReadClient : public RdmaClient {
  public:
-  virtual Status ReadTensorViaDMA(const TensorBuffer* buffer,
+  virtual Status ReadTensorViaDMA(Tensor* tensor,
+                                  Device* dst_device,
+                                  DeviceContext* dst_device_context,
+                                  bool on_host,
                                   const Any& transport_options) override {
 
     RemoteMemoryRegion remote_mr;
@@ -236,6 +248,7 @@ class RdmaReadClient : public RdmaClient {
     }
     rdma_cm_id* id = iter->second.get();
 
+    auto buffer = DMAHelper::buffer(tensor);
     void* addr = buffer->data();
     size_t length = buffer->size();
     ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
@@ -268,10 +281,32 @@ class RdmaReadClient : public RdmaClient {
 
     uint64_t end = Env::Default()->NowMicros();
 
-    VLOG(0) << "RDMA into TensorBuffer@" << buffer->data()
+    string tensor_debug_string;
+    if (dst_device->tensorflow_gpu_device_info() && (!on_host)) {
+#if GOOGLE_CUDA
+      tensor_debug_string = GPUUtil::MemoryDebugString(dst_device, tensor);
+#else
+      return errors::Internal("No GPU device in process");
+#endif
+    } else {
+      tensor_debug_string = tensor->DebugString();
+    }
+    VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
+            << " to " << tensor_debug_string
             << " with tensor key " << remote_mr.tensor_key()
-            << " and size " << buffer->size() << " bytes"
             << " took " << (end - start) << " micros";
+
+    uint64_t checksum;
+    if (dst_device->tensorflow_gpu_device_info() && (!on_host)) {
+#if GOOGLE_CUDA
+      checksum = GPUUtil::Checksum(dst_device, dst_device_context, *tensor);
+#else
+      return errors::Internal("No GPU device in process");
+#endif
+    } else {
+      checksum = GPUUtil::Checksum(*tensor);
+    }
+    CHECK(checksum == remote_mr.checksum()) << "Checksum mismatch";
 
     return Status::OK();
   }
@@ -424,7 +459,8 @@ class RdmaReadServer : public RdmaServer {
                           << tensor_key;
               return error;
             } else {
-              iter->second->Unref();
+              const TensorBuffer* buffer = iter->second;
+              buffer->Unref();
               tensor_buffers_.erase(iter);
             }
           }
@@ -439,9 +475,13 @@ class RdmaReadServer : public RdmaServer {
     }
   }
 
-  virtual Status RegisterTensorDMA(const TensorBuffer* buffer,
+  virtual Status RegisterTensorDMA(const Tensor& tensor,
+                                   Device* src_device,
+                                   DeviceContext* src_device_context,
+                                   bool on_host,
                                    Any* mutable_transport_options) override {
 
+    auto buffer = DMAHelper::buffer(&tensor);
     void* addr = buffer->data();
     size_t length = buffer->size();
     if (length == 0) {
@@ -460,13 +500,22 @@ class RdmaReadServer : public RdmaServer {
       tensor_buffers_.insert({tensor_key, buffer});
     }
 
+    uint64_t checksum;
+    if (src_device->tensorflow_gpu_device_info() && (!on_host)) {
+      checksum = GPUUtil::Checksum(src_device, src_device_context, tensor);
+    } else {
+      checksum = GPUUtil::Checksum(tensor);
+    }
+
     RemoteMemoryRegion remote_mr;
     remote_mr.set_host(host_);
     remote_mr.set_port(port_);
-    remote_mr.set_addr(reinterpret_cast<uint64_t>(mr->addr));
+    remote_mr.set_addr(reinterpret_cast<uint64_t>(addr));
     remote_mr.set_rkey(mr->rkey);
     remote_mr.set_tensor_key(tensor_key);
+    remote_mr.set_checksum(checksum);
     mutable_transport_options->PackFrom(remote_mr);
+
     return Status::OK();
   }
 

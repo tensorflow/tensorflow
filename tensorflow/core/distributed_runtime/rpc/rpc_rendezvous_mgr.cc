@@ -19,10 +19,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
-#if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rdma.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
@@ -130,76 +126,34 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
 
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
-    resp_.InitAlloc(dst_device_, alloc_attrs_);
     req_.set_dma_ok(true);
+    resp_.InitAlloc(dst_device_, alloc_attrs_);
+    using namespace std::placeholders;
     StatusCallback cb = std::bind(
-      [this](std::function<void()> recv_done, const Status& s) {
-        if (!s.ok()) {
-          {
+        [this](std::function<void()> recv_done,
+               // Begin unbound arguments.
+               const Status& s) {
+          bool dma_ok = resp_.metadata().has_transport_options();
+          if (s.ok() && tensor().TotalBytes() > 0 && dma_ok) {
+            Tensor* t = const_cast<Tensor*>(&tensor());
+            auto transport_options = resp_.metadata().transport_options();
+            const bool on_host = alloc_attrs_.on_host();
+            Status status = client_->ReadTensorViaDMA(t, dst_device_,
+                                                      recv_args_.device_context,
+                                                      on_host,
+                                                      transport_options);
+            if (!status.ok()) {
+              mutex_lock l(mu_);
+              status_.Update(status);
+            }
+          }
+          if (!s.ok()) {
             mutex_lock l(mu_);
             status_.Update(s);
           }
           recv_done();
-          return;
-        }
-        if (tensor().TotalBytes() > 0 &&
-            resp_.metadata().has_transport_options()) {
-          const TensorBuffer* buffer = DMAHelper::buffer(&tensor());
-          auto transport_options = resp_.metadata().transport_options();
-          Status status = client_->ReadTensorViaDMA(buffer, transport_options);
-          if (status.ok()) {
-            VLOG(0) << "Direct RDMA path";
-            recv_done();
-            return;
-          }
-#if GOOGLE_CUDA
-          const bool on_host = alloc_attrs_.on_host();
-          if (dst_device_->tensorflow_gpu_device_info() && (!on_host)) {
-            AllocatorAttributes alloc_attrs;
-            alloc_attrs.set_gpu_compatible(true);
-            alloc_attrs.set_on_host(true);
-            Allocator* alloc = dst_device()->GetAllocator(alloc_attrs);
-            const Tensor& t = tensor();
-            Tensor* copy = new Tensor(alloc, t.dtype(), t.shape());
-            Status status = client_->ReadTensorViaDMA(DMAHelper::buffer(copy),
-                                                      transport_options);
-            if (status.ok()) {
-              StatusCallback ready = std::bind(
-                  [this, copy](std::function<void()> done, const Status& s) {
-                    if (!s.ok()) {
-                      mutex_lock l(mu_);
-                      status_.Update(s);
-                    }
-                    VLOG(0) << "RDMA path when GPU direct is not available";
-                    delete copy;
-                    done();
-                  }, std::move(recv_done), std::placeholders::_1);
-              GPUUtil::CopyCPUTensorToGPU(copy,
-                                          recv_args_.device_context,
-                                          dst_device_,
-                                          const_cast<Tensor*>(&t),
-                                          ready);
-              return;
-            }
-            VLOG(0) << "Hitting allocator "
-                    << dst_device_->GetAllocator(alloc_attrs)->Name()
-                    << " that is incompatible with RDMA";
-          }
-#else
-          VLOG(0) << "Hitting allocator "
-                  << dst_device_->GetAllocator(alloc_attrs_)->Name()
-                  << " that is incompatible with RDMA";
-#endif
-          {
-            mutex_lock l(mu_);
-            status_.Update(status);
-          }
-          recv_done();
-          return;
-        }
-        VLOG(0) << "gRPC path when tensor buffer is transmitted in band";
-        recv_done();
-      }, std::move(recv_done), std::placeholders::_1);
+        },
+        std::move(recv_done), _1);
     wi_->RecvTensorAsync(&opts_, &req_, &resp_, std::move(cb));
   }
 
