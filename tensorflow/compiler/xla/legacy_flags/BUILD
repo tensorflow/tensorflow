@@ -73,7 +73,6 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
-            "//tensorflow/compiler/xla:types",
             "//tensorflow/compiler/xla:xla_proto",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
@@ -81,115 +80,9 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_compiler_flags",
-    srcs = ["cpu_compiler_flags.cc"],
-    hdrs = ["cpu_compiler_flags.h"],
-    deps =
-        [
-            ":parse_flags_from_env",
-            "//tensorflow/compiler/xla:types",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-        ],
-)
-
-cc_library(
-    name = "cpu_runtime_flags",
-    srcs = ["cpu_runtime_flags.cc"],
-    hdrs = ["cpu_runtime_flags.h"],
-    deps =
-        [
-            ":parse_flags_from_env",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-        ],
-)
-
-cc_library(
-    name = "compiler_functor_flags",
-    srcs = ["compiler_functor_flags.cc"],
-    hdrs = ["compiler_functor_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "convolution_thunk_flags",
-    srcs = ["convolution_thunk_flags.cc"],
-    hdrs = ["convolution_thunk_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "gpu_compiler_flags",
-    srcs = ["gpu_compiler_flags.cc"],
-    hdrs = ["gpu_compiler_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "gpu_backend_lib_flags",
-    srcs = ["gpu_backend_lib_flags.cc"],
-    hdrs = ["gpu_backend_lib_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "stream_assignment_flags",
     srcs = ["stream_assignment_flags.cc"],
     hdrs = ["stream_assignment_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "hlo_graph_dumper_flags",
-    srcs = ["hlo_graph_dumper_flags.cc"],
-    hdrs = ["hlo_graph_dumper_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "alias_analysis_flags",
-    srcs = ["alias_analysis_flags.cc"],
-    hdrs = ["alias_analysis_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "llvm_util_flags",
-    srcs = ["llvm_util_flags.cc"],
-    hdrs = ["llvm_util_flags.h"],
     deps = [
         ":parse_flags_from_env",
         "//tensorflow/core:framework_internal",
@@ -210,43 +103,9 @@ cc_library(
 )
 
 cc_library(
-    name = "buffer_assignment_flags",
-    srcs = ["buffer_assignment_flags.cc"],
-    hdrs = ["buffer_assignment_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "hlo_test_base_flags",
-    srcs = ["hlo_test_base_flags.cc"],
-    hdrs = ["hlo_test_base_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "backend_flags",
     srcs = ["backend_flags.cc"],
     hdrs = ["backend_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "user_computation_flags",
-    srcs = ["user_computation_flags.cc"],
-    hdrs = ["user_computation_flags.h"],
     deps = [
         ":parse_flags_from_env",
         "//tensorflow/compiler/xla:types",

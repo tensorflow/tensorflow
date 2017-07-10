@@ -101,6 +101,7 @@ Status MeasuringCostEstimator::PredictCosts(const GraphDef& optimized_graph,
   }
 
   // Run "measurement_steps_" and measure the time.
+  VLOG(1) << "Number of measurement steps: " << measurement_steps_;
   if (measurement_threads_ > 0) {
     for (int i = 0; i < measurement_steps_; ++i) {
       thread_pool_->Schedule([i, &measurement_fn]() { measurement_fn(i); });

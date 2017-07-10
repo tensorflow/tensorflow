@@ -59,7 +59,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
@@ -78,11 +77,11 @@ cc_test(
         ":auto_parallel",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
@@ -198,8 +197,10 @@ cc_library(
         ":static_schedule",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
 
@@ -229,7 +230,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
@@ -254,7 +254,6 @@ cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 

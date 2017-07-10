@@ -287,6 +287,14 @@ class NestTest(test.TestCase):
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, list(shallow_tree))
 
+    # Using dict.
+    input_tree = {"a": ((2, 2), (3, 3)), "b": ((4, 9), (5, 5))}
+    shallow_tree = {"a": (True, True), "b": (False, True)}
+    flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
+    flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree, [(2, 2), (3, 3), (4, 9), (5, 5)])
+    self.assertEqual(flattened_shallow_tree, [True, True, False, True])
+
   def testMapStructureUpTo(self):
     ab_tuple = collections.namedtuple("ab_tuple", "a, b")
     op_tuple = collections.namedtuple("op_tuple", "add, mul")

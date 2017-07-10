@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 #include "tensorflow/compiler/xla/service/compilation_cache.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -126,7 +125,7 @@ class Service : public ServiceInterface {
   // least N * R devices must be available. The devices are assigned based on
   // the device ordinals such that the first R available devices are assigned to
   // the first set of replicas, and the next R devices to the second set of
-  // replicas, etc. Each returned device handles represent the device with the
+  // replicas, etc. Each returned device handle represents the device with the
   // replica id 0.
   tensorflow::Status GetDeviceHandles(
       const GetDeviceHandlesRequest* arg,
@@ -248,7 +247,7 @@ class Service : public ServiceInterface {
 
   // The constructor is private. Use the NewService factory to create new
   // service objects.
-  Service(std::unique_ptr<Backend> backend,
+  Service(const ServiceOptions& options, std::unique_ptr<Backend> backend,
           std::unique_ptr<Backend> compute_constant_backend);
 
   static StatusOr<std::unique_ptr<Backend>> CreateComputeConstantBackend();
@@ -319,13 +318,8 @@ class Service : public ServiceInterface {
           std::vector<perftools::gputools::DeviceMemoryBase>>
           arguments,
       Backend* backend,
-      tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-          executors,
+      tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
       tensorflow::gtl::ArraySlice<string> result_tags);
-
-  // Returns an HLO dumper for use in the compiler (it refers to flags
-  // associated with the service).
-  static Compiler::HloDumper MakeHloDumper();
 
   // Convenience function for adding a function to a user computation.
   template <typename RequestT, typename ResponseT>
@@ -334,17 +328,23 @@ class Service : public ServiceInterface {
       const std::function<StatusOr<ComputationDataHandle>(UserComputation*)>&
           adder);
 
-  // If the service is running in the client process
-  // (runs_in_client_process_ is true) then return
-  // tensorflow::Status::OK. Otherwise return an appropriate error
-  // status with the given method name. Used for "InProcess" methods.
-  tensorflow::Status CheckRunsInClientProcess(const string& method_name) const;
-
   // Convenience function which checks whether the given shape_with_layout
   // (presumably passed by the client to set the result layout) is valid for the
   // given computation result shape.
   tensorflow::Status ValidateResultShapeWithLayout(
       const Shape& shape_with_layout, const Shape& result_shape) const;
+
+  // Returns the stream executors assigned to the replicas represented by the
+  // given device handle. Each device_handle is a virtual replicated device that
+  // represents a set of physical devices for the replicas.
+  StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Replicas(
+      const Backend& backend, const DeviceHandle& device_handle) const;
+
+  // Returns the device handle that represents the replicated device for a
+  // single computation that is not model-parallelized.
+  DeviceHandle SingleComputationDeviceHandle() const;
+
+  ServiceOptions options_;
 
   // Tracks computations built via the API.
   ComputationTracker computation_tracker_;
@@ -368,9 +368,6 @@ class Service : public ServiceInterface {
 
   // Backend to use when executing ComputeConstant.
   std::unique_ptr<Backend> compute_constant_backend_;
-
-  // Whether the service runs in the same process as the client.
-  bool runs_in_client_process_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Service);
 };

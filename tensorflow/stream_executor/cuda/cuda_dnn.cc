@@ -1863,8 +1863,8 @@ bool CudnnSupport::DoConvolveImpl(
 
   if (algorithm_config.algorithm() == dnn::kDefaultAlgorithm) {
     // With the default algorithm, use Cudnn's heuristics.
-    auto get_algorithm = [&](bool specify_limit)
-        SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) {
+    auto get_algorithm =
+        [&](bool specify_limit) SHARED_LOCKS_REQUIRED(dnn_handle_mutex_) {
           cudnnConvolutionFwdPreference_t preference =
               specify_limit ? CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT
                             : CUDNN_CONVOLUTION_FWD_NO_WORKSPACE;
@@ -1892,7 +1892,6 @@ bool CudnnSupport::DoConvolveImpl(
         };
 
     algo = get_algorithm(/*specify_limit=*/scratch_allocator != nullptr);
-
     if (scratch_allocator != nullptr) {
       size_t size_in_bytes;
       status = wrap::cudnnGetConvolutionForwardWorkspaceSize(
@@ -1917,7 +1916,6 @@ bool CudnnSupport::DoConvolveImpl(
   } else {
     // An algorithm has been specified.
     algo = ToConvForwardAlgo(algorithm_config.algorithm());
-
     size_t size_in_bytes;
     status = wrap::cudnnGetConvolutionForwardWorkspaceSize(
         parent_, ToHandle(dnn_handle_), /*srcDesc=*/input_nd.handle(),
@@ -1954,7 +1952,6 @@ bool CudnnSupport::DoConvolveImpl(
       }
     }
   }
-
   const bool has_biases = (biases != nullptr);
   const bool supported_activation_mode =
       (activation_mode == dnn::ActivationMode::kRelu6 ||
@@ -2059,8 +2056,9 @@ bool CudnnSupport::DoConvolveImpl(
 // env-var "TF_ENABLE_WINOGRAD_NONFUSED=0".
 // https://github.com/tensorflow/tensorflow/pull/4901
 // TODO(yangzihao): winograd_nonfused bug will only be fixed in cuDNNv7, for
-// cuDNN with smaller versions, we have added code to avoid using winograd
-// nonfused for certain input parameter set.
+// cuDNN with smaller version, we are setting the default flag to false due to
+// b/62635189. Need to root cause this and figure out a workaround or file a bug
+// against NVIDIA.
 template <bool DefaultFlag>
 class WinogradNonfused {
  public:
@@ -2102,7 +2100,7 @@ bool CudnnSupport::GetConvolveAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused<true>::IsEnabled() && with_winograd_nonfused) {
+  if (WinogradNonfused<false>::IsEnabled() && with_winograd_nonfused) {
     out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
@@ -2124,7 +2122,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused<true>::IsEnabled() && with_winograd_nonfused) {
+  if (WinogradNonfused<false>::IsEnabled() && with_winograd_nonfused) {
     out_algorithms->push_back(
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
@@ -2144,13 +2142,7 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-#if CUDNN_VERSION >= 5110
-  static constexpr bool kDefaultFlagWinogradNonfused = true;
-#else
-  static constexpr bool kDefaultFlagWinogradNonfused = false;
-#endif
-  if (WinogradNonfused<kDefaultFlagWinogradNonfused>::IsEnabled() &&
-      with_winograd_nonfused) {
+  if (WinogradNonfused<false>::IsEnabled() && with_winograd_nonfused) {
     out_algorithms->push_back(
         // Based on cudnn.h, the following is not implemented.
         // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,
@@ -2432,17 +2424,16 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
                                      dnn::DataType input_type,
                                      const DeviceMemoryBase& input_data,
                                      const dnn::BatchDescriptor& output_desc,
-                                     dnn::DataType output_type,
+                                     dnn::DataType output_type, float scale,
                                      DeviceMemoryBase* output_data) {
   mutex_lock lock{dnn_handle_mutex_};
-  float alpha = 1.0f;
   float beta = 0.0f;
   ScopedTensorDescriptor input_tensor_desc(
       parent_, input_desc, ToCudnnDataType(input_type, input_desc.layout()));
   ScopedTensorDescriptor output_tensor_desc(
       parent_, output_desc, ToCudnnDataType(output_type, output_desc.layout()));
   cudnnStatus_t status = wrap::cudnnTransformTensor(
-      parent_, ToHandle(dnn_handle_), &alpha, input_tensor_desc.handle(),
+      parent_, ToHandle(dnn_handle_), &scale, input_tensor_desc.handle(),
       input_data.opaque(), &beta, output_tensor_desc.handle(),
       output_data->opaque());
   if (status != CUDNN_STATUS_SUCCESS) {

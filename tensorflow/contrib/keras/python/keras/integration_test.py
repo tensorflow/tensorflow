@@ -161,6 +161,73 @@ class KerasIntegrationTest(test.TestCase):
                           verbose=2)
       self.assertGreater(history.history['val_acc'][-1], 0.70)
 
+  def test_vector_classification_shared_sequential(self):
+    # Test that Sequential models that feature internal updates
+    # and internal losses can be shared.
+    with self.test_session():
+      np.random.seed(1337)
+      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+          train_samples=200,
+          test_samples=100,
+          input_shape=(10,),
+          num_classes=2)
+      y_train = keras.utils.to_categorical(y_train)
+      y_test = keras.utils.to_categorical(y_test)
+
+      base_model = keras.models.Sequential([
+          keras.layers.Dense(16,
+                             activation='relu',
+                             kernel_regularizer=keras.regularizers.l2(1e-5),
+                             bias_regularizer=keras.regularizers.l2(1e-5),
+                             input_shape=x_train.shape[1:]),
+          keras.layers.BatchNormalization(),
+      ])
+      x = keras.layers.Input(x_train.shape[1:])
+      y = base_model(x)
+      y = keras.layers.Dense(y_train.shape[-1], activation='softmax')(y)
+      model = keras.models.Model(x, y)
+      model.compile(loss='categorical_crossentropy',
+                    optimizer='rmsprop',
+                    metrics=['accuracy'])
+      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
+                          validation_data=(x_test, y_test),
+                          verbose=2)
+      self.assertGreater(history.history['val_acc'][-1], 0.85)
+
+  def test_vector_classification_shared_model(self):
+    # Test that functional models that feature internal updates
+    # and internal losses can be shared.
+    with self.test_session():
+      np.random.seed(1337)
+      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+          train_samples=200,
+          test_samples=100,
+          input_shape=(10,),
+          num_classes=2)
+      y_train = keras.utils.to_categorical(y_train)
+      y_test = keras.utils.to_categorical(y_test)
+
+      inputs = keras.layers.Input(x_train.shape[1:])
+      x = keras.layers.Dense(16,
+                             activation='relu',
+                             kernel_regularizer=keras.regularizers.l2(1e-5),
+                             bias_regularizer=keras.regularizers.l2(1e-5),
+                             input_shape=x_train.shape[1:])(inputs)
+      x = keras.layers.BatchNormalization()(x)
+      base_model = keras.models.Model(inputs, x)
+
+      x = keras.layers.Input(x_train.shape[1:])
+      y = base_model(x)
+      y = keras.layers.Dense(y_train.shape[-1], activation='softmax')(y)
+      model = keras.models.Model(x, y)
+      model.compile(loss='categorical_crossentropy',
+                    optimizer='rmsprop',
+                    metrics=['accuracy'])
+      history = model.fit(x_train, y_train, epochs=10, batch_size=16,
+                          validation_data=(x_test, y_test),
+                          verbose=2)
+      self.assertGreater(history.history['val_acc'][-1], 0.85)
+
 
 if __name__ == '__main__':
   test.main()

@@ -781,6 +781,28 @@ py_test(
 )
 
 py_test(
+    name = "debug_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/debug_test.py"],
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn/python/learn/datasets",
+        "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "composable_model_test",
     size = "medium",
     srcs = ["python/learn/estimators/composable_model_test.py"],

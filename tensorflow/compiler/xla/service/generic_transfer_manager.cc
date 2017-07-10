@@ -82,13 +82,12 @@ Status GenericTransferManager::TransferLiteralFromDevice(
   }
 
   *literal->mutable_shape() = device_shape;
-  LiteralUtil::Reserve(ShapeUtil::ElementsIn(device_shape), literal);
+  literal->Reserve(ShapeUtil::ElementsIn(device_shape));
   TF_RETURN_IF_ERROR(TransferBufferFromDevice(
       executor, source, /*size=*/ShapeUtil::ByteSizeOf(device_shape),
-      /*destination=*/LiteralUtil::MutableInternalData(literal)));
+      /*destination=*/literal->MutableInternalData()));
   if (!ShapeUtil::Equal(literal_shape, device_shape)) {
-    literal->Swap(
-        LiteralUtil::Relayout(*literal, literal_shape.layout()).get());
+    literal->Swap(literal->Relayout(literal_shape.layout()).get());
   }
   TF_RET_CHECK(ShapeUtil::Equal(literal_shape, literal->shape()));
   return Status::OK();
@@ -152,14 +151,20 @@ Status GenericTransferManager::TransferLiteralToDevice(
         tuple_elements_on_device.data(), destination);
   }
 
-  return TransferBufferToDevice(
-      executor, /*size=*/GetByteSizeRequirement(shape),
-      /*source=*/LiteralUtil::InternalData(literal), destination);
+  return TransferBufferToDevice(executor,
+                                /*size=*/GetByteSizeRequirement(shape),
+                                /*source=*/literal.InternalData(), destination);
 }
 
 Status GenericTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const Literal& literal) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474)");
+  return Unimplemented("Generic transfer to Infeed");
+}
+
+Status GenericTransferManager::TransferBufferToInfeed(
+    perftools::gputools::StreamExecutor* executor, int64 size,
+    const void* source) {
+  return Unimplemented("Generic transfer to Infeed");
 }
 
 Status GenericTransferManager::TransferLiteralFromOutfeed(

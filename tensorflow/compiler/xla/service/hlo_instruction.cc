@@ -122,6 +122,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
@@ -227,6 +228,19 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateReducePrecision(const Shape& shape,
+                                      HloInstruction* operand,
+                                      const int exponent_bits,
+                                      const int mantissa_bits) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kReducePrecision, shape));
+  instruction->AppendOperand(operand);
+  instruction->exponent_bits_ = exponent_bits;
+  instruction->mantissa_bits_ = mantissa_bits;
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCrossReplicaSum(const Shape& shape,
                                       HloInstruction* operand) {
   auto instruction =
@@ -299,6 +313,12 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
   instruction->slice_starts_.assign(start_indices.begin(), start_indices.end());
   instruction->slice_limits_.assign(limit_indices.begin(), limit_indices.end());
   instruction->slice_strides_.assign(strides.begin(), strides.end());
+  // For backward compatibility with old serialized computations: if there are
+  // no strides, assume all strides are 1.
+  // TODO(b/63317920): remove this code.
+  if (instruction->slice_strides_.empty()) {
+    instruction->slice_strides_ = std::vector<int64>(start_indices.size(), 1LL);
+  }
   return instruction;
 }
 
@@ -368,6 +388,22 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
   instruction->AppendOperand(init_value);
   instruction->called_computations_.push_back(reduce_computation);
   instruction->window_ = MakeUnique<Window>(window);
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBatchNormTraining(const Shape& shape,
+                                        HloInstruction* operand,
+                                        HloInstruction* scale,
+                                        HloInstruction* offset, float epsilon,
+                                        int64 feature_index) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBatchNormTraining, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(scale);
+  instruction->AppendOperand(offset);
+  instruction->epsilon_ = epsilon;
+  instruction->feature_index_ = feature_index;
   return instruction;
 }
 
@@ -730,6 +766,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBitcast:
     case HloOpcode::kCeil:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kIsFinite:
     case HloOpcode::kFloor:
@@ -780,6 +817,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kConvert:
       CHECK_EQ(new_operands.size(), 1);
       return CreateConvert(shape, new_operands[0]);
+    case HloOpcode::kReducePrecision:
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateReducePrecision(shape, new_operands[0], exponent_bits_,
+                                   mantissa_bits_);
     case HloOpcode::kConvolution:
       CHECK_EQ(new_operands.size(), 2);
       return CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
@@ -838,11 +879,16 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateWhile(shape, while_condition(), while_body(),
                          new_operands[0]);
     case HloOpcode::kConstant:
-      return CreateConstant(LiteralUtil::CloneToUnique(*literal_));
+      return CreateConstant(literal_->CloneToUnique());
     case HloOpcode::kFusion:
       return CloneFusionWithNewOperands(shape, new_operands);
     case HloOpcode::kParameter:
       return CreateParameter(parameter_number_, shape, parameter_name_);
+    case HloOpcode::kBatchNormTraining:
+      CHECK_EQ(new_operands.size(), 3);
+      return CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
+                                     new_operands[2], epsilon(),
+                                     feature_index());
     // Unsupported ops for cloning.
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
@@ -1041,7 +1087,7 @@ Status HloInstruction::RemoveControlDependencyTo(HloInstruction* instruction) {
   auto pred_it = std::find(instruction->control_predecessors_.begin(),
                            instruction->control_predecessors_.end(), this);
   TF_RET_CHECK(pred_it != instruction->control_predecessors_.end());
-  instruction->control_predecessors_.erase(succ_it);
+  instruction->control_predecessors_.erase(pred_it);
 
   return Status::OK();
 }
@@ -1099,6 +1145,7 @@ bool HloInstruction::Identical(
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
@@ -1141,14 +1188,23 @@ bool HloInstruction::Identical(
              // different HloComputations.
              ShapeUtil::Compatible(shape(), other.shape());
 
+    case HloOpcode::kBatchNormTraining:
+      return feature_index() == other.feature_index() &&
+             epsilon() == other.epsilon();
+
     // A constant is defined by the value in the literal.
     case HloOpcode::kConstant:
-      return LiteralUtil::Equal(literal(), other.literal());
+      return literal().Equal(other.literal());
 
     // A convert result is determined by the primitive type that the operand is
     // converted into.
     case HloOpcode::kConvert:
       return shape().element_type() == other.shape().element_type();
+
+    // A reduce-precision operation is determined by the bit sizes.
+    case HloOpcode::kReducePrecision:
+      return exponent_bits() == other.exponent_bits() &&
+             mantissa_bits() == other.mantissa_bits();
 
     // Convolution has a window and dimensions.
     case HloOpcode::kConvolution:
@@ -1438,10 +1494,10 @@ string HloInstruction::ToString(bool compact_operands,
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
-    if (ShapeUtil::ElementsIn(shape()) <= 10) {
-      // LiteralUtil::ToString emits multidimensional arrays over multiple
+    if (!ShapeUtil::IsTuple(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) {
+      // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
-      string tmp = LiteralUtil::ToString(literal());
+      string tmp = literal().ToString();
       std::replace(tmp.begin(), tmp.end(), '\n', ' ');
       std::vector<string> v = tensorflow::str_util::Split(tmp, ' ');
       bool first = true;
@@ -1455,7 +1511,7 @@ string HloInstruction::ToString(bool compact_operands,
         first = false;
       }
     } else {
-      // Do not show large constants.
+      // Do not show large constants or tuples.
       operands = "{...}";
     }
   } else if (opcode() == HloOpcode::kParameter) {
@@ -1565,7 +1621,7 @@ HloInstructionProto HloInstruction::ToProto() const {
     case HloOpcode::kFusion: {
       HloComputationProto* proto_fused_computation =
           proto.mutable_fused_instructions_computation();
-      proto_fused_computation->set_name(FullyQualifiedName());
+      proto_fused_computation->set_name(name());
 
       // Fill in fused instructions. Note that fused_instructions() returns in
       // reverse post-order (i.e. root first), so we reverse to get post-order.
@@ -1629,6 +1685,8 @@ string HloInstruction::ToCategory() const {
       case FusionKind::kConvBackwardFilter:
       case FusionKind::kConvBackwardInput:
         return "convolution fusion";
+      case FusionKind::kCustom:
+        return "custom fusion";
     }
   }
 
@@ -1637,14 +1695,6 @@ string HloInstruction::ToCategory() const {
   }
 
   return HloOpcodeString(opcode());
-}
-
-string HloInstruction::FullyQualifiedName() const {
-  if (IsFused()) {
-    return StrCat(fusion_instruction()->parent()->name(),
-                  "::", fusion_instruction()->name(), "::", name_);
-  }
-  return StrCat(parent_->name(), "::", name_);
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
@@ -1736,6 +1786,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this, operands_[0]);
+    case HloOpcode::kBatchNormTraining:
+      return visitor->HandleBatchNormTraining(this);
     case HloOpcode::kSign:
       return visitor->HandleSign(this, operands_[0]);
     case HloOpcode::kConstant:
@@ -1758,9 +1810,9 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kSubtract:
       return visitor->HandleSubtract(this, operands_[0], operands_[1]);
     case HloOpcode::kMaximum:
-      return visitor->HandleMaximum(this, operands_[0], operands_[1]);
+      return visitor->HandleMaximum(this);
     case HloOpcode::kMinimum:
-      return visitor->HandleMinimum(this, operands_[0], operands_[1]);
+      return visitor->HandleMinimum(this);
     case HloOpcode::kLogicalAnd:
       return visitor->HandleLogicalAnd(this, operands_[0], operands_[1]);
     case HloOpcode::kLogicalOr:
@@ -1768,9 +1820,9 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kConcatenate:
       return visitor->HandleConcatenate(this, operands_);
     case HloOpcode::kConvert:
-      return visitor->HandleConvert(this, operands_[0]);
+      return visitor->HandleConvert(this);
     case HloOpcode::kCopy:
-      return visitor->HandleCopy(this, operands_[0]);
+      return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:
       return visitor->HandleMultiply(this, operands_[0], operands_[1]);
     case HloOpcode::kDot:
@@ -1814,6 +1866,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleLog(this, operands_[0]);
     case HloOpcode::kTanh:
       return visitor->HandleTanh(this, operands_[0]);
+    case HloOpcode::kCos:
+      return visitor->HandleCos(this, operands_[0]);
     case HloOpcode::kIsFinite:
       return visitor->HandleIsFinite(this, operands_[0]);
     case HloOpcode::kLogicalNot:
@@ -1830,6 +1884,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleTranspose(this);
     case HloOpcode::kReverse:
       return visitor->HandleReverse(this, operands_[0]);
+    case HloOpcode::kReducePrecision:
+      return visitor->HandleReducePrecision(this);
     case HloOpcode::kSlice:
       return visitor->HandleSlice(this, operands_[0]);
     case HloOpcode::kDynamicSlice:
@@ -1868,72 +1924,90 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
                        HloOpcodeString(opcode_).c_str());
 }
 
-Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor,
-                                      const CompareFunction* operand_order,
-                                      bool ignore_control_predecessors) {
-  // Do not visit this HLO node again if it is already visited.
-  if (visitor->DidVisit(*this)) {
-    VLOG(3) << "Not visiting HLO " << name() << " as it was already visited.";
-    return Status::OK();
-  }
+static Status PushDFSChild(DfsHloVisitor* visitor,
+                           std::vector<HloInstruction*>* dfs_stack,
+                           HloInstruction* parent, HloInstruction* child) {
+  switch (visitor->GetVisitState(*child)) {
+    case DfsHloVisitor::kVisiting:
+      return FailedPrecondition(
+          "A cycle is detected while visiting instruction %s",
+          parent->ToString().c_str());
 
-  // If the instruction is in the visiting state, it means a cycle.
-  if (visitor->IsVisiting(*this)) {
-    return FailedPrecondition(
-        "A cycle is detected while visiting instruction %s",
-        ToString().c_str());
-  }
-  visitor->SetVisiting(*this);
+    case DfsHloVisitor::kVisited:
+      VLOG(3) << "Not visiting HLO " << child->name()
+              << " as it was already visited.";
+      return Status::OK();
 
-  // Sort operands, if an ordering was provided. 'temp_sorted_operands' must
-  // live at this scope, since 'operands' will point to it if the operands are
-  // sorted.  The purpose of the 'operands' pointer is to avoid copying the
-  // operands in the common case where the operands are not sorted.
-  std::vector<HloInstruction*>* operands = &operands_;
-  std::vector<HloInstruction*> temp_sorted_operands;
-  if (operand_order != nullptr) {
-    temp_sorted_operands = operands_;
-    std::sort(temp_sorted_operands.begin(), temp_sorted_operands.end(),
-              *operand_order);
-    operands = &temp_sorted_operands;
+    case DfsHloVisitor::kNotVisited:
+      dfs_stack->push_back(child);
+      return Status::OK();
   }
-  for (HloInstruction* operand : *operands) {
-    VLOG(3) << "Going to visit HLO " << operand->name() << " as operand of HLO "
-            << name();
-    TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor, operand_order,
-                                               ignore_control_predecessors));
-  }
+}
 
-  if (!ignore_control_predecessors) {
-    // This uses the same pointer/vector sorting to avoid extra copies as above.
-    std::vector<HloInstruction*>* predecessors = &control_predecessors_;
-    std::vector<HloInstruction*> temp_sorted_predecessors;
+static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
+                           const HloInstruction::CompareFunction* operand_order,
+                           bool ignore_control_predecessors) {
+  std::vector<HloInstruction*> dfs_stack;
+  dfs_stack.push_back(root);
+
+  do {
+    DCHECK(!dfs_stack.empty());
+
+    HloInstruction* current_node = dfs_stack.back();
+    DfsHloVisitor::VisitState visit_state =
+        visitor->GetVisitState(*current_node);
+    if (visit_state == DfsHloVisitor::kVisited) {
+      dfs_stack.pop_back();
+      VLOG(3) << "Not visiting HLO " << current_node->name()
+              << " as it was already visited.";
+      continue;
+    }
+
+    if (visit_state == DfsHloVisitor::kVisiting) {
+      dfs_stack.pop_back();
+
+      TF_RETURN_IF_ERROR(visitor->Preprocess(current_node));
+      VLOG(2) << "Visiting HLO " << current_node->name();
+      TF_RETURN_IF_ERROR(current_node->Visit(visitor));
+      visitor->SetVisited(*current_node);
+      TF_RETURN_IF_ERROR(visitor->Postprocess(current_node));
+      continue;
+    }
+
+    visitor->SetVisiting(*current_node);
+
+    const size_t old_dfs_stack_size = dfs_stack.size();
+
+    for (HloInstruction* child : current_node->operands()) {
+      TF_RETURN_IF_ERROR(
+          PushDFSChild(visitor, &dfs_stack, current_node, child));
+    }
+
+    if (!ignore_control_predecessors) {
+      for (HloInstruction* child : current_node->control_predecessors()) {
+        TF_RETURN_IF_ERROR(
+            PushDFSChild(visitor, &dfs_stack, current_node, child));
+      }
+    }
+
     if (operand_order != nullptr) {
-      temp_sorted_predecessors = control_predecessors_;
-      std::sort(temp_sorted_predecessors.begin(),
-                temp_sorted_predecessors.end(), *operand_order);
-      predecessors = &temp_sorted_predecessors;
+      std::sort(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end(),
+                *operand_order);
     }
-    for (HloInstruction* control_predecessor : *predecessors) {
-      VLOG(3) << "Going to visit HLO " << control_predecessor->name()
-              << " as a control predecessor of HLO " << name();
-      TF_RETURN_IF_ERROR(control_predecessor->AcceptInternal(
-          visitor, operand_order, ignore_control_predecessors));
-    }
-  }
 
-  TF_RETURN_IF_ERROR(visitor->Preprocess(this));
-  VLOG(2) << "Visiting HLO " << name();
-  TF_RETURN_IF_ERROR(Visit(visitor));
-  visitor->SetVisited(*this);
-  return visitor->Postprocess(this);
+    // This makes the traversal order the same as what you'd expect
+    // out of a recursive algorithm.
+    std::reverse(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end());
+  } while (!dfs_stack.empty());
+
+  return Status::OK();
 }
 
 Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit,
                               bool ignore_control_predecessors) {
   VLOG(2) << "HloInstruction::Accept(" << name() << ")";
   TF_RETURN_IF_ERROR(
-      AcceptInternal(visitor, nullptr, ignore_control_predecessors));
+      PostOrderDFS(this, visitor, nullptr, ignore_control_predecessors));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -1944,8 +2018,8 @@ Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, const CompareFunction& operand_order,
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(" << name() << ")";
-  TF_RETURN_IF_ERROR(AcceptInternal(visitor, &operand_order,
-                                    /*ignore_control_predecessors=*/false));
+  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, &operand_order,
+                                  /*ignore_control_predecessors=*/false));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -2060,12 +2134,14 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
     case HloOpcode::kTanh:
       return true;
@@ -2274,6 +2350,8 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kConvBackwardFilter";
     case HloInstruction::FusionKind::kConvBackwardInput:
       return "kConvBackwardInput";
+    case HloInstruction::FusionKind::kCustom:
+      return "kCustom";
   }
 }
 
@@ -2346,6 +2424,11 @@ HloModule* HloInstruction::GetModule() const {
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
+}
+
+void HloInstruction::set_outer_dimension_partitions(
+    const std::vector<int64>& outer_dimension_partitions) {
+  outer_dimension_partitions_ = outer_dimension_partitions;
 }
 
 }  // namespace xla

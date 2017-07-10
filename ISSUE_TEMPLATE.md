@@ -6,7 +6,7 @@ If you open a GitHub issue, here is our policy:
 
 1. It must be a bug or a feature request.
 2. The form below must be filled out.
-3. It shouldn't be a TensorBoard issue. Those go [here](https://github.com/tensorflow/tensorflow/issues).
+3. It shouldn't be a TensorBoard issue. Those go [here](https://github.com/tensorflow/tensorboard/issues).
 
 **Here's why we have that policy**: TensorFlow developers respond to issues. We want to focus on work that benefits the whole community, e.g., fixing bugs and adding features. Support only helps individuals. GitHub also notifies thousands of people when issues are filed. We want them to see you communicating an interesting problem, rather than being redirected to Stack Overflow.
 
@@ -17,6 +17,7 @@ If you open a GitHub issue, here is our policy:
 - **OS Platform and Distribution (e.g., Linux Ubuntu 16.04)**:
 - **TensorFlow installed from (source or binary)**:
 - **TensorFlow version (use command below)**:
+- **Python version**: 
 - **Bazel version (if compiling from source)**:
 - **CUDA/cuDNN version**:
 - **GPU model and memory**:

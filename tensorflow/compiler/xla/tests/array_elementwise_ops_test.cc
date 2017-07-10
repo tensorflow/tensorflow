@@ -26,9 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -45,7 +43,7 @@ namespace {
 
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
-  ErrorSpec error_spec_{0.0001};
+  ErrorSpec error_spec_{0.0001, 0.0001};
 };
 
 class ArrayElementwiseOpTestParamCount
@@ -158,13 +156,13 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
     b_values.push_back(2 * i / static_cast<float>(count + 2));
   }
 
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({a_values});
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({a_values});
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(*a_literal).ConsumeValueOrDie();
   auto a_constant = builder.ConstantR1<float>(a_values);
   auto a_param = builder.Parameter(0, a_literal->shape(), "a_param");
 
-  std::unique_ptr<Literal> b_literal = LiteralUtil::CreateR1<float>({b_values});
+  std::unique_ptr<Literal> b_literal = Literal::CreateR1<float>({b_values});
   std::unique_ptr<GlobalData> b_data =
       client_->TransferToServer(*b_literal).ConsumeValueOrDie();
   auto b_constant = builder.Parameter(1, a_literal->shape(), "b_param");
@@ -804,7 +802,7 @@ TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
   std::vector<float> values = {1.0f, 2.0f, 3.2f, -4.0f};
   std::vector<float> exponents = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
 
-  std::unique_ptr<Literal> param_literal = LiteralUtil::CreateR1<float>(values);
+  std::unique_ptr<Literal> param_literal = Literal::CreateR1<float>(values);
   std::unique_ptr<GlobalData> param_data =
       client_->TransferToServer(*param_literal).ConsumeValueOrDie();
 
@@ -824,6 +822,244 @@ TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
   }
 
   ComputeAndCompareR1<float>(&b, expected, {param_data.get()}, error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, PowOfExpF32) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, -4.0f, 0.0f, 5.7f};
+  std::vector<float> values1 = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+
+  std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>(values0);
+  std::unique_ptr<GlobalData> data0 =
+      client_->TransferToServer(*literal0).ConsumeValueOrDie();
+  std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>(values1);
+  std::unique_ptr<GlobalData> data1 =
+      client_->TransferToServer(*literal1).ConsumeValueOrDie();
+  auto param0 = b.Parameter(0, literal0->shape(), "param0");
+  auto param1 = b.Parameter(1, literal1->shape(), "param1");
+  b.Pow(b.Exp(param0), param1);
+
+  std::vector<float> expected(values0.size());
+  for (int64 i = 0; i < values0.size(); ++i) {
+    expected[i] = std::pow(std::exp(values0[i]), values1[i]);
+  }
+
+  ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
+                             error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, LogOfPowerF32) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, 4.0f, 0.5f, 5.7f};
+  std::vector<float> values1 = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+
+  std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>(values0);
+  std::unique_ptr<GlobalData> data0 =
+      client_->TransferToServer(*literal0).ConsumeValueOrDie();
+  std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>(values1);
+  std::unique_ptr<GlobalData> data1 =
+      client_->TransferToServer(*literal1).ConsumeValueOrDie();
+  auto param0 = b.Parameter(0, literal0->shape(), "param0");
+  auto param1 = b.Parameter(1, literal1->shape(), "param1");
+  b.Log(b.Pow(param0, param1));
+
+  std::vector<float> expected(values0.size());
+  for (int64 i = 0; i < values0.size(); ++i) {
+    expected[i] = std::log(std::pow(values0[i], values1[i]));
+  }
+
+  ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
+                             error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, MulOfExpF32) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, -4.0f, 0.0f, 5.7f};
+  std::vector<float> values1 = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+
+  std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>(values0);
+  std::unique_ptr<GlobalData> data0 =
+      client_->TransferToServer(*literal0).ConsumeValueOrDie();
+  std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>(values1);
+  std::unique_ptr<GlobalData> data1 =
+      client_->TransferToServer(*literal1).ConsumeValueOrDie();
+  auto param0 = b.Parameter(0, literal0->shape(), "param0");
+  auto param1 = b.Parameter(1, literal1->shape(), "param1");
+  b.Mul(b.Exp(param0), b.Exp(param1));
+
+  std::vector<float> expected(values0.size());
+  for (int64 i = 0; i < values0.size(); ++i) {
+    expected[i] = std::exp(values0[i]) * std::exp(values1[i]);
+  }
+
+  ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
+                             error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, DivOfExpF32) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, -4.0f, 0.0f, 5.7f};
+  std::vector<float> values1 = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+
+  std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>(values0);
+  std::unique_ptr<GlobalData> data0 =
+      client_->TransferToServer(*literal0).ConsumeValueOrDie();
+  std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>(values1);
+  std::unique_ptr<GlobalData> data1 =
+      client_->TransferToServer(*literal1).ConsumeValueOrDie();
+  auto param0 = b.Parameter(0, literal0->shape(), "param0");
+  auto param1 = b.Parameter(1, literal1->shape(), "param1");
+  b.Div(param0, b.Exp(param1));
+
+  std::vector<float> expected(values0.size());
+  for (int64 i = 0; i < values0.size(); ++i) {
+    expected[i] = values0[i] / std::exp(values1[i]);
+  }
+
+  ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
+                             error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, Div3_lhs_F32) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, -4.0f, 0.45f, 5.7f};
+  std::vector<float> values1 = {0.1f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+  std::vector<float> values2 = {0.1f, 1.1f, 6.9f, 12.5f, -15.0f, -0.5f};
+
+  std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>(values0);
+  std::unique_ptr<GlobalData> data0 =
+      client_->TransferToServer(*literal0).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>(values1);
+  std::unique_ptr<GlobalData> data1 =
+      client_->TransferToServer(*literal1).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal2 = Literal::CreateR1<float>(values2);
+  std::unique_ptr<GlobalData> data2 =
+      client_->TransferToServer(*literal2).ConsumeValueOrDie();
+  auto param0 = b.Parameter(0, literal0->shape(), "param0");
+  auto param1 = b.Parameter(1, literal1->shape(), "param1");
+  auto param2 = b.Parameter(2, literal2->shape(), "param2");
+  b.Div(b.Div(param0, param1), param2);
+
+  std::vector<float> expected(values0.size());
+  for (int64 i = 0; i < values0.size(); ++i) {
+    expected[i] = (values0[i] / values1[i]) / values2[i];
+  }
+
+  ComputeAndCompareR1<float>(
+      &b, expected, {data0.get(), data1.get(), data2.get()}, error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, Div3_rhs_F32) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, -4.0f, 0.45f, 5.7f};
+  std::vector<float> values1 = {0.1f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+  std::vector<float> values2 = {0.1f, 1.1f, 6.9f, 12.5f, -15.0f, -0.5f};
+
+  std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>(values0);
+  std::unique_ptr<GlobalData> data0 =
+      client_->TransferToServer(*literal0).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>(values1);
+  std::unique_ptr<GlobalData> data1 =
+      client_->TransferToServer(*literal1).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal2 = Literal::CreateR1<float>(values2);
+  std::unique_ptr<GlobalData> data2 =
+      client_->TransferToServer(*literal2).ConsumeValueOrDie();
+
+  auto param0 = b.Parameter(0, literal0->shape(), "param0");
+  auto param1 = b.Parameter(1, literal1->shape(), "param1");
+  auto param2 = b.Parameter(2, literal2->shape(), "param2");
+  b.Div(param0, b.Div(param1, param2));
+
+  std::vector<float> expected(values0.size());
+  for (int64 i = 0; i < values0.size(); ++i) {
+    expected[i] = values0[i] / (values1[i] / values2[i]);
+  }
+
+  ComputeAndCompareR1<float>(
+      &b, expected, {data0.get(), data1.get(), data2.get()}, error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, DivOfPowerF32) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, -4.0f, 0.45f, 5.7f};
+  std::vector<float> values1 = {0.1f, 1.0f, 2.0f, 0.5f, 1.0f, 0.5f};
+  std::vector<float> values2 = {0.1f, 1.1f, 6.9f, 9.5f, -11.0f, -0.5f};
+
+  std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>(values0);
+  std::unique_ptr<GlobalData> data0 =
+      client_->TransferToServer(*literal0).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>(values1);
+  std::unique_ptr<GlobalData> data1 =
+      client_->TransferToServer(*literal1).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal2 = Literal::CreateR1<float>(values2);
+  std::unique_ptr<GlobalData> data2 =
+      client_->TransferToServer(*literal2).ConsumeValueOrDie();
+
+  auto param0 = b.Parameter(0, literal0->shape(), "param0");
+  auto param1 = b.Parameter(1, literal1->shape(), "param1");
+  auto param2 = b.Parameter(2, literal2->shape(), "param2");
+  b.Div(param0, b.Pow(param1, param2));
+
+  std::vector<float> expected(values0.size());
+  for (int64 i = 0; i < values0.size(); ++i) {
+    expected[i] = values0[i] / std::pow(values1[i], values2[i]);
+  }
+
+  ComputeAndCompareR1<float>(
+      &b, expected, {data0.get(), data1.get(), data2.get()}, error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, Div4F32) {
+  ComputationBuilder b(client_, TestName());
+
+  std::vector<float> values0 = {1.0f, 2.0f, 3.2f, -4.0f, 0.45f, 5.7f};
+  std::vector<float> values1 = {0.1f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+  std::vector<float> values2 = {0.1f, 1.1f, 6.9f, 12.5f, -15.0f, -0.5f};
+  std::vector<float> values3 = {2.1f, 3.1f, 9.9f, -4.5f, -11.0f, -21.5f};
+
+  std::unique_ptr<Literal> literal0 = Literal::CreateR1<float>(values0);
+  std::unique_ptr<GlobalData> data0 =
+      client_->TransferToServer(*literal0).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal1 = Literal::CreateR1<float>(values1);
+  std::unique_ptr<GlobalData> data1 =
+      client_->TransferToServer(*literal1).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal2 = Literal::CreateR1<float>(values2);
+  std::unique_ptr<GlobalData> data2 =
+      client_->TransferToServer(*literal2).ConsumeValueOrDie();
+
+  std::unique_ptr<Literal> literal3 = Literal::CreateR1<float>(values3);
+  std::unique_ptr<GlobalData> data3 =
+      client_->TransferToServer(*literal3).ConsumeValueOrDie();
+
+  auto param0 = b.Parameter(0, literal0->shape(), "param0");
+  auto param1 = b.Parameter(1, literal1->shape(), "param1");
+  auto param2 = b.Parameter(2, literal2->shape(), "param2");
+  auto param3 = b.Parameter(3, literal3->shape(), "param2");
+  b.Div(b.Div(param0, param1), b.Div(param2, param3));
+
+  std::vector<float> expected(values0.size());
+  for (int64 i = 0; i < values0.size(); ++i) {
+    expected[i] = (values0[i] / values1[i]) / (values2[i] / values3[i]);
+  }
+
+  ComputeAndCompareR1<float>(
+      &b, expected, {data0.get(), data1.get(), data2.get(), data3.get()},
+      error_spec_);
 }
 
 TEST_P(ArrayElementwiseOpTestParamCount, SquareManyValues) {
@@ -1241,12 +1477,12 @@ TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
+      Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   std::unique_ptr<Literal> param1_literal =
-      LiteralUtil::CreateR1<float>({7.2f, 2.3f, 3.4f, 5.6f});
+      Literal::CreateR1<float>({7.2f, 2.3f, 3.4f, 5.6f});
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -1263,12 +1499,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersZeroElementF32s) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
+      Literal::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   std::unique_ptr<Literal> param1_literal =
-      LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
+      Literal::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -1285,7 +1521,7 @@ TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
+      Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -1295,6 +1531,15 @@ TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
 
   ComputeAndCompareR1<float>(&builder, {2.2f, 4.4f, 6.6f, 9.9f},
                              {param0_data.get()}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, CosF32s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({3.14159f, 0.0f, 1.570796f, -0.78539f});
+  auto result = builder.Cos(a);
+
+  ComputeAndCompareR1<float>(&builder, {-1.0f, 1.0f, 0.0f, 0.707107f}, {},
+                             error_spec_);
 }
 
 TEST_F(ArrayElementwiseOpTest, TanhF32s) {
@@ -1447,9 +1692,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Eq) {
   auto cmp_dim_1 = builder.Eq(v, m, /*broadcast_dimensions=*/{0});
   auto result = builder.Tuple({cmp_dim_0, cmp_dim_1});
 
-  auto expected = LiteralUtil::MakeTuple(
-      {LiteralUtil::CreateR2<bool>({{true, true}, {true, false}}).get(),
-       LiteralUtil::CreateR2<bool>({{true, false}, {false, false}}).get()});
+  auto expected = Literal::MakeTuple(
+      {Literal::CreateR2<bool>({{true, true}, {true, false}}).get(),
+       Literal::CreateR2<bool>({{true, false}, {false, false}}).get()});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -1802,7 +2047,7 @@ TEST_F(ArrayElementwiseOpTest, R4_16x16x2x2_Plus_R1_16) {
   std::iota(r1.begin(), r1.end(), 1.0);
 
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR4FromArray4D(r4);
+  std::unique_ptr<Literal> a_literal = Literal::CreateR4FromArray4D(r4);
   *a_literal->mutable_shape()->mutable_layout() =
       LayoutUtil::MakeLayout({0, 1, 2, 3});
   auto a = builder.ConstantLiteral(*a_literal);
@@ -1838,8 +2083,8 @@ TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
 // broadcast.
 TEST_F(ArrayElementwiseOpTest, ImplictBroadcastInFusedExpressions) {
   ComputationBuilder builder(client_, TestName());
-  auto x_literal = LiteralUtil::CreateR1<float>({1, 2, 3});
-  auto y_literal = LiteralUtil::CreateR1<float>({4, 5});
+  auto x_literal = Literal::CreateR1<float>({1, 2, 3});
+  auto y_literal = Literal::CreateR1<float>({4, 5});
   auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
   auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
 
@@ -1862,8 +2107,6 @@ INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::legacy_flags::AppendUserComputationFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

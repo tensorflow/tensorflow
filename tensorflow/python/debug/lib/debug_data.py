@@ -22,6 +22,7 @@ import collections
 import glob
 import json
 import os
+import platform
 
 import numpy as np
 import six
@@ -40,9 +41,17 @@ METADATA_FILE_PREFIX = "_tfdbg_"
 CORE_METADATA_TAG = "core_metadata_"
 GRAPH_FILE_TAG = "graph_"
 DEVICE_TAG = "device_"
+HASH_TAG = "hash"
 
 FETCHES_INFO_FILE_TAG = "fetches_info_"
 FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
+
+
+def _glob(glob_pattern):
+  if platform.system() == "Windows":
+    return glob.glob(glob_pattern)
+  else:
+    return gfile.Glob(glob_pattern)
 
 
 class InconvertibleTensorProto(object):
@@ -108,8 +117,13 @@ def load_tensor_from_event(event):
   """
 
   tensor_proto = event.summary.value[0].tensor
-  if tensor_proto.tensor_content or tensor_proto.string_val:
-    # Initialized tensor.
+  shape = tensor_util.TensorShapeProtoToList(tensor_proto.tensor_shape)
+  num_elements = 1
+  for shape_dim in shape:
+    num_elements *= shape_dim
+
+  if tensor_proto.tensor_content or tensor_proto.string_val or not num_elements:
+    # Initialized tensor or empty tensor.
     if tensor_proto.dtype == types_pb2.DT_RESOURCE:
       tensor_value = InconvertibleTensorProto(tensor_proto)
     else:
@@ -679,7 +693,7 @@ class DebugDumpDir(object):
 
   def _load_all_device_dumps(self, partition_graphs, validate):
     """Load the dump data for all devices."""
-    device_dirs = glob.glob(os.path.join(
+    device_dirs = _glob(os.path.join(
         self._dump_root, METADATA_FILE_PREFIX + DEVICE_TAG + "*"))
 
     self._device_names = []
@@ -762,7 +776,7 @@ class DebugDumpDir(object):
     self._t0 = min(t0s) if t0s else None
 
   def _load_core_metadata(self):
-    core_metadata_files = glob.glob(os.path.join(
+    core_metadata_files = _glob(os.path.join(
         self._dump_root, METADATA_FILE_PREFIX + CORE_METADATA_TAG + "*"))
     for core_metadata_file in core_metadata_files:
       with gfile.Open(core_metadata_file, "rb") as f:
@@ -772,7 +786,7 @@ class DebugDumpDir(object):
             extract_core_metadata_from_event_proto(event))
 
   def _load_fetches_info(self):
-    fetches_info_files = glob.glob(os.path.join(
+    fetches_info_files = _glob(os.path.join(
         self._dump_root, METADATA_FILE_PREFIX + FETCHES_INFO_FILE_TAG + "*"))
     self._run_fetches_info = []
     for fetches_info_file in fetches_info_files:
@@ -780,7 +794,7 @@ class DebugDumpDir(object):
           _load_log_message_from_event_file(fetches_info_file))
 
   def _load_feeds_info(self):
-    feeds_info_files = glob.glob(os.path.join(
+    feeds_info_files = _glob(os.path.join(
         self._dump_root, METADATA_FILE_PREFIX + FEED_KEYS_INFO_FILE_TAG + "*"))
     self._run_feed_keys_info = []
     for feeds_info_file in feeds_info_files:

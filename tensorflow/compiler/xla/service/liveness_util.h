@@ -34,21 +34,16 @@ bool DoesNotUseOperandBuffer(const HloInstruction* operand,
                              const HloInstruction* user,
                              const TuplePointsToAnalysis& points_to_analysis);
 
-// Overload which does not require points-to analysis. The result is more
-// conservative (returns false more often).
-bool DoesNotUseOperandBuffer(const HloInstruction* operand,
-                             const ShapeIndex& index,
-                             const HloInstruction* user);
-
 // Returns true if 'user' (at 'user_index') can share a buffer with its operand
-// 'operand' (at 'operand_index').
-// Returns false otherwise.
+// 'operand' (at 'operand_index'). Returns false otherwise. Optionally takes a
+// points-to analysis argument. Without the analysis, the result is more
+// conservative (returns false more often).
 //
 // REQUIRES: 'operand' is an operand of 'user'.
 bool CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
     HloInstruction* user, const ShapeIndex& user_index,
-    const TuplePointsToAnalysis& points_to_analysis);
+    const TuplePointsToAnalysis* points_to_analysis = nullptr);
 
 }  // namespace xla
 

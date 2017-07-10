@@ -1068,7 +1068,7 @@ get_variable_or_local_docstring = (
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-@{$variable_scope$Variable Scope How To}
+@{$variables$Variable Scope How To}
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1444,7 +1444,7 @@ def variable_scope(name_or_scope,
 
   Variable scope allows to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the @{$variable_scope$Variable Scope How To},
+  see the @{$variables$Variable Scope How To},
   here we present only a few basic examples.
 
   Simple example of how to create a new variable:

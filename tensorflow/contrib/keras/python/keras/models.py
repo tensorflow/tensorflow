@@ -436,6 +436,7 @@ class Sequential(Model):
     # The following properties are not actually used by Keras;
     # they exist for compatibility with TF's variable scoping mechanism.
     self._updates = []
+    self._losses = []
     self._scope = None
     self._reuse = None
     self._base_name = name

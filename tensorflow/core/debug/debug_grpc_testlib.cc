@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_grpc_testlib.h"
 
 #include "tensorflow/core/debug/debug_graph_utils.h"
+#include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
@@ -44,8 +46,6 @@ namespace test {
           tensorflow::str_util::Split(val.node_name(), ':');
 
       const string node_name = name_items[0];
-      int32 output_slot = 0;
-      tensorflow::strings::safe_strto32(name_items[1], &output_slot);
       const string debug_op = name_items[2];
 
       const TensorProto& tensor_proto = val.tensor();
@@ -54,9 +54,24 @@ namespace test {
         return ::grpc::Status::CANCELLED;
       }
 
-      device_names.push_back(val.tag());
+      // Obtain the device name, which is encoded in JSON.
+      third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
+      for (int i = 0; i < val.metadata().plugin_data_size(); i++) {
+        if (val.metadata().plugin_data(i).plugin_name() != "debugger") {
+          // This plugin data was meant for another plugin.
+          continue;
+        }
+        auto status = tensorflow::protobuf::util::JsonStringToMessage(
+            val.metadata().plugin_data(i).content(), &metadata);
+        if (status.ok()) {
+          // The device name has been determined.
+          break;
+        }
+      }
+
+      device_names.push_back(metadata.device());
       node_names.push_back(node_name);
-      output_slots.push_back(output_slot);
+      output_slots.push_back(metadata.output_slot());
       debug_ops.push_back(debug_op);
       debug_tensors.push_back(tensor);
     }

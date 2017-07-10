@@ -179,6 +179,43 @@ class FtrlOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([-0.02406147, -0.04830509]), v1_val)
 
+  def testFtrlWithL1_L2_L2Shrinkage(self):
+    """Test the new FTRL op with support for l2 shrinkage.
+
+    The addition of this parameter which places a constant pressure on weights
+    towards the origin causes the gradient descent trajectory to differ. The
+    weights will tend to have smaller magnitudes with this parameter set.
+    """
+    for dtype in [dtypes.half, dtypes.float32]:
+      with self.test_session() as sess:
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([4.0, 3.0], dtype=dtype)
+        grads0 = constant_op.constant([0.1, 0.2], dtype=dtype)
+        grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
+
+        opt = ftrl.FtrlOptimizer(
+            3.0,
+            initial_accumulator_value=0.1,
+            l1_regularization_strength=0.001,
+            l2_regularization_strength=2.0,
+            l2_shrinkage_regularization_strength=0.1)
+        update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+        variables.global_variables_initializer().run()
+
+        v0_val, v1_val = sess.run([var0, var1])
+        self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
+        self.assertAllCloseAccordingToType([4.0, 3.0], v1_val)
+
+        # Run 10 steps FTRL
+        for _ in range(10):
+          update.run()
+
+        v0_val, v1_val = sess.run([var0, var1])
+        self.assertAllCloseAccordingToType(
+            np.array([-0.22078767, -0.41378114]), v0_val)
+        self.assertAllCloseAccordingToType(
+            np.array([-0.02919818, -0.07343706]), v1_val)
+
   def applyOptimizer(self, opt, dtype, steps=5, is_sparse=False):
     if is_sparse:
       var0 = variables.Variable([[0.0], [0.0]], dtype=dtype)

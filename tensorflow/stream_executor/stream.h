@@ -1259,6 +1259,15 @@ class Stream {
       blas::ProfileResult *output_profile_result);
   Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
                                     blas::Transpose transb, uint64 m, uint64 n,
+                                    uint64 k, int alpha,
+                                    const DeviceMemory<int8> &a, int lda,
+                                    const DeviceMemory<int8> &b, int ldb,
+                                    int beta, DeviceMemory<int> *c, int ldc,
+                                    blas::ComputationType computation_type,
+                                    blas::AlgorithmType algorithm,
+                                    blas::ProfileResult *output_profile_result);
+  Stream &ThenBlasGemmWithAlgorithm(blas::Transpose transa,
+                                    blas::Transpose transb, uint64 m, uint64 n,
                                     uint64 k, float alpha,
                                     const DeviceMemory<float> &a, int lda,
                                     const DeviceMemory<float> &b, int ldb,
@@ -1655,7 +1664,7 @@ class Stream {
                               dnn::DataType input_type,
                               const DeviceMemoryBase &input_data,
                               const dnn::BatchDescriptor &output_desc,
-                              dnn::DataType output_type,
+                              dnn::DataType output_type, float scale,
                               DeviceMemoryBase *output_data);
 
   // The templated version of the above ThenTransformTensor. Useful when the

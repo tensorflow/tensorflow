@@ -257,6 +257,16 @@ cc_library(
     includes = ["include"],
 )
 
+# A creator of an empty file include/llvm/Support/VCSRevision.h.
+# This is usually populated by the upstream build infrastructure, but in this
+# case we leave it blank. See upstream revision r300160.
+genrule(
+    name = "vcs_revision_gen",
+    srcs = [],
+    outs = ["include/llvm/Support/VCSRevision.h"],
+    cmd = "echo '' > \"$@\"",
+)
+
 # Rules that apply the LLVM tblgen tool.
 gentbl(
     name = "intrinsics_gen",
@@ -453,6 +463,7 @@ llvm_target_list = [
             "include/llvm/IR/Intrinsics*.td",
             "include/llvm/TableGen/*.td",
             "include/llvm/Target/*.td",
+            "include/llvm/Target/GlobalISel/*.td",
         ]),
     )
     for target in llvm_target_list
@@ -1067,6 +1078,8 @@ cc_library(
         "include/llvm/BinaryFormat/*.h",
         "include/llvm/BinaryFormat/*.def",
         "include/llvm/BinaryFormat/*.inc",
+        "include/llvm/BinaryFormat/ELFRelocs/*.def",
+        "include/llvm/BinaryFormat/WasmRelocs/*.def",
     ]),
     deps = [
         ":config",
@@ -1169,7 +1182,7 @@ cc_library(
         "include/llvm/IR/*.def",
         "include/llvm/IR/*.inc",
         "include/llvm/*.h",
-    ]),
+    ]) + ["include/llvm/Support/VCSRevision.h"],
     deps = [
         ":attributes_compat_gen",
         ":attributes_gen",
@@ -1194,6 +1207,7 @@ cc_library(
         "include/llvm/DebugInfo/CodeView/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_msf",
         ":support",
@@ -1426,6 +1440,7 @@ cc_library(
         "include/llvm/MC/*.inc",
     ]),
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_code_view",
         ":support",
@@ -1921,6 +1936,8 @@ cc_library(
         "lib/Support/Unix/*.h",
         "include/llvm-c/*.h",
         "include/llvm/CodeGen/MachineValueType.h",
+        "include/llvm/BinaryFormat/COFF.h",
+        "include/llvm/BinaryFormat/MachO.h",
         "lib/Support/*.h",
     ]),
     hdrs = glob([
@@ -1931,6 +1948,7 @@ cc_library(
         "include/llvm/Support/ELFRelocs/*.def",
         "include/llvm/Support/WasmRelocs/*.def",
     ]) + [
+        "include/llvm/BinaryFormat/MachO.def",
         "include/llvm/Support/DataTypes.h",
         "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],

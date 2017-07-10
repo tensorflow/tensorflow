@@ -64,6 +64,13 @@ class ShapeInference {
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
       const ProgramShape& to_apply);
 
+  // Infers the shape produced by InferBatchNormTraining with the given
+  // operands.
+  static StatusOr<Shape> InferBatchNormTrainingShape(const Shape& operand_shape,
+                                                     const Shape& offset_shape,
+                                                     const Shape& scale_shape,
+                                                     int64 feature_index);
+
   // Infers the shape produced by applying the given convolutional
   // filter (rhs) to lhs in the way specified by the fields on window.
   static StatusOr<Shape> InferConvolveShape(
@@ -164,6 +171,12 @@ class ShapeInference {
   // the shape is identical except for the element type.
   static StatusOr<Shape> InferConvertShape(const Shape& operand_shape,
                                            PrimitiveType new_element_type);
+
+  // Helper that validates the input data type for a reduce-precision operation,
+  // and returns the result shape.
+  static StatusOr<Shape> InferReducePrecisionShape(const Shape& operand_shape,
+                                                   const int exponent_bits,
+                                                   const int mantissa_bits);
 
   // Helper that infers the shape produced by a pad operation based on the
   // padding configuration.

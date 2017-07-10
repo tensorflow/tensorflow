@@ -350,6 +350,8 @@ HexagonOpsDefinitions::BuildOpNameToSocOpTypeMap() {
 #ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
   EmplaceOpType("QuantizedMul", {}, SupportedOpType::QUANTIZED_MUL_8x8to32,
                 &op_map);
+  EmplaceOpType("QuantizedAdd", {}, SupportedOpType::QUANTIZED_ADD_8p8to32,
+                &op_map);
   EmplaceOpType("Pad", {}, SupportedOpType::PAD_F, &op_map);
   EmplaceOpType("SpaceToBatchND", {}, SupportedOpType::SPACE_TO_BATCH_ND_F,
                 &op_map),
@@ -359,6 +361,11 @@ HexagonOpsDefinitions::BuildOpNameToSocOpTypeMap() {
                 &op_map);
   EmplaceOpType("ConcatV2", {}, SupportedOpType::CONCAT_V2_F, &op_map);
   EmplaceOpType("Conv2DBackpropInput", {}, SupportedOpType::DECONV_F, &op_map);
+
+  EmplaceOpType("Tanh", {}, SupportedOpType::TANH_F, &op_map);
+  EmplaceOpType("Split", {}, SupportedOpType::SPLIT_F, &op_map);
+  EmplaceOpType("Transpose", {}, SupportedOpType::TRANSPOSE_F, &op_map);
+  EmplaceOpType("Concat", {}, SupportedOpType::CONCAT_F, &op_map);
 #endif
   return op_map;
 };

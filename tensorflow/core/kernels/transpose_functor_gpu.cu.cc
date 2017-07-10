@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 // TODO(yangzihao): Remove the dependency of conv_2d.h once we move all
@@ -53,13 +54,13 @@ void TransposeSimple(const Device& d, const Tensor& in,
   CHECK_LT(nelem, kint32max) << "Tensor too large to transpose on GPU";
   // Pack strides and permutation into one buffer.
   const int32 ndims = in.dims();
-  gtl::InlinedVector<int32, 16> host_buf(ndims * 3);
-  // Input strides.
-  ComputeStride(in.shape(), &host_buf[0]);
-  // Output strides.
-  ComputeStride(out->shape(), &host_buf[ndims]);
+  gtl::InlinedVector<int32, 24> host_buf(ndims * 3);
+  gtl::InlinedVector<int32, 8> in_strides = ComputeStride<int32>(in.shape());
+  gtl::InlinedVector<int32, 8> out_strides = ComputeStride<int32>(out->shape());
   // Dimension permutation.
   for (int i = 0; i < ndims; ++i) {
+    host_buf[i] = in_strides[i];
+    host_buf[ndims + i] = out_strides[i];
     host_buf[ndims * 2 + i] = perm[i];
   }
   // Copies the input strides, output strides and permutation to the device.
@@ -77,20 +78,6 @@ void TransposeSimple(const Device& d, const Tensor& in,
       ndims, q);
   // Safe to deallocate immediately after the kernel launch.
   d.deallocate(dev_buf);
-}
-
-template <typename Device, typename T, int NDIMS>
-void TransposeUsingEigen(const Device& d, const Tensor& in,
-                         const gtl::ArraySlice<int32> perm, Tensor* out) {
-  Eigen::array<int, NDIMS> p;
-  for (int i = 0; i < NDIMS; ++i) p[i] = perm[i];
-  auto x = typename TTypes<T, NDIMS>::ConstTensor(
-      reinterpret_cast<const T*>(in.tensor_data().data()),
-      in.shape().AsEigenDSizes<NDIMS>());
-  auto y = typename TTypes<T, NDIMS>::Tensor(
-      reinterpret_cast<T*>(const_cast<char*>(out->tensor_data().data())),
-      out->shape().AsEigenDSizes<NDIMS>());
-  y.device(d) = x.shuffle(p);
 }
 
 // TransposeUsingTile tries to reduce the dimension of the input tensor to 3 and

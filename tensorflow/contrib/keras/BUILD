@@ -7,6 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
@@ -393,12 +394,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "normalization_test",
     size = "small",
     srcs = ["python/keras/layers/normalization_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         ":testing_utils",
         "//tensorflow/python:client_testlib",

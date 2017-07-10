@@ -62,6 +62,7 @@ tf_cuda_library(
             "//tensorflow/cc:scope_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
         ],
     }),

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
@@ -160,16 +161,25 @@ class MakeIteratorOp : public OpKernel {
   }
 };
 
-class OneShotIteratorOp : public OpKernel {
+class OneShotIteratorOp : public AsyncOpKernel {
  public:
-  explicit OneShotIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit OneShotIteratorOp(OpKernelConstruction* ctx)
+      : AsyncOpKernel(ctx),
+        thread_pool_(new thread::ThreadPool(
+            ctx->env(), ThreadOptions(),
+            strings::StrCat("one_shot_iterator_initialization_thread_",
+                            SanitizeThreadSuffix(name())),
+            1 /* num_threads */, false /* low_latency_hint */))
+
+  {
     string shared_name;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &shared_name));
     OP_REQUIRES(ctx, shared_name.empty(),
                 errors::InvalidArgument("OneShotIteratorOp does not currently "
                                         "support the 'shared_name' attr."));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("dataset_factory", &dataset_factory_func_));
+    const NameAttrList* dataset_factory_func;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dataset_factory", &dataset_factory_func));
+    dataset_factory_func_ = *dataset_factory_func;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -187,102 +197,159 @@ class OneShotIteratorOp : public OpKernel {
 
   // NOTE(mrry): This is based on `ResourceOpKernel<T>::Compute()`,
   // but due to the fact that `ResourceOpKernel<T>::CreateResource()`
-  // does not provide access to the `OpKernelContext*` and we need this
-  // to invoke the factory function, it's not possible to implement
-  // this kernel by implementing `CreateResource()`.
-  void Compute(OpKernelContext* ctx) override {
-    mutex_lock l(mu_);
-    if (iterator_resource_ == nullptr) {
-      ResourceMgr* mgr = ctx->resource_manager();
-      OP_REQUIRES_OK(ctx, cinfo_.Init(mgr, def()));
-
-      // Create an IteratorResource that will hold the iterator for this op.
-      IteratorResource* resource;
-      OP_REQUIRES_OK(
-          ctx,
-          mgr->LookupOrCreate<IteratorResource>(
-              cinfo_.container(), cinfo_.name(), &resource,
-              [this](IteratorResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                *ret = new IteratorResource(output_dtypes_, output_shapes_);
-                return Status::OK();
-              }));
-      Status s = VerifyTypesMatch(output_dtypes_, resource->output_dtypes());
-      s.Update(
-          VerifyShapesCompatible(output_shapes_, resource->output_shapes()));
-      if (TF_PREDICT_FALSE(!s.ok())) {
-        resource->Unref();
-        ctx->SetStatus(s);
+  // does not provide access to the `OpKernelContext*` and we need
+  // this to invoke the factory function, it's not possible to
+  // implement this kernel by implementing `CreateResource()`.
+  // Furthermore, due to the fact that this kernel might block when
+  // running the initialization function, we must implement this
+  // kernel as an async kernel.
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    {
+      mutex_lock l(mu_);
+      if (iterator_resource_ == nullptr && initialization_status_.ok()) {
+        // The initialization thread will call `done`.
+        if (!initialization_started_) {
+          // TODO(mrry): Convert the initialization code to use
+          // callbacks instead of wasting a thread.
+          thread_pool_->Schedule([this, ctx, done]() { Init(ctx, done); });
+          initialization_started_ = true;
+        } else {
+          done_callbacks_.emplace_back(ctx, std::move(done));
+        }
         return;
       }
-      iterator_resource_ = resource;
-
-      // Call the dataset_factory_func_ to create a new dataset,
-      // over which this op will iterate.
-      FunctionLibraryRuntime::Handle f_handle;
-      OP_REQUIRES_OK(ctx,
-                     ctx->function_library()->Instantiate(
-                         dataset_factory_func_->name(),
-                         AttrSlice(&dataset_factory_func_->attr()), &f_handle));
-      FunctionLibraryRuntime::Options opts;
-      opts.cancellation_manager = ctx->cancellation_manager();
-      // Choose a step ID that is guaranteed not to clash with any
-      // Session-generated step ID. DirectSession only generates
-      // non-negative step IDs (contiguous, starting from 0), and
-      // MasterSession generates 56-bit random step IDs whose MSB is
-      // always 0, so a negative random step ID should suffice.
-      opts.step_id = -std::abs(static_cast<int64>(random::New64()));
-      ScopedStepContainer step_container(
-          opts.step_id, [ctx](const string& name) {
-            ctx->resource_manager()->Cleanup(name).IgnoreError();
-          });
-      opts.step_container = &step_container;
-      opts.runner = ctx->runner();
-      Notification n;
-      Status factory_status;
-      std::vector<Tensor> return_values;
-      ctx->function_library()->Run(opts, f_handle, {}, &return_values,
-                                   [&n, &factory_status](Status s) {
-                                     factory_status.Update(s);
-                                     n.Notify();
-                                   });
-      n.WaitForNotification();
-      OP_REQUIRES_OK(ctx, factory_status);
-      OP_REQUIRES(
-          ctx,
-          return_values.size() == 1 &&
-              return_values[0].dtype() == DT_RESOURCE &&
-              TensorShapeUtils::IsScalar(return_values[0].shape()),
-          errors::InvalidArgument("The `dataset_factory` function must return "
-                                  "a single scalar of dtype DT_RESOURCE."));
-
-      // Retrieve the dataset that was created in the factory function.
-      DatasetBase* dataset;
-      const ResourceHandle& dataset_resource =
-          return_values[0].flat<ResourceHandle>()(0);
-      OP_REQUIRES_OK(ctx, LookupResource(ctx, dataset_resource, &dataset));
-      core::ScopedUnref unref_dataset(dataset);
-
-      // Create an iterator for the dataset that was created in the
-      // factory function. This transfers ownership of the dataset to
-      // the iterator, so we can delete it from the resource manager.
-      OP_REQUIRES_OK(ctx,
-                     iterator_resource_->set_iterator(dataset->MakeIterator()));
-      OP_REQUIRES_OK(ctx, DeleteResource<DatasetBase>(ctx, dataset_resource));
     }
-    Tensor* handle;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
-    handle->scalar<ResourceHandle>()() = MakeResourceHandle<IteratorResource>(
-        ctx, cinfo_.container(), cinfo_.name());
+    ProduceOutput(ctx, std::move(done));
   }
 
  private:
-  const NameAttrList* dataset_factory_func_;
+  void Init(OpKernelContext* ctx, DoneCallback done) {
+    IteratorResource* iterator = nullptr;
+    ContainerInfo cinfo;
+    Status s = TryInit(ctx, &iterator, &cinfo);
+
+    std::vector<std::pair<OpKernelContext*, DoneCallback>> callbacks_to_run;
+    {
+      mutex_lock l(mu_);
+      if (s.ok()) {
+        iterator_resource_ = iterator;
+        cinfo_ = cinfo;
+      }
+      initialization_status_ = s;
+      std::swap(done_callbacks_, callbacks_to_run);
+    }
+
+    for (auto&& ctx_done : callbacks_to_run) {
+      ProduceOutput(ctx_done.first, std::move(ctx_done.second));
+    }
+    ProduceOutput(ctx, std::move(done));
+  }
+
+  Status TryInit(OpKernelContext* ctx, IteratorResource** iterator,
+                 ContainerInfo* cinfo) {
+    TF_RETURN_IF_ERROR(cinfo->Init(ctx->resource_manager(), def()));
+
+    // Create an IteratorResource that will hold the iterator for this op.
+    TF_RETURN_IF_ERROR(
+        ctx->resource_manager()->LookupOrCreate<IteratorResource>(
+            cinfo->container(), cinfo->name(), iterator,
+            [this](IteratorResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              *ret = new IteratorResource(output_dtypes_, output_shapes_);
+              return Status::OK();
+            }));
+
+    core::ScopedUnref unref_iterator(*iterator);
+
+    TF_RETURN_IF_ERROR(
+        VerifyTypesMatch(output_dtypes_, (*iterator)->output_dtypes()));
+    TF_RETURN_IF_ERROR(
+        VerifyShapesCompatible(output_shapes_, (*iterator)->output_shapes()));
+
+    // Call the dataset_factory_func_ to create a new dataset,
+    // over which this op will iterate.
+    FunctionLibraryRuntime::Handle f_handle;
+    TF_RETURN_IF_ERROR(ctx->function_library()->Instantiate(
+        dataset_factory_func_.name(), AttrSlice(&dataset_factory_func_.attr()),
+        &f_handle));
+    FunctionLibraryRuntime::Options opts;
+    opts.cancellation_manager = ctx->cancellation_manager();
+    // Choose a step ID that is guaranteed not to clash with any
+    // Session-generated step ID. DirectSession only generates
+    // non-negative step IDs (contiguous, starting from 0), and
+    // MasterSession generates 56-bit random step IDs whose MSB is
+    // always 0, so a negative random step ID should suffice.
+    opts.step_id = -std::abs(static_cast<int64>(random::New64()));
+    ScopedStepContainer step_container(opts.step_id, [ctx](const string& name) {
+      ctx->resource_manager()->Cleanup(name).IgnoreError();
+    });
+    opts.step_container = &step_container;
+    opts.runner = ctx->runner();
+    Notification n;
+    Status factory_status;
+    std::vector<Tensor> return_values;
+    ctx->function_library()->Run(opts, f_handle, {}, &return_values,
+                                 [&n, &factory_status](Status s) {
+                                   factory_status.Update(s);
+                                   n.Notify();
+                                 });
+    n.WaitForNotification();
+    TF_RETURN_IF_ERROR(factory_status);
+    if (return_values.size() != 1 || return_values[0].dtype() != DT_RESOURCE ||
+        !TensorShapeUtils::IsScalar(return_values[0].shape())) {
+      return errors::InvalidArgument(
+          "The `dataset_factory` function must return "
+          "a single scalar of dtype DT_RESOURCE.");
+    }
+
+    // Retrieve the dataset that was created in the factory function.
+    DatasetBase* dataset;
+    const ResourceHandle& dataset_resource =
+        return_values[0].flat<ResourceHandle>()(0);
+    TF_RETURN_IF_ERROR(LookupResource(ctx, dataset_resource, &dataset));
+    core::ScopedUnref unref_dataset(dataset);
+
+    // Create an iterator for the dataset that was created in the
+    // factory function. This transfers ownership of the dataset to
+    // the iterator, so we can delete it from the resource manager.
+    TF_RETURN_IF_ERROR((*iterator)->set_iterator(dataset->MakeIterator()));
+    TF_RETURN_IF_ERROR(DeleteResource<DatasetBase>(ctx, dataset_resource));
+
+    (*iterator)->Ref();
+    return Status::OK();
+  }
+
+  void ProduceOutput(OpKernelContext* ctx, DoneCallback done) {
+    Tensor* handle;
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, TensorShape({}), &handle),
+                         done);
+    Status s;
+    {
+      mutex_lock l(mu_);
+      s = initialization_status_;
+      if (s.ok()) {
+        handle->scalar<ResourceHandle>()() =
+            MakeResourceHandle<IteratorResource>(ctx, cinfo_.container(),
+                                                 cinfo_.name());
+      }
+    }
+    OP_REQUIRES_OK_ASYNC(ctx, s, done);
+    done();
+  }
+
+  NameAttrList dataset_factory_func_;
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
 
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
+
   mutex mu_;
   ContainerInfo cinfo_ GUARDED_BY(mu_);
-  IteratorResource* iterator_resource_ = nullptr;
+  IteratorResource* iterator_resource_ GUARDED_BY(mu_) = nullptr;
+
+  bool initialization_started_ GUARDED_BY(mu_) = false;
+  Status initialization_status_ GUARDED_BY(mu_);
+  std::vector<std::pair<OpKernelContext*, DoneCallback>> done_callbacks_
+      GUARDED_BY(mu_);
 };
 
 class IteratorGetNextOp : public AsyncOpKernel {
@@ -292,7 +359,7 @@ class IteratorGetNextOp : public AsyncOpKernel {
         thread_pool_(new thread::ThreadPool(
             ctx->env(), ThreadOptions(),
             strings::StrCat("iterator_get_next_thread_",
-                            SanitizeThreadSuffix(def().name())),
+                            SanitizeThreadSuffix(name())),
             1 /* num_threads */, false /* low_latency_hint */)) {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/public/version.h"

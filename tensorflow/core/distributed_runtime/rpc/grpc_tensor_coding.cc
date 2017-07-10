@@ -18,7 +18,9 @@ limitations under the License.
 #include "grpc++/support/slice.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_reference.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/io/proto_encode_helper.h"
 #include "tensorflow/core/platform/env.h"
@@ -35,7 +37,7 @@ static void unref_tensorbuffer(void* raw) {
 
 void EncodeRecvTensorResponseToByteBuffer(const RecvTensorResponse& proto,
                                           ::grpc::ByteBuffer* result) {
-  size_t len = proto.ByteSize();
+  size_t len = proto.ByteSizeLong();
   gpr_slice s = gpr_slice_malloc(len);
   proto.SerializeWithCachedSizesToArray(
       reinterpret_cast<uint8*>(GPR_SLICE_START_PTR(s)));

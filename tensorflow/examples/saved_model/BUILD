@@ -32,5 +32,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python/saved_model:main_op",
     ],
 )

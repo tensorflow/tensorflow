@@ -92,7 +92,7 @@ class BigQueryReader(io_ops.ReaderBase):
 
     Raises:
       TypeError: - If features is neither None nor a dict or
-                 - If columns is is neither None nor a list or
+                 - If columns is neither None nor a list or
                  - If both features and columns are None or set.
     """
     if (features is None) == (columns is None):

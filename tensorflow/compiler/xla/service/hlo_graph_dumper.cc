@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/regexp.h"
 
 using ::tensorflow::Env;
 using ::tensorflow::WriteStringToFile;
@@ -214,6 +214,7 @@ string InstructionSequenceGraph(
       case HloOpcode::kCeil:
       case HloOpcode::kClamp:
       case HloOpcode::kConvert:
+      case HloOpcode::kCos:
       case HloOpcode::kDivide:
       case HloOpcode::kEq:
       case HloOpcode::kExp:
@@ -282,6 +283,10 @@ string InstructionSequenceGraph(
         // port for each parameter instruction. No need to emit anything in this
         // case.
         continue;
+      case HloOpcode::kBatchNormTraining:
+        StrAppend(&name, " feature_index=", instruction->feature_index());
+        color = kPurple;
+        break;
       case HloOpcode::kReduce:
         StrAppend(&name, " dims=", Join(instruction->dimensions(), ","));
         color = kPurple;
@@ -313,6 +318,11 @@ string InstructionSequenceGraph(
         StrAppend(&name, "<br/>",
                   "custom_call_target=", instruction->custom_call_target());
         break;
+      case HloOpcode::kReducePrecision:
+        // Make ReducePrecision ops a bit more visible, since typically they
+        // will be inserted as modifications to an existing graph.
+        color = kDarkRed;
+        break;
     }
 
     // Create instruction node with appropriate label, shape, and color.
@@ -325,8 +335,7 @@ string InstructionSequenceGraph(
         ShapeUtil::IsEffectiveScalar(instruction->shape())) {
       auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
           instruction->shape(), /*linear_index=*/0);
-      StrAppend(&label, " = {",
-                LiteralUtil::GetAsString(instruction->literal(), elem_idx),
+      StrAppend(&label, " = {", instruction->literal().GetAsString(elem_idx),
                 "}");
     }
 
@@ -508,10 +517,9 @@ namespace {
 
 class FileGraphRenderer : public GraphRendererInterface {
  public:
-  string RenderGraph(const string& graph, GraphKind graph_kind) override {
+  string RenderGraph(const string& graph, GraphKind graph_kind,
+                     const DebugOptions& debug_options) override {
     static std::atomic<int> output_num(0);
-    legacy_flags::HloGraphDumperFlags* flags =
-        legacy_flags::GetHloGraphDumperFlags();
     string file_extension;
     switch (graph_kind) {
       case DOT_GRAPH:
@@ -522,7 +530,7 @@ class FileGraphRenderer : public GraphRendererInterface {
         break;
     }
     string path =
-        JoinPath(flags->xla_hlo_dump_graph_path,
+        JoinPath(debug_options.xla_hlo_graph_path(),
                  StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
     auto status = Status::OK();
     int fd = mkstemps(&path[0], file_extension.length());
@@ -548,13 +556,11 @@ XLA_REGISTER_GRAPH_RENDERER(FileGraphRenderer, 0);
 }  // namespace
 
 string DumpGraph(const HloComputation& computation, const string& label,
-                 bool show_addresses, bool show_layouts,
+                 const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile) {
   string graph;
   string graph_url;
-  legacy_flags::HloGraphDumperFlags* flags =
-      legacy_flags::GetHloGraphDumperFlags();
-  if (flags->xla_hlo_dump_as_graphdef) {
+  if (debug_options.xla_hlo_dump_as_graphdef()) {
     HloTfGraphBuilder builder;
     TF_CHECK_OK(builder.AddComputation(computation));
     CHECK(tensorflow::protobuf::TextFormat::PrintToString(builder.GetGraphDef(),
@@ -563,12 +569,13 @@ string DumpGraph(const HloComputation& computation, const string& label,
     // renderers support rendering GraphDefs. Always dump GraphDefs to files
     // for now.
     graph_url = FileGraphRenderer().RenderGraph(
-        graph, GraphRendererInterface::TF_GRAPHDEF);
+        graph, GraphRendererInterface::TF_GRAPHDEF, debug_options);
   } else {
-    graph = ComputationToDotGraph(computation, label, show_addresses,
-                                  show_layouts, hlo_execution_profile);
+    graph = ComputationToDotGraph(
+        computation, label, debug_options.xla_hlo_graph_addresses(),
+        debug_options.xla_hlo_graph_layout(), hlo_execution_profile);
     graph_url = GetGraphRenderer()->RenderGraph(
-        graph, GraphRendererInterface::DOT_GRAPH);
+        graph, GraphRendererInterface::DOT_GRAPH, debug_options);
   }
   LOG(INFO) << "computation " << computation.name() << " [" << label
             << "]: " << graph_url;
@@ -584,6 +591,30 @@ void DumpText(const HloModule& module, const string& label,
       do_prefix ? StrCat(prefix, "-", label, ".txt") : StrCat(label, ".txt");
   string path = JoinPath(directory_path, filename);
   TF_CHECK_OK(WriteStringToFile(env, path, module.ToString()));
+  LOG(INFO) << "dumping module '" << module.name() << "' to " << path;
+}
+
+string MaybeDumpHloModule(const HloModule& module, const string& label,
+                          const HloExecutionProfile* profile) {
+  VLOG(2) << "MaybeDumpHloModule called on module " << module.name();
+  string graph_url;
+  const DebugOptions& debug_options = module.config().debug_options();
+  if (!debug_options.xla_generate_hlo_graph().empty() &&
+      RE2::PartialMatch(module.name(),
+                        debug_options.xla_generate_hlo_graph())) {
+    graph_url =
+        DumpGraph(*module.entry_computation(), label, debug_options, profile);
+  }
+  if (!debug_options.xla_log_hlo_text().empty() &&
+      RE2::PartialMatch(module.name(), debug_options.xla_log_hlo_text())) {
+    LOG(INFO) << "HLO for module " << module.name();
+    LOG(INFO) << "Label: " << label;
+    XLA_LOG_LINES(2, module.ToString());
+  }
+  if (!debug_options.xla_generate_hlo_text_to().empty()) {
+    DumpText(module, label, debug_options.xla_generate_hlo_text_to());
+  }
+  return graph_url;
 }
 
 }  // namespace hlo_graph_dumper

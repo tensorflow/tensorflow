@@ -88,6 +88,9 @@ class GraphTransferer {
   // Dump verification string of parameters to verify with offline tools
   void DumpVerificationStringOfNodeTransferParams() const;
 
+  static std::array<int64, SHAPE_ARRAY_SIZE> ToTensorShapeArray(
+      const TensorShape& shape);
+
  private:
   class TransferParamsComparator {
    public:
@@ -98,9 +101,15 @@ class GraphTransferer {
     const std::unordered_map<int, std::unordered_set<int>>& dependency_map_;
   };
 
-  int CacheNode(const Node& node);
+  void CacheNode(const Node& node);
 
   bool AreAllInputsCached(const Node& node) const;
+
+  // Transform a remote fused graph to add an aggregated input node which takes
+  // all inputs of the remote graph.
+  Status TransformGraphToAddAggregatedInputNode(
+      const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+      Graph* graph, ShapeRefiner* shape_refiner);
 
   Status RegisterNode(
       const IGraphTransferOpsDefinitions& ops_definitions,
@@ -113,7 +122,16 @@ class GraphTransferer {
 
   int RegisterConstantShape(const std::vector<int>& shape);
 
+  int RegisterConstTensor(const Tensor& tensor, const string& suffix);
+
+  int RegisterConstScalar(const DataType dt, const int val, const int dst_id,
+                          const int dst_input_count);
+
   bool HasPaddingAndStrides(const Node& node);
+
+  bool NeedsToAddRank(const Node& node);
+
+  bool IsPadNode(const Node& node);
 
   // Return true if the node is a reshape op which just flattens input
   // TODO(satok): Remove this method once generic reshape op is implemented in
@@ -124,6 +142,13 @@ class GraphTransferer {
   void RegisterNodeWithPaddingAndStrides(
       const IGraphTransferOpsDefinitions& ops_definitions,
       const ShapeRefiner& shape_refiner, const Node& node);
+
+  void RegisterNodeWithRank(const IGraphTransferOpsDefinitions& ops_definitions,
+                            const ShapeRefiner& shape_refiner,
+                            const Node& node);
+
+  void RegisterPadNode(const IGraphTransferOpsDefinitions& ops_definitions,
+                       const ShapeRefiner& shape_refiner, const Node& node);
 
   void RegisterInputNode(const IGraphTransferOpsDefinitions& ops_definitions,
                          const ShapeRefiner& shape_refiner,
@@ -150,6 +175,10 @@ class GraphTransferer {
                         const std::vector<int>& extra_inputs,
                         const int outputs_size);
 
+  void AddNodeInputByInputIndex(
+      const Node& node, const int idx,
+      GraphTransferInfo::NodeInputInfo* node_input_info);
+
   void AppendNodeInputParams(const int id, const Node& node,
                              const std::vector<int>& extra_inputs);
 
@@ -166,9 +195,6 @@ class GraphTransferer {
       const int inputs_size, const std::vector<int>& extra_inputs,
       const int outputs_size, const bool append_input_params,
       const bool append_output_params);
-
-  static std::array<int64, SHAPE_ARRAY_SIZE> ToTensorShapeArray(
-      const TensorShape& shape);
 
   static string ToPaddingDebugString(int padding);
 

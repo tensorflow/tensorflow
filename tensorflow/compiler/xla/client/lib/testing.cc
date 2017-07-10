@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,11 +35,11 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
       client,
       tensorflow::strings::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
   // TODO(b/26811613): Replace this when RNG is supported on all backends.
-  b.Broadcast(b.ConstantLiteral(LiteralUtil::One(shape.element_type())),
+  b.Broadcast(b.ConstantLiteral(Literal::One(shape.element_type())),
               AsInt64Slice(shape.dimensions()));
   Computation computation = b.Build().ConsumeValueOrDie();
 
-  ExecutionOptions execution_options;
+  auto execution_options = CreateDefaultExecutionOptions();
   *execution_options.mutable_shape_with_output_layout() = shape;
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
       .ConsumeValueOrDie();
