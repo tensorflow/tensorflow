@@ -18,7 +18,17 @@
 #   git update-index --assume-unchanged tensorflow/compiler/tests/plugin.bzl
 
 plugins = {
-  "poplar": {"device":"XLA_IPU", "types":"DT_FLOAT,DT_INT32,DT_INT64", "tags":[]},
-  "executor": {"device":"XLA_EXEC", "types":"DT_FLOAT,DT_INT32", "tags":[]},
+  "poplar": {
+    "device":"XLA_IPU",
+    "types":"DT_FLOAT,DT_INT32,DT_INT64",
+    "tags":[],
+    "disabled": ["conv3d_test","tensor_array_ops_test"],
+  },
+  "executor": {
+    "device":"XLA_EXEC",
+    "types":"DT_FLOAT,DT_INT32",
+    "tags":[],
+    "disabled": []
+  },
 }
 
