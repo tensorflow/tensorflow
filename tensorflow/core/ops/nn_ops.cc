@@ -3233,6 +3233,29 @@ MKL operator to convert a tensor from MKL layout to TensorFlow layout.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+REGISTER_OP("_MklInputConversion")
+    .Input("input_0: T")
+    .Input("input_1: T")
+    .Input("mkl_input_0: uint8")
+    .Input("mkl_input_1: uint8")
+    .Output("output_0: T")
+    .Output("output_1: T")
+    .Output("mkl_output_0: uint8")
+    .Output("mkl_output_1: uint8")
+    // All datatypes supported by element-wise ops
+    .Attr(
+        "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
+        "complex64, complex128}")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Doc(R"doc(
+MKL operator to process the inputs to an elementwise MKL op. Both inputs
+need to be either in TF or in MKL format. This op is added before every
+element-wise MKL op.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
 #endif  // INTEL_MKL
 
 }  // namespace tensorflow
