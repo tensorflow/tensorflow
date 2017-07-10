@@ -149,7 +149,7 @@ TensorFlow also has a
 to help build support for more client languages.  We invite contributions of new
 language bindings.
 
-An experimental Scala API that replicates a lot of the Python API functionality using the C API is located at [eaplatanios/tensorflow_scala](https://github.com/eaplatanios/tensorflow_scala).
+Bindings for various other languages (such as [C#](https://github.com/migueldeicaza/TensorFlowSharp), [Julia](https://github.com/malmaud/TensorFlow.jl), [Ruby](https://github.com/somaticio/tensorflow.rb) and [Scala](https://github.com/eaplatanios/tensorflow_scala)) created and supported by the opensource community build on top of the C API supported by the TensorFlow maintainers.
 
 #### Does TensorFlow make use of all the devices (GPUs and CPUs) available on my machine?
 
