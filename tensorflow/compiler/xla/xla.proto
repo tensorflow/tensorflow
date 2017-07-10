@@ -99,6 +99,12 @@ message DebugOptions {
   // the generated IR.
   bool xla_llvm_enable_invariant_load_metadata = 65;
 
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run n! times with all permunations of layouts for the
+  // output shape in rank n. For example, with a 3D shape, all permutations of
+  // the set {0, 1, 2} are tried.
+  bool xla_test_all_output_layouts = 70;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;

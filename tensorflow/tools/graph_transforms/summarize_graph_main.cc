@@ -118,7 +118,17 @@ Status PrintStructure(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(SortByExecutionOrder(graph, &sorted_graph));
   for (const NodeDef& node : sorted_graph.node()) {
     std::cout << node.name() << " (" << node.op() << "): ["
-              << str_util::Join(node.input(), ", ") << "]" << std::endl;
+              << str_util::Join(node.input(), ", ") << "]";
+    if (node.op() == "Const") {
+      Tensor tensor;
+      if (node.attr().count("value") &&
+          tensor.FromProto(node.attr().at("value").tensor())) {
+        std::cout << ", value=" << tensor.DebugString();
+      } else {
+        LOG(WARNING) << "Decoding Tensor failed for node" << node.name();
+      }
+    }
+    std::cout << std::endl;
   }
   return Status::OK();
 }

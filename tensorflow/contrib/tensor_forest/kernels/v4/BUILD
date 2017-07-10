@@ -198,7 +198,6 @@ cc_library(
         ":leaf_model_operators",
         ":params",
         ":split_collection_operators",
-        ":stat_utils",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
         "//tensorflow/contrib/tensor_forest:tree_utils",

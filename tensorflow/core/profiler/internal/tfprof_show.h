@@ -44,7 +44,7 @@ class TFShow {
   virtual ~TFShow() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const TFGraphNodeProto& Show(const Options& opts);
+  const GraphNodeProto& Show(const Options& opts);
 
  protected:
   virtual const ShowNode* ShowInternal(const Options& opts,

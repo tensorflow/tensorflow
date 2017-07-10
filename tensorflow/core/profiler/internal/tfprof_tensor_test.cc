@@ -38,7 +38,7 @@ class TFProfTensorTest : public ::testing::Test {
         ReadProtoFile(Env::Default(), graph_path, graph_pb.get(), false));
 
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb;
-    std::unique_ptr<OpLog> op_log_pb;
+    std::unique_ptr<OpLogProto> op_log_pb;
 
     string ckpt_path = io::JoinPath(testing::TensorFlowSrcRoot(),
                                     "core/profiler/internal/testdata/ckpt");
@@ -60,9 +60,9 @@ TEST_F(TFProfTensorTest, Basics) {
   Options opts(3, 0, 0, 0, 0, 0, -1, "name", {"VariableV2"}, {".*"}, {""},
                {".*"}, {""}, false, {"tensor_value"},  // show the tensor value.
                "", {});
-  const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
+  const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 
-  TFGraphNodeProto expected;
+  GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 0\ntotal_requested_bytes: 0\ntotal_parameters: "

@@ -234,17 +234,37 @@ cc_library(
 )
 
 cc_test(
+    name = "graph_to_functiondef_test",
+    size = "small",
+    srcs = [
+        "graph_to_functiondef_test.cc",
+    ],
+    deps = [
+        ":graph_to_functiondef",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_test(
     name = "compilation_passes_test",
     size = "small",
     srcs = [
         "encapsulate_subgraphs_pass_test.cc",
-        "graph_to_functiondef_test.cc",
         "mark_for_compilation_pass_test.cc",
     ],
     deps = [
         ":common",
         ":compilation_passes",
-        ":graph_to_functiondef",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",

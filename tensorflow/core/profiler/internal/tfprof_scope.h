@@ -64,7 +64,7 @@ class TFScope : public TFShow {
                                   const Options& opts);
 
   void Format(const std::vector<ScopeNode*> roots, string* display_str,
-              TFGraphNodeProto* proto);
+              GraphNodeProto* proto);
 
   ScopeNode* root_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;

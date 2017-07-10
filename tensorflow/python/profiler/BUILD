@@ -19,10 +19,20 @@ py_library(
 )
 
 py_library(
+    name = "option_builder",
+    srcs = ["option_builder.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tfprof_logger",
+    ],
+)
+
+py_library(
     name = "model_analyzer",
     srcs = ["model_analyzer.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":option_builder",
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:pywrap_tensorflow",
