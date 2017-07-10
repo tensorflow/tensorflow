@@ -1613,7 +1613,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
 # pylint: enable=redefined-outer-name
 
 
-def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invalid-name
+def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pylint: disable=invalid-name
   """Pads a tensor.
 
   This operation pads a `tensor` according to the `paddings` you specify.
@@ -1635,6 +1635,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
   ```python
   # 't' is [[1, 2, 3], [4, 5, 6]].
   # 'paddings' is [[1, 1,], [2, 2]].
+  # 'constant_values' is 0.
   # rank of 't' is 2.
   pad(t, paddings, "CONSTANT") ==> [[0, 0, 0, 0, 0, 0, 0],
                                     [0, 0, 1, 2, 3, 0, 0],
@@ -1657,6 +1658,8 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
     paddings: A `Tensor` of type `int32`.
     mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
     name: A name for the operation (optional).
+    constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
+      same type as `tensor`.
 
   Returns:
     A `Tensor`. Has the same type as `tensor`.
@@ -1669,7 +1672,12 @@ def pad(tensor, paddings, mode="CONSTANT", name=None):  # pylint: disable=invali
   # NumPy uses all lower-case modes.
   mode = mode.upper()
   if mode == "CONSTANT":
-    return gen_array_ops._pad(tensor, paddings, name=name)
+    # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
+    # remove the "Pad" fallback here.
+    if constant_values != 0:
+      return gen_array_ops._pad_v2(tensor, paddings, constant_values, name=name)
+    else:
+      return gen_array_ops._pad(tensor, paddings, name=name)
   if mode == "REFLECT":
     return gen_array_ops._mirror_pad(tensor,
                                      paddings,

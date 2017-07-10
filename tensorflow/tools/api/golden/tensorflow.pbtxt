@@ -1362,7 +1362,7 @@ tf_module {
   }
   member_method {
     name: "pad"
-    argspec: "args=[\'tensor\', \'paddings\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\'], "
+    argspec: "args=[\'tensor\', \'paddings\', \'mode\', \'name\', \'constant_values\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\', \'0\'], "
   }
   member_method {
     name: "parallel_stack"
