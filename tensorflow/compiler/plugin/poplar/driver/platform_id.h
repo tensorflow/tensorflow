@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_POPLAR_POPLAR_PLATFORM_ID_H_
-#define TENSORFLOW_STREAM_EXECUTOR_POPLAR_POPLAR_PLATFORM_ID_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PLATFORM_ID_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PLATFORM_ID_H_
 
 #include "tensorflow/stream_executor/platform.h"
 
@@ -28,4 +28,4 @@ extern const Platform::Id kPoplarPlatformId;
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_POPLAR_POPLAR_PLATFORM_ID_H_
+#endif

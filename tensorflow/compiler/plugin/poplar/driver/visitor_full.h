@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_FULL_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_FULL_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_FULL_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_FULL_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_base.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
@@ -100,4 +100,4 @@ public:
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_FULL_H_
+#endif

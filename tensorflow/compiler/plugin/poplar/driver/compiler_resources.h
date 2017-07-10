@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_call.h"
@@ -40,4 +40,4 @@ struct CompilerResources {
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
+#endif

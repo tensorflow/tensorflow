@@ -41,4 +41,4 @@ private:
 }
 }
 
-#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
+#endif

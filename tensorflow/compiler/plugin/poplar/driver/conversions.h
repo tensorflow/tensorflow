@@ -1,9 +1,9 @@
-#ifndef IPU_CONVERSIONS_H_
-#define IPU_CONVERSIONS_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CONVERSIONS_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_CONVERSIONS_H_
 
 #include <vector>
 
-#include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 
 namespace sep = ::perftools::gputools::poplarplugin;
 

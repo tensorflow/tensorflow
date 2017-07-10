@@ -42,4 +42,4 @@ protected:
 }
 }
 
-#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_H_
+#endif
