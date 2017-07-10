@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
-#include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
-#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
