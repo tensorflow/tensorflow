@@ -14478,6 +14478,44 @@ op {
   description: "This operation pads a `input` with zeros according to the `paddings` you\nspecify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the\nrank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many zeros to add before the contents of `input` in that dimension, and\n`paddings[D, 1]` indicates how many zeros to add after the contents of `input`\nin that dimension.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
 }
 op {
+  name: "PadV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    type_attr: "Tpaddings"
+  }
+  input_arg {
+    name: "constant_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Pads a tensor."
+  description: "This operation pads `input` according to the `paddings` and `constant_values`\nyou specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is\nthe rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many padding values to add before the contents of `input` in that dimension,\nand `paddings[D, 1]` indicates how many padding values to add after the contents\nof `input` in that dimension. `constant_values` is a scalar tensor of the same\ntype as `input` that indicates the value to use for padding `input`.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# \'constant_values\' is 0\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
+}
+op {
   name: "PaddedBatchDataset"
   input_arg {
     name: "input_dataset"
