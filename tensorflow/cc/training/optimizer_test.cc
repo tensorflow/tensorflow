@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/training/optimizer.h"
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/training/gradient_descent_optimizer.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/util/equal_graph_def.h"
-#include "tensorflow/cc/client/client_session.h"
 
 namespace tensorflow {
 using namespace ops;  // NOLINT(build/namespaces)
@@ -45,35 +45,33 @@ class OptimizerTest : public ::testing::Test {
 
 class OptimizerValueTest : public ::testing::Test {
  protected:
-  OptimizerValueTest()
-      : scope_(Scope::NewRootScope()) {}
-
+  OptimizerValueTest() : scope_(Scope::NewRootScope()) {}
   Scope scope_;
 };
 
 // test that the graph is correctly built
 TEST_F(OptimizerTest, OneMatMul) {
-
   for (const bool expected : {false, true}) {
-
     const Scope& scope = expected ? scope_expected_ : scope_test_;
 
     // the forward node should be the same for the test and expected scope
-    // TODO(theflofly): merge Const and Assign using one constructor as in python
+    // TODO(theflofly): merge Const and Assign using one
+    // constructor as in python
     auto x = Variable(scope.WithOpName("x"), {2, 2}, DT_FLOAT);
-    auto assign_x = Assign(scope.WithOpName("Assign_x"), x, Const(scope, {{1.0f, 2.0f}, {3.0f, 4.0f}}));
+    auto const_x = Const(scope, {{1.0f, 2.0f}, {3.0f, 4.0f}});
+    auto assign_x = Assign(scope.WithOpName("Assign_x"), x, const_x);
 
     auto y = Variable(scope.WithOpName("y"), {2, 2}, DT_FLOAT);
-    auto assign_y = Assign(scope.WithOpName("Assign_y"), y, Const(scope, {{1.0f, 0.0f}, {0.0f, 1.0f}}));
+    auto const_y = Const(scope, {{1.0f, 0.0f}, {0.0f, 1.0f}});
+    auto assign_y = Assign(scope.WithOpName("Assign_y"), y, const_y);
 
     // the assign node is only used once, it should not be used in the graph
-    auto z = MatMul(scope.WithOpName("z"), x,  y);
+    auto z = MatMul(scope.WithOpName("z"), x, y);
 
     TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(z.node());
 
     if (expected) {
-
       // we manually add the gradient node to the expected scope
       Scope scope_gradient = scope.NewSubScope("Gradients");
       Scope scope_optimizer = scope.NewSubScope("GradientDescent");
@@ -84,18 +82,20 @@ TEST_F(OptimizerTest, OneMatMul) {
       auto dy = MatMul(scope_gradient, x, dz, MatMul::TransposeA(true));
 
       // update
-      ApplyGradientDescent(scope_optimizer.NewSubScope("update"), 
-                           {x}, 
-                           Cast(scope_optimizer.NewSubScope("learning_rate"), 0.01f, static_cast<DataType>(Output{x}.type() - 100)), 
-                           {dx});
+      auto learning_rate1 =
+          Cast(scope_optimizer.NewSubScope("learning_rate"), 0.01f,
+               static_cast<DataType>(Output{x}.type() - 100));
 
-      ApplyGradientDescent(scope_optimizer.NewSubScope("update"), 
-                           {y}, 
-                           Cast(scope_optimizer.NewSubScope("learning_rate"), 0.01f, static_cast<DataType>(Output{y}.type() - 100)), 
-                           {dy});
+      ApplyGradientDescent(scope_optimizer.NewSubScope("update"), {x},
+                           learning_rate1, {dx});
 
+      auto learning_rate2 =
+          Cast(scope_optimizer.NewSubScope("learning_rate"), 0.01f,
+               static_cast<DataType>(Output{x}.type() - 100));
+
+      ApplyGradientDescent(scope_optimizer.NewSubScope("update"), {y},
+                           learning_rate2, {dy});
     } else {
-      
       // the gradient nodes and update nodes are added to the graph
       auto train = GradientDescentOptimizer(0.01).Minimize(scope, {z});
 
@@ -105,17 +105,14 @@ TEST_F(OptimizerTest, OneMatMul) {
 
       // TODO(theflofly): a global initializer would be nice
       TF_CHECK_OK(session.Run({assign_x, assign_y}, nullptr));
-
     }
   }
 
   CompareTestAndExpectedGraphs();
-
 }
 
 // test that the value produced by the optimizer are correct
 TEST_F(OptimizerValueTest, NeuralNetworkValues) {
-  
   auto x = Const(scope_, {{1.0f, 2.0f}, {3.0f, 4.0f}, {5.0f, 6.0f}});
   auto y = Const(scope_, {{1.0f}, {2.0f}, {3.0f}});
 
@@ -124,19 +121,19 @@ TEST_F(OptimizerValueTest, NeuralNetworkValues) {
 
   auto layer_1 = Tanh(scope_, MatMul(scope_, x, w1));
 
-  //TODO(theflofly): add the gradients and do
-  //auto b1 = Variable(scope_, {1, 1}, DT_FLOAT);
-  //auto assign_b1 = Assign(scope_, b1, Const(scope_, {{0.45f}}));
-  //auto layer_1 = Tanh(scope_, Add(scope_, MatMul(scope_, x, w1), b1));
-  //auto loss = Mean(scope_, Square(scope_, Subtract(scope_, layer_1, y)), 1);
-  //finally compare the decreasing loss
+  // TODO(theflofly): add the gradients and do
+  // auto b1 = Variable(scope_, {1, 1}, DT_FLOAT);
+  // auto assign_b1 = Assign(scope_, b1, Const(scope_, {{0.45f}}));
+  // auto layer_1 = Tanh(scope_, Add(scope_, MatMul(scope_, x, w1), b1));
+  // auto loss = Mean(scope_, Square(scope_, Subtract(scope_, layer_1, y)), 1);
+  // finally compare the decreasing loss
 
   auto train = GradientDescentOptimizer(0.01).Minimize(scope_, {layer_1});
 
   TF_ASSERT_OK(scope_.status());
 
   ClientSession session(scope_);
-  
+
   // TODO(theflofly): a global initializer would be nice
   TF_CHECK_OK(session.Run({assign_w1}, nullptr));
 
@@ -146,8 +143,9 @@ TEST_F(OptimizerValueTest, NeuralNetworkValues) {
   std::vector<Tensor> outputs;
   TF_CHECK_OK(session.Run({layer_1}, &outputs));
 
-  test::ExpectTensorEqual<float>(outputs[0], test::AsTensor<float>({-0.66430414, -0.95039594, -0.99360687}, {3, 1}));
-
+  Tensor expected_tensor =
+      test::AsTensor<float>({-0.66430414, -0.95039594, -0.99360687}, {3, 1});
+  test::ExpectTensorNear<float>(outputs[0], expected_tensor, 1e-5);
 }
 
 }  // namespace

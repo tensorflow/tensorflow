@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,14 +20,13 @@ namespace tensorflow {
 Output GradientDescentOptimizer::ApplyDense(const Scope& scope,
                                             const Output& grad,
                                             const Output& var) const {
-    // TODO(theflofly): better way to convert a data type ref
-    // to a data type then static_cast<DataType>(var.type() - 100)) ?
-    return tensorflow::ops::ApplyGradientDescent(scope.NewSubScope("update"),
-                                                 {var},
-                                                 tensorflow::ops::Cast(scope.NewSubScope("learning_rate"),
-                                                                       learning_rate_,
-                                                                       static_cast<DataType>(var.type() - 100)),
-                                                 {grad});
+  // TODO(theflofly): better way to convert a data type ref
+  // to a data type then static_cast<DataType>(var.type() - 100)) ?
+  return tensorflow::ops::ApplyGradientDescent(
+      scope.NewSubScope("update"), {var},
+      tensorflow::ops::Cast(scope.NewSubScope("learning_rate"), learning_rate_,
+                            static_cast<DataType>(var.type() - 100)),
+      {grad});
 }
 
 }  // namespace tensorflow

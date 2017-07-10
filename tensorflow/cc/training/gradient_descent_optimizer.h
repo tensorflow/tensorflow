@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,20 +20,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-class GradientDescentOptimizer: public Optimizer {
+class GradientDescentOptimizer : public Optimizer {
  public:
-    explicit GradientDescentOptimizer(float learning_rate) : Optimizer("GradientDescent"),
-                                                             learning_rate_(learning_rate) {}
+  explicit GradientDescentOptimizer(float learning_rate)
+      : Optimizer("GradientDescent"), learning_rate_(learning_rate) {}
 
-    // Add ops to apply dense gradients to `var`.
-    Output ApplyDense(const Scope& scope,
-                      const Output& grad,
-                      const Output& var) const;
+  // Add ops to apply dense gradients to `var`.
+  Output ApplyDense(const Scope& scope, const Output& grad,
+                    const Output& var) const;
 
-    void Prepare(const Scope& scope) {}  // useless for gradient descent
+  void Prepare(const Scope& scope) {}  // useless for gradient descent
 
  private:
-    float learning_rate_;
+  float learning_rate_;
 };
 
 }  // namespace tensorflow
