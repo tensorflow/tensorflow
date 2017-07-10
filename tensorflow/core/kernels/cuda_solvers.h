@@ -216,13 +216,14 @@ class CudaSolver {
   Status Syevd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n, Scalar*
   dev_A, int lda, Scalar* dev_W, int* dev_lapack_info) const;
 
+*/
   // Singular value decomposition.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-gesvd
   template <typename Scalar>
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
              int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
-             int ldvt, int* dev_lapack_info);
-
+             int ldvt, int* dev_lapack_info) const;
+/*
   // Batched linear solver using LU factorization from getrfBatched.
   // See:
   http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched

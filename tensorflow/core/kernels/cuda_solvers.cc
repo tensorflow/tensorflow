@@ -202,6 +202,8 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
 // numeric types.
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
+#define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) \
+  m(float, S) m(double, D)
 
 // Macros to construct cusolverDn method names.
 #define DN_SOLVER_FN(method, lapack_prefix) cusolverDn##lapack_prefix##method
@@ -283,6 +285,44 @@ static inline Status GeamImpl(SolverFnT solver, cublasHandle_t cublas_handle,
 
 TF_CALL_LAPACK_TYPES(GEAM_INSTANCE);
 
+template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
+static inline Status GesvdImpl(BufSizeFnT bufsize, SolverFnT solver,
+                               OpKernelContext* context,
+                               cusolverDnHandle_t cusolver_dn_handle,
+                               signed char jobu, signed char jobvt, int m, int n, Scalar* A,
+                               int lda, Scalar* S, Scalar* U, int ldu, Scalar* VT,
+                               int ldvt, int* dev_lapack_info) {
+  /* Get amount of workspace memory required. */
+  int lwork;
+  TF_RETURN_IF_CUSOLVER_ERROR(
+      bufsize(cusolver_dn_handle, m, n, &lwork));
+  /* Allocate device memory for workspace. */
+  ScratchSpace<Scalar> dev_workspace(context, lwork, /* on_host */ false);
+  /* Launch the solver kernel. */
+  TF_RETURN_IF_CUSOLVER_ERROR(solver(
+      cusolver_dn_handle, 
+      jobu, jobvt, m, n, CUDAComplex(A), lda, S, 
+      CUDAComplex(U), ldu, CUDAComplex(VT), ldvt,
+      CUDAComplex(dev_workspace.mutable_data()), lwork, NULL, dev_lapack_info));
+  return Status::OK();
+}
+
+#define GESVD_INSTANCE(Scalar, lapack_prefix)                                \
+  template <>                                                                \
+  Status CudaSolver::Gesvd<Scalar>(                                          \
+             signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A, \
+             int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,   \
+             int ldvt, int* dev_lapack_info) const {                         \
+    return GesvdImpl(DN_BUFSIZE_FN(gesvd, lapack_prefix),                    \
+                     DN_SOLVER_FN(gesvd, lapack_prefix), context_,           \
+                     cusolver_dn_handle_,                                    \
+                     jobu, jobvt, m, n, dev_A,                               \
+                     lda, dev_S, dev_U, ldu, dev_VT,                         \
+                     ldvt, dev_lapack_info);                                 \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_COMPLEX(GESVD_INSTANCE);
+
 //=============================================================================
 // Wrappers of cuBlas computational methods begin here.
 //
@@ -358,6 +398,10 @@ static inline Status GetriBatchedImpl(
   }
 
 TF_CALL_LAPACK_TYPES(GETRI_BATCHED_INSTANCE);
+
+
+
+
 
 }  // namespace tensorflow
 
