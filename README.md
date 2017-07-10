@@ -25,8 +25,8 @@ variety of other domains, as well.
 guidelines](CONTRIBUTING.md).**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
-tracking requests and bugs. So please see the 
-[TensorFlow discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss) for general questions
+tracking requests and bugs. So please see 
+[TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss) for general questions
 and discussion, and please direct specific questions to [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
 
 ## Installation
@@ -68,4 +68,4 @@ $ python
 * [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
 * [TensorFlow course at Stanford](https://web.stanford.edu/class/cs20si)
 
-Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/about/community) for a few ways on how to participate.
+Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/about/community) for a few ways to participate.
