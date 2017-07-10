@@ -147,6 +147,7 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | | `pt <tensor>[slicing]` | Print a subarray of tensor, using [numpy](http://www.numpy.org/)-style array slicing. | `pt hidden/Relu:0[0:50,:]` |
 | | `-a` | Print the entirety of a large tensor, without using ellipses. (May take a long time for large tensors.) | `pt -a hidden/Relu:0[0:50,:]` |
 | | `-r <range>` | Highlight elements falling into specified numerical range. Multiple ranges can be used in conjunction. | `pt hidden/Relu:0 -a -r [[-inf,-1],[1,inf]]` |
+| | `-s` | Include a summary of the numeric values of the tensor (applicable only to non-empty tensors with Boolean and numeric types such as `int*` and `float*`.) | `pt -s hidden/Relu:0[0:50,:]` |
 | **`@[coordinates]`** | | Navigate to specified element in `pt` output. | `@[10,0]` or `@10,0` |
 | **`/regex`** | |  [less](https://linux.die.net/man/1/less)-style search for given regular expression. | `/inf` |
 | **`/`** | | Scroll to the next line with matches to the searched regex (if any). | `/` |
@@ -288,6 +289,16 @@ Or, alternatively:
 ```none
 tfdbg> /(inf|nan)
 ```
+
+You can also use the `-s` or `--numeric_summary` command to get a quick summary
+of the types of numeric values in the tensor:
+
+``` none
+tfdbg> pt -s cross_entropy/Log:0
+```
+
+From the summary, you can see that several of the 1000 elements of the
+`cross_entropy/Log:0` tensor are `-inf`s (negative infinities).
 
 Why did these infinities appear? To further debug, display more information
 about the node `cross_entropy/Log` by clicking the underlined `node_info` menu
