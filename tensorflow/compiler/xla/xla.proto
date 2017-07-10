@@ -70,7 +70,7 @@ message DebugOptions {
   // Embed the compiler IR as a string in the executable.
   bool xla_embed_ir_in_executable = 33;
 
-  // Dump the compiler IR into this file/path.
+  // Dump the compiler IR into this directory as individual files.
   string xla_dump_ir_to = 34;
 
   // Eliminate implicit broadcasts when lowering user computations to HLO

@@ -140,8 +140,9 @@ void AllocateFlags() {
        tensorflow::Flag("xla_embed_ir_in_executable",
                         &flag_values->xla_embed_ir_in_executable,
                         "Embed the compiler IR as a string in the executable."),
-       tensorflow::Flag("xla_dump_ir_to", &flag_values->xla_dump_ir_to,
-                        "Dump the compiler IR into this file/path."),
+       tensorflow::Flag(
+           "xla_dump_ir_to", &flag_values->xla_dump_ir_to,
+           "Dump the compiler IR into this directory as individual files."),
        tensorflow::Flag("xla_eliminate_hlo_implicit_broadcast",
                         &flag_values->xla_eliminate_hlo_implicit_broadcast,
                         "Eliminate implicit broadcasts when lowering user "
