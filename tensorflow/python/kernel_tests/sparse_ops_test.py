@@ -549,7 +549,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
   # [[1, ?, 2]
   #  [?, 3, ?]]
-  # where ? is implictly-zero.
+  # where ? is implicitly-zero.
   ind = np.array([[0, 0], [0, 2], [1, 1]]).astype(np.int64)
   vals = np.array([1, 1, 1]).astype(np.int32)
   dense_shape = np.array([2, 3]).astype(np.int64)
