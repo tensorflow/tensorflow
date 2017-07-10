@@ -1595,7 +1595,19 @@ class Operation(object):
   @property
   def type(self):
     """The type of the op (e.g. `"MatMul"`)."""
-    return self._node_def.op
+    if _USE_C_API:
+      op_type = c_api.TF_OperationOpType(self._c_op)
+      # TODO(iga): Remove these asserts after converting to C API by default.
+      # Just being a bit paranoid here.
+      # pylint: disable=unidiomatic-typecheck
+      assert type(op_type) == type(self._node_def.op), (
+          "Expected same types %s vs %s" % (type(op_type),
+                                            type(self._node_def.op)))
+      # pylint: enable=unidiomatic-typecheck
+      assert op_type == self._node_def.op
+      return op_type
+    else:
+      return self._node_def.op
 
   @property
   def graph(self):
