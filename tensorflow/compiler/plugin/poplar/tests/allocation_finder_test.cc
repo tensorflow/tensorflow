@@ -208,7 +208,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations) {
   auto op1_sub2 = builder_sub2.AddInstruction(
           HloInstruction::CreateParameter(1, weight_shape, "weights"));
 
-  builder_sub2.AddInstruction(
+  auto conv2 = builder_sub2.AddInstruction(
           HloInstruction::CreateConvolve(conv2_shape, op0_sub2, op1_sub2,
                                          GetConv1Window(), GetConvDimensions()));
 
