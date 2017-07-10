@@ -55,6 +55,14 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "check_load_py_test",
+    srcs = ["check_load_py_test.py"],
+    data = [
+        "//tensorflow:all_opensource_files",
+    ],
+)
+
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.

@@ -7,6 +7,7 @@ package(default_visibility = [
     "//visibility:public",
 ])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -73,7 +74,6 @@ py_test(
     srcs = ["python/kernel_tests/ensemble_optimizer_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_pip",  # b/63386583
         "nomac",  # b/63258195
     ],
     deps = [
@@ -95,7 +95,6 @@ py_test(
     srcs = ["python/kernel_tests/model_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_pip",  # b/63386583
         "nomac",  # b/63258195
     ],
     deps = [
@@ -119,7 +118,6 @@ py_test(
     srcs = ["python/kernel_tests/prediction_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_pip",  # b/63386583
         "nomac",  # b/63258195
     ],
     deps = [
@@ -141,7 +139,6 @@ py_test(
     srcs = ["python/kernel_tests/quantile_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_pip",  # b/63386583
         "nomac",  # b/63258195
     ],
     deps = [
@@ -160,9 +157,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/split_handler_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",  # b/63386583
-    ],
     deps = [
         ":split_handler_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
@@ -179,7 +173,6 @@ py_test(
     srcs = ["python/kernel_tests/stats_accumulator_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_pip",  # b/63386583
         "nomac",  # b/63258195
     ],
     deps = [
@@ -198,7 +191,6 @@ py_test(
     srcs = ["python/kernel_tests/training_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_pip",  # b/63386583
         "nomac",  # b/63258195
     ],
     deps = [
