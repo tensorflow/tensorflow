@@ -52,6 +52,7 @@ py_library(
         "python/keras/applications/__init__.py",
         "python/keras/applications/imagenet_utils.py",
         "python/keras/applications/inception_v3.py",
+        "python/keras/applications/mobilenet.py",
         "python/keras/applications/resnet50.py",
         "python/keras/applications/vgg16.py",
         "python/keras/applications/vgg19.py",
@@ -232,6 +233,17 @@ py_test(
     name = "inception_v3_test",
     size = "medium",
     srcs = ["python/keras/applications/inception_v3_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "mobilenet_test",
+    size = "small",
+    srcs = ["python/keras/applications/mobilenet_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -475,6 +487,40 @@ py_test(
     deps = [
         ":keras",
         ":testing_utils",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "data_utils_test",
+    size = "small",
+    srcs = ["python/keras/utils/data_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "generic_utils_test",
+    size = "small",
+    srcs = ["python/keras/utils/generic_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "imagenet_utils_test",
+    size = "small",
+    srcs = ["python/keras/applications/imagenet_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
         "//tensorflow/python:client_testlib",
     ],
 )

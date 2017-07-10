@@ -48,6 +48,8 @@ struct DebugOptionsFlags {
   string xla_gpu_cuda_data_dir;
   bool xla_gpu_ftz;
 
+  bool xla_test_all_output_layouts;
+
   string xla_backend_extra_options;
 };
 
@@ -81,6 +83,7 @@ void AllocateFlags() {
   flag_values->xla_cpu_multi_thread_eigen = true;
   flag_values->xla_gpu_cuda_data_dir = "./cuda_sdk_lib";
   flag_values->xla_gpu_ftz = false;
+  flag_values->xla_test_all_output_layouts = false;
   flag_values->xla_backend_extra_options = "";
 
   flag_objects = new std::vector<tensorflow::Flag>(
@@ -159,6 +162,12 @@ void AllocateFlags() {
        tensorflow::Flag(
            "xla_dump_debug_json_to", &flag_values->xla_dump_debug_json_to,
            "Dump compilation artifacts as JSON into this directory."),
+       tensorflow::Flag("xla_test_all_output_layouts",
+                        &flag_values->xla_test_all_output_layouts,
+                        "Let ClientLibraryTestBase::ComputeAndCompare* test "
+                        "all permutations of output layouts. For example, with "
+                        "a 3D shape, all permutations of the set {0, 1, 2} are "
+                        "tried."),
        tensorflow::Flag("xla_backend_extra_options",
                         &flag_values->xla_backend_extra_options,
                         "Extra options to pass to a backend; "
@@ -214,6 +223,8 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
       flag_values->xla_llvm_enable_noalias_metadata);
   options.set_xla_llvm_enable_invariant_load_metadata(
       flag_values->xla_llvm_enable_invariant_load_metadata);
+  options.set_xla_test_all_output_layouts(
+      flag_values->xla_test_all_output_layouts);
 
   std::vector<string> extra_options_parts =
       tensorflow::str_util::Split(flag_values->xla_backend_extra_options, ',');

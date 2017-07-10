@@ -227,6 +227,24 @@ def func_load(code, defaults=None, closure=None, globs=None):
       code, globs, name=code.co_name, argdefs=defaults, closure=closure)
 
 
+def has_arg(fn, name, accept_all=False):
+  """Checks if a callable accepts a given keyword argument.
+
+  Arguments:
+      fn: Callable to inspect.
+      name: Check if `fn` can be called with `name` as a keyword argument.
+      accept_all: What to return if there is no parameter called `name`
+                  but the function accepts a `**kwargs` argument.
+
+  Returns:
+      bool, whether `fn` accepts a `name` keyword argument.
+  """
+  arg_spec = tf_inspect.getargspec(fn)
+  if accept_all and arg_spec.keywords is not None:
+    return True
+  return name in arg_spec.args
+
+
 class Progbar(object):
   """Displays a progress bar.
 

@@ -16,6 +16,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import re
 
 from tensorflow.contrib.boosted_trees.python.ops import batch_ops_utils
 from tensorflow.contrib.boosted_trees.python.ops import gen_quantile_ops
@@ -32,6 +33,9 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import resources
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
+
+# Pattern to remove all non alpha numeric from a string.
+_PATTERN = re.compile(r"[\W_]+")
 
 
 class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
@@ -54,6 +58,7 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
     """
     self._epsilon = epsilon
 
+    name = _PATTERN.sub("", name)
     with ops.name_scope(name, "QuantileAccumulator") as name:
       self._quantile_accumulator_handle = (
           gen_quantile_ops.quantile_stream_resource_handle_op(

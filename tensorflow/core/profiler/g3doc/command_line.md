@@ -36,11 +36,11 @@ with tf.gfile.Open(os.path.join(output_dir, "run_meta"), "w") as f:
 ```
 
 <b>--op_log_path:</b>
-tensorflow::tfprof::OpLog (optional). A proto used to provide extra operation
+tensorflow::tfprof::OpLogProto (optional). A proto used to provide extra operation
 information. 1) float operations. 2) code traces. 3) define customized operation
 type for -account_type_regexes option.
 
-The following code snippet writes a OpLog file.
+The following code snippet writes a OpLogProto file.
 
 ```python
 tf.profiler.write_op_log(graph, log_dir, op_log=None)
@@ -59,7 +59,7 @@ It defines _checkpoint_variable op type. It also provides checkpointed tensors' 
 bazel build --config opt tensorflow/core/profiler/...
 
 # Help information, including detail 'option' instructions.
-bazel-bin/tensorflow/core/profiler/tfprof help
+bazel-bin/tensorflow/core/profiler/profiler help
 ```
 
 #### Start `tfprof` Interactive Mode
@@ -72,17 +72,17 @@ bazel-bin/tensorflow/core/profiler/tfprof help
 # --checkpoint_path contains the model checkpoint data.
 #
 # Only includes model architecture, parameters and shapes.
-bazel-bin/tensorflow/core/profiler/tfprof \
+bazel-bin/tensorflow/core/profiler/profiler \
     --graph_path=graph.pbtxt
 #
 # Additionally profile ops memory and timing.
-bazel-bin/tensorflow/core/profiler/tfprof \
+bazel-bin/tensorflow/core/profiler/profiler \
     --graph_path=graph.pbtxt \
     --run_meta_path=run_meta \
 #
 # tfprof_log is used to define customized op types, float ops and code traces.
 # Use tfprof_logger.write_op_log() to create tfprof_log.
-bazel-bin/tensorflow/core/profiler/tfprof \
+bazel-bin/tensorflow/core/profiler/profiler \
     --graph_path=graph.pbtxt \
     --run_meta_path=run_meta \
     --op_log_path=tfprof_log \
@@ -90,7 +90,7 @@ bazel-bin/tensorflow/core/profiler/tfprof \
 # Additionally profile checkpoint statistics and values.
 # Use '-account_type_regexes _checkpoint_variables' to select
 # checkpoint tensors.
-bazel-bin/tensorflow/core/profiler/tfprof \
+bazel-bin/tensorflow/core/profiler/profiler \
     --graph_path=graph.pbtxt \
     --run_meta_path=run_meta \
     --op_log_path=tfprof_log \
@@ -101,7 +101,7 @@ bazel-bin/tensorflow/core/profiler/tfprof \
 
 ```python
 # Runs tfprof in one-shot.
-bazel-bin/tensorflow/core/profiler/tfprof scope \
+bazel-bin/tensorflow/core/profiler/profiler scope \
     --graph_path=graph.pbtxt \
     --max_depth=3
 ```
@@ -211,7 +211,7 @@ _TFProfRoot (--/464.15k params)
 ```
 
 Where does `_trainable_variables` come from? It is customized operation type
-defined through the OpLog file.
+defined through the OpLogProto file.
 Users can [Define Customized Operation Type](#define-customized-operation-type)
 
 <b>Following example shows importance of defining customized operation type.</b>
@@ -243,7 +243,7 @@ In tfprof, 'device' is an op_type. For example, if op1 and op2 are placed on
 gpu:0. They share an operation type.
 
 ```shell
-bazel-bin/tensorflow/core/profiler/tfprof \
+bazel-bin/tensorflow/core/profiler/profiler \
   --graph_path=/tmp/graph.pbtxt  \
   --run_meta_path=/tmp/run_meta
 
@@ -256,12 +256,12 @@ _TFProfRoot (--/58.84m params)
 
 #### Define Customized Operation Type
 
-First, in Python code, create an `OpLog` proto and add op type
+First, in Python code, create an `OpLogProto` proto and add op type
 information to it:
 
 ```python
 
-op_log = tfprof_log_pb2.OpLog()
+op_log = tfprof_log_pb2.OpLogProto()
 entry = op_log.log_entries.add()
 entry.name = 'pool_logit/DW'
 entry.types.append('pool_logit')
@@ -270,7 +270,7 @@ entry.name = 'pool_logit/biases'
 entry.types.append('pool_logit')
 ```
 
-Second, call write_op_log to write the OpLog proto.
+Second, call write_op_log to write the OpLogProto proto.
 
 ```python
 tf.profiler.write_op_log(
