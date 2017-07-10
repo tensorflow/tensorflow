@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/gpu_backend_lib_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
@@ -134,13 +133,8 @@ static string GetSmName(std::pair<int, int> compute_capability) {
 // from the input filename.
 string MakeNameForTempProduct(const std::string& input_filename,
                               tensorflow::StringPiece extension) {
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  return tensorflow::io::JoinPath(
-      flags->dump_temp_products_to,
-      ReplaceFilenameExtension(
-          tensorflow::io::Basename(llvm_ir::AsString(input_filename)),
-          extension));
+  return ReplaceFilenameExtension(
+      tensorflow::io::Basename(llvm_ir::AsString(input_filename)), extension);
 }
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
@@ -177,20 +171,16 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
           .xla_enable_fast_math(),
       &target_options);
 
-  // Enable FMA synthesis if desired.
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  if (flags->fma) {
-    target_options.AllowFPOpFusion = FPOpFusion::Fast;
-  }
+  // Enable FMA synthesis.
+  target_options.AllowFPOpFusion = FPOpFusion::Fast;
 
   // Set the verbose assembly options.
-  target_options.MCOptions.AsmVerbose = flags->verbose_ptx_asm;
+  target_options.MCOptions.AsmVerbose = false;
 
   // The selection of codegen optimization level is copied from function
   // GetCodeGenOptLevel in //external/llvm/tools/opt/opt.cpp.
   CodeGenOpt::Level codegen_opt_level;
-  switch (flags->opt_level) {
+  switch (hlo_module_config.debug_options().xla_backend_optimization_level()) {
     case 1:
       codegen_opt_level = CodeGenOpt::Less;
       break;
@@ -262,12 +252,10 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     // The extension is stripped by IrDumpingPassManager, so we need to
     // get creative to add a suffix.
     string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
-    legacy_flags::GpuBackendLibFlags* flags =
-        legacy_flags::GetGpuBackendLibFlags();
     IrDumpingPassManager codegen_passes(
         ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
                                  "-nvptx.dummy"),
-        flags->dump_temp_products_to, flags->dump_ir_before_passes);
+        "", false);
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
 
@@ -345,36 +333,19 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   TF_RETURN_IF_ERROR(
       LinkLibdeviceIfNecessary(module, compute_capability, libdevice_dir_path));
 
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  if (!flags->dump_temp_products_to.empty()) {
-    string linked_filename =
-        MakeNameForTempProduct(module->getModuleIdentifier(), "linked.bc");
-    LOG(INFO) << "dumping bitcode after linking libdevice to: "
-              << linked_filename;
-    EmitBitcodeToFile(*module, linked_filename);
-  }
-
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
-  module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz", flags->ftz);
+  module->addModuleFlag(llvm::Module::Override, "nvvm-reflect-ftz",
+                        hlo_module_config.debug_options().xla_gpu_ftz());
 
   // If ftz is enabled, set it as an attribute on every function in the module.
-  if (flags->ftz) {
+  if (hlo_module_config.debug_options().xla_gpu_ftz()) {
     for (llvm::Function& fn : *module) {
       fn.addFnAttr("nvptx-f32ftz", "true");
     }
   }
 
-  // Run IR-level optimizations.
-  if (flags->dump_ir_before_passes && flags->dump_temp_products_to.empty()) {
-    LOG(FATAL) << "--dump_ir_before_passes must be specified with "
-                  "--dump_temp_products_to";
-  }
-
-  IrDumpingPassManager module_passes(module->getModuleIdentifier(),
-                                     flags->dump_temp_products_to,
-                                     flags->dump_ir_before_passes);
+  IrDumpingPassManager module_passes(module->getModuleIdentifier(), "", false);
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
   llvm::TargetLibraryInfoWrapperPass* tliwp =
@@ -406,8 +377,16 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   // too.
   llvm::legacy::FunctionPassManager function_passes(module);
 
-  AddOptimizationPasses(flags->opt_level, /*size_level=*/0,
-                        target_machine.get(), &module_passes, &function_passes);
+  int32 opt_level =
+      hlo_module_config.debug_options().xla_backend_optimization_level();
+
+  CHECK_GE(opt_level, 2)
+      << "The XLA GPU backend doesn't support unoptimized code generation";
+
+  AddOptimizationPasses(opt_level,
+                        /*size_level=*/0, target_machine.get(), &module_passes,
+                        &function_passes);
+
   // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
   // TODO(jingyue): SROA may further expose more optimization opportunities, such
@@ -415,7 +394,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   // the inlining cost of a function). For now, running SROA already emits good
   // enough code for the evaluated benchmarks. We may want to run more
   // optimizations later.
-  if (flags->opt_level > 0) {
+  if (opt_level > 0) {
     // LLVM's optimizer turns on SROA when the optimization level is greater
     // than 0. We mimic this behavior here.
     module_passes.add(llvm::createSROAPass());
@@ -432,14 +411,6 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   }
   function_passes.doFinalization();
   module_passes.run(*module);
-
-  if (!flags->dump_temp_products_to.empty()) {
-    string optimized_filename =
-        MakeNameForTempProduct(module->getModuleIdentifier(), "optimized.bc");
-    LOG(INFO) << "dumping bitcode after optimizations to: "
-              << optimized_filename;
-    EmitBitcodeToFile(*module, optimized_filename);
-  }
 
   // Finally, produce PTX.
   return EmitModuleToPTX(module, target_machine.get());
@@ -472,22 +443,6 @@ void GPUBackendInit() {
   // which contains a lot of load instructions and many arithmetic instructions
   // between those loads.
   FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
-
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  if (!flags->llvm_cl_opts.empty()) {
-    std::vector<string> opts =
-        tensorflow::str_util::Split(flags->llvm_cl_opts, ',');
-    FeedLLVMWithFlags(opts);
-  }
-
-  if (flags->llvm_dump_passes) {
-    // Enable LLVM pass debugging dump. LLVM dumps this information when a pass
-    // manager is initialized for execution. It's done to stderr (this is
-    // hardcoded within LLVM to the dbgs() stream, we can't change it from the
-    // outside).
-    FeedLLVMWithFlags({"-debug-pass=Arguments"});
-  }
 
   // Initialize the NVPTX target; it's the only target we link with, so call its
   // specific initialization functions instead of the catch-all InitializeAll*.

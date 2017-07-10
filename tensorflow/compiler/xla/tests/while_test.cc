@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -80,6 +79,70 @@ TEST_F(WhileTest, WhileWithScalarResult) {
   auto shape = builder.GetShape(result).ConsumeValueOrDie();
 
   ComputeAndCompareR0<int32>(&builder, 5, {});
+}
+
+TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
+  auto result_shape = ShapeUtil::MakeShape(S32, {});
+  auto orig_shape = ShapeUtil::MakeShape(S32, {2});
+
+  // Create a computation for the condition: repeat for 5 iterations.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    builder.Gt(builder.ConstantR0<int32>(5), prev);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body: add 1 to the result variable.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto input = builder.ConstantR0<int32>(1);
+    auto result = builder.Add(input, prev);
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, TestName());
+  auto init = builder.Reduce(builder.ConstantR1<int32>(2, 1),
+                             builder.ConstantR0<int32>(0),
+                             CreateScalarAddComputation(S32, &builder), {0});
+  auto result = builder.While(condition, body, init);
+  auto shape = builder.GetShape(result).ConsumeValueOrDie();
+
+  ComputeAndCompareR0<int32>(&builder, 5, {});
+}
+
+TEST_F(WhileTest, WhileWithPredicateResult) {
+  auto result_shape = ShapeUtil::MakeShape(PRED, {});
+
+  // Create a computation for the condition: run until condition is true.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    builder.Ne(builder.ConstantR0<bool>(true), prev);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body: or condition with true.
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto result = builder.LogicalOr(prev, builder.ConstantR0<bool>(true));
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, TestName());
+  auto init = builder.Ne(builder.ConstantR0<bool>(false),
+                         builder.ConstantR0<bool>(true));
+  auto result = builder.While(condition, body, init);
+
+  ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 // Tests a while node when the result type T is a vector.
@@ -240,13 +303,60 @@ TEST_F(WhileTest, WhileWithTupleResult) {
   VLOG(2) << "while = " << ShapeUtil::HumanString(
                                *builder.GetShape(result).ConsumeValueOrDie());
 
-  auto expected_counter = LiteralUtil::CreateR0<int32>(5);
-  auto expected_data = LiteralUtil::CreateR1<float>(
+  auto expected_counter = Literal::CreateR0<int32>(5);
+  auto expected_data = Literal::CreateR1<float>(
       {5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f});
   auto expected =
-      LiteralUtil::MakeTuple({expected_counter.get(), expected_data.get()});
+      Literal::MakeTuple({expected_counter.get(), expected_data.get()});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
+}
+
+TEST_F(WhileTest, WhileWithPredicateTupleResult) {
+  std::vector<Shape> shape_elements = {ShapeUtil::MakeShape(S32, {}),
+                                       ShapeUtil::MakeShape(PRED, {})};
+  Shape result_shape = ShapeUtil::MakeTupleShape(shape_elements);
+
+  // Create a computation for the condition.
+  // Repeat for 5 iterations.
+  Computation condition;
+  {
+    ComputationBuilder builder(client_, "condition");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    builder.Gt(builder.ConstantR0<int32>(5), iteration);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a computation for the body.
+  // Add 1 to the iteration variable and or the predicate with true
+  Computation body;
+  {
+    ComputationBuilder builder(client_, "body");
+    auto prev = builder.Parameter(0, result_shape, "prev");
+    auto iteration = builder.GetTupleElement(prev, 0);
+    auto pred = builder.GetTupleElement(prev, 1);
+    auto new_pred = builder.LogicalOr(pred, builder.ConstantR0<bool>(true));
+    auto result = builder.Tuple(
+        {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_pred});
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  // Create a While node with computations for the condition and the body.
+  ComputationBuilder builder(client_, "while");
+  auto init = builder.Tuple({builder.ConstantR0<int32>(0),
+                             builder.Ne(builder.ConstantR0<bool>(false),
+                                        builder.ConstantR0<bool>(true))});
+  auto result = builder.While(condition, body, init);
+  VLOG(2) << "while = "
+          << ShapeUtil::HumanString(
+                 *builder.GetShape(result).ConsumeValueOrDie());
+
+  auto expected_counter = Literal::CreateR0<int32>(5);
+  auto expected_predicate = Literal::CreateR0<bool>(true);
+  auto expected =
+      Literal::MakeTuple({expected_counter.get(), expected_predicate.get()});
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0));
 }
 
 // Tests two while nodes when the result type T is a Tuple and the second
@@ -525,11 +635,11 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
           << ShapeUtil::HumanString(
                  *builder.GetShape(result).ConsumeValueOrDie());
 
-  auto expected_counter = LiteralUtil::CreateR0<int32>(5);
-  auto expected_data = LiteralUtil::CreateR1<float>(
+  auto expected_counter = Literal::CreateR0<int32>(5);
+  auto expected_data = Literal::CreateR1<float>(
       {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f});
   auto expected =
-      LiteralUtil::MakeTuple({expected_counter.get(), expected_data.get()});
+      Literal::MakeTuple({expected_counter.get(), expected_data.get()});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
 }
@@ -589,7 +699,7 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   for (int i = 1; i < 4; ++i) {
     TF_ASSIGN_OR_ASSERT_OK(auto computation, while_loop(i));
 
-    ExecutionOptions execution_options;
+    ExecutionOptions execution_options = execution_options_;
     execution_options.set_seed(65);
     TF_ASSIGN_OR_ASSERT_OK(
         auto result,
@@ -743,7 +853,6 @@ BENCHMARK(BM_WhileLoop);
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

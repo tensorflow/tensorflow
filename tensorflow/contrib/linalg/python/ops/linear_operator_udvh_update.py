@@ -112,9 +112,9 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
   #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint, positive_definite, diag_update_positive`
-  and `square`
-  These have the following meaning
+  for `X = non_singular`, `self_adjoint`, `positive_definite`,
+  `diag_update_positive` and `square`. These have the following meaning:
+
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
     runtime assert.  For example, finite floating point precision may result

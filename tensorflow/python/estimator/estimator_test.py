@@ -120,6 +120,9 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
       def __init__(self):
         super(_Estimator, self).__init__(model_fn=dummy_model_fn)
 
+      def _call_input_fn(self, input_fn, mode):
+        return input_fn()
+
       def _create_global_step(self, graph):
         pass
 
@@ -235,13 +238,12 @@ class EstimatorConstructorTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'features'):
       estimator.Estimator(model_fn=model_fn)
 
-  def test_model_fn_args_must_include_labels(self):
+  def test_model_fn_args_labels_is_optional(self):
 
-    def model_fn(features, y):
-      _, _ = features, y
+    def model_fn(features):
+      _ = features
 
-    with self.assertRaisesRegexp(ValueError, 'labels'):
-      estimator.Estimator(model_fn=model_fn)
+    estimator.Estimator(model_fn=model_fn)
 
   def test_if_params_provided_then_model_fn_should_accept_it(self):
 
@@ -251,6 +253,17 @@ class EstimatorConstructorTest(test.TestCase):
     estimator.Estimator(model_fn=model_fn)
     with self.assertRaisesRegexp(ValueError, 'params'):
       estimator.Estimator(model_fn=model_fn, params={'hidden_layers': 4})
+
+  def test_internal_params_is_a_deepcopy(self):
+
+    def model_fn(features, labels, params):
+      _, _, _ = features, labels, params
+
+    params = {'hidden_layers': 4}
+    est = estimator.Estimator(model_fn=model_fn, params=params)
+
+    params['hidden_layers'] = 5
+    self.assertEqual(4, est.params['hidden_layers'])
 
   def test_not_known_model_fn_args(self):
 
@@ -295,16 +308,21 @@ def model_fn_global_step_incrementer(features, labels, mode):
       train_op=state_ops.assign_add(global_step, 1))
 
 
-def _estimator_spec(
-    expected_features, expected_labels, actual_features, actual_labels, mode):
-  assert_ops = tuple([
+def assert_features_op(expected_features, actual_features):
+  return [
       check_ops.assert_equal(
           expected_features[k], actual_features[k], name='assert_%s' % k)
       for k in expected_features
-  ] + [
-      check_ops.assert_equal(
-          expected_labels, actual_labels, name='assert_labels')
-  ])
+  ]
+
+
+def _estimator_spec(
+    expected_features, expected_labels, actual_features, actual_labels, mode):
+  assert_ops = tuple(
+      assert_features_op(expected_features, actual_features) + [
+          check_ops.assert_equal(
+              expected_labels, actual_labels, name='assert_labels')
+      ])
   global_step = training.get_global_step()
   with ops.control_dependencies(assert_ops):
     return model_fn_lib.EstimatorSpec(
@@ -325,28 +343,130 @@ def _make_input_fn(features, labels):
 
 class EstimatorTrainTest(test.TestCase):
 
-  def test_minimal_model_fn_args(self):
+  def test_callable_model_fn(self):
     expected_features = {'x': 42., 'y': 43.}
     expected_labels = 44.
 
-    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
-    # doesn't work with mock fns.
     model_fn_call_count = [0]
 
-    def _model_fn(features, labels):
-      model_fn_call_count[0] += 1
-      self.assertItemsEqual(expected_features.keys(), features.keys())
-      return _estimator_spec(
-          expected_features, expected_labels, features, labels,
-          model_fn_lib.ModeKeys.TRAIN)
+    test_self = self
+
+    class ModelFn(object):
+
+      def __call__(self, features, labels):
+        model_fn_call_count[0] += 1
+        test_self.assertItemsEqual(expected_features.keys(), features.keys())
+        return _estimator_spec(
+            expected_features, expected_labels, features, labels,
+            model_fn_lib.ModeKeys.TRAIN)
 
     with self.assertRaisesRegexp(ValueError, 'does not include params'):
-      estimator.Estimator(model_fn=_model_fn, params={'a': 'b'})
-    est = estimator.Estimator(model_fn=_model_fn, config=run_config.RunConfig())
+      estimator.Estimator(model_fn=ModelFn(), params={'a': 'b'})
+    est = estimator.Estimator(model_fn=ModelFn(), config=run_config.RunConfig())
     self.assertEqual(0, model_fn_call_count[0])
     est.train(
         input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
     self.assertEqual(1, model_fn_call_count[0])
+
+  def test_callable_input_fn(self):
+    expected_params = {'batch_size': 10}
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    input_fn_call_count = [0]
+
+    def _model_fn(features, labels, mode, params, config):
+      del params, config
+      return model_fn_global_step_incrementer(features, labels, mode)
+
+    test_self = self
+
+    class InputFn(object):
+
+      def __call__(self, params, config):
+        input_fn_call_count[0] += 1
+        test_self.assertEqual(expected_params, params)
+        test_self.assertEqual(4321, config.tf_random_seed)
+        return dummy_input_fn()
+
+    est = estimator.Estimator(model_fn=_model_fn,
+                              params=expected_params,
+                              config=expected_config)
+    self.assertEqual(0, input_fn_call_count[0])
+    est.train(InputFn(), steps=1)
+    self.assertEqual(1, input_fn_call_count[0])
+
+  def test_input_fn_args(self):
+    expected_params = {'batch_size': 10}
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    input_fn_call_count = [0]
+
+    def _model_fn(features, labels, mode, params, config):
+      del params, config
+      return model_fn_global_step_incrementer(features, labels, mode)
+
+    def _input_fn(params, config):
+      input_fn_call_count[0] += 1
+      self.assertEqual(expected_params, params)
+      self.assertEqual(4321, config.tf_random_seed)
+      return dummy_input_fn()
+
+    est = estimator.Estimator(model_fn=_model_fn,
+                              params=expected_params,
+                              config=expected_config)
+    self.assertEqual(0, input_fn_call_count[0])
+    est.train(_input_fn, steps=1)
+    self.assertEqual(1, input_fn_call_count[0])
+
+  def test_minimal_model_fn_args(self):
+    expected_features = {'x': 4, 'y': 5}
+
+    def _input_fn():
+      return expected_features
+
+    model_fn_call_count = [0]
+    def _model_fn(features):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      with ops.control_dependencies(
+          assert_features_op(expected_features, features)):
+        return model_fn_lib.EstimatorSpec(
+            mode=None,
+            predictions=constant_op.constant(0.),
+            loss=constant_op.constant(0.),
+            train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(input_fn=_input_fn, steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def test_labels_should_be_none_if_model_fn_does_not_use_labels(self):
+
+    def _input_fn_with_labels():
+      return {'x': 4, 'y': 5}, [4]
+
+    def _model_fn(features):
+      _ = features
+      return model_fn_lib.EstimatorSpec(
+          mode=None,
+          predictions=constant_op.constant(0.),
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    with self.assertRaisesRegexp(ValueError, 'model_fn does not take labels'):
+      est.train(input_fn=_input_fn_with_labels, steps=1)
+
+  def test_input_fn_len_should_be_2_if_tuple_or_list(self):
+
+    def _input_fn():
+      return 4, 5, 6
+
+    def _model_fn(features):
+      _ = features
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    with self.assertRaisesRegexp(ValueError, 'len 2 tuple'):
+      est.train(input_fn=_input_fn, steps=1)
 
   def test_all_model_fn_args(self):
     expected_features = {'x': 42., 'y': 43.}
@@ -665,6 +785,29 @@ class _StepCounterHook(session_run_hook.SessionRunHook):
 
 class EstimatorEvaluateTest(test.TestCase):
 
+  def test_input_fn_args(self):
+    expected_params = {'batch_size': 10}
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    input_fn_call_count = [0]
+
+    def _model_fn(features, labels, mode, params, config):
+      del params, config
+      return model_fn_global_step_incrementer(features, labels, mode)
+
+    def _input_fn(params, config):
+      input_fn_call_count[0] += 1
+      self.assertEqual(expected_params, params)
+      self.assertEqual(4321, config.tf_random_seed)
+      return dummy_input_fn()
+
+    est = estimator.Estimator(model_fn=_model_fn,
+                              params=expected_params,
+                              config=expected_config)
+    est.train(dummy_input_fn, steps=1)
+    self.assertEqual(0, input_fn_call_count[0])
+    est.evaluate(_input_fn, steps=1)
+    self.assertEqual(1, input_fn_call_count[0])
+
   def test_model_fn_must_return_estimator_spec(self):
     def _model_fn(features, labels, mode):
       _, _ = features, labels
@@ -770,9 +913,9 @@ class EstimatorEvaluateTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn_with_incremental_loss)
     est.train(dummy_input_fn, steps=1)
     scores = est.evaluate(dummy_input_fn, steps=5)
-    self.assertIn(model_fn_lib.MetricKeys.LOSS, scores)
+    self.assertIn(model_fn_lib.LOSS_METRIC_KEY, scores)
     # Average loss will be (2 + 4 + 6 + 8 + 10)/5=6
-    self.assertAlmostEqual(6., scores[model_fn_lib.MetricKeys.LOSS])
+    self.assertAlmostEqual(6., scores[model_fn_lib.LOSS_METRIC_KEY])
 
   def test_hooks_should_be_session_run_hook(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
@@ -865,6 +1008,33 @@ class EstimatorEvaluateTest(test.TestCase):
 
 
 class EstimatorPredictTest(test.TestCase):
+
+  def test_input_fn_args(self):
+    expected_params = {'batch_size': 10}
+    expected_config = run_config.RunConfig().replace(tf_random_seed=4321)
+    input_fn_call_count = [0]
+
+    def _model_fn(features, labels, mode, params, config):
+      del features, labels, params, config
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]))
+
+    def _input_fn(params, config):
+      input_fn_call_count[0] += 1
+      self.assertEqual(expected_params, params)
+      self.assertEqual(4321, config.tf_random_seed)
+      return dummy_input_fn()
+
+    est = estimator.Estimator(model_fn=_model_fn,
+                              params=expected_params,
+                              config=expected_config)
+    est.train(dummy_input_fn, steps=1)
+    self.assertEqual(0, input_fn_call_count[0])
+    next(est.predict(_input_fn))
+    self.assertEqual(1, input_fn_call_count[0])
 
   def test_no_trained_model_in_model_dir(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)

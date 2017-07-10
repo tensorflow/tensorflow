@@ -664,7 +664,8 @@ class DNNLinearCombinedTests(test.TestCase):
       self.assertTrue(
           all([name.startswith(var_name_prefix) for name in var_names]))
       # var is used to check this op called by training.
-      var = variables_lib.Variable(0., name=(var_name_prefix + '_called'))
+      with ops.name_scope(''):
+        var = variables_lib.Variable(0., name=(var_name_prefix + '_called'))
       with ops.control_dependencies([var.assign(100.)]):
         return real_optimizer.minimize(loss, global_step, var_list)
 
@@ -695,11 +696,11 @@ class DNNLinearCombinedTests(test.TestCase):
     # verifies train_op fires linear minimize op
     self.assertEqual(100.,
                      checkpoint_utils.load_variable(
-                         self._model_dir, 'binary_logistic_head/linear_called'))
+                         self._model_dir, 'linear_called'))
     # verifies train_op fires dnn minimize op
     self.assertEqual(100.,
                      checkpoint_utils.load_variable(
-                         self._model_dir, 'binary_logistic_head/dnn_called'))
+                         self._model_dir, 'dnn_called'))
 
   def test_dnn_and_linear_logits_are_added(self):
     with ops.Graph().as_default():

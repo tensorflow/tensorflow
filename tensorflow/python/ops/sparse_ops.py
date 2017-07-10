@@ -25,11 +25,14 @@
 @@sparse_concat
 @@sparse_reorder
 @@sparse_reshape
+@@sparse_slice
 @@sparse_split
 @@sparse_retain
 @@sparse_reset_shape
 @@sparse_fill_empty_rows
 @@sparse_transpose
+@@sparse_reduce_max
+@@sparse_reduce_max_sparse
 @@sparse_reduce_sum
 @@sparse_reduce_sum_sparse
 @@sparse_add
@@ -655,6 +658,50 @@ def sparse_split(keyword_required=KeywordRequired(),
   return sparse_tensors
 
 
+def sparse_slice(sp_input, start, size, name=None):
+  """Slice a `SparseTensor` based on the `start` and `size.
+
+  For example, if the input is
+
+      input_tensor = shape = [2, 7]
+      [    a   d e  ]
+      [b c          ]
+
+  Graphically the output tensors are:
+
+      sparse_slice([0, 0], [2, 4]) = shape = [2, 4]
+      [    a  ]
+      [b c    ]
+
+      sparse_slice([0, 4], [2, 3]) = shape = [2, 3]
+      [ d e  ]
+      [      ]
+
+  Args:
+    sp_input: The `SparseTensor` to split.
+    start: 1-D. tensor represents the start of the slice.
+    size: 1-D. tensor represents the size of the slice.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `SparseTensor` objects resulting from splicing.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  sp_input = _convert_to_sparse_tensor(sp_input)
+  start = ops.convert_to_tensor(start, dtypes.int64)
+  size = ops.convert_to_tensor(size, dtypes.int64)
+
+  with ops.name_scope(name, "SparseSlice", [sp_input]) as name:
+    output_indices, output_values, output_shape = gen_sparse_ops.sparse_slice(
+        sp_input.indices, sp_input.values, sp_input.dense_shape, start, size, name=name)
+
+    return sparse_tensor.SparseTensor(
+        output_indices,
+        output_values,
+        output_shape)
+
 def sparse_to_dense(sparse_indices,
                     output_shape,
                     sparse_values,
@@ -708,6 +755,90 @@ def sparse_to_dense(sparse_indices,
       default_value=default_value,
       validate_indices=validate_indices,
       name=name)
+
+
+def sparse_reduce_max(sp_input, axis=None, keep_dims=False,
+                      reduction_axes=None):
+  """Computes the max of elements across dimensions of a SparseTensor.
+
+  This Op takes a SparseTensor and is the sparse counterpart to
+  `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
+  instead of a sparse one.
+
+  Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  with length 1.
+
+  If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+  with a single element is returned.  Additionally, the axes can be negative,
+  similar to the indexing rules in Python.
+
+  For example:
+
+  ```python
+  # 'x' represents [[1, ?, 2]
+  #                 [?, 3, ?]]
+  # where ? is implicitly-zero.
+  tf.sparse_reduce_max(x) ==> 3
+  tf.sparse_reduce_max(x, 0) ==> [1, 3, 2]
+  tf.sparse_reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
+  tf.sparse_reduce_max(x, 1, keep_dims=True) ==> [[2], [3]]
+  tf.sparse_reduce_max(x, [0, 1]) ==> 3
+  ```
+
+  Args:
+    sp_input: The SparseTensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce; list or scalar. If `None` (the
+      default), reduces all dimensions.
+    keep_dims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis.
+
+  Returns:
+    The reduced Tensor.
+  """
+  return gen_sparse_ops.sparse_reduce_max(
+      sp_input.indices, sp_input.values,
+      sp_input.dense_shape,
+      math_ops._ReductionDims(sp_input, axis, reduction_axes),
+      keep_dims)
+
+
+def sparse_reduce_max_sparse(sp_input, axis=None, keep_dims=False,
+                             reduction_axes=None):
+  """Computes the max of elements across dimensions of a SparseTensor.
+
+  This Op takes a SparseTensor and is the sparse counterpart to
+  `tf.reduce_max()`.  In contrast to SparseReduceSum, this Op returns a
+  SparseTensor.
+
+  Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  with length 1.
+
+  If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+  with a single element is returned.  Additionally, the axes can be negative,
+  which are interpreted according to the indexing rules in Python.
+
+  Args:
+    sp_input: The SparseTensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce; list or scalar. If `None` (the
+      default), reduces all dimensions.
+    keep_dims: If true, retain reduced dimensions with length 1.
+    reduction_axes: Deprecated name of axis
+
+  Returns:
+    The reduced SparseTensor.
+  """
+  output_ind, output_val, output_shape = (
+      gen_sparse_ops.sparse_reduce_max_sparse(
+          sp_input.indices, sp_input.values,
+          sp_input.dense_shape, math_ops._ReductionDims(sp_input, axis,
+                                                        reduction_axes),
+          keep_dims))
+
+  return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
 def sparse_reduce_sum(sp_input, axis=None, keep_dims=False,
@@ -1189,10 +1320,6 @@ def sparse_reset_shape(sp_input, new_shape=None):
   return sparse_tensor.SparseTensor(in_indices, in_values, output_shape_tensor)
 
 
-# TODO(b/37517434): Delete this variable on 20170610.
-_SPARSE_FILL_EMPTY_ROWS_FAST_PATH = False
-
-
 def sparse_fill_empty_rows(sp_input, default_value, name=None):
   """Fills empty rows in the input 2-D `SparseTensor` with a default value.
 
@@ -1241,52 +1368,19 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
-
-  # TODO(b/37517434): Delete the slow path and only use the fast path
-  # on 20170610.
   with ops.name_scope(name, "SparseFillEmptyRows", [sp_input]):
     default_value = ops.convert_to_tensor(
         default_value, dtype=sp_input.values.dtype)
-    if _SPARSE_FILL_EMPTY_ROWS_FAST_PATH:
-      (output_indices, output_values, empty_row_indicator,
-       unused_reverse_index_map) = gen_sparse_ops._sparse_fill_empty_rows(
-           indices=sp_input.indices,
-           values=sp_input.values,
-           dense_shape=sp_input.dense_shape,
-           default_value=default_value)
-      return (sparse_tensor.SparseTensor(
-          indices=output_indices,
-          values=output_values,
-          dense_shape=sp_input.dense_shape), empty_row_indicator)
-    else:
-      num_rows = math_ops.cast(sp_input.dense_shape[0], dtypes.int32)
-      all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
-      empty_row_indices, _ = array_ops.setdiff1d(all_row_indices,
-                                                 sp_input.indices[:, 0])
-      empty_row_indicator = sparse_to_dense(
-          empty_row_indices,
-          array_ops.expand_dims(sp_input.dense_shape[0], -1), True,
-          False)
-
-      empty_row_indices_as_column = array_ops.reshape(
-          empty_row_indices, [-1, 1])
-      additional_indices = array_ops.concat([
-          empty_row_indices_as_column,
-          array_ops.zeros_like(empty_row_indices_as_column)
-      ], 1)
-      additional_values = array_ops.fill(
-          array_ops.shape(empty_row_indices), default_value)
-
-      all_indices_unordered = array_ops.concat(
-          [sp_input.indices, additional_indices], 0)
-      all_values_unordered = array_ops.concat(
-          [sp_input.values, additional_values], 0)
-      sp_unordered_output = sparse_tensor.SparseTensor(
-          all_indices_unordered,
-          all_values_unordered, sp_input.dense_shape)
-      sp_ordered_output = sparse_reorder(sp_unordered_output)
-
-      return sp_ordered_output, empty_row_indicator
+    (output_indices, output_values, empty_row_indicator,
+     unused_reverse_index_map) = gen_sparse_ops._sparse_fill_empty_rows(
+         indices=sp_input.indices,
+         values=sp_input.values,
+         dense_shape=sp_input.dense_shape,
+         default_value=default_value)
+    return (sparse_tensor.SparseTensor(indices=output_indices,
+                                       values=output_values,
+                                       dense_shape=sp_input.dense_shape),
+            empty_row_indicator)
 
 
 def serialize_sparse(sp_input, name=None):

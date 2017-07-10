@@ -188,6 +188,8 @@ class DNNClassifier(estimator.Estimator):
       name. Both features' `value` must be a `SparseTensor`.
     - if `column` is a `_DenseColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
+
+  Loss is calculated by using softmax cross entropy.
   """
 
   def __init__(self,
@@ -319,6 +321,8 @@ class DNNRegressor(estimator.Estimator):
       name. Both features' `value` must be a `SparseTensor`.
     - if `column` is a `_DenseColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
+
+  Loss is calculated by using mean squared error.
   """
 
   def __init__(self,

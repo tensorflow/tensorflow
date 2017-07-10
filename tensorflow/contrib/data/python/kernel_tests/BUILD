@@ -100,6 +100,21 @@ py_test(
 )
 
 py_test(
+    name = "list_files_dataset_op_test",
+    size = "small",
+    srcs = ["list_files_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "map_dataset_op_test",
     size = "small",
     srcs = ["map_dataset_op_test.py"],

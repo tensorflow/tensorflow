@@ -182,17 +182,18 @@ Status BuildArguments(int num_constant_args,
     XlaCompiler::Argument& arg = (*args)[input_num];
 
     arg.name = variable_args[variable_id].name;
+    arg.kind = XlaCompiler::Argument::kVariable;
     if (variable_args[variable_id].present) {
       const Tensor& value = variable_args[variable_id].value;
-      arg.kind = XlaCompiler::Argument::kVariable;
       arg.type = value.dtype();
       arg.shape = value.shape();
+      arg.initialized = true;
     } else {
       // The values of uninitialized variables are not passed as inputs, since
       // they are meaningless. However, it is legal to assign to a resource
       // variable for the first time inside the XLA computation, so we do permit
       // uninitialized variables.
-      arg.kind = XlaCompiler::Argument::kUninitializedVariable;
+      arg.initialized = false;
       arg.type = DT_INVALID;
       arg.shape = TensorShape();
     }

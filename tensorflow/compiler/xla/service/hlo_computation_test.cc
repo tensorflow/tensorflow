@@ -110,7 +110,7 @@ TEST_F(HloComputationTest, PostOrderSingleton) {
   // Test GetInstructionPostOrder for a computation with one instruction.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto computation = builder.Build();
 
   EXPECT_THAT(computation->MakeInstructionPostOrder(), ElementsAre(constant));
@@ -121,7 +121,7 @@ TEST_F(HloComputationTest, PostOrderSimple) {
   // instructions.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto negate1 = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto negate2 = builder.AddInstruction(
@@ -136,7 +136,7 @@ TEST_F(HloComputationTest, PostOrderTrace) {
   // Test GetInstructionPostOrder for a computation with a trace instruction.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto negate1 = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto trace =
@@ -155,13 +155,13 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
   // which are not connected.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant4 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto computation = builder.Build();
 
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
@@ -173,11 +173,11 @@ TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
   // which are not connected.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32_, HloOpcode::kAdd, constant1, constant2));
   auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -197,11 +197,11 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
   // computation has multiple roots (dead code).
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   // Add three disconnected add expressions.
   builder.AddInstruction(HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
                                                       constant1, constant2));
@@ -248,7 +248,7 @@ TEST_F(HloComputationTest, DeepCopyArray) {
   // Test that DeepCopyInstruction properly copies an array.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
+      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
   auto computation = builder.Build();
 
   auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
@@ -260,9 +260,9 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
   // Test that DeepCopyInstruction properly copies a tuple.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
+      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
 
@@ -280,7 +280,7 @@ TEST_F(HloComputationTest, CycleDetection) {
   // Test whether the visitor can detect cycles in the graph.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto add = builder.AddInstruction(
@@ -303,7 +303,7 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   // twice.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   auto dead_negate = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto dead_add = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -326,9 +326,9 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
 TEST_F(HloComputationTest, CloneWithControlDependency) {
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0f)));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32_, HloOpcode::kAdd, constant1, constant2));
 
@@ -350,6 +350,105 @@ TEST_F(HloComputationTest, CloneWithControlDependency) {
   EXPECT_EQ(HloOpcode::kNegate, predecessors[0]->opcode());
   auto successors = predecessors[0]->control_successors();
   EXPECT_THAT(successors, ::testing::ElementsAre(cloned_add));
+}
+
+TEST_F(HloComputationTest, Reachability) {
+  // Test reachability of a non-trivial computation:
+  //
+  // const1    const2
+  //    |         |
+  //    | +-------+
+  //    | |       |
+  //    add ..   negate
+  //     |   .     |
+  //     |   .... exp
+  //     |         |
+  //     +---+   +-+---+
+  //         |   |     |
+  //       multiply   copy
+  //
+  // There is a control dependency from 'add' to 'exp'.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant2));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, negate));
+  auto mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply, add, exp));
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kCopy, exp));
+
+  auto computation = builder.Build(/*root_instruction=*/mul);
+
+  TF_CHECK_OK(add->AddControlDependencyTo(exp));
+  auto reachability = computation->ComputeReachability();
+
+  EXPECT_TRUE(reachability->IsReachable(constant1, constant1));
+  EXPECT_FALSE(reachability->IsReachable(constant1, constant2));
+  EXPECT_TRUE(reachability->IsReachable(constant1, add));
+  EXPECT_FALSE(reachability->IsReachable(constant1, negate));
+  EXPECT_TRUE(reachability->IsReachable(constant1, exp));
+  EXPECT_TRUE(reachability->IsReachable(constant1, mul));
+  EXPECT_TRUE(reachability->IsReachable(constant1, copy));
+
+  EXPECT_FALSE(reachability->IsReachable(constant2, constant1));
+  EXPECT_TRUE(reachability->IsReachable(constant2, constant2));
+  EXPECT_TRUE(reachability->IsReachable(constant2, add));
+  EXPECT_TRUE(reachability->IsReachable(constant2, negate));
+  EXPECT_TRUE(reachability->IsReachable(constant2, exp));
+  EXPECT_TRUE(reachability->IsReachable(constant2, mul));
+  EXPECT_TRUE(reachability->IsReachable(constant2, copy));
+
+  EXPECT_FALSE(reachability->IsReachable(exp, constant1));
+  EXPECT_FALSE(reachability->IsReachable(exp, constant2));
+  EXPECT_FALSE(reachability->IsReachable(exp, add));
+  EXPECT_FALSE(reachability->IsReachable(exp, negate));
+  EXPECT_TRUE(reachability->IsReachable(exp, exp));
+  EXPECT_TRUE(reachability->IsReachable(exp, mul));
+  EXPECT_TRUE(reachability->IsReachable(exp, copy));
+
+  EXPECT_FALSE(reachability->IsReachable(mul, constant1));
+  EXPECT_FALSE(reachability->IsReachable(mul, constant2));
+  EXPECT_FALSE(reachability->IsReachable(mul, add));
+  EXPECT_FALSE(reachability->IsReachable(mul, negate));
+  EXPECT_FALSE(reachability->IsReachable(mul, exp));
+  EXPECT_TRUE(reachability->IsReachable(mul, mul));
+  EXPECT_FALSE(reachability->IsReachable(mul, copy));
+
+  EXPECT_TRUE(reachability->IsConnected(constant1, copy));
+  EXPECT_TRUE(reachability->IsConnected(copy, constant1));
+  EXPECT_FALSE(reachability->IsConnected(negate, add));
+  EXPECT_FALSE(reachability->IsConnected(add, negate));
+
+  // Remove the control dependency then update and verify the reachability map
+  ASSERT_IS_OK(add->RemoveControlDependencyTo(exp));
+  computation->UpdateReachabilityThroughInstruction(exp, reachability.get());
+
+  EXPECT_TRUE(reachability->IsReachable(constant1, constant1));
+  EXPECT_FALSE(reachability->IsReachable(constant1, constant2));
+  EXPECT_TRUE(reachability->IsReachable(constant1, add));
+  EXPECT_FALSE(reachability->IsReachable(constant1, negate));
+  EXPECT_FALSE(reachability->IsReachable(constant1, exp));
+  EXPECT_TRUE(reachability->IsReachable(constant1, mul));
+  EXPECT_FALSE(reachability->IsReachable(constant1, copy));
+
+  // Change a use within the graph then update and verify the reachability map
+  ASSERT_IS_OK(constant2->ReplaceUseWith(negate, constant1));
+  computation->UpdateReachabilityThroughInstruction(negate, reachability.get());
+
+  EXPECT_FALSE(reachability->IsReachable(constant2, constant1));
+  EXPECT_TRUE(reachability->IsReachable(constant2, constant2));
+  EXPECT_TRUE(reachability->IsReachable(constant2, add));
+  EXPECT_FALSE(reachability->IsReachable(constant2, negate));
+  EXPECT_FALSE(reachability->IsReachable(constant2, exp));
+  EXPECT_TRUE(reachability->IsReachable(constant2, mul));
+  EXPECT_FALSE(reachability->IsReachable(constant2, copy));
 }
 
 }  // namespace

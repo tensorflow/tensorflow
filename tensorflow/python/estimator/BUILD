@@ -26,6 +26,7 @@ py_library(
         ":model_fn",
         ":parsing_utils",
         ":run_config",
+        ":util",
         "//tensorflow/python:util",
     ],
 )
@@ -213,6 +214,27 @@ py_test(
 )
 
 py_library(
+    name = "util",
+    srcs = [
+        "util.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "util_test",
+    srcs = ["util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
     name = "estimator",
     srcs = [
         "estimator.py",
@@ -222,6 +244,7 @@ py_library(
         ":export",
         ":model_fn",
         ":run_config",
+        ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:control_flow_ops",
@@ -373,7 +396,6 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:logging_ops",
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
@@ -381,7 +403,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:summary",
         "//tensorflow/python:weights_broadcast_ops",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
@@ -394,7 +416,9 @@ py_test(
     size = "small",
     srcs = ["canned/head_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
+        ":dnn_testing_utils",
         ":head",
         ":metric_keys",
         ":model_fn",

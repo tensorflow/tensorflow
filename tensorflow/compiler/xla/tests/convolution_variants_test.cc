@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -1312,20 +1311,19 @@ TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding1D) {
 TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
   ComputationBuilder builder(client_, TestName());
 
-  auto gradients_flat = LiteralUtil::CreateR1<float>({1});
+  auto gradients_flat = Literal::CreateR1<float>({1});
   auto gradients_literal =
-      LiteralUtil::Reshape(*gradients_flat, {1, 1, 1, 1, 1})
-          .ConsumeValueOrDie();
+      gradients_flat->Reshape({1, 1, 1, 1, 1}).ConsumeValueOrDie();
   auto gradients = builder.ConstantLiteral(*gradients_literal);
 
-  auto weights_flat = LiteralUtil::CreateR1<float>({1, 10, 100});
+  auto weights_flat = Literal::CreateR1<float>({1, 10, 100});
   auto weights_literal =
-      LiteralUtil::Reshape(*weights_flat, {1, 1, 1, 1, 3}).ConsumeValueOrDie();
+      weights_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
   auto weights = builder.ConstantLiteral(*weights_literal);
 
-  auto expected_flat = LiteralUtil::CreateR1<float>({10});
+  auto expected_flat = Literal::CreateR1<float>({10});
   auto expected_literal =
-      LiteralUtil::Reshape(*expected_flat, {1, 1, 1, 1, 1}).ConsumeValueOrDie();
+      expected_flat->Reshape({1, 1, 1, 1, 1}).ConsumeValueOrDie();
 
   auto mirrored_weights = builder.Rev(weights, {2, 3, 4});
   builder.ConvWithGeneralPadding(gradients, mirrored_weights,
@@ -1337,21 +1335,19 @@ TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
 TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
   ComputationBuilder builder(client_, TestName());
 
-  auto activations_flat = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
+  auto activations_flat = Literal::CreateR1<float>({1, 2, 3, 4});
   auto activations_literal =
-      LiteralUtil::Reshape(*activations_flat, {1, 1, 1, 1, 4})
-          .ConsumeValueOrDie();
+      activations_flat->Reshape({1, 1, 1, 1, 4}).ConsumeValueOrDie();
   auto activations = builder.ConstantLiteral(*activations_literal);
 
-  auto gradients_flat = LiteralUtil::CreateR1<float>({100, 10, 1});
+  auto gradients_flat = Literal::CreateR1<float>({100, 10, 1});
   auto gradients_literal =
-      LiteralUtil::Reshape(*gradients_flat, {1, 1, 1, 1, 3})
-          .ConsumeValueOrDie();
+      gradients_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
   auto gradients = builder.ConstantLiteral(*gradients_literal);
 
-  auto expected_flat = LiteralUtil::CreateR1<float>({13, 24, 130});
+  auto expected_flat = Literal::CreateR1<float>({13, 24, 130});
   auto expected_literal =
-      LiteralUtil::Reshape(*expected_flat, {1, 1, 1, 1, 3}).ConsumeValueOrDie();
+      expected_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
 
   auto forward_conv = builder.ConvGeneralDilated(
       activations, gradients,
@@ -1370,7 +1366,6 @@ TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

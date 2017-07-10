@@ -60,8 +60,8 @@ class PadOp : public XlaOpKernel {
     xla::PaddingConfig config;
     for (int i = 0; i < fixed_dims; ++i) {
       auto* dim = config.add_dimensions();
-      int before = xla::LiteralUtil::Get<int32>(pad_literal, {i, 0});
-      int after = xla::LiteralUtil::Get<int32>(pad_literal, {i, 1});
+      int before = pad_literal.Get<int32>({i, 0});
+      int after = pad_literal.Get<int32>({i, 1});
       OP_REQUIRES(ctx, before >= 0 && after >= 0,
                   errors::InvalidArgument("Paddings must be non-negative: ",
                                           before, " ", after));

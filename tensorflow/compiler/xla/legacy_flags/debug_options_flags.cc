@@ -25,9 +25,29 @@ namespace legacy_flags {
 
 struct DebugOptionsFlags {
   string xla_generate_hlo_graph;
+  bool xla_hlo_graph_addresses;
+  bool xla_hlo_graph_layout;
+  string xla_hlo_graph_path;
+  bool xla_hlo_dump_as_graphdef;
+  string xla_log_hlo_text;
+  string xla_generate_hlo_text_to;
+
   string xla_disable_hlo_passes;
   bool xla_enable_fast_math;
+  bool xla_llvm_enable_alias_scope_metadata;
+  bool xla_llvm_enable_noalias_metadata;
+  bool xla_llvm_enable_invariant_load_metadata;
   int32 xla_backend_optimization_level;
+  bool xla_embed_ir_in_executable;
+  string xla_dump_ir_to;
+  string xla_dump_debug_json_to;
+  bool xla_eliminate_hlo_implicit_broadcast;
+
+  bool xla_cpu_multi_thread_eigen;
+
+  string xla_gpu_cuda_data_dir;
+  bool xla_gpu_ftz;
+
   string xla_backend_extra_options;
 };
 
@@ -42,9 +62,25 @@ std::once_flag flags_init;
 void AllocateFlags() {
   flag_values = new DebugOptionsFlags;
   flag_values->xla_generate_hlo_graph = "";
+  flag_values->xla_hlo_graph_addresses = false;
+  flag_values->xla_hlo_graph_layout = false;
+  flag_values->xla_hlo_graph_path = "/tmp/";
+  flag_values->xla_hlo_dump_as_graphdef = false;
+  flag_values->xla_log_hlo_text = "";
+  flag_values->xla_generate_hlo_text_to = "";
   flag_values->xla_disable_hlo_passes = "";
   flag_values->xla_enable_fast_math = true;
-  flag_values->xla_backend_optimization_level = 2;
+  flag_values->xla_llvm_enable_alias_scope_metadata = true;
+  flag_values->xla_llvm_enable_noalias_metadata = true;
+  flag_values->xla_llvm_enable_invariant_load_metadata = true;
+  flag_values->xla_backend_optimization_level = 3;
+  flag_values->xla_embed_ir_in_executable = false;
+  flag_values->xla_dump_ir_to = "";
+  flag_values->xla_dump_debug_json_to = "";
+  flag_values->xla_eliminate_hlo_implicit_broadcast = false;
+  flag_values->xla_cpu_multi_thread_eigen = true;
+  flag_values->xla_gpu_cuda_data_dir = "./cuda_sdk_lib";
+  flag_values->xla_gpu_ftz = false;
   flag_values->xla_backend_extra_options = "";
 
   flag_objects = new std::vector<tensorflow::Flag>(
@@ -52,27 +88,83 @@ void AllocateFlags() {
            "xla_generate_hlo_graph", &flag_values->xla_generate_hlo_graph,
            "HLO modules matching this regex will be dumped to a .dot file "
            "throughout various stages in compilation."),
-
+       tensorflow::Flag(
+           "xla_hlo_graph_addresses", &flag_values->xla_hlo_graph_addresses,
+           "With xla_generate_hlo_graph, show addresses of HLO ops in "
+           "graph dump."),
+       tensorflow::Flag(
+           "xla_hlo_graph_layout", &flag_values->xla_hlo_graph_layout,
+           "With xla_generate_hlo_graph, show layout of HLO ops in "
+           "graph dump."),
+       tensorflow::Flag(
+           "xla_hlo_graph_path", &flag_values->xla_hlo_graph_path,
+           "With xla_generate_hlo_graph, dump the graphs into this path."),
+       tensorflow::Flag("xla_hlo_dump_as_graphdef",
+                        &flag_values->xla_hlo_dump_as_graphdef,
+                        "Dump HLO graphs as TensorFlow GraphDefs."),
+       tensorflow::Flag(
+           "xla_log_hlo_text", &flag_values->xla_log_hlo_text,
+           "HLO modules matching this regex will be dumped to LOG(INFO). "),
+       tensorflow::Flag(
+           "xla_generate_hlo_text_to", &flag_values->xla_generate_hlo_text_to,
+           "Dump all HLO modules as text into the provided directory path."),
        tensorflow::Flag(
            "xla_enable_fast_math", &flag_values->xla_enable_fast_math,
            "Enable unsafe fast-math optimizations in the compiler; "
            "this may produce faster code at the expense of some accuracy."),
+       tensorflow::Flag("xla_llvm_enable_alias_scope_metadata",
+                        &flag_values->xla_llvm_enable_alias_scope_metadata,
+                        "In LLVM-based backends, enable the emission of "
+                        "!alias.scope metadata in the generated IR."),
+       tensorflow::Flag("xla_llvm_enable_noalias_metadata",
+                        &flag_values->xla_llvm_enable_noalias_metadata,
+                        "In LLVM-based backends, enable the emission of "
+                        "!noalias metadata in the generated IR."),
+       tensorflow::Flag("xla_llvm_enable_invariant_load_metadata",
+                        &flag_values->xla_llvm_enable_invariant_load_metadata,
+                        "In LLVM-based backends, enable the emission of "
+                        "!invariant.load metadata in "
+                        "the generated IR."),
        tensorflow::Flag(
            "xla_backend_optimization_level",
            &flag_values->xla_backend_optimization_level,
            "Numerical optimization level for the XLA compiler backend."),
-
+       tensorflow::Flag(
+           "xla_disable_hlo_passes", &flag_values->xla_disable_hlo_passes,
+           "Comma-separated list of hlo passes to be disabled. These names "
+           "must exactly match the passes' names; no whitespace around "
+           "commas."),
+       tensorflow::Flag("xla_embed_ir_in_executable",
+                        &flag_values->xla_embed_ir_in_executable,
+                        "Embed the compiler IR as a string in the executable."),
+       tensorflow::Flag("xla_dump_ir_to", &flag_values->xla_dump_ir_to,
+                        "Dump the compiler IR into this file/path."),
+       tensorflow::Flag("xla_eliminate_hlo_implicit_broadcast",
+                        &flag_values->xla_eliminate_hlo_implicit_broadcast,
+                        "Eliminate implicit broadcasts when lowering user "
+                        "computations to HLO instructions; use explicit "
+                        "broadcast instead."),
+       tensorflow::Flag("xla_cpu_multi_thread_eigen",
+                        &flag_values->xla_cpu_multi_thread_eigen,
+                        "When generating calls to Eigen in the CPU backend, "
+                        "use multi-threaded Eigen mode."),
+       tensorflow::Flag("xla_gpu_cuda_data_dir",
+                        &flag_values->xla_gpu_cuda_data_dir,
+                        "If non-empty, speficies a local directory containing "
+                        "ptxas and nvvm libdevice files; otherwise we use "
+                        "those from runfile directories."),
+       tensorflow::Flag("xla_gpu_ftz", &flag_values->xla_gpu_ftz,
+                        "If true, flush-to-zero semantics are enabled in the "
+                        "code generated for GPUs."),
+       tensorflow::Flag(
+           "xla_dump_debug_json_to", &flag_values->xla_dump_debug_json_to,
+           "Dump compilation artifacts as JSON into this directory."),
        tensorflow::Flag("xla_backend_extra_options",
                         &flag_values->xla_backend_extra_options,
                         "Extra options to pass to a backend; "
                         "comma-separated list of 'key=val' strings (=val "
-                        "may be omitted); no whitespace around commas."),
+                        "may be omitted); no whitespace around commas.")});
 
-       tensorflow::Flag(
-           "xla_disable_hlo_passes", &flag_values->xla_disable_hlo_passes,
-           "Comma-separated list of HLO passes to be disabled. These names "
-           "must exactly match the passes' names; "
-           "no whitespace around commas.")});
   ParseFlagsFromEnv(*flag_objects);
 }
 
@@ -89,6 +181,12 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
 
   DebugOptions options;
   options.set_xla_generate_hlo_graph(flag_values->xla_generate_hlo_graph);
+  options.set_xla_hlo_graph_addresses(flag_values->xla_hlo_graph_addresses);
+  options.set_xla_hlo_graph_layout(flag_values->xla_hlo_graph_layout);
+  options.set_xla_hlo_graph_path(flag_values->xla_hlo_graph_path);
+  options.set_xla_hlo_dump_as_graphdef(flag_values->xla_hlo_dump_as_graphdef);
+  options.set_xla_log_hlo_text(flag_values->xla_log_hlo_text);
+  options.set_xla_generate_hlo_text_to(flag_values->xla_generate_hlo_text_to);
 
   std::vector<string> disabled_passes =
       tensorflow::str_util::Split(flag_values->xla_disable_hlo_passes, ',');
@@ -99,6 +197,23 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_enable_fast_math(flag_values->xla_enable_fast_math);
   options.set_xla_backend_optimization_level(
       flag_values->xla_backend_optimization_level);
+  options.set_xla_embed_ir_in_executable(
+      flag_values->xla_embed_ir_in_executable);
+  options.set_xla_dump_ir_to(flag_values->xla_dump_ir_to);
+  options.set_xla_eliminate_hlo_implicit_broadcast(
+      flag_values->xla_eliminate_hlo_implicit_broadcast);
+  options.set_xla_dump_debug_json_to(flag_values->xla_dump_debug_json_to);
+
+  options.set_xla_cpu_multi_thread_eigen(
+      flag_values->xla_cpu_multi_thread_eigen);
+  options.set_xla_gpu_cuda_data_dir(flag_values->xla_gpu_cuda_data_dir);
+  options.set_xla_gpu_ftz(flag_values->xla_gpu_ftz);
+  options.set_xla_llvm_enable_alias_scope_metadata(
+      flag_values->xla_llvm_enable_alias_scope_metadata);
+  options.set_xla_llvm_enable_noalias_metadata(
+      flag_values->xla_llvm_enable_noalias_metadata);
+  options.set_xla_llvm_enable_invariant_load_metadata(
+      flag_values->xla_llvm_enable_invariant_load_metadata);
 
   std::vector<string> extra_options_parts =
       tensorflow::str_util::Split(flag_values->xla_backend_extra_options, ',');

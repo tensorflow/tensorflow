@@ -28,7 +28,7 @@ def tf_cc_logged_benchmark(
       name = name,
       tags = all_tags,
       size = "large",
-      srcs = ["//tensorflow/tools/test:run_and_gather_logs.py"],
+      srcs = ["//tensorflow/tools/test:run_and_gather_logs"],
       args = [
           "--name=//%s:%s" % (PACKAGE_NAME, name),
           "--test_name=" + target,

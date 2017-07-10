@@ -345,6 +345,8 @@ class BasicLSTMCell(RNNCell):
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
+        Must set to `0.0` manually when restoring from CudnnLSTM-trained
+        checkpoints.
       state_is_tuple: If True, accepted and returned states are 2-tuples of
         the `c_state` and `m_state`.  If False, they are concatenated
         along the column axis.  The latter behavior will soon be deprecated.
@@ -352,6 +354,9 @@ class BasicLSTMCell(RNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+
+      When restoring from CudnnLSTM-trained checkpoints, must use
+      CudnnCompatibleLSTMCell instead.
     """
     super(BasicLSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
@@ -372,7 +377,20 @@ class BasicLSTMCell(RNNCell):
     return self._num_units
 
   def call(self, inputs, state):
-    """Long short-term memory cell (LSTM)."""
+    """Long short-term memory cell (LSTM).
+
+    Args:
+      inputs: `2-D` tensor with shape `[batch_size x input_size]`.
+      state: An `LSTMStateTuple` of state tensors, each shaped
+        `[batch_size x self.state_size]`, if `state_is_tuple` has been set to
+        `True`.  Otherwise, a `Tensor` shaped
+        `[batch_size x 2 * self.state_size]`.
+
+    Returns:
+      A pair containing the new hidden state, and the new state (either a
+        `LSTMStateTuple` or a concatenated state, depending on
+        `state_is_tuple`).
+    """
     sigmoid = math_ops.sigmoid
     # Parameters of gates are concatenated into one multiply for efficiency.
     if self._state_is_tuple:
@@ -401,7 +419,7 @@ class LSTMCell(RNNCell):
 
   The default non-peephole implementation is based on:
 
-    http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+    http://www.bioinf.jku.at/publications/older/2604.pdf
 
   S. Hochreiter and J. Schmidhuber.
   "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
@@ -444,7 +462,8 @@ class LSTMCell(RNNCell):
         Use a variable_scope partitioner instead.
       forget_bias: Biases of the forget gate are initialized by default to 1
         in order to reduce the scale of forgetting at the beginning of
-        the training.
+        the training. Must set it manually to `0.0` when restoring from
+        CudnnLSTM trained checkpoints.
       state_is_tuple: If True, accepted and returned states are 2-tuples of
         the `c_state` and `m_state`.  If False, they are concatenated
         along the column axis.  This latter behavior will soon be deprecated.
@@ -452,6 +471,9 @@ class LSTMCell(RNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+
+      When restoring from CudnnLSTM-trained checkpoints, must use
+      CudnnCompatibleLSTMCell instead.
     """
     super(LSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:

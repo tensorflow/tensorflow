@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 #include <vector>
-#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"  // TODO(62899350): Remove
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +28,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
+
+// Forward declare protos so their symbols can be removed from .so exports
+class AttrValue;
+class NameAttrList;
 
 // A human-readable rendering of attr_value, that is more concise than a
 // text-format proto.
@@ -80,9 +84,7 @@ void SetAttrValue(gtl::ArraySlice<Tensor> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<TensorProto> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 
-inline void SetAttrValue(const AttrValue& value, AttrValue* out) {
-  *out = value;
-}
+void SetAttrValue(const AttrValue& value, AttrValue* out);
 
 // Returns true if a and b have the same value.
 // NOTE: May return false negatives for tensor values.

@@ -26,24 +26,6 @@ REGISTER5(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double,
 REGISTER(BinaryOp, CPU, "Mul", functor::mul, int32);
 #endif  // __ANDROID_TYPES_SLIM__
 
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Mul")                                 \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          BinaryOp<SYCLDevice, functor::mul<TYPE>>);
-REGISTER_SYCL_KERNEL(float)
-REGISTER_SYCL_KERNEL(double)
-#undef REGISTER_SYCL_KERNEL
-REGISTER_KERNEL_BUILDER(Name("Mul")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::mul<int32>>);
-#endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "Mul", functor::mul, float, Eigen::half, double,
            uint8);
@@ -59,4 +41,14 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
                         BinaryOp<CPUDevice, functor::mul<int32>>);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER3(BinaryOp, SYCL, "Mul", functor::mul, float, double, uint8);
+REGISTER_KERNEL_BUILDER(Name("Mul")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::mul<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

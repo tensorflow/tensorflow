@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -162,10 +163,12 @@ Status DeviceTypeOfDevice(const string& device, DeviceType* device_type) {
   return Status::OK();
 }
 
-// Does `node` have a DT_RESOURCE typed argument?
-bool HasResourceArgument(const Node& node) {
+// Tests whether `node` has a DT_RESOURCE typed input or output.
+bool HasResourceInputOrOutput(const Node& node) {
   return std::find(node.input_types().begin(), node.input_types().end(),
-                   DT_RESOURCE) != node.input_types().end();
+                   DT_RESOURCE) != node.input_types().end() ||
+         std::find(node.output_types().begin(), node.output_types().end(),
+                   DT_RESOURCE) != node.output_types().end();
 }
 
 Status FindCompilationCandidates(
@@ -193,9 +196,10 @@ Status FindCompilationCandidates(
               << ": " << node->type_string();
       continue;
     }
-    if (!registration->compile_resource_ops && HasResourceArgument(*node)) {
-      VLOG(2) << "Compilation rejected node: resource argument " << node->name()
-              << ": " << node->type_string();
+    if (!registration->compile_resource_ops &&
+        HasResourceInputOrOutput(*node)) {
+      VLOG(2) << "Compilation rejected node: resource input/output "
+              << node->name() << ": " << node->type_string();
       continue;
     }
     if (node->type_string() == "While" &&

@@ -1363,18 +1363,20 @@ class ControlFlowContext(object):
       import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(values_def, control_flow_pb2.ValuesDef)
-    self._values = set(values_def.values)
+    self._values = set(
+        ops.prepend_name_scope(value, import_scope)
+        for value in values_def.values)
     g = ops.get_default_graph()
     self._external_values = {}
     for k, v in values_def.external_values.items():
+      k = ops.prepend_name_scope(k, import_scope)
       self._external_values[k] = g.as_graph_element(
           ops.prepend_name_scope(v, import_scope))
     op_names = set([op.split(":")[0]
                     for op in self._values - set(self._external_values)])
     for op in op_names:
       # pylint: disable=protected-access
-      g.as_graph_element(ops.prepend_name_scope(
-          op, import_scope))._set_control_flow_context(self)
+      g.as_graph_element(op)._set_control_flow_context(self)
       # pylint: enable=protected-access
 
   @property
@@ -1404,6 +1406,7 @@ class ControlFlowContext(object):
         [ops.strip_name_scope(v, export_scope)
          for v in sorted(self._values)])
     for k, v in self._external_values.items():
+      k = ops.strip_name_scope(k, export_scope)
       values_def.external_values[k] = ops.strip_name_scope(
           v.name, export_scope)
     return values_def

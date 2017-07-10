@@ -137,7 +137,7 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
       done(result.status());
       return;
     }
-    const void* src_ptr = xla::LiteralUtil::InternalData(*result.ValueOrDie());
+    const void* src_ptr = result.ValueOrDie()->InternalData();
     void* dst_ptr = DMAHelper::base(cpu_tensor);
     size_t total_bytes = cpu_tensor->TotalBytes();
     memcpy(dst_ptr, src_ptr, total_bytes);

@@ -23,6 +23,7 @@ import six
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.estimator import model_fn
+from tensorflow.python.estimator.canned import dnn_testing_utils
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
@@ -83,25 +84,10 @@ def _sigmoid(logits):
   return 1 / (1 + np.exp(-logits))
 
 
-# TODO(roumposg): Reuse the code from dnn_testing_utils.
-def _assert_close(expected, actual, rtol=1e-04, message='',
-                  name='assert_close'):
-  with ops.name_scope(name, 'assert_close', (expected, actual, rtol)) as scope:
-    expected = ops.convert_to_tensor(expected, name='expected')
-    actual = ops.convert_to_tensor(actual, name='actual')
-    rdiff = math_ops.abs((expected - actual) / expected, 'diff')
-    rtol = ops.convert_to_tensor(rtol, name='rtol')
-    return check_ops.assert_less(
-        rdiff,
-        rtol,
-        data=(message, 'Condition expected =~ actual did not hold element-wise:'
-              'expected = ', expected, 'actual = ', actual, 'rdiff = ', rdiff,
-              'rtol = ', rtol,),
-        summarize=expected.get_shape().num_elements(),
-        name=scope)
-
-
 class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
+
+  def setUp(self):
+    ops.reset_default_graph()
 
   def test_n_classes_is_none(self):
     with self.assertRaisesRegexp(ValueError, 'n_classes must be > 2'):
@@ -690,6 +676,9 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
 # TODO(ptucker): Add thresholds tests.
 class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
 
+  def setUp(self):
+    ops.reset_default_graph()
+
   def test_threshold_too_small(self):
     with self.assertRaisesRegexp(ValueError, r'thresholds not in \(0, 1\)'):
       head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
@@ -1026,7 +1015,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     #      = 1.2484322
     expected_loss = 1.2484322
     def _train_op_fn(loss):
-      with ops.control_dependencies((_assert_close(
+      with ops.control_dependencies((dnn_testing_utils.assert_close(
           math_ops.to_float(expected_loss), math_ops.to_float(loss)),)):
         return constant_op.constant(expected_train_result)
     spec = head.create_estimator_spec(
@@ -1257,6 +1246,9 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
 
 
 class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
+
+  def setUp(self):
+    ops.reset_default_graph()
 
   def test_invalid_label_dimension(self):
     with self.assertRaisesRegexp(ValueError, r'Invalid label_dimension'):

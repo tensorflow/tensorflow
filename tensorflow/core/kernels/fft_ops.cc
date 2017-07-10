@@ -128,7 +128,7 @@ class FFTCPU : public FFTBase {
     auto device = ctx->eigen_device<CPUDevice>();
 
     if (!IsReal()) {
-      auto input = (Tensor(in)).flat_inner_dims<complex64, FFTRank + 1>();
+      auto input = Tensor(in).flat_inner_dims<complex64, FFTRank + 1>();
       // Compute the FFT using eigen.
       auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
       constexpr auto direction =
@@ -137,7 +137,7 @@ class FFTCPU : public FFTBase {
           input.template fft<Eigen::BothParts, direction>(axes);
     } else {
       if (IsForward()) {
-        auto input = (Tensor(in)).flat_inner_dims<float, FFTRank + 1>();
+        auto input = Tensor(in).flat_inner_dims<float, FFTRank + 1>();
         const auto input_dims = input.dimensions();
 
         // Slice input to fft_shape on its inner-most dimensions.
@@ -166,7 +166,7 @@ class FFTCPU : public FFTBase {
             full_fft.slice(zero_start_indices, output.dimensions());
       } else {
         // Reconstruct the full FFT and take the inverse.
-        auto input = ((Tensor)in).flat_inner_dims<complex64, FFTRank + 1>();
+        auto input = Tensor(in).flat_inner_dims<complex64, FFTRank + 1>();
         auto output = out->flat_inner_dims<float, FFTRank + 1>();
         const auto input_dims = input.dimensions();
 

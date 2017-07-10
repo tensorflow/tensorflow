@@ -67,7 +67,7 @@ Status NewHostPortGrpcChannel(const string& target,
   // on connection failure, which makes our tests time out.
   args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
   *channel_pointer = ::grpc::CreateCustomChannel(
-      target, ::grpc::InsecureChannelCredentials(), args);
+      "dns:///" + target, ::grpc::InsecureChannelCredentials(), args);
   return Status::OK();
 }
 

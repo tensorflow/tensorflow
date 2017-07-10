@@ -58,6 +58,10 @@ string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, "::replica_count=", replica_count());
   }
   StrAppend(&key, debug_options_.DebugString());
+  if (intra_op_parallelism_threads() > 0) {
+    StrAppend(&key, "::intra_op_parallelism_threads=",
+              intra_op_parallelism_threads());
+  }
   return key;
 }
 

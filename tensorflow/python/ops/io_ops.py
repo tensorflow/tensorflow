@@ -26,6 +26,7 @@ See the @{$python/io_ops} guide.
 @@WholeFileReader
 @@IdentityReader
 @@TFRecordReader
+@@LMDBReader
 @@FixedLengthRecordReader
 @@decode_csv
 @@decode_raw
@@ -396,7 +397,8 @@ class FixedLengthRecordReader(ReaderBase):
                header_bytes=None,
                footer_bytes=None,
                hop_bytes=None,
-               name=None):
+               name=None,
+               encoding=None):
     """Create a FixedLengthRecordReader.
 
     Args:
@@ -405,12 +407,14 @@ class FixedLengthRecordReader(ReaderBase):
       footer_bytes: An optional int. Defaults to 0.
       hop_bytes: An optional int. Defaults to 0.
       name: A name for the operation (optional).
+      encoding: The type of encoding for the file. Defaults to none.
     """
     rr = gen_io_ops._fixed_length_record_reader_v2(
         record_bytes=record_bytes,
         header_bytes=header_bytes,
         footer_bytes=footer_bytes,
         hop_bytes=hop_bytes,
+        encoding=encoding,
         name=name)
     super(FixedLengthRecordReader, self).__init__(rr)
 

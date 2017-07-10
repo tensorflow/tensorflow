@@ -52,11 +52,13 @@ class XlaContext : public ResourceBase {
   };
 
   struct Argument {
-    // Descriptive name for the variable, for use in error messages.
+    XlaCompiler::Argument::Kind kind;
+
+    // Descriptive name for the resource, for use in error messages.
     string name;
 
-    // Is this a variable?
-    bool is_variable = false;
+    // Is this a resource?
+    bool is_resource = false;
 
     HandleOrConstant value;
 
@@ -106,15 +108,15 @@ class XlaContext : public ResourceBase {
 
   bool has_side_effects() const { return has_side_effects_; }
 
-  // Creates a variable with variable `variable_id` and initial type `type` and
+  // Creates a resource with resource `kind` and initial type `type` and
   // value `handle`. `name` is a descriptive name for use in error messages.
-  // Fails if the variable already exists.
-  Status CreateVariable(int arg_num, string name, DataType type,
-                        const xla::ComputationDataHandle& handle,
-                        XlaVariable** variable);
+  // Fails if the resource already exists.
+  Status CreateResource(XlaResource::Kind kind, int arg_num, string name,
+                        DataType type, const xla::ComputationDataHandle& handle,
+                        XlaResource** resource);
 
-  const std::vector<std::unique_ptr<XlaVariable>>& variables() {
-    return variables_;
+  const std::vector<std::unique_ptr<XlaResource>>& resources() {
+    return resources_;
   }
 
   // Get an XLA lambda to compute Max. This is cached in the
@@ -126,11 +128,6 @@ class XlaContext : public ResourceBase {
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
-
-  // Get an XLA lambda to compute Sigmoid. This is cached in the
-  // XlaContext since it may be used by multiple Ops. There is a
-  // separate specialization of the computation for each DataType.
-  const xla::Computation* GetOrCreateSigmoid(const DataType type);
 
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
@@ -166,8 +163,8 @@ class XlaContext : public ResourceBase {
   // Does the computation have side effects, i.e., Send() calls?
   bool has_side_effects_ = false;
 
-  // Holds ownership of variables. The variables are not ordered.
-  std::vector<std::unique_ptr<XlaVariable>> variables_;
+  // Holds ownership of resources. The resources are not ordered.
+  std::vector<std::unique_ptr<XlaResource>> resources_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::Computation>;

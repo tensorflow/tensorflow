@@ -37,17 +37,15 @@ namespace xla {
 
 /* static */
 StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
-    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    TuplePointsToAnalysis::Colorer colorer) {
+    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering) {
   std::unique_ptr<BufferLiveness> liveness(
-      new BufferLiveness(module, std::move(hlo_ordering), std::move(colorer)));
+      new BufferLiveness(module, std::move(hlo_ordering)));
   TF_RETURN_IF_ERROR(liveness->Analyze());
   return std::move(liveness);
 }
 
 tensorflow::Status BufferLiveness::Analyze() {
-  TF_ASSIGN_OR_RETURN(points_to_analysis_,
-                      TuplePointsToAnalysis::Run(module_, colorer_));
+  TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
   for (auto& computation : module_->computations()) {
     // Gather all instructions whose buffers might alias other instructions into
     // the set aliased_buffers_.  This includes those contained as a tuple
@@ -122,7 +120,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
     if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),
                                        b.instruction(), b.index(),
-                                       points_to_analysis())) {
+                                       &points_to_analysis())) {
       return false;
     }
   }

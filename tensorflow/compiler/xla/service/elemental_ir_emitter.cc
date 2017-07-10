@@ -63,7 +63,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
-      CHECK(primitive_util::IsIntegralType(from_type));
+      CHECK(primitive_util::IsIntegralType(from_type) || from_type == PRED);
       if (from_type == to_type) {
         return operand_value;
       }
@@ -78,7 +78,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
         }
-        if (primitive_util::IsUnsignedIntegralType(from_type)) {
+        if (primitive_util::IsUnsignedIntegralType(from_type) ||
+            from_type == PRED) {
           return ir_builder_->CreateUIToFP(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(to_type, ir_builder_));
@@ -170,6 +171,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                           ir_builder_);
     case HloOpcode::kLog:
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::log, {operand_value},
+                                          {operand_value->getType()},
+                                          ir_builder_);
+    case HloOpcode::kCos:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {operand_value},
                                           {operand_value->getType()},
                                           ir_builder_);
     case HloOpcode::kFloor:
@@ -381,6 +386,118 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfcInv(
   return EmitErfInv(prim_type, ir_builder_->CreateFSub(one, value));
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
+    const HloInstruction* hlo, llvm::Value* x) const {
+  if (hlo->operand(0)->shape().element_type() != F32) {
+    return Unimplemented("reduce-precision only implemented for F32");
+  }
+
+  // Integer and float types for casting and constant generation.
+  llvm::Type* float_type = x->getType();
+  llvm::IntegerType* int_type = ir_builder_->getInt32Ty();
+
+  // Cast the input value to an integer for bitwise manipulation.
+  llvm::Value* x_as_int = ir_builder_->CreateBitCast(x, int_type);
+
+  if (hlo->mantissa_bits() < 23) {
+    // Last remaining mantissa bit.
+    const uint32_t last_mantissa_bit_mask = 1u << (23 - hlo->mantissa_bits());
+
+    // Compute rounding bias for round-to-nearest with ties to even.  This is
+    // equal to a base value of 0111... plus one bit if the last remaining
+    // mantissa bit is 1.
+    const uint32_t base_rounding_bias = (last_mantissa_bit_mask >> 1) - 1;
+    llvm::Value* x_last_mantissa_bit = ir_builder_->CreateLShr(
+        ir_builder_->CreateAnd(
+            x_as_int, llvm::ConstantInt::get(int_type, last_mantissa_bit_mask)),
+        (23 - hlo->mantissa_bits()));
+    llvm::Value* x_rounding_bias = ir_builder_->CreateAdd(
+        x_last_mantissa_bit,
+        llvm::ConstantInt::get(int_type, base_rounding_bias));
+
+    // Add rounding bias, and mask out truncated bits.  Note that the case
+    // where adding the rounding bias overflows into the exponent bits is
+    // correct; the non-masked mantissa bits will all be zero, and the
+    // exponent will be incremented by one.
+    const uint32_t truncation_mask = ~(last_mantissa_bit_mask - 1);
+    x_as_int = ir_builder_->CreateAdd(x_as_int, x_rounding_bias);
+    x_as_int = ir_builder_->CreateAnd(
+        x_as_int, llvm::ConstantInt::get(int_type, truncation_mask));
+  }
+
+  if (hlo->exponent_bits() < 8) {
+    // Masks for f32 values.
+    const uint32_t f32_sign_bit_mask = 1u << 31;
+    const uint32_t f32_exp_bits_mask = 0xffu << 23;
+
+    // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
+    // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
+    // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
+    // size of n, and subtracting 2^(n-1)-1 from this gives us the lowest'
+    // exponent (corresponding to 0.0f).
+    //
+    // Thus, the f32 exponent corresponding to the highest non-infinite
+    // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
+    // exponent corresponding to the lowest exponent for a bit size of n is
+    // (2^7-1) - 2^(n-1)-1.
+    //
+    // Note that we have already checked that exponents_bits >= 1.
+    const uint32_t f32_exponent_bias = (1 << 7) - 1;
+    const uint32_t reduced_exponent_bias =
+        (1 << (hlo->exponent_bits() - 1)) - 1;
+    const uint32_t reduced_max_exponent =
+        f32_exponent_bias + reduced_exponent_bias;
+    const uint32_t reduced_min_exponent =
+        f32_exponent_bias - reduced_exponent_bias;
+
+    // Do we overflow or underflow?
+    llvm::Value* x_exponent = ir_builder_->CreateAnd(
+        x_as_int, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+    llvm::Value* x_overflows = ir_builder_->CreateICmpUGT(
+        x_exponent,
+        llvm::ConstantInt::get(int_type, reduced_max_exponent << 23));
+    llvm::Value* x_underflows = ir_builder_->CreateICmpULE(
+        x_exponent,
+        llvm::ConstantInt::get(int_type, reduced_min_exponent << 23));
+
+    // Compute appropriately-signed values of zero and infinity.
+    llvm::Value* x_signed_zero = ir_builder_->CreateAnd(
+        x_as_int, llvm::ConstantInt::get(int_type, f32_sign_bit_mask));
+    llvm::Value* x_signed_inf = ir_builder_->CreateOr(
+        x_signed_zero, llvm::ConstantInt::get(int_type, f32_exp_bits_mask));
+
+    // Force to zero or infinity if overflow or underflow.  (Note that this
+    // truncates all denormal values to zero, rather than rounding them.)
+    x_as_int = ir_builder_->CreateSelect(x_overflows, x_signed_inf, x_as_int);
+    x_as_int = ir_builder_->CreateSelect(x_underflows, x_signed_zero, x_as_int);
+  }
+
+  // Cast the result back to a floating-point type.
+  llvm::Value* result = ir_builder_->CreateBitCast(x_as_int, float_type);
+
+  // Correct result for NaN inputs.
+  //
+  // The exponent handling will "normalize" NaN values to infinities, which is
+  // undesirable (except in the case with no mantissa bits, in which case it
+  // is mandatory).  This logic also handles cases where mantissa-rounding
+  // causes a NaN's mantissa to overflow into the exponent bits, which would
+  // otherwise create an erroneous zero value.
+  //
+  // If the fast-math flags are set to assume no NaNs, the comparison is likely
+  // to be optimized away, so there's no point in even emitting it.
+  if (!ir_builder_->getFastMathFlags().noNaNs()) {
+    llvm::Value* x_is_nan = ir_builder_->CreateFCmpUNO(x, x);
+
+    if (hlo->mantissa_bits() > 0) {
+      result = ir_builder_->CreateSelect(x_is_nan, x, result);
+    } else {
+      result = ir_builder_->CreateSelect(
+          x_is_nan, llvm::ConstantFP::getInfinity(float_type), result);
+    }
+  }
+  return result;
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value,
     bool is_signed) const {
@@ -588,20 +705,37 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
               llvm::Intrinsic::ctlz, {r, ir_builder_->getInt1(1)},
               {param_ir_type}, ir_builder_);
           auto in_block = ir_builder_->GetInsertBlock();
-          auto body_block = in_block->splitBasicBlock(
-              ir_builder_->GetInsertPoint(), "rng_body");
-          SetToFirstInsertPoint(body_block, ir_builder_);
-          auto out_block = body_block->splitBasicBlock(
-              ir_builder_->GetInsertPoint(), "rng_out");
+
+          // A terminator should be present iff we're emitting code
+          // into the middle (as opposed to the end) of a basic block.
+          CHECK_EQ(ir_builder_->GetInsertPoint() == in_block->end(),
+                   in_block->getTerminator() == nullptr);
+
+          llvm::BasicBlock* body_block;
+          llvm::BasicBlock* out_block;
+
+          if (ir_builder_->GetInsertPoint() == in_block->end()) {
+            body_block =
+                llvm_ir::CreateBasicBlock(nullptr, "rng_body", ir_builder_);
+            out_block =
+                llvm_ir::CreateBasicBlock(nullptr, "rng_out", ir_builder_);
+            llvm::BranchInst::Create(body_block, in_block);
+          } else {
+            body_block = in_block->splitBasicBlock(
+                ir_builder_->GetInsertPoint(), "rng_body");
+            out_block = body_block->splitBasicBlock(
+                ir_builder_->GetInsertPoint(), "rng_out");
+            body_block->getTerminator()->eraseFromParent();
+          }
+
           SetToFirstInsertPoint(body_block, ir_builder_);
           auto random = ir_builder_->CreateAnd(
               ir_builder_->CreateZExtOrTrunc(get_next_i64(), param_ir_type),
               ir_builder_->CreateLShr(llvm::ConstantInt::get(param_ir_type, ~0),
                                       leading_zeros));
-          llvm::ReplaceInstWithInst(
-              body_block->getTerminator(),
-              llvm::BranchInst::Create(out_block, body_block,
-                                       ir_builder_->CreateICmpULT(random, r)));
+          llvm::BranchInst::Create(out_block, body_block,
+                                   ir_builder_->CreateICmpULT(random, r),
+                                   body_block);
           SetToFirstInsertPoint(out_block, ir_builder_);
           return ir_builder_->CreateAdd(
               p, ir_builder_->CreateSelect(
@@ -647,6 +781,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCeil:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kFloor:
     case HloOpcode::kIsFinite:
@@ -719,6 +854,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                             operand_to_generator.at(hlo->operand(2))(
                                 ElementwiseSourceIndex(index, *hlo, 2)));
         return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
+      };
+    case HloOpcode::kReducePrecision:
+      return [this, hlo, &operand_to_generator](
+                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                            operand_to_generator.at(hlo->operand(0))(
+                                ElementwiseSourceIndex(index, *hlo, 0)));
+        return EmitReducePrecision(hlo, operand_value);
       };
     case HloOpcode::kConcatenate:
       return [this, hlo, &operand_to_generator](
@@ -805,23 +948,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kSlice:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        IrArray::Index sliced_index(index.size());
-        for (int i = 0; i < index.size(); ++i) {
-          int64 stride = hlo->slice_stride(i);
-          if (stride != 1) {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                ir_builder_->CreateMul(
-                    index[i], llvm::ConstantInt::get(index[i]->getType(),
-                                                     stride)),
-                llvm::ConstantInt::get(index[i]->getType(),
-                                       hlo->slice_starts(i)));
-          } else {
-            sliced_index[i] = ir_builder_->CreateAdd(
-                    index[i],
-                    llvm::ConstantInt::get(index[i]->getType(),
-                                           hlo->slice_starts(i)));
-          }
-        }
+        IrArray::Index sliced_index = index.SourceIndexOfSlice(
+            /*shape=*/hlo->shape(), /*starts=*/hlo->slice_starts(),
+            /*strides=*/hlo->slice_strides(), /*builder=*/ir_builder_);
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };
     case HloOpcode::kDynamicSlice:

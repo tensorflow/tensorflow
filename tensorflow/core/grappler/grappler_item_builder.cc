@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variable.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -70,6 +72,10 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // correct optimizations.
 Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
                      const ItemConfig& cfg) {
+  if (!cfg.apply_optimizations && !cfg.inline_functions) {
+    return Status::OK();
+  }
+
   // Create a session option for a single GPU device.
   SessionOptions options;
 
@@ -183,7 +189,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           shape_proto.add_dim()->set_size(
               cfg.placeholder_unknown_output_shape_dim);
         } else {
-          dims.push_back(dim_proto.size());
+          dims.push_back(std::max<int32>(1, dim_proto.size()));
           shape_proto.add_dim()->set_size(dim_proto.size());
         }
       }
@@ -328,10 +334,33 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   Status optimize_status =
       OptimizeGraph(new_item->graph, &new_item->graph, cfg);
   if (!optimize_status.ok()) {
-    LOG(ERROR) << "Function optimization failed: " << optimize_status;
+    LOG(ERROR) << "Graph preprocessing failed: " << optimize_status;
     return nullptr;
   }
 
+  // Validate feed, fetch and init nodes
+  std::unordered_set<string> nodes;
+  for (const auto& node : new_item->graph.node()) {
+    nodes.insert(node.name());
+  }
+  for (const auto& feed : new_item->feed) {
+    if (nodes.find(feed.first) == nodes.end()) {
+      LOG(ERROR) << "Feed node " << feed.first << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
+  for (const auto& fetch : new_item->fetch) {
+    if (nodes.find(fetch) == nodes.end()) {
+      LOG(ERROR) << "Fetch node " << fetch << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
+  for (const auto& init : new_item->init_ops) {
+    if (nodes.find(init) == nodes.end()) {
+      LOG(ERROR) << "Init node " << init << " doesn't exist in graph";
+      return nullptr;
+    }
+  }
   return new_item;
 }
 

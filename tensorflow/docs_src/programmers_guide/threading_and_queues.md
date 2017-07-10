@@ -79,6 +79,9 @@ Any thread can decide that the computation should stop.  It only has to call
 return `True`.
 
 ```python
+# Using Python's threading library.
+import threading
+
 # Thread body: loop until the coordinator indicates a stop was requested.
 # If some condition becomes true, ask the coordinator to stop.
 def MyLoop(coord):

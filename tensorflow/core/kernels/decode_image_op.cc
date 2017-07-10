@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gif/gif_io.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/lib/png/png_io.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

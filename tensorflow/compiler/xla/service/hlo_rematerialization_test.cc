@@ -126,7 +126,7 @@ class HloRematerializationTest : public HloTestBase {
     builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1_shape_, "param"));
     builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+        HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
     return builder.Build();
   }
 
@@ -215,7 +215,7 @@ TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -254,7 +254,7 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -289,7 +289,7 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -357,7 +357,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(
         vec1024_shape_, concat, /*start_indices=*/{0},
-        /*limit_indices=*/{1024}, /*slices=*/{1}));
+        /*limit_indices=*/{1024}, /*strides=*/{1}));
     subcomputation = module->AddEmbeddedComputation(builder.Build());
   }
 
@@ -473,7 +473,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(
         vec1024_shape_, concat, /*start_indices=*/{0},
-        /*limit_indices=*/{1024}, /*slices=*/{1}));
+        /*limit_indices=*/{1024}, /*strides=*/{1}));
     subcomputation = module->AddEmbeddedComputation(builder.Build());
   }
 

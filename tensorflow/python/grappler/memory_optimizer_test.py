@@ -18,16 +18,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import training as train
 
 
-class MemoryOptimizerTest(test.TestCase):
+class MemoryOptimizerSwapTest(test.TestCase):
   """Tests the Grappler memory optimizer."""
 
   def testNoSwapping(self):
@@ -83,6 +90,52 @@ class MemoryOptimizerTest(test.TestCase):
       elif node.name == 'd':
         self.assertEqual('swap_in_d_0', node.input[0])
         self.assertEqual('c', node.input[1])
+
+
+class MemoryOptimizerRecomputeTest(test.TestCase):
+
+  def _RunGraphWithConfig(self, config, batch_size=14, image_dim=12):
+    """Run a simple layered graph with conv, an intermediate op, and a ReLU."""
+    graph = ops.Graph()
+    with graph.as_default():
+      random_seed.set_random_seed(1)
+      current_activation = variable_scope.get_variable(
+          name='start', shape=[batch_size, image_dim, image_dim, 5])
+      conv_filter = variable_scope.get_variable(
+          name='filter', shape=[5, 5, 5, 5])
+      for layer_number in range(10):
+        with variable_scope.variable_scope('layer_{}'.format(layer_number)):
+          after_conv = nn.conv2d(current_activation, conv_filter, [1, 1, 1, 1],
+                                 'SAME')
+          current_activation = 2. * after_conv
+          current_activation = nn.relu(current_activation)
+      loss = math_ops.reduce_mean(current_activation)
+      optimizer = train.AdamOptimizer(0.001)
+      train_op = optimizer.minimize(loss)
+      init_op = variables.global_variables_initializer()
+      with session.Session(config=config, graph=graph) as sess:
+        sess.run(init_op)
+        sess.run(train_op)
+        sess.run(train_op)
+        return sess.run(loss)
+
+  def _GetMemoryOptimizerConfig(self):
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewrite_options)
+    return config_pb2.ConfigProto(graph_options=graph_options)
+
+  def testRecomputationRewritingNoErrors(self):
+    """Tests that there are no errors when we request a memory optimizer pass.
+
+    Does not test that the memory optimizer actually runs. See
+    core/grappler/optimizers/memory_optimizer_test.cc for a functional test of
+    the graph rewriting.
+    """
+    original_loss = self._RunGraphWithConfig(config_pb2.ConfigProto())
+    memory_optimized_loss = self._RunGraphWithConfig(
+        config=self._GetMemoryOptimizerConfig())
+    self.assertAllClose(original_loss, memory_optimized_loss, rtol=1e-4)
 
 
 if __name__ == '__main__':

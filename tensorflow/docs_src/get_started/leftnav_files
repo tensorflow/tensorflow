@@ -3,7 +3,7 @@ get_started.md
 mnist/beginners.md
 mnist/pros.md
 mnist/mechanics.md
-tflearn.md
+estimator.md
 input_fn.md
 monitors.md
 summaries_and_tensorboard.md

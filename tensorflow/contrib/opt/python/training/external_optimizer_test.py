@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
 from tensorflow.contrib.opt.python.training import external_optimizer
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -74,13 +75,13 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
     minimum_location = constant_op.constant(np.arange(9), dtype=dtypes.float32)
 
-    loss = math_ops.reduce_sum(math_ops.square(vector -
-                                               minimum_location[:2])) / 2.
-    loss += math_ops.reduce_sum(math_ops.square(scalar - minimum_location[
-        2])) / 2.
+    loss = math_ops.reduce_sum(
+        math_ops.square(vector - minimum_location[:2])) / 2.
     loss += math_ops.reduce_sum(
-        math_ops.square(matrix - array_ops.reshape(minimum_location[3:],
-                                                   [2, 3]))) / 2.
+        math_ops.square(scalar - minimum_location[2])) / 2.
+    loss += math_ops.reduce_sum(
+        math_ops.square(
+            matrix - array_ops.reshape(minimum_location[3:], [2, 3]))) / 2.
 
     optimizer = MockOptimizerInterface(loss)
 
@@ -183,6 +184,41 @@ class ScipyOptimizerInterfaceTest(TestCase):
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose(np.ones(2), sess.run(vector))
+
+  def test_scalar_bounds(self):
+    vector_initial_value = [7., 7.]
+    vector = variables.Variable(vector_initial_value, 'vector')
+
+    # Make norm as small as possible.
+    loss = math_ops.reduce_sum(math_ops.square(vector))
+
+    # Make the minimum value of each component be 1.
+    var_to_bounds = {vector: (1., np.infty)}
+
+    optimizer = external_optimizer.ScipyOptimizerInterface(
+        loss, var_to_bounds=var_to_bounds)
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      optimizer.minimize(sess)
+      self.assertAllClose(np.ones(2), sess.run(vector))
+
+  def test_vector_bounds(self):
+    vector_initial_value = [7., 7.]
+    vector = variables.Variable(vector_initial_value, 'vector')
+
+    # Make norm as small as possible.
+    loss = math_ops.reduce_sum(math_ops.square(vector))
+
+    var_to_bounds = {vector: ([None, 2.], None)}
+
+    optimizer = external_optimizer.ScipyOptimizerInterface(
+        loss, var_to_bounds=var_to_bounds)
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      optimizer.minimize(sess)
+      self.assertAllClose([0., 2.], sess.run(vector))
 
 
 if __name__ == '__main__':

@@ -113,7 +113,7 @@ public final class Session implements AutoCloseable {
    *
    * <p>A Runner runs the necessary graph fragments to execute every {@link Operation} required to
    * evaluate the {@link Tensor}s to fetch. The {@link #feed(String,int,Tensor)} call allows callers
-   * to override the value of {@link Tensor}s in the graph by substituing the provided {@link
+   * to override the value of {@link Tensor}s in the graph by substituting the provided {@link
    * Tensor}s for the outputs of the operations provided to {@link #feed(String,int,Tensor)}.
    */
   public final class Runner {

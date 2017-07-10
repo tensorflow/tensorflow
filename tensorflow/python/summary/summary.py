@@ -20,6 +20,7 @@ See the @{$python/summary} guide.
 @@FileWriter
 @@FileWriterCache
 @@tensor_summary
+@@_tensor_summary_v2
 @@scalar
 @@histogram
 @@audio
@@ -28,6 +29,7 @@ See the @{$python/summary} guide.
 @@merge
 @@merge_all
 @@get_summary_description
+@@PluginAsset
 @@get_plugin_asset
 @@get_all_plugin_assets
 """

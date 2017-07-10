@@ -971,6 +971,11 @@ ComputationDataHandle ComputationBuilder::Sign(
   return UnaryOp(UNOP_SIGN, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Cos(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_COS, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);
@@ -1411,6 +1416,52 @@ ComputationDataHandle ComputationBuilder::ReduceWindowWithGeneralPadding(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::BatchNormTraining(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& offset, float epsilon, int64 feature_index) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+  BatchNormTrainingRequest request;
+  *request.mutable_operand() = operand;
+  *request.mutable_scale() = scale;
+  *request.mutable_offset() = offset;
+  request.set_epsilon(epsilon);
+  request.set_feature_index(feature_index);
+
+  OpRequest op_request;
+  *op_request.mutable_batch_norm_training_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
+
+  OpResponse response;
+
+  VLOG(2) << "making BatchNormTraining request";
+
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
+}
+
+ComputationDataHandle ComputationBuilder::BatchNormInference(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& offset, const ComputationDataHandle& mean,
+    const ComputationDataHandle& variance, float epsilon, int64 feature_index) {
+  // TODO(b/62843645): Implement BatchNormInference.
+  NoteError(Unimplemented("BatchNormInference is not implemented yet."));
+  return ComputationDataHandle();
+}
+
+ComputationDataHandle ComputationBuilder::BatchNormGrad(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& batch_mean,
+    const ComputationDataHandle& batch_var,
+    const ComputationDataHandle& grad_output, float epsilon,
+    int64 feature_index) {
+  // TODO(b/62843645): Implement BatchNormGrad.
+  NoteError(Unimplemented("BatchNormGrad is not implemented yet."));
+  return ComputationDataHandle();
+}
+
 ComputationDataHandle ComputationBuilder::CrossReplicaSum(
     const ComputationDataHandle& operand) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
@@ -1483,6 +1534,28 @@ ComputationDataHandle ComputationBuilder::SelectAndScatterWithGeneralPadding(
   OpResponse response;
 
   VLOG(2) << "making select-and-scatter request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
+}
+
+ComputationDataHandle ComputationBuilder::ReducePrecision(
+    const ComputationDataHandle& operand, const int exponent_bits,
+    const int mantissa_bits) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  ReducePrecisionRequest request;
+  *request.mutable_operand() = operand;
+  request.set_exponent_bits(exponent_bits);
+  request.set_mantissa_bits(mantissa_bits);
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_reduce_precision_request() = request;
+  AddOpMetadata(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making reduce-precision request";
   Status s = client_->stub()->Op(&op_request, &response);
   return ParseOpResponse(s, &response);
 }

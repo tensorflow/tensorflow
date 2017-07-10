@@ -109,6 +109,12 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
               TF_CHECK_OK(ctx->allocate_output(i, shape, &output));
               return output;
             });
+      } else {
+        // For compatibility purpose, returns an empty tensor with specified
+        // data type as output if no executor is used.
+        Tensor* output = nullptr;
+        TensorShape ts({});
+        TF_CHECK_OK(ctx->allocate_output(i, ts, &output));
       }
     }
   }

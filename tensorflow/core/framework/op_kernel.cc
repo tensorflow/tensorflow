@@ -20,10 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/kernel_def.pb_text.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -77,7 +79,7 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 // OpKernel ------------------------------------------------------------------
 
 OpKernel::OpKernel(OpKernelConstruction* context)
-    : def_(context->def()),
+    : def_(new NodeDef(context->def())),
       input_types_(context->input_types().begin(),
                    context->input_types().end()),
       input_memory_types_(context->input_memory_types().begin(),
@@ -91,7 +93,7 @@ OpKernel::OpKernel(OpKernelConstruction* context)
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,
-                 NameRangesForNode(def_, *context->op_def_, &input_name_map_,
+                 NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
                                    &output_name_map_));
   OP_REQUIRES_OK(context, CheckOpDeprecation(*context->op_def_,
                                              context->graph_def_version()));
@@ -102,6 +104,11 @@ OpKernel::OpKernel(OpKernelConstruction* context)
 }
 
 OpKernel::~OpKernel() {}
+
+const string& OpKernel::name() const { return def_->name(); }
+const string& OpKernel::type_string() const { return def_->op(); }
+const string& OpKernel::requested_device() const { return def_->device(); }
+const string& OpKernel::requested_input(int i) const { return def_->input(i); }
 
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
@@ -164,6 +171,26 @@ Tensor* PersistentTensor::AccessTensor(OpKernelContext* context) {
 }
 
 // OpKernelConstruction ------------------------------------------------------
+
+OpKernelConstruction::OpKernelConstruction(
+    DeviceType device_type, DeviceBase* device, Allocator* allocator,
+    const NodeDef* node_def, const OpDef* op_def, FunctionLibraryRuntime* flib,
+    const DataTypeSlice& input_types, const MemoryTypeSlice& input_memory_types,
+    const DataTypeSlice& output_types,
+    const MemoryTypeSlice& output_memory_types, int graph_def_version,
+    Status* status)
+    : device_type_(std::move(device_type)),
+      device_(device),
+      allocator_(allocator),
+      def_(node_def),
+      op_def_(op_def),
+      flib_(flib),
+      input_types_(input_types),
+      input_memory_types_(input_memory_types),
+      output_types_(output_types),
+      output_memory_types_(output_memory_types),
+      graph_def_version_(graph_def_version),
+      status_(status) {}
 
 void OpKernelConstruction::SetStatus(const Status& status) {
   status_->Update(status);

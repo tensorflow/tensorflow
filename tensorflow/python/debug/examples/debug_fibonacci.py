@@ -53,8 +53,8 @@ def main(_):
     sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
     sess.add_tensor_filter("has_negative", has_negative)
 
-  print("Fibonacci number at position %d: %d" %
-        (FLAGS.length, int(sess.run(n1))))
+  print("Fibonacci number at position %d:\n%s" %
+        (FLAGS.length, sess.run(n1)))
 
 
 if __name__ == "__main__":
