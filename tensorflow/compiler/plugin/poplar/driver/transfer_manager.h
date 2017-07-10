@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_TRANSFER_MANAGER_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_TRANSFER_MANAGER_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -85,4 +85,4 @@ private:
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_TRANSFER_MANAGER_H_
+#endif

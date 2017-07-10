@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_BASE_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_BASE_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_BASE_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_BASE_H_
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
@@ -170,4 +170,4 @@ protected:
 }  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_VISITOR_BASE_H_
+#endif

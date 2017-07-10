@@ -19,8 +19,8 @@ limitations under the License.
 // Declares the PoplarExecutor class, which is a CPU-only implementation of
 // the StreamExecutor interface. For now, this is used for testing and to
 // examine the performance of host-based StreamExecutor code.
-#ifndef TENSORFLOW_COMPILER_POPLAR_STREAM_EXECUTOR_POPLAR_EXECUTOR_H_
-#define TENSORFLOW_COMPILER_POPLAR_STREAM_EXECUTOR_POPLAR_EXECUTOR_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXECUTOR_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXECUTOR_H_
 
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
@@ -244,4 +244,4 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_STREAM_EXECUTOR_POPLAR_EXECUTOR_H_
+#endif

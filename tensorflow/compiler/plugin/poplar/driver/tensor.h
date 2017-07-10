@@ -1,5 +1,5 @@
-#ifndef IPU_TENSOR_H_
-#define IPU_TENSOR_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TENSOR_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TENSOR_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 

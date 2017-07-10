@@ -14,71 +14,6 @@ genrule(
 )
 
 cc_library(
-    name = "driver",
-    srcs = [
-        "driver/compiler.cc",
-        "driver/conversions.cc",
-        "driver/conv_op.cc",
-        "driver/executable.cc",
-        "driver/map_ops.cc",
-        "driver/math_ops.cc",
-        "driver/op_util.cc",
-        "driver/random_op.cc",
-        "driver/reduction_ops.cc",
-        "driver/tensor.cc",
-        "driver/tensor_ops.cc",
-        "driver/transfer_manager.cc",
-        "driver/visitor_base.cc",
-        "driver/visitor_call.cc",
-        "driver/visitor_full.cc",
-        "driver/visitor_map.cc",
-    ],
-    hdrs = [
-        "driver/compiler.h",
-        "driver/compiler_resources.h",
-        "driver/conversions.h",
-        "driver/executable.h",
-        "driver/ops.h",
-        "driver/tensor.h",
-        "driver/transfer_manager.h",
-        "driver/vertex_templates.h",
-        "driver/visitor_base.h",
-        "driver/visitor_call.h",
-        "driver/visitor_full.h",
-        "driver/visitor_map.h",
-    ],
-    deps = [
-        ":executor",
-        ":optimizers",
-        "//tensorflow/compiler/xla:xla_headers_lib",
-        "//third_party/eigen3",
-        "@protobuf//:protobuf_headers",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_poplar//poplar:poplar_headers",
-    ],
-)
-
-cc_library(
-    name = "executor",
-    srcs = [
-        "stream_executor/executor.cc",
-        "stream_executor/platform.cc",
-        "stream_executor/platform_id.cc",
-    ],
-    hdrs = [
-        "stream_executor/executor.h",
-        "stream_executor/platform.h",
-        "stream_executor/platform_id.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/xla:xla_headers_lib",
-        "//third_party/eigen3",
-        "@protobuf//:protobuf_headers",
-        "@local_config_poplar//poplar:poplar_headers",
-    ],
-)
-
-cc_library(
     name = "optimizers",
     srcs = [
         "driver/allocation_finder.cc",
@@ -98,6 +33,56 @@ cc_library(
 )
 
 cc_library(
+    name = "driver",
+    srcs = [
+        "driver/compiler.cc",
+        "driver/conversions.cc",
+        "driver/conv_op.cc",
+        "driver/executable.cc",
+        "driver/executor.cc",
+        "driver/map_ops.cc",
+        "driver/math_ops.cc",
+        "driver/op_util.cc",
+        "driver/platform.cc",
+        "driver/platform_id.cc",
+        "driver/random_op.cc",
+        "driver/reduction_ops.cc",
+        "driver/tensor.cc",
+        "driver/tensor_ops.cc",
+        "driver/transfer_manager.cc",
+        "driver/visitor_base.cc",
+        "driver/visitor_call.cc",
+        "driver/visitor_full.cc",
+        "driver/visitor_map.cc",
+    ],
+    hdrs = [
+        "driver/compiler.h",
+        "driver/compiler_resources.h",
+        "driver/conversions.h",
+        "driver/executable.h",
+        "driver/executor.h",
+        "driver/ops.h",
+        "driver/platform.h",
+        "driver/platform_id.h",
+        "driver/tensor.h",
+        "driver/transfer_manager.h",
+        "driver/vertex_templates.h",
+        "driver/visitor_base.h",
+        "driver/visitor_call.h",
+        "driver/visitor_full.h",
+        "driver/visitor_map.h",
+    ],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla:xla_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_poplar//poplar:poplar_headers",
+    ],
+)
+
+cc_library(
     name = "poplar_lib",
     srcs = [
         "driver/xla_ipu_device.cc",
@@ -105,7 +90,6 @@ cc_library(
     hdrs = [],
     deps = [
         ":driver",
-        ":executor",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
     ],
     linkopts = [

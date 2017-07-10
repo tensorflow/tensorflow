@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/stream_executor/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 
 namespace perftools {
 namespace gputools {

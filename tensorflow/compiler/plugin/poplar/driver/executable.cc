@@ -17,7 +17,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
-#include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
 
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
