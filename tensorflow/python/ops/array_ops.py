@@ -381,6 +381,13 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
+def _one_like_dtype(other):
+  if isinstance(other, ops.Tensor):
+    return constant(1, other.dtype)
+  else:
+    return np.ones_like(other).dtype.type(1)
+
+
 def _SliceHelper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -444,7 +451,6 @@ def _SliceHelper(tensor, slice_spec, var=None):
   ellipsis_mask = 0
   for s in slice_spec:
     if isinstance(s, _baseslice):
-      strides.append(s.step if s.step is not None else 1)
       # python doesn't always use None when constructing ranges
       # for example a[:] gives slice(None,sys.maxsize,None)
       # whereas a[::1] gives slice(None,None,None)
@@ -458,6 +464,11 @@ def _SliceHelper(tensor, slice_spec, var=None):
       else:
         end.append(0)
         end_mask |= (1 << index)
+      if s.step is not None:
+        strides.append(s.step)
+      else:
+        # Use a 1 of the same dtype as begin.
+        strides.append(_one_like_dtype(begin[-1]))
     elif s is Ellipsis:
       begin.append(0)
       end.append(0)
@@ -471,10 +482,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
     else:
       begin.append(s)
       end.append(s + 1)
-      if isinstance(s, ops.Tensor):
-        strides.append(constant(1, s.dtype))
-      else:
-        strides.append(np.ones_like(s).dtype.type(1))
+      strides.append(_one_like_dtype(s))
       shrink_axis_mask |= (1 << index)
     index += 1
 
