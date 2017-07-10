@@ -83,11 +83,17 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
         shape = PartialTensorShape(shape_proto);
       }
     }
-    sizes.reserve(shape.dims());
-    for (int i = 0; i < shape.dims(); ++i) {
-      sizes.push_back(shape.dim_size(i));
+    string sizes_string;
+    if (shape.dims() == -1) {
+      // Unknown shapes can have -1 for dims, so leave these blank.
+      sizes_string = "";
+    } else {
+      sizes.reserve(shape.dims());
+      for (int i = 0; i < shape.dims(); ++i) {
+        sizes.push_back(shape.dim_size(i));
+      }
+      sizes_string = str_util::Join(sizes, ",");
     }
-    string sizes_string = str_util::Join(sizes, ",");
     input_layer_shapes.push_back(sizes_string);
   }
   std::vector<string> output_layers;
