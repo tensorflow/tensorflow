@@ -54,7 +54,7 @@ class _Errors(object):
     """Add an error to the collection.
 
     Args:
-      full_name: The path to the file in which the error occured.
+      full_name: The path to the file in which the error occurred.
       message: The message to display with the error.
     """
     self._errors.append((full_name, message))
