@@ -15,6 +15,9 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
+#ifndef TENSORFLOW_CORE_KERNELS_MKL_TFCONV_OP_H_
+#define TENSORFLOW_CORE_KERNELS_MKL_TFCONV_OP_H_
+
 #include <algorithm>
 #include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
@@ -28,9 +31,9 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/util/mkl_util.h"
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -49,14 +52,22 @@ class MklToTfOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    ConvertMklToTf(this, context, data_format_str, op_data_type, has_avx512f_,
+                   0);
+    VLOG(1) << "MKLToTFConversion complete successfully.";
+  }
+
+  static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
+                             string data_format_str, DataType op_data_type,
+                             bool has_avx512f, uint input_number) {
     // Check that input tensor is in MKL format.
-    const Tensor& input_tensor = MklGetInput(context, 0);
+    const Tensor& input_tensor = MklGetInput(context, input_number);
     MklShape input_shape;
-    GetMklShape(context, 0, &input_shape);
+    GetMklShape(context, input_number, &input_shape);
 
     // if input is already in Tf format, then just copy input tensor to output.
     if (!input_shape.IsMklTensor()) {
-      context->set_output(0, input_tensor);
+      context->set_output(input_number, input_tensor);
       VLOG(1) << "MKLToTFConversion: No conversion needed, "
               << "copying input to output";
       return;
@@ -64,8 +75,8 @@ class MklToTfOp : public OpKernel {
 
     // Check that input data type is same as operator data type and that it is
     // same as output data type.
-    DataType input_data_type = input_type(0);
-    DataType output_data_type = output_type(0);
+    DataType input_data_type = op_kernel->input_type(input_number);
+    DataType output_data_type = op_kernel->output_type(input_number);
     CHECK_EQ(op_data_type, input_data_type);
     CHECK_EQ(op_data_type, output_data_type);
 
@@ -81,7 +92,7 @@ class MklToTfOp : public OpKernel {
     // Allocate output tensor.
     Tensor* output_tensor = NULL;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(0, output_shape, &output_tensor));
+                   context->allocate_output(input_number, output_shape, &output_tensor));
 
     dnnLayout_t output_layout =
         static_cast<dnnLayout_t>(input_shape.GetTfLayout());
@@ -118,7 +129,8 @@ class MklToTfOp : public OpKernel {
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklToTfOp<CPUDevice, T>);
 
-TF_CALL_float(REGISTER_CPU);
+TF_CALL_NUMBER_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 }  // namespace tensorflow
-#endif /* INTEL_MKL */
+#endif  // TENSORFLOW_CORE_KERNELS_MKL_TFCONV_OP_H_
+#endif  // INTEL_MKL

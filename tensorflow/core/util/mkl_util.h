@@ -65,6 +65,8 @@ class MklShape {
 
   void SetDimensions(const size_t dimension) { dimension_ = dimension; }
 
+  void SetMklLayout(dnnLayout_t mklLayout) { mklLayout_ = mklLayout; }
+
   void SetMklLayout(const void* primitive, size_t resourceType) {
     CHECK_EQ(
         dnnLayoutCreateFromPrimitive_F32(&mklLayout_, (dnnPrimitive_t)primitive,
@@ -135,6 +137,7 @@ class MklShape {
   size_t GetDimension() const { return dimension_; }
   const size_t* GetSizes() const { return sizes_; }
   int64 dim_size(int index) const { return sizes_[index]; }
+  int64 tf_dim_size(int index) const { return sizes_[tf_to_mkl_dim_map_[index]]; }
   const size_t* GetStrides() const { return strides_; }
   const size_t* GetTfToMklDimMap() const { return tf_to_mkl_dim_map_; }
   size_t tf_dim_idx(int index) const { return tf_to_mkl_dim_map_[index]; }
@@ -616,6 +619,98 @@ inline void ForwarMklTensorInToOut(OpKernelContext* context,
   }
 }
 
+// Forward the MKL shape ONLY (used in elementwise and other ops where
+// we call the eigen implementation and MKL shape is not used)
+inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
+                                      uint idx_data_in, uint idx_data_out) {
+  uint idx_meta_in = GetTensorMetaDataIndex(idx_data_in, context->num_inputs());
+  uint idx_meta_out =
+      GetTensorMetaDataIndex(idx_data_out, context->num_outputs());
+
+  if (IsRefType(context->input_dtype(idx_data_in))) {
+    context->forward_ref_input_to_ref_output(idx_meta_in, idx_meta_out);
+  } else {
+    context->set_output(idx_meta_out, context->input(idx_meta_in));
+  }
+}
+
+// Set a dummy MKL shape (called when the output is in TF format)
+inline void SetDummyMklShapeOutput(OpKernelContext* context,
+                                   uint idx_data_out) {
+  MklShape mkl_shape_output;
+  mkl_shape_output.SetMklTensor(false);
+  AllocateOutputSetMklShape(context, idx_data_out, mkl_shape_output);
+}
+
+// Checks if the TF shape for both MKL tensors is the same or not
+// Returns: true if both TF shapes are the same, false otherwise
+inline bool MklCompareShapes(const MklShape* input_shape_0,
+                             const MklShape* input_shape_1) {
+  // Check for number of dimensions
+  if (input_shape_0->GetDimension() != input_shape_1->GetDimension()) {
+    return false;
+  }
+
+  // Check size of each dimension
+  size_t ndims = input_shape_0->GetDimension();
+  for (size_t i = 0; i < ndims; i++) {
+    if (input_shape_0->dim_size(i) != input_shape_1->dim_size(i)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Checks if the TF shape for both tensors is the same or not
+// Returns: true if TF shapes for both are the same, false otherwise
+inline bool MklCompareShapes(const MklShape* input_shape_0,
+                             const TensorShape* input_shape_1) {
+  // Check for number of dimensions
+  if (input_shape_0->GetDimension() != input_shape_1->dims()) {
+    return false;
+  }
+
+  // Check size of each dimension
+  size_t ndims = input_shape_0->GetDimension();
+  for (size_t i = 0; i < ndims; i++) {
+    if (input_shape_0->tf_dim_size(i) != input_shape_1->dim_size(i)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Checks if the TF shape for both tensors is the same or not
+// Returns: true if TF shapes for both are the same, false otherwise
+inline bool MklCompareShapes(const TensorShape* input_shape_0,
+                             const MklShape* input_shape_1) {
+  return MklCompareShapes(input_shape_1, input_shape_0);
+}
+
+// Checks if the TF shape for both tensors is the same or not
+// Returns: true if TF shapes for both are the same, false otherwise
+inline bool MklCompareShapes(const TensorShape* input_shape_0,
+                             const TensorShape* input_shape_1) {
+  // Check for number of dimensions
+  if (input_shape_0->dims() != input_shape_1->dims()) {
+    return false;
+  }
+
+  // Check size of each dimension
+  size_t ndims = input_shape_0->dims();
+  for (size_t i = 0; i < ndims; i++) {
+    if (input_shape_0->dim_size(i) != input_shape_1->dim_size(i)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// TODO(intel_tf): Remove this routine when faster MKL layout conversion is
+// out.
 inline void MklNHWCToNCHW(const Tensor& input, Tensor** output) {
   const float* buf_in = input.flat<float>().data();
   float* buf_out = (*output)->flat<float>().data();
@@ -652,6 +747,14 @@ namespace mkl_op_registry {
 static const char* kMklOpLabel = "MklOp";
 static const char* kMklOpLabelPattern = "label='MklOp'";
 
+// Get the name of Mkl op from original TensorFlow op
+// We prefix 'Mkl' to the original op to get Mkl op.
+inline string GetMklOpName(const string& name) {
+  // Prefix that we add to Tensorflow op name to construct Mkl op name.
+  const char* const kMklOpPrefix = "_Mkl";
+  return string(kMklOpPrefix) + name;
+}
+
 // Check whether opname with type T is registered as MKL-compliant.
 //
 // @input: name of the op
@@ -664,6 +767,28 @@ static inline bool IsMklOp(const std::string& op_name, DataType T) {
   if (result) {
     VLOG(1) << "mkl_op_registry::" << op_name << " is " << kMklOpLabel;
   }
+  return result;
+}
+
+// Check whether opname with type T is registered as MKL-compliant and
+// is element-wise.
+//
+// @input: name of the op
+// @input: T datatype to be used for checking op
+// @return: true if opname is registered as element-wise Mkl op
+static inline bool IsMklElementWiseOp(const std::string& op_name, DataType T) {
+  if (!IsMklOp(op_name, T)) {
+    return false;
+  }
+
+  bool result = (0 == op_name.compare(GetMklOpName("Add")) ||
+                 0 == op_name.compare(GetMklOpName("Sub")) ||
+                 0 == op_name.compare(GetMklOpName("Mul")) ||
+                 0 == op_name.compare(GetMklOpName("Maximum")) ||
+                 0 == op_name.compare(GetMklOpName("SquaredDifference")));
+
+  VLOG(1) << "mkl_op_registry::" << op_name
+          << " is elementwise MKL op: " << result;
   return result;
 }
 
