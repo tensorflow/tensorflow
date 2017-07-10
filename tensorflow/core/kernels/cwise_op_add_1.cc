@@ -36,11 +36,7 @@ REGISTER_KERNEL_BUILDER(Name("Add")
 
 
 #if TENSORFLOW_USE_SYCL
-REGISTER(BinaryOp, SYCL, "Add", functor::add, float);
-
-#ifndef SYCL_NO_DOUBLE
-REGISTER(BinaryOp, SYCL, "Add", functor::add, double);
-#endif
+REGISTER_FLOATING(BinaryOp, SYCL, "Add", functor::add);
 
 REGISTER_KERNEL_BUILDER(Name("Add")
                             .Device(DEVICE_SYCL)
