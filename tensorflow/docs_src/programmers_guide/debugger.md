@@ -35,11 +35,13 @@ This code trains a simple neural network for MNIST digit image recognition.
 Notice that the accuracy increases slightly after the first training step, but
 then gets stuck at a low (near-chance) level:
 
-> Accuracy at step 0: 0.1113
-> Accuracy at step 1: 0.3183
-> Accuracy at step 2: 0.098
-> Accuracy at step 3: 0.098
-> Accuracy at step 4: 0.098
+```none
+Accuracy at step 0: 0.1113
+Accuracy at step 1: 0.3183
+Accuracy at step 2: 0.098
+Accuracy at step 3: 0.098
+Accuracy at step 4: 0.098
+```
 
 Wondering what might have gone wrong, you suspect that certain nodes in the
 training graph generated bad numeric values such as `inf`s and `nan`s, because
