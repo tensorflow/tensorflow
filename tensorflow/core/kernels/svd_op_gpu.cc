@@ -56,7 +56,6 @@ class SvdOpGpu : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
-    printf("SVD on gpu, input shape: %s\n", input.shape().DebugString().c_str());
     const int ndims = input.dims();
     const int64 m = input.dim_size(ndims - 2);
     const int64 n = input.dim_size(ndims - 1);
