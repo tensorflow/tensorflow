@@ -267,6 +267,23 @@ test_suite(
     ],
 )
 
+test_suite(
+    name = "all_ci_tests",
+    tests = [
+        "device_test",
+        "simple_network_test",
+        "matmul_test",
+        "multi_run_test",
+        "conv_test",
+        "variable_test",
+        "reduce_test",
+        "f16_test",
+        "64_bit_test",
+        "allocation_finder_test",
+        "batch_norm_test",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
