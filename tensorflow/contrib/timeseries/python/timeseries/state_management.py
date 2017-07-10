@@ -196,7 +196,7 @@ class ChainingStateManager(_OverridableStateManager):
     return time // self._state_saving_interval
 
   def _get_cached_states(self, times):
-    """Retreive cached states for a batch of times."""
+    """Retrieve cached states for a batch of times."""
     read_chunk_numbers = self._get_chunk_number(times)
     looked_up_state = list(self._cached_states.lookup(
         math_ops.cast(read_chunk_numbers, dtypes.int64)))
@@ -242,7 +242,7 @@ class ChainingStateManager(_OverridableStateManager):
     # written to the next bucket). This assumes fixed missing times (i.e. if we
     # were presented with times [10, 50] we will never see times [30, 50]).
     #
-    # TODO(allenl): Retreive the highest time less than the current time rather
+    # TODO(allenl): Retrieve the highest time less than the current time rather
     # than relying on fixed bucketing.
     write_chunk_numbers = math_ops.maximum(
         self._get_chunk_number(array_ops.concat(
