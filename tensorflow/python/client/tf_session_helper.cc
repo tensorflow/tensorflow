@@ -690,7 +690,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
 
   // Convert outputs to ndarrays (in scoped containers)
   std::vector<Safe_PyObjectPtr> py_outputs_safe;
-  for (int i = 0; i < outputs.size(); ++i) {
+  for (size_t i = 0; i < outputs.size(); ++i) {
     PyObject* py_array;
     s = TFTensorToPyArray(std::move(output_vals_safe[i]), &py_array);
     if (!s.ok()) {
@@ -702,7 +702,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
 
   // If we reach this point, we have successfully built a list of objects so we
   // can release them from the safe container into the return vector.
-  for (int i = 0; i < outputs.size(); ++i) {
+  for (size_t i = 0; i < outputs.size(); ++i) {
     py_outputs->push_back(py_outputs_safe[i].release());
   }
 }

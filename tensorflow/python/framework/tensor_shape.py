@@ -365,7 +365,7 @@ class Dimension(object):
 def as_dimension(value):
   """Converts the given value to a Dimension.
 
-  A Dimenson input will be returned unmodified.
+  A Dimension input will be returned unmodified.
   An input of `None` will be converted to an unknown Dimension.
   An integer input will be converted to a Dimension with that value.
 

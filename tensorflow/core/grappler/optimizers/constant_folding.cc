@@ -396,7 +396,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   if (output_tensors.empty()) {
     Status(error::INVALID_ARGUMENT, "Expected at least one output.");
   }
-  for (int i = 0; i < output_tensors.size(); i++) {
+  for (size_t i = 0; i < output_tensors.size(); i++) {
     string node_name = AddPrefixToNodeName(node.name(), kConstantFoldingConst);
     if (output_tensors.size() > 1) {
       node_name = strings::StrCat(node_name, "-", i);

@@ -108,8 +108,8 @@ Take the following steps to install TensorFlow with Virtualenv:
      Python 2.7, the command to install
      TensorFlow in the active Virtualenv is as follows:
 
-     <pre> $ <b>pip install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py2-none-any.whl</b></pre>
+     <pre> $ <b>pip3 install --upgrade \
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.1-py2-none-any.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common-installation-problems).
@@ -229,8 +229,8 @@ take the following steps:
      you are installing TensorFlow for Mac OS and Python 2.7
      issue the following command:
 
-     <pre> $ <b>sudo pip install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py2-none-any.whl</b> </pre>
+     <pre> $ <b>sudo pip3 install --upgrade \
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.1-py2-none-any.whl</b> </pre>
 
      If the preceding command fails, see
      [installation problems](#common-installation-problems).
@@ -339,7 +339,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      TensorFlow for Python 2.7:
 
      <pre> (tensorflow)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py2-none-any.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.1-py2-none-any.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
@@ -512,7 +512,7 @@ This section documents the relevant values for Mac OS installations.
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py2-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.1-py2-none-any.whl
 </pre>
 
 
@@ -520,7 +520,7 @@ https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py2-none-any.
 
 
 <pre>
-https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.0-py3-none-any.whl
+https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.2.1-py3-none-any.whl
 </pre>
 
 

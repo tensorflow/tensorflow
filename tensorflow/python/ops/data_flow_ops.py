@@ -537,6 +537,25 @@ class QueueBase(object):
           self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
           name=name)
 
+  def is_closed(self, name=None):
+    """ Returns true if queue is closed.
+
+    This operation returns true if the queue is closed and false if the queue
+    is open.
+
+    Args:
+      name: A name for the operation (optional).
+	
+    Returns:
+      True if the queue is closed and false if the queue is open.
+    """
+    if name is None:
+      name = "%s_Is_Closed" % self._name
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops.queue_is_closed_v2(self._queue_ref,name=name)
+    else:
+      return gen_data_flow_ops.queue_is_closed_(self._queue_ref,name=name)
+
   def size(self, name=None):
     """Compute the number of elements in this queue.
 

@@ -383,7 +383,7 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
         }
       }
       if (arg.exit == nullptr) {
-        return errors::InvalidArgument("Mising Exit successor to ",
+        return errors::InvalidArgument("Missing Exit successor to ",
                                        arg.switch_node->name());
       }
     }

@@ -82,9 +82,8 @@ Status DecodeImageShapeFn(InferenceContext* c) {
     channels_dim = c->MakeDim(channels);
   }
 
-  c->set_output(0,
-                c->MakeShape({InferenceContext::kUnknownDim,
-                              InferenceContext::kUnknownDim, channels_dim}));
+  c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
+                                 InferenceContext::kUnknownDim, channels_dim}));
   return Status::OK();
 }
 
@@ -628,10 +627,9 @@ REGISTER_OP("DecodeGif")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-      c->set_output(0,
-                    c->MakeShape({InferenceContext::kUnknownDim,
-                                  InferenceContext::kUnknownDim,
-                                  InferenceContext::kUnknownDim, 3}));
+      c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
+                                     InferenceContext::kUnknownDim,
+                                     InferenceContext::kUnknownDim, 3}));
       return Status::OK();
     })
     .Doc(R"doc(
@@ -801,6 +799,98 @@ min_object_covered: The cropped area of the image must contain at least this
   fraction of any bounding box supplied. The value of this parameter should be
   non-negative. In the case of 0, the cropped area does not need to overlap
   any of the bounding boxes supplied.
+aspect_ratio_range: The cropped area of the image must have an aspect ratio =
+  width / height within this range.
+area_range: The cropped area of the image must contain a fraction of the
+  supplied image within in this range.
+max_attempts: Number of attempts at generating a cropped region of the image
+  of the specified constraints. After `max_attempts` failures, return the entire
+  image.
+use_image_if_no_bounding_boxes: Controls behavior if no bounding boxes supplied.
+  If true, assume an implicit bounding box covering the whole input. If false,
+  raise an error.
+)doc");
+
+REGISTER_OP("SampleDistortedBoundingBoxV2")
+  .Input("image_size: T")
+  .Input("bounding_boxes: float")
+  .Input("min_object_covered: float")
+  .Output("begin: T")
+  .Output("size: T")
+  .Output("bboxes: float")
+  .Attr("T: {uint8, int8, int16, int32, int64}")
+  .Attr("seed: int = 0")
+  .Attr("seed2: int = 0")
+  .Attr("aspect_ratio_range: list(float) = [0.75, 1.33]")
+  .Attr("area_range: list(float) = [0.05, 1.0]")
+  .Attr("max_attempts: int = 100")
+  .Attr("use_image_if_no_bounding_boxes: bool = false")
+  .SetIsStateful()
+  .SetShapeFn([](InferenceContext* c) {
+    c->set_output(0, c->Vector(3));
+    c->set_output(1, c->Vector(3));
+    c->set_output(2, c->MakeShape({1, 1, 4}));
+    return Status::OK();
+  })
+  .Doc(R"doc(
+Generate a single randomly distorted bounding box for an image.
+
+Bounding box annotations are often supplied in addition to ground-truth labels
+in image recognition or object localization tasks. A common technique for
+training such a system is to randomly distort an image while preserving
+its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+localization of an object, i.e. bounding box, given an `image_size`,
+`bounding_boxes` and a series of constraints.
+
+The output of this Op is a single bounding box that may be used to crop the
+original image. The output is returned as 3 tensors: `begin`, `size` and
+`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
+what the bounding box looks like.
+
+Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
+bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+height of the underlying image.
+
+For example,
+
+```python
+    # Generate a single distorted bounding box.
+    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+        tf.shape(image),
+        bounding_boxes=bounding_boxes)
+
+    # Draw the bounding box in an image summary.
+    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                  bbox_for_draw)
+    tf.image_summary('images_with_box', image_with_box)
+
+    # Employ the bounding box to distort the image.
+    distorted_image = tf.slice(image, begin, size)
+```
+
+Note that if no bounding box information is available, setting
+`use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+false and no bounding boxes are supplied, an error is raised.
+
+image_size: 1-D, containing `[height, width, channels]`.
+bounding_boxes: 3-D with shape `[batch, N, 4]` describing the N bounding boxes
+  associated with the image.
+min_object_covered: The cropped area of the image must contain at least this
+  fraction of any bounding box supplied. The value of this parameter should be
+  non-negative. In the case of 0, the cropped area does not need to overlap
+  any of the bounding boxes supplied.
+begin: 1-D, containing `[offset_height, offset_width, 0]`. Provide as input to
+  `tf.slice`.
+size: 1-D, containing `[target_height, target_width, -1]`. Provide as input to
+  `tf.slice`.
+bboxes: 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
+  Provide as input to `tf.image.draw_bounding_boxes`.
+seed: If either `seed` or `seed2` are set to non-zero, the random number
+  generator is seeded by the given `seed`.  Otherwise, it is seeded by a random
+  seed.
+seed2: A second seed to avoid seed collision.
 aspect_ratio_range: The cropped area of the image must have an aspect ratio =
   width / height within this range.
 area_range: The cropped area of the image must contain a fraction of the

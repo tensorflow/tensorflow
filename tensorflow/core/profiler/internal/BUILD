@@ -9,6 +9,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 cc_library(
     name = "tfprof_stats",
@@ -243,7 +244,7 @@ cc_library(
     name = "tfprof_utils",
     srcs = ["tfprof_utils.cc"],
     hdrs = ["tfprof_utils.h"],
-    copts = ["-Wno-sign-compare"],
+    copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":tfprof_options",
         "//tensorflow/core:lib",
@@ -315,7 +316,7 @@ cc_library(
     name = "tfprof_tensor",
     srcs = ["tfprof_tensor.cc"],
     hdrs = ["tfprof_tensor.h"],
-    copts = ["-Wno-sign-compare"],
+    copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

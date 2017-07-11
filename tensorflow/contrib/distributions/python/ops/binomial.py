@@ -196,7 +196,7 @@ class Binomial(distribution.Distribution):
 
   @property
   def probs(self):
-    """Probability of of drawing a `1`."""
+    """Probability of drawing a `1`."""
     return self._probs
 
   def _batch_shape_tensor(self):

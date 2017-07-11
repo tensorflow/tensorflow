@@ -527,7 +527,7 @@ xla_test(
 )
 
 # Tests the dot operation in some cases that can be performed via a
-# runtime call on some backends - e.g. a runtime call to to Eigen.
+# runtime call on some backends - e.g. a runtime call to Eigen.
 xla_test(
     name = "dot_operation_runtime_test",
     srcs = ["dot_operation_test.cc"],

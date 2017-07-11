@@ -104,7 +104,7 @@ void ConvertMapToVector(const std::unordered_map<int, string>& in,
                         std::vector<string>* out) {
   CHECK_NOTNULL(out);
   out->resize(in.size());
-  for (int i = 0; i < in.size(); ++i) {
+  for (size_t i = 0; i < in.size(); ++i) {
     CHECK(in.count(i) > 0);
     out->at(i) = in.at(i);
   }
@@ -993,7 +993,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
   for (const string& output : outputs) {
     const TensorId output_tid = ParseTensorName(output);
     const string output_name = output_tid.first.ToString();
-    for (int i = 0; i < border_outputs.size(); ++i) {
+    for (size_t i = 0; i < border_outputs.size(); ++i) {
       const TensorId subgraph_output_tid =
           ParseTensorName(border_outputs.at(i));
       const string& subgraph_output_name = subgraph_output_tid.first.ToString();
@@ -1040,7 +1040,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
   TF_RETURN_IF_ERROR(RemoteFusedGraphExecuteUtils::ClusterizeNodes(
       subgraph_nodes, input_graph_def, &ci_vec));
 
-  for (int i = 0; i < ci_vec.size(); ++i) {
+  for (size_t i = 0; i < ci_vec.size(); ++i) {
     const string remote_fused_graph_node_name =
         strings::StrCat(remote_fused_graph_node_name_prefix, "/", i);
     TF_RETURN_IF_ERROR(FuseCluster(input_graph_def, inputs, outputs,
@@ -1100,7 +1100,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
   for (NodeDef& node_def : *graph_def->mutable_node()) {
     string attr_str;
     TensorId tid;
-    for (int i = 0; i < inputs.size(); ++i) {
+    for (size_t i = 0; i < inputs.size(); ++i) {
       if (IsSameNodeName(node_def, inputs.at(i), &tid)) {
         AppendDeliminator(&attr_str);
         attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::GRAPH_INPUT,
@@ -1108,7 +1108,7 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
                                       remote_fused_graph_node_name);
       }
     }
-    for (int i = 0; i < outputs.size(); ++i) {
+    for (size_t i = 0; i < outputs.size(); ++i) {
       if (IsSameNodeName(node_def, outputs.at(i), &tid)) {
         AppendDeliminator(&attr_str);
         attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::GRAPH_OUTPUT,
@@ -1127,14 +1127,14 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
         attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::FUSED_NODE);
       }
     }
-    for (int i = 0; i < border_inputs.size(); ++i) {
+    for (size_t i = 0; i < border_inputs.size(); ++i) {
       if (IsSameNodeName(node_def, border_inputs.at(i), &tid)) {
         AppendDeliminator(&attr_str);
         attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::BORDER_INPUT,
                                       tid.second, i);
       }
     }
-    for (int i = 0; i < border_outputs.size(); ++i) {
+    for (size_t i = 0; i < border_outputs.size(); ++i) {
       if (IsSameNodeName(node_def, border_outputs.at(i), &tid)) {
         AppendDeliminator(&attr_str);
         attr_str += BuildNodeTypeAttr(

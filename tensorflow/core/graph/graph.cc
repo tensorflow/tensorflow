@@ -31,7 +31,7 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-struct NodeProperties {
+class NodeProperties {
  public:
   NodeProperties(const OpDef* op_def, const NodeDef& node_def,
                  const DataTypeSlice inputs, const DataTypeSlice outputs)

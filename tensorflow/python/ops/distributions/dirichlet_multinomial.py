@@ -95,7 +95,7 @@ class DirichletMultinomial(distribution.Distribution):
   The last `concentration` dimension parametrizes a single Dirichlet-Multinomial
   distribution. When calling distribution functions (e.g., `dist.prob(counts)`),
   `concentration`, `total_count` and `counts` are broadcast to the same shape.
-  The last dimension of of `counts` corresponds single Dirichlet-Multinomial
+  The last dimension of `counts` corresponds single Dirichlet-Multinomial
   distributions.
 
   Distribution parameters are automatically broadcast in all functions; see

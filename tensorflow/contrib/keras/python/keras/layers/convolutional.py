@@ -316,7 +316,7 @@ class Conv3D(tf_convolutional_layers.Conv3D, Layer):
   When using this layer as the first layer in a model,
   provide the keyword argument `input_shape`
   (tuple of integers, does not include the sample axis),
-  e.g. `input_shape=(128, 128, 128, 3)` for 128x128x128 volumes
+  e.g. `input_shape=(128, 128, 128, 1)` for 128x128x128 volumes
   with a single channel,
   in `data_format="channels_last"`.
 

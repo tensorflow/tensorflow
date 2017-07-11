@@ -213,7 +213,7 @@ class Multinomial(distribution.Distribution):
 
   @property
   def probs(self):
-    """Probability of of drawing a `1` in that coordinate."""
+    """Probability of drawing a `1` in that coordinate."""
     return self._probs
 
   def _batch_shape_tensor(self):

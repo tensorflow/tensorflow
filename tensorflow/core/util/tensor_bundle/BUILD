@@ -11,6 +11,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
+    "if_not_windows",
     "tf_copts",
 )
 
@@ -34,7 +35,7 @@ cc_library(
     name = "tensor_bundle",
     srcs = ["tensor_bundle.cc"],
     hdrs = ["tensor_bundle.h"],
-    copts = tf_copts() + ["-Wno-sign-compare"],
+    copts = tf_copts() + if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":naming",
         "//tensorflow/core:core_cpu_internal",

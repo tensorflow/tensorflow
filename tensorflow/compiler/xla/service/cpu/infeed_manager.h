@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_INFEED_MANAGER_H_
 
 #include <deque>
+#include <vector>
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/mutex.h"

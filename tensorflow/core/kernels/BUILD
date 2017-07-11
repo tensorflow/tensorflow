@@ -32,6 +32,7 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
     "cc_header_only_library",
+    "if_not_windows",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -231,7 +232,7 @@ cc_library(
     name = "ops_util",
     srcs = ["ops_util.cc"],
     hdrs = ["ops_util.h"],
-    copts = ["-Wno-sign-compare"],
+    copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -344,7 +345,7 @@ cc_library(
     name = "save_restore_tensor",
     srcs = ["save_restore_tensor.cc"],
     hdrs = ["save_restore_tensor.h"],
-    copts = ["-Wno-sign-compare"],
+    copts = if_not_windows(["-Wno-sign-compare"]),
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
@@ -1222,6 +1223,7 @@ tf_kernel_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_ops",
         "//third_party/eigen3",
@@ -3219,6 +3221,7 @@ cc_library(
         ":sparse_reduce_op",
         ":sparse_reorder_op",
         ":sparse_reshape_op",
+        ":sparse_slice_op",
         ":sparse_softmax",
         ":sparse_sparse_binary_op_shared",
         ":sparse_split_op",
@@ -3298,6 +3301,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sparse_reshape_op",
     prefix = "sparse_reshape_op",
+    deps = SPARSE_DEPS,
+)
+
+tf_kernel_library(
+    name = "sparse_slice_op",
+    prefix = "sparse_slice_op",
     deps = SPARSE_DEPS,
 )
 

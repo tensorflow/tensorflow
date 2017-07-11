@@ -180,7 +180,7 @@ def assert_same_structure(nest1, nest2, check_types=True):
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
     check_types: if `True` (default) types of sequences are checked as
-        well, incuding the keys of dictionaries. If set to `False`, for example
+        well, including the keys of dictionaries. If set to `False`, for example
         a list and a tuple of objects will look the same if they have the same
         size.
 
@@ -333,9 +333,9 @@ def map_structure(func, *structure, **check_types_dict):
   and the return value will contain the results in the same structure.
 
   Args:
-    func: A callable that acceps as many arguments are there are structures.
+    func: A callable that accepts as many arguments as there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
-      tuples/lists, or scalars.  Note: numpy arrays are considered scalars.
+      tuples/lists, or scalars.  Note: numpy arrays are considered  as scalars.
     **check_types_dict: only valid keyword argument is `check_types`. If set to
       `True` (default) the types of iterables within the  structures have to be
       same (e.g. `map_structure(func, [1], (1,))` raises a `TypeError`

@@ -689,11 +689,11 @@ class InputStatisticsFromMiniBatch(object):
       values = features[TrainEvalFeatures.VALUES]
     else:
       # times and values may not be available, for example during prediction. We
-      # still need to retreive our variables so that they can be read from, even
+      # still need to retrieve our variables so that they can be read from, even
       # if we're not going to update them.
       times = None
       values = None
-    # Create/retreive variables representing input statistics, initialized
+    # Create/retrieve variables representing input statistics, initialized
     # without data to avoid deadlocking if variables are initialized before
     # queue runners are started.
     with variable_scope.variable_scope("input_statistics", use_resource=True):
