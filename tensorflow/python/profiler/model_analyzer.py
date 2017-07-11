@@ -26,92 +26,11 @@ from tensorflow.core.profiler import tfprof_options_pb2
 from tensorflow.core.profiler import tfprof_output_pb2
 from tensorflow.python import pywrap_tensorflow as print_mdl
 from tensorflow.python.framework import errors
+from tensorflow.python.profiler import option_builder
 from tensorflow.python.profiler import tfprof_logger
 
 _DEFAULT_PROFILE_OPTIONS = 0
 _DEFAULT_ADVISE_OPTIONS = 0
-
-# pylint: disable=bad-whitespace
-# pylint: disable=bad-continuation
-# options examples for profiling API.
-#
-# Show the parameter statistics of trainable variables.
-TRAINABLE_VARS_PARAMS_STAT_OPTIONS = {
-    'max_depth': 10000,
-    'min_bytes': 0,
-    'min_micros': 0,
-    'min_params': 0,
-    'min_float_ops': 0,
-    'order_by': 'name',
-    'account_type_regexes': [tfprof_logger.TRAINABLE_VARIABLES],
-    'start_name_regexes': ['.*'],
-    'trim_name_regexes': [],
-    'show_name_regexes': ['.*'],
-    'hide_name_regexes': [],
-    'account_displayed_op_only': True,
-    'select': ['params'],
-    'output': 'stdout',
-    'dump_to_file': ''
-}
-
-# Show the number float operations.
-FLOAT_OPS_OPTIONS = {
-    'max_depth': 10000,
-    'min_bytes': 0,
-    'min_micros': 0,
-    'min_params': 0,
-    'min_float_ops': 1,
-    'order_by': 'float_ops',
-    'account_type_regexes': ['.*'],
-    'start_name_regexes': ['.*'],
-    'trim_name_regexes': [],
-    'show_name_regexes': ['.*'],
-    'hide_name_regexes': [],
-    'account_displayed_op_only': True,
-    'select': ['float_ops'],
-    'output': 'stdout',
-    'dump_to_file': ''
-}
-
-# Show number of parameters on parameter server 0.
-# It is recommended to provide`run_meta` argument
-# to have complete device placement info.
-PRINT_PARAMS_ON_DEVICE = {
-    'max_depth': 1,
-    'min_bytes': 0,
-    'min_micros': 0,
-    'min_params': 0,
-    'min_float_ops': 0,
-    'order_by': 'name',
-    'account_type_regexes': ['.*ps.*task:0.*'],
-    'start_name_regexes': ['.*'],
-    'trim_name_regexes': [],
-    'show_name_regexes': ['.*'],
-    'hide_name_regexes': [],
-    'account_displayed_op_only': False,
-    'select': ['device', 'params'],
-    'output': 'stdout',
-    'dump_to_file': ''
-}
-
-# Show the timing stats and memory demands.
-PRINT_ALL_TIMING_MEMORY = {
-    'max_depth': 10000,
-    'min_bytes': 1,  # Only >=1
-    'min_micros': 1,  # Only >=1
-    'min_params': 0,
-    'min_float_ops': 0,
-    'order_by': 'name',
-    'account_type_regexes': ['.*'],
-    'start_name_regexes': ['.*'],
-    'trim_name_regexes': [],
-    'show_name_regexes': ['.*'],
-    'hide_name_regexes': [],
-    'account_displayed_op_only': True,
-    'select': ['micros', 'bytes'],
-    'output': 'stdout',
-    'dump_to_file': ''
-}
 
 # The following options are for 'advise' cmd.
 # Show all advice.
@@ -121,9 +40,6 @@ ALL_ADVICE = {
     'JobChecker': {},  # Only available internally.
     'OperationChecker': {},
 }
-
-# pylint: enable=bad-whitespace
-# pylint: enable=bad-continuation
 
 
 def _build_options(options):
@@ -192,6 +108,7 @@ class Profiler(object):
 
   https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/README.md
 
+  ```python
   Typical use case:
     # Currently we are only allowed to create 1 profiler per process.
     profiler = Profile(sess.graph)
@@ -206,7 +123,8 @@ class Profiler(object):
         profiler.add_step(i, run_meta)
 
         # Profile the parameters of your model.
-        profiler.profile_name_scope(options=TRAINABLE_VARS_PARAMS_STAT_OPTIONS)
+        profiler.profile_name_scope(options=(option_builder.ProfileOptionBuilder
+            .trainable_variables_parameter()))
 
         # Or profile the timing of your model operations.
         opts = PRINT_ALL_TIMING_MEMORY.copy()
@@ -224,6 +142,7 @@ class Profiler(object):
         _ = sess.run(...)
     # Auto detect problems and generate advice.
     profiler.advise(model_analyzer.ALL_ADVICE)
+  ```
   """
 
   def __init__(self, graph, op_log=None):
@@ -231,7 +150,7 @@ class Profiler(object):
 
     Args:
       graph: tf.Graph.
-      op_log: optional. tensorflow::tfprof::OpLog proto. Used to define
+      op_log: optional. tensorflow::tfprof::OpLogProto proto. Used to define
           extra op types.
     """
     self._graph = graph
@@ -273,10 +192,10 @@ class Profiler(object):
     Args:
       options: A dict of options. See core/profiler/g3doc/options.md.
     Returns:
-      a TFMultiGraphNodeProto that records the results.
+      a MultiGraphNodeProto that records the results.
     """
     opts = _build_options(options)
-    tfprof_node = tfprof_output_pb2.TFMultiGraphNodeProto()
+    tfprof_node = tfprof_output_pb2.MultiGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.Profile('code'.encode('utf-8'), opts.SerializeToString()))
     return tfprof_node
@@ -287,10 +206,10 @@ class Profiler(object):
     Args:
       options: A dict of options. See core/profiler/g3doc/options.md.
     Returns:
-      a TFMultiGraphNodeProto that records the results.
+      a MultiGraphNodeProto that records the results.
     """
     opts = _build_options(options)
-    tfprof_node = tfprof_output_pb2.TFMultiGraphNodeProto()
+    tfprof_node = tfprof_output_pb2.MultiGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.Profile('op'.encode('utf-8'), opts.SerializeToString()))
     return tfprof_node
@@ -301,10 +220,10 @@ class Profiler(object):
     Args:
       options: A dict of options. See core/profiler/g3doc/options.md.
     Returns:
-      a TFGraphNodeProto that records the results.
+      a GraphNodeProto that records the results.
     """
     opts = _build_options(options)
-    tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
+    tfprof_node = tfprof_output_pb2.GraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.Profile('scope'.encode('utf-8'), opts.SerializeToString()))
     return tfprof_node
@@ -315,10 +234,10 @@ class Profiler(object):
     Args:
       options: A dict of options. See core/profiler/g3doc/options.md.
     Returns:
-      a TFGraphNodeProto that records the results.
+      a GraphNodeProto that records the results.
     """
     opts = _build_options(options)
-    tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
+    tfprof_node = tfprof_output_pb2.GraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.Profile('graph'.encode('utf-8'), opts.SerializeToString()))
     return tfprof_node
@@ -352,7 +271,7 @@ def profile(graph,
     run_meta: tensorflow::RunMetadata proto. When provided, also shows valid
               timing and memory information when 'select' option contains
               'micros' and 'bytes'.
-    op_log: tensorflow::tfprof::OpLog proto. users can use this proto to
+    op_log: tensorflow::tfprof::OpLogProto proto. users can use this proto to
             group together ops and use a op_type to select the group.
     cmd: string. Either 'op', 'scope', 'graph', 'code'.
          'op' view organize outputs using operation type. (e.g. MatMul)
@@ -361,12 +280,13 @@ def profile(graph,
          'code' view organize outputs using Python call stack.
     options: A dict of options. See core/profiler/g3doc/options.md.
   Returns:
-    If cmd is 'scope' or 'graph', returns TFGraphNodeProto proto.
-    If cmd is 'op' or 'code', returns TFMultiGraphNodeProto proto.
+    If cmd is 'scope' or 'graph', returns GraphNodeProto proto.
+    If cmd is 'op' or 'code', returns MultiGraphNodeProto proto.
     Side effect: stdout/file/timeline.json depending on options['output']
   """
   if options == _DEFAULT_PROFILE_OPTIONS:
-    options = TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
+    options = (option_builder.ProfileOptionBuilder
+               .trainable_variables_parameter())
 
   # pylint: disable=protected-access
   op_log = tfprof_logger._merge_default_with_oplog(
@@ -378,7 +298,7 @@ def profile(graph,
   run_meta_str = run_meta.SerializeToString() if run_meta else b''
 
   if cmd == 'code' or cmd == 'op':
-    tfprof_node = tfprof_output_pb2.TFMultiGraphNodeProto()
+    tfprof_node = tfprof_output_pb2.MultiGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.PrintModelAnalysis(
             graph.as_graph_def(add_shapes=True).SerializeToString(),
@@ -387,7 +307,7 @@ def profile(graph,
             cmd.encode('utf-8'),
             opts.SerializeToString()))
   elif cmd == 'graph' or cmd == 'scope':
-    tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
+    tfprof_node = tfprof_output_pb2.GraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.PrintModelAnalysis(
             graph.as_graph_def(add_shapes=True).SerializeToString(),

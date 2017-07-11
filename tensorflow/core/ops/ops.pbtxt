@@ -205,6 +205,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -212,7 +213,7 @@ op {
       }
     }
   }
-  summary: "Computes acosh of x element-wise."
+  summary: "Computes inverse hyperbolic cosine of x element-wise."
 }
 op {
   name: "Add"
@@ -1924,6 +1925,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -1931,7 +1933,7 @@ op {
       }
     }
   }
-  summary: "Computes asinh of x element-wise."
+  summary: "Computes inverse hyperbolic sine of x element-wise."
 }
 op {
   name: "Assert"
@@ -2179,6 +2181,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
         type: DT_COMPLEX64
@@ -2186,7 +2189,7 @@ op {
       }
     }
   }
-  summary: "Computes atanh of x element-wise."
+  summary: "Computes inverse hyperbolic tangent of x element-wise."
 }
 op {
   name: "AudioSpectrogram"
@@ -4632,6 +4635,35 @@ op {
     }
   }
   summary: "Concatenates tensors along one dimension."
+}
+op {
+  name: "ConcatenateDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "another_dataset"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that concatenates `input_dataset` with `another_dataset`."
+  is_stateful: true
 }
 op {
   name: "ConditionalAccumulator"
@@ -8362,6 +8394,14 @@ op {
     }
     description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
   }
+  attr {
+    name: "encoding"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The type of encoding for the file. Currently ZLIB and GZIP\nare supported. Defaults to none."
+  }
   summary: "A Reader that outputs fixed-length records from a file."
   is_stateful: true
 }
@@ -10175,6 +10215,54 @@ op {
     type: "type"
   }
   summary: "Table initializer that takes two tensors for keys and values respectively."
+  is_stateful: true
+}
+op {
+  name: "InterleaveDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "cycle_length"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "block_length"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  description: "Unlike MapDataset, the `f` in InterleaveDataset is expected to return\na Dataset resource, and InterleaveDataset will flatten successive\nresults into a single Dataset. Unlike FlatMapDataset,\nInterleaveDataset will interleave sequences of up to `block_length`\nconsecutive elements from `cycle_length` input elements."
   is_stateful: true
 }
 op {
@@ -14473,6 +14561,44 @@ op {
   description: "This operation pads a `input` with zeros according to the `paddings` you\nspecify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the\nrank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many zeros to add before the contents of `input` in that dimension, and\n`paddings[D, 1]` indicates how many zeros to add after the contents of `input`\nin that dimension.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
 }
 op {
+  name: "PadV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    type_attr: "Tpaddings"
+  }
+  input_arg {
+    name: "constant_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Pads a tensor."
+  description: "This operation pads `input` according to the `paddings` and `constant_values`\nyou specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is\nthe rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many padding values to add before the contents of `input` in that dimension,\nand `paddings[D, 1]` indicates how many padding values to add after the contents\nof `input` in that dimension. `constant_values` is a scalar tensor of the same\ntype as `input` that indicates the value to use for padding `input`.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# \'constant_values\' is 0\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
+}
+op {
   name: "PaddedBatchDataset"
   input_arg {
     name: "input_dataset"
@@ -17415,6 +17541,36 @@ op {
   }
   summary: "Enqueues a tuple of one or more tensors in the given queue."
   description: "The components input has k elements, which correspond to the components of\ntuples stored in the given queue.\n\nN.B. If the queue is full, this operation will block until the given\nelement has been enqueued (or \'timeout_ms\' elapses, if specified)."
+  is_stateful: true
+}
+op {
+  name: "QueueIsClosed"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "is_closed"
+    type: DT_BOOL
+  }
+  summary: "Returns true if queue is closed."
+  description: "This operation returns true if the queue is closed and false if the queue\nis open."
+}
+op {
+  name: "QueueIsClosedV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a queue."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_closed"
+    type: DT_BOOL
+  }
+  summary: "Returns true if queue is closed."
+  description: "This operation returns true if the queue is closed and false if the queue\nis open."
   is_stateful: true
 }
 op {
@@ -21644,6 +21800,109 @@ op {
       f: 0.1
     }
     description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied. The value of this parameter should be\nnon-negative. In the case of 0, the cropped area does not need to overlap\nany of the bounding boxes supplied."
+  }
+  attr {
+    name: "aspect_ratio_range"
+    type: "list(float)"
+    default_value {
+      list {
+        f: 0.75
+        f: 1.33
+      }
+    }
+    description: "The cropped area of the image must have an aspect ratio =\nwidth / height within this range."
+  }
+  attr {
+    name: "area_range"
+    type: "list(float)"
+    default_value {
+      list {
+        f: 0.05
+        f: 1
+      }
+    }
+    description: "The cropped area of the image must contain a fraction of the\nsupplied image within in this range."
+  }
+  attr {
+    name: "max_attempts"
+    type: "int"
+    default_value {
+      i: 100
+    }
+    description: "Number of attempts at generating a cropped region of the image\nof the specified constraints. After `max_attempts` failures, return the entire\nimage."
+  }
+  attr {
+    name: "use_image_if_no_bounding_boxes"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Controls behavior if no bounding boxes supplied.\nIf true, assume an implicit bounding box covering the whole input. If false,\nraise an error."
+  }
+  summary: "Generate a single randomly distorted bounding box for an image."
+  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n```python\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.image_summary(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n```\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
+  is_stateful: true
+}
+op {
+  name: "SampleDistortedBoundingBoxV2"
+  input_arg {
+    name: "image_size"
+    description: "1-D, containing `[height, width, channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "bounding_boxes"
+    description: "3-D with shape `[batch, N, 4]` describing the N bounding boxes\nassociated with the image."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_object_covered"
+    description: "The cropped area of the image must contain at least this\nfraction of any bounding box supplied. The value of this parameter should be\nnon-negative. In the case of 0, the cropped area does not need to overlap\nany of the bounding boxes supplied."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "begin"
+    description: "1-D, containing `[offset_height, offset_width, 0]`. Provide as input to\n`tf.slice`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "size"
+    description: "1-D, containing `[target_height, target_width, -1]`. Provide as input to\n`tf.slice`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "bboxes"
+    description: "3-D with shape `[1, 1, 4]` containing the distorted bounding box.\nProvide as input to `tf.image.draw_bounding_boxes`."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either `seed` or `seed2` are set to non-zero, the random number\ngenerator is seeded by the given `seed`.  Otherwise, it is seeded by a random\nseed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "A second seed to avoid seed collision."
   }
   attr {
     name: "aspect_ratio_range"
@@ -26072,6 +26331,54 @@ op {
   description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```python\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n# => [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n# => [[ 1  2  3  4]\n#     [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n# => [[0 0 0 0]\n#     [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
 }
 op {
+  name: "SparseSlice"
+  input_arg {
+    name: "indices"
+    description: "2-D tensor represents the indices of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    description: "1-D tensor represents the values of the sparse tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shape"
+    description: "1-D. tensor represents the shape of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "start"
+    description: "1-D. tensor represents the start of the slice."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "size"
+    description: "1-D. tensor represents the size of the slice.\noutput indices: A list of 1-D tensors represents the indices of the output\nsparse tensors."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    description: "A list of 1-D tensors represents the values of the output sparse\ntensors."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_shape"
+    description: "A list of 1-D tensors represents the shape of the output sparse\ntensors."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Slice a `SparseTensor` based on the `start` and `size`."
+  description: "For example, if the input is\n\n    input_tensor = shape = [2, 7]\n    [    a   d e  ]\n    [b c          ]\n\nGraphically the output tensors are:\n\n    sparse_slice([0, 0], [2, 4]) = shape = [2, 4]\n    [    a  ]\n    [b c    ]\n\n    sparse_slice([0, 4], [2, 3]) = shape = [2, 3]\n    [ d e  ]\n    [      ]"
+}
+op {
   name: "SparseSoftmax"
   input_arg {
     name: "sp_indices"
@@ -26842,14 +27149,12 @@ op {
   name: "Stack"
   output_arg {
     name: "handle"
-    description: "The handle to the stack."
     type: DT_STRING
     is_ref: true
   }
   attr {
     name: "elem_type"
     type: "type"
-    description: "The type of the elements on the stack."
   }
   attr {
     name: "stack_name"
@@ -26857,28 +27162,52 @@ op {
     default_value {
       s: ""
     }
-    description: "Overrides the name used for the temporary stack resource. Default\nvalue is the name of the \'Stack\' op (which is guaranteed unique)."
   }
-  summary: "A stack that produces elements in first-in last-out order."
+  summary: "Deprecated, use StackV2."
   is_stateful: true
 }
 op {
   name: "StackClose"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
   }
+  summary: "Deprecated, use StackCloseV2."
+}
+op {
+  name: "StackCloseV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
+  }
   summary: "Delete the stack from its resource container."
+  is_stateful: true
 }
 op {
   name: "StackPop"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
+  }
+  output_arg {
+    name: "elem"
+    type_attr: "elem_type"
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+  }
+  summary: "Deprecated, use StackPopV2."
+}
+op {
+  name: "StackPopV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
   }
   output_arg {
     name: "elem"
@@ -26891,14 +27220,42 @@ op {
     description: "The type of the elem that is popped."
   }
   summary: "Pop the element at the top of the stack."
+  is_stateful: true
 }
 op {
   name: "StackPush"
   input_arg {
     name: "handle"
-    description: "The handle to a stack."
     type: DT_STRING
     is_ref: true
+  }
+  input_arg {
+    name: "elem"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "swap_memory"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  summary: "Deprecated, use StackPushV2."
+}
+op {
+  name: "StackPushV2"
+  input_arg {
+    name: "handle"
+    description: "The handle to a stack."
+    type: DT_RESOURCE
   }
   input_arg {
     name: "elem"
@@ -26923,6 +27280,35 @@ op {
     description: "Swap `elem` to CPU. Default to false."
   }
   summary: "Push an element onto the stack."
+  is_stateful: true
+}
+op {
+  name: "StackV2"
+  input_arg {
+    name: "max_size"
+    description: "The maximum size of the stack if non-negative. If negative, the stack\nsize is unlimited."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    description: "The handle to the stack."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "elem_type"
+    type: "type"
+    description: "The type of the elements on the stack."
+  }
+  attr {
+    name: "stack_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "Overrides the name used for the temporary stack resource. Default\nvalue is the name of the \'Stack\' op (which is guaranteed unique)."
+  }
+  summary: "A stack that produces elements in first-in last-out order."
+  is_stateful: true
 }
 op {
   name: "Stage"

@@ -49,11 +49,11 @@ class ExpensiveOperationChecker : public Checker {
     }
     Options opts(3, 0, 1, 0, 0, 0, -1, "micros", {".*"}, {".*"}, {}, {".*"}, {},
                  false, {"micros", "occurrence"}, "none", {});
-    const TFMultiGraphNodeProto root = stats->ShowMultiGraphNode("op", opts);
+    const MultiGraphNodeProto root = stats->ShowMultiGraphNode("op", opts);
     if (root.children_size() == 0) {
       return;
     }
-    const TFMultiGraphNodeProto* node = &root;
+    const MultiGraphNodeProto* node = &root;
     std::vector<string> outputs;
     for (int i = 0; i < 3 && node->children_size() > 0; ++i) {
       node = &node->children(0);
@@ -76,8 +76,8 @@ class ExpensiveOperationChecker : public Checker {
     }
     Options opts(100, 0, 1, 0, 0, 0, -1, "micros", {".*"}, {".*"}, {}, {".*"},
                  {}, false, {"micros"}, "none", {});
-    const TFMultiGraphNodeProto root = stats->ShowMultiGraphNode("code", opts);
-    const TFMultiGraphNodeProto* node = &root;
+    const MultiGraphNodeProto root = stats->ShowMultiGraphNode("code", opts);
+    const MultiGraphNodeProto* node = &root;
     // A trick here is: Usually, codes in library file are usually referenced
     // only once, while user's own code are referenced multiple times.
     while (node->children_size() == 1) {
@@ -95,14 +95,14 @@ class ExpensiveOperationChecker : public Checker {
   void CheckScopeView(const TFStats* stats) {
     Options opts(100, 0, 100, 0, 0, 0, -1, "micros", {".*"}, {".*"}, {}, {".*"},
                  {}, false, {"micros"}, "none", {});
-    const TFGraphNodeProto root = stats->ShowGraphNode("scope", opts);
+    const GraphNodeProto root = stats->ShowGraphNode("scope", opts);
     if (root.children_size() == 0) {
       return;
     }
     std::vector<string> outputs;
-    const TFGraphNodeProto* node = &root;
+    const GraphNodeProto* node = &root;
     for (int i = 0; i < 3 && i < root.children_size(); ++i) {
-      const TFGraphNodeProto& node = root.children(i);
+      const GraphNodeProto& node = root.children(i);
       outputs.push_back(strings::Printf(
           "top %d graph node: %s, cpu: %s, accelerator: %s, total: %s", i + 1,
           node.name().c_str(), FormatTime(node.cpu_exec_micros()).c_str(),
@@ -112,13 +112,13 @@ class ExpensiveOperationChecker : public Checker {
     reports_.add_reports(str_util::Join(outputs, "\n"));
   }
 
-  void CodeViewHelper(const TFMultiGraphNodeProto* node, int depth,
+  void CodeViewHelper(const MultiGraphNodeProto* node, int depth,
                       std::vector<string>* outputs) {
     if (node->children_size() <= 1 || depth > 4) {
       return;
     }
     for (int j = 0; j < 3 && j < node->children_size(); ++j) {
-      const TFMultiGraphNodeProto* c = &node->children(j);
+      const MultiGraphNodeProto* c = &node->children(j);
       outputs->push_back(strings::Printf(
           "%s%s, cpu: %s, accelerator: %s, total: %s",
           string(depth * 2, ' ').c_str(), c->name().c_str(),

@@ -20,6 +20,7 @@
 namespace tensorflow {
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 namespace tensorforest {
 
@@ -93,7 +94,8 @@ REGISTER_OP("TreePredictionsV4")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle num_points = c->UnknownDim();
 
-      if (c->RankKnown(c->input(1)) && c->Rank(c->input(1)) > 0) {
+      if (c->RankKnown(c->input(1)) && c->Rank(c->input(1)) > 0 &&
+          c->Value(c->Dim(c->input(1), 0)) > 0) {
         num_points = c->Dim(c->input(1), 0);
       }
 

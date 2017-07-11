@@ -49,7 +49,7 @@ class TFProfShowTest : public ::testing::Test {
     TF_CHECK_OK(
         ReadProtoFile(Env::Default(), run_meta_path, run_meta_pb.get(), true));
 
-    std::unique_ptr<OpLog> op_log_pb(new OpLog());
+    std::unique_ptr<OpLogProto> op_log_pb(new OpLogProto());
     string op_log_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/tfprof_log");

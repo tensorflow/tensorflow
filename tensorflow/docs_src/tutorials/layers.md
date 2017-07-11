@@ -157,13 +157,15 @@ def cnn_model_fn(features, labels, mode):
   # Logits Layer
   logits = tf.layers.dense(inputs=dropout, units=10)
 
-  # Generate Predictions (for PREDICT mode)
-  predicted_classes = tf.argmax(input=logits, axis=1)
+  predictions = {
+      # Generate predictions (for PREDICT and EVAL mode)
+      "classes": tf.argmax(input=logits, axis=1),
+      # Add `softmax_tensor` to the graph. It is used for PREDICT and by the
+      # `logging_hook`.
+      "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
+  }
+
   if mode == tf.estimator.ModeKeys.PREDICT:
-    predictions = {
-        "classes": predicted_classes,
-        "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
-    }
     return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
   # Calculate Loss (for both TRAIN and EVAL modes)
@@ -182,7 +184,7 @@ def cnn_model_fn(features, labels, mode):
   # Add evaluation metrics (for EVAL mode)
   eval_metric_ops = {
       "accuracy": tf.metrics.accuracy(
-          labels=labels, predictions=predicted_classes)}
+          labels=labels, predictions=predictions["classes"])}
   return tf.estimator.EstimatorSpec(
       mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 ```
@@ -451,12 +453,11 @@ tf.nn.softmax(logits, name="softmax_tensor")
 We compile our predictions in a dict, and return an `EstimatorSpec` object:
 
 ```python
-predicted_classes = tf.argmax(input=logits, axis=1)
+predictions = {
+    "classes": tf.argmax(input=logits, axis=1),
+    "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
+}
 if mode == tf.estimator.ModeKeys.PREDICT:
-  predictions = {
-      "classes": predicted_classes,
-      "probabilities": tf.nn.softmax(logits, name="softmax_tensor")
-  }
   return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 ```
 
@@ -547,7 +548,7 @@ mode as follows:
 ```python
 eval_metric_ops = {
     "accuracy": tf.metrics.accuracy(
-        labels=labels, predictions=predicted_classes)}
+        labels=labels, predictions=predictions["classes"])}
 return tf.estimator.EstimatorSpec(
     mode=mode, loss=loss, eval_metric_ops=eval_metric_ops)
 ```
