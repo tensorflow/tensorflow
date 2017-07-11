@@ -945,6 +945,10 @@ class TensorSliceDataset(Dataset):
     """See `Dataset.from_tensor_slices()` for details."""
     super(TensorSliceDataset, self).__init__()
     with ops.name_scope("tensors"):
+      tensors = ops.convert_n_to_tensor_or_indexed_slices(tensors)
+      if not tensors:
+        raise ValueError(
+            "Expected at least one tensor in Dataset.from_tensor_slices().")
       flat_tensors = [
           ops.convert_to_tensor(t, name="component_%d" % i)
           for i, t in enumerate(nest.flatten(tensors))
