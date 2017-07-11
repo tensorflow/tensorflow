@@ -1051,7 +1051,7 @@ def _device_string(dev_spec):
     return dev_spec
 
 
-def _NodeDef(op_type, name, device=None, attrs=None):
+def _NodeDef(op_type, name, device=None, attrs=None):  # pylint: disable=redefined-outer-name
   """Create a NodeDef proto.
 
   Args:
@@ -1203,7 +1203,7 @@ class Operation(object):
     self._op_def = op_def
     self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
     # Add this op to the current control flow context:
-    self._control_flow_context = g._get_control_flow_context()
+    self._control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
     # NOTE(keveman): Control flow context's AddOp could be creating new ops and
@@ -1534,7 +1534,9 @@ class Operation(object):
   # Methods below are used when building the NodeDef and Graph proto.
   def _recompute_node_def(self):
     del self._node_def.input[:]
+    # pylint: disable=protected-access
     self._node_def.input.extend([t._as_node_def_input() for t in self._inputs])
+    # pylint: enable=protected-access
     if self._control_inputs:
       self._node_def.input.extend(["^%s" % op.name for op in
                                    self._control_inputs])
@@ -2322,6 +2324,9 @@ class Graph(object):
 
     Note that this is unrelated to the
     @{tf.Graph.graph_def_versions}.
+
+    Returns:
+       An integer version that increases as ops are added to the graph.
     """
     if self._finalized:
       return self._version
@@ -2530,7 +2535,7 @@ class Graph(object):
     return self._building_function
 
   # Helper functions to create operations.
-  def create_op(self, op_type, inputs, dtypes,
+  def create_op(self, op_type, inputs, dtypes,  # pylint: disable=redefined-outer-name
                 input_types=None, name=None, attrs=None, op_def=None,
                 compute_shapes=True, compute_device=True):
     """Creates an `Operation` in this graph.
@@ -2643,7 +2648,7 @@ class Graph(object):
                             name, colocation_op.name,
                             ret.device, colocation_op.device)
           else:
-            ret._set_device(colocation_op.device)
+            ret._set_device(colocation_op.device)  # pylint: disable=protected-access
 
       all_colocation_groups = sorted(set(all_colocation_groups))
       ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
@@ -3367,7 +3372,7 @@ class Graph(object):
       device_name_or_function: The device name or function to use in
         the context.
 
-    Returns:
+    Yields:
       A context manager that specifies the default device to use for newly
       created ops.
 
@@ -3394,7 +3399,7 @@ class Graph(object):
     for device_function in reversed(self._device_function_stack):
       if device_function is None:
         break
-      op._set_device(device_function(op))
+      op._set_device(device_function(op))  # pylint: disable=protected-access
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
@@ -3943,7 +3948,7 @@ class _DefaultStack(threading.local):
     self.stack = []
 
   def is_cleared(self):
-    return self.stack == []
+    return not self.stack
 
   @property
   def enforce_nesting(self):
@@ -4566,6 +4571,7 @@ def prepend_name_scope(name, import_scope):
 
 
 # pylint: disable=g-doc-return-or-yield
+# pylint: disable=not-context-manager
 @tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""
