@@ -1,0 +1,19 @@
+package org.tensorflow.op;
+import org.tensorflow.Tensor;
+@IMPORTS@
+
+/**
+ * Utility class offering convenience methods for creating Tensors of popular
+ * types, in a type-safe way.
+ */
+public class Tensors {
+  private Tensors() {}
+
+  public static Tensor<TFString> create(byte[] data) {
+    return Tensor.create(data);
+  }
+  public static Tensor<TFString> create(String data) {
+    return Tensor.create(data);
+  }
+  @TYPEINFO@}
+
