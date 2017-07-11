@@ -104,6 +104,7 @@ filegroup(
         "@gif_archive//:COPYING",
         "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
+        "@ibverbs//:COPYING",
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
