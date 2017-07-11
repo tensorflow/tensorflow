@@ -8,10 +8,10 @@
 #include <map>
 #include <memory>
 
-#include <fcntl.h>
+#include <sys/fcntl.h>
 
-#include "rdma/rdma_cma.h"
-#include "rdma/rdma_verbs.h"
+#include <rdma/rdma_cma.h>
+#include <rdma/rdma_verbs.h>
 
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/device.h"
