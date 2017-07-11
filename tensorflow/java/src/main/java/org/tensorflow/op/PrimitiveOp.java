@@ -26,12 +26,12 @@ import org.tensorflow.Operation;
 public abstract class PrimitiveOp implements Op {
 
   @Override
-  public int hashCode() {
+  public final int hashCode() {
     return operation.hashCode();
   }
 
   @Override
-  public boolean equals(Object obj) {
+  public final boolean equals(Object obj) {
     if (this == obj) {
       return true;
     }
@@ -44,7 +44,7 @@ public abstract class PrimitiveOp implements Op {
   }
 
   @Override
-  public String toString() {
+  public final String toString() {
     return String.format("<%s '%s'>", operation.type(), operation.name());
   }
 
