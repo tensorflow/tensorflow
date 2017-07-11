@@ -256,7 +256,10 @@ tf_cuda_library(
         "//tensorflow/core:worker_proto_cc",
     ],
     linkopts = select({
-        "//conditions:default": ["-libverbs", "-lrdmacm"],
+        "//conditions:default": [
+            "-libverbs",
+            "-lrdmacm",
+        ],
     }),
 )
 
