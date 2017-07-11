@@ -258,11 +258,12 @@ class ProcessInputOp : public OpKernel {
     const Tensor& input_data = context->input(2);
     const Tensor& sparse_input_indices = context->input(3);
     const Tensor& sparse_input_values = context->input(4);
+    const Tensor& sparse_input_shape = context->input(5);
     const Tensor& input_labels = context->input(6);
     const Tensor& input_weights = context->input(7);
 
     data_set_->set_input_tensors(input_data, sparse_input_indices,
-                                 sparse_input_values);
+                                 sparse_input_values, sparse_input_shape);
 
     FertileStatsResource* fertile_stats_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 1),

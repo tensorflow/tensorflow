@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -30,6 +31,12 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
+
+
+def _elu_grad_grad(activation):
+  if activation < 0:
+    return np.exp(activation)
+  return 0
 
 
 class ReluTest(test.TestCase):
@@ -265,6 +272,17 @@ class EluTest(test.TestCase):
           x, [2, 5], y, [2, 5], x_init_value=x_init)
     print("elu (float64) gradient err = ", err)
     self.assertLess(err, 1e-6)
+
+  def testGradGrad(self):
+    with self.test_session():
+      x = array_ops.placeholder(dtype=dtypes.float32)
+      elu = nn_ops.elu(x)
+      g, = gradients_impl.gradients(elu, x)
+      gg, = gradients_impl.gradients(g, x)
+
+      for x_val in [-1, -0.5, 0.5, 1]:
+        err = np.abs(gg.eval(feed_dict={x: x_val}) - _elu_grad_grad(x_val))
+        self.assertLess(err, 1e-4)
 
   def testGradGradFloat32(self):
     with self.test_session():

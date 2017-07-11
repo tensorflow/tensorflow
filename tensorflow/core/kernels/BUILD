@@ -1223,6 +1223,7 @@ tf_kernel_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_ops",
         "//third_party/eigen3",
@@ -5409,6 +5410,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "interleave_dataset_op",
+    srcs = ["interleave_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "repeat_dataset_op",
     srcs = ["repeat_dataset_op.cc"],
     deps = [
@@ -5529,6 +5544,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "concatenate_dataset_op",
+    srcs = ["concatenate_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "reader_dataset_ops",
     srcs = ["reader_dataset_ops.cc"],
     deps = [
@@ -5572,11 +5599,13 @@ tf_kernel_library(
     deps = [
         ":batch_dataset_op",
         ":cache_dataset_ops",
+        ":concatenate_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
         ":group_by_window_dataset_op",
         ":ignore_errors_dataset_op",
+        ":interleave_dataset_op",
         ":iterator_ops",
         ":map_dataset_op",
         ":padded_batch_dataset_op",

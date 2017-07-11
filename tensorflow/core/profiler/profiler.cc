@@ -96,7 +96,7 @@ int Run(int argc, char** argv) {
            "Comma-separated list of RunMetadata proto binary "
            "files. Each file is given step number 0,1,2,etc"),
       Flag("op_log_path", &FLAGS_op_log_path,
-           "tensorflow::tfprof::OpLog proto binary file name"),
+           "tensorflow::tfprof::OpLogProto proto binary file name"),
       Flag("checkpoint_path", &FLAGS_checkpoint_path,
            "TensorFlow Checkpoint file name"),
       Flag("max_depth", &FLAGS_max_depth, "max depth"),
@@ -156,7 +156,7 @@ int Run(int argc, char** argv) {
     printf(
         "4) tfprof --graph_path <GraphDef proto text file> \\\n"
         "          --run_meta_path <RunMetadata proto binary file> \\\n"
-        "          --op_log_path <tensorflow::tfprof::OpLog proto binary file> "
+        "          --op_log_path <tensorflow::tfprof::OpLogProto proto binary file> "
         "\\\n"
         "          --checkpoint_path <TensorFlow Checkpoint file>: "
         "Profiling everything!\n");
@@ -178,7 +178,7 @@ int Run(int argc, char** argv) {
   TF_CHECK_OK(
       ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false));
 
-  std::unique_ptr<OpLog> op_log(new OpLog());
+  std::unique_ptr<OpLogProto> op_log(new OpLogProto());
   if (!FLAGS_op_log_path.empty()) {
     string op_log_str;
     s = ReadFileToString(Env::Default(), FLAGS_op_log_path, &op_log_str);

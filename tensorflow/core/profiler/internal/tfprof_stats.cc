@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace tfprof {
 TFStats::TFStats(std::unique_ptr<GraphDef> graph,
                  std::unique_ptr<RunMetadata> run_meta,
-                 std::unique_ptr<OpLog> op_log,
+                 std::unique_ptr<OpLogProto> op_log,
                  std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader)
     : has_code_traces_(false),
       graph_(std::move(graph)),
@@ -39,7 +39,7 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
   if (run_meta && run_meta->has_step_stats()) {
     AddRunMeta(0, std::move(run_meta));
   }
-  AddOpLog(std::move(op_log));
+  AddOpLogProto(std::move(op_log));
 
   if (ckpt_reader_) {
     for (const auto& v : ckpt_reader_->GetVariableToShapeMap()) {
@@ -89,8 +89,8 @@ void TFStats::BuildAllViews() {
   }
 }
 
-const TFGraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
-                                               const Options& opts) const {
+const GraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
+                                             const Options& opts) const {
   if (!Validate(opts)) {
     return empty_graph_node_;
   }
@@ -104,7 +104,7 @@ const TFGraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
   }
 }
 
-const TFMultiGraphNodeProto& TFStats::ShowMultiGraphNode(
+const MultiGraphNodeProto& TFStats::ShowMultiGraphNode(
     const string& cmd, const Options& opts) const {
   if (!Validate(opts)) {
     return empty_multi_graph_node_;
@@ -152,7 +152,7 @@ void TFStats::ParseGraph() {
   }
 }
 
-void TFStats::AddOpLog(std::unique_ptr<OpLog> op_log) {
+void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
   if (!op_log) {
     return;
   }

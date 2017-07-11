@@ -311,6 +311,12 @@ class DebugAnalyzer(object):
         dest="print_all",
         action="store_true",
         help="Print the tensor in its entirety, i.e., do not use ellipses.")
+    ap.add_argument(
+        "-s",
+        "--numeric_summary",
+        action="store_true",
+        help="Include summary for non-empty tensors of numeric (int*, float*, "
+        "complex*) and Boolean types.")
     self._arg_parsers["print_tensor"] = ap
 
     # Parser for print_source.
@@ -910,7 +916,8 @@ class DebugAnalyzer(object):
             np_printoptions,
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
-            highlight_options=highlight_options)
+            highlight_options=highlight_options,
+            include_numeric_summary=parsed.numeric_summary)
       else:
         output = cli_shared.error(
             "Invalid number (%d) for tensor %s, which generated one dump." %

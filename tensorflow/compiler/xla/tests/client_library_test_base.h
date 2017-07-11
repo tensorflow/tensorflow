@@ -280,6 +280,13 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   Client* client_;
   ExecutionOptions execution_options_;
+
+ private:
+  // Build and run the computation with all permutations of output layouts.
+  tensorflow::Status ComputeAndCompareLiteralWithAllOutputLayouts(
+      const xla::Computation& computation, const Literal& expected,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const std::function<void(const Literal& actual)>& expect_equal_or_near);
 };
 
 template <typename NativeT>

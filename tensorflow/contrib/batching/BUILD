@@ -26,9 +26,7 @@ cc_library(
 cc_test(
     name = "batch_scheduler_test",
     size = "small",
-    srcs = [
-        "batch_scheduler_test.cc",
-    ],
+    srcs = ["batch_scheduler_test.cc"],
     deps = [
         ":batch_scheduler",
         "//tensorflow/core:lib",
@@ -52,7 +50,6 @@ cc_library(
     hdrs = ["shared_batch_scheduler.h"],
     deps = [
         ":batch_scheduler",
-        ":shared_batch_scheduler_hdrs",
         "//tensorflow/contrib/batching/util:periodic_function_dynamic",
         "//tensorflow/core:lib",
     ],
@@ -62,9 +59,7 @@ cc_library(
 cc_test(
     name = "shared_batch_scheduler_test",
     size = "small",
-    srcs = [
-        "shared_batch_scheduler_test.cc",
-    ],
+    srcs = ["shared_batch_scheduler_test.cc"],
     deps = [
         ":shared_batch_scheduler",
         "//tensorflow/contrib/batching/test_util:fake_clock_env",
@@ -86,9 +81,7 @@ cc_library(
 cc_test(
     name = "basic_batch_scheduler_test",
     size = "small",
-    srcs = [
-        "basic_batch_scheduler_test.cc",
-    ],
+    srcs = ["basic_batch_scheduler_test.cc"],
     deps = [
         ":basic_batch_scheduler",
         ":batch_scheduler",
@@ -125,9 +118,7 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_library(
     name = "python/ops/_batch_ops.so",
-    srcs = [
-        "ops/batch_ops.cc",
-    ],
+    srcs = ["ops/batch_ops.cc"],
     deps = [
         "//tensorflow/contrib/batching/kernels:batch_kernels",
     ],

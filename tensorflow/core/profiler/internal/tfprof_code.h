@@ -64,7 +64,7 @@ class TFCode : public TFMultiShow {
                                  const Options& opts);
 
   void Format(const std::vector<CodeNode*> roots, string* display_str,
-              TFMultiGraphNodeProto* proto);
+              MultiGraphNodeProto* proto);
 
   string FormatNode(CodeNode* node, const Options& opts, int64 indent);
 

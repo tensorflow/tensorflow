@@ -77,6 +77,9 @@ string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
     if (!parsed) {
       return get_default_device_name();
     } else {
+      if (parsed_name.job.empty()) {
+        parsed_name.job = "localhost";
+      }
       device = strings::StrCat(
           "/job:", parsed_name.job, "/replica:", parsed_name.replica,
           "/task:", parsed_name.task, "/",

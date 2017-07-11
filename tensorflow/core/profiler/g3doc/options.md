@@ -43,7 +43,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 `-min_params`: Show ops that contains at least this number of parameters.
 
-`-min_float_ops`: Show ops that contain at least this number of float operations. Only available if an op has op.RegisterStatistics() defined and OpLog is provided
+`-min_float_ops`: Show ops that contain at least this number of float operations. Only available if an op has op.RegisterStatistics() defined and OpLogProto is provided
 
 `-min_occurrence`: Show ops that appear at least this number of times. Only available in "op" view.
 
@@ -51,7 +51,7 @@ In graph view, in means the number of hops in the <b>graph</b>.
 
 `-order_by`: Order the results by [name|depth|bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence]
 
-`-account_type_regexes`: Account and display the ops whose types match one of the type regexes specified. tfprof allow user to define extra op types for ops through tensorflow.tfprof.OpLog proto. regexes are comma-sperated.
+`-account_type_regexes`: Account and display the ops whose types match one of the type regexes specified. tfprof allow user to define extra op types for ops through tensorflow.tfprof.OpLogProto proto. regexes are comma-sperated.
 
 `-start_name_regexes`: Show ops starting from the ops that matches the regexes, recursively. regexes are comma-separated.
 

@@ -45,7 +45,7 @@ class TFMultiShow {
   virtual ~TFMultiShow() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const TFMultiGraphNodeProto& Show(const Options& opts);
+  const MultiGraphNodeProto& Show(const Options& opts);
 
  protected:
   virtual const ShowMultiNode* ShowInternal(const Options& opts,
@@ -69,7 +69,7 @@ class TFMultiShow {
   bool ReAccount(ShowMultiNode* node, const Options& opts);
 
   string FormatLegend(const Options& opts) const;
-  string FormatInputShapes(const TFMultiGraphNodeProto& proto) const;
+  string FormatInputShapes(const MultiGraphNodeProto& proto) const;
   std::vector<string> FormatTimes(const ShowMultiNode* node,
                                   const Options& opts) const;
 
