@@ -255,20 +255,3 @@ WINDOWED_SELECTION(SelectionGe, >=)
 WINDOWED_SELECTION(SelectionGt, >)
 WINDOWED_SELECTION(SelectionLe, <=)
 WINDOWED_SELECTION(SelectionLt, <)
-
-class AllTrue : public Vertex {
-public:
-  Input<Vector<bool>> a;
-
-  bool compute() {
-    bool v = false;
-
-    for (unsigned i = 0; i < a.size(); ++i) {
-      v = v | a[i];
-    }
-
-    return v;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
