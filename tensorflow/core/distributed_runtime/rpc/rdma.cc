@@ -44,9 +44,17 @@ void MRDeleter(ibv_mr* mr) {
   }
 }
 
+void PDDeleter(ibv_pd* pd) {
+  if (pd) {
+    ibv_dealloc_pd(pd);
+  }
+}
+
 using RdmaEndpointPtr = std::unique_ptr<rdma_cm_id, decltype(&EndpointDeleter)>;
 
 using MemoryRegionPtr = std::unique_ptr<ibv_mr, decltype(&MRDeleter)>;
+
+using ProtectionDomainPtr = std::unique_ptr<ibv_pd, decltype(&PDDeleter)>;
 
 bool IsGDRAvailable() {
   std::ifstream ifs("/proc/modules");
@@ -105,7 +113,7 @@ REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 300, BFCRdmaAllocator);
 
 class RdmaMemoryManager {
  public:
-  RdmaMemoryManager() : pd_(nullptr) {
+  RdmaMemoryManager() : pd_(nullptr, PDDeleter) {
 
     using namespace std::placeholders;
     VisitableAllocator::Visitor alloc_visitor =
@@ -120,9 +128,14 @@ class RdmaMemoryManager {
       LOG(WARNING) << "No RDMA device found";
       return;
     }
+    rdma_free_devices(devices);
 
     // Used for host memory
-    pd_ = ibv_alloc_pd(devices[0]);
+    ibv_pd* pd = ibv_alloc_pd(devices[0]);
+    if (!pd) {
+      LOG(WARNING) << "Cannot allocate protection domain";
+      return;
+    }
     std::set<Allocator*> instrumented_;
 
     Allocator* allocators[] = {
@@ -157,14 +170,10 @@ class RdmaMemoryManager {
 #endif
   }
 
-  ~RdmaMemoryManager() {
-    ibv_dealloc_pd(pd_);
-  }
-
   void InsertMemoryRegion(void* addr, size_t length) {
     if (length == 0) return;
     int access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
-    ibv_mr* mr = ibv_reg_mr(pd_, addr, length, access_flags);
+    ibv_mr* mr = ibv_reg_mr(pd_.get(), addr, length, access_flags);
     if (mr != nullptr) {
       mutex_lock l(mu_);
       auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
@@ -205,7 +214,7 @@ class RdmaMemoryManager {
   }
 
   ibv_pd* ProtectionDomain() const {
-    return pd_;
+    return pd_.get();
   }
 
  private:
@@ -213,7 +222,7 @@ class RdmaMemoryManager {
     return ptr < reinterpret_cast<char*>(other->addr) + other->length;
   }
 
-  ibv_pd* pd_;
+  ProtectionDomainPtr pd_;
   std::list<MemoryRegionPtr> mrs_ GUARDED_BY(mu_);
   mutex mu_;
 };
@@ -322,6 +331,9 @@ class RdmaReadClient : public RdmaClient {
                         RdmaEndpointPtr& endpoint) {
 
     ibv_pd* pd = RdmaMemoryManager::Get()->ProtectionDomain();
+    if (!pd) {
+      return errors::Unavailable("RDMA is not available");
+    }
 
     rdma_addrinfo* addrinfo;
     rdma_addrinfo hints = {};
@@ -377,6 +389,9 @@ class RdmaReadServer : public RdmaServer {
   virtual Status Init() override {
 
     ibv_pd* pd = RdmaMemoryManager::Get()->ProtectionDomain();
+    if (!pd) {
+      return errors::Unavailable("RDMA is not available");
+    }
 
     // Resolve address passed from ConfigProto
     rdma_addrinfo* addrinfo;

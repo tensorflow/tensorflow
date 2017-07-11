@@ -166,7 +166,6 @@ Status GrpcServer::Init(
 
   rdma_client_.reset(NewRdmaClient());
   rdma_server_.reset(NewRdmaServer(host, port));
-  TF_RETURN_IF_ERROR(rdma_server_->Init());
 
   // N.B. The order of initialization here is intricate, because we
   // wish to allow `requested_port == 0` (for choosing any port,
@@ -322,9 +321,13 @@ Status GrpcServer::Start() {
       worker_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_worker_service",
                             [this] { worker_service_->HandleRPCsLoop(); }));
-      rdma_thread_.reset(
-          env_->StartThread(ThreadOptions(), "TF_rdma_service",
-                            [this] { rdma_server_->Run(); }));
+
+      Status rdma_status = rdma_server_->Init();
+      if (rdma_status.ok()) {
+        rdma_thread_.reset(
+            env_->StartThread(ThreadOptions(), "TF_rdma_service",
+                              [this] { rdma_server_->Run(); }));
+      }
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
       return Status::OK();
