@@ -39,7 +39,7 @@ message SaverDef {
     LEGACY = 0;
     // Deprecated format: tf.Saver() which works with tensorflow::table::Table.
     V1 = 1;
-    //Current format: more efficient.
+    // Current format: more efficient.
     V2 = 2;
   }
   CheckpointFormatVersion version = 7;
