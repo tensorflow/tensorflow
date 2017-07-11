@@ -19,6 +19,7 @@ cc_library(
         "src/cmd.c",
         "src/compat-1_0.c",
         "src/device.c",
+        "src/enum_strs.c",
         "src/ibverbs.h",
         "src/init.c",
         "src/marshall.c",
