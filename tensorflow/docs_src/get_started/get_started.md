@@ -33,7 +33,7 @@ tensors:
 
 ```python
 3 # a rank 0 tensor; this is a scalar with shape []
-[1. ,2., 3.] # a rank 1 tensor; this is a vector with shape [3]
+[1., 2., 3.] # a rank 1 tensor; this is a vector with shape [3]
 [[1., 2., 3.], [4., 5., 6.]] # a rank 2 tensor; a matrix with shape [2, 3]
 [[[1., 2., 3.]], [[7., 8., 9.]]] # a rank 3 tensor with shape [2, 1, 3]
 ```
@@ -100,20 +100,20 @@ we see the expected values of 3.0 and 4.0:
 ```
 
 We can build more complicated computations by combining `Tensor` nodes with
-operations (Operations are also nodes.). For example, we can add our two
+operations (Operations are also nodes). For example, we can add our two
 constant nodes and produce a new graph as follows:
 
 ```python
 node3 = tf.add(node1, node2)
-print("node3: ", node3)
-print("sess.run(node3): ",sess.run(node3))
+print("node3:", node3)
+print("sess.run(node3):", sess.run(node3))
 ```
 
 The last two print statements produce
 
 ```
-node3:  Tensor("Add:0", shape=(), dtype=float32)
-sess.run(node3):  7.0
+node3: Tensor("Add:0", shape=(), dtype=float32)
+sess.run(node3): 7.0
 ```
 
 TensorFlow provides a utility called TensorBoard that can display a picture of
@@ -140,8 +140,8 @@ the [run method](https://www.tensorflow.org/api_docs/python/tf/Session#run)
 to feed concrete values to the placeholders:
 
 ```python
-print(sess.run(adder_node, {a: 3, b:4.5}))
-print(sess.run(adder_node, {a: [1,3], b: [2, 4]}))
+print(sess.run(adder_node, {a: 3, b: 4.5}))
+print(sess.run(adder_node, {a: [1, 3], b: [2, 4]}))
 ```
 resulting in the output
 
@@ -159,7 +159,7 @@ For example,
 
 ```python
 add_and_triple = adder_node * 3.
-print(sess.run(add_and_triple, {a: 3, b:4.5}))
+print(sess.run(add_and_triple, {a: 3, b: 4.5}))
 ```
 produces the output
 ```
@@ -202,7 +202,7 @@ Since `x` is a placeholder, we can evaluate `linear_model` for several values of
 `x` simultaneously as follows:
 
 ```python
-print(sess.run(linear_model, {x:[1,2,3,4]}))
+print(sess.run(linear_model, {x: [1, 2, 3, 4]}))
 ```
 to produce the output
 ```
@@ -225,7 +225,7 @@ that abstracts the error of all examples using `tf.reduce_sum`:
 y = tf.placeholder(tf.float32)
 squared_deltas = tf.square(linear_model - y)
 loss = tf.reduce_sum(squared_deltas)
-print(sess.run(loss, {x:[1,2,3,4], y:[0,-1,-2,-3]}))
+print(sess.run(loss, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]}))
 ```
 producing the loss value
 ```
@@ -242,7 +242,7 @@ perfect values of -1 and 1. A variable is initialized to the value provided to
 fixW = tf.assign(W, [-1.])
 fixb = tf.assign(b, [1.])
 sess.run([fixW, fixb])
-print(sess.run(loss, {x:[1,2,3,4], y:[0,-1,-2,-3]}))
+print(sess.run(loss, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]}))
 ```
 The final print shows the loss now is zero.
 ```
@@ -273,7 +273,7 @@ train = optimizer.minimize(loss)
 ```python
 sess.run(init) # reset values to incorrect defaults.
 for i in range(1000):
-  sess.run(train, {x:[1,2,3,4], y:[0,-1,-2,-3]})
+  sess.run(train, {x: [1, 2, 3, 4], y: [0, -1, -2, -3]})
 
 print(sess.run([W, b]))
 ```
@@ -319,10 +319,10 @@ init = tf.global_variables_initializer()
 sess = tf.Session()
 sess.run(init) # reset values to wrong
 for i in range(1000):
-  sess.run(train, {x:x_train, y:y_train})
+  sess.run(train, {x: x_train, y: y_train})
 
 # evaluate training accuracy
-curr_W, curr_b, curr_loss = sess.run([W, b, loss], {x:x_train, y:y_train})
+curr_W, curr_b, curr_loss = sess.run([W, b, loss], {x: x_train, y: y_train})
 print("W: %s b: %s loss: %s"%(curr_W, curr_b, curr_loss))
 ```
 When run, it produces
@@ -377,11 +377,11 @@ y_train = np.array([0., -1., -2., -3.])
 x_eval = np.array([2., 5., 8., 1.])
 y_eval = np.array([-1.01, -4.1, -7, 0.])
 input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x":x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
+    {"x": x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
 train_input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x":x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
+    {"x": x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x":x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
+    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
 
 # We can invoke 1000 training steps by invoking the  method and passing the
 # training data set.
@@ -449,11 +449,11 @@ y_train = np.array([0., -1., -2., -3.])
 x_eval = np.array([2., 5., 8., 1.])
 y_eval = np.array([-1.01, -4.1, -7, 0.])
 input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x":x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
+    {"x": x_train}, y_train, batch_size=4, num_epochs=None, shuffle=True)
 train_input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x":x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
+    {"x": x_train}, y_train, batch_size=4, num_epochs=1000, shuffle=False)
 eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-    {"x":x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
+    {"x": x_eval}, y_eval, batch_size=4, num_epochs=1000, shuffle=False)
 
 # train
 estimator.train(input_fn=input_fn, steps=1000)
