@@ -72,6 +72,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
     ],
+    tags = ["nomac"],  # b/35468214
 )
 
 tf_py_test(
