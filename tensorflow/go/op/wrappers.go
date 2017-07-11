@@ -14431,17 +14431,17 @@ func Acosh(scope *Scope, x tf.Output) (y tf.Output) {
 
 // Computes inverse hyperbolic tangent of x element-wise.
 func Atanh(scope *Scope, x tf.Output) (y tf.Output) {
-  if scope.Err() != nil {
-    return
-  }
-  opspec := tf.OpSpec{
-    Type: "Atanh",
-    Input: []tf.Input{
-      x,
-    },
-  }
-  op := scope.AddOperation(opspec)
-  return op.Output(0)
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Atanh",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // TextLineReaderV2Attr is an optional argument to TextLineReaderV2.
@@ -18246,21 +18246,6 @@ func AssignAddVariableOp(scope *Scope, resource tf.Output, value tf.Output) (o *
 	return scope.AddOperation(opspec)
 }
 
-// Computes inverse hyperbolic sine of x element-wise.
-func Asinh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Asinh",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Real-valued fast Fourier transform.
 //
 // Computes the 1-dimensional discrete Fourier transform of a real-valued signal
@@ -21099,21 +21084,6 @@ func SerializeManySparse(scope *Scope, sparse_indices tf.Output, sparse_values t
 	return op.Output(0)
 }
 
-// Computes inverse hyperbolic cosine of x element-wise.
-func Acosh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Acosh",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the reverse mode backpropagated gradient of the Cholesky algorithm.
 //
 // For an explanation see "Differentiation of the Cholesky algorithm" by
@@ -21136,21 +21106,6 @@ func CholeskyGrad(scope *Scope, l tf.Output, grad tf.Output) (output tf.Output) 
 		Type: "CholeskyGrad",
 		Input: []tf.Input{
 			l, grad,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes inverse hyperbolic tangent of x element-wise.
-func Atanh(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Atanh",
-		Input: []tf.Input{
-			x,
 		},
 	}
 	op := scope.AddOperation(opspec)
