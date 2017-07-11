@@ -34,7 +34,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
-from tensorflow.python.framework import test_ops_2
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
@@ -1825,6 +1824,49 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
       split0, _, _ = array_ops.split(a, [4, 15, 11], 1)
       # pylint: disable=protected-access
       self.assertEqual([types_pb2.DT_STRING] * 3, split0.op._output_types)
+      # pylint: enable=protected-access
+
+
+class InputTypesTest(test_util.TensorFlowTestCase):
+  """Tests Operation._input_dtypes and Operation._input_types properties.
+
+  This test should not exist as _input_types is a private property.
+  This property is used by many tests that would normally cover its
+  behavior. However, we can't yet run these tests in C
+  API mode because they use _set_device method. This test will be deleted
+  once we port _set_device.
+  """
+  # TODO(iga): Remove this test
+
+  def setUp(self):
+    self.prev_use_c_api = ops._USE_C_API  # pylint: disable=protected-access
+    ops._USE_C_API = True  # pylint: disable=protected-access
+
+  def tearDown(self):
+    ops._USE_C_API = self.prev_use_c_api  # pylint: disable=protected-access
+
+  def testZeroInputs(self):
+    g = ops.Graph()
+    with g.as_default():
+      # Using a constant because creating unregistered ops
+      # doesn't work with the C API.
+      op = constant_op.constant(12, dtype=dtypes.uint16).op
+      # pylint: disable=protected-access
+      self.assertEqual([], op._input_types)
+      self.assertEqual([], op._input_dtypes)
+      # pylint: enable=protected-access
+
+  def testTwoInputs(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1.0, dtype=dtypes.double)
+      y = constant_op.constant(2.0, dtype=dtypes.double)
+      z = math_ops.multiply(x, y)
+      # pylint: disable=protected-access
+      self.assertTrue(isinstance(z.op._input_types[0], dtypes.DType))
+      self.assertTrue(isinstance(z.op._input_types[1], dtypes.DType))
+      self.assertEqual([dtypes.double, dtypes.double], z.op._input_types)
+      self.assertEqual([dtypes.double, dtypes.double], z.op._input_dtypes)
       # pylint: enable=protected-access
 
 

@@ -37,8 +37,8 @@ class ExpensiveOperationChecker : public Checker {
       fprintf(stderr, "Missing RunMetadata info. Skip %s\n", name().c_str());
     }
     CheckOpView(stats);
-    CheckCodeView(stats);
     CheckScopeView(stats);
+    CheckCodeView(stats);
     return reports_;
   }
 
@@ -114,11 +114,14 @@ class ExpensiveOperationChecker : public Checker {
 
   void CodeViewHelper(const MultiGraphNodeProto* node, int depth,
                       std::vector<string>* outputs) {
-    if (node->children_size() <= 1 || depth > 4) {
+    if (node->children_size() <= 1 || depth > 3) {
       return;
     }
     for (int j = 0; j < 3 && j < node->children_size(); ++j) {
       const MultiGraphNodeProto* c = &node->children(j);
+      if (c->total_exec_micros() < 1000) {
+        continue;
+      }
       outputs->push_back(strings::Printf(
           "%s%s, cpu: %s, accelerator: %s, total: %s",
           string(depth * 2, ' ').c_str(), c->name().c_str(),

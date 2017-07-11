@@ -16,12 +16,12 @@
 
 tfprof command line tool uses the following inputs:
 
-<b>--graph_path:</b> GraphDef text file (required). Used to build in-memory
-architecture of the model. For example, graph.pbtxt written by tf.Supervisor
+<b>--graph_path:</b> GraphDef proto file (required). Used to build in-memory
+data structure of the model. For example, graph.pbtxt written by tf.Supervisor
 can be passed to --graph_path. You can also easily get GraphDef using
 tf.get_default_graph().as_graph_def(add_shapes=True) or other API.
 
-<b>--run_meta_path:</b> tensorflow::RunMetadata (optional).
+<b>--run_meta_path:</b> RunMetadata proto file (optional).
 Used to get the memory consumption and execution time of
 each op of the model.
 
@@ -36,9 +36,9 @@ with tf.gfile.Open(os.path.join(output_dir, "run_meta"), "w") as f:
 ```
 
 <b>--op_log_path:</b>
-tensorflow::tfprof::OpLogProto (optional). A proto used to provide extra operation
+tensorflow.tfprof.OpLogProto (optional). A proto used to provide extra operation
 information. 1) float operations. 2) code traces. 3) define customized operation
-type for -account_type_regexes option.
+type for `-account_type_regexes` option.
 
 The following code snippet writes a OpLogProto file.
 
@@ -48,6 +48,7 @@ tf.profiler.write_op_log(graph, log_dir, op_log=None)
 
 <b>--checkpoint_path:</b> TensorFlow checkpoint (optional).
 It defines _checkpoint_variable op type. It also provides checkpointed tensors' values.
+Note: this feature is not well maintained now.
 
 
 ###Start `tfprof`
@@ -56,7 +57,7 @@ It defines _checkpoint_variable op type. It also provides checkpointed tensors' 
 
 ```shell
 # Build the tool.
-bazel build --config opt tensorflow/core/profiler/...
+bazel build --config opt third_party/tensorflow/core/profiler/...
 
 # Help information, including detail 'option' instructions.
 bazel-bin/tensorflow/core/profiler/profiler help
@@ -260,7 +261,6 @@ First, in Python code, create an `OpLogProto` proto and add op type
 information to it:
 
 ```python
-
 op_log = tfprof_log_pb2.OpLogProto()
 entry = op_log.log_entries.add()
 entry.name = 'pool_logit/DW'
@@ -282,7 +282,7 @@ tf.profiler.write_op_log(
 ```
 
 Third, when starting the tfprof tool, specify
-"--op_log_path /tmp/my_op_log_dir/op_log"
+"--op_log_path=/tmp/my_op_log_dir/op_log"
 
 ```shell
 tfprof> scope -account_type_regexes pool_logit -max_depth 4 -select params

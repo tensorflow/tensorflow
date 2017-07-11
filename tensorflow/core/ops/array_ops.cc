@@ -1398,6 +1398,105 @@ raising an error.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("GatherV2")
+    .Input("params: Tparams")
+    .Input("indices: Tindices")
+    .Input("axis: Taxis")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Taxis: {int32,int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle params_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &params_shape));
+
+      ShapeHandle indices_shape = c->input(1);
+      ShapeHandle unused_axis_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_axis_shape));
+      const Tensor* axis_t = c->input_tensor(2);
+
+      // If axis is unknown, we can only infer that the result is params_rank +
+      // indices_rank - 1.
+      if (axis_t == nullptr) {
+        if (c->RankKnown(params_shape) && c->RankKnown(indices_shape)) {
+          c->set_output(0, c->UnknownShapeOfRank(c->Rank(params_shape) +
+                                                 c->Rank(indices_shape) - 1));
+        } else {
+          c->set_output(0, c->UnknownShape());
+        }
+        return Status::OK();
+      }
+
+      // Note, axis can be negative.
+      int64 axis = 0;
+      if (axis_t->dtype() == DT_INT32) {
+        axis = axis_t->scalar<int32>()();
+      } else {
+        axis = axis_t->scalar<int64>()();
+      }
+
+      // Check that params has rank of at least axis + 1.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          params_shape, axis < 0 ? -axis : axis + 1, &unused));
+
+      ShapeHandle params_outer_subshape;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(params_shape, 0, axis, &params_outer_subshape));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(params_outer_subshape, indices_shape, &out));
+
+      // Slice from axis + 1 to the end of params_shape to collect the inner
+      // dimensions of the result. Special case -1 here since -1 + 1 wraps, and
+      // we slice from 0 to the end of shape. Subshape() handles all other
+      // out-of-bounds checking.
+      if (axis != -1) {
+        ShapeHandle params_inner_subshape;
+        TF_RETURN_IF_ERROR(
+            c->Subshape(params_shape, axis + 1, &params_inner_subshape));
+        TF_RETURN_IF_ERROR(c->Concatenate(out, params_inner_subshape, &out));
+      }
+
+      c->set_output(0, out);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Gather slices from `params` axis `axis` according to `indices`.
+
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `params.shape[:axis] + indices.shape +
+params.shape[axis + 1:]` where:
+
+```python
+    # Scalar indices (output is rank(params) - 1).
+    output[a_0, ..., a_n, b_0, ..., b_n] =
+      params[a_0, ..., a_n, indices, b_0, ..., b_n]
+
+    # Vector indices (output is rank(params)).
+    output[a_0, ..., a_n, i, b_0, ..., b_n] =
+      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]
+
+    # Higher rank indices (output is rank(params) + rank(indices) - 1).
+    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
+      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+```
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+</div>
+
+params: The tensor from which to gather values. Must be at least rank
+  `axis + 1`.
+indices: Index tensor. Must be in range `[0, params.shape[axis])`.
+axis: The axis in `params` to gather `indices` from. Defaults to the first
+  dimension. Supports negative indexes.
+output: Values from `params` gathered from indices given by `indices`, with
+  shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("GatherNd")
     .Input("params: Tparams")
     .Input("indices: Tindices")
