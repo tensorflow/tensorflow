@@ -119,6 +119,7 @@ class RecordYielder {
   // True iff we are draining an epoch.
   bool epoch_end_ = false;
 
+  int64 num_records_added_in_epoch_ = 0;
   int64 num_records_yielded_in_epoch_ = 0;
 
   // Trigger when the main loop has exited.

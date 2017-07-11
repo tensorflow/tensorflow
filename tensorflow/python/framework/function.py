@@ -581,10 +581,10 @@ class _OverloadedFunction(object):
 
 
 class _FuncGraph(ops.Graph):
-  """A helper for construction a function.
+  """A helper for constructing a function.
 
   _FuncGraph overrides ops.Graph's create_op() so that we can keep
-  track of every inputs into every op created inside the function.  If
+  track of all inputs into every op created inside the function.  If
   any input is from other graphs, we keep track of it in self.capture
   and substitue the input with a place holder.
 

@@ -180,7 +180,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   } else {
     CHECK(!body.xla_input_shapes.empty());
     body_input_shape = body.xla_input_shapes[0];
-    CHECK(!body.xla_input_shapes.empty());
+    CHECK(!cond.xla_input_shapes.empty());
     cond_input_shape = cond.xla_input_shapes[0];
   }
 
