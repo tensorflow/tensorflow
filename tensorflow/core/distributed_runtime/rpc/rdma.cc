@@ -136,6 +136,8 @@ class RdmaMemoryManager {
       LOG(WARNING) << "Cannot allocate protection domain";
       return;
     }
+    pd_.reset(pd);
+
     std::set<Allocator*> instrumented_;
 
     Allocator* allocators[] = {
