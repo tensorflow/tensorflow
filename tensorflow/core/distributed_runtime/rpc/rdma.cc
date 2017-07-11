@@ -128,10 +128,11 @@ class RdmaMemoryManager {
       LOG(WARNING) << "No RDMA device found";
       return;
     }
+    ibv_context* verbs = devices[0];
     rdma_free_devices(devices);
 
     // Used for host memory
-    ibv_pd* pd = ibv_alloc_pd(devices[0]);
+    ibv_pd* pd = ibv_alloc_pd(verbs);
     if (!pd) {
       LOG(WARNING) << "Cannot allocate protection domain";
       return;
