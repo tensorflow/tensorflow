@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -41,12 +42,6 @@ inline uint64 Hash64(const string& str) {
 inline uint64 Hash64Combine(uint64 a, uint64 b) {
   return a ^ (b + 0x9e3779b97f4a7800ULL + (a << 10) + (a >> 4));
 }
-
-struct HashStr {
-  size_t operator()(const string& s) const {
-    return static_cast<size_t>(Hash64(s));
-  }
-};
 
 // Hash functor suitable for use with power-of-two sized hashtables.  Use
 // instead of std::hash<T>.
@@ -70,7 +65,16 @@ struct hash<T*> {
 
 template <>
 struct hash<string> {
-  size_t operator()(const string& s) const { return HashStr()(s); }
+  size_t operator()(const string& s) const {
+    return static_cast<size_t>(Hash64(s));
+  }
+};
+
+template <>
+struct hash<StringPiece> {
+  size_t operator()(StringPiece sp) const {
+    return static_cast<size_t>(Hash64(sp.data(), sp.size()));
+  }
 };
 
 }  // namespace tensorflow
