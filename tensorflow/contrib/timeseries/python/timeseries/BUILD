@@ -264,6 +264,7 @@ py_library(
 
 py_test(
     name = "ar_model_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "ar_model_test.py",
     ],
