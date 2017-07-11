@@ -11,6 +11,7 @@ cc_library(
         "include/infiniband/verbs.h",
     ],
     defines = [
+        "_GNU_SOURCE",
         "NRESOLVE_NEIGH=1",
         "STREAM_CLOEXEC=\\\"e\\\"",
         "IBV_CONFIG_DIR=\\\"/etc/libibverbs.d\\\"",
