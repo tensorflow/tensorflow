@@ -1,6 +1,26 @@
 path: "tensorflow.profiler"
 tf_module {
   member {
+    name: "AdviceProto"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "GraphNodeProto"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "MultiGraphNodeProto"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "OpLogProto"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "ProfileOptionBuilder"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Profiler"
     mtype: "<type \'type\'>"
   }

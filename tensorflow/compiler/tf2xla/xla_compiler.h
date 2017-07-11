@@ -99,13 +99,13 @@ class XlaCompiler {
 
     Kind kind = kInvalid;
 
-    // The type of the argument. If the argument is a resource variable, this
+    // The type of the argument. If the argument is a resource, this
     // is the type of the variable's value, not DT_RESOURCE.
     DataType type;
 
-    // The shape of the argument. If the argument is a resource variable, this
-    // is the shape of the variable's value.
-    TensorShape shape;
+    // The shape of the argument. If the argument is a resource, this is the
+    // shape of the resource's value.
+    xla::Shape shape;
 
     // The value of the argument, if it is a compile-time constant. Must be a
     // host-memory tensor.
@@ -142,7 +142,7 @@ class XlaCompiler {
 
     // Type and shape of the tensor to be written back.
     DataType type;
-    TensorShape shape;
+    xla::Shape shape;
 
     // Was the value of the variable modified by the computation?
     // (Always true, unless `return_updated_values_for_all_resources` is true.)

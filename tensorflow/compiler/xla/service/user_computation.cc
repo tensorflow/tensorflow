@@ -505,6 +505,51 @@ UserComputation::AddBatchNormTrainingInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddBatchNormGradInstruction(
+    const BatchNormGradRequest& batch_norm_grad_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(batch_norm_grad_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* scale,
+                      LookUpRequest(batch_norm_grad_request.scale()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* mean,
+                      LookUpRequest(batch_norm_grad_request.mean()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* variance,
+                      LookUpRequest(batch_norm_grad_request.variance()));
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* grad_output,
+                      LookUpRequest(batch_norm_grad_request.grad_output()));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+
+  TF_ASSIGN_OR_RETURN(
+      Shape inferred_shape,
+      ShapeInference::InferBatchNormGradShape(
+          operand->output_shape(), scale->output_shape(), mean->output_shape(),
+          variance->output_shape(), grad_output->output_shape(),
+          batch_norm_grad_request.feature_index()));
+
+  *request.mutable_output_shape() = inferred_shape;
+
+  *request.mutable_output_handle() = handle;
+
+  *request.mutable_request()->mutable_batch_norm_grad_request() =
+      batch_norm_grad_request;
+
+  VLOG(1) << "AddBatchNormGradInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << batch_norm_grad_request.ShortDebugString();
+
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddReduceWindowInstruction(
     const ReduceWindowRequest& reduce_window_request,
     const UserComputation& to_apply_computation) {

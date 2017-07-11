@@ -30,7 +30,6 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.summary_ops import _tensor_summary_v2
 from tensorflow.python.summary import plugin_asset
-from tensorflow.python.util import deprecation
 
 PLUGIN_NAME = "text"
 
@@ -38,11 +37,6 @@ PLUGIN_NAME = "text"
 _TextPluginData = namedtuple("_TextPluginData", [])
 
 
-@deprecation.deprecated_args(
-    "2017-06-13",
-    "collections is deprecated. Instead of using collections to associate "
-    "plugins to events, add a PluginData field to the SummaryMetadata of a "
-    "Value proto.", "collections")
 def text_summary(name, tensor, collections=None):
   """Summarizes textual data.
 

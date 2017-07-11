@@ -77,6 +77,7 @@ namespace xla {
 
     // Expensive instructions.
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormGrad:
     case HloOpcode::kCall:
     case HloOpcode::kConvolution:
     case HloOpcode::kCrossReplicaSum:
