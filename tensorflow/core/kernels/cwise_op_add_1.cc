@@ -36,7 +36,8 @@ REGISTER_KERNEL_BUILDER(Name("Add")
 
 
 #if TENSORFLOW_USE_SYCL
-REGISTER_FLOATING(BinaryOp, SYCL, "Add", functor::add);
+#define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "Add", functor::add, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
 REGISTER_KERNEL_BUILDER(Name("Add")
                             .Device(DEVICE_SYCL)

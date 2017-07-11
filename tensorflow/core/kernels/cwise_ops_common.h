@@ -487,7 +487,6 @@ struct ApproximateEqual<CPUDevice, T> {
   REGISTER(OP, D, N, F, T0)
 #define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
   REGISTER(OP, D, N, F, T0)
-#define REGISTER_FLOATING(OP, D, N, F) REGISTER(OP, D, N, F, float)
 #else  // !defined(__ANDROID_TYPES_SLIM__)
 #define REGISTER2(OP, D, N, F, T0, T1) \
   REGISTER(OP, D, N, F, T0)            \
@@ -517,15 +516,6 @@ struct ApproximateEqual<CPUDevice, T> {
 // Instead of adding REGISTER10, etc., shard the .cc files - see
 // cwise_op_equal_to_*.cc for an example.
 
-// add half float when necessary
-#ifdef TENSORFLOW_SYCL_NO_DOUBLE
-#define REGISTER_FLOATING(OP, D, N, F)    \
-        REGISTER(OP, D, N, F, float)
-#else  // TENSORFLOW_SYCL_NO_DOUBLE
-#define REGISTER_FLOATING(OP, D, N, F)    \
-        REGISTER(OP, D, N, F, float)      \
-        REGISTER(OP, D, N, F, double)
-#endif  // TENSORFLOW_SYCL_NO_DOUBLE
 #endif  // defined(__ANDROID_TYPES_SLIM__)
 
 }  // end namespace tensorflow

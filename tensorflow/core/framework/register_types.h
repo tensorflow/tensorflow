@@ -181,4 +181,12 @@ limitations under the License.
 #define TF_CALL_QUANTIZED_TYPES(m) \
   TF_CALL_qint8(m) TF_CALL_quint8(m) TF_CALL_qint32(m)
 
+#ifdef TENSORFLOW_SYCL_NO_DOUBLE
+#define TF_CALL_SYCL_double(m)
+#else  // TENSORFLOW_SYCL_NO_DOUBLE
+#define TF_CALL_SYCL_double(m) TF_CALL_double(m)
+#endif // TENSORFLOW_SYCL_NO_DOUBLE
+
+#define TF_CALL_SYCL_NUMBER_TYPES(m) TF_CALL_float(m) TF_CALL_SYCL_double(m)
+
 #endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_H_
