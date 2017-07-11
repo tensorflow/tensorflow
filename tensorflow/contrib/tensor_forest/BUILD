@@ -1,11 +1,6 @@
 # TensorFlow code for training random forests.
+
 licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-package(default_visibility = [
-    "//visibility:public",
-])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
@@ -13,6 +8,10 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["LICENSE"])
 
 filegroup(
     name = "all_files",
@@ -68,25 +67,22 @@ cc_library(
 
 py_library(
     name = "constants",
-    srcs = [
-        "python/constants.py",
-    ],
+    srcs = ["python/constants.py"],
     srcs_version = "PY2AND3",
 )
 
 py_library(
     name = "data_ops_py",
-    srcs = [
-        "python/ops/data_ops.py",
-    ],
+    srcs = ["python/ops/data_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_ops_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 
@@ -131,9 +127,7 @@ py_library(
 
 tf_kernel_library(
     name = "tensor_forest_kernels",
-    srcs = [
-        ":v2_op_sources",
-    ],
+    srcs = [":v2_op_sources"],
     deps = [
         ":tree_utils",
         "//tensorflow/core:framework_headers_lib",
@@ -248,12 +242,8 @@ tf_kernel_library(
 
 tf_custom_op_library(
     name = "python/ops/_model_ops.so",
-    srcs = [
-        "ops/model_ops.cc",
-    ],
-    deps = [
-        ":model_ops_lib",
-    ],
+    srcs = ["ops/model_ops.cc"],
+    deps = [":model_ops_lib"],
 )
 
 tf_custom_op_py_library(
@@ -332,12 +322,8 @@ tf_kernel_library(
 
 tf_custom_op_library(
     name = "python/ops/_stats_ops.so",
-    srcs = [
-        "ops/stats_ops.cc",
-    ],
-    deps = [
-        ":stats_ops_lib",
-    ],
+    srcs = ["ops/stats_ops.cc"],
+    deps = [":stats_ops_lib"],
 )
 
 tf_custom_op_py_library(
@@ -520,9 +506,8 @@ py_test(
     srcs = ["python/kernel_tests/tree_predictions_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":constants",
+        ":data_ops_py",
         ":tensor_forest_ops_py",
-        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -549,10 +534,10 @@ py_library(
         ":constants",
         ":data_ops_py",
         ":tensor_forest_ops_py",
+        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
@@ -586,10 +571,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_py",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 
@@ -599,13 +584,14 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client_lib",
-        ":data_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -619,7 +605,6 @@ py_test(
         ":tensor_forest_py",
         "//tensorflow/contrib/learn/python/learn/datasets",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//third_party/py/numpy",
     ],
 )

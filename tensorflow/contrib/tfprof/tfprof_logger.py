@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Logging tensorflow::tfprof::OpLog.
+"""Logging tensorflow::tfprof::OpLogProto.
 
-OpLog is used to add extra model information for offline analysis by tfprof.
+OpLogProto is used to add extra model information for offline analysis.
 """
 from __future__ import absolute_import
 from __future__ import division

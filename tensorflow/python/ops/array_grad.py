@@ -470,7 +470,6 @@ def _TileGrad(op, grad):
 ops.NotDifferentiable("BroadcastGradientArgs")
 
 
-@ops.RegisterGradient("Pad")
 def _PadGrad(op, grad):
   """Gradient for Pad."""
   # Pad introduces values around the original tensor, so the gradient function
@@ -483,7 +482,14 @@ def _PadGrad(op, grad):
   # Make it a 1-D tensor.
   begin = array_ops.reshape(pad_before, [-1])
   sizes = array_ops.shape(x)
-  return array_ops.slice(grad, begin, sizes), None
+  x_grad = array_ops.slice(grad, begin, sizes)
+  if len(op.inputs) == 3:
+    return x_grad, None, None
+  else:
+    return x_grad, None
+
+ops.RegisterGradient("Pad")(_PadGrad)
+ops.RegisterGradient("PadV2")(_PadGrad)
 
 
 # ReverseSequence is just a permutation.  The gradient permutes back.

@@ -52,7 +52,8 @@ namespace tfprof {
 class TFStats {
  public:
   TFStats(std::unique_ptr<GraphDef> graph,
-          std::unique_ptr<RunMetadata> run_meta, std::unique_ptr<OpLog> op_log,
+          std::unique_ptr<RunMetadata> run_meta,
+          std::unique_ptr<OpLogProto> op_log,
           std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader);
   ~TFStats() {}
 
@@ -70,16 +71,16 @@ class TFStats {
   // Organize the TensorFlow model as different types of views, and generate
   // outputs for profiling.
   // TODO(xpan): Should it return reference here?
-  const TFGraphNodeProto& ShowGraphNode(const string& cmd,
-                                        const Options& opts) const;
-  const TFMultiGraphNodeProto& ShowMultiGraphNode(const string& cmd,
-                                                  const Options& opts) const;
+  const GraphNodeProto& ShowGraphNode(const string& cmd,
+                                      const Options& opts) const;
+  const MultiGraphNodeProto& ShowMultiGraphNode(const string& cmd,
+                                                const Options& opts) const;
 
   // Add a step of run time meta data.
   void AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta);
   // Add tfprof operation meta data, such as customized op type, float_ops,
   // and code traces.
-  void AddOpLog(std::unique_ptr<OpLog> op_log);
+  void AddOpLogProto(std::unique_ptr<OpLogProto> op_log);
 
   // For test purpose only.
   void AddNodeForTest(int64 step, std::unique_ptr<TFGraphNode> node);
@@ -100,8 +101,8 @@ class TFStats {
   // Store TFGraphNode instead of TFGraphNode* to avoid large number of
   // dynamic alloc.
   std::map<string, std::unique_ptr<TFGraphNode>> nodes_map_;
-  TFGraphNodeProto empty_graph_node_;
-  TFMultiGraphNodeProto empty_multi_graph_node_;
+  GraphNodeProto empty_graph_node_;
+  MultiGraphNodeProto empty_multi_graph_node_;
 };
 
 }  // namespace tfprof

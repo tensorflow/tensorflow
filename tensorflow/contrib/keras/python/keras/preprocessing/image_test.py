@@ -99,21 +99,9 @@ class TestImage(test.TestCase):
     with self.assertRaises(ValueError):
       x = np.random.random((3, 10, 10))
       generator.fit(x)
-    with self.assertRaises(ValueError):
-      x = np.random.random((32, 3, 10, 10))
-      generator.fit(x)
-    with self.assertRaises(ValueError):
-      x = np.random.random((32, 10, 10, 5))
-      generator.fit(x)
     # Test flow with invalid data
     with self.assertRaises(ValueError):
-      x = np.random.random((32, 10, 10, 5))
-      generator.flow(np.arange(x.shape[0]))
-    with self.assertRaises(ValueError):
       x = np.random.random((32, 10, 10))
-      generator.flow(np.arange(x.shape[0]))
-    with self.assertRaises(ValueError):
-      x = np.random.random((32, 3, 10, 10))
       generator.flow(np.arange(x.shape[0]))
 
   def test_image_data_generator_fit(self):
