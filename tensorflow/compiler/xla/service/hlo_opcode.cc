@@ -33,6 +33,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "add";
     case HloOpcode::kBatchNormTraining:
       return "batch-norm-training";
+    case HloOpcode::kBatchNormGrad:
+      return "batch-norm-grad";
     case HloOpcode::kBitcast:
       return "bitcast";
     case HloOpcode::kBroadcast:

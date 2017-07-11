@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const TFGraphNodeProto& TFShow::Show(const Options& opts) {
+const GraphNodeProto& TFShow::Show(const Options& opts) {
   if (opts.output_type == kOutput[3]) {
     return ShowInternal(opts, nullptr)->proto();
   } else if (opts.output_type == kOutput[0]) {

@@ -103,10 +103,10 @@ const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
 }
 
 void TFScope::Format(const std::vector<ScopeNode*> roots, string* display_str,
-                     TFGraphNodeProto* proto) {
+                     GraphNodeProto* proto) {
   for (ScopeNode* node : roots) {
     display_str->append(node->formatted_str);
-    TFGraphNodeProto* child = proto->add_children();
+    GraphNodeProto* child = proto->add_children();
     child->MergeFrom(node->proto());
     Format(node->show_children, display_str, child);
   }

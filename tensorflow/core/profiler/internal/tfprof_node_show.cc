@@ -66,12 +66,12 @@ void ShowNode::ReInit(int64 step) {
   }
 }
 
-TFGraphNodeProto* ShowNode::mutable_proto() { return &proto_; }
+GraphNodeProto* ShowNode::mutable_proto() { return &proto_; }
 
-const TFGraphNodeProto& ShowNode::proto() const { return proto_; }
+const GraphNodeProto& ShowNode::proto() const { return proto_; }
 
 void ShowNode::AggregateTotalStats(ShowNode* node) {
-  TFGraphNodeProto* node_pb = node->mutable_proto();
+  GraphNodeProto* node_pb = node->mutable_proto();
   mutable_proto()->set_total_run_count(proto().total_run_count() +
                                        node_pb->total_run_count());
   mutable_proto()->set_total_definition_count(
@@ -176,12 +176,12 @@ bool ShowMultiNode::ReInit(int64 step,
   return has_matched_type;
 }
 
-TFMultiGraphNodeProto* ShowMultiNode::mutable_proto() { return &proto_; }
+MultiGraphNodeProto* ShowMultiNode::mutable_proto() { return &proto_; }
 
-const TFMultiGraphNodeProto& ShowMultiNode::proto() const { return proto_; }
+const MultiGraphNodeProto& ShowMultiNode::proto() const { return proto_; }
 
 void ShowMultiNode::AggregateTotalStats(ShowMultiNode* node) {
-  TFMultiGraphNodeProto* node_pb = node->mutable_proto();
+  MultiGraphNodeProto* node_pb = node->mutable_proto();
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          node_pb->total_exec_micros());
   mutable_proto()->set_total_accelerator_exec_micros(

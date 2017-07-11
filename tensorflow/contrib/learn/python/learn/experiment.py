@@ -274,7 +274,7 @@ class Experiment(object):
                             max_steps=self._train_steps,
                             hooks=self._train_monitors + extra_hooks)
 
-  def evaluate(self, delay_secs=None):
+  def evaluate(self, delay_secs=None, name=None):
     """Evaluate on the evaluation data.
 
     Runs evaluation on the evaluation data and returns the result. Runs for
@@ -286,6 +286,8 @@ class Experiment(object):
     Args:
       delay_secs: Start evaluating after this many seconds. If `None`, defaults
         to using `self._eval_delays_secs`.
+      name: Gives the name to the evauation for the case multiple evaluation is
+        run for the same experiment.
 
     Returns:
       The result of the `evaluate` call to the `Estimator`.
@@ -300,7 +302,7 @@ class Experiment(object):
     return self._call_evaluate(input_fn=self._eval_input_fn,
                                steps=self._eval_steps,
                                metrics=self._eval_metrics,
-                               name="one_pass",
+                               name=(name or "one_pass"),
                                hooks=self._eval_hooks)
 
   @deprecated(
