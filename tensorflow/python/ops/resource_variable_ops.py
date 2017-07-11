@@ -204,7 +204,9 @@ class ResourceVariable(variables.Variable):
         if initial_value is not None:
           with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
             self._initializer_op = gen_resource_variable_ops.assign_variable_op(
-                self._handle, self._initial_value, name=n)
+                self._handle,
+                self._build_initializer_expr(self._initial_value),
+                name=n)
         with ops.name_scope("Read"), ops.colocate_with(self._handle):
           # Manually assign reads to the handle's device to avoid log messages.
           with ops.device(self._handle.device):

@@ -24,22 +24,25 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.profiler import option_builder
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python.profiler import model_analyzer
 from tensorflow.python.profiler.internal import model_analyzer_testlib as lib
+
+builder = option_builder.ProfileOptionBuilder
 
 
 class ProfilerTest(test.TestCase):
 
   def testProfileBasic(self):
     ops.reset_default_graph()
-    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
-    opts['account_type_regexes'] = ['.*']
-    opts['select'] = ['params', 'float_ops', 'micros', 'bytes',
-                      'device', 'op_types', 'occurrence']
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts['output'] = 'file:outfile=' + outfile
+    opts = (builder(builder.trainable_variables_parameter())
+            .with_file_output(outfile)
+            .with_accounted_types(['.*'])
+            .select(['params', 'float_ops', 'micros', 'bytes',
+                     'device', 'op_types', 'occurrence']).build())
 
     # Test the output without run_meta.
     sess = session.Session()
@@ -115,8 +118,7 @@ class ProfilerTest(test.TestCase):
 
   def testMultiStepProfile(self):
     ops.reset_default_graph()
-    opts = model_analyzer.PRINT_ALL_TIMING_MEMORY.copy()
-    opts['account_type_regexes'] = ['.*']
+    opts = builder.time_and_memory()
 
     with session.Session() as sess:
       r1, r2, r3 = lib.BuildSplitableModel()

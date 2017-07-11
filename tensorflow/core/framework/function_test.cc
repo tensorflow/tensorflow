@@ -1156,7 +1156,7 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_Gradient) {
 // TODO(skyewm): this could be more thorough
 TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   // Equal functions
-  FunctionDef fdef1 = test::function::XTimesTwo();
+  const FunctionDef fdef1 = test::function::XTimesTwo();
   FunctionDef fdef2 = test::function::XTimesTwo();
   EXPECT_TRUE(FunctionDefsEqual(fdef1, fdef2));
 
@@ -1183,6 +1183,22 @@ TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   fdef2 = test::function::XTimesTwo();
   (*fdef2.mutable_ret())["y"] = "y:z:1";  // originally is "y:z:0"
   EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+
+  // Different attributes
+  fdef2 = test::function::XTimesTwo();
+  SetAttrValue(&fdef2, "ExtraAttr", true);
+  EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+
+  // Multiple equivalent attributes; the two functions should be equal.
+  fdef2 = test::function::XTimesTwo();
+  FunctionDef fdef3 = test::function::XTimesTwo();
+  SetAttrValue(&fdef2, "Foo", true);
+  SetAttrValue(&fdef3, "Foo", true);
+  SetAttrValue(&fdef2, "Bar", 123);
+  SetAttrValue(&fdef3, "Bar", 123);
+  SetAttrValue(&fdef2, "Baz", "abc");
+  SetAttrValue(&fdef3, "Baz", "abc");
+  EXPECT_TRUE(FunctionDefsEqual(fdef2, fdef3));
 }
 
 }  // end namespace

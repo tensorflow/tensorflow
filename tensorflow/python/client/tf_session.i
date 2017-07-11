@@ -68,6 +68,11 @@ tensorflow::ImportNumpy();
   $result = PyUnicode_FromString($1);
 }
 
+// Convert TF_OperationOpType output to unicode python string
+%typemap(out) const char* TF_OperationOpType {
+  $result = PyUnicode_FromString($1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;

@@ -89,9 +89,9 @@ bool NewProfiler(const string* graph, const string* op_log) {
   std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
   graph_ptr->ParseFromString(*graph);
 
-  std::unique_ptr<OpLog> op_log_ptr;
+  std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
-    op_log_ptr.reset(new OpLog());
+    op_log_ptr.reset(new OpLogProto());
     op_log_ptr->ParseFromString(*op_log);
   }
   tf_stat = new TFStats(std::move(graph_ptr), nullptr, std::move(op_log_ptr),
@@ -112,12 +112,12 @@ void AddStep(int64 step, const string* run_meta, const string* op_log) {
   run_meta_ptr->ParseFromString(*run_meta);
   tf_stat->AddRunMeta(step, std::move(run_meta_ptr));
 
-  std::unique_ptr<OpLog> op_log_ptr;
+  std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
-    op_log_ptr.reset(new OpLog());
+    op_log_ptr.reset(new OpLogProto());
     op_log_ptr->ParseFromString(*op_log);
   }
-  tf_stat->AddOpLog(std::move(op_log_ptr));
+  tf_stat->AddOpLogProto(std::move(op_log_ptr));
 }
 
 string Profile(const string* command, const string* options) {
@@ -142,9 +142,9 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
     run_meta_ptr->ParseFromString(*run_meta);
   }
 
-  std::unique_ptr<OpLog> op_log_ptr;
+  std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
-    op_log_ptr.reset(new OpLog());
+    op_log_ptr.reset(new OpLogProto());
     op_log_ptr->ParseFromString(*op_log);
   }
 
