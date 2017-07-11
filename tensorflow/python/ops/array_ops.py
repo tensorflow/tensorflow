@@ -1548,7 +1548,7 @@ def _normalize_sparse_shape(shape, name):
     for el in shape:
       if el is None:
         return None
-  return ops.convert_to_tensor(shape, name=name)
+  return ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name)
 
 
 def sparse_placeholder(dtype, shape=None, name=None):
