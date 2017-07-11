@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/cpu/infeed_manager.h"
+#include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -40,13 +40,19 @@ class CpuTransferManager : public GenericTransferManager {
                                  const Literal& literal) override;
   Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
                                 int64 size, const void* source) override;
+  Status TransferLiteralFromOutfeed(
+      perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
+      Literal* literal) override;
 
  private:
   // Transfers infeed data to device. InfeedBuffer->Done() must be
   // called to clean up the memory allocated for InfeedBuffer.
-  StatusOr<cpu::runtime::InfeedBuffer*> TransferBufferToInfeedInternal(
+  StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
       perftools::gputools::StreamExecutor* executor, int64 size,
       const void* source);
+  Status TransferBufferFromOutfeed(
+      perftools::gputools::StreamExecutor* executor, int64 size,
+      void* destination);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuTransferManager);
 };

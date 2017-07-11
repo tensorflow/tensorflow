@@ -907,13 +907,17 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
                                      new_operands[2], epsilon(),
                                      feature_index());
+    case HloOpcode::kInfeed:
+      CHECK_EQ(new_operands.size(), 0);
+      return CreateInfeed(shape, infeed_config());
+    case HloOpcode::kOutfeed:
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateOutfeed(shape, new_operands[0], outfeed_config());
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
