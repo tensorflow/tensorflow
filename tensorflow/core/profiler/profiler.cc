@@ -126,8 +126,6 @@ int Run(int argc, char** argv) {
   }
   port::InitMain(argv[0], &argc, &argv);
 
-  fprintf(stderr, "%s\n", FLAGS_graph_path.c_str());
-
   std::vector<string> account_type_regexes =
       str_util::Split(FLAGS_account_type_regexes, ',', str_util::SkipEmpty());
   std::vector<string> start_name_regexes =
@@ -148,18 +146,7 @@ int Run(int argc, char** argv) {
 
   string cmd = "";
   if (argc == 1 && FLAGS_graph_path.empty()) {
-    printf("1) go/tfprof: Tutorial.\n");
-    printf("2) tfprof help: Detail help information.\n");
-    printf(
-        "3) tfprof --graph_path <GraphDef proto text file>: "
-        "Profiling model structure, tensor shape and # parameters.\n");
-    printf(
-        "4) tfprof --graph_path <GraphDef proto text file> \\\n"
-        "          --run_meta_path <RunMetadata proto binary file> \\\n"
-        "          --op_log_path <tensorflow::tfprof::OpLogProto proto binary file> "
-        "\\\n"
-        "          --checkpoint_path <TensorFlow Checkpoint file>: "
-        "Profiling everything!\n");
+    PrintHelp();
     return 0;
   } else if (argc > 1) {
     if (string(argv[1]) == kCmds[6]) {

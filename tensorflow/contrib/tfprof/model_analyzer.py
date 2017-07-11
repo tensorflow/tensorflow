@@ -28,6 +28,7 @@ from tensorflow.python.profiler.model_analyzer import advise as _advise
 from tensorflow.python.profiler.model_analyzer import ALL_ADVICE
 from tensorflow.python.profiler.model_analyzer import profile as _profile
 from tensorflow.python.profiler.model_analyzer import Profiler
+from tensorflow.python.util.deprecation import deprecated
 
 _DEFAULT_PROFILE_OPTIONS = 0
 _DEFAULT_ADVISE_OPTIONS = 0
@@ -98,10 +99,16 @@ PRINT_ALL_TIMING_MEMORY = {
 # pylint: enable=bad-continuation
 
 
+@deprecated('2018-01-01',
+            'Use `tf.profiler.advise(graph, run_meta, options)`. See README.md')
 def advise(graph, run_meta=None, tfprof_options=_DEFAULT_ADVISE_OPTIONS):
   return _advise(graph, run_meta, tfprof_options)
 
 
+@deprecated('2018-01-01',
+            'Use `tf.profiler.profile(graph, run_meta, op_log, cmd, options)`. '
+            'Build `options` with `tf.profiler.ProfileOptionBuilder`. '
+            'See README.md for details')
 def print_model_analysis(graph,
                          run_meta=None,
                          op_log=None,

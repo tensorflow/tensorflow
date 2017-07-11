@@ -90,8 +90,14 @@ class TFShow {
         return n1->proto().total_exec_micros() >
                n2->proto().total_exec_micros();
       } else if (opts.order_by == kOrderBy[3]) {
-        return n1->proto().total_parameters() > n2->proto().total_parameters();
+        return n1->proto().total_accelerator_exec_micros() >
+               n2->proto().total_accelerator_exec_micros();
       } else if (opts.order_by == kOrderBy[4]) {
+        return n1->proto().total_cpu_exec_micros() >
+               n2->proto().total_cpu_exec_micros();
+      } else if (opts.order_by == kOrderBy[5]) {
+        return n1->proto().total_parameters() > n2->proto().total_parameters();
+      } else if (opts.order_by == kOrderBy[6]) {
         return n1->proto().total_float_ops() > n2->proto().total_float_ops();
       }
       return name_cmp;
