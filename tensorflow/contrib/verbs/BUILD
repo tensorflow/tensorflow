@@ -136,10 +136,6 @@ cc_library(
     name = "rdma",
     srcs = ["rdma.cc"],
     hdrs = ["rdma.h"],
-    linkopts = select({
-        "//tensorflow:with_verbs_support": ["-libverbs"],
-        "//conditions:default": [],
-    }),
     deps = [
         ":verbs_util",
         "//tensorflow/core:core_cpu_internal",
@@ -151,6 +147,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_env",
+        "@ibverbs//:ibverbs",
     ],
 )
 

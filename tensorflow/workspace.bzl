@@ -433,6 +433,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       repository = tf_repo_name
   )
 
+  native.new_http_archive(
+      name = "ibverbs",
+      sha256 = "c352a7f24e9a9d30ea74faa35d1b721d78d770506a0c03732e3132b7c85ac330",
+      urls = [
+          "https://www.openfabrics.org/downloads/verbs/libibverbs-1.2.1.tar.gz",
+      ],
+      strip_prefix = "libibverbs-1.2.1",
+      build_file = str(Label("//third_party:ibverbs.BUILD")),
+  )
+
   # grpc expects //external:protobuf_clib and //external:protobuf_compiler
   # to point to the protobuf's compiler library.
   native.bind(
