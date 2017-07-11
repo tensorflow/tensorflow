@@ -1183,7 +1183,7 @@ class Operation(object):
                             self.node_def.name,
                             [i.dtype for i in self._inputs],
                             input_types))
-    self._input_types = input_types
+    self._input_types_val = input_types
 
     # Build the list of control inputs.
     self._control_inputs = []
@@ -1416,7 +1416,14 @@ class Operation(object):
     tf_output.index = output_idx
     return tf_output
 
-  def _set_device(self, device):
+  def _tf_input(self, input_idx):
+    """Create and return a new TF_Input for input_idx'th input of this op."""
+    tf_input = c_api.TF_Input()
+    tf_input.oper = self._c_op
+    tf_input.index = input_idx
+    return tf_input
+
+  def _set_device(self, device):  # pylint: disable=redefined-outer-name
     """Set the device of this operation.
 
     Args:
@@ -1438,6 +1445,7 @@ class Operation(object):
         or if input tensor type is not convertible to dtype.
       ValueError: if the Tensor is from a different graph.
     """
+    assert not _USE_C_API, "Operation._add_input doesn't work with C API"
     if not isinstance(tensor, Tensor):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
@@ -1450,7 +1458,7 @@ class Operation(object):
             "Cannot convert a tensor of type %s to an input of type %s"
             % (tensor.dtype.name, dtype.name))
     self._inputs.append(tensor)
-    self._input_types.append(dtype)
+    self._input_types_val.append(dtype)
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
 
@@ -1470,6 +1478,7 @@ class Operation(object):
         or if input tensor type is not convertible to dtype.
       ValueError: if the Tensor is from a different graph.
     """
+    assert not _USE_C_API, "Operation._update_input doesn't work with C API"
     if not isinstance(tensor, Tensor):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
@@ -1484,7 +1493,7 @@ class Operation(object):
 
     self._inputs[index].consumers().remove(self)
     self._inputs[index] = tensor
-    self._input_types[index] = dtype
+    self._input_types_val[index] = dtype
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
 
@@ -1498,6 +1507,8 @@ class Operation(object):
       TypeError: if ops is not a list of Operations.
       ValueError: if any op in ops is from a different graph.
     """
+    assert not _USE_C_API, (
+        "Operation._add_control_inputs doesn't work with C API")
     if ops:
       for op in ops:
         if not isinstance(op, Operation):
@@ -1516,6 +1527,8 @@ class Operation(object):
       TypeError: if op is not an Operation.
       ValueError: if op is from a different graph.
     """
+    assert not _USE_C_API, (
+        "Operation._add_control_input doesn't work with C API")
     self._add_control_inputs([op])
 
   # Methods below are used when building the NodeDef and Graph proto.
@@ -1568,6 +1581,20 @@ class Operation(object):
   @property
   def _input_dtypes(self):
     return self._input_types
+
+  @property
+  def _input_types(self):
+    if _USE_C_API:
+      num_inputs = c_api.TF_OperationNumInputs(self._c_op)
+      input_types = [dtypes.as_dtype(
+          c_api.TF_OperationInputType(self._tf_input(i)))
+                     for i in xrange(num_inputs)]
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._input_types_val == input_types
+      return input_types
+    else:
+      return self._input_types_val
 
   @property
   def control_inputs(self):
