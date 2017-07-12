@@ -266,6 +266,7 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
     switch (args[i].kind) {
       case XlaCompiler::Argument::kVariable:
       case XlaCompiler::Argument::kTensorArray:
+      case XlaCompiler::Argument::kStack:
         context_arg.is_resource = true;
         if (args[i].initialized) {
           resources.push_back(i);

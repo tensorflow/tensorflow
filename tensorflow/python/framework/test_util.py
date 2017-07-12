@@ -245,7 +245,8 @@ def disable_c_api(fn):
     prev_value = ops._USE_C_API
     ops._USE_C_API = False
     try:
-      fn(*args, **kwargs)
+      with ops.Graph().as_default():
+        fn(*args, **kwargs)
     finally:
       ops._USE_C_API = prev_value
   # pylint: disable=protected-access

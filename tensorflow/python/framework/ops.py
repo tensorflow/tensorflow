@@ -1214,10 +1214,7 @@ class Operation(object):
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
 
-    if _USE_C_API:
-      assert self._graph._c_graph, (  # pylint: disable=protected-access
-          "_USE_C_API set to False when creating Graph, you may need to "
-          "manually set 'ops._USE_C_API = True' before creating the Graph")
+    if self._graph._c_graph:  # pylint: disable=protected-access
       if self._op_def:
         # TODO(skyewm): op_def_library.apply_op() flattens the incoming
         # inputs. Refactor so we don't have to do this here.
@@ -1351,7 +1348,7 @@ class Operation(object):
   @property
   def name(self):
     """The full name of this operation."""
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       # TODO(iga): Remove this assert after converting to C API by default.
       # Just being a bit paranoid here.
       assert self._node_def.name == c_api.TF_OperationName(self._c_op)
@@ -1373,7 +1370,7 @@ class Operation(object):
       assigned, or an empty string if it has not been assigned to a
       device.
     """
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       # TODO(iga): Remove this assert after converting to C API by default.
       # Just being a bit paranoid here.
       assert self._node_def.device == c_api.TF_OperationDevice(self._c_op)
@@ -1392,7 +1389,7 @@ class Operation(object):
       The length of this list indicates the number of output endpoints
       of the operation.
     """
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
       output_types = [c_api.TF_OperationOutputType(self._tf_output(i)) for
                       i in xrange(num_outputs)]
@@ -1429,7 +1426,8 @@ class Operation(object):
     Args:
       device: string or device..  The device to set.
     """
-    assert not _USE_C_API, "Operation._set_device doesn't work with C API"
+    assert not self._graph._c_graph, (  # pylint: disable=protected-access
+        "Operation._set_device doesn't work with C API")
     self._node_def.device = _device_string(device)
 
   def _add_input(self, tensor, dtype=None):
@@ -1445,7 +1443,8 @@ class Operation(object):
         or if input tensor type is not convertible to dtype.
       ValueError: if the Tensor is from a different graph.
     """
-    assert not _USE_C_API, "Operation._add_input doesn't work with C API"
+    assert not self._graph._c_graph, (  # pylint: disable=protected-access
+        "Operation._add_input doesn't work with C API")
     if not isinstance(tensor, Tensor):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
@@ -1478,7 +1477,8 @@ class Operation(object):
         or if input tensor type is not convertible to dtype.
       ValueError: if the Tensor is from a different graph.
     """
-    assert not _USE_C_API, "Operation._update_input doesn't work with C API"
+    assert not self._graph._c_graph, (  # pylint: disable=protected-access
+        "Operation._update_input doesn't work with C API")
     if not isinstance(tensor, Tensor):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
@@ -1507,7 +1507,7 @@ class Operation(object):
       TypeError: if ops is not a list of Operations.
       ValueError: if any op in ops is from a different graph.
     """
-    assert not _USE_C_API, (
+    assert not self._graph._c_graph, (  # pylint: disable=protected-access
         "Operation._add_control_inputs doesn't work with C API")
     if ops:
       for op in ops:
@@ -1527,7 +1527,7 @@ class Operation(object):
       TypeError: if op is not an Operation.
       ValueError: if op is from a different graph.
     """
-    assert not _USE_C_API, (
+    assert not self._graph._c_graph, (  # pylint: disable=protected-access
         "Operation._add_control_input doesn't work with C API")
     self._add_control_inputs([op])
 
@@ -1586,7 +1586,7 @@ class Operation(object):
 
   @property
   def _input_types(self):
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       num_inputs = c_api.TF_OperationNumInputs(self._c_op)
       input_types = [dtypes.as_dtype(
           c_api.TF_OperationInputType(self._tf_input(i)))
@@ -1612,7 +1612,7 @@ class Operation(object):
       A list of `Operation` objects.
 
     """
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       control_c_ops = c_api.TF_OperationGetControlInputs_wrapper(self._c_op)
       # pylint: disable=protected-access
       return [self.graph._get_operation_by_name_unsafe(
@@ -1624,7 +1624,7 @@ class Operation(object):
   @property
   def type(self):
     """The type of the op (e.g. `"MatMul"`)."""
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       op_type = c_api.TF_OperationOpType(self._c_op)
       # TODO(iga): Remove these asserts after converting to C API by default.
       # Just being a bit paranoid here.
