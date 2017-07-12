@@ -37,20 +37,24 @@ py_library(
     ],
 )
 
-tf_py_test(
+py_test(
     name = "state_space_model_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "state_space_model_test.py",
     ],
-    additional_deps = [
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip_gpu",  # b/63391119
+    ],
+    deps = [
         ":kalman_filter",
         ":state_space_model",
-        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
         "//tensorflow/contrib/timeseries/python/timeseries:estimators",
+        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
         "//tensorflow/contrib/timeseries/python/timeseries:saved_model_utils",
         "//tensorflow/contrib/timeseries/python/timeseries:state_management",
         "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -60,9 +64,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-    ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
+        "//third_party/py/numpy",
     ],
 )
 

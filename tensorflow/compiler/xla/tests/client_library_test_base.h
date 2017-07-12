@@ -286,7 +286,16 @@ class ClientLibraryTestBase : public ::testing::Test {
   tensorflow::Status ComputeAndCompareLiteralWithAllOutputLayouts(
       const xla::Computation& computation, const Literal& expected,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const std::function<void(const Literal& actual)>& expect_equal_or_near);
+      const std::function<void(const Literal& actual,
+                               const string& error_message)>& verify_output);
+  // Build and run the computation with all permutations of layouts of all input
+  // arguments.
+  tensorflow::Status ComputeAndCompareLiteralWithAllInputLayouts(
+      const xla::Computation& computation, const Literal& expected,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const std::function<void(const Literal& actual,
+                               const string& error_message)>& verify_output,
+      const Shape* output_with_layout = nullptr);
 };
 
 template <typename NativeT>

@@ -211,7 +211,8 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
 Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   VLOG(2) << "Removing instruction " << instruction->name()
           << " from computation " << name();
-  TF_RET_CHECK(IsRemovable(instruction));
+  TF_RET_CHECK(IsRemovable(instruction))
+      << "cannot remove instruction: " << instruction->ToString();
   TF_RET_CHECK(root_instruction() != instruction)
       << "cannot remove root instruction " << instruction->name();
   TF_RET_CHECK(instruction->user_count() == 0)
@@ -593,6 +594,12 @@ std::vector<HloInstruction*> HloComputation::CollectUnreachableRoots() const {
       unreachable_roots.push_back(instruction.get());
     }
   }
+  VLOG(3) << "Unreachable roots:"
+          << tensorflow::str_util::Join(
+                 unreachable_roots, "\n\t",
+                 [](string* out, const HloInstruction* hlo) {
+                   tensorflow::strings::StrAppend(out, hlo->ToString());
+                 });
   return unreachable_roots;
 }
 
@@ -601,6 +608,7 @@ Status HloComputation::Accept(DfsHloVisitor* visitor) const {
   // visited root, which would invalidate iterators if the unreachable roots
   // weren't computed ahead of time.
   for (HloInstruction* root : CollectUnreachableRoots()) {
+    VLOG(3) << "Traversing unreachable root: " << root->ToString();
     // Call FinishVisit only at the end.
     TF_RETURN_IF_ERROR(root->Accept(visitor, /*call_finish_visit=*/false));
   }
@@ -627,9 +635,15 @@ Status HloComputation::AcceptWithOperandOrder(
 Status HloComputation::AcceptOrdered(
     DfsHloVisitor* visitor,
     const std::vector<const HloInstruction*>& order) const {
+  VLOG(3) << "Accepting visitor with order.";
+  for (HloInstruction* root : CollectUnreachableRoots()) {
+    TF_RET_CHECK(std::find(order.begin(), order.end(), root) != order.end())
+        << root->ToString();
+  }
   TF_RET_CHECK(order.size() == instruction_count());
   std::unordered_set<const HloInstruction*> visited;
   for (const HloInstruction* instruction : order) {
+    VLOG(3) << "Visiting ordered: " << instruction->ToString();
     TF_RET_CHECK(instruction_iterators_.count(instruction) == 1)
         << "Instruction " << instruction->name() << " is not in computation "
         << name();

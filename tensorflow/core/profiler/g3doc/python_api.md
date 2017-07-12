@@ -51,8 +51,11 @@ compute the memory and timing statistics.
 ```python
 # Generate the RunMetadata that contains the memory and timing information.
 #
-# Note: When run on GPU, a kernel is first scheduled (enqueued) and then
-#       executed asynchronously. tfprof only tracks the execution time.
+# Note: When run on accelerator (e.g. GPU), an operation might perform some
+#       cpu computation, enqueue the accelerator computation. The accelerator
+#       computation is then run asynchronously. The profiler considers 3
+#       times: 1) accelerator computation. 2) cpu computation (might wait on
+#       accelerator). 3) the sum of 1 and 2.
 #
 run_metadata = tf.RunMetadata()
 with tf.Session() as sess:
@@ -61,12 +64,10 @@ with tf.Session() as sess:
                run_metadata=run_metadata)
 ```
 
-Finally, you may run `print_model_analysis` to explore the timing and memory
+Finally, you may run `tf.profiler.profile` to explore the timing and memory
 information of the model.
 
 ``` python
-# See model_analyzer_test.py for more examples.
-#
 # Print to stdout an analysis of the memory usage and the timing information
 # broken down by python codes.
 ProfileOptionBuilder = tf.profiler.ProfileOptionBuilder
@@ -80,10 +81,11 @@ tf.profiler.profile(
     options=opts)
 
 # Print to stdout an analysis of the memory usage and the timing information
-# broken down by operations.
+# broken down by operation types.
 tf.profiler.profile(
     tf.get_default_graph(),
     run_meta=run_metadata,
+    cmd='op',
     options=tf.profiler.ProfileOptionBuilder.time_and_memory())
 ```
 
@@ -91,11 +93,11 @@ tf.profiler.profile(
 
 ```
 To visualize the result of Python API results:
-Call with_step(0).with_timeline_output(filename)' to generate a timeline json file.
-Open a Chrome Browser, open URL chrome://tracing, and load the json file.
+Call `with_step(0).with_timeline_output(filename)` to generate a timeline json file.
+Open a Chrome Browser, type URL `chrome://tracing`, and load the json file.
 ```
 
-Below are 2 examples of graph view and scope view. See code view example in later examples.
+Below are 2 examples of graph view and scope view.
 
 <left>
 ![CodeTimeline](graph_timeline.png)

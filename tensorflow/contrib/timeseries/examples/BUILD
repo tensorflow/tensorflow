@@ -25,6 +25,7 @@ py_binary(
 
 py_test(
     name = "predict_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "predict_test.py",
     ],
@@ -58,6 +59,7 @@ py_binary(
 
 py_test(
     name = "known_anomaly_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "known_anomaly_test.py",
     ],
@@ -89,6 +91,7 @@ py_binary(
 
 py_test(
     name = "multivariate_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "multivariate_test.py",
     ],

@@ -110,7 +110,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
-  Status HandleOutfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
@@ -425,8 +425,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
 
-  // Emit IR to transfer an infeed buffer to the target address.
-  Status EmitInfeedTransfer(int64 length, llvm::Value* target_address);
+  enum class XfeedKind {
+    kInfeed,
+    kOutfeed,
+  };
+
+  // Emit IR to transfer between a {infeed,outfeed} buffer and an in-program
+  // address.
+  Status EmitXfeedTransfer(XfeedKind kind, int64 length,
+                           llvm::Value* program_buffer_address);
 
   const HloModuleConfig& hlo_module_config_;
 

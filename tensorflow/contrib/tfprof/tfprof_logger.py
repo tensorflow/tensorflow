@@ -20,5 +20,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-from tensorflow.python.profiler.tfprof_logger import write_op_log
+from tensorflow.python.profiler.tfprof_logger import write_op_log as _write_op_log
+from tensorflow.python.util.deprecation import deprecated
+
+
+@deprecated("2018-01-01", "Use `tf.profiler.write_op_log. go/tfprof`")
+def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
+  _write_op_log(graph, log_dir, op_log, run_meta, add_trace)
