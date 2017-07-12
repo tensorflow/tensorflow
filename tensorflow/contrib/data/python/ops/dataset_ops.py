@@ -182,6 +182,62 @@ class Iterator(object):
         output_shapes=nest.flatten(output_shapes))
     return Iterator(iterator_resource, None, output_types, output_shapes)
 
+  @staticmethod
+  def from_string_handle(string_handle, output_types, output_shapes=None):
+    """Creates a new, uninitialized `Iterator` based on the given handle.
+
+    This method allows you to define a "feedable" iterator where you can choose
+    between concrete iterators by feeding a value in a @{tf.Session.run} call.
+    In that case, `string_handle` would a @{tf.placeholder}, and you would feed
+    it with the value of @{tf.contrib.data.Iterator.string_handle} in each step.
+
+    For example, if you had two iterators that marked the current position in
+    a training dataset and a test dataset, you could choose which to use in
+    each step as follows:
+
+    ```python
+    train_iterator = tf.contrib.data.Dataset(...).make_one_shot_iterator()
+    train_iterator_handle = sess.run(train_iterator.string_handle())
+
+    test_iterator = tf.contrib.data.Dataset(...).make_one_shot_iterator()
+    test_iterator_handle = sess.run(test_iterator.string_handle())
+
+    handle = tf.placeholder(tf.string, shape=[])
+    iterator = tf.contrib.data.Iterator.from_string_handle(
+        handle, train_iterator.output_types)
+
+    next_element = iterator.get_next()
+    loss = f(next_element)
+
+    train_loss = sess.run(loss, feed_dict={handle: train_iterator_handle})
+    test_loss = sess.run(loss, feed_dict={handle: test_iterator_handle})
+    ```
+
+    Args:
+      string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates
+        to a handle produced by the `Iterator.string_handle()` method.
+      output_types: A nested structure of `tf.DType` objects corresponding to
+        each component of an element of this iterator.
+      output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
+        corresponding to each component of an element of this dataset. If
+        omitted, each component will have an unconstrainted shape.
+
+    Returns:
+      An `Iterator`.
+    """
+    output_types = nest.map_structure(dtypes.as_dtype, output_types)
+    if output_shapes is None:
+      output_shapes = nest.map_structure(
+          lambda _: tensor_shape.TensorShape(None), output_types)
+    else:
+      output_shapes = nest.map_structure_up_to(
+          output_types, tensor_shape.as_shape, output_shapes)
+    nest.assert_same_structure(output_types, output_shapes)
+    string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
+    iterator_resource = gen_dataset_ops.iterator_from_string_handle(
+        string_handle)
+    return Iterator(iterator_resource, None, output_types, output_shapes)
+
   @property
   def initializer(self):
     """A `tf.Operation` that should be run to initialize this iterator.
@@ -260,6 +316,18 @@ class Iterator(object):
       A `tf.Operation`.
     """
     return gen_dataset_ops.iterator_dispose(self._iterator_resource, name=name)
+
+  def string_handle(self, name=None):
+    """Returns a string-valued `tf.Tensor` that represents this iterator.
+
+    Args:
+      name: (Optional.) A name for the created operation.
+
+    Returns:
+      A scalar `tf.Tensor` of type `tf.string`.
+    """
+    return gen_dataset_ops.iterator_to_string_handle(self._iterator_resource,
+                                                     name=name)
 
   @property
   def output_shapes(self):
