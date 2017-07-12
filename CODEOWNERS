@@ -6,7 +6,7 @@ tensorflow/java/* @asimshankar
 
 # contrib
 
-# NEED OWNER: tensorflow/contrib/avro	
+# NEED OWNER: tensorflow/contrib/avro/*
 tensorflow/contrib/batching/* @alextp @chrisolston
 tensorflow/contrib/bayesflow/* @ebrevdo @rsepassi @jvdillon
 tensorflow/contrib/cmake/* @mrry @benoitsteiner
@@ -16,9 +16,9 @@ tensorflow/contrib/data/* @mrry
 tensorflow/contrib/distributions/* @jvdillon @langmore @rsepassi
 tensorflow/contrib/factorization/* @agarwal-ashish @xavigonzalvo
 tensorflow/contrib/ffmpeg/* @fredbertsch
-tensorflow/contrib/framework/*	joel-shor
-tensorflow/contrib/graph_editor/*	@purpledog
-# NEED OWNER: tensorflow/contrib/grid_rnn
+# NEED OWNERT: tensorflow/contrib/framework/*
+tensorflow/contrib/graph_editor/* @purpledog
+# NEED OWNER: tensorflow/contrib/grid_rnn/*
 tensorflow/contrib/hvx/* @satok16
 tensorflow/contrib/imperative/* @keveman
 tensorflow/contrib/integrate/* @shoyer
@@ -29,7 +29,7 @@ tensorflow/contrib/layers/* @fchollet @martinwicke
 tensorflow/contrib/learn/* @martinwicke @ispirmustafa @alextp
 tensorflow/contrib/linalg/* @langmore
 tensorflow/contrib/linear_optimizer/* @petrosmol @andreasst @katsiapis
-tensorflow/contrib/lookup/*	@ysuematsu @andreasst
+tensorflow/contrib/lookup/* @ysuematsu @andreasst
 tensorflow/contrib/losses/* @alextp @ispirmustafa
 tensorflow/contrib/makefile/* @petewarden @satok16 @wolffg
 tensorflow/contrib/metrics/* @alextp @honkentuber @ispirmustafa
