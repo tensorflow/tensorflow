@@ -96,19 +96,19 @@ py_test(
     ],
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 py_library(
     name = "constants",
     srcs = ["constants.py"],
-    deprecation = "Use SavedModel constants instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     srcs_version = "PY2AND3",
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 py_library(
     name = "exporter",
     srcs = ["exporter.py"],
-    deprecation = "Use SavedModel Builder instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
@@ -148,11 +148,11 @@ py_test(
     ],
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 py_library(
     name = "gc",
     srcs = ["gc.py"],
-    deprecation = "Use SavedModel instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework",
@@ -191,11 +191,11 @@ filegroup(
     ],
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 cc_library(
     name = "session_bundle",
     hdrs = ["session_bundle.h"],
-    deprecation = "Use SavedModel Loader instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
     deps = [
         ":manifest_proto_cc",
@@ -207,7 +207,7 @@ cc_library(
     ],
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 # This is a lite version of the session_bundle target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should link
 # any required ops manually.
@@ -216,7 +216,7 @@ cc_library(
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
     copts = if_ios(["-DGOOGLE_LOGGING"]),
-    deprecation = "Use SavedModel Loader instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
     deps = [
         ":signature_lite",
@@ -254,11 +254,11 @@ cc_test(
     ],
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 py_library(
     name = "session_bundle_py",
     srcs = ["session_bundle.py"],
-    deprecation = "Use SavedModel Loader instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -299,7 +299,7 @@ py_test(
     ],
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 # This is a lite version of the signature target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should
 # link any required ops manually.
@@ -307,7 +307,7 @@ cc_library(
     name = "signature_lite",
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
-    deprecation = "Use SavedModel instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
     deps = if_not_mobile([
         ":manifest_proto_cc",
@@ -318,11 +318,11 @@ cc_library(
     ]),
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 cc_library(
     name = "signature",
     hdrs = ["signature.h"],
-    deprecation = "Use SavedModel instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:public"],
     deps = [
         ":manifest_proto_cc",
@@ -355,13 +355,13 @@ cc_test(
     ],
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
-    deprecation = "Use SavedModel instead.",
+    deprecation = "No longer supported. Switch to SavedModel immediately.",
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
@@ -417,7 +417,7 @@ cc_test(
     ],
 )
 
-# DEPRECATED: Use SavedModel instead.
+# DEPRECATED: No longer supported. Switch to SavedModel immediately.
 tf_proto_library(
     name = "manifest_proto",
     srcs = ["manifest.proto"],
