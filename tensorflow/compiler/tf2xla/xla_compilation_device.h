@@ -70,6 +70,7 @@ struct XlaResource {
     kInvalid,
     kVariable,
     kTensorArray,
+    kStack,
   };
 
   Kind kind = kInvalid;

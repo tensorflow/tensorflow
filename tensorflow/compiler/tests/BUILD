@@ -367,6 +367,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "stack_ops_test",
+    size = "small",
+    srcs = ["stack_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "tensor_array_ops_test",
     size = "small",
     srcs = ["tensor_array_ops_test.py"],
