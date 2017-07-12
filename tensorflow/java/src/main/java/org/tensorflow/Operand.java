@@ -21,20 +21,20 @@ package org.tensorflow;
  * <p>Example usage:
  *
  * <pre>{@code
- * // The "decodeJpeg" operation can be used as input to the "cast" operation
- * Input decodeJpeg = ops.image().decodeJpeg(...);
+ * // The "decodeJpeg" operation can be used as an operand to the "cast" operation
+ * Operand decodeJpeg = ops.image().decodeJpeg(...);
  * ops.math().cast(decodeJpeg, DataType.FLOAT);
  *
- * // The output "y" of the "unique" operation can be used as input to the "cast" operation
+ * // The output "y" of the "unique" operation can be used as an operand to the "cast" operation
  * Output y = ops.array().unique(...).y();
  * ops.math().cast(y, DataType.FLOAT);
  *
- * // The "split" operation can be used as input list to the "concat" operation
- * Iterable<? extends Input> split = ops.array().split(...);
+ * // The "split" operation can be used as operand list to the "concat" operation
+ * Iterable<? extends Operand> split = ops.array().split(...);
  * ops.array().concat(0, split);
  * }</pre>
  */
-public interface Input {
+public interface Operand {
 
   /**
    * Returns the symbolic handle of a tensor.
