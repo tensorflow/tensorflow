@@ -28,6 +28,8 @@ load("//tensorflow/compiler/xla:xla.bzl", "export_dynamic_linkopts")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_test_macros")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()
@@ -112,7 +114,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "local_client_aot_test_helper",
     srcs = ["local_client_aot_test_helper.cc"],
     deps = [
@@ -1397,7 +1399,7 @@ xla_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "local_client_aot_test",
     srcs = [
         "local_client_aot_test.cc",
@@ -1412,7 +1414,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_metadata_test",
     srcs = [
         "hlo_metadata_test.cc",
@@ -1498,7 +1500,7 @@ xla_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "literal_test_util_test",
     srcs = ["literal_test_util_test.cc"],
     deps = [
