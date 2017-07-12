@@ -80,8 +80,8 @@ while (<TYPEDESC>) {
     my $line = $_;
     if ($line =~ m/^TF type/) { next }
     $line =~ s/\r$//;
-    (my $name, my $jtype, my $jbox, my $creat, my $default, my $desc) =
-        split /,/, $line, 6;
+    (my $name, my $jtype, my $creat, my $default, my $desc) =
+        split /,/, $line, 5;
     $desc =~ s/^ *//g;
     $desc =~ s/ *$//g;
     $jtypecount{$jtype}++;
@@ -92,11 +92,11 @@ while (<TYPEDESC>) {
 #       exit 1
     }
 
-    push @info, [$name, $jtype, $jbox, $creat, $default, $desc];
+    push @info, [$name, $jtype, $creat, $default, $desc];
 }
 
 for (my $i = 1; $i <= $#info; $i++) {
-    (my $name, my $jtype, my $jbox, my $creat, my $default, my $desc) =
+    (my $name, my $jtype, my $creat, my $default, my $desc) =
         @{$info[$i]};
     my $tfname = "TF".$name;
     my $ucname = uc $name;
