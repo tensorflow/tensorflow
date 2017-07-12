@@ -34,11 +34,6 @@ void AppendServiceFlags(std::vector<tensorflow::Flag>* flag_list);
 typedef struct {
   bool xla_hlo_profile;  // Instrument the computation to collect per-HLO cycle
                          // counts
-  bool xla_hlo_graph_for_compute_constant;  // If true, include hlo dumps of
-                                            // graphs from ComputeConstant.
-                                            // Such graphs still need to be
-                                            // matched via
-                                            // xla_generate_hlo_graph.
   string xla_dump_computations_to;  // Dumps computations that XLA executes
                                     // into the provided directory path
   // Dumps parameters and results of computations that XLA executes into
