@@ -1,4 +1,4 @@
-TF type,datatype code,Java type,Java boxed type,Creator?,default,Description
+TF type,datatype code,Java type,Java boxed type,Creator?,Zero value,Description
 Float,1,float,Float,y,0f,32-bit single precision floating point number
 Double,2,double,Double,y,0,64-bit double precision floating point number
 Int32,3,int,Integer,y,0,32-bit signed integer
