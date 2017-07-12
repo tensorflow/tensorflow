@@ -1395,6 +1395,86 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "android_jpeg_internal",
+    srcs = [
+        "lib/jpeg/jpeg_handle.cc",
+        "lib/jpeg/jpeg_mem.cc",
+        "platform/jpeg.h",
+    ],
+    hdrs = [
+        "lib/jpeg/jpeg_handle.h",
+        "lib/jpeg/jpeg_mem.h",
+        "platform/default/integral_types.h",
+        "platform/logging.h",
+        "platform/default/logging.h",
+        "platform/macros.h",
+        "platform/platform.h",
+        "platform/types.h",
+        "lib/core/stringpiece.h",
+        "platform/dynamic_annotations.h",
+        "platform/default/dynamic_annotations.h",
+        "platform/mem.h",
+    ],  
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:jpeg",
+    ],
+)
+
+cc_library(
+    name = "android_gif_internal",
+    srcs = [
+        "lib/gif/gif_io.cc",
+        "platform/gif.h",
+    ],
+    hdrs = [
+         "lib/gif/gif_io.h",
+         "lib/core/stringpiece.h",
+         "platform/types.h",
+         "platform/platform.h",
+         "platform/default/integral_types.h",
+         "lib/gtl/cleanup.h",
+         "platform/macros.h",
+         "platform/logging.h",
+         "platform/default/logging.h",
+         "platform/mem.h",
+         "platform/dynamic_annotations.h",
+         "platform/default/dynamic_annotations.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:gif",
+    ],
+)
+
+cc_library(
+    name = "android_png_internal",
+    srcs = [
+        "lib/png/png_io.cc",
+        "platform/png.h",
+    ],
+    hdrs = [
+        "lib/png/png_io.h",
+        "lib/core/casts.h",
+        "lib/core/stringpiece.h",
+        "platform/types.h",
+        "platform/platform.h",
+        "platform/default/integral_types.h",
+        "platform/cpu_info.h",
+        "platform/logging.h",
+        "platform/default/logging.h",
+        "platform/macros.h",
+     ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+	"@png_archive//:png",
+    ],
+)
+
 proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
     name = "proto_text_srcs_all",
     srcs = CORE_PROTO_SRCS,
