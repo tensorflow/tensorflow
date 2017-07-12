@@ -151,18 +151,50 @@ void ClientLibraryTestBase::ComputeAndCompareLiteral(
                                                   error, shape_with_layout));
 }
 
+tensorflow::Status
+ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
+    const xla::Computation& computation, const Literal& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const std::function<void(const Literal& actual)>& expect_equal_or_near) {
+  // Try with no layout requirement.
+  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments));
+  expect_equal_or_near(*actual);
+
+  // Try with all output layouts.
+  std::vector<int64> minor_to_major(ShapeUtil::Rank(expected.shape()));
+  std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
+  do {
+    auto layout = ShapeUtil::MakeShapeWithLayout(
+        expected.shape().element_type(),
+        AsInt64Slice(expected.shape().dimensions()), minor_to_major);
+    VLOG(1) << "Test with output layout: "
+            << ShapeUtil::HumanStringWithLayout(layout);
+    TF_ASSIGN_OR_RETURN(auto actual,
+                        ExecuteAndTransfer(computation, arguments, &layout));
+    expect_equal_or_near(*actual);
+  } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_layout) {
-  TF_ASSIGN_OR_RETURN(
-      auto actual, ExecuteAndTransfer(builder, arguments, shape_with_layout));
+  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
   if (ShapeUtil::ElementIsFloating(expected.shape())) {
     LOG(WARNING) << "performing exact comparison of floating point numbers";
   } else {
     TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
                  expected.shape().element_type() == PRED);
   }
+  if (execution_options_.debug_options().xla_test_all_output_layouts()) {
+    return ComputeAndCompareLiteralWithAllOutputLayouts(
+        computation, expected, arguments, [&](const Literal& actual) {
+          LiteralTestUtil::ExpectEqual(expected, actual);
+        });
+  }
+  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
+                                                      shape_with_layout));
   LiteralTestUtil::ExpectEqual(expected, *actual);
   return tensorflow::Status::OK();
 }
@@ -171,9 +203,16 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     ComputationBuilder* builder, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
     const Shape* shape_with_layout) {
-  TF_ASSIGN_OR_RETURN(
-      auto actual, ExecuteAndTransfer(builder, arguments, shape_with_layout));
   TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()));
+  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  if (execution_options_.debug_options().xla_test_all_output_layouts()) {
+    return ComputeAndCompareLiteralWithAllOutputLayouts(
+        computation, expected, arguments, [&](const Literal& actual) {
+          LiteralTestUtil::ExpectNear(expected, actual, error);
+        });
+  }
+  TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
+                                                      shape_with_layout));
   LiteralTestUtil::ExpectNear(expected, *actual, error);
   return tensorflow::Status::OK();
 }

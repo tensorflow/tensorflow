@@ -407,8 +407,9 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     HloInstruction* instruction = entry.first;
     llvm::JITSymbol sym = jit_->FindSymbol(entry.second);
     TF_RET_CHECK(sym);
-    InsertOrDie(&functions, instruction,
-                reinterpret_cast<ComputeFunctionType>(sym.getAddress()));
+    InsertOrDie(
+        &functions, instruction,
+        reinterpret_cast<ComputeFunctionType>(cantFail(sym.getAddress())));
   }
 
   // Map containing pointers to result buffers for each instruction.

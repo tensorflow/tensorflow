@@ -35,6 +35,7 @@ namespace grappler {
 const char kConcatConst[] = "LayoutOptimizerConcatConst";
 const char kPermNHWCToNCHW[] = "LayoutOptimizerPermConstNHWCToNCHW";
 const char kPermNCHWToNHWC[] = "LayoutOptimizerPermConstNCHWToNHWC";
+const char kGatherAxisConst[] = "LayoutOptimizerGatherAxisConst";
 const char kTransposeNHWCToNCHW[] = "LayoutOptimizerTransposeNHWCToNCHW";
 const char kTransposeNCHWToNHWC[] = "LayoutOptimizerTransposeNCHWToNHWC";
 const char kPermVecNHWCToNCHW[] = "LayoutOptimizerPermVecNHWCToNCHW";
@@ -755,11 +756,16 @@ class SliceProcessor : public AgnosticNodeProcessor {
     node->set_name(node_name);
     *node->add_input() = input_name;
     *node->add_input() = NHWCToNCHW ? kPermNHWCToNCHW : kPermNCHWToNHWC;
-    node->set_op("Gather");
+    *node->add_input() = kGatherAxisConst;
+    node->set_op("GatherV2");
 
     AttrValue attr_type_indices;
     attr_type_indices.set_type(DT_INT32);
     node->mutable_attr()->insert({"Tindices", attr_type_indices});
+
+    AttrValue attr_type_axis;
+    attr_type_axis.set_type(DT_INT32);
+    node->mutable_attr()->insert({"Taxis", attr_type_axis});
 
     AttrValue attr_type_params;
     attr_type_params.set_type(data_type);
@@ -979,20 +985,28 @@ class DataLayoutOptimizer {
     return node;
   }
 
-  NodeDef* AddNodeConcatConst() {
+  NodeDef* AddConstScalar(const char* name, DataType dtype, int value) {
     NodeDef* node = graph_->add_node();
-    node_map_.AddNode(kConcatConst, node);
-    node->set_name(kConcatConst);
+    node_map_.AddNode(name, node);
+    node->set_name(name);
     node->set_op("Const");
     AttrValue attr_data_type;
-    attr_data_type.set_type(DT_INT32);
+    attr_data_type.set_type(dtype);
     node->mutable_attr()->insert({"dtype", attr_data_type});
     AttrValue attr_tensor;
-    Tensor tensor(DT_INT32, TensorShape({}));
-    tensor.scalar<int>()() = 1;
+    Tensor tensor(dtype, TensorShape({}));
+    tensor.scalar<int>()() = value;
     tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
     node->mutable_attr()->insert({"value", attr_tensor});
     return node;
+  }
+
+  NodeDef* AddNodeConcatConst() {
+    return AddConstScalar(kConcatConst, DT_INT32, 1);
+  }
+
+  NodeDef* AddGatherAxisConst() {
+    return AddConstScalar(kGatherAxisConst, DT_INT32, 0);
   }
 
   NodeDef* AddNodeReductionConst() {
@@ -1062,6 +1076,8 @@ class DataLayoutOptimizer {
       n = AddNodePermConst(kPermNCHWToNHWC, {0, 2, 3, 1});
       n->set_device("/job:localhost/replica:0/task:0/cpu:0");
       n = AddNodeConcatConst();
+      n->set_device("/job:localhost/replica:0/task:0/cpu:0");
+      n = AddGatherAxisConst();
       n->set_device("/job:localhost/replica:0/task:0/cpu:0");
       n = AddNodeReductionConst();
       n->set_device("/job:localhost/replica:0/task:0/cpu:0");

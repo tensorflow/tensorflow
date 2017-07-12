@@ -1229,6 +1229,7 @@ LIB_INTERNAL_WINDOWS_H_DEPS = glob(
         "lib/**/*.h",
         "platform/*.h",
         "platform/profile_utils/**/*.h",
+        "platform/profile_utils/**/*.cc",
         "framework/resource_handle.h",
     ],
     exclude = [

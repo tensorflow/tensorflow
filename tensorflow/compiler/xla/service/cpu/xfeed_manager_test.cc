@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/infeed_manager.h"
+#include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 
 #include <memory>
 
@@ -28,7 +28,7 @@ namespace {
 
 class InfeedManagerTest : public ::testing::Test {};
 
-class TestInfeedBuffer : public cpu::runtime::InfeedBuffer {
+class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
  public:
   explicit TestInfeedBuffer(int32 length)
       : done_called_(false), length_(length) {}
@@ -55,10 +55,10 @@ TEST_F(InfeedManagerTest, SingleThreadedSequential) {
   TestInfeedBuffer* a = new TestInfeedBuffer(64);
   TestInfeedBuffer* b = new TestInfeedBuffer(32);
 
-  cpu::runtime::InfeedManager* infeed = cpu::runtime::GetInfeedManager();
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager();
 
-  infeed->EnqueueBuffers({a});
-  infeed->EnqueueBuffers({b});
+  xfeed->infeed()->EnqueueBuffers({a});
+  xfeed->infeed()->EnqueueBuffers({b});
   ProcessNextBuffer(a->length());
   ProcessNextBuffer(b->length());
 }
@@ -67,22 +67,22 @@ TEST_F(InfeedManagerTest, SingleThreadedInterleaved) {
   TestInfeedBuffer* a = new TestInfeedBuffer(64);
   TestInfeedBuffer* b = new TestInfeedBuffer(32);
 
-  cpu::runtime::InfeedManager* infeed = cpu::runtime::GetInfeedManager();
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager();
 
-  infeed->EnqueueBuffers({a});
+  xfeed->infeed()->EnqueueBuffers({a});
   ProcessNextBuffer(a->length());
-  infeed->EnqueueBuffers({b});
+  xfeed->infeed()->EnqueueBuffers({b});
   ProcessNextBuffer(b->length());
 }
 
 TEST_F(InfeedManagerTest, MultiThreaded) {
   tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "test", 2);
 
-  cpu::runtime::InfeedManager* infeed = cpu::runtime::GetInfeedManager();
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager();
 
   const int32 length = 64;
 
-  pool.Schedule([infeed]() {
+  pool.Schedule([xfeed]() {
     // Spin for 100 milliseconds
     int64 start_micros = tensorflow::Env::Default()->NowMicros();
     while (true) {
@@ -92,7 +92,7 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
       }
     }
     TestInfeedBuffer* a = new TestInfeedBuffer(length);
-    infeed->EnqueueBuffers({a});
+    xfeed->infeed()->EnqueueBuffers({a});
   });
 
   ProcessNextBuffer(length);

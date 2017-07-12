@@ -20,8 +20,8 @@ filegroup(
 )
 
 cc_binary(
-    name = "tfprof",
-    srcs = ["tfprof_main.cc"],
+    name = "profiler",
+    srcs = ["profiler.cc"],
     deps = [
         ":protos_all_cc",
         "//tensorflow/c:c_api",

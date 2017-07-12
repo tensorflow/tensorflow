@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import sys
 import unittest
 
@@ -78,6 +79,10 @@ class FlagsTest(unittest.TestCase):
     self.assertEquals(42.0, res)
     FLAGS.float_foo = -1.0
     self.assertEqual(-1.0, FLAGS.float_foo)
+
+  def test_copy(self):
+    copied = copy.copy(FLAGS)
+    self.assertEqual(copied.__dict__, FLAGS.__dict__)
 
 
 def main(_):

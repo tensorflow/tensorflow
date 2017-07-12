@@ -195,13 +195,13 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(test_layer.output_shape, (None, 16))
 
     # pylint: disable=pointless-statement
-    with self.assertRaises(Exception):
+    with self.assertRaises(AttributeError):
       dense.input
-    with self.assertRaises(Exception):
+    with self.assertRaises(AttributeError):
       dense.output
-    with self.assertRaises(Exception):
+    with self.assertRaises(AttributeError):
       dense.input_mask
-    with self.assertRaises(Exception):
+    with self.assertRaises(AttributeError):
       dense.output_mask
     # pylint: enable=pointless-statement
 

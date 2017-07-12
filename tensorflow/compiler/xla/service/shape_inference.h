@@ -71,6 +71,14 @@ class ShapeInference {
                                                      const Shape& scale_shape,
                                                      int64 feature_index);
 
+  // Infers the shape produced by InferBatchNormGrad with the given operands.
+  static StatusOr<Shape> InferBatchNormGradShape(const Shape& operand_shape,
+                                                 const Shape& scale_shape,
+                                                 const Shape& mean_shape,
+                                                 const Shape& var_shape,
+                                                 const Shape& output_grad_shape,
+                                                 int64 feature_index);
+
   // Infers the shape produced by applying the given convolutional
   // filter (rhs) to lhs in the way specified by the fields on window.
   static StatusOr<Shape> InferConvolveShape(

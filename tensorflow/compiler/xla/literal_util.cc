@@ -631,6 +631,18 @@ string Literal::ToString() const {
   return literal;
 }
 
+/* static */ std::unique_ptr<Literal> Literal::MakeTupleOwned(
+    std::vector<std::unique_ptr<Literal>> elements) {
+  auto literal = MakeUnique<Literal>();
+  std::vector<Shape> shape;
+  for (auto& tuple_element : elements) {
+    shape.push_back(tuple_element->shape());
+    literal->add_tuple_literals()->Swap(tuple_element.get());
+  }
+  *literal->mutable_shape() = ShapeUtil::MakeTupleShape(shape);
+  return literal;
+}
+
 const void* Literal::InternalData() const {
   return const_cast<const void*>(
       const_cast<Literal*>(this)->MutableInternalData());

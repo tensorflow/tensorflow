@@ -91,14 +91,15 @@ class ListScheduler {
     // LogicalBuffer is in an operand of the instruction as indicated by
     // points-to analysis.
     for (auto& instruction : computation.instructions()) {
-      buffer_uses_.insert(
-          {instruction.get(), std::unordered_set<const LogicalBuffer*>()});
+      std::unordered_set<const LogicalBuffer*> instr_uses;
       for (auto* operand : instruction->operands()) {
         for (const LogicalBuffer* buffer :
              points_to_analysis.GetBuffersDefinedByInstruction(operand)) {
-          buffer_uses_[instruction.get()].insert(buffer);
+          instr_uses.insert(buffer);
         }
       }
+      buffer_uses_[instruction.get()] = std::vector<const LogicalBuffer*>(
+          instr_uses.begin(), instr_uses.end());
     }
 
     // Create map containing the number of unscheduled uses (hlo instructions)
@@ -131,33 +132,64 @@ class ListScheduler {
            buffer.instruction()->opcode() == HloOpcode::kConstant;
   }
 
-  // Return the number of bytes freed if the HLO instruction is scheduled.
-  int64 BytesFreedIfScheduled(const HloInstruction* instruction) {
-    int64 freed_bytes = 0;
-    // Sum the total size of the values last used by this instruction.
+  // An entry in the worklist used by CreateSchedule.  Corresponds to one
+  // HloInstruction, plus some cached metadata, saved for the purposes of making
+  // BytesFreedIfScheduled fast.
+  struct ReadyListEntry {
+    const HloInstruction* instruction;
+
+    // The total size of all buffers defined by this instruction.
+    int64 bytes_defined;
+
+    // For each buffer B used by this instruction, we keep a pair (B, U), where
+    // U is the number of uses of B that have not yet been scheduled.  This pair
+    // is a pointer into the unscheduled_use_count_ map, so it gets updated for
+    // free when we update counts in the map.
+    std::vector<const std::pair<const LogicalBuffer* const, int64>*>
+        used_buffer_unscheduled_use_counts;
+  };
+
+  // Creates a ReadyListEntry for the given instruction.
+  ReadyListEntry MakeReadyListEntry(const HloInstruction* instruction) {
+    ReadyListEntry entry;
+    entry.instruction = instruction;
+
+    entry.bytes_defined = 0;
+    for (auto* buffer :
+         points_to_analysis_.GetBuffersDefinedByInstruction(instruction)) {
+      if (!IgnoreBuffer(*buffer)) {
+        entry.bytes_defined += size_function_(*buffer);
+      }
+    }
+
     for (auto* buffer : buffer_uses_.at(instruction)) {
       if (IgnoreBuffer(*buffer)) {
         continue;
       }
-      CHECK_GE(unscheduled_use_count_.at(buffer), 1);
-      if (unscheduled_use_count_.at(buffer) == 1) {
-        // This is the last use of the logical buffer.
+      auto unscheduled_use_count_it = unscheduled_use_count_.find(buffer);
+      CHECK(unscheduled_use_count_it != unscheduled_use_count_.end());
+      entry.used_buffer_unscheduled_use_counts.push_back(
+          &*unscheduled_use_count_it);
+    }
+    return entry;
+  }
+
+  // Returns the number of bytes freed if the HLO instruction is scheduled.
+  int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
+    int64 freed_bytes = 0;
+    for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
+      auto buffer = kv->first;
+      auto use_count = kv->second;
+      if (use_count == 1) {
         freed_bytes += size_function_(*buffer);
       }
     }
-    // Then subtract the size of the value(s) defined by this instruction.
-    for (auto* buffer :
-         points_to_analysis_.GetBuffersDefinedByInstruction(instruction)) {
-      if (!IgnoreBuffer(*buffer)) {
-        freed_bytes -= size_function_(*buffer);
-      }
-    }
-    return freed_bytes;
+    return freed_bytes - entry.bytes_defined;
   }
 
-  // Construct the scheduling priority of the given instruction.
-  Priority GetPriority(const HloInstruction* instruction) {
-    return {BytesFreedIfScheduled(instruction), instruction->user_count()};
+  // Constructs the scheduling priority of the given instruction.
+  Priority GetPriority(const ReadyListEntry& entry) {
+    return {BytesFreedIfScheduled(entry), entry.instruction->user_count()};
   }
 
   std::vector<const HloInstruction*> CreateSchedule() {
@@ -166,7 +198,6 @@ class ListScheduler {
     // Populate the ready list with instructions which have no operands or
     // control predecessors.
     std::unordered_map<const HloInstruction*, int64> unscheduled_pred_count;
-    std::list<const HloInstruction*> ready_list;
     for (auto& instruction : computation_.instructions()) {
       // TODO(b/34466113): Replace this and above with successors() or
       // predecessors() when these methods are added to HloInstruction.
@@ -177,11 +208,13 @@ class ListScheduler {
         unscheduled_pred_count[succ]++;
       }
     }
+
+    std::list<ReadyListEntry> ready_list;
     for (auto& instruction : computation_.instructions()) {
       // Instruction with no operands or control predecessors will
       // not be in the map.
       if (unscheduled_pred_count.count(instruction.get()) == 0) {
-        ready_list.push_back(instruction.get());
+        ready_list.push_back(MakeReadyListEntry(instruction.get()));
       }
     }
 
@@ -200,7 +233,7 @@ class ListScheduler {
 
       // Remove the selected instruction from the ready list and add it to the
       // schedule.
-      const HloInstruction* best = *best_it;
+      const HloInstruction* best = best_it->instruction;
       ready_list.erase(best_it);
       schedule.push_back(best);
       scheduled_instructions_.insert(best);
@@ -212,12 +245,11 @@ class ListScheduler {
       }
 
       // Add new instructions to ready list.
-      auto update_pred_count = [&unscheduled_pred_count,
-                                &ready_list](HloInstruction* inst) {
+      auto update_pred_count = [&](HloInstruction* inst) {
         int64 pred_count = --unscheduled_pred_count.at(inst);
         CHECK_GE(pred_count, 0);
         if (pred_count == 0) {
-          ready_list.push_back(inst);
+          ready_list.push_back(MakeReadyListEntry(inst));
         }
       };
       // TODO(b/34466113): Replace this and above with successors() or
@@ -241,12 +273,11 @@ class ListScheduler {
   const LogicalBuffer::SizeFunction& size_function_;
 
   // A map containing the LogicalBuffers that each instruction uses.
-  std::unordered_map<const HloInstruction*,
-                     std::unordered_set<const LogicalBuffer*>>
+  std::unordered_map<const HloInstruction*, std::vector<const LogicalBuffer*>>
       buffer_uses_;
 
   // A map containing the count of unscheduled HLOs which using a particular
-  // LogicalBuffer.
+  // LogicalBuffer.  We rely on iterator stability in this map.
   std::unordered_map<const LogicalBuffer*, int64> unscheduled_use_count_;
 
   // Set of instructions which have been scheduled.
