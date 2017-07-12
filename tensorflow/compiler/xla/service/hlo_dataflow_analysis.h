@@ -94,11 +94,11 @@ class HloDataflowAnalysis {
   // shape index. CHECKs if the value set does not contain a exactly one value.
   const HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                                    const ShapeIndex& index = {}) const {
-    return GetValue(GetValueSet(instruction, index).GetUniqueValueId());
+    return GetValueSet(instruction, index).GetUniqueValue();
   }
   HloValue& GetUniqueValueAt(const HloInstruction* instruction,
                              const ShapeIndex& index = {}) {
-    return GetValue(GetValueSet(instruction, index).GetUniqueValueId());
+    return GetValue(GetValueSet(instruction, index).GetUniqueValue().id());
   }
 
   // Return the HloValue with the given Id.
@@ -130,10 +130,9 @@ class HloDataflowAnalysis {
   HloDataflowAnalysis(HloModule* module, bool ssa_form,
                       bool bitcast_defines_value = false);
 
-  // Creates a new HloValue defined at the given instruction and shape index and
-  // return its ID.
-  HloValue::Id NewHloValue(HloInstruction* instruction, const ShapeIndex& index,
-                           bool is_phi = false);
+  // Returns a new HloValue defined at the given instruction and shape index.
+  HloValue* NewHloValue(HloInstruction* instruction, const ShapeIndex& index,
+                        bool is_phi = false);
 
   // Delete the HloValue with the given ID.
   void DeleteHloValue(HloValue::Id value_id);
@@ -201,7 +200,9 @@ class HloDataflowAnalysis {
 
   std::unique_ptr<CallGraph> call_graph_;
 
-  // The map of all HloValues in the module.
+  // The map of all HloValues in the module. We pass around pointers to the
+  // mapped HloValues, so the underlying container must keep them valid despite
+  // mutations touching other map entries.
   std::unordered_map<HloValue::Id, HloValue> values_;
 
   // A map from instruction to InstructionValueSet.

@@ -49,11 +49,10 @@ HloDataflowAnalysis::HloDataflowAnalysis(HloModule* module, bool ssa_form,
 bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
                                            const ShapeIndex& index) const {
   const HloValueSet& value_set = GetValueSet(instruction, index);
-  if (value_set.value_ids().size() != 1) {
+  if (value_set.values().size() != 1) {
     return false;
   }
-  return GetValue(value_set.GetUniqueValueId()).defining_instruction() ==
-         instruction;
+  return value_set.GetUniqueValue().defining_instruction() == instruction;
 }
 
 const HloValue& HloDataflowAnalysis::GetValueDefinedAt(
@@ -68,20 +67,20 @@ HloValue& HloDataflowAnalysis::GetValueDefinedAt(
   return GetUniqueValueAt(instruction, index);
 }
 
-HloValue::Id HloDataflowAnalysis::NewHloValue(HloInstruction* instruction,
-                                              const ShapeIndex& index,
-                                              bool is_phi) {
-  int64 value_id = next_value_id_++;
-  auto it_added = values_.emplace(
+HloValue* HloDataflowAnalysis::NewHloValue(HloInstruction* instruction,
+                                           const ShapeIndex& index,
+                                           bool is_phi) {
+  const int64 value_id = next_value_id_++;
+  auto emplaced = values_.emplace(
       std::piecewise_construct, std::forward_as_tuple(value_id),
       std::forward_as_tuple(value_id, instruction, index, is_phi));
-  CHECK(it_added.second);
+  CHECK(emplaced.second);
 
   // Clear the vector of values as it is now stale. It will be lazily
   // reconstructed if needed when HloDataflowAnalysis::values() is called.
   values_vector_.clear();
 
-  return value_id;
+  return &emplaced.first->second;
 }
 
 void HloDataflowAnalysis::DeleteHloValue(HloValue::Id value_id) {
@@ -106,9 +105,9 @@ string HloDataflowAnalysis::ToString() const {
                                 const ShapeIndex& index,
                                 const HloValueSet& value_set) {
               StrAppend(&out, "      tuple index ", index.ToString(), ":\n");
-              for (HloValue::Id value_id : value_set.value_ids()) {
+              for (const HloValue* value : value_set.values()) {
                 StrAppend(
-                    &out, "        ", GetValue(value_id).ToShortString(),
+                    &out, "        ", value->ToShortString(),
                     ValueIsDefinedAt(instruction.get(), index) ? " (def)" : "",
                     "\n");
               }
@@ -116,8 +115,8 @@ string HloDataflowAnalysis::ToString() const {
       } else {
         const HloValueSet& top_level_value_set =
             GetValueSet(instruction.get(), /*index=*/{});
-        for (HloValue::Id value_id : top_level_value_set.value_ids()) {
-          StrAppend(&out, "      ", GetValue(value_id).ToShortString(),
+        for (const HloValue* value : top_level_value_set.values()) {
+          StrAppend(&out, "      ", value->ToShortString(),
                     ValueIsDefinedAt(instruction.get()) ? " (def)" : "", "\n");
         }
       }
@@ -155,9 +154,8 @@ const std::vector<const HloValue*>& HloDataflowAnalysis::values() const {
     for (auto& pair : values_) {
       values_vector_.push_back(&pair.second);
     }
-    std::sort(
-        values_vector_.begin(), values_vector_.end(),
-        [](const HloValue* a, const HloValue* b) { return a->id() < b->id(); });
+    std::sort(values_vector_.begin(), values_vector_.end(),
+              HloValue::IdLessThan);
   } else {
     CHECK_EQ(values_vector_.size(), values_.size());
     for (const HloValue* value : values_vector_) {
@@ -199,8 +197,8 @@ InstructionValueSet HloDataflowAnalysis::Phi(
         // Construct a vector of unique value IDs of the inputs.
         std::vector<HloValue::Id> input_value_ids;
         for (const InstructionValueSet* input : inputs) {
-          for (HloValue::Id value_id : input->element(index).value_ids()) {
-            input_value_ids.push_back(value_id);
+          for (const HloValue* value : input->element(index).values()) {
+            input_value_ids.push_back(value->id());
           }
         }
         std::sort(input_value_ids.begin(), input_value_ids.end());
@@ -221,7 +219,7 @@ InstructionValueSet HloDataflowAnalysis::Phi(
 
         if (input_value_ids.size() <= 1) {
           if (input_value_ids.size() == 1) {
-            *value_set = HloValueSet({input_value_ids[0]});
+            *value_set = HloValueSet({&GetValue(input_value_ids[0])});
           }
           if (existing_phi_value) {
             // The merge point does not have multiple distinct inputs (which are
@@ -236,7 +234,7 @@ InstructionValueSet HloDataflowAnalysis::Phi(
           if (existing_phi_value) {
             // A phi value already exists so reuse it in the new
             // InstructionValueSet.
-            *value_set = HloValueSet({existing_phi_value->id()});
+            *value_set = HloValueSet({existing_phi_value});
           } else {
             // Create a new phi value.
             *value_set =
@@ -255,17 +253,16 @@ void HloDataflowAnalysis::UpdatePositionsOfValuesAt(
     prev_value_set->ForEachElement(
         [this, instruction](const ShapeIndex& index,
                             const HloValueSet& value_set) {
-          for (HloValue::Id value_id : value_set.value_ids()) {
+          for (const HloValue* value : value_set.values()) {
             // HloValues in the previous value set may have been deleted.
-            if (!ContainsKey(values_, value_id)) {
+            if (!ContainsKey(values_, value->id())) {
               continue;
             }
             // Don't remove the defining position of the value.
-            HloValue& value = GetValue(value_id);
-            if (instruction == value.defining_instruction()) {
-              CHECK_EQ(index, value.defining_index());
+            if (instruction == value->defining_instruction()) {
+              CHECK_EQ(index, value->defining_index());
             } else {
-              value.RemovePosition(instruction, index);
+              GetValue(value->id()).RemovePosition(instruction, index);
             }
           }
         });
@@ -274,12 +271,11 @@ void HloDataflowAnalysis::UpdatePositionsOfValuesAt(
   new_value_set.ForEachElement(
       [this, instruction](const ShapeIndex& index,
                           const HloValueSet& value_set) {
-        for (HloValue::Id value_id : value_set.value_ids()) {
-          HloValue& value = GetValue(value_id);
-          if (instruction == value.defining_instruction()) {
-            CHECK_EQ(index, value.defining_index());
+        for (const HloValue* value : value_set.values()) {
+          if (instruction == value->defining_instruction()) {
+            CHECK_EQ(index, value->defining_index());
           } else {
-            value.AddPosition(instruction, index);
+            GetValue(value->id()).AddPosition(instruction, index);
           }
         }
       });

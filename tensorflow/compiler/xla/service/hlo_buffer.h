@@ -74,6 +74,16 @@ class HloBuffer {
  public:
   using Id = int64;
 
+  // Predicate comparing HloBuffers by increasing id, useful for std::sort.
+  static bool IdLessThan(const HloBuffer* a, const HloBuffer* b) {
+    return a->id() < b->id();
+  }
+
+  // Predicate comparing HloBuffers by equal id, useful for std::unique.
+  static bool IdEqual(const HloBuffer* a, const HloBuffer* b) {
+    return a->id() == b->id();
+  }
+
   HloBuffer(Id id) : id_(id) {}
 
   // Return the unique identifier for this HloBuffer.
@@ -84,8 +94,14 @@ class HloBuffer {
   // buffer already contains this value, then this method is a nop.
   void AddValue(const HloValue& value);
 
-  // Return the IDs of all values contained in this buffer.
-  const std::vector<HloValue::Id>& value_ids() const { return value_ids_; }
+  // Return all values contained in this buffer.
+  const std::vector<const HloValue*>& values() const {
+    return values_.values();
+  }
+
+  // Return the unique HLO value in the buffer. CHECK fails if the buffer does
+  // not contain exactly one value.
+  const HloValue& GetUniqueValue() const { return values_.GetUniqueValue(); }
 
   // Return the positions (output of which instruction and at what index) where
   // the buffer is used. This is exactly the union of the positions of the
@@ -102,7 +118,7 @@ class HloBuffer {
   const Id id_;
 
   // The set of values contained in this buffer.
-  std::vector<HloValue::Id> value_ids_;
+  HloValueSet values_;
 
   // The set of positions where this buffer is used.
   std::vector<HloPosition> positions_;
@@ -131,7 +147,7 @@ class HloBufferSet {
 
   // Add the given buffer to this buffer set. If the buffer already exists in
   // the set, then this is a NOP.
-  void AddBuffer(HloBuffer::Id buffer_id);
+  void AddBuffer(const HloBuffer* buffer);
 
   // Removes the given buffer from this buffer set. CHECK fails in the buffer is
   // not contained in this set.
@@ -139,19 +155,19 @@ class HloBufferSet {
 
   // Returns the unique buffer in this set. CHECK fails if the set does not
   // contain exactly one buffer.
-  HloBuffer::Id GetUniqueBufferId() const {
-    CHECK_EQ(buffer_ids().size(), 1);
-    return buffer_ids()[0];
+  const HloBuffer& GetUniqueBuffer() const {
+    CHECK_EQ(buffers_.size(), 1);
+    return *buffers_[0];
   }
 
-  // Returns the IDs of the HloBuffers contained in this buffer set.
-  const std::vector<HloBuffer::Id>& buffer_ids() const { return buffer_ids_; }
+  // Returns the vector of HloBuffers in the set, sorted by HloBuffer::Id.
+  const std::vector<const HloBuffer*>& buffers() const { return buffers_; }
 
   string ToString() const;
 
  private:
-  // The IDs of the HloBuffers containted in this buffer set.
-  std::vector<HloBuffer::Id> buffer_ids_;
+  // HloBuffers sorted by HloBuffer::Id.
+  std::vector<const HloBuffer*> buffers_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloBufferSet& buffer_set);

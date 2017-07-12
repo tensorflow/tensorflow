@@ -97,6 +97,16 @@ class HloValue {
  public:
   using Id = int64;
 
+  // Predicate comparing HloValues by increasing id, useful for std::sort.
+  static bool IdLessThan(const HloValue* a, const HloValue* b) {
+    return a->id() < b->id();
+  }
+
+  // Predicate comparing HloValues by equal id, useful for std::unique.
+  static bool IdEqual(const HloValue* a, const HloValue* b) {
+    return a->id() == b->id();
+  }
+
   // Construct an HloValue defined by 'instruction' at shape index 'index'. If
   // is_phi is true, then this value is a phi value, for example, at the
   // parameter of a while body computation. Phi values are only used in the SSA
@@ -186,8 +196,8 @@ class HloValueSet {
  public:
   HloValueSet() = default;
 
-  explicit HloValueSet(tensorflow::gtl::ArraySlice<HloValue::Id> value_ids)
-      : value_ids_(value_ids.begin(), value_ids.end()) {
+  explicit HloValueSet(tensorflow::gtl::ArraySlice<const HloValue*> values)
+      : values_(values.begin(), values.end()) {
     SortAndUniquifyValues();
   }
 
@@ -195,19 +205,29 @@ class HloValueSet {
   static HloValueSet Union(
       tensorflow::gtl::ArraySlice<const HloValueSet*> inputs);
 
-  // Return the vector of the IDs of all HloValues in the set. Values in the
-  // vector are unique and sorted.
-  const std::vector<HloValue::Id>& value_ids() const { return value_ids_; }
+  // Return the vector of HloValues in the set. Values in the vector are unique
+  // and sorted.
+  const std::vector<const HloValue*>& values() const { return values_; }
+
+  // Adds the value to the set.  Returns true iff the value was added and didn't
+  // already exist in the set.
+  bool AddValue(const HloValue* value);
 
   // Return the unique HLO value in the set. CHECKs if the set does not contain
   // exactly one value.
-  HloValue::Id GetUniqueValueId() const {
-    CHECK_EQ(value_ids().size(), 1);
-    return value_ids()[0];
+  const HloValue& GetUniqueValue() const {
+    CHECK_EQ(values_.size(), 1);
+    return *values_[0];
   }
 
   bool operator==(const HloValueSet& other) const {
-    return value_ids() == other.value_ids();
+    if (values_.size() != other.values_.size()) return false;
+    for (size_t i = 0; i < values_.size(); ++i) {
+      if (values_[i]->id() != other.values_[i]->id()) {
+        return false;
+      }
+    }
+    return true;
   }
   bool operator!=(const HloValueSet& other) const { return !(*this == other); }
 
@@ -219,7 +239,7 @@ class HloValueSet {
   void SortAndUniquifyValues();
 
   // HloValues sorted by HloValue::Id.
-  std::vector<HloValue::Id> value_ids_;
+  std::vector<const HloValue*> values_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloValueSet& hlo_value);

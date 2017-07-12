@@ -63,11 +63,11 @@ class HloAliasAnalysis {
   // set at that position does not contain exactly one buffer.
   const HloBuffer& GetUniqueBufferAt(const HloInstruction* instruction,
                                      const ShapeIndex& index = {}) const {
-    return GetBuffer(GetBufferSet(instruction, index).GetUniqueBufferId());
+    return GetBufferSet(instruction, index).GetUniqueBuffer();
   }
   HloBuffer& GetUniqueBufferAt(const HloInstruction* instruction,
                                const ShapeIndex& index = {}) {
-    return GetBuffer(GetBufferSet(instruction, index).GetUniqueBufferId());
+    return GetBuffer(GetBufferSet(instruction, index).GetUniqueBuffer().id());
   }
 
   // Return a vector of all HloBuffers stabily sorted by HloBuffer::Id. This
@@ -83,8 +83,8 @@ class HloAliasAnalysis {
  protected:
   HloAliasAnalysis(HloModule* module);
 
-  // Creates a new HloBuffer and returns a reference to it.
-  HloBuffer& NewHloBuffer();
+  // Returns a new HloBuffer.
+  HloBuffer* NewHloBuffer();
 
   // Construct the initial set of buffer sets where an HloBuffer is created for
   // each HloValue in the module.
@@ -123,7 +123,9 @@ class HloAliasAnalysis {
   // The underlying dataflow analysis used by this alias analysis.
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 
-  // The map of all HloBuffers in the module.
+  // The map of all HloBuffers in the module. We pass around pointers to the
+  // mapped HloBuffers, so the underlying container must keep them valid despite
+  // mutations touching other map entries.
   std::unordered_map<HloBuffer::Id, HloBuffer> buffers_;
 
   // A map from instruction to its InstructionBufferSet.

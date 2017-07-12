@@ -35,6 +35,7 @@ limitations under the License.
 
 namespace xla {
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
@@ -89,7 +90,7 @@ string HloValue::ToShortString() const {
   string index_str = ShapeUtil::IsTuple(defining_instruction()->shape())
                          ? defining_index().ToString()
                          : "";
-  return StrCat(is_phi_ ? "PHI " : "", defining_instruction()->name(),
+  return StrCat(id_, " ", is_phi_ ? "PHI " : "", defining_instruction()->name(),
                 index_str);
 }
 
@@ -249,13 +250,16 @@ std::ostream& operator<<(std::ostream& out, const HloValue& value) {
 }
 
 void HloValueSet::SortAndUniquifyValues() {
-  std::sort(value_ids_.begin(), value_ids_.end());
-  value_ids_.erase(std::unique(value_ids_.begin(), value_ids_.end()),
-                   value_ids_.end());
+  std::sort(values_.begin(), values_.end(), HloValue::IdLessThan);
+  values_.erase(std::unique(values_.begin(), values_.end(), HloValue::IdEqual),
+                values_.end());
 }
 
 string HloValueSet::ToString() const {
-  return StrCat("HloValueSet: ", tensorflow::str_util::Join(value_ids_, ", "));
+  return StrCat("HloValueSet: ",
+                Join(values_, ", ", [](string* result, const HloValue* value) {
+                  result->append(value->ToShortString());
+                }));
 }
 
 /*static */
@@ -263,12 +267,22 @@ HloValueSet HloValueSet::Union(
     tensorflow::gtl::ArraySlice<const HloValueSet*> inputs) {
   HloValueSet union_set;
   for (const HloValueSet* input : inputs) {
-    for (HloValue::Id value_id : input->value_ids()) {
-      union_set.value_ids_.push_back(value_id);
+    for (const HloValue* value : input->values()) {
+      union_set.values_.push_back(value);
     }
   }
   union_set.SortAndUniquifyValues();
   return union_set;
+}
+
+bool HloValueSet::AddValue(const HloValue* value) {
+  auto it = std::lower_bound(values_.begin(), values_.end(), value,
+                             HloValue::IdLessThan);
+  if (it == values_.end() || (*it)->id() != value->id()) {
+    values_.insert(it, value);
+    return true;
+  }
+  return false;  // already exists
 }
 
 std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {

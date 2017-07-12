@@ -56,9 +56,9 @@ class HloDataflowAnalysisTest : public HloTestBase,
                                     const ShapeIndex& index = {}) {
     CHECK(analysis_ != nullptr);
     std::vector<HloValue> values;
-    for (HloValue::Id value_id :
-         analysis_->GetValueSet(instruction, index).value_ids()) {
-      values.push_back(analysis_->GetValue(value_id));
+    for (const HloValue* value :
+         analysis_->GetValueSet(instruction, index).values()) {
+      values.push_back(*value);
     }
     return values;
   }
