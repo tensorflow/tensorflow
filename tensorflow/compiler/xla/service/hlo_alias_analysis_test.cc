@@ -495,7 +495,7 @@ TEST_F(HloAliasAnalysisTest, NestedWhiles) {
   };
   // Build separate condition computations so the call graph is flat. The
   // callgraph is always flattened in the compiler pipeline, and the flattened
-  // callgraph enables representive interference analysis.
+  // callgraph enables representative interference analysis.
   HloComputation* condition1 =
       module_->AddEmbeddedComputation(build_cond_computation());
   HloComputation* condition2 =

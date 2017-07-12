@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace hlo_graph_dumper {
@@ -38,7 +39,8 @@ class GraphRendererInterface {
 
   // Renders a DOT graph, returning a description of the rendered output
   // (e.g., a URL)
-  virtual string RenderGraph(const string& graph, GraphKind graph_kind) = 0;
+  virtual string RenderGraph(const string& graph, GraphKind graph_kind,
+                             const DebugOptions& debug_options) = 0;
 };
 
 // Dump the given HLO module if a dump is requested in its debug options. Based
@@ -52,7 +54,7 @@ string MaybeDumpHloModule(const HloModule& module, const string& label,
 // graph (e.g., a URL) based on the renderer. The "best" renderer in the
 // registry is used.
 string DumpGraph(const HloComputation& computation, const string& label,
-                 bool show_addresses, bool show_layouts,
+                 const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile = nullptr);
 
 // Dumps the HloModule::ToString() as a file into the provided directory path

@@ -29,13 +29,12 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.2.0'
+_VERSION = '1.2.1'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
     'protobuf >= 3.2.0',
-    'backports.weakref == 1.0rc1',
     'tensorflow-tensorboard',
 ]
 
@@ -53,6 +52,10 @@ else:
   REQUIRED_PACKAGES.append('wheel')
   # mock comes with unittest.mock for python3, need to install for python2
   REQUIRED_PACKAGES.append('mock >= 2.0.0')
+
+# weakref.finalize was introduced in Python 3.4
+if sys.version_info < (3, 4):
+  REQUIRED_PACKAGES.append('backports.weakref >= 1.0rc1')
 
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [

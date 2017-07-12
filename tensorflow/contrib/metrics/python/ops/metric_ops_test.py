@@ -4183,11 +4183,6 @@ class StreamingRootMeanSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(math.sqrt(13), rmse.eval(), 5)
 
 
-def _reweight(predictions, labels, weights):
-  return (np.concatenate([[p] * int(w) for p, w in zip(predictions, weights)]),
-          np.concatenate([[l] * int(w) for l, w in zip(labels, weights)]))
-
-
 class StreamingCovarianceTest(test.TestCase):
 
   def setUp(self):
@@ -4277,8 +4272,9 @@ class StreamingCovarianceTest(test.TestCase):
       cov, update_op = metrics.streaming_covariance(
           predictions, labels, weights=weights)
 
-      p, l = _reweight([2, 4, 6, 8], [1, 3, 2, 7], [0, 1, 3, 1])
-      expected_cov = np.cov(p, l)[0, 1]
+      expected_cov = np.cov([2, 4, 6, 8],
+                            [1, 3, 2, 7],
+                            fweights=[0, 1, 3, 1])[0, 1]
       sess.run(variables.local_variables_initializer())
       self.assertAlmostEqual(expected_cov, sess.run(update_op))
       self.assertAlmostEqual(expected_cov, cov.eval())
@@ -4297,14 +4293,17 @@ class StreamingCovarianceTest(test.TestCase):
       cov, update_op = metrics.streaming_covariance(predictions_t, labels_t)
 
       sess.run(variables.local_variables_initializer())
-      prev_expected_cov = 0.
+      prev_expected_cov = NAN
       for i in range(n // stride):
         feed_dict = {
             predictions_t: predictions[stride * i:stride * (i + 1)],
             labels_t: labels[stride * i:stride * (i + 1)]
         }
-        self.assertAlmostEqual(
-            prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
+        self.assertEqual(np.isnan(prev_expected_cov),
+                         np.isnan(sess.run(cov, feed_dict=feed_dict)))
+        if not np.isnan(prev_expected_cov):
+          self.assertAlmostEqual(
+              prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
         expected_cov = np.cov(predictions[:stride * (i + 1)],
                               labels[:stride * (i + 1)])[0, 1]
         self.assertAlmostEqual(
@@ -4331,18 +4330,21 @@ class StreamingCovarianceTest(test.TestCase):
           predictions_t, labels_t, weights=weights_t)
 
       sess.run(variables.local_variables_initializer())
-      prev_expected_cov = 0.
+      prev_expected_cov = NAN
       for i in range(n // stride):
         feed_dict = {
             predictions_t: predictions[stride * i:stride * (i + 1)],
             labels_t: labels[stride * i:stride * (i + 1)],
             weights_t: weights[stride * i:stride * (i + 1)]
         }
-        self.assertAlmostEqual(
-            prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
-        p, l = _reweight(predictions[:stride * (i + 1)],
-                         labels[:stride * (i + 1)], weights[:stride * (i + 1)])
-        expected_cov = np.cov(p, l)[0, 1]
+        self.assertEqual(np.isnan(prev_expected_cov),
+                         np.isnan(sess.run(cov, feed_dict=feed_dict)))
+        if not np.isnan(prev_expected_cov):
+          self.assertAlmostEqual(
+              prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
+        expected_cov = np.cov(predictions[:stride * (i + 1)],
+                              labels[:stride * (i + 1)],
+                              fweights=weights[:stride * (i + 1)])[0, 1]
         self.assertAlmostEqual(
             expected_cov, sess.run(update_op, feed_dict=feed_dict), 5)
         self.assertAlmostEqual(
@@ -4453,8 +4455,7 @@ class StreamingPearsonRTest(test.TestCase):
       pearson_r, update_op = metrics.streaming_pearson_correlation(
           predictions_t, labels_t, weights=weights_t)
 
-      p, l = _reweight(predictions, labels, weights)
-      cmat = np.cov(p, l)
+      cmat = np.cov(predictions, labels, fweights=weights)
       expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
       sess.run(variables.local_variables_initializer())
       self.assertAlmostEqual(expected_r, sess.run(update_op))
@@ -4475,14 +4476,17 @@ class StreamingPearsonRTest(test.TestCase):
           predictions_t, labels_t)
 
       sess.run(variables.local_variables_initializer())
-      prev_expected_r = 0.
+      prev_expected_r = NAN
       for i in range(n // stride):
         feed_dict = {
             predictions_t: predictions[stride * i:stride * (i + 1)],
             labels_t: labels[stride * i:stride * (i + 1)]
         }
-        self.assertAlmostEqual(
-            prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
+        self.assertEqual(np.isnan(prev_expected_r),
+                         np.isnan(sess.run(pearson_r, feed_dict=feed_dict)))
+        if not np.isnan(prev_expected_r):
+          self.assertAlmostEqual(
+              prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
         expected_r = np.corrcoef(predictions[:stride * (i + 1)],
                                  labels[:stride * (i + 1)])[0, 1]
         self.assertAlmostEqual(
@@ -4509,24 +4513,68 @@ class StreamingPearsonRTest(test.TestCase):
           predictions_t, labels_t, weights=weights_t)
 
       sess.run(variables.local_variables_initializer())
-      prev_expected_r = 0.
+      prev_expected_r = NAN
       for i in range(n // stride):
         feed_dict = {
             predictions_t: predictions[stride * i:stride * (i + 1)],
             labels_t: labels[stride * i:stride * (i + 1)],
             weights_t: weights[stride * i:stride * (i + 1)]
         }
-        self.assertAlmostEqual(
-            prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
-        p, l = _reweight(predictions[:stride * (i + 1)],
-                         labels[:stride * (i + 1)], weights[:stride * (i + 1)])
-        cmat = np.cov(p, l)
+        self.assertEqual(np.isnan(prev_expected_r),
+                         np.isnan(sess.run(pearson_r, feed_dict=feed_dict)))
+        if not np.isnan(prev_expected_r):
+          self.assertAlmostEqual(
+              prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
+        cmat = np.cov(predictions[:stride * (i + 1)],
+                      labels[:stride * (i + 1)],
+                      fweights=weights[:stride * (i + 1)])
         expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
         self.assertAlmostEqual(
             expected_r, sess.run(update_op, feed_dict=feed_dict), 5)
         self.assertAlmostEqual(
             expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
         prev_expected_r = expected_r
+
+  def testMultiUpdateWithErrorAndSingletonBatches(self):
+    with self.test_session() as sess:
+      np.random.seed(123)
+      n = 100
+      predictions = np.random.randn(n)
+      labels = 0.5 * predictions + np.random.randn(n)
+      stride = 10
+      weights = (np.arange(n).reshape(n//stride, stride) % stride == 0)
+      for row in weights:
+        np.random.shuffle(row)
+      # Now, weights is one-hot by row - one item per batch has non-zero weight.
+      weights = weights.reshape((n,))
+
+      predictions_t = array_ops.placeholder(dtypes_lib.float32, [stride])
+      labels_t = array_ops.placeholder(dtypes_lib.float32, [stride])
+      weights_t = array_ops.placeholder(dtypes_lib.float32, [stride])
+
+      pearson_r, update_op = metrics.streaming_pearson_correlation(
+          predictions_t, labels_t, weights=weights_t)
+
+      sess.run(variables.local_variables_initializer())
+      for i in range(n // stride):
+        feed_dict = {
+            predictions_t: predictions[stride * i:stride * (i + 1)],
+            labels_t: labels[stride * i:stride * (i + 1)],
+            weights_t: weights[stride * i:stride * (i + 1)]
+        }
+        cmat = np.cov(predictions[:stride * (i + 1)],
+                      labels[:stride * (i + 1)],
+                      fweights=weights[:stride * (i + 1)])
+        expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
+        actual_r = sess.run(update_op, feed_dict=feed_dict)
+        self.assertEqual(np.isnan(expected_r), np.isnan(actual_r))
+        self.assertEqual(np.isnan(expected_r),
+                         np.isnan(sess.run(pearson_r, feed_dict=feed_dict)))
+        if not np.isnan(expected_r):
+          self.assertAlmostEqual(
+              expected_r, actual_r, 5)
+          self.assertAlmostEqual(
+              expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
 
 
 class StreamingMeanCosineDistanceTest(test.TestCase):

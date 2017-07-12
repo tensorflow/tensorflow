@@ -1,7 +1,7 @@
 # Installing TensorFlow for C
 
 TensorFlow provides a C API defined in
-[`c_api.h`](https://github.com/tensorflow/tensorflow/tree/master/c/c_api.h),
+[`c_api.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/c/c_api.h),
 which is suitable for
 [building bindings for other languages](https://www.tensorflow.org/extend/language_bindings).
 The API leans towards simplicity and uniformity rather than convenience.
@@ -35,7 +35,7 @@ enable TensorFlow for C:
          OS="linux" # Change to "darwin" for Mac OS
          TARGET_DIRECTORY="/usr/local"
          curl -L \
-           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-${OS}-x86_64-1.2.0.tar.gz" |
+           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-${OS}-x86_64-1.2.1.tar.gz" |
            sudo tar -C $TARGET_DIRECTORY -xz
 
      The `tar` command extracts the TensorFlow C library into the `lib`

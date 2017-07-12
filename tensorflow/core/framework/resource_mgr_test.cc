@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_mgr.h"
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"

@@ -67,7 +67,13 @@ HloTestBase::~HloTestBase() {
 /* static */
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+
+  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
+  debug_options.add_xla_disable_hlo_passes("constant_folding");
+
+  config.set_debug_options(debug_options);
+
   return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
                                config);
 }

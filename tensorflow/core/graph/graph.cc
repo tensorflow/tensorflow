@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -29,7 +31,7 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-struct NodeProperties {
+class NodeProperties {
  public:
   NodeProperties(const OpDef* op_def, const NodeDef& node_def,
                  const DataTypeSlice inputs, const DataTypeSlice outputs)
@@ -255,9 +257,11 @@ Status Node::input_node(int idx, const Node** const_n) const {
 // Graph
 
 Graph::Graph(const OpRegistryInterface* ops)
-    : ops_(ops, FunctionDefLibrary()), arena_(8 << 10 /* 8kB */) {
-  versions_.set_producer(TF_GRAPH_DEF_VERSION);
-  versions_.set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
+    : ops_(ops, FunctionDefLibrary()),
+      versions_(new VersionDef),
+      arena_(8 << 10 /* 8kB */) {
+  versions_->set_producer(TF_GRAPH_DEF_VERSION);
+  versions_->set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
 
   // Initialize the name interning table for assigned_device_name.
   device_names_.push_back("");
@@ -300,6 +304,9 @@ Graph::~Graph() {
   // Edges have no destructor, and we arena-allocated them, so no need to
   // destroy them.
 }
+
+const VersionDef& Graph::versions() const { return *versions_; }
+void Graph::set_versions(const VersionDef& versions) { *versions_ = versions; }
 
 Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   const OpDef* op_def;
@@ -406,35 +413,7 @@ void Graph::RemoveEdge(const Edge* e) {
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
-  for (const FunctionDef& fdef : fdef_lib.function()) {
-    const FunctionDef* preexisting_fdef = ops_.Find(fdef.signature().name());
-    if (preexisting_fdef != nullptr) {
-      if (!FunctionDefsEqual(*preexisting_fdef, fdef)) {
-        return errors::InvalidArgument(
-            "Cannot add function '", fdef.signature().name(),
-            "' because a different function with the same name already "
-            "exists.");
-      }
-      // Ignore duplicate FunctionDefs
-      continue;
-    }
-    TF_RETURN_IF_ERROR(ops_.AddFunctionDef(fdef));
-  }
-  for (const GradientDef& grad : fdef_lib.gradient()) {
-    string preexisting_grad_func = ops_.FindGradient(grad.function_name());
-    if (!preexisting_grad_func.empty()) {
-      if (preexisting_grad_func != grad.gradient_func()) {
-        return errors::InvalidArgument(
-            "Cannot assign gradient function '", grad.gradient_func(), "' to '",
-            grad.function_name(), "' because it already has gradient function ",
-            "'", preexisting_grad_func, "'");
-      }
-      // Ignore duplicate GradientDefs
-      continue;
-    }
-    TF_RETURN_IF_ERROR(ops_.AddGradientDef(grad));
-  }
-  return Status::OK();
+  return ops_.AddLibrary(fdef_lib);
 }
 
 namespace {
@@ -495,7 +474,11 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
-        node_def->add_input(node->requested_inputs()[i]);
+        if (i < node->requested_inputs().size()) {
+          node_def->add_input(node->requested_inputs()[i]);
+        } else {
+          node_def->add_input("");
+        }
       } else {
         const Node* src = edge->src();
         if (!src->IsOp()) continue;

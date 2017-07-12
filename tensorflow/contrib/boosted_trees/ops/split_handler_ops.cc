@@ -28,6 +28,7 @@ REGISTER_OP("BuildDenseInequalitySplits")
     .Attr("l2_regularization: float")
     .Attr("tree_complexity_regularization: float")
     .Attr("min_node_weight: float")
+    .Attr("multiclass_strategy: int")
     .Input("num_minibatches: int64")
     .Input("partition_ids: int32")
     .Input("bucket_ids: int64")
@@ -57,7 +58,7 @@ REGISTER_OP("BuildDenseInequalitySplits")
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
                                   c->Dim(hessians_shape, 0), &unused_dim));
       ShapeHandle bucket_boundaries_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 1, &bucket_boundaries_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 1, &bucket_boundaries_shape));
       c->set_output(0, c->Vector(c->UnknownDim()));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(c->UnknownDim()));
@@ -87,6 +88,7 @@ REGISTER_OP("BuildSparseInequalitySplits")
     .Attr("l2_regularization: float")
     .Attr("tree_complexity_regularization: float")
     .Attr("min_node_weight: float")
+    .Attr("multiclass_strategy: int")
     .Input("num_minibatches: int64")
     .Input("partition_ids: int32")
     .Input("bucket_ids: int64")
@@ -116,7 +118,7 @@ REGISTER_OP("BuildSparseInequalitySplits")
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
                                   c->Dim(hessians_shape, 0), &unused_dim));
       ShapeHandle bucket_boundaries_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 1, &bucket_boundaries_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 1, &bucket_boundaries_shape));
       c->set_output(0, c->Vector(c->UnknownDim()));
       c->set_output(1, c->Vector(c->UnknownDim()));
       c->set_output(2, c->Vector(c->UnknownDim()));
@@ -146,6 +148,7 @@ REGISTER_OP("BuildCategoricalEqualitySplits")
     .Attr("l2_regularization: float")
     .Attr("tree_complexity_regularization: float")
     .Attr("min_node_weight: float")
+    .Attr("multiclass_strategy: int")
     .Input("num_minibatches: int64")
     .Input("partition_ids: int32")
     .Input("feature_ids: int64")
@@ -195,3 +198,4 @@ split_infos: A rank 1 tensor of serialized protos which contains the
 )doc");
 
 }  // namespace tensorflow
+   // namespace tensorflow

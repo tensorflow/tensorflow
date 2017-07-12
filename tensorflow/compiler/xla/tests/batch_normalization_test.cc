@@ -211,9 +211,8 @@ class BatchNormTest : public ClientLibraryTestBase,
                       public ::testing::WithParamInterface<BatchNormTestParam> {
 };
 
-// TODO(b/62764704): Implement on GPU and CPU_PARALLEL. Disabled on 2017-06-20.
-XLA_TEST_P(BatchNormTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(RandomizedTests))) {
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_P(BatchNormTest, DISABLED_ON_GPU(RandomizedTests)) {
   float epsilon = 0.001;
   ComputationBuilder builder(client_, TestName());
   const std::vector<int64>& bounds = GetParam().bounds;
@@ -329,9 +328,8 @@ INSTANTIATE_TEST_CASE_P(
                       // is correct after relayout.
                       BatchNormTestParam{{1, 2, 3, 4}, 0, 100, 100}));
 
-// TODO(b/62764704): Implement on GPU and CPU_PARALLEL. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(BasicTraining))) {
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTraining)) {
   const int kFeatureIndex = 3;
   ComputationBuilder builder(client_, TestName());
 
@@ -355,9 +353,8 @@ XLA_TEST_F(BatchNormTest,
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU and CPU_PARALLEL. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(BasicTrainingOnSublane))) {
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(BasicTrainingOnSublane)) {
   const int kFeatureIndex = 2;
   ComputationBuilder builder(client_, TestName());
 
@@ -381,9 +378,8 @@ XLA_TEST_F(BatchNormTest,
   ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU and CPU_PARALLEL. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
-                              TrainingWithFeatureOnLowDimension))) {
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(TrainingWithFeatureOnLowDimension)) {
   // Use 0 dimension as feature, tests layout analyzer.
   const int kFeatureIndex = 0;
   ComputationBuilder builder(client_, TestName());
@@ -415,9 +411,8 @@ XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
                          ErrorSpec(0.1));
 }
 
-// TODO(b/62764704): Implement on GPU and CPU_PARALLEL. Disabled on 2017-06-20.
-XLA_TEST_F(BatchNormTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(LargeEpsilonTest))) {
+// TODO(b/62764704): Implement on GPU. Disabled on 2017-06-20.
+XLA_TEST_F(BatchNormTest, DISABLED_ON_GPU(LargeEpsilonTest)) {
   // Test the correctness of choosing a large epsilon value.
   const int kFeatureIndex = 2;
   ComputationBuilder builder(client_, TestName());

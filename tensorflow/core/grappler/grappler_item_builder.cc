@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variable.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -187,7 +189,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           shape_proto.add_dim()->set_size(
               cfg.placeholder_unknown_output_shape_dim);
         } else {
-          dims.push_back(dim_proto.size());
+          dims.push_back(std::max<int32>(1, dim_proto.size()));
           shape_proto.add_dim()->set_size(dim_proto.size());
         }
       }

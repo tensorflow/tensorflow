@@ -315,7 +315,7 @@ class TensorForestEstimator(estimator.Estimator):
         though training might be distributed.
       version: String indicating TensorForest version to use, for backward
         compatibility. Either 'v2', 'v4', or None to let system pick.
-        Overrides grpah_builder_class.
+        Overrides graph_builder_class.
 
     Returns:
       A `TensorForestEstimator` instance.

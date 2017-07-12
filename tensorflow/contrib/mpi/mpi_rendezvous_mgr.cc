@@ -44,7 +44,8 @@ MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env)
 
   // extract worker-name
   auto parsed = env->local_devices[0]->parsed_name();
-  const std::string task_id = strings::StrCat(parsed.job, ":", parsed.replica);
+  const std::string task_id =
+      strings::StrCat(parsed.job, ":", parsed.replica, ":", parsed.task);
 
   mpiutils_ = new MPIUtils(task_id);
   background_thread_ =
@@ -66,8 +67,8 @@ void MPIRemoteRendezvous::RecvFromRemoteAsync(
   VLOG(2) << "MPI User requested " << parsed.FullKey()
           << " @ step: " << step_id_;
 
-  std::string src_task =
-      strings::StrCat(parsed.src.job, ":", parsed.src.replica);
+  std::string src_task = strings::StrCat(
+      parsed.src.job, ":", parsed.src.replica, ":", parsed.src.task);
   const int dst = mpiutils_->GetSourceID(src_task);
 
   Device* dst_device;
@@ -138,11 +139,7 @@ void MPIRemoteRendezvous::RecvFromRemoteAsync(
                     std::move(request_call), rendezvous_call);
 }
 
-MPIRemoteRendezvous::~MPIRemoteRendezvous() {
-  MPIRendezvousMgr* mgr =
-      reinterpret_cast<MPIRendezvousMgr*>(this->rendezvous_mgr_);
-  mgr->RemoveStepID(step_id_);
-}
+MPIRemoteRendezvous::~MPIRemoteRendezvous() {}
 
 /*
  * Add the request for one of our Tensors by a remote process

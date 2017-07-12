@@ -77,7 +77,7 @@ void TestClassificationNormalUse(const std::unique_ptr<LeafModelOperator>& op) {
   std::vector<float> labels = {1, 0, 1};
   std::vector<float> weights = {2.3, 20.3, 1.1};
   std::unique_ptr<TestableInputTarget> target(
-      new TestableInputTarget(&labels, &weights, 1));
+      new TestableInputTarget(labels, weights, 1));
 
   // Update and check value.
   op->UpdateModel(leaf.get(), target.get(), 0);

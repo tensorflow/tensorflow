@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -36,6 +35,9 @@ namespace xla {
 struct HloLocation {
   HloInstruction* instruction;
   ShapeIndex index;
+
+  // Returns the shape at this location.
+  const Shape& shape() const;
 
   string ToString() const;
 
@@ -99,8 +101,8 @@ class HloValue {
   // is_phi is true, then this value is a phi value, for example, at the
   // parameter of a while body computation. Phi values are only used in the SSA
   // dataflow analysis (HloDataflowAnalysis::ssa_form_ is true).
-  HloValue(HloValue::Id id, HloInstruction* instruction,
-           const ShapeIndex& index, bool is_phi = false);
+  HloValue(Id id, HloInstruction* instruction, const ShapeIndex& index,
+           bool is_phi = false);
 
   // Return a unique identifier for this HloValue. This value is used for stable
   // sorting and iteration
@@ -120,6 +122,9 @@ class HloValue {
   // Return the shape index at which this HloValue is defined in the output of
   // its defining instruction.
   const ShapeIndex& defining_index() const { return defining_location().index; }
+
+  // Return the shape of this HloValue.
+  const Shape& shape() const { return defining_location().shape(); }
 
   // Add or remove a location at which the HloValue appears. The definition
   // location can not be removed. The uses of the HloValue are updated.

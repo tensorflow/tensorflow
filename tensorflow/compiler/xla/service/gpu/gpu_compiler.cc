@@ -264,7 +264,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(), kMemoryAlignment));
+                          BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
+                            return kMemoryAlignment;
+                          }));
 
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();

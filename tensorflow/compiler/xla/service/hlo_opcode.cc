@@ -19,6 +19,13 @@ limitations under the License.
 namespace xla {
 
 string HloOpcodeString(HloOpcode opcode) {
+  // Note: Do not use ':' in opcode strings. It is used as a special character
+  // in these places:
+  // - In extended opcode strings (HloInstruction::ExtendedOpcodeString()), to
+  //   separate the opcode from the fusion kind
+  // - In fully qualified names (HloInstruction::FullyQualifiedName()), to
+  //   separate the qualifiers (name of the computation and potentially the
+  //   fusion instruction) from the name
   switch (opcode) {
     case HloOpcode::kAbs:
       return "abs";
@@ -26,6 +33,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "add";
     case HloOpcode::kBatchNormTraining:
       return "batch-norm-training";
+    case HloOpcode::kBatchNormGrad:
+      return "batch-norm-grad";
     case HloOpcode::kBitcast:
       return "bitcast";
     case HloOpcode::kBroadcast:

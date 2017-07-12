@@ -1,3 +1,9 @@
+# Release 1.2.1
+
+## Bug Fixes and Other Changes
+* Updating markdown version required to >= 2.6.8.
+* Support tensors as dropout rates again, by removing the min(max(..))
+
 # Release 1.2.0
 
 ## Major Features and Improvements

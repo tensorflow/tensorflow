@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_ops.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
@@ -334,6 +335,8 @@ class ScatterNdUpdateOp : public OpKernel {
         functor::DenseUpdate<Device, T, ASSIGN> copy;
         const Tensor& input_copy = c->input(0);
         copy(c->eigen_device<Device>(), params.flat<T>(), input_copy.flat<T>());
+      } else {
+        params = *params_ptr;
       }
     }
 

@@ -56,13 +56,8 @@ struct TF_Library {
 };
 
 struct TF_Graph {
-  TF_Graph()
-      : graph(tensorflow::OpRegistry::Global()),
-        refiner(graph.versions().producer(), graph.op_registry()),
-        num_sessions(0),
-        delete_requested(false),
-        parent(nullptr),
-        parent_inputs(nullptr) {}
+  TF_Graph();
+
   tensorflow::mutex mu;
   tensorflow::Graph graph GUARDED_BY(mu);
 

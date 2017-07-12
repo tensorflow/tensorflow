@@ -42,7 +42,7 @@ public interface Input {
    * <p>Inputs to TensorFlow operations are outputs of another TensorFlow operation. This method is
    * used to obtain a symbolic handle that represents the computation of the input.
    *
-   * @see {@link OperationBuilder#addInput(Output)}.
+   * @see OperationBuilder#addInput(Output)
    */
   Output asOutput();
 }

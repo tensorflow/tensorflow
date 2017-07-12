@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -215,11 +214,12 @@ XLA_TEST_P(ReducePrecisionTest, ReducePrecisionF32) {
     // Add positive values.
     input_values.push_back(tensorflow::bit_cast<float>(test_value[0]));
     expected_values.push_back(tensorflow::bit_cast<float>(test_value[index]));
-    // Add negative values.  We do this in the
+    // Add negative values.  We do this in the bitwise representation so as to
+    // avoid problems with NaN handling.
     input_values.push_back(
-        tensorflow::bit_cast<float>(test_value[0] & sign_bit));
+        tensorflow::bit_cast<float>(test_value[0] ^ sign_bit));
     expected_values.push_back(
-        tensorflow::bit_cast<float>(test_value[index] & sign_bit));
+        tensorflow::bit_cast<float>(test_value[index] ^ sign_bit));
   }
 
   // This is required for proper handling of NaN values.
@@ -247,7 +247,6 @@ INSTANTIATE_TEST_CASE_P(ReducePrecisionTest, ReducePrecisionTest,
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendUserComputationFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

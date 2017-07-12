@@ -167,9 +167,12 @@ limitations under the License.
 // Call "m" on POD and string types.
 #define TF_CALL_POD_STRING_TYPES(m) TF_CALL_POD_TYPES(m) TF_CALL_string(m)
 
-// Call "m" on all types supported on GPU.
+// Call "m" on all number types supported on GPU.
 #define TF_CALL_GPU_NUMBER_TYPES(m) \
   TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
+
+// Call "m" on all types supported on GPU.
+#define TF_CALL_GPU_ALL_TYPES(m) TF_CALL_GPU_NUMBER_TYPES(m) TF_CALL_bool(m)
 
 #define TF_CALL_GPU_NUMBER_TYPES_NO_HALF(m) TF_CALL_float(m) TF_CALL_double(m)
 

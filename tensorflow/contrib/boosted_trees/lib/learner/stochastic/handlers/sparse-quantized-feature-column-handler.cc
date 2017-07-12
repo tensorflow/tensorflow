@@ -109,7 +109,7 @@ void SparseQuantizedFeatureColumnHandler::GenerateFeatureSplitCandidates(
       NodeStats left_node_stats(learner_config, left_gradient_stats);
       NodeStats right_node_stats(learner_config, right_gradient_stats);
 
-      // Generate split candiate.
+      // Generate split candidate.
       const float threshold = sparse_quantiles_(bucket_id);
       FeatureSplitCandidate split_candidate(
           slot_id_,
@@ -124,7 +124,7 @@ void SparseQuantizedFeatureColumnHandler::GenerateFeatureSplitCandidates(
 
     // Determine if we need a backward pass by checking if the residual gradient
     // after forward aggregation is almost the same as the aggregated gradient.
-    // for the current root. This helps avoid unecessary computation as well
+    // for the current root. This helps avoid unnecessary computation as well
     // as consistency due to floating point precision.
     if (!right_gradient_stats.IsAlmostZero()) {
       // Backward pass with left default direction.
@@ -147,7 +147,7 @@ void SparseQuantizedFeatureColumnHandler::GenerateFeatureSplitCandidates(
         NodeStats left_node_stats(learner_config, left_gradient_stats);
         NodeStats right_node_stats(learner_config, right_gradient_stats);
 
-        // Generate split candiate.
+        // Generate split candidate.
         const float threshold = sparse_quantiles_(bucket_id - 1);
         FeatureSplitCandidate split_candidate(
             slot_id_,

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -149,10 +150,10 @@ TEST_F(XlaCompilerTest, Simple) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = TensorShape({2});
+  args[1].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -201,21 +202,21 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
+  XlaCompiler::Options options = DefaultOptions();
+  XlaCompiler compiler(options);
   {
     // Compiles the graph, with resolve_compile_time_constants enabled.
-    XlaCompiler::Options options = DefaultOptions();
-    options.resolve_compile_time_constants = true;
-    XlaCompiler compiler(options);
 
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.resolve_compile_time_constants = true;
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
-                                       "constants", std::move(graph_copy), args,
-                                       &result));
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
+                                       std::move(graph_copy), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_TRUE(result.outputs[0].is_constant);
@@ -242,17 +243,14 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
   {
     // Compiles the graph, with resolve_compile_time_constants disabled.
-    XlaCompiler::Options options = DefaultOptions();
-    options.resolve_compile_time_constants = false;
-    XlaCompiler compiler(options);
-
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.resolve_compile_time_constants = false;
     XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(),
-                                       "constants", std::move(graph_copy), args,
-                                       &result));
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
+                                       std::move(graph_copy), args, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_FALSE(result.outputs[0].is_constant);
@@ -293,7 +291,7 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
 
   DummyResourceForTest* resource = new DummyResourceForTest();
 

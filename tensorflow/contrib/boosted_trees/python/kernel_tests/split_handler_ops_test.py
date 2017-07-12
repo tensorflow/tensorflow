@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.boosted_trees.proto import split_info_pb2
 from tensorflow.contrib.boosted_trees.python.ops import split_handler_ops
 from tensorflow.python.framework import dtypes
@@ -53,7 +54,8 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               l2_regularization=1,
               tree_complexity_regularization=0,
               min_node_weight=0,
-              feature_column_group_id=0))
+              feature_column_group_id=0,
+              multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = sess.run([partitions, gains, splits])
     self.assertAllEqual([0, 1], partitions)
 
@@ -102,6 +104,45 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, split_node.feature_column)
     self.assertAllClose(0.52, split_node.threshold, 0.00001)
 
+  def testMakeMulticlassDenseSplit(self):
+    """Tests split handler op."""
+    with self.test_session() as sess:
+      partition_ids = array_ops.constant([0, 0, 1], dtype=dtypes.int32)
+      bucket_ids = array_ops.constant([0, 1, 1], dtype=dtypes.int64)
+      gradients = array_ops.constant([[2.4, 3.0], [-0.6, 0.1], [8.0, 1.0]])
+      hessians = array_ops.constant([[[0.4, 1], [1, 1]], [[0.38, 1], [1, 1]],
+                                     [[0.26, 1], [1, 1]]])
+      bucket_boundaries = [0.3, 0.52]
+      partitions, gains, splits = (
+          split_handler_ops.build_dense_inequality_splits(
+              num_minibatches=2,
+              partition_ids=partition_ids,
+              bucket_ids=bucket_ids,
+              gradients=gradients,
+              hessians=hessians,
+              bucket_boundaries=bucket_boundaries,
+              l1_regularization=0,
+              l2_regularization=1,
+              tree_complexity_regularization=0,
+              min_node_weight=0,
+              feature_column_group_id=0,
+              multiclass_strategy=learner_pb2.LearnerConfig.FULL_HESSIAN))
+      partitions, gains, splits = sess.run([partitions, gains, splits])
+    self.assertAllEqual([0, 1], partitions)
+
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[0])
+
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.dense_float_binary_split
+
+    # Each leaf has 2 element vector.
+    self.assertEqual(2, len(left_child.value))
+    self.assertEqual(2, len(right_child.value))
+    self.assertEqual(0, split_node.feature_column)
+    self.assertAllClose(0.3, split_node.threshold, 1e-6)
+
   def testMakeDenseSplitEmptyInputs(self):
     """Tests empty inputs op."""
     with self.test_session() as sess:
@@ -122,7 +163,8 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               l2_regularization=1,
               tree_complexity_regularization=0,
               min_node_weight=0,
-              feature_column_group_id=0))
+              feature_column_group_id=0,
+              multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = sess.run([partitions, gains, splits])
     # .assertEmpty doesn't exist on ubuntu-contrib
     self.assertEqual(0, len(partitions))
@@ -157,7 +199,8 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               tree_complexity_regularization=0,
               min_node_weight=0,
               feature_column_group_id=0,
-              bias_feature_id=-1))
+              bias_feature_id=-1,
+              multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = (sess.run([partitions, gains, splits]))
     self.assertAllEqual([0, 1], partitions)
     # Check the split on partition 0.
@@ -209,6 +252,53 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(0.52, split_node.split.threshold)
 
+  def testMakeMulticlassSparseSplit(self):
+    """Tests split handler op."""
+    with self.test_session() as sess:
+      partition_ids = array_ops.constant([0, 0, 0, 1, 1], dtype=dtypes.int32)
+    bucket_ids = array_ops.constant([-1, 0, 1, -1, 1], dtype=dtypes.int64)
+    gradients = array_ops.constant([[1.8, 3.5], [2.4, 1.0], [0.4, 4.0],
+                                    [8.0, 3.1], [8.0, 0.8]])
+
+    hessian_0 = [[0.78, 1], [12, 1]]
+    hessian_1 = [[0.4, 1], [1, 1]]
+    hessian_2 = [[0.24, 1], [1, 1]]
+    hessian_3 = [[0.26, 1], [1, 1]]
+    hessian_4 = [[0.26, 1], [1, 1]]
+
+    hessians = array_ops.constant(
+        [hessian_0, hessian_1, hessian_2, hessian_3, hessian_4])
+    bucket_boundaries = array_ops.constant([0.3, 0.52])
+    partitions, gains, splits = (
+        split_handler_ops.build_sparse_inequality_splits(
+            num_minibatches=2,
+            partition_ids=partition_ids,
+            bucket_ids=bucket_ids,
+            gradients=gradients,
+            hessians=hessians,
+            bucket_boundaries=bucket_boundaries,
+            l1_regularization=0,
+            l2_regularization=2,
+            tree_complexity_regularization=0,
+            min_node_weight=0,
+            feature_column_group_id=0,
+            bias_feature_id=-1,
+            multiclass_strategy=learner_pb2.LearnerConfig.FULL_HESSIAN))
+    partitions, gains, splits = (sess.run([partitions, gains, splits]))
+
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[0])
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.sparse_float_binary_split_default_right
+
+    # Each leaf has 2 element vector.
+    self.assertEqual(2, len(left_child.value))
+    self.assertEqual(2, len(right_child.value))
+
+    self.assertEqual(0, split_node.split.feature_column)
+    self.assertAllClose(0.52, split_node.split.threshold)
+
   def testMakeCategoricalEqualitySplit(self):
     """Tests split handler op for categorical equality split."""
     with self.test_session() as sess:
@@ -235,7 +325,8 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               tree_complexity_regularization=0,
               min_node_weight=0,
               feature_column_group_id=0,
-              bias_feature_id=-1))
+              bias_feature_id=-1,
+              multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = sess.run([partitions, gains, splits])
     self.assertAllEqual([0, 1], partitions)
 
@@ -300,6 +391,52 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(1, split_node.feature_id)
 
+  def testMakeMulticlassCategoricalEqualitySplit(self):
+    """Tests split handler op for categorical equality split in multiclass."""
+    with self.test_session() as sess:
+      gradients = array_ops.constant([[1.8, 3.5], [2.4, 1.0], [0.4, 4.0],
+                                      [9.0, 3.1], [3.0, 0.8]])
+
+      hessian_0 = [[0.78, 1], [12, 1]]
+      hessian_1 = [[0.4, 1], [1, 1]]
+      hessian_2 = [[0.24, 1], [1, 1]]
+      hessian_3 = [[0.16, 2], [-1, 1]]
+      hessian_4 = [[0.6, 1], [2, 1]]
+
+      hessians = array_ops.constant(
+          [hessian_0, hessian_1, hessian_2, hessian_3, hessian_4])
+      partition_ids = [0, 0, 0, 1, 1]
+      feature_ids = array_ops.constant([-1, 1, 2, -1, 1], dtype=dtypes.int64)
+      partitions, gains, splits = (
+          split_handler_ops.build_categorical_equality_splits(
+              num_minibatches=2,
+              partition_ids=partition_ids,
+              feature_ids=feature_ids,
+              gradients=gradients,
+              hessians=hessians,
+              l1_regularization=0.1,
+              l2_regularization=1,
+              tree_complexity_regularization=0,
+              min_node_weight=0,
+              feature_column_group_id=0,
+              bias_feature_id=-1,
+              multiclass_strategy=learner_pb2.LearnerConfig.FULL_HESSIAN))
+      partitions, gains, splits = sess.run([partitions, gains, splits])
+    self.assertAllEqual([0, 1], partitions)
+
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[1])
+    left_child = split_info.left_child.vector
+    right_child = split_info.right_child.vector
+    split_node = split_info.split_node.categorical_id_binary_split
+
+    # Each leaf has 2 element vector.
+    self.assertEqual(2, len(left_child.value))
+    self.assertEqual(2, len(right_child.value))
+
+    self.assertEqual(0, split_node.feature_column)
+    self.assertEqual(1, split_node.feature_id)
+
   def testMakeCategoricalEqualitySplitEmptyInput(self):
     with self.test_session() as sess:
       gradients = []
@@ -318,7 +455,8 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               tree_complexity_regularization=0,
               min_node_weight=0,
               feature_column_group_id=0,
-              bias_feature_id=-1))
+              bias_feature_id=-1,
+              multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = (sess.run([partitions, gains, splits]))
     self.assertEqual(0, len(partitions))
     self.assertEqual(0, len(gains))

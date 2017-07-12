@@ -979,16 +979,13 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   half h1(1.0f);
   half h2(2.0f);
 
-  const char half_vals[8] = {
-    0x00, 0x3C, 0x00, 0x40, 0x00, 0x40, 0x00, 0x3C
-  };
+  const char half_vals[8] = {0x00, 0x3C, 0x00, 0x40, 0x00, 0x40, 0x00, 0x3C};
   LiteralProto p;
   p.mutable_shape()->set_element_type(F16);
   p.mutable_shape()->clear_dimensions();
   p.mutable_shape()->add_dimensions(4);
   p.clear_f16s();
   p.set_f16s(half_vals, 8);
-
 
   Literal literal(p);
   ASSERT_EQ(4, literal.f16s_size());
@@ -1004,7 +1001,6 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   ASSERT_EQ(h2, r[2]);
   ASSERT_EQ(h1, r[3]);
 }
-
 
 }  // namespace
 }  // namespace xla

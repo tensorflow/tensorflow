@@ -107,9 +107,10 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override;
+  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
-  Status HandleOutfeed(HloInstruction* infeed) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
@@ -286,7 +287,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Emit IR to compute the target address of the buffer for the given op.
   // The returned Value is a pointer to a IR type that represents the op's
   // element type.
-  StatusOr<llvm::Value*> EmitTargetAddressForOp(const HloInstruction* op);
+  StatusOr<llvm::Value*> EmitTargetAddressForOp(
+      const HloInstruction* op, const ShapeIndex& shape_index = {});
 
   // Structurizes "array_elements" into an MD array that represents "shape".
   // This is a recursive function, and "dimension_index" indicates the index of
@@ -422,6 +424,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
+
+  enum class XfeedKind {
+    kInfeed,
+    kOutfeed,
+  };
+
+  // Emit IR to transfer between a {infeed,outfeed} buffer and an in-program
+  // address.
+  Status EmitXfeedTransfer(XfeedKind kind, int64 length,
+                           llvm::Value* program_buffer_address);
 
   const HloModuleConfig& hlo_module_config_;
 

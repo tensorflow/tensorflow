@@ -326,11 +326,11 @@ cc_library(
     name = "cpu_runtime",
     srcs = [
         "cpu_runtime.cc",
-        "infeed_manager.cc",
+        "xfeed_manager.cc",
     ],
     hdrs = [
         "cpu_runtime.h",
-        "infeed_manager.h",
+        "xfeed_manager.h",
     ],
     copts = runtime_copts(),
     deps = [
@@ -416,9 +416,9 @@ cc_test(
 )
 
 cc_test(
-    name = "infeed_manager_test",
+    name = "xfeed_manager_test",
     size = "small",
-    srcs = ["infeed_manager_test.cc"],
+    srcs = ["xfeed_manager_test.cc"],
     deps = [
         ":cpu_runtime",
         "//tensorflow/core:lib",

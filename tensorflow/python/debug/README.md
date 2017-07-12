@@ -29,7 +29,7 @@ models:
 * Easy access through session wrappers
 * Easy integration with common high-level APIs, such as
   [tf-learn](https://www.tensorflow.org/get_started/tflearn) and
-  [Keras](keras)
+  [Keras](https://keras.io/)
 * Inspection of runtime tensor values and node connections
 * Conditional breaking after runs that generate tensors satisfying given
   predicates, which makes common debugging tasks such as tracing the origin

@@ -39,10 +39,11 @@ class GraphProperties {
   Status InferDynamically(Cluster* cluster);
   Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
+  bool HasInputProperties(const string& name) const;
   bool HasOutputProperties(const string& name) const;
-  std::vector<OpInfo::TensorProperties> GetInputProperties(
+  const std::vector<OpInfo::TensorProperties>& GetInputProperties(
       const string& node_name) const;
-  std::vector<OpInfo::TensorProperties> GetOutputProperties(
+  const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
       const string& node_name) const;
 
  private:
@@ -50,6 +51,7 @@ class GraphProperties {
   GrapplerItem item_;
   std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
   std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
+  const std::vector<OpInfo::TensorProperties> missing_properties_;
 
   // Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.

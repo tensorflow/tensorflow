@@ -599,6 +599,162 @@ class Conv2DTranspose(tf_convolutional_layers.Conv2DTranspose, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+class Conv3DTranspose(tf_convolutional_layers.Conv3D, Layer):
+  """Transposed convolution layer (sometimes called Deconvolution).
+
+  The need for transposed convolutions generally arises
+  from the desire to use a transformation going in the opposite direction
+  of a normal convolution, i.e., from something that has the shape of the
+  output of some convolution to something that has the shape of its input
+  while maintaining a connectivity pattern that is compatible with
+  said convolution.
+
+  When using this layer as the first layer in a model,
+  provide the keyword argument `input_shape`
+  (tuple of integers, does not include the sample axis),
+  e.g. `input_shape=(128, 128, 128, 3)` for a 128x128x128 volume with 3 channels
+  if `data_format="channels_last"`.
+
+  Arguments:
+      filters: Integer, the dimensionality of the output space
+          (i.e. the number of output filters in the convolution).
+      kernel_size: An integer or tuple/list of 3 integers, specifying the
+          width and height of the 3D convolution window.
+          Can be a single integer to specify the same value for
+          all spatial dimensions.
+      strides: An integer or tuple/list of 3 integers,
+          specifying the strides of the convolution along the width and height.
+          Can be a single integer to specify the same value for
+          all spatial dimensions.
+          Specifying any stride value != 1 is incompatible with specifying
+          any `dilation_rate` value != 1.
+      padding: one of `"valid"` or `"same"` (case-insensitive).
+      data_format: A string,
+          one of `channels_last` (default) or `channels_first`.
+          The ordering of the dimensions in the inputs.
+          `channels_last` corresponds to inputs with shape
+          `(batch, depth, height, width, channels)` while `channels_first`
+          corresponds to inputs with shape
+          `(batch, channels, depth, height, width)`.
+          It defaults to the `image_data_format` value found in your
+          Keras config file at `~/.keras/keras.json`.
+          If you never set it, then it will be "channels_last".
+      dilation_rate: an integer or tuple/list of 3 integers, specifying
+          the dilation rate to use for dilated convolution.
+          Can be a single integer to specify the same value for
+          all spatial dimensions.
+          Currently, specifying any `dilation_rate` value != 1 is
+          incompatible with specifying any stride value != 1.
+      activation: Activation function to use
+          (see [activations](../activations.md)).
+          If you don't specify anything, no activation is applied
+          (ie. "linear" activation: `a(x) = x`).
+      use_bias: Boolean, whether the layer uses a bias vector.
+      kernel_initializer: Initializer for the `kernel` weights matrix
+          (see [initializers](../initializers.md)).
+      bias_initializer: Initializer for the bias vector
+          (see [initializers](../initializers.md)).
+      kernel_regularizer: Regularizer function applied to
+          the `kernel` weights matrix
+          (see [regularizer](../regularizers.md)).
+      bias_regularizer: Regularizer function applied to the bias vector
+          (see [regularizer](../regularizers.md)).
+      activity_regularizer: Regularizer function applied to
+          the output of the layer (its "activation").
+          (see [regularizer](../regularizers.md)).
+      kernel_constraint: Constraint function applied to the kernel matrix
+          (see [constraints](../constraints.md)).
+      bias_constraint: Constraint function applied to the bias vector
+          (see [constraints](../constraints.md)).
+
+  Input shape:
+      5D tensor with shape:
+      `(batch, channels, depth, rows, cols)` if data_format='channels_first'
+      or 5D tensor with shape:
+      `(batch, depth, rows, cols, channels)` if data_format='channels_last'.
+
+  Output shape:
+      5D tensor with shape:
+      `(batch, filters, new_depth, new_rows, new_cols)` if
+        data_format='channels_first'
+      or 5D tensor with shape:
+      `(batch, new_depth, new_rows, new_cols, filters)` if
+        data_format='channels_last'.
+      `depth` and `rows` and `cols` values might have changed due to padding.
+
+  References:
+      - [A guide to convolution arithmetic for deep
+        learning](https://arxiv.org/abs/1603.07285v1)
+      - [Deconvolutional
+        Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf)
+  """
+
+  def __init__(self,
+               filters,
+               kernel_size,
+               strides=(1, 1, 1),
+               padding='valid',
+               data_format=None,
+               activation=None,
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               bias_initializer='zeros',
+               kernel_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               kernel_constraint=None,
+               bias_constraint=None,
+               **kwargs):
+    if data_format is None:
+      data_format = K.image_data_format()
+    super(Conv3DTranspose, self).__init__(
+        filters=filters,
+        kernel_size=kernel_size,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        activation=activations.get(activation),
+        use_bias=use_bias,
+        kernel_initializer=initializers.get(kernel_initializer),
+        bias_initializer=initializers.get(bias_initializer),
+        kernel_regularizer=regularizers.get(kernel_regularizer),
+        bias_regularizer=regularizers.get(bias_regularizer),
+        activity_regularizer=regularizers.get(activity_regularizer),
+        **kwargs)
+    # TODO(fchollet): move weight constraint support to core layers.
+    self.kernel_constraint = constraints.get(kernel_constraint)
+    self.bias_constraint = constraints.get(bias_constraint)
+
+  def build(self, input_shape):
+    super(Conv3DTranspose, self).build(input_shape)
+    # TODO(fchollet): move weight constraint support to core layers.
+    if self.kernel_constraint:
+      self.constraints[self.kernel] = self.kernel_constraint
+    if self.use_bias and self.bias_constraint:
+      self.constraints[self.bias] = self.bias_constraint
+
+  def get_config(self):
+    config = {
+        'filters': self.filters,
+        'kernel_size': self.kernel_size,
+        'strides': self.strides,
+        'padding': self.padding,
+        'data_format': self.data_format,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
+        'activity_regularizer':
+            regularizers.serialize(self.activity_regularizer),
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
+    }
+    base_config = super(Conv3DTranspose, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
 class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
   """Depthwise separable 2D convolution.
 
@@ -976,7 +1132,7 @@ class ZeroPadding1D(Layer):
 class ZeroPadding2D(Layer):
   """Zero-padding layer for 2D input (e.g. picture).
 
-  This layer can add rows and columns or zeros
+  This layer can add rows and columns of zeros
   at the top, bottom, left and right side of an image tensor.
 
   Arguments:
@@ -1551,3 +1707,4 @@ Convolution3D = Conv3D
 SeparableConvolution2D = SeparableConv2D
 Convolution2DTranspose = Conv2DTranspose
 Deconvolution2D = Deconv2D = Conv2DTranspose
+Deconvolution3D = Deconv3D = Conv3DTranspose

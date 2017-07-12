@@ -155,20 +155,21 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      compile_layer_(
-          object_layer_,
-          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
-                          GetAvailableIntrinsics(), pre_optimization_callback,
-                          post_optimization_callback)) {
+      object_layer_(
+          [] { return std::make_shared<llvm::SectionMemoryManager>(); }),
+      compile_layer_(object_layer_,
+                     CompilerFunctor(target_machine_.get(), &disassembler_,
+                                     opt_level, GetAvailableIntrinsics(),
+                                     std::move(pre_optimization_callback),
+                                     std::move(post_optimization_callback))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
 
 SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
-  auto handle = compile_layer_.addModule(
-      std::move(module), MakeUnique<llvm::SectionMemoryManager>(),
-      MakeUnique<SimpleResolver>());
+  auto handle = cantFail(compile_layer_.addModule(
+      std::move(module), MakeUnique<SimpleResolver>()));
   module_handles_.push_back(handle);
   return handle;
 }
@@ -177,7 +178,7 @@ void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::ModuleHandleT handle) {
   module_handles_.erase(
       std::remove(module_handles_.begin(), module_handles_.end(), handle),
       module_handles_.end());
-  compile_layer_.removeModule(handle);
+  cantFail(compile_layer_.removeModule(handle));
 }
 
 llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string &name) {

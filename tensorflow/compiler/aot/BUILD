@@ -127,9 +127,7 @@ cc_library(
     deps = [
         ":tfcompile_lib",
         ":tfcompile_proto",
-        "//tensorflow/compiler/xla/legacy_flags:buffer_assignment_flags",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
         "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/compiler/xla/legacy_flags:util_flags",
         "//tensorflow/compiler/xla/service:compiler",
@@ -158,11 +156,34 @@ tf_library(
 )
 
 # A test of tf_library that includes a graph with an unknown op, but where
-# the compilation works because the the unknown op is not needed for the fetches.
+# the compilation works because the unknown op is not needed for the fetches.
 tf_library(
     name = "test_graph_tfunknownop",
     testonly = 1,
     config = "test_graph_tfunknownop.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
+    tags = ["manual"],
+)
+
+# A test of tf_library that includes a graph with an unknown op, but where
+# the compilation works because the op between the unknown op and the
+# fetches is a feed.
+tf_library(
+    name = "test_graph_tfunknownop2",
+    testonly = 1,
+    config = "test_graph_tfunknownop2.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
+    tags = ["manual"],
+)
+
+# A test of tf_library that includes a graph with an unknown op, but where
+# the compilation works because the unknown op is fed.
+tf_library(
+    name = "test_graph_tfunknownop3",
+    testonly = 1,
+    config = "test_graph_tfunknownop3.config.pbtxt",
     cpp_class = "UnknownOpAddComp",
     graph = "test_graph_tfunknownop.pbtxt",
     tags = ["manual"],

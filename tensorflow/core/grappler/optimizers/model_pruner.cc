@@ -33,6 +33,9 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const auto& node : item.fetch) {
     nodes_to_preserve.insert(NodeName(node));
   }
+  for (const auto& feed : item.feed) {
+    nodes_to_preserve.insert(NodeName(feed.first));
+  }
   for (const auto& node : item.init_ops) {
     nodes_to_preserve.insert(NodeName(node));
   }
@@ -48,20 +51,24 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
     }
-    // Don't remove nodes that are explicitly placed.
-    if (!node.device().empty()) {
-      continue;
-    }
     // Don't remove nodes that drive control dependencies.
     // Don't remove nodes that are driven by control dependencies either since
     // we can't ensure (yet) that we won't increase the number of control
     // dependency edges by deleting them (for example, removing a node driven by
     // 10 control edges and driving 10 control edges would result in the
     // creation of 100 edges).
+    // Don't modify nodes that are connected to functions since that can result
+    // in inlining failures later on.
     if (!rewriter.DrivesControlDependency(node) &&
-        !rewriter.IsDrivenByControlDependency(node)) {
+        !rewriter.IsDrivenByControlDependency(node) &&
+        !rewriter.IsConnectedToFunction(node)) {
       nodes_to_delete.insert(&node);
     }
+  }
+
+  if (nodes_to_delete.empty()) {
+    *pruned_graph = item.graph;
+    return Status::OK();
   }
 
   for (auto& node : item.graph.node()) {

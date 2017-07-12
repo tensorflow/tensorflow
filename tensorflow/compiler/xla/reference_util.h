@@ -149,19 +149,26 @@ class ReferenceUtil {
   static int64 WindowCount(int64 unpadded_width, int64 window_len, int64 stride,
                            Padding padding);
 
-  // Performs a 2D window reduction with Add as the function to apply.
+  // Windowed reductions with Add as the function to apply.
+  static std::unique_ptr<std::vector<float>> ReduceWindow1DAdd(
+      const tensorflow::gtl::ArraySlice<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
   static std::unique_ptr<Array2D<float>> ReduceWindow2DAdd(
       const Array2D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
-
-  // Performs a 4D window reduction with Add as the function to apply.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
 
-  // Performs a 4D window reduction with a generic reduce function.
+  // Windowed reductions with a generic reduce function.
+  static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
+      const tensorflow::gtl::ArraySlice<float>& operand, float init,
+      const std::function<float(float, float)>& reduce_func,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,

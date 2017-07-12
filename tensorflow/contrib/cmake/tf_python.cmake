@@ -122,6 +122,7 @@ endfunction()
 
 file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
+    "${tensorflow_source_dir}/tensorflow/core/profiler/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/decision_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
@@ -137,6 +138,7 @@ RELATIVE_PROTOBUF_GENERATE_PYTHON(
 # can cause benign-but-failing-on-Windows-due-to-file-locking conflicts
 # when two rules attempt to generate the same file.
 file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
+    "${tensorflow_source_dir}/tensorflow/core/profiler/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
@@ -225,6 +227,8 @@ add_python_module("tensorflow/python/ops/losses")
 add_python_module("tensorflow/python/platform")
 add_python_module("tensorflow/python/platform/default")
 add_python_module("tensorflow/python/platform/summary")
+add_python_module("tensorflow/python/profiler/")
+add_python_module("tensorflow/python/profiler/internal")
 add_python_module("tensorflow/python/saved_model")
 add_python_module("tensorflow/python/summary")
 add_python_module("tensorflow/python/summary/writer")
@@ -254,6 +258,9 @@ add_python_module("tensorflow/contrib/cloud/kernels")
 add_python_module("tensorflow/contrib/cloud/ops")
 add_python_module("tensorflow/contrib/cloud/python")
 add_python_module("tensorflow/contrib/cloud/python/ops")
+add_python_module("tensorflow/contrib/cluster_resolver")
+add_python_module("tensorflow/contrib/cluster_resolver/python")
+add_python_module("tensorflow/contrib/cluster_resolver/python/training")
 add_python_module("tensorflow/contrib/compiler")
 add_python_module("tensorflow/contrib/copy_graph")
 add_python_module("tensorflow/contrib/copy_graph/python")
@@ -523,10 +530,13 @@ add_python_module("tensorflow/contrib/text/kernels")
 add_python_module("tensorflow/contrib/text/ops")
 add_python_module("tensorflow/contrib/text/python")
 add_python_module("tensorflow/contrib/text/python/ops")
-add_python_module("tensorflow/contrib/tfprof" DONTCOPY)  # SWIG wrapper not implemented.
-#add_python_module("tensorflow/contrib/tfprof/python")
-#add_python_module("tensorflow/contrib/tfprof/python/tools")
-#add_python_module("tensorflow/contrib/tfprof/python/tools/tfprof")
+add_python_module("tensorflow/contrib/tfprof")
+add_python_module("tensorflow/contrib/timeseries")
+add_python_module("tensorflow/contrib/timeseries/examples")
+add_python_module("tensorflow/contrib/timeseries/examples/data")
+add_python_module("tensorflow/contrib/timeseries/python")
+add_python_module("tensorflow/contrib/timeseries/python/timeseries")
+add_python_module("tensorflow/contrib/timeseries/python/timeseries/state_space_models")
 add_python_module("tensorflow/contrib/tpu")
 add_python_module("tensorflow/contrib/tpu/ops")
 add_python_module("tensorflow/contrib/tpu/python")
@@ -712,6 +722,8 @@ add_custom_command(
       VERBATIM )
 
 set (pywrap_tensorflow_internal_src
+    "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.h"
+    "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.h"
@@ -751,6 +763,7 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_core_lib>
         $<TARGET_OBJECTS:tf_core_cpu>
         $<TARGET_OBJECTS:tf_core_framework>
+        $<TARGET_OBJECTS:tf_core_profiler>
         $<TARGET_OBJECTS:tf_cc>
         $<TARGET_OBJECTS:tf_cc_ops>
         $<TARGET_OBJECTS:tf_core_ops>
@@ -798,6 +811,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
+    $<TARGET_OBJECTS:tf_core_profiler>
     $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_ops>
     $<TARGET_OBJECTS:tf_core_ops>

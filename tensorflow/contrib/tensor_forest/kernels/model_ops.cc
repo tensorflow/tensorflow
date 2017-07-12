@@ -19,7 +19,6 @@
 #include "tensorflow/contrib/tensor_forest/kernels/v4/input_data.h"
 #include "tensorflow/contrib/tensor_forest/proto/tensor_forest_params.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -166,9 +165,10 @@ class TreePredictionsV4Op : public OpKernel {
     const Tensor& input_data = context->input(1);
     const Tensor& sparse_input_indices = context->input(2);
     const Tensor& sparse_input_values = context->input(3);
+    const Tensor& sparse_input_shape = context->input(4);
 
     data_set_->set_input_tensors(input_data, sparse_input_indices,
-                                 sparse_input_values);
+                                 sparse_input_values, sparse_input_shape);
 
     DecisionTreeResource* decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),

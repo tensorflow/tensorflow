@@ -39,7 +39,10 @@ std::unique_ptr<HloModule> CodegenTestBase::CreateNewModuleWithEmbeddedIr(
   auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
   debug_options.set_xla_embed_ir_in_executable(true);
   debug_options.set_xla_gpu_ftz(ftz);
+  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
+  debug_options.add_xla_disable_hlo_passes("constant_folding");
   config.set_debug_options(debug_options);
+
   return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
                                config);
 }
