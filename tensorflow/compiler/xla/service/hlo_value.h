@@ -30,24 +30,24 @@ limitations under the License.
 namespace xla {
 
 // Abstraction which identifies a specific point in the XLA graph. An
-// HloLocation specifies a ShapeIndex within the output of a specific
+// HloPosition specifies a ShapeIndex within the output of a specific
 // instruction.
-struct HloLocation {
+struct HloPosition {
   HloInstruction* instruction;
   ShapeIndex index;
 
-  // Returns the shape at this location.
+  // Returns the shape at this position.
   const Shape& shape() const;
 
   string ToString() const;
 
-  bool operator==(const HloLocation& other) const {
+  bool operator==(const HloPosition& other) const {
     return instruction == other.instruction && index == other.index;
   }
-  bool operator!=(const HloLocation& other) const { return !(*this == other); }
+  bool operator!=(const HloPosition& other) const { return !(*this == other); }
 };
 
-std::ostream& operator<<(std::ostream& out, const HloLocation& location);
+std::ostream& operator<<(std::ostream& out, const HloPosition& position);
 
 // Defines a single use of an HLO value.
 struct HloUse {
@@ -111,28 +111,28 @@ class HloValue {
   // Returns whether this value is a phi value.
   bool is_phi() const { return is_phi_; }
 
-  // Return the location where this value is defined.
-  const HloLocation& defining_location() const { return locations_[0]; }
+  // Return the position where this value is defined.
+  const HloPosition& defining_position() const { return positions_[0]; }
 
   // Return the instruction which defines this HloValue.
   HloInstruction* defining_instruction() const {
-    return defining_location().instruction;
+    return defining_position().instruction;
   }
 
   // Return the shape index at which this HloValue is defined in the output of
   // its defining instruction.
-  const ShapeIndex& defining_index() const { return defining_location().index; }
+  const ShapeIndex& defining_index() const { return defining_position().index; }
 
   // Return the shape of this HloValue.
-  const Shape& shape() const { return defining_location().shape(); }
+  const Shape& shape() const { return defining_position().shape(); }
 
-  // Add or remove a location at which the HloValue appears. The definition
-  // location can not be removed. The uses of the HloValue are updated.
-  void AddLocation(HloInstruction* instruction, const ShapeIndex& index);
-  void RemoveLocation(HloInstruction* instruction, const ShapeIndex& index);
+  // Add or remove a position at which the HloValue appears. The definition
+  // position can not be removed. The uses of the HloValue are updated.
+  void AddPosition(HloInstruction* instruction, const ShapeIndex& index);
+  void RemovePosition(HloInstruction* instruction, const ShapeIndex& index);
 
-  // Return all locations of the HloValue in the module.
-  const std::vector<HloLocation>& locations() const { return locations_; }
+  // Return all positions of the HloValue in the module.
+  const std::vector<HloPosition>& positions() const { return positions_; }
 
   // Return all uses of the HloValue.
   const std::vector<HloUse>& uses() const { return uses_; }
@@ -158,9 +158,9 @@ class HloValue {
   // Whether this instruction is a phi value.
   const bool is_phi_;
 
-  // The set of locations of this HloValue. The first element is always the
-  // location of the definition.
-  std::vector<HloLocation> locations_;
+  // The set of positions of this HloValue. The first element is always the
+  // position of the definition.
+  std::vector<HloPosition> positions_;
 
   // The set of uses of this HloValue.
   std::vector<HloUse> uses_;

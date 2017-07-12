@@ -33,7 +33,7 @@ namespace xla {
 // from. Generally there is a one-to-one correspondence between HloBuffers and
 // HloValue where each HloValue in the module is held in a unique HloBuffer. An
 // exception is the while instruction which updates the loop state in-place. In
-// this case, we have a single HloBuffer for each HloLocation in the loop state,
+// this case, we have a single HloBuffer for each HloPosition in the loop state,
 // but multiple HloValues. For example:
 //
 //   %init = ...
@@ -53,7 +53,7 @@ namespace xla {
 // HloValue{%while}, HloValue{%body_param}, HloValue{%body_root}, and
 // HloValue{%cond_param}.
 //
-// HloBuffers may appear at different HloLocations in the module mirroring the
+// HloBuffers may appear at different HloPositions in the module mirroring the
 // same propery of HloValues. For example:
 //
 //   %sub = Sub(...)
@@ -62,11 +62,11 @@ namespace xla {
 //   %gte = GetTupleElement(%tuple, 0)
 //
 // In this case, the HloBuffer containing %add appears at the following
-// locations: HloLocation{%add, {}}, HloLocation{%tuple, {0}}, and
-// HloLocation{%gte, {}}.
+// positions: HloPosition{%add, {}}, HloPosition{%tuple, {0}}, and
+// HloPosition{%gte, {}}.
 //
-// Different HloLocations which share the same HloBuffer indicate mandatory
-// aliasing in the HLO module. These locations must share the same memory
+// Different HloPositions which share the same HloBuffer indicate mandatory
+// aliasing in the HLO module. These positions must share the same memory
 // allocation for correctness (the backends rely on this property). This differs
 // from incidental aliasing introduced by memory reuse in BufferAssignment where
 // different instructions may happen to get the same allocation.
@@ -80,17 +80,17 @@ class HloBuffer {
   Id id() const { return id_; }
 
   // Add a value to the set of values held by this buffer. Also adds the
-  // HloLocations of the value to the locations vector of the buffer. If the
+  // HloPositions of the value to the positions vector of the buffer. If the
   // buffer already contains this value, then this method is a nop.
   void AddValue(const HloValue& value);
 
   // Return the IDs of all values contained in this buffer.
   const std::vector<HloValue::Id>& value_ids() const { return value_ids_; }
 
-  // Return the locations (output of which instruction and at what index) where
-  // the buffer is used. This is exactly the union of the locations of the
+  // Return the positions (output of which instruction and at what index) where
+  // the buffer is used. This is exactly the union of the positions of the
   // HloValues contained by the buffer.
-  const std::vector<HloLocation>& locations() const { return locations_; }
+  const std::vector<HloPosition>& positions() const { return positions_; }
 
   string ToString() const;
 
@@ -104,16 +104,16 @@ class HloBuffer {
   // The set of values contained in this buffer.
   std::vector<HloValue::Id> value_ids_;
 
-  // The set of locations where this buffer is used.
-  std::vector<HloLocation> locations_;
+  // The set of positions where this buffer is used.
+  std::vector<HloPosition> positions_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer);
 
 // A class representing the set of possible HloBuffers at a particular
-// HloLocation (shape index in the output of an instruction) in the XLA
+// HloPosition (shape index in the output of an instruction) in the XLA
 // graph. In most cases, the buffer set will have a single HloBuffer indicating
-// that the HloBuffer which appears at that particular location is known
+// that the HloBuffer which appears at that particular position is known
 // unambiguously at compile-time.  However, tuple-shaped Select instructions can
 // introduce ambiguity as the tuple elements of the operands are passed by
 // reference into the output of the Select. For example:
@@ -123,7 +123,7 @@ std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer);
 //   %tuple1 = Tuple(%x, %y)
 //   %select = Select(%pred, %tuple0, %tuple1)
 //
-// In this case the HloBufferSet at HloLocation{%select, {0}} contains the
+// In this case the HloBufferSet at HloPosition{%select, {0}} contains the
 // HloBuffer holding %a and the HloBuffer holding %x.
 class HloBufferSet {
  public:

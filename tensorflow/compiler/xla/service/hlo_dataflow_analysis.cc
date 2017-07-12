@@ -247,11 +247,11 @@ InstructionValueSet HloDataflowAnalysis::Phi(
   return new_value_set;
 }
 
-void HloDataflowAnalysis::UpdateLocationsOfValuesAt(
+void HloDataflowAnalysis::UpdatePositionsOfValuesAt(
     HloInstruction* instruction, const InstructionValueSet& new_value_set,
     const InstructionValueSet* prev_value_set) {
   if (prev_value_set != nullptr) {
-    // Remove locations from the old value set.
+    // Remove positions from the old value set.
     prev_value_set->ForEachElement(
         [this, instruction](const ShapeIndex& index,
                             const HloValueSet& value_set) {
@@ -260,17 +260,17 @@ void HloDataflowAnalysis::UpdateLocationsOfValuesAt(
             if (!ContainsKey(values_, value_id)) {
               continue;
             }
-            // Don't remove the defining location of the value.
+            // Don't remove the defining position of the value.
             HloValue& value = GetValue(value_id);
             if (instruction == value.defining_instruction()) {
               CHECK_EQ(index, value.defining_index());
             } else {
-              value.RemoveLocation(instruction, index);
+              value.RemovePosition(instruction, index);
             }
           }
         });
   }
-  // Add locations in the new value set.
+  // Add positions in the new value set.
   new_value_set.ForEachElement(
       [this, instruction](const ShapeIndex& index,
                           const HloValueSet& value_set) {
@@ -279,7 +279,7 @@ void HloDataflowAnalysis::UpdateLocationsOfValuesAt(
           if (instruction == value.defining_instruction()) {
             CHECK_EQ(index, value.defining_index());
           } else {
-            value.AddLocation(instruction, index);
+            value.AddPosition(instruction, index);
           }
         }
       });
@@ -466,7 +466,7 @@ void HloDataflowAnalysis::UpdateInstructionsAndPropagate(
     // Update uses. First clear all of the old uses at the particular
     // operands. Then add the new uses. There may be overlap between the old
     // uses and new uses.
-    UpdateLocationsOfValuesAt(instruction, GetInstructionValueSet(instruction),
+    UpdatePositionsOfValuesAt(instruction, GetInstructionValueSet(instruction),
                               &old_value);
   }
 }
@@ -600,7 +600,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_all_values();
           break;
       }
-      UpdateLocationsOfValuesAt(instruction.get(),
+      UpdatePositionsOfValuesAt(instruction.get(),
                                 GetInstructionValueSet(instruction.get()));
     }
   }

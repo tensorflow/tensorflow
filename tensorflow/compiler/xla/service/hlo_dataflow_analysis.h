@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Analysis for determining the possible set of values for all locations
+// Analysis for determining the possible set of values for all positions
 // (instructions and ShapeIndexes) in the HLO module. Analysis is module-scoped
 // tracking values across computation boundaries.
 
@@ -170,14 +170,14 @@ class HloDataflowAnalysis {
       tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs,
       bool skip_top_level = false);
 
-  // Updates the locations of the HloValues in the output of the given
+  // Updates the positions of the HloValues in the output of the given
   // instruction. This should be called after the instruction value set of
   // 'instruction' has been changed. 'prev_value_set' must point to the previous
   // state of the value set prior to the change. 'prev_value_set' may be null if
-  // this is the first time locations are being computed. The previous state is
-  // necessary to efficiently remove locations which have been eliminated due to
+  // this is the first time positions are being computed. The previous state is
+  // necessary to efficiently remove positions which have been eliminated due to
   // changes in the instructions' InstructionValueSet.
-  void UpdateLocationsOfValuesAt(
+  void UpdatePositionsOfValuesAt(
       HloInstruction* instruction, const InstructionValueSet& new_value_set,
       const InstructionValueSet* prev_value_set = nullptr);
 

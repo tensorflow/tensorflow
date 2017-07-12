@@ -94,13 +94,13 @@ void HloAliasAnalysis::CombineBuffers(
       unified_buffer.AddValue(dataflow_analysis_->GetValue(value_id));
     }
 
-    // Iterate through all locations where the buffer-to-eliminate exists and
+    // Iterate through all positions where the buffer-to-eliminate exists and
     // replace it with the unified buffer.
-    for (const HloLocation& location : buffer.locations()) {
-      VLOG(4) << "Replacing in " << location;
-      GetBufferSet(location.instruction, location.index)
+    for (const HloPosition& position : buffer.positions()) {
+      VLOG(4) << "Replacing in " << position;
+      GetBufferSet(position.instruction, position.index)
           .RemoveBufferOrDie(buffer_id);
-      GetBufferSet(location.instruction, location.index)
+      GetBufferSet(position.instruction, position.index)
           .AddBuffer(unified_buffer.id());
     }
 

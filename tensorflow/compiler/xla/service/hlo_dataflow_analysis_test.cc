@@ -51,7 +51,7 @@ class HloDataflowAnalysisTest : public HloTestBase,
     return *analysis_;
   }
 
-  // Return a vector of the HloValues at the given program location.
+  // Return a vector of the HloValues at the given program position.
   std::vector<HloValue> HloValuesAt(const HloInstruction* instruction,
                                     const ShapeIndex& index = {}) {
     CHECK(analysis_ != nullptr);
@@ -101,14 +101,14 @@ TEST_P(HloDataflowAnalysisTest, BinaryOperation) {
   EXPECT_TRUE(analysis.ValueIsDefinedAt(constant2));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(add));
 
-  // Verify the locations of the values. These locations are all trivial because
+  // Verify the positions of the values. These positions are all trivial because
   // there are no instructions which forward values.
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).locations(),
-              UnorderedElementsAre(HloLocation{constant1, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).locations(),
-              UnorderedElementsAre(HloLocation{constant2, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(add).locations(),
-              UnorderedElementsAre(HloLocation{add, {}}));
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).positions(),
+              UnorderedElementsAre(HloPosition{constant1, {}}));
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).positions(),
+              UnorderedElementsAre(HloPosition{constant2, {}}));
+  EXPECT_THAT(analysis.GetValueDefinedAt(add).positions(),
+              UnorderedElementsAre(HloPosition{add, {}}));
 
   // Verify the uses of the values.
   EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
@@ -155,17 +155,17 @@ TEST_P(HloDataflowAnalysisTest, TupleAndGtes) {
   EXPECT_FALSE(analysis.ValueIsDefinedAt(gte1));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(add));
 
-  // Verify the locations of the values.
+  // Verify the positions of the values.
   EXPECT_THAT(
-      analysis.GetValueDefinedAt(param0).locations(),
-      UnorderedElementsAre(HloLocation{param0, {}}, HloLocation{tuple, {0}},
-                           HloLocation{gte0, {}}));
+      analysis.GetValueDefinedAt(param0).positions(),
+      UnorderedElementsAre(HloPosition{param0, {}}, HloPosition{tuple, {0}},
+                           HloPosition{gte0, {}}));
   EXPECT_THAT(
-      analysis.GetValueDefinedAt(param1).locations(),
-      UnorderedElementsAre(HloLocation{param1, {}}, HloLocation{tuple, {1}},
-                           HloLocation{gte1, {}}));
-  EXPECT_THAT(analysis.GetValueDefinedAt(tuple).locations(),
-              UnorderedElementsAre(HloLocation{tuple, {}}));
+      analysis.GetValueDefinedAt(param1).positions(),
+      UnorderedElementsAre(HloPosition{param1, {}}, HloPosition{tuple, {1}},
+                           HloPosition{gte1, {}}));
+  EXPECT_THAT(analysis.GetValueDefinedAt(tuple).positions(),
+              UnorderedElementsAre(HloPosition{tuple, {}}));
 
   // Verify uses. Of interest is that a GetTupleElement instruction is only a
   // use of the top-level value in the tuple operand.
@@ -200,15 +200,15 @@ TEST_P(HloDataflowAnalysisTest, NestedTuple) {
 
   EXPECT_EQ(analysis.values().size(), 4);
 
-  // Verify locations and uses.
+  // Verify positions and uses.
   EXPECT_THAT(
-      analysis.GetValueDefinedAt(constant1).locations(),
+      analysis.GetValueDefinedAt(constant1).positions(),
       UnorderedElementsAre(
-          HloLocation{constant1, {}}, HloLocation{tuple, {0}},
-          HloLocation{nested_tuple, {0, 0}}, HloLocation{nested_tuple, {1, 0}},
-          HloLocation{nested_tuple, {2}}, HloLocation{gte_tuple, {0}},
-          HloLocation{gte_out, {}}));
-  // Constant values should have no uses though one is live out. The locations
+          HloPosition{constant1, {}}, HloPosition{tuple, {0}},
+          HloPosition{nested_tuple, {0, 0}}, HloPosition{nested_tuple, {1, 0}},
+          HloPosition{nested_tuple, {2}}, HloPosition{gte_tuple, {0}},
+          HloPosition{gte_out, {}}));
+  // Constant values should have no uses though one is live out. The positions
   // where they appear as operands are on instructions which do not use the
   // values (eg, Tuple).
   EXPECT_TRUE(analysis.GetValueDefinedAt(constant1).uses().empty());

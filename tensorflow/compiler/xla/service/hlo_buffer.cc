@@ -46,11 +46,11 @@ void HloBuffer::AddValue(const HloValue& value) {
 
   value_ids_.push_back(value.id());
 
-  // Add all of the locations of the HloValue to this buffer.
-  for (const HloLocation& location : value.locations()) {
-    if (std::find(locations_.begin(), locations_.end(), location) ==
-        locations_.end()) {
-      locations_.push_back(location);
+  // Add all of the positions of the HloValue to this buffer.
+  for (const HloPosition& position : value.positions()) {
+    if (std::find(positions_.begin(), positions_.end(), position) ==
+        positions_.end()) {
+      positions_.push_back(position);
     }
   }
 }
@@ -60,7 +60,7 @@ bool HloBuffer::operator==(const HloBuffer& other) const {
   if (equal) {
     // DCHECK because these comparisons are expensive (linear time).
     DCHECK(value_ids() == other.value_ids());
-    DCHECK(locations() == other.locations());
+    DCHECK(positions() == other.positions());
   }
   return equal;
 }

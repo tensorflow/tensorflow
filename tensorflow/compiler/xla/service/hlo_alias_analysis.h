@@ -45,7 +45,7 @@ class HloAliasAnalysis {
   InstructionBufferSet& GetInstructionBufferSet(
       const HloInstruction* instruction);
 
-  // Return the HloBufferSet for the given location.
+  // Return the HloBufferSet for the given position.
   const HloBufferSet& GetBufferSet(const HloInstruction* instruction,
                                    const ShapeIndex& index = {}) const;
   HloBufferSet& GetBufferSet(const HloInstruction* instruction,
@@ -59,8 +59,8 @@ class HloAliasAnalysis {
     return buffers_.at(buffer_id);
   }
 
-  // Returns the unique buffer at the given location. CHECK fails if the buffer
-  // set at that location does not contain exactly one buffer.
+  // Returns the unique buffer at the given position. CHECK fails if the buffer
+  // set at that position does not contain exactly one buffer.
   const HloBuffer& GetUniqueBufferAt(const HloInstruction* instruction,
                                      const ShapeIndex& index = {}) const {
     return GetBuffer(GetBufferSet(instruction, index).GetUniqueBufferId());
