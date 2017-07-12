@@ -20,12 +20,8 @@ limitations under the License.
  * the type TFInt32 and by the class object TFInt32.class. The former is used to
  * support compile-time checking of tensor data types and the latter is used for
  * run-time checking of data types. All such classes implement the TFType interface.
- *`
- * <p><b>WARNING</b>: The API is currently experimental and is not covered by TensorFlow <a
- * href="https://www.tensorflow.org/programmers_guide/version_semantics">API stability
- * guarantees</a>. See <a
- * href="https://www.tensorflow.org/code/tensorflow/java/README.md">README.md</a> for installation
- * instructions.
- *
+ * TensorFlow data types are also separately represented by the DataType enum, with
+ * one enum value per data type. The enum representation should rarely be needed, but
+ * the Types class can be used to obtain it from the class object representation.
  */
 package org.tensorflow.types;
