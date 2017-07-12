@@ -2108,7 +2108,7 @@ class MultiplicativeIntegrationRNNCell(rnn_cell_impl.RNNCell):
   """
 
   def __init__(self, num_units, bias_start=0.0, alpha_start=1.0, beta_start=1.0,
-      activation=math_ops.tanh, reuse=None):
+               activation=math_ops.tanh, reuse=None):
     """Initialize the Multiplicative Integration RNN cell.
 
     Args:
@@ -2141,23 +2141,7 @@ class MultiplicativeIntegrationRNNCell(rnn_cell_impl.RNNCell):
     return self._num_units
 
   def call(self, inputs, state):
-    """Run one step of Multiplicative Integration RNN.
-
-    Args:
-      inputs: input Tensor, 2D, batch x input size.
-      state: state Tensor, 2D, batch x num units.
-
-    Returns:
-      new_output: batch x num units, Tensor representing the output of the UGRNN
-        after reading `inputs` when previous state was `state`. Identical to
-        `new_state`.
-      new_state: batch x num units, Tensor representing the state of the UGRNN
-        after reading `inputs` when previous state was `state`.
-
-    Raises:
-      ValueError: If input size cannot be inferred from inputs via
-        static shape inference.    
-    """
+    """Run one step of Multiplicative Integration RNN."""
     output = self._activation(
         _multiplicative_integration(
           [inputs, state], [self._num_units], True,
@@ -2177,8 +2161,8 @@ class MultiplicativeIntegrationGRUCell(rnn_cell_impl.RNNCell):
     On Multiplicative Integration with Recurrent Neural Networks. NIPS, 2016.
   """
 
-  def __init__(self, num_units, bias_start=0.0, alpha_start=1.0, 
-                beta_start=1.0, activation=math_ops.tanh, reuse=None):
+  def __init__(self, num_units, bias_start=0.0, alpha_start=1.0,
+               beta_start=1.0, activation=math_ops.tanh, reuse=None):
     """Initialize the Multiplicative Integration GRU cell.
 
     Args:
@@ -2215,9 +2199,9 @@ class MultiplicativeIntegrationGRUCell(rnn_cell_impl.RNNCell):
     with vs.variable_scope("gates"):
       r, u = array_ops.split(
           value=_multiplicative_integration(
-            [inputs, state], [self._num_units, self._num_units],
-            True, bias_start=self._bias_start, alpha_start=self._alpha_start,
-            beta_start=self._beta_start),
+             [inputs, state], [self._num_units, self._num_units],
+             True, bias_start=self._bias_start, alpha_start=self._alpha_start,
+             beta_start=self._beta_start),
           num_or_size_splits=2,
           axis=1)
       r, u = math_ops.sigmoid(r), math_ops.sigmoid(u)
@@ -2241,8 +2225,8 @@ class MultiplicativeIntegrationLSTMCell(rnn_cell_impl.RNNCell):
     On Multiplicative Integration with Recurrent Neural Networks. NIPS, 2016.
   """
 
-  def __init__(self, num_units, forget_bias=0.0, bias_start=0.0, alpha_start=1.0, 
-      beta_start=1.0, state_is_tuple=True, activation=math_ops.tanh, reuse=None):
+  def __init__(self, num_units, forget_bias=0.0, bias_start=0.0, alpha_start=1.0,
+               beta_start=1.0, activation=math_ops.tanh, reuse=None):
     """Initialize the Multiplicative Integration LSTM cell.
 
     Args:
@@ -2255,31 +2239,23 @@ class MultiplicativeIntegrationLSTMCell(rnn_cell_impl.RNNCell):
         1.0 by default.
       beta_start: float. Starting value to initialize the two bias, 
         beta_1 and beta_2. 1.0 by default.
-      state_is_tuple: If True, accepted and returned states are 2-tuples of
-        the `c_state` and `m_state`.  If False, they are concatenated
-        along the column axis.  The latter behavior will soon be deprecated.
       activation: Activation function of the inner states.
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
     """
     super(MultiplicativeIntegrationLSTMCell, self).__init__(_reuse=reuse)
-    if not state_is_tuple:
-      logging.warn("%s: Using a concatenated state is slower and will soon be "
-                   "deprecated.  Use state_is_tuple=True.", self)
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._bias_start = bias_start
     self._alpha_start = alpha_start
     self._beta_start = beta_start
-    self._state_is_tuple = state_is_tuple
     self._activation = activation
     self._reuse = reuse
 
   @property
   def state_size(self):
-    return (rnn_cell_impl.LSTMStateTuple(self._num_units, self._num_units) 
-        if self._state_is_tuple else 2 * self._num_units)
+    return rnn_cell_impl.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
@@ -2287,10 +2263,7 @@ class MultiplicativeIntegrationLSTMCell(rnn_cell_impl.RNNCell):
 
   def call(self, inputs, state):
     """Run one step of Multiplicative Integration Long short-term memory(LSTM)."""
-    if self._state_is_tuple:
-      c, h = state
-    else:
-      c, h = array_ops.split(value=state, num_or_size_splits=2, axis=1)
+    c, h = state
     concat = _multiplicative_integration([inputs, h],
         [self._num_units, self._num_units, self._num_units, self._num_units],
         True, bias_start=self._bias_start, alpha_start=self._alpha_start,
@@ -2303,15 +2276,12 @@ class MultiplicativeIntegrationLSTMCell(rnn_cell_impl.RNNCell):
                 + math_ops.sigmoid(i) * self._activation(j))
     new_h = self._activation(new_c) * math_ops.sigmoid(o)
 
-    if self._state_is_tuple:
-      new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
-    else:
-      new_state = array_ops.concat([new_c, new_h], 1)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
 
 
 def _multiplicative_integration(args, output_sizes, bias, bias_start=0.0, 
-    alpha_start=1.0, beta_start=1.0):
+                                    alpha_start=1.0, beta_start=1.0):
   """Multiplicative Integration: alpha * args[0] * W[0] + beta1 * args[1] * W[1] 
             + beta1 * args[2] * W[2],
         where alpha, beta1, beta2 and W[i] are variables.
@@ -2366,11 +2336,11 @@ def _multiplicative_integration(args, output_sizes, bias, bias_start=0.0,
 
   scope = vs.get_variable_scope()
   with vs.variable_scope(scope) as outer_scope:
-    kernel = vs.get_variable( "kernel", [total_arg_size, total_output_size], 
+    kernel = vs.get_variable("kernel", [total_arg_size, total_output_size],
         dtype=dtype) 
-    alphas = vs.get_variable( "alphas", [total_output_size], dtype=dtype, 
+    alphas = vs.get_variable("alphas", [total_output_size], dtype=dtype,
         initializer=init_ops.constant_initializer(alpha_start, dtype=dtype))
-    betas = vs.get_variable( "betas", [2 * total_output_size], dtype=dtype, 
+    betas = vs.get_variable("betas", [2 * total_output_size], dtype=dtype,
         initializer=init_ops.constant_initializer(beta_start, dtype=dtype))
     w1, w2 = array_ops.split(kernel, num_or_size_splits=arg_sizes, axis=0)
     b1, b2 = array_ops.split(betas, num_or_size_splits=2, axis=0)
@@ -2381,7 +2351,7 @@ def _multiplicative_integration(args, output_sizes, bias, bias_start=0.0,
       return res
     with vs.variable_scope(outer_scope) as inner_scope:
       inner_scope.set_partitioner(None)
-      bias = vs.get_variable( "bias", [total_output_size], dtype=dtype,
+      bias = vs.get_variable("bias", [total_output_size], dtype=dtype,
           initializer=init_ops.constant_initializer(bias_start, dtype=dtype))
   return nn_ops.bias_add(res, bias)
 

@@ -1,25 +1,3 @@
-# Multiplicative Integration Recurrent Neural Networks in Tensorflow
-
-Implementation of [1], multiplicative integration variants of plain RNN, GRU and LSTM.
-
-# How to use
-
-```python
-# Import Tensorflow
-import tensorflow as tf
-
-# tf.contrib.rnn.MultiplicativeIntegrationRNNCell() # remove comment for RNN
-# tf.contrib.rnn.MultiplicativeIntegrationGRUCell() # remove comment for GRU
-tf.contrib.rnn.MultiplicativeIntegrationLSTMCell() # for LSTM
-
-```
-# References
-
-[1]   Yuhuai Wu, Saizheng Zhang, Ying Zhang, Yoshua Bengio, Ruslan Salakhutdinov,
-      On Multiplicative Integration with Recurrent Neural Networks. NIPS, 2016. [arXiv](https://arxiv.org/abs/1606.06630) 
-              
------------------
-              
 <div align="center">
   <img src="https://www.tensorflow.org/images/tf_logo_transp.png"><br><br>
 </div>
