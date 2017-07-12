@@ -53,6 +53,10 @@ void DenseClassificationLeafModelOperator::UpdateModel(
     LeafStat* leaf, const InputTarget* target,
     int example) const {
   const int32 int_label = target->GetTargetAsClassIndex(example, 0);
+  QCHECK_LT(int_label, params_.num_outputs())
+      << "Got label greater than indicated number of classes. Is "
+         "params.num_classes set correctly?";
+  QCHECK_GE(int_label, 0);
   auto* val = leaf->mutable_classification()->mutable_dense_counts()
       ->mutable_value(int_label);
   float weight = target->GetTargetWeight(example);
@@ -87,6 +91,10 @@ void SparseClassificationLeafModelOperator::UpdateModel(
     LeafStat* leaf, const InputTarget* target,
     int example) const {
   const int32 int_label = target->GetTargetAsClassIndex(example, 0);
+  QCHECK_LT(int_label, params_.num_outputs())
+      << "Got label greater than indicated number of classes. Is "
+         "params.num_classes set correctly?";
+  QCHECK_GE(int_label, 0);
   const float weight = target->GetTargetWeight(example);
   leaf->set_weight_sum(leaf->weight_sum() + weight);
   auto value_map = leaf->mutable_classification()->mutable_sparse_counts()
