@@ -54,6 +54,7 @@ tf_kernel_library(
         "softmax_op.cc",
         "spacetobatch_op.cc",
         "split_op.cc",
+        "stack_ops.cc",
         "strided_slice_op.cc",
         "tensor_array_ops.cc",
         "tile_ops.cc",

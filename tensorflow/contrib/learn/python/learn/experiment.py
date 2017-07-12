@@ -245,6 +245,11 @@ class Experiment(object):
     # Otherwise, the servers will wait to connect to each other before starting
     # to train. We might as well start as soon as we can.
     config = self._estimator.config
+    if (config.cluster_spec and config.master and
+        config.environment == run_config.Environment.LOCAL):
+      logging.warn("ClusterSpec and master are provided, but environment is "
+                   "set to 'local'. Set environment to 'cloud' if you intend "
+                   "to use the distributed runtime.")
     if (config.environment != run_config.Environment.LOCAL and
         config.environment != run_config.Environment.GOOGLE and
         config.cluster_spec and config.master):

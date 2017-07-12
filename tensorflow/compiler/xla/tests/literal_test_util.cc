@@ -152,11 +152,15 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
 }  // namespace
 
 /* static */ void LiteralTestUtil::ExpectEqual(const Literal& expected,
-                                               const Literal& actual) {
+                                               const Literal& actual,
+                                               const string& message) {
   EXPECT_TRUE(Equal(expected, actual))
       << "expected:\n"
       << expected.ToString() << "\n\tvs actual:\n"
-      << actual.ToString();
+      << actual.ToString()
+      << (message.empty()
+              ? ""
+              : tensorflow::strings::StrCat("\nmessage: ", message));
 }
 
 /* static */ void LiteralTestUtil::ExpectNotEqual(const Literal& expected,
@@ -435,8 +439,12 @@ class NearComparator {
 
 /* static */ void LiteralTestUtil::ExpectNear(const Literal& expected,
                                               const Literal& actual,
-                                              const ErrorSpec& error) {
-  EXPECT_TRUE(Near(expected, actual, error));
+                                              const ErrorSpec& error,
+                                              const string& message) {
+  EXPECT_TRUE(Near(expected, actual, error))
+      << (message.empty()
+              ? ""
+              : tensorflow::strings::StrCat("\nmessage: ", message));
 }
 
 /* static */ ::testing::AssertionResult LiteralTestUtil::NearTuple(
