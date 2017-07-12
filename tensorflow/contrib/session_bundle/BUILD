@@ -63,6 +63,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
@@ -83,13 +84,13 @@ py_test(
     deps = [
         ":bundle_shim_py",
         ":constants",
+        ":manifest_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
     ],
@@ -113,6 +114,7 @@ py_library(
         ":constants",
         ":gc",
         ":manifest_proto_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -125,9 +127,7 @@ py_library(
 py_test(
     name = "exporter_test",
     size = "small",
-    srcs = [
-        "exporter_test.py",
-    ],
+    srcs = ["exporter_test.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
@@ -157,15 +157,14 @@ py_library(
     deps = [
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
 py_test(
     name = "gc_test",
     size = "small",
-    srcs = [
-        "gc_test.py",
-    ],
+    srcs = ["gc_test.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
@@ -199,8 +198,12 @@ cc_library(
     deprecation = "Use SavedModel Loader instead.",
     visibility = ["//visibility:public"],
     deps = [
+        ":manifest_proto_cc",
         ":session_bundle_lite",
         ":signature",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -217,6 +220,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":signature_lite",
+        "//tensorflow/core:lib_internal",
     ] + if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
@@ -238,10 +242,12 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":session_bundle",
+        ":signature",
         ":test_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -263,6 +269,7 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -281,8 +288,8 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:training",
@@ -318,7 +325,12 @@ cc_library(
     deprecation = "Use SavedModel instead.",
     visibility = ["//visibility:public"],
     deps = [
+        ":manifest_proto_cc",
         ":signature_lite",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ] + if_not_mobile([
         "//tensorflow/core:tensorflow_opensource",
     ]),
@@ -398,6 +410,7 @@ cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
