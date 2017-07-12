@@ -16,6 +16,24 @@
 # =============================================================================
 
 use strict;
+
+my $copyright =
+'/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+';
+
 my $count;
 
 my $option = '-t', my $template;
@@ -91,24 +109,9 @@ for (my $i = 1; $i <= $#info; $first = 0, $i++) {
         # Generate class declarations
         # print STDERR "Creating $dirname/$tfname.java\n";
         open (CLASSFILE, ">$dirname/$tfname.java") || die "Can't open $tfname.java";
-        print CLASSFILE
-'/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+        print CLASSFILE $copyright;
+        print CLASSFILE "// GENERATED FILE. To update, edit tftypes.pl instead.\n\n";
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-// GENERATED FILE. To update, edit tftypes.pl instead.
-
-';
         my $fulldesc = $desc;
         if (substr($desc, 0, 1) =~ m/^[aeoiu8]$/i) {
             $fulldesc = "an $desc"
