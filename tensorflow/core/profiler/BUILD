@@ -4,6 +4,11 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 
@@ -19,18 +24,14 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "profiler",
-    srcs = [
-        "profiler.cc",
-        "//tensorflow/core:libtflib.so",
-    ],
+    srcs = ["profiler.cc"],
     deps = [
         ":protos_all_cc",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/internal:tfprof_options",

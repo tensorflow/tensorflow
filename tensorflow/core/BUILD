@@ -780,6 +780,10 @@ cc_library(
 
 tf_cuda_library(
     name = "tensorflow_opensource",
+    srcs = [
+        ":libframework.so",
+        ":libtflib.so",
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -810,6 +814,8 @@ cc_library(
         "framework/fake_input.cc",
         "framework/function_testlib.cc",
         "graph/testlib.cc",
+        ":libframework.so",
+        ":libtflib.so",
     ],
     hdrs = [
         "common_runtime/kernel_benchmark_testlib.h",
@@ -828,9 +834,7 @@ cc_library(
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
-        ":framework_internal_impl",
         ":lib",
-        ":lib_internal_impl",
         ":protos_all_cc",
         ":shape_inference_testutil",
         ":tensor_testutil",
@@ -2010,6 +2014,9 @@ cc_library(
 cc_library(
     name = "lib_test_internal",
     testonly = 1,
+    srcs = [
+        ":libtflib.so",
+    ],
     hdrs = [
         "lib/gtl/manual_constructor.h",
         "lib/io/block.h",
@@ -2020,7 +2027,6 @@ cc_library(
     ],
     deps = [
         ":lib",
-        ":lib_internal_impl",
     ],
 )
 

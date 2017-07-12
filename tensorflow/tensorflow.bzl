@@ -391,6 +391,14 @@ def tf_gen_op_wrapper_py(name,
       ],)
 
 
+def tf_cc_binary(srcs,
+                 **kwargs):
+  native.cc_binary(
+      srcs=srcs + [clean_dep("//tensorflow/core:libframework.so"),
+                   clean_dep("//tensorflow/core:libtflib.so")],
+      **kwargs)
+
+
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
@@ -407,14 +415,13 @@ def tf_cc_test(name,
                linkopts=[]):
   native.cc_test(
       name="%s%s" % (name, suffix),
-      srcs=srcs,
+      srcs=srcs + [clean_dep("//tensorflow/core:libframework.so"),
+                   clean_dep("//tensorflow/core:libtflib.so")],
       size=size,
       args=args,
       copts=tf_copts() + extra_copts,
       data=data,
-      deps=deps + [clean_dep("//tensorflow/core:framework_internal_impl"),
-                   clean_dep("//tensorflow/core:lib_internal_impl"),
-                   "@protobuf//:protobuf",],
+      deps=deps,
       linkopts=["-lpthread", "-lm"] + linkopts,
       linkstatic=linkstatic,
       tags=tags)
