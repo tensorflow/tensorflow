@@ -800,7 +800,7 @@ class WALSModel(object):
       regularization: A tensor (scalar) that contains the normalized
         regularization term for the minibatch loss corresponding to sp_input.
       sum_weights: The sum of the weights corresponding to sp_input. This
-        can be used with unregularized loss to caluclate the root weighted
+        can be used with unregularized loss to calculate the root weighted
         squared error.
     """
     assert isinstance(sp_input, sparse_tensor.SparseTensor)

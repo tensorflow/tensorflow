@@ -62,7 +62,7 @@ $ python
 
 ## For more information
 
-* [TensorFlow website](https://tensorflow.org)
+* [TensorFlow website](https://www.tensorflow.org)
 * [TensorFlow whitepaper](http://download.tensorflow.org/paper/whitepaper2015.pdf)
 * [TensorFlow Model Zoo](https://github.com/tensorflow/models)
 * [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)

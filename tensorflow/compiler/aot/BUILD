@@ -166,6 +166,29 @@ tf_library(
     tags = ["manual"],
 )
 
+# A test of tf_library that includes a graph with an unknown op, but where
+# the compilation works because the op between the unknown op and the
+# fetches is a feed.
+tf_library(
+    name = "test_graph_tfunknownop2",
+    testonly = 1,
+    config = "test_graph_tfunknownop2.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
+    tags = ["manual"],
+)
+
+# A test of tf_library that includes a graph with an unknown op, but where
+# the compilation works because the unknown op is fed.
+tf_library(
+    name = "test_graph_tfunknownop3",
+    testonly = 1,
+    config = "test_graph_tfunknownop3.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
+    tags = ["manual"],
+)
+
 # Utility library for benchmark binaries, used by the *_benchmark rules that are
 # added by the tfcompile bazel macro.
 cc_library(

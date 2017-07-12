@@ -328,7 +328,7 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
     const GraphTransferInfo::NodeInfo& ni0 = gfi0.node_info(i);
     const GraphTransferInfo::NodeInfo& ni1 = gfi1.node_info(i);
     EXPECT_EQ(ni0.DebugString(), ni1.DebugString());
-    EXPECT_EQ(ni0.ByteSize(), ni1.ByteSize());
+    EXPECT_EQ(ni0.ByteSizeLong(), ni1.ByteSizeLong());
   }
 
   // 2. check const_node_info
@@ -340,7 +340,7 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
     for (int j = 0; j < cni0.shape_size(); ++j) {
       EXPECT_EQ(cni0.shape(j), cni1.shape(j));
     }
-    EXPECT_EQ(cni0.ByteSize(), cni1.ByteSize());
+    EXPECT_EQ(cni0.ByteSizeLong(), cni1.ByteSizeLong());
     EXPECT_EQ(cni0.DebugString(), cni1.DebugString());
   }
 
@@ -349,7 +349,7 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
   for (int i = 0; i < gfi0.node_input_info_size(); ++i) {
     const GraphTransferInfo::NodeInputInfo& nii0 = gfi0.node_input_info(i);
     const GraphTransferInfo::NodeInputInfo& nii1 = gfi1.node_input_info(i);
-    EXPECT_EQ(nii0.ByteSize(), nii1.ByteSize());
+    EXPECT_EQ(nii0.ByteSizeLong(), nii1.ByteSizeLong());
     EXPECT_EQ(nii0.DebugString(), nii1.DebugString());
   }
 
@@ -362,7 +362,7 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
     for (int j = 0; j < noi0.max_byte_size_size(); ++j) {
       EXPECT_EQ(noi0.max_byte_size(j), noi1.max_byte_size(j));
     }
-    EXPECT_EQ(noi0.ByteSize(), noi1.ByteSize());
+    EXPECT_EQ(noi0.ByteSizeLong(), noi1.ByteSizeLong());
     EXPECT_EQ(noi0.DebugString(), noi1.DebugString());
   }
 
@@ -374,7 +374,7 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
         gfi0.graph_input_node_info(i);
     const GraphTransferInfo::GraphInputNodeInfo& gini1 =
         gfi0.graph_input_node_info(i);
-    EXPECT_EQ(gini0.ByteSize(), gini1.ByteSize());
+    EXPECT_EQ(gini0.ByteSizeLong(), gini1.ByteSizeLong());
     EXPECT_EQ(gini0.DebugString(), gini1.DebugString());
   }
 
@@ -386,7 +386,7 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
         gfi0.graph_output_node_info(i);
     const GraphTransferInfo::GraphOutputNodeInfo& goni1 =
         gfi0.graph_output_node_info(i);
-    EXPECT_EQ(goni0.ByteSize(), goni1.ByteSize());
+    EXPECT_EQ(goni0.ByteSizeLong(), goni1.ByteSizeLong());
     EXPECT_EQ(goni0.DebugString(), goni1.DebugString());
   }
 

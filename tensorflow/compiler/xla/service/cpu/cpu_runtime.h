@@ -26,7 +26,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_H_
 
-#include "tensorflow/compiler/xla/service/cpu/infeed_manager.h"
+#include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -54,9 +54,13 @@ constexpr char kAcquireInfeedBufferForDequeueSymbolName[] =
     "__xla_cpu_runtime_AcquireInfeedBufferForDequeue";
 constexpr char kReleaseInfeedBufferAfterDequeueSymbolName[] =
     "__xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue";
+constexpr char kAcquireOutfeedBufferForPopulationSymbolName[] =
+    "__xla_cpu_runtime_AcquireOutfeedBufferForPopulation";
+constexpr char kReleaseOutfeedBufferAfterPopulationSymbolName[] =
+    "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
 
 // Returns the infeed manager used by the CPU runtime.
-InfeedManager* GetInfeedManager();
+XfeedManager* GetXfeedManager();
 
 }  // namespace runtime
 }  // namespace cpu
@@ -85,6 +89,23 @@ extern void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
 // implemented we will add support for multiple outstanding buffers
 // that can be returned out of order.
 extern void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
+    xla::int32 buffer_length, void* buffer_ptr);
+
+// Blocks until the next outfeed buffer is available to be populated, then
+// returns it.
+extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
+    xla::int32 buffer_length);
+
+// Relinquishes the outfeed buffer after it has been populated.
+// buffer_ptr must have been previously returned by
+// __xla_cpu_runtime_AcquireOutfeedBufferForPopulation.
+// Once this call completes, buffer_ptr may no longer be accessed.
+// buffer_length must match the length passed to the call to
+// __xla_cpu_runtime_AcquireInfeedBufferForDequeue that returned
+// buffer_ptr. This function must be called before the next buffer is
+// acquired, i.e., there may only be one outstanding outfeed buffer in
+// use by the runtime.
+extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
     xla::int32 buffer_length, void* buffer_ptr);
 }
 

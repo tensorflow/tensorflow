@@ -147,7 +147,8 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
     return errors::InvalidArgument("num_frames must be positive.");
   }
 
-  const size_t bytes_per_second = sample_rate * kBytesPerSample;
+  const size_t bytes_per_second =
+    sample_rate * kBytesPerSample * num_channels;
   const size_t num_samples = num_frames * num_channels;
   const size_t data_size = num_samples * kBytesPerSample;
   const size_t file_size = kHeaderSize + num_samples * kBytesPerSample;
@@ -242,8 +243,7 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
         "Bad bytes per sample in WAV header: Expected ",
         expected_bytes_per_sample, " but got ", bytes_per_sample);
   }
-  const uint32 expected_bytes_per_second =
-      (bytes_per_sample * (*sample_rate)) / *channel_count;
+  const uint32 expected_bytes_per_second = bytes_per_sample * *sample_rate;
   if (bytes_per_second != expected_bytes_per_second) {
     return errors::InvalidArgument(
         "Bad bytes per second in WAV header: Expected ",

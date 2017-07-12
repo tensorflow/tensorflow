@@ -491,6 +491,16 @@ message BatchNormTrainingRequest {
   int64 feature_index = 5;
 }
 
+message BatchNormGradRequest {
+  ComputationDataHandle operand = 1;
+  ComputationDataHandle scale = 2;
+  ComputationDataHandle mean = 3;
+  ComputationDataHandle variance = 4;
+  ComputationDataHandle grad_output = 5;
+  float epsilon = 6;
+  int64 feature_index = 7;
+}
+
 message CrossReplicaSumRequest {
   ComputationDataHandle operand = 2;
 }
@@ -799,7 +809,8 @@ message OpRequest {
     RecvRequest recv_request = 31;
     OutfeedRequest outfeed_request = 32;
     BatchNormTrainingRequest batch_norm_training_request = 35;
-    // Next: 37
+    BatchNormGradRequest batch_norm_grad_request = 37;
+    // Next: 38
   }
 }
 

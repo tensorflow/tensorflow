@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/infeed_manager.h"
+#include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 
 #include "tensorflow/core/platform/logging.h"
 
@@ -21,26 +21,28 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-InfeedBuffer::~InfeedBuffer() = default;
-
-InfeedManager::InfeedManager() : current_buffer_(nullptr) {}
-
-void InfeedManager::Reset() {
-  tensorflow::mutex_lock l(mu_);
-  CHECK(!current_buffer_);
-  for (auto buffer : enqueued_buffer_) {
-    buffer->Done();
-  }
-  enqueued_buffer_.clear();
+void XfeedManager::Reset() {
+  infeed()->Reset();
+  outfeed()->Reset();
 }
 
-void InfeedManager::EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers) {
+void XfeedQueueManager::Reset() {
   tensorflow::mutex_lock l(mu_);
-  bool was_empty = enqueued_buffer_.empty();
-  for (InfeedBuffer* b : buffers) {
-    enqueued_buffer_.push_back(b);
+  CHECK(current_buffer_ == nullptr);
+  for (auto buffer : enqueued_buffers_) {
+    buffer->Done();
   }
-  if (was_empty) {
+  enqueued_buffers_.clear();
+}
+
+void XfeedQueueManager::EnqueueBuffers(
+    tensorflow::gtl::ArraySlice<XfeedBuffer*> buffers) {
+  tensorflow::mutex_lock l(mu_);
+  bool was_empty = enqueued_buffers_.empty();
+  for (XfeedBuffer* b : buffers) {
+    enqueued_buffers_.push_back(b);
+  }
+  if (was_empty && !buffers.empty()) {
     // This has the potential to suffer from the notified thread
     // immediately trying and failing to acquire mu_, but seems
     // preferable to the alternative of notifying outside the lock
@@ -49,20 +51,20 @@ void InfeedManager::EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers) {
   }
 }
 
-InfeedBuffer* InfeedManager::BlockingDequeueBuffer() {
+XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
   tensorflow::mutex_lock l(mu_);
-  while (enqueued_buffer_.empty()) {
+  while (enqueued_buffers_.empty()) {
     cv_.wait(l);
   }
-  CHECK(!current_buffer_);
-  current_buffer_ = enqueued_buffer_.front();
-  enqueued_buffer_.pop_front();
+  CHECK(current_buffer_ == nullptr);
+  current_buffer_ = enqueued_buffers_.front();
+  enqueued_buffers_.pop_front();
   return current_buffer_;
 }
 
-void InfeedManager::ReleaseCurrentBuffer(int32 length, void* data) {
+void XfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data) {
   tensorflow::mutex_lock l(mu_);
-  CHECK(current_buffer_);
+  CHECK(current_buffer_ != nullptr);
   CHECK_EQ(length, current_buffer_->length());
   CHECK_EQ(data, current_buffer_->data());
   current_buffer_->Done();

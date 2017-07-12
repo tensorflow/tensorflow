@@ -884,6 +884,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                                     output_shape_for_mean_and_var});
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferBatchNormGradShape(
+    const Shape& operand_shape, const Shape& scale_shape,
+    const Shape& mean_shape, const Shape& var_shape,
+    const Shape& output_grad_shape, int64 feature_index) {
+  // TODO(b/62843645) Implement shape inference.
+  return Unimplemented(
+      "Shape inference on BatchNormGrad is not implemented yet.");
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
     const Shape& lhs, const Shape& rhs, const Window& window,
     const ConvolutionDimensionNumbers& dnums) {

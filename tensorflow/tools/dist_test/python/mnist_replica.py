@@ -17,7 +17,7 @@
 
 A simple softmax model with one hidden layer is defined. The parameters
 (weights and biases) are located on one parameter server (ps), while the ops
-are executed on two worker nodes by default. The TF sessions also run on the 
+are executed on two worker nodes by default. The TF sessions also run on the
 worker node.
 Multiple invocations of this script can be done in parallel, with different
 values for --task_index. There should be exactly one invocation with
@@ -123,7 +123,7 @@ def main(unused_argv):
 
   is_chief = (FLAGS.task_index == 0)
   if FLAGS.num_gpus > 0:
-    # Avoid gpu allocation conflict: now allocate task_num -> #gpu 
+    # Avoid gpu allocation conflict: now allocate task_num -> #gpu
     # for each worker in the corresponding machine
     gpu = (FLAGS.task_index % FLAGS.num_gpus)
     worker_device = "/job:worker/task:%d/gpu:%d" % (FLAGS.task_index, gpu)
