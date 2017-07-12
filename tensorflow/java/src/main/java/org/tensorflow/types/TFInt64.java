@@ -16,11 +16,13 @@ limitations under the License.
 
 package org.tensorflow.types;
 
+import org.tensorflow.DataType;
+
 /** Represents a 64-bit signed integer. */
 public class TFInt64 implements TFType {
   private TFInt64() {}
   static {
-    Types.typeCodes.put(TFInt64.class, org.tensorflow.DataType.INT64);
+    Types.typeCodes.put(TFInt64.class, DataType.INT64);
   }
   static {
     Types.scalars.put(TFInt64.class, 0L);

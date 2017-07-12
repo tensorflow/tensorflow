@@ -16,11 +16,13 @@ limitations under the License.
 
 package org.tensorflow.types;
 
+import org.tensorflow.DataType;
+
 /** Represents a boolean. */
 public class TFBool implements TFType {
   private TFBool() {}
   static {
-    Types.typeCodes.put(TFBool.class, org.tensorflow.DataType.BOOL);
+    Types.typeCodes.put(TFBool.class, DataType.BOOL);
   }
   static {
     Types.scalars.put(TFBool.class, false);
