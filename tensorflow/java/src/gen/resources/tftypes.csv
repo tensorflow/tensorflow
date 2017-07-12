@@ -1,21 +1,21 @@
 TF type,datatype code,Java type,Java boxed type,Creator?,Zero value,Description
-Float,1,float,Float,y,0f,32-bit single precision floating point number
-Double,2,double,Double,y,0,64-bit double precision floating point number
-Int32,3,int,Integer,y,0,32-bit signed integer
-UInt8,4,byte,Byte,n,,8-bit unsigned integer
-Int16,5,,Short,n,(short)0,16-bit signed integer
-Int8,6,,Byte,n,(byte)0,8-bit signed integer
-String,7,byte,Byte,n,,arbitrary sequence of bytes
-Complex64,8,,,n,,single-precision complex number
-Int64,9,long,Long,y,0L,64-bit signed integer
-Bool,10,boolean,Boolean,y,false,boolean
-QInt8,11,,Byte,n,,quantized int8
-QUInt8,12,,Byte,n,,quantized uint8
-QInt32,13,,Integer,n,,quantized int32
-BFloat16,14,,Short,n,,float32 truncated to 16 bits. Only for cast ops.
-QInt16,15,,Short,n,,quantized int16
-QUInt16,16,,Short,n,,quantized uint16
-UInt16,17,,Short,n,,16-bit unsigned integer
-Complex128,18,,,n,,double-precision complex number
-Half,19,,,n,,
-Resource,20,,Object,n,,
+Float,float,Float,y,0f,32-bit single precision floating point number
+Double,double,Double,y,0,64-bit double precision floating point number
+Int32,int,Integer,y,0,32-bit signed integer
+UInt8,byte,Byte,n,,8-bit unsigned integer
+Int16,,Short,n,(short)0,16-bit signed integer
+Int8,,Byte,n,(byte)0,8-bit signed integer
+String,byte,Byte,n,,arbitrary sequence of bytes
+Complex64,,,n,,single-precision complex number
+Int64,long,Long,y,0L,64-bit signed integer
+Bool,boolean,Boolean,y,false,boolean
+QInt8,,Byte,n,,quantized int8
+QUInt8,,Byte,n,,quantized uint8
+QInt32,,Integer,n,,quantized int32
+BFloat16,,Short,n,,float32 truncated to 16 bits. Only for cast ops.
+QInt16,,Short,n,,quantized int16
+QUInt16,,Short,n,,quantized uint16
+UInt16,,Short,n,,16-bit unsigned integer
+Complex128,,,n,,double-precision complex number
+Half,,,n,,
+Resource,,Object,n,,

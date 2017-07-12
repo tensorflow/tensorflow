@@ -48,7 +48,6 @@ sub usage {
 
     print "Modulo putting in the correct directory names, it can be invoked as follows:\n";
     print "tftypes -c tftypes.csv Tensors.java.tmpl > Tensors.java\n";
-    print "tftypes -d tftypes.csv DataType.java.tmpl > DataType.java\n";
     print "tftypes -t tftypes.csv <dir>                                   [outputs files to dir]\n";
 }
 
@@ -81,8 +80,8 @@ while (<TYPEDESC>) {
     my $line = $_;
     if ($line =~ m/^TF type/) { next }
     $line =~ s/\r$//;
-    (my $name, my $index, my $jtype, my $jbox, my $creat, my $default, my $desc) =
-        split /,/, $line, 7;
+    (my $name, my $jtype, my $jbox, my $creat, my $default, my $desc) =
+        split /,/, $line, 6;
     $desc =~ s/^ *//g;
     $desc =~ s/ *$//g;
     $jtypecount{$jtype}++;
@@ -93,13 +92,11 @@ while (<TYPEDESC>) {
 #       exit 1
     }
 
-    push @info, [$name, $index, $jtype, $jbox, $creat, $default, $desc];
+    push @info, [$name, $jtype, $jbox, $creat, $default, $desc];
 }
 
-my $first = 1;
-
-for (my $i = 1; $i <= $#info; $first = 0, $i++) {
-    (my $name, my $index, my $jtype, my $jbox, my $creat, my $default, my $desc) =
+for (my $i = 1; $i <= $#info; $i++) {
+    (my $name, my $jtype, my $jbox, my $creat, my $default, my $desc) =
         @{$info[$i]};
     my $tfname = "TF".$name;
     my $ucname = uc $name;
@@ -134,7 +131,7 @@ for (my $i = 1; $i <= $#info; $first = 0, $i++) {
         }
         print CLASSFILE  "}\n";
         close(CLASSFILE);
-    } elsif ($option eq '-c') { # creators
+    } elsif ($option eq '-c') {
       # Generate creator declarations for Tensors.java
       if ($jtype ne '' && $creat eq 'y') {
         for (my $brackets = ''; length $brackets <= 12; $brackets .= '[]') {
@@ -147,9 +144,6 @@ for (my $i = 1; $i <= $#info; $first = 0, $i++) {
       if ($text =~ m/\b$tfname\b/ || $creat eq 'y') {
             $imports .= "import org.tensorflow.types.$tfname;\n";
       }
-      #if ($text =~ m/\b$ucname\b/ || $creat eq 'y') {
-      #  $imports .= "import static org.tensorflow.Types.$ucname;\n";
-      #}
     }
 }
 
