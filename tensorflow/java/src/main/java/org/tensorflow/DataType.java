@@ -57,7 +57,7 @@ public enum DataType {
   // Cached to avoid copying it
   final private static DataType[] values = values();
 
-  public static DataType fromC(int c) {
+  static DataType fromC(int c) {
     for (DataType t : values) {
       if (t.value == c)
         return t;

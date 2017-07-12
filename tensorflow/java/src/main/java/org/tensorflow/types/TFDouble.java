@@ -1,14 +1,27 @@
-// GENERATED FILE. Edit tftypes.pl instead.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+// GENERATED FILE. To update, edit tftypes.pl instead.
+
 package org.tensorflow.types;
 
-/** The class TFDouble represents 64-bit double precision floating point. */
-public class TFDouble implements Types.TFType {
-  /** Represents the type TFDouble at run time. */
-  public static final Class<TFDouble> T = TFDouble.class;
+/** The class TFDouble represents a 64-bit double precision floating point number. */
+public class TFDouble implements TFType {
   static {
-    Types.typeCodes.put(TFDouble.T, 2);
+    Types.typeCodes.put(TFDouble.class, org.tensorflow.DataType.DOUBLE);
   }
   static {
-    Types.scalars.put(TFDouble.T, 0);
+    Types.scalars.put(TFDouble.class, 0);
   }
 }

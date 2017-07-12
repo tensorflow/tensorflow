@@ -1,4 +1,19 @@
 #!/usr/bin/perl
+#
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#     http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
 
 use strict;
 my $count;
@@ -76,42 +91,51 @@ for (my $i = 1; $i <= $#info; $first = 0, $i++) {
         # Generate class declarations
         # print STDERR "Creating $dirname/$tfname.java\n";
         open (CLASSFILE, ">$dirname/$tfname.java") || die "Can't open $tfname.java";
-        print CLASSFILE "// GENERATED FILE. Edit tftypes.pl instead.\n";
-        print CLASSFILE "package org.tensorflow.types;\n\n";
-        print CLASSFILE  "/** The class $tfname represents $desc. */\n"
-                        ."public class $tfname implements Types.TFType {\n"
-                        ."  /** Represents the type $tfname at run time. */\n"
-                        ."  public static final Class<$tfname> T = $tfname.class;\n"
+        print CLASSFILE
+'/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+// GENERATED FILE. To update, edit tftypes.pl instead.
+
+';
+        my $fulldesc = $desc;
+        if (substr($desc, 0, 1) =~ m/^[aeoiu8]$/i) {
+            $fulldesc = "an $desc"
+        } else {
+            $fulldesc = "a $desc"
+        }
+        print CLASSFILE  "package org.tensorflow.types;\n\n";
+        print CLASSFILE  "/** The class $tfname represents $fulldesc. */\n"
+                        ."public class $tfname implements TFType {\n"
                         ."  static {\n"
-                        ."    Types.typeCodes.put($tfname.T, $index);\n"
+                        ."    Types.typeCodes.put($tfname.class, org.tensorflow.DataType.$ucname);\n"
                         ."  }\n";
         if ($default ne '') {
             print CLASSFILE
                          "  static {\n"
-                        ."    Types.scalars.put($tfname.T, $default);\n"
+                        ."    Types.scalars.put($tfname.class, $default);\n"
                         ."  }\n";
         }
         print CLASSFILE  "}\n";
         close(CLASSFILE);
-    } elsif ($option eq '-d') {
-      # Generate datatype enums for DataType.java
-      # TODO: implement
-      if ($jtype ne '') {
-        if (!$first) {
-            $typeinfo .= ",\n\n";
-        }
-        if ($desc ne '') {
-            $typeinfo .= "  /** $desc. */\n";
-        }
-        $typeinfo .=   "  $ucname($index)";
-      }
     } elsif ($option eq '-c') { # creators
       # Generate creator declarations for Tensors.java
       if ($jtype ne '' && $creat eq 'y') {
         for (my $brackets = ''; length $brackets <= 12; $brackets .= '[]') {
             $typeinfo .=
                 "  public static Tensor<$tfname> create($jtype$brackets data) {\n"
-               ."    return Tensor.create(data, $tfname.T);\n"
+               ."    return Tensor.create(data, $tfname.class);\n"
                ."  }\n";
         }
       }
@@ -121,10 +145,6 @@ for (my $i = 1; $i <= $#info; $first = 0, $i++) {
       #if ($text =~ m/\b$ucname\b/ || $creat eq 'y') {
       #  $imports .= "import static org.tensorflow.Types.$ucname;\n";
       #}
-    } elsif ($option eq '-T') { # Tensor.java
-      if ($text =~ m/\b$tfname\b/) {
-            $imports .= "import org.tensorflow.types.$tfname;\n";
-      }
     }
 }
 

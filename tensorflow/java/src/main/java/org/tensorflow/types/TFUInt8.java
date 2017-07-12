@@ -1,11 +1,24 @@
-// GENERATED FILE. Edit tftypes.pl instead.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+// GENERATED FILE. To update, edit tftypes.pl instead.
+
 package org.tensorflow.types;
 
-/** The class TFUInt8 represents 8-bit unsigned integer. */
-public class TFUInt8 implements Types.TFType {
-  /** Represents the type TFUInt8 at run time. */
-  public static final Class<TFUInt8> T = TFUInt8.class;
+/** The class TFUInt8 represents an 8-bit unsigned integer. */
+public class TFUInt8 implements TFType {
   static {
-    Types.typeCodes.put(TFUInt8.T, 4);
+    Types.typeCodes.put(TFUInt8.class, org.tensorflow.DataType.UINT8);
   }
 }
