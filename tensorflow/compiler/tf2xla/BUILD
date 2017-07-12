@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package_group(
     name = "internal",
     packages = [
@@ -91,7 +93,7 @@ cc_library(
 
 # Internal targets below this point.
 
-cc_test(
+tf_cc_test(
     name = "xla_compiler_test",
     size = "small",
     srcs = ["xla_compiler_test.cc"],
@@ -114,7 +116,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "str_util_test",
     size = "small",
     srcs = [
@@ -128,7 +130,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "literal_util_test",
     size = "small",
     srcs = [
@@ -157,7 +159,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "const_analysis_test",
     size = "small",
     srcs = ["const_analysis_test.cc"],
@@ -217,7 +219,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "functionalize_control_flow_test",
     srcs = ["functionalize_control_flow_test.cc"],
     deps = [

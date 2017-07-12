@@ -391,7 +391,7 @@ def tf_gen_op_wrapper_py(name,
       ],)
 
 
-def tf_cc_binary(srcs,
+def tf_cc_binary(srcs=[],
                  **kwargs):
   native.cc_binary(
       srcs=srcs + [clean_dep("//tensorflow/core:libframework.so"),

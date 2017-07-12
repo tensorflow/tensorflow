@@ -21,6 +21,8 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "partition_assignment",
     srcs = [
@@ -41,7 +43,7 @@ cc_library(
 
 # TODO(b/29140563) This target is flaky, disabled until flakiness is
 # root-caused. Failed on 2016-06-08.
-#cc_test(
+#tf_cc_test(
 #    name = "partition_assignment_test",
 #    srcs = [
 #        "partition_assignment_test.cc",
@@ -75,7 +77,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "stream_assignment_test",
     size = "small",
     srcs = [
@@ -303,7 +305,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "convolution_folding_test",
     size = "small",
     srcs = ["convolution_folding_test.cc"],
@@ -329,7 +331,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "instruction_fusion_test",
     size = "small",
     srcs = ["instruction_fusion_test.cc"],
@@ -368,7 +370,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "fusion_merger_test",
     size = "small",
     srcs = ["fusion_merger_test.cc"],
@@ -474,7 +476,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "layout_assignment_test",
     size = "small",
     srcs = ["layout_assignment_test.cc"],
@@ -505,7 +507,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "hlo_schedule_test",
     size = "small",
     srcs = [
@@ -536,7 +538,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "while_transformer_test",
     size = "small",
     srcs = ["while_transformer_test.cc"],
