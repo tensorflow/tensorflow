@@ -299,12 +299,12 @@ cc_binary(
     name = "grpc_tensorflow_server",
     srcs = [
         "grpc_tensorflow_server.cc",
+        "//tensorflow/core:libtflib.so",
     ],
     deps = [
         ":grpc_server_lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:data_flow",
@@ -330,13 +330,13 @@ cc_binary(
     testonly = 1,
     srcs = [
         "grpc_testlib_server.cc",
+        "//tensorflow/core:libtflib.so",
     ],
     deps = [
         ":grpc_server_lib",
         ":grpc_testlib_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",

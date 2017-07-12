@@ -361,9 +361,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":python_op_gen",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:protos_all_cc",
     ],
 )

@@ -827,9 +827,9 @@ cc_library(
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
-        ":framework_internal",
+        ":framework_internal_impl",
         ":lib",
-        ":lib_internal",
+        ":lib_internal_impl",
         ":protos_all_cc",
         ":shape_inference_testutil",
         ":tensor_testutil",
@@ -1596,7 +1596,7 @@ tf_cuda_library(
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
         ],
-    }) + proto_text_hdrs_and_srcs.srcs + [":libtflib.so"],
+    }) + proto_text_hdrs_and_srcs.srcs,
     hdrs = FRAMEWORK_INTERNAL_HEADERS,
     copts = tf_copts(),
     linkopts = select({
@@ -2019,7 +2019,7 @@ cc_library(
     ],
     deps = [
         ":lib",
-        ":lib_internal",
+        ":lib_internal_impl",
     ],
 )
 

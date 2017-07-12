@@ -77,8 +77,7 @@ cc_library(
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":http_request",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:test",
         "@curl//:curl",
     ],

@@ -21,15 +21,18 @@ filegroup(
 
 cc_binary(
     name = "profiler",
-    srcs = ["profiler.cc"],
+    srcs = [
+        "profiler.cc",
+        "//tensorflow/core:libtflib.so",
+    ],
     deps = [
         ":protos_all_cc",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/internal:tfprof_options",
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
