@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
