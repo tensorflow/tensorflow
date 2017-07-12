@@ -24,8 +24,8 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-InfeedManager* GetInfeedManager() {
-  static InfeedManager* manager = new InfeedManager;
+XfeedManager* GetXfeedManager() {
+  static XfeedManager* manager = new XfeedManager;
   return manager;
 }
 
@@ -35,17 +35,36 @@ InfeedManager* GetInfeedManager() {
 
 void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
     xla::int32 buffer_length) {
-  xla::cpu::runtime::InfeedManager* infeed =
-      xla::cpu::runtime::GetInfeedManager();
+  VLOG(2) << "AcquireInfeedBufferForDequeue";
+  xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
   // Wait until there's a buffer to dequeue.
-  xla::cpu::runtime::InfeedBuffer* buffer = infeed->BlockingDequeueBuffer();
+  xla::cpu::runtime::XfeedBuffer* buffer =
+      xfeed->infeed()->BlockingDequeueBuffer();
   CHECK_EQ(buffer->length(), buffer_length);
   return buffer->data();
 }
 
 void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(xla::int32 buffer_length,
                                                        void* buffer_ptr) {
-  xla::cpu::runtime::InfeedManager* infeed =
-      xla::cpu::runtime::GetInfeedManager();
-  infeed->ReleaseCurrentBuffer(buffer_length, buffer_ptr);
+  VLOG(2) << "ReleaseInfeedBufferAfterDequeue";
+  xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
+  xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr);
+}
+
+void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
+    xla::int32 buffer_length) {
+  VLOG(2) << "AcquireOutfeedBufferForPopulation";
+  xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
+  // Wait until there's a buffer to dequeue.
+  xla::cpu::runtime::XfeedBuffer* buffer =
+      xfeed->outfeed()->BlockingDequeueBuffer();
+  CHECK_EQ(buffer->length(), buffer_length);
+  return buffer->data();
+}
+
+void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
+    xla::int32 buffer_length, void* buffer_ptr) {
+  VLOG(2) << "ReleaseOutfeedBufferAfterPopulation";
+  xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
+  xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr);
 }

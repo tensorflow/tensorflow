@@ -71,28 +71,29 @@ def optimize_loss(loss,
                   increment_global_step=True):
   """Given loss and parameters for optimizer, returns a training op.
 
-  Various ways of passing optimizers, include:
+  Various ways of passing optimizers include:
 
-  - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+  - by string specifying the name of the optimizer. See OPTIMIZER_CLS_NAMES
       for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
-  - function, takes learning rate `Tensor` as argument and must return
+  - by function taking learning rate `Tensor` as argument and returning an
       `Optimizer` instance. E.g. `optimize_loss(...,
       optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
     Alternatively, if `learning_rate` is `None`, the function takes no
     arguments. E.g. `optimize_loss(..., learning_rate=None,
       optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
-  - class, subclass of `Optimizer` that takes only one required argument -
-      learning rate, such as AdamOptimizer, AdagradOptimizer.
-      E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
-  - object, instance of subclass of `Optimizer`.
-      E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
+  - by a subclass of `Optimizer` having a single-argument constructor
+      (the argument is the learning rate), such as AdamOptimizer or
+      AdagradOptimizer. E.g. `optimize_loss(...,
+      optimizer=tf.train.AdagradOptimizer)`.
+  - by an instance of a subclass of `Optimizer`.
+      E.g., `optimize_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
   Args:
     loss: Scalar `Tensor`.
     global_step: Scalar int `Tensor`, step counter to update on each step
                  unless `increment_global_step` is `False`. If not supplied,
                  it will be fetched from the default graph (see
-                 `tf.train.get_global_step` for details). If it's
+                 `tf.train.get_global_step` for details). If it has
                  not been created, no step will be incremented with each weight
                  update. `learning_rate_decay_fn` requires `global_step`.
     learning_rate: float or `Tensor`, magnitude of update per each training
@@ -145,11 +146,11 @@ def optimize_loss(loss,
         * `loss` is an invalid type or shape.
         * `global_step` is an invalid type or shape.
         * `learning_rate` is an invalid type or value.
-        * `optimizer` is wrong type.
-        * `clip_gradients` is not float or callable.
+        * `optimizer` has the wrong type.
+        * `clip_gradients` is neither float nor callable.
         * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
           `global_step` is available.
-        * `gradients` is empty
+        * `gradients` is empty.
   """
   loss = ops.convert_to_tensor(loss)
   contrib_framework.assert_scalar(loss)
@@ -350,8 +351,8 @@ def adaptive_clipping_fn(std_factor=2.,
   https://arxiv.org/abs/1412.1602.
 
   Keeps a moving average of the mean and std of the log(norm) of the gradient.
-  if the norm exceeds `exp(mean + std_factor*std)`, all gradients are rescaled
-  such that the global norm becomes `exp(mean)`.
+  If the norm exceeds `exp(mean + std_factor*std)` then all gradients will be
+  rescaled such that the global norm becomes `exp(mean)`.
 
   Args:
     std_factor: Python scaler (or tensor).

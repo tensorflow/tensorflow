@@ -311,9 +311,12 @@ class Variable(object):
             raise ValueError("initial_value must have a shape specified: %s" %
                              self._initial_value)
 
-        # Assigns initial value.
+        # If 'initial_value' makes use of other variables, make sure we don't
+        # have an issue if these other variables aren't initialized first by
+        # using their initialized_value() method.
         self._initializer_op = state_ops.assign(
-            self._variable, self._initial_value,
+            self._variable,
+            self._build_initializer_expr(self._initial_value),
             validate_shape=validate_shape).op
 
         # TODO(vrv): Change this class to not take caching_device, but
@@ -707,6 +710,89 @@ class Variable(object):
       pass
 
     setattr(Variable, operator, _run_op)
+
+  def _build_initializer_expr(self, initial_value):
+    """Build an expression suitable to initialize a variable.
+
+    Replace references to variables in initial_value with references to the
+    variable initial values instead.
+
+    Args:
+      initial_value: original expression
+    Returns:
+      A tensorflow expression suitable to initialize a variable.
+    """
+    if isinstance(initial_value, Variable):
+      return initial_value.initialized_value()
+    elif isinstance(initial_value, ops.Tensor):
+      new_op = self._build_initializer_expr(initial_value.op)
+      if new_op != initial_value.op:
+        if isinstance(new_op, ops.Tensor):
+          return new_op
+        else:
+          return ops.Tensor(new_op, initial_value.value_index,
+                            initial_value.dtype)
+      else:
+        return initial_value
+    elif isinstance(initial_value, ops.Operation):
+      if initial_value.node_def.op in [
+          "IsVariableInitialized", "VarIsInitializedOp", "ReadVariableOp"
+      ]:
+        return initial_value
+      if initial_value.node_def.op in ["Variable", "VariableV2", "VarHandleOp"]:
+        return self._find_initialized_value_for_variable(initial_value)
+      modified = False
+      new_inputs = []
+      for tensor in initial_value.inputs:
+        new_tensor = self._build_initializer_expr(tensor)
+        new_inputs.append(new_tensor)
+        if new_tensor != tensor:
+          modified = True
+
+      if modified:
+        new_name = initial_value.node_def.name + "_" + self.name
+        new_name = new_name.replace(":", "_")
+        new_op = initial_value.node_def.op
+        new_op = new_op.replace("RefSwitch", "Switch")
+        new_value = self.graph.create_op(
+            new_op,
+            new_inputs,
+            # pylint: disable=protected-access
+            initial_value._output_types,
+            # pylint: enable=protected-access
+            name=new_name,
+            attrs=initial_value.node_def.attr)
+        return new_value
+      else:
+        return initial_value
+    else:
+      return initial_value
+
+  def _find_initialized_value_for_variable(self, variable_op):
+    """Find the initial value for a variable op.
+
+    To do so, lookup the variable op in the variables collection.
+
+    Args:
+      variable_op: a TensorFlow variable Operation
+    Returns:
+      The initial value for the variable.
+    """
+    try:
+      var_names = [variable_op.node_def.name, variable_op.node_def.name + ":0"]
+      global_vars = self.graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      for var in global_vars:
+        if var.name in var_names:
+          return var.initialized_value()
+      local_vars = self.graph.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+      for var in local_vars:
+        if var.name == var_names:
+          return var.initialized_value()
+    except AttributeError:
+      # Return the variable itself when an incomplete user defined variable type
+      # was put in the collection.
+      return variable_op
+    return variable_op
 
   # NOTE(mrry): This enables the Variable's overloaded "right" binary
   # operators to run when the left operand is an ndarray, because it

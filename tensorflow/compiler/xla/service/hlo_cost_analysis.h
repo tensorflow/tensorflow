@@ -89,6 +89,7 @@ class HloCostAnalysis : public DfsHloVisitor {
                       tensorflow::gtl::ArraySlice<int64> dimensions,
                       HloComputation* function_handle) override;
   Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override;
+  Status HandleBatchNormGrad(HloInstruction* batchNormGrad) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call,

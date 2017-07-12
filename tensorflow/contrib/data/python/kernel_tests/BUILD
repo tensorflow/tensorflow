@@ -240,6 +240,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "concatenate_dataset_op_test",
+    size = "small",
+    srcs = ["concatenate_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

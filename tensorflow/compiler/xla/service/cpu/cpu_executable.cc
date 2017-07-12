@@ -66,7 +66,8 @@ CpuExecutable::CpuExecutable(
   CHECK(sym) << "Symbol " << entry_function_name << " not found.";
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ = reinterpret_cast<ComputeFunctionType>(sym.getAddress());
+  compute_function_ =
+      reinterpret_cast<ComputeFunctionType>(cantFail(sym.getAddress()));
 }
 
 // Given a pointer to an output buffer (following the CPU JIT calling

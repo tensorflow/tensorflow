@@ -56,8 +56,9 @@ struct NumTrue<GPUDevice, TIndex> {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const GPUDevice& d, TTypes<bool>::ConstFlat input,
       typename TTypes<TIndex>::Scalar num_true) {
-    std::size_t temp_storage_bytes = 0;
+    const cudaStream_t& cu_stream = GetCudaStream(ctx);
 
+    std::size_t temp_storage_bytes = 0;
     const bool* input_data = input.data();
     TIndex* num_true_data = num_true.data();
 
@@ -66,7 +67,7 @@ struct NumTrue<GPUDevice, TIndex> {
                                /*d_in*/ input_data,
                                /*d_out*/ num_true_data,
                                /*num_items*/ input.size(),
-                               /*stream*/ d.stream());
+                               /*stream*/ cu_stream);
 
     if (first_success != cudaSuccess) {
       return errors::Internal(
@@ -85,7 +86,7 @@ struct NumTrue<GPUDevice, TIndex> {
         /*d_in*/ input_data,
         /*d_out*/ num_true_data,
         /*num_items*/ input.size(),
-        /*stream*/ d.stream());
+        /*stream*/ cu_stream);
 
     if (second_success != cudaSuccess) {
       return errors::Internal(
@@ -168,6 +169,8 @@ struct Where<GPUDevice, NDIM, Tindex> {
       return Status::OK();
     }
 
+    const cudaStream_t& cu_stream = GetCudaStream(ctx);
+
     std::size_t temp_storage_bytes = 0;
 
     cub::CountingInputIterator<Tindex> select_counter(0);
@@ -188,7 +191,7 @@ struct Where<GPUDevice, NDIM, Tindex> {
                                    /*d_out*/ output_iterator,
                                    /*d_num_selected_out*/ found_true_device,
                                    /*num_items*/ input.size(),
-                                   /*stream*/ d.stream());
+                                   /*stream*/ cu_stream);
     if (first_success != cudaSuccess) {
       return errors::Internal(
           "WhereOp: Could not launch cub::DeviceSelect::Flagged to calculate "
@@ -208,7 +211,7 @@ struct Where<GPUDevice, NDIM, Tindex> {
         /*d_out*/ output_iterator,
         /*d_num_selected_out*/ found_true_device,
         /*num_items*/ input.size(),
-        /*stream*/ d.stream());
+        /*stream*/ cu_stream);
 
     if (second_success != cudaSuccess) {
       return errors::Internal(

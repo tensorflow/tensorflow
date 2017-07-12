@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Logging tensorflow::tfprof::OpLog.
+"""Logging tensorflow::tfprof::OpLogProto.
 
-OpLog is used to add extra model information for offline analysis by tfprof.
+OpLogProto is used to add extra model information for offline analysis.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -131,15 +131,15 @@ def _merge_default_with_oplog(graph, op_log=None, run_meta=None,
 
   Args:
     graph: tf.Graph.
-    op_log: OpLog proto.
+    op_log: OpLogProto proto.
     run_meta: RunMetadata proto used to complete shape information.
     add_trace: Whether to add op trace information.
     add_trainable_var: Whether to assign tf.trainable_variables() op type
       '_trainable_variables'.
   Returns:
-    tmp_op_log: Merged OpLog proto.
+    tmp_op_log: Merged OpLogProto proto.
   """
-  tmp_op_log = tfprof_log_pb2.OpLog()
+  tmp_op_log = tfprof_log_pb2.OpLogProto()
   logged_ops = _get_logged_ops(
       graph, run_meta, add_trace=add_trace, add_trainable_var=add_trainable_var)
 
@@ -169,17 +169,18 @@ def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
     '_trainable_variables'.
     The API also logs 'flops' statistics for ops with op.RegisterStatistics()
     defined. flops calculation depends on Tensor shapes defined in 'graph',
-    which might not be complete, 'run_meta', if provided, completes the shape
+    which might not be complete. 'run_meta', if provided, completes the shape
     information with best effort.
 
   Args:
     graph: tf.Graph.
     log_dir: directory to write the log file.
-    op_log: (Optional) OpLog proto to be written. If not provided, an new
+    op_log: (Optional) OpLogProto proto to be written. If not provided, an new
         one is created.
     run_meta: (Optional) RunMetadata proto that helps flops computation using
         run time shape information.
-    add_trace: Whether to add op trace information. Used to support "code" view.
+    add_trace: Whether to add python code trace information.
+        Used to support "code" view.
   """
   op_log = _merge_default_with_oplog(graph, op_log, run_meta, add_trace)
 

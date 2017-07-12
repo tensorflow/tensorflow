@@ -18,7 +18,7 @@ tf_proto_library(
     name = "fertile_stats_proto",
     srcs = ["fertile_stats.proto"],
     cc_api_version = 2,
-    header_only_protodeps = ["//tensorflow/contrib/decision_trees/proto:generic_tree_model"],
+    protodeps = ["//tensorflow/contrib/decision_trees/proto:generic_tree_model"],
     visibility = ["//visibility:public"],
 )
 
@@ -26,6 +26,6 @@ tf_proto_library(
     name = "tensor_forest_params_proto",
     srcs = ["tensor_forest_params.proto"],
     cc_api_version = 2,
-    header_only_protodeps = ["//tensorflow/contrib/decision_trees/proto:generic_tree_model"],
+    protodeps = ["//tensorflow/contrib/decision_trees/proto:generic_tree_model"],
     visibility = ["//visibility:public"],
 )

@@ -163,6 +163,27 @@ class TestModelSaving(test.TestCase):
       model = keras.models.load_model(fname)
       os.remove(fname)
 
+  def test_saving_lambda_numpy_array_arguments(self):
+    if h5py is None:
+      return  # Skip test if models cannot be saved.
+
+    mean = np.random.random((4, 2, 3))
+    std = np.abs(np.random.random((4, 2, 3))) + 1e-5
+    inputs = keras.layers.Input(shape=(4, 2, 3))
+    output = keras.layers.Lambda(lambda image, mu, std: (image - mu) / std,
+                                 arguments={'mu': mean, 'std': std})(inputs)
+    model = keras.models.Model(inputs, output)
+    model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
+
+    _, fname = tempfile.mkstemp('.h5')
+    keras.models.save_model(model, fname)
+
+    model = keras.models.load_model(fname)
+    os.remove(fname)
+
+    self.assertAllClose(mean, model.layers[1].arguments['mu'])
+    self.assertAllClose(std, model.layers[1].arguments['std'])
+
 
 class TestSequential(test.TestCase):
   """Most Sequential model API tests are covered in `training_test.py`.

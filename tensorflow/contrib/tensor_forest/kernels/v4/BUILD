@@ -85,8 +85,8 @@ cc_test(
     deps = [
         ":leaf_model_operators",
         ":test_utils",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
-        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -118,8 +118,8 @@ cc_test(
     deps = [
         ":grow_stats",
         ":test_utils",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
-        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
@@ -160,7 +160,7 @@ cc_test(
     deps = [
         ":decision_node_evaluator",
         ":test_utils",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/core",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -198,7 +198,6 @@ cc_library(
         ":leaf_model_operators",
         ":params",
         ":split_collection_operators",
-        ":stat_utils",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc_headers_only",
         "//tensorflow/contrib/tensor_forest:tree_utils",
@@ -232,6 +231,7 @@ cc_library(
     srcs = ["params.cc"],
     hdrs = ["params.h"],
     deps = [
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
     ],
@@ -242,7 +242,7 @@ cc_test(
     srcs = ["params_test.cc"],
     deps = [
         ":params",
-        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

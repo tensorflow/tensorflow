@@ -463,6 +463,38 @@ class LossWeightingTest(test.TestCase):
           temporal_x_test[test_ids], temporal_y_test[test_ids], verbose=0)
       self.assertLess(score, ref_score)
 
+  def test_class_weight_wrong_classes(self):
+    num_classes = 5
+    train_samples = 1000
+    test_samples = 1000
+    input_dim = 5
+    timesteps = 3
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.TimeDistributed(
+              keras.layers.Dense(num_classes),
+              input_shape=(timesteps, input_dim)))
+      model.add(keras.layers.Activation('softmax'))
+      model.compile(
+          loss='binary_crossentropy',
+          optimizer='rmsprop')
+
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=train_samples,
+          test_samples=test_samples,
+          input_shape=(input_dim,),
+          num_classes=num_classes)
+      # convert class vectors to binary class matrices
+      y_train = keras.utils.to_categorical(y_train, num_classes)
+      class_weight = dict([(i, 1.) for i in range(num_classes)])
+
+      del class_weight[1]
+      with self.assertRaises(ValueError):
+        model.fit(x_train, y_train,
+                  epochs=0, verbose=0, class_weight=class_weight)
+
 
 class LossMaskingTest(test.TestCase):
 
@@ -654,41 +686,41 @@ class TestGeneratorMethods(test.TestCase):
                         steps_per_epoch=5,
                         epochs=1,
                         verbose=1,
-                        max_q_size=10,
+                        max_queue_size=10,
                         workers=4,
-                        pickle_safe=True)
+                        use_multiprocessing=True)
     model.fit_generator(custom_generator(),
                         steps_per_epoch=5,
                         epochs=1,
                         verbose=1,
-                        max_q_size=10,
-                        pickle_safe=False)
+                        max_queue_size=10,
+                        use_multiprocessing=False)
     model.fit_generator(custom_generator(),
                         steps_per_epoch=5,
                         epochs=1,
                         verbose=1,
-                        max_q_size=10,
-                        pickle_safe=False,
+                        max_queue_size=10,
+                        use_multiprocessing=False,
                         validation_data=custom_generator(),
                         validation_steps=10)
     model.predict_generator(custom_generator(),
                             steps=5,
-                            max_q_size=10,
+                            max_queue_size=10,
                             workers=2,
-                            pickle_safe=True)
+                            use_multiprocessing=True)
     model.predict_generator(custom_generator(),
                             steps=5,
-                            max_q_size=10,
-                            pickle_safe=False)
+                            max_queue_size=10,
+                            use_multiprocessing=False)
     model.evaluate_generator(custom_generator(),
                              steps=5,
-                             max_q_size=10,
+                             max_queue_size=10,
                              workers=2,
-                             pickle_safe=True)
+                             use_multiprocessing=True)
     model.evaluate_generator(custom_generator(),
                              steps=5,
-                             max_q_size=10,
-                             pickle_safe=False)
+                             max_queue_size=10,
+                             use_multiprocessing=False)
 
 
 if __name__ == '__main__':

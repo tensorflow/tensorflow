@@ -100,7 +100,7 @@ def copy_variable_to_graph(org_instance, to_graph, scope=""):
 
 def copy_op_to_graph(org_instance, to_graph, variables,
                      scope=""):
-  """Given an `Operation` 'org_instance` from one `Graph`,
+  """Given an `Operation` `org_instance` from one `Graph`,
   initializes and returns a copy of it from another `Graph`,
   under the specified scope (default `""`).
 
