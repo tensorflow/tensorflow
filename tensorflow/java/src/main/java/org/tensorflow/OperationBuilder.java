@@ -73,7 +73,7 @@ public final class OperationBuilder {
    * @param input {@link Output} supposed to be the input of the OperationBuilder.
    * @return the OperationBuilder instance for chaining.
    */
-  public OperationBuilder addInput(Output input) {
+  public OperationBuilder addInput(Output<?> input) {
     Graph.Reference r = graph.ref();
     try {
       addInput(unsafeNativeHandle, input.op().getUnsafeNativeHandle(), input.index());
@@ -106,7 +106,7 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder addInputList(Output[] inputs) {
+  public OperationBuilder addInputList(Output<?>[] inputs) {
     Graph.Reference r = graph.ref();
     try {
       long[] opHandles = new long[inputs.length];
@@ -231,7 +231,7 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder setAttr(String name, Tensor value) {
+  public OperationBuilder setAttr(String name, Tensor<?> value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrTensor(unsafeNativeHandle, name, value.getNativeHandle());
@@ -241,10 +241,10 @@ public final class OperationBuilder {
     return this;
   }
 
-  public OperationBuilder setAttr(String name, Tensor[] value) {
+  public OperationBuilder setAttr(String name, Tensor<?>[] value) {
     long[] handles = new long[value.length];
     int idx = 0;
-    for (Tensor t : value) {
+    for (Tensor<?> t : value) {
       handles[idx++] = t.getNativeHandle();
     }
     Graph.Reference r = graph.ref();

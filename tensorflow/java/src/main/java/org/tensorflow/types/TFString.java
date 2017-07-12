@@ -16,12 +16,7 @@ limitations under the License.
 
 package org.tensorflow.types;
 
-import org.tensorflow.DataType;
-
 /** Represents an arbitrary sequence of bytes. */
 public class TFString implements TFType {
   private TFString() {}
-  static {
-    Types.typeCodes.put(TFString.class, DataType.STRING);
-  }
 }

@@ -26,6 +26,9 @@ import org.tensorflow.Graph;
 import org.tensorflow.Output;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
+import org.tensorflow.types.Types;
+import org.tensorflow.types.TFType;
+import org.tensorflow.types.TFInt32;
 
 /** Unit tests for {@link org.tensorflow.Scope}. */
 @RunWith(JUnit4.class)
@@ -122,13 +125,13 @@ public class ScopeTest {
   public void basic() {
     try (Graph g = new Graph()) {
       Scope s = new Scope(g);
-      Const c1 = Const.create(s, 42);
+      Const<TFInt32> c1 = Const.create(s, 42);
       assertEquals("Const", c1.output().op().name());
-      Const c2 = Const.create(s, 7);
+      Const<TFInt32> c2 = Const.create(s, 7);
       assertEquals("Const_1", c2.output().op().name());
-      Const c3 = Const.create(s.withName("four"), 4);
+      Const<TFInt32> c3 = Const.create(s.withName("four"), 4);
       assertEquals("four", c3.output().op().name());
-      Const c4 = Const.create(s.withName("four"), 4);
+      Const<TFInt32> c4 = Const.create(s.withName("four"), 4);
       assertEquals("four_1", c4.output().op().name());
     }
   }
@@ -148,122 +151,137 @@ public class ScopeTest {
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope s = new Scope(g);
-      Output data = Const.create(s.withName("data"), new int[] {600, 470, 170, 430, 300}).output();
+      Output<TFInt32> data = Const.create(s.withName("data"), new int[] {600, 470, 170, 430, 300}).output();
 
       // Create a composite op with a customized name
-      Variance var1 = Variance.create(s.withName("example"), data);
+      Variance<TFInt32> var1 = Variance.create(s.withName("example"), data, TFInt32.class);
       assertEquals("example/variance", var1.output().op().name());
 
       // Confirm internally added ops have the right names.
       assertNotNull(g.operation("example/squared_deviation"));
       assertNotNull(g.operation("example/Mean"));
-      assertNotNull(g.operation("example/zero"));
+      //assertNotNull(g.operation("example/zero"));
 
       // Same composite op with a default name
-      Variance var2 = Variance.create(s, data);
+      Variance<TFInt32> var2 = Variance.create(s, data, TFInt32.class);
       assertEquals("variance/variance", var2.output().op().name());
 
       // Confirm internally added ops have the right names.
       assertNotNull(g.operation("variance/squared_deviation"));
       assertNotNull(g.operation("variance/Mean"));
-      assertNotNull(g.operation("variance/zero"));
+      //assertNotNull(g.operation("variance/zero"));
 
       // Verify correct results as well.
-      Tensor result = sess.runner().fetch(var1.output()).run().get(0);
+      Tensor<TFInt32> result = sess.runner().fetch(var1.output()).run().get(0).expect(TFInt32.class);
       assertEquals(21704, result.intValue());
-      result = sess.runner().fetch(var2.output()).run().get(0);
+      result = sess.runner().fetch(var2.output()).run().get(0).expect(TFInt32.class);
       assertEquals(21704, result.intValue());
     }
   }
 
   // "handwritten" sample operator classes
-  private static final class Const {
-    private final Output output;
-
-    static Const create(Scope s, Object v) {
-      try (Tensor value = Tensor.create(v)) {
-        return new Const(
+  private static final class Const<T> {
+    private final Output<T> output;
+    
+    static Const<TFInt32> create(Scope s, int v) {
+    	return create(s, Tensor.create(v, TFInt32.class));
+    }
+    static Const<TFInt32> create(Scope s, int[] v) {
+    	return create(s, Tensor.create(v, TFInt32.class));
+    }
+    static <T> Const<T> create(Scope s, Tensor<T> value) {
+    	return new Const<T>(
+          s.graph()
+          .opBuilder("Const", s.makeOpName("Const"))
+          .setAttr("dtype", value.dataType())
+          .setAttr("value", value)
+          .build()
+          .<T>output(0));
+    }
+    static <T extends TFType> Const<T> create(Scope s, Object v, Class<T> type) {
+      try (Tensor<T> value = Tensor.create(v, type)) {
+        return new Const<T>(
             s.graph()
                 .opBuilder("Const", s.makeOpName("Const"))
                 .setAttr("dtype", value.dataType())
                 .setAttr("value", value)
                 .build()
-                .output(0));
+                .<T>output(0));
       }
     }
 
-    Const(Output o) {
+    Const(Output<T> o) {
       output = o;
     }
 
-    Output output() {
+    Output<T> output() {
       return output;
     }
   }
 
-  private static final class Mean {
-    private final Output output;
+  private static final class Mean<T> {
+    private final Output<T> output;
 
-    static Mean create(Scope s, Output input, Output reductionIndices) {
-      return new Mean(
+    static <T> Mean<T> create(Scope s, Output<T> input, Output<T> reductionIndices) {
+      return new Mean<T>(
           s.graph()
               .opBuilder("Mean", s.makeOpName("Mean"))
               .addInput(input)
               .addInput(reductionIndices)
               .build()
-              .output(0));
+              .<T>output(0));
     }
 
-    Mean(Output o) {
+    Mean(Output<T> o) {
       output = o;
     }
 
-    Output output() {
+    Output<T> output() {
       return output;
     }
   }
+  
+  private static final class SquaredDifference<T> {
+    private final Output<T> output;
 
-  private static final class SquaredDifference {
-    private final Output output;
-
-    static SquaredDifference create(Scope s, Output x, Output y) {
-      return new SquaredDifference(
+    static <T> SquaredDifference<T> create(Scope s, Output<T> x, Output<T> y) {
+      return new SquaredDifference<T>(
           s.graph()
               .opBuilder("SquaredDifference", s.makeOpName("SquaredDifference"))
               .addInput(x)
               .addInput(y)
               .build()
-              .output(0));
+              .<T>output(0));
     }
 
-    SquaredDifference(Output o) {
+    SquaredDifference(Output<T> o) {
       output = o;
     }
 
-    Output output() {
+    Output<T> output() {
       return output;
     }
   }
 
-  private static final class Variance {
-    private final Output output;
+  private static final class Variance<T> {
+    private final Output<T> output;
 
-    static Variance create(Scope base, Output x) {
+    static <T extends TFType> Variance<T> create(Scope base, Output<T> x, Class<T> type) {
       Scope s = base.withSubScope("variance");
-      Output zero = Const.create(s.withName("zero"), new int[] {0}).output();
-      Output sqdiff =
+      Output<T> zero = Const.create(base, Types.zeroValue(type), type).output();
+      Output<T> sqdiff =
           SquaredDifference.create(
                   s.withName("squared_deviation"), x, Mean.create(s, x, zero).output())
               .output();
 
-      return new Variance(Mean.create(s.withName("variance"), sqdiff, zero).output());
+      return new Variance<T>(Mean.create(s.withName("variance"), sqdiff, zero).output());
     }
 
-    Variance(Output o) {
+    Variance(Output<T> o) {
       output = o;
     }
 
-    Output output() {
+    Output<T> output() {
       return output;
     }
   }

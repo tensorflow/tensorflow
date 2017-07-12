@@ -16,15 +16,7 @@ limitations under the License.
 
 package org.tensorflow.types;
 
-import org.tensorflow.DataType;
-
 /** Represents a 32-bit signed integer. */
 public class TFInt32 implements TFType {
   private TFInt32() {}
-  static {
-    Types.typeCodes.put(TFInt32.class, DataType.INT32);
-  }
-  static {
-    Types.scalars.put(TFInt32.class, 0);
-  }
 }

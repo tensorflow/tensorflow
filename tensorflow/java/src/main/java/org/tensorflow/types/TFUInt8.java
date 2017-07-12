@@ -16,15 +16,7 @@ limitations under the License.
 
 package org.tensorflow.types;
 
-import org.tensorflow.DataType;
-
 /** Represents an 8-bit unsigned integer. */
 public class TFUInt8 implements TFType {
   private TFUInt8() {}
-  static {
-    Types.typeCodes.put(TFUInt8.class, DataType.UINT8);
-  }
-  static {
-    Types.scalars.put(TFUInt8.class, (byte)0);
-  }
 }

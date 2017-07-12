@@ -115,21 +115,11 @@ for (my $i = 1; $i <= $#info; $i++) {
         } else {
             $fulldesc = "a $desc"
         }
-        print CLASSFILE  "package org.tensorflow.types;\n\n"
-                        ."import org.tensorflow.DataType;\n\n";
+        print CLASSFILE  "package org.tensorflow.types;\n\n";
         print CLASSFILE  "/** Represents $fulldesc. */\n"
                         ."public class $tfname implements TFType {\n"
                         ."  private $tfname() {}\n"
-                        ."  static {\n"
-                        ."    Types.typeCodes.put($tfname.class, DataType.$ucname);\n"
-                        ."  }\n";
-        if ($default ne '') {
-            print CLASSFILE
-                         "  static {\n"
-                        ."    Types.scalars.put($tfname.class, $default);\n"
-                        ."  }\n";
-        }
-        print CLASSFILE  "}\n";
+                        ."}\n";
         close(CLASSFILE);
     } elsif ($option eq '-c') {
       # Generate creator declarations for Tensors.java

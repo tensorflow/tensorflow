@@ -34,7 +34,7 @@ package org.tensorflow;
  * ops.array().concat(0, split);
  * }</pre>
  */
-public interface Input {
+public interface Input<T> {
 
   /**
    * Returns the symbolic handle of a tensor.
@@ -44,5 +44,5 @@ public interface Input {
    *
    * @see OperationBuilder#addInput(Output)
    */
-  Output asOutput();
+  Output<T> asOutput();
 }

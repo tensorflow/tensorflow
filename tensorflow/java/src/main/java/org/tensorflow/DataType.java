@@ -15,7 +15,10 @@ limitations under the License.
 
 package org.tensorflow;
 
-/** Type of elements in a {@link Tensor}. */
+/** Represents the type of elements in a {@link Tensor} as an enum.
+ *
+ *  @see org.tensorflow.types
+ */
 public enum DataType {
   /** 32-bit single precision floating point. */
   FLOAT(1),

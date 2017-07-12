@@ -91,9 +91,11 @@ public final class Operation {
     }
   }
 
-  /** Returns a symbolic handle to one of the tensors produced by this operation. */
-  public Output output(int idx) {
-    return new Output(this, idx);
+  /** Returns a symbolic handle to one of the tensors produced by this operation.
+   *  Warning: Does not check that the type of the tensor matches T.
+   */
+  public <T> Output<T> output(int idx) {
+    return new Output<T>(this, idx);
   }
 
   @Override

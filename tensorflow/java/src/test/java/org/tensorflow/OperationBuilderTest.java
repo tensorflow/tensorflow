@@ -23,6 +23,8 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.tensorflow.types.TFInt32;
+import org.tensorflow.types.TFBool;
 
 /** Unit tests for {@link org.tensorflow.OperationBuilder}. */
 @RunWith(JUnit4.class)
@@ -34,8 +36,8 @@ public class OperationBuilderTest {
   public void failWhenMixingOperationsOnDifferentGraphs() {
     try (Graph g1 = new Graph();
         Graph g2 = new Graph()) {
-      Output c1 = TestUtil.constant(g1, "C1", 3);
-      Output c2 = TestUtil.constant(g2, "C2", 3);
+      Output<TFInt32> c1 = TestUtil.constant(g1, "C1", 3);
+      Output<TFInt32> c2 = TestUtil.constant(g2, "C2", 3);
       TestUtil.addN(g1, c1, c1);
       try {
         TestUtil.addN(g2, c1, c2);
@@ -48,7 +50,7 @@ public class OperationBuilderTest {
   @Test
   public void failOnUseAfterBuild() {
     try (Graph g = new Graph();
-        Tensor t = Tensor.create(1)) {
+        Tensor<TFInt32> t = Tensor.create(1)) {
       OperationBuilder b =
           g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
       b.build();
@@ -64,7 +66,7 @@ public class OperationBuilderTest {
   public void failOnUseAfterGraphClose() {
     OperationBuilder b = null;
     try (Graph g = new Graph();
-        Tensor t = Tensor.create(1)) {
+        Tensor<TFInt32> t = Tensor.create(1)) {
       b = g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
     }
     try {
@@ -85,7 +87,7 @@ public class OperationBuilderTest {
     // types that aren't inferred from the input arguments.
     try (Graph g = new Graph()) {
       // dtype, tensor attributes.
-      try (Tensor t = Tensor.create(1)) {
+      try (Tensor<TFInt32> t = Tensor.create(1)) {
         g.opBuilder("Const", "DataTypeAndTensor")
             .setAttr("dtype", DataType.INT32)
             .setAttr("value", t)
@@ -127,7 +129,7 @@ public class OperationBuilderTest {
   @Test
   public void setAttrShape() {
     try (Graph g = new Graph()) {
-      Output n =
+      Output<?> n =
           g.opBuilder("Placeholder", "unknown")
               .setAttr("dtype", DataType.FLOAT)
               .setAttr("shape", Shape.unknown())
@@ -153,15 +155,15 @@ public class OperationBuilderTest {
   public void addControlInput() {
     try (Graph g = new Graph();
         Session s = new Session(g);
-        Tensor yes = Tensor.create(true);
-        Tensor no = Tensor.create(false)) {
-      Output placeholder = TestUtil.placeholder(g, "boolean", DataType.BOOL);
+        Tensor<TFBool> yes = Tensor.create(true);
+        Tensor<TFBool> no = Tensor.create(false)) {
+      Output<TFBool> placeholder = TestUtil.placeholder(g, "boolean", TFBool.class);
       Operation check =
           g.opBuilder("Assert", "assert")
               .addInput(placeholder)
-              .addInputList(new Output[] {placeholder})
+              .addInputList(new Output<?>[] {placeholder})
               .build();
-      Operation noop = g.opBuilder("NoOp", "noop").addControlInput(check).build();
+      Operation noop = g.opBuilder("NoOp", "noop").addControlInput(check).build(); 
 
       // No problems when the Assert check succeeds
       s.runner().feed(placeholder, yes).addTarget(noop).run();

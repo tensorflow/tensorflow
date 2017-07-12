@@ -27,12 +27,28 @@ public class Types {
     return dtype;
   }
 
-  static final Map<Class<?>, Object> scalars = new HashMap<>();
+  static final Map<Class<?>, Object> zeros = new HashMap<>();
 
   /** Returns the zero value of type described by {@code c}, or null if
    *  the type (e.g., string) is not numeric and therefore has no zero value.
    */
   public static Object zeroValue(Class<? extends TFType> c) {
-    return scalars.get(c);
+    return zeros.get(c);
+  }
+
+  static {
+    Types.typeCodes.put(TFFloat.class, DataType.FLOAT);
+    Types.typeCodes.put(TFDouble.class, DataType.DOUBLE);
+    Types.typeCodes.put(TFInt32.class, DataType.INT32);
+    Types.typeCodes.put(TFInt64.class, DataType.INT64);
+    Types.typeCodes.put(TFBool.class, DataType.BOOL);
+    Types.typeCodes.put(TFString.class, DataType.STRING);
+
+    Types.zeros.put(TFFloat.class, 0.0f);
+    Types.zeros.put(TFDouble.class, 0.0);
+    Types.zeros.put(TFInt32.class, 0);
+    Types.zeros.put(TFInt64.class, 0L);
+    Types.zeros.put(TFBool.class, false);
+    Types.zeros.put(TFString.class, null); // no zero value
   }
 }

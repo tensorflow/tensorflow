@@ -16,15 +16,7 @@ limitations under the License.
 
 package org.tensorflow.types;
 
-import org.tensorflow.DataType;
-
 /** Represents a 64-bit double precision floating point number. */
 public class TFDouble implements TFType {
   private TFDouble() {}
-  static {
-    Types.typeCodes.put(TFDouble.class, DataType.DOUBLE);
-  }
-  static {
-    Types.scalars.put(TFDouble.class, 0.0);
-  }
 }
