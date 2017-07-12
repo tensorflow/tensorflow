@@ -25,6 +25,6 @@ public class TFDouble implements TFType {
     Types.typeCodes.put(TFDouble.class, DataType.DOUBLE);
   }
   static {
-    Types.scalars.put(TFDouble.class, 0);
+    Types.scalars.put(TFDouble.class, 0.0);
   }
 }

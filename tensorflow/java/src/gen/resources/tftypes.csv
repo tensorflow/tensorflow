@@ -1,8 +1,8 @@
 TF type,datatype code,Java type,Java boxed type,Creator?,Zero value,Description
 Float,float,Float,y,0f,32-bit single precision floating point number
-Double,double,Double,y,0,64-bit double precision floating point number
+Double,double,Double,y,0.0,64-bit double precision floating point number
 Int32,int,Integer,y,0,32-bit signed integer
-UInt8,byte,Byte,n,,8-bit unsigned integer
+UInt8,byte,Byte,n,(byte)0,8-bit unsigned integer
 Int16,,Short,n,(short)0,16-bit signed integer
 Int8,,Byte,n,(byte)0,8-bit signed integer
 String,byte,Byte,n,,arbitrary sequence of bytes

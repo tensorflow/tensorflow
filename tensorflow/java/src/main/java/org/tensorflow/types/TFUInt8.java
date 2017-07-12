@@ -24,4 +24,7 @@ public class TFUInt8 implements TFType {
   static {
     Types.typeCodes.put(TFUInt8.class, DataType.UINT8);
   }
+  static {
+    Types.scalars.put(TFUInt8.class, (byte)0);
+  }
 }
