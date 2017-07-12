@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 #include "tensorflow/core/lib/gtl/flatrep.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,7 +34,7 @@ namespace gtl {
 // The map is implemented using an open-addressed hash table.  A
 // single array holds entire map contents and collisions are resolved
 // by probing at a sequence of locations in the array.
-template <typename Key, typename Val, class Hash = std::hash<Key>,
+template <typename Key, typename Val, class Hash = hash<Key>,
           class Eq = std::equal_to<Key>>
 class FlatMap {
  private:

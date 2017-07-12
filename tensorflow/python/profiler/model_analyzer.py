@@ -127,21 +127,19 @@ class Profiler(object):
             .trainable_variables_parameter()))
 
         # Or profile the timing of your model operations.
-        opts = PRINT_ALL_TIMING_MEMORY.copy()
-        opts['order_by'] = 'micros'
-        opts['select'] = ['micros', 'occurrence']
-        opts['max_depth'] = 20
+        opts = option_builder.ProfileOptionBuilder.time_and_memory()
         profiler.profile_operations(options=opts)
 
         # Or you can generate a timeline:
-        opts = PRINT_ALL_TIMING_MEMORY.copy()
-        opts['output'] = 'timeline:outfile=' + filename
-        opts['step'] = i
+        opts = (option_builder.ProfileOptionBuilder(
+                option_builder.ProfileOptionBuilder.time_and_memory())
+                .with_step(i)
+                .with_timeline_output(filename).build())
         profiler.profile_graph(options=opts)
       else:
         _ = sess.run(...)
     # Auto detect problems and generate advice.
-    profiler.advise(model_analyzer.ALL_ADVICE)
+    profiler.advise()
   ```
   """
 
@@ -262,22 +260,23 @@ def profile(graph,
             op_log=None,
             cmd='scope',
             options=_DEFAULT_PROFILE_OPTIONS):
-  """Print model statistics.
+  """Profile model.
 
+    Tutorials and examples can be found in:
     https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/README.md
 
   Args:
-    graph: tf.Graph.
-    run_meta: tensorflow::RunMetadata proto. When provided, also shows valid
-              timing and memory information when 'select' option contains
-              'micros' and 'bytes'.
-    op_log: tensorflow::tfprof::OpLogProto proto. users can use this proto to
-            group together ops and use a op_type to select the group.
-    cmd: string. Either 'op', 'scope', 'graph', 'code'.
-         'op' view organize outputs using operation type. (e.g. MatMul)
-         'scope' view organize outputs using graph node name scope.
-         'graph' view organize outputs using graph node inputs/outputs.
-         'code' view organize outputs using Python call stack.
+    graph: required tf.Graph.
+    run_meta: optional tensorflow.RunMetadata proto. It is necessary to
+        to support run time information profiling, such as time and memory.
+    op_log: tensorflow.tfprof.OpLogProto proto. User can assign "types" to
+        graph nodes with op_log. "types" allow user to flexibly group and
+        account profiles using options['accounted_type_regexes'].
+    cmd: string. Either 'op', 'scope', 'graph' or 'code'.
+        'op' view organizes profile using operation type. (e.g. MatMul)
+        'scope' view organizes profile using graph node name scope.
+        'graph' view organizes profile using graph node inputs/outputs.
+        'code' view organizes profile using Python call stack.
     options: A dict of options. See core/profiler/g3doc/options.md.
   Returns:
     If cmd is 'scope' or 'graph', returns GraphNodeProto proto.
@@ -325,15 +324,15 @@ def profile(graph,
 def advise(graph, run_meta=None, options=_DEFAULT_ADVISE_OPTIONS):
   """Auto profile and advise.
 
-    Builds profiles and automatically check anormalies of various
+    Builds profiles and automatically check anomalies of various
     aspects. For more details:
     https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/README.md
 
   Args:
-    graph: tf.Graph.
-    run_meta: tensorflow::RunMetadata proto. Allows auto-profile
-              time and memroy.
-    options: see ALL_ADVICE example above.
+    graph: required tf.Graph.
+    run_meta: optional tensorflow.RunMetadata proto. It is necessary to
+        to support run time information profiling, such as time and memory.
+    options: see ALL_ADVICE example above. Default checks everything.
   Returns:
     Returns AdviceProto proto
   """
