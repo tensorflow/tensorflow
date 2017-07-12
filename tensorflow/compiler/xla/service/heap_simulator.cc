@@ -35,18 +35,26 @@ namespace {
 std::vector<const LogicalBuffer*> UniqueOperandSourceBuffers(
     const HloInstruction* instruction,
     const TuplePointsToAnalysis& points_to_analysis) {
-  FlatSet<const LogicalBuffer*> buffers;
+  std::vector<const LogicalBuffer*> buffers;
   for (const HloInstruction* operand : instruction->operands()) {
-    FlatSet<const LogicalBuffer*> sources =
-        points_to_analysis.GetPointsToSet(operand).CreateFlattenedSet();
-    buffers.insert(sources.begin(), sources.end());
+    points_to_analysis.GetPointsToSet(operand).ForEachElement(
+        [&](const ShapeIndex& /*index*/,
+            const std::vector<const LogicalBuffer*>& points_to) {
+          buffers.insert(buffers.end(), points_to.begin(), points_to.end());
+        });
   }
-  std::vector<const LogicalBuffer*> sorted(buffers.begin(), buffers.end());
-  std::sort(sorted.begin(), sorted.end(),
+
+  // Sort and then remove duplicates from buffers.
+  std::sort(buffers.begin(), buffers.end(),
             [](const LogicalBuffer* a, const LogicalBuffer* b) {
               return a->id() < b->id();
             });
-  return sorted;
+  buffers.erase(std::unique(buffers.begin(), buffers.end(),
+                            [](const LogicalBuffer* a, const LogicalBuffer* b) {
+                              return a->id() == b->id();
+                            }),
+                buffers.end());
+  return buffers;
 }
 
 }  // namespace

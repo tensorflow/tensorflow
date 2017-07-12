@@ -170,7 +170,8 @@ Status GenericTransferManager::TransferBufferToInfeed(
 Status GenericTransferManager::TransferLiteralFromOutfeed(
     perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
     Literal* literal) {
-  return Unimplemented("Outfeed is not supported on CPU/GPU (b/30467474)");
+  return Unimplemented(
+      "Outfeed is not supported on this platform (b/30467474)");
 }
 
 Status GenericTransferManager::ResetDevices(

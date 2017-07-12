@@ -21177,6 +21177,53 @@ func Erf(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Gather slices from `params` axis `axis` according to `indices`.
+//
+// `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+// Produces an output tensor with shape `params.shape[:axis] + indices.shape +
+// params.shape[axis + 1:]` where:
+//
+// ```python
+//     # Scalar indices (output is rank(params) - 1).
+//     output[a_0, ..., a_n, b_0, ..., b_n] =
+//       params[a_0, ..., a_n, indices, b_0, ..., b_n]
+//
+//     # Vector indices (output is rank(params)).
+//     output[a_0, ..., a_n, i, b_0, ..., b_n] =
+//       params[a_0, ..., a_n, indices[i], b_0, ..., b_n]
+//
+//     # Higher rank indices (output is rank(params) + rank(indices) - 1).
+//     output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
+//       params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+// ```
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+// </div>
+//
+// Arguments:
+//	params: The tensor from which to gather values. Must be at least rank
+// `axis + 1`.
+//	indices: Index tensor. Must be in range `[0, params.shape[axis])`.
+//	axis: The axis in `params` to gather `indices` from. Defaults to the first
+// dimension. Supports negative indexes.
+//
+// Returns Values from `params` gathered from indices given by `indices`, with
+// shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.
+func GatherV2(scope *Scope, params tf.Output, indices tf.Output, axis tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GatherV2",
+		Input: []tf.Input{
+			params, indices, axis,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the complementary error function of `x` element-wise.
 func Erfc(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
