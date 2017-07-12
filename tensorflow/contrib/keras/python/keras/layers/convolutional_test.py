@@ -239,6 +239,66 @@ class Conv2DTransposeTest(test.TestCase):
       self.assertEqual(len(layer.constraints), 2)
 
 
+class Conv3DTransposeTest(test.TestCase):
+
+  def test_conv3d_transpose(self):
+    num_samples = 2
+    filters = 2
+    stack_size = 3
+    num_row = 5
+    num_col = 6
+    depth = 4
+
+    for padding in ['valid', 'same']:
+      for strides in [(1, 1, 1), (2, 2, 2)]:
+        if padding == 'same' and strides != (1, 1, 1):
+          continue
+
+        with self.test_session(use_gpu=True):
+          testing_utils.layer_test(
+              keras.layers.Conv3DTranspose,
+              kwargs={
+                  'filters': filters,
+                  'kernel_size': 3,
+                  'padding': padding,
+                  'strides': strides,
+                  'data_format': 'channels_last'
+              },
+              input_shape=(num_samples, depth, num_row, num_col, stack_size))
+
+  def test_conv3dtranspose_regularization(self):
+    # regularizers
+    kwargs = {
+        'filters': 3,
+        'kernel_size': 3,
+        'padding': 'valid',
+        'kernel_regularizer': 'l2',
+        'bias_regularizer': 'l2',
+        'activity_regularizer': 'l2',
+        'strides': 1
+    }
+    with self.test_session(use_gpu=True):
+      layer = keras.layers.Conv3DTranspose(**kwargs)
+      layer.build((None, 5, 5, 5, 2))
+      self.assertEqual(len(layer.losses), 2)
+      layer(keras.backend.variable(np.ones((1, 5, 5, 5, 2))))
+      self.assertEqual(len(layer.losses), 3)
+
+    # constraints
+    kwargs = {
+        'filters': 3,
+        'kernel_size': 3,
+        'padding': 'valid',
+        'kernel_constraint': 'max_norm',
+        'bias_constraint': 'max_norm',
+        'strides': 1
+    }
+    with self.test_session(use_gpu=True):
+      layer = keras.layers.Conv3DTranspose(**kwargs)
+      layer.build((None, 5, 5, 5, 2))
+      self.assertEqual(len(layer.constraints), 2)
+
+
 class SeparableConv2DTest(test.TestCase):
 
   def test_separable_conv_2d(self):

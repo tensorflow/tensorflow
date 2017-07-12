@@ -154,52 +154,30 @@ class LocallyConnected1D(Layer):
     return tensor_shape.TensorShape([input_shape[0], length, self.filters])
 
   def call(self, inputs):
-    stride = self.strides[0]
-    output_length, feature_dim, filters = self.kernel_shape
-
-    xs = []
-    for i in range(output_length):
-      slice_length = slice(i * stride, i * stride + self.kernel_size[0])
-      xs.append(K.reshape(inputs[:, slice_length, :], (1, -1, feature_dim)))
-    x_aggregate = K.concatenate(xs, axis=0)
-    # Shape: `(output_length, batch_size, filters)`.
-    output = K.batch_dot(x_aggregate, self.kernel)
-    output = K.permute_dimensions(output, (1, 0, 2))
+    output = K.local_conv1d(inputs, self.kernel, self.kernel_size, self.strides)
 
     if self.use_bias:
-      output += K.reshape(self.bias, (1, output_length, filters))
+      output = K.bias_add(output, self.bias)
     if self.activation is not None:
       output = self.activation(output)
     return output
 
   def get_config(self):
     config = {
-        'filters':
-            self.filters,
-        'kernel_size':
-            self.kernel_size,
-        'strides':
-            self.strides,
-        'padding':
-            self.padding,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'filters': self.filters,
+        'kernel_size': self.kernel_size,
+        'strides': self.strides,
+        'padding': self.padding,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint)
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
     }
     base_config = super(LocallyConnected1D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -381,97 +359,35 @@ class LocallyConnected2D(Layer):
           [input_shape[0], rows, cols, self.filters])
 
   def call(self, inputs):
-    stride_row, stride_col = self.strides
-    _, feature_dim, filters = self.kernel_shape
-
-    if self.data_format == 'channels_first':
-      if K.backend() == 'theano':
-        output = []
-        for i in range(self.output_row):
-          for j in range(self.output_col):
-            slice_row = slice(i * stride_row,
-                              i * stride_row + self.kernel_size[0])
-            slice_col = slice(j * stride_col,
-                              j * stride_col + self.kernel_size[1])
-            x_flatten = K.reshape(inputs[:, :, slice_row, slice_col],
-                                  (1, -1, feature_dim))
-            output.append(
-                K.dot(x_flatten, self.kernel[i * self.output_col + j, :, :]))
-        output = K.concatenate(output, axis=0)
-      else:
-        xs = []
-        for i in range(self.output_row):
-          for j in range(self.output_col):
-            slice_row = slice(i * stride_row,
-                              i * stride_row + self.kernel_size[0])
-            slice_col = slice(j * stride_col,
-                              j * stride_col + self.kernel_size[1])
-            xs.append(
-                K.reshape(inputs[:, :, slice_row, slice_col], (1, -1,
-                                                               feature_dim)))
-        x_aggregate = K.concatenate(xs, axis=0)
-        output = K.batch_dot(x_aggregate, self.kernel)
-      output = K.reshape(output, (self.output_row, self.output_col, -1,
-                                  filters))
-      output = K.permute_dimensions(output, (2, 3, 0, 1))
-
-    elif self.data_format == 'channels_last':
-      xs = []
-      for i in range(self.output_row):
-        for j in range(self.output_col):
-          slice_row = slice(i * stride_row,
-                            i * stride_row + self.kernel_size[0])
-          slice_col = slice(j * stride_col,
-                            j * stride_col + self.kernel_size[1])
-          xs.append(
-              K.reshape(inputs[:, slice_row, slice_col, :], (1, -1, feature_dim
-                                                            )))
-      x_aggregate = K.concatenate(xs, axis=0)
-      output = K.batch_dot(x_aggregate, self.kernel)
-      output = K.reshape(output, (self.output_row, self.output_col, -1,
-                                  filters))
-      output = K.permute_dimensions(output, (2, 0, 1, 3))
-
+    output = K.local_conv2d(inputs,
+                            self.kernel,
+                            self.kernel_size,
+                            self.strides,
+                            (self.output_row, self.output_col),
+                            self.data_format)
     if self.use_bias:
-      if self.data_format == 'channels_first':
-        output += K.reshape(self.bias, (1, filters, self.output_row,
-                                        self.output_col))
-      elif self.data_format == 'channels_last':
-        output += K.reshape(self.bias, (1, self.output_row, self.output_col,
-                                        filters))
+      output = K.bias_add(output, self.bias, data_format=self.data_format)
+
     output = self.activation(output)
     return output
 
   def get_config(self):
     config = {
-        'filters':
-            self.filters,
-        'kernel_size':
-            self.kernel_size,
-        'strides':
-            self.strides,
-        'padding':
-            self.padding,
-        'data_format':
-            self.data_format,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'filters': self.filters,
+        'kernel_size': self.kernel_size,
+        'strides': self.strides,
+        'padding': self.padding,
+        'data_format': self.data_format,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint)
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
     }
     base_config = super(LocallyConnected2D, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

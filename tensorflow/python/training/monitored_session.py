@@ -92,7 +92,7 @@ class Scaffold(object):
 
   * `init_feed_dict`: A session feed dictionary that should be used when
      running the init op.
-  * `init_fn`: A callable to run run after the init op to perform additional
+  * `init_fn`: A callable to run after the init op to perform additional
     initializations.  The callable will be called as
     `init_fn(scaffold, session)`.
 

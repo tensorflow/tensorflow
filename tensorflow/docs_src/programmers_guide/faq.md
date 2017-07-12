@@ -149,6 +149,8 @@ TensorFlow also has a
 to help build support for more client languages.  We invite contributions of new
 language bindings.
 
+Bindings for various other languages (such as [C#](https://github.com/migueldeicaza/TensorFlowSharp), [Julia](https://github.com/malmaud/TensorFlow.jl), [Ruby](https://github.com/somaticio/tensorflow.rb) and [Scala](https://github.com/eaplatanios/tensorflow_scala)) created and supported by the opensource community build on top of the C API supported by the TensorFlow maintainers.
+
 #### Does TensorFlow make use of all the devices (GPUs and CPUs) available on my machine?
 
 TensorFlow supports multiple GPUs and CPUs. See the how-to documentation on

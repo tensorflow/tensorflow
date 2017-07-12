@@ -19,6 +19,7 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
+#include <popstd/AllTrue.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -50,25 +51,6 @@ IsParallelMap(const HloInstruction* inst,
   TF_RETURN_IF_ERROR(root->Accept(&tester, false));
 
   return tester._is_ok;
-}
-
-static port::StatusOr<poplar::program::Program>
-AddAllTrueReduction(poplar::Graph &graph,
-                    const poplar::Tensor& in) {
-
-  poplar::Tensor in_flat = in.flatten();
-
-  auto cs = graph.addComputeSet("AddTrueReduction");
-
-  const unsigned long N = in_flat.dim(0);
-  const auto &device_info = graph.getDevice().getDeviceInfo();
-
-  for (unsigned i = 0; i < N; ++i) {
-    auto v = graph.addVertex(cs, "AllTrue", {{"a", in_flat.slice(i, i+1)}});
-    graph.setTileMapping(v, (i / device_info.numWorkerContexts) % device_info.getNumTiles());
-  }
-
-  return poplar::program::Execute(cs);
 }
 
 port::StatusOr<poplar::program::Program>
@@ -183,9 +165,7 @@ CreateWhileOp(poplar::Graph &graph,
   poplar::program::Sequence cond_seq;
   cond_seq.add(condition_visitor->second.sequence);
 
-  poplar::program::Program reduction;
-  TF_ASSIGN_OR_RETURN(reduction, AddAllTrueReduction(graph, cond_output));
-  cond_seq.add(reduction);
+  popstd::allTrue(graph, cond_output, cond_seq);
 
   poplar::program::RepeatWhileTrue repeat_while_true(cond_seq, body_seq);
 
