@@ -19,6 +19,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/contrib/...",
+        "//learning/brain/research/sparse_matrix/...",
         "//tensorflow/...",
     ],
 )
@@ -94,13 +95,11 @@ tf_kernel_library(
         "strided_slice_op_inst_7.cc",
     ],
     hdrs = [
-        "dense_update_ops.h",
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
     ],
     gpu_srcs = [
-        "dense_update_ops.h",
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
@@ -109,6 +108,7 @@ tf_kernel_library(
     ],
     deps = [
         ":bounds_check",
+        ":dense_update_functor",
         ":ops_util",
         ":variable_ops",
         "//tensorflow/core:framework",
@@ -1011,6 +1011,23 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "dense_update_functor",
+    srcs = ["dense_update_functor.cc"],
+    hdrs = ["dense_update_functor.h"],
+    gpu_srcs = [
+        "dense_update_functor.h",
+        "dense_update_functor_gpu.cu.cc",
+    ],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 0,
+)
+
 tf_cuda_cc_test(
     name = "gather_op_test",
     size = "small",
@@ -1606,7 +1623,7 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
-        ":dense_update_ops",
+        ":dense_update_functor",
         ":gather_functor",
         ":scatter_functor",
         ":state",
@@ -2079,7 +2096,7 @@ tf_kernel_library(
         "//tensorflow:darwin": [],
         "//conditions:default": ["-Wl,-z,muldefs"],
     }),
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3482,7 +3499,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "dense_update_ops",
     prefix = "dense_update_ops",
-    deps = STATE_DEPS,
+    deps = STATE_DEPS + [":dense_update_functor"],
 )
 
 tf_kernel_library(
@@ -3503,16 +3520,14 @@ tf_kernel_library(
         "scatter_nd_op_cpu_impl_5.cc",
     ],
     hdrs = [
-        "dense_update_ops.h",
         "scatter_nd_op.h",
         "scatter_nd_op_cpu_impl.h",
     ],
     gpu_srcs = [
-        "dense_update_ops.h",
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
     ],
-    deps = STATE_DEPS + [":dense_update_ops"],
+    deps = STATE_DEPS + [":dense_update_functor"],
 )
 
 tf_kernel_library(
@@ -4054,8 +4069,9 @@ filegroup(
         "cwise_ops_common.cc",
         "cwise_ops_common.h",
         "cwise_ops_gradients.h",
+        "dense_update_functor.cc",
+        "dense_update_functor.h",
         "dense_update_ops.cc",
-        "dense_update_ops.h",
         "example_parsing_ops.cc",
         "fill_functor.cc",
         "fill_functor.h",

@@ -17,13 +17,41 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/dense_update_ops.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
 
 #include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
+
+namespace functor {
+
+template <typename T>
+struct DenseUpdate<GPUDevice, T, ASSIGN> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat params,
+                  typename TTypes<T>::ConstFlat update) {
+    params.device(d) = update;
+  }
+};
+
+template <typename T>
+struct DenseUpdate<GPUDevice, T, ADD> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat params,
+                  typename TTypes<T>::ConstFlat update) {
+    params.device(d) += update;
+  }
+};
+
+template <typename T>
+struct DenseUpdate<GPUDevice, T, SUB> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat params,
+                  typename TTypes<T>::ConstFlat update) {
+    params.device(d) -= update;
+  }
+};
+
+}  // namespace functor
 
 #define DEFINE_GPU_KERNELS(T)                              \
   template struct functor::DenseUpdate<GPUDevice, T, ADD>; \
