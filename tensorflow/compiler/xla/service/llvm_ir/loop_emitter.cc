@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -51,8 +52,41 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
       shape_(target_array.GetShape()),
       ir_builder_(ir_builder) {}
 
+LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
+                         tensorflow::gtl::ArraySlice<IrArray> target_arrays,
+                         llvm::IRBuilder<>* ir_builder)
+    : body_emitter_([=](const llvm_ir::IrArray::Index array_index)
+                        -> ::tensorflow::Status {
+        // Convert target_element_generator to a BodyEmitter.
+        TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
+                            target_element_generator(array_index));
+        if (target_arrays.size() == 1) {
+          target_arrays[0].EmitWriteArrayElement(array_index, target_element,
+                                                 ir_builder);
+          return tensorflow::Status::OK();
+        }
+
+        for (int64 i = 0; i < target_arrays.size(); ++i) {
+          target_arrays[i].EmitWriteArrayElement(
+              array_index, ir_builder_->CreateExtractValue(target_element, i),
+              ir_builder);
+        }
+        return tensorflow::Status::OK();
+      }),
+      ir_builder_(ir_builder) {
+  if (target_arrays.size() > 1) {
+    // The sanity check for multiple outputs.
+    shape_ = target_arrays[0].GetShape();
+    for (int64 i = 1; i < target_arrays.size(); ++i) {
+      const Shape& element_shape = target_arrays[i].GetShape();
+      CHECK(ShapeUtil::SameDimensions(shape_, element_shape));
+    }
+  } else {
+    shape_ = target_arrays[0].GetShape();
+  }
+}
+
 IrArray::Index LoopEmitter::EmitIndexAndSetExitBasicBlock() {
-  CHECK(!ShapeUtil::IsTuple(shape_));
   if (ShapeUtil::IsScalar(shape_)) {
     // No loop needed, so set exit_bb_ to nullptr.
     exit_bb_ = nullptr;

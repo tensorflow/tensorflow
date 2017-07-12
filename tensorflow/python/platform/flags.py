@@ -44,7 +44,12 @@ class _FlagValues(object):
 
   def __getattr__(self, name):
     """Retrieves the 'value' attribute of the flag --name."""
-    if not self.__dict__['__parsed']:
+    try:
+      parsed = self.__dict__['__parsed']
+    except KeyError:
+      # May happen during pickle.load or copy.copy
+      raise AttributeError(name)
+    if not parsed:
       self._parse_flags()
     if name not in self.__dict__['__flags']:
       raise AttributeError(name)

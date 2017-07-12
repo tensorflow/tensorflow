@@ -93,6 +93,7 @@ class ShapeUtil {
  public:
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
+  // Precondition: !IsTuple(shape)
   static int64 ElementsIn(const Shape& shape);
 
   // Returns true if 'shape' has zero elements.
@@ -144,7 +145,8 @@ class ShapeUtil {
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
   // Returns the rank (number of dimensions) of the given shape.
-  static int64 Rank(const Shape& shape) { return shape.dimensions_size(); }
+  // Precondition: !IsTuple(shape)
+  static int64 Rank(const Shape& shape);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
@@ -219,6 +221,9 @@ class ShapeUtil {
   // Returns a new shape with major-first layout that has the same layout of
   // elements with a different shape.
   static Shape NormalizeShapeToMonotonicDim0MajorLayout(const Shape& shape);
+
+  // Returns a new shape that has all padding values cleared.
+  static Shape ShapeWithoutPadding(const Shape& shape);
 
   // As MakeShape, but the object to write to is passed in.
   static void PopulateShape(PrimitiveType element_type,

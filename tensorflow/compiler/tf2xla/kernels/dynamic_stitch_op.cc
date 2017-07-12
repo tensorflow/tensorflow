@@ -63,11 +63,14 @@ class DynamicStitchOp : public XlaOpKernel {
     std::vector<xla::Literal> indices(indices_input.size());
 
     const TensorShape& data0_shape = data_shapes[0];
-    const TensorShape indices0_shape =
-        XLAShapeToTensorShape(indices_input[0].shape());
+    TensorShape indices0_shape;
+    OP_REQUIRES_OK(
+        ctx, XLAShapeToTensorShape(indices_input[0].shape(), &indices0_shape));
     for (int input_num = 0; input_num < indices_input.size(); input_num++) {
-      const TensorShape indices_shape =
-          XLAShapeToTensorShape(indices_input[input_num].shape());
+      TensorShape indices_shape;
+      OP_REQUIRES_OK(ctx,
+                     XLAShapeToTensorShape(indices_input[input_num].shape(),
+                                           &indices_shape));
       const TensorShape& data_shape = data_shapes[input_num];
       OP_REQUIRES(ctx, TensorShapeUtils::StartsWith(data_shape, indices_shape),
                   errors::InvalidArgument(
@@ -103,8 +106,7 @@ class DynamicStitchOp : public XlaOpKernel {
     int max_index = -1;
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
-        max_index = std::max(
-            max_index, xla::LiteralUtil::Get<int>(indices[input_num], {i}));
+        max_index = std::max(max_index, indices[input_num].Get<int>({i}));
       }
     }
     int number_of_indices = max_index + 1;
@@ -118,7 +120,7 @@ class DynamicStitchOp : public XlaOpKernel {
     int index_used_count = 0;
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
-        int index = xla::LiteralUtil::Get<int>(indices[input_num], {i});
+        int index = indices[input_num].Get<int>({i});
         src_input_vector[index] = input_num;
         src_slice_vector[index] = i;
         if (!src_index_used[index]) {

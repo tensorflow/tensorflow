@@ -69,6 +69,9 @@ TEST(DeviceNameUtilsTest, Basic) {
   EXPECT_EQ(DeviceNameUtils::FullName("hello", 1, 2, "CPU", 3),
             "/job:hello/replica:1/task:2/device:CPU:3");
 
+  EXPECT_EQ(DeviceNameUtils::LegacyName("hello", 1, 2, "CPU", 3),
+            "/job:hello/replica:1/task:2/cpu:3");
+
   {
     DeviceNameUtils::ParsedName p;
     EXPECT_FALSE(DeviceNameUtils::ParseFullName("foobar", &p));

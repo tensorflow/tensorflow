@@ -45,6 +45,7 @@ tf_cc_test(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -61,7 +62,6 @@ cc_library(
         ":gradients",
         ":ops",
         ":scope",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -274,10 +274,6 @@ cc_library(
     deps = [
         ":cc_ops",
         ":grad_op_registry",
-        ":ops",
-        ":scope",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
     ],
 )
 
@@ -305,10 +301,6 @@ cc_library(
         ":cc_ops",
         ":cc_ops_internal",
         ":grad_op_registry",
-        ":ops",
-        ":scope",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
     ],
 )
 
@@ -441,6 +433,7 @@ cc_library_with_android_deps(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -481,10 +474,23 @@ cc_binary(
     name = "tutorials_example_trainer",
     srcs = ["tutorials/example_trainer.cc"],
     copts = tf_copts(),
-    linkopts = [
-        "-lpthread",
-        "-lm",
-    ],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//tensorflow:darwin": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//tensorflow:ios": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//conditions:default": [
+            "-lm",
+            "-lpthread",
+            "-lrt",
+        ],
+    }),
     deps = [
         ":cc_ops",
         "//tensorflow/core:core_cpu",
@@ -514,7 +520,6 @@ cc_library(
     deps = [
         ":coordinator",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -547,8 +552,6 @@ cc_library(
     srcs = ["training/coordinator.cc"],
     hdrs = ["training/coordinator.h"],
     deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

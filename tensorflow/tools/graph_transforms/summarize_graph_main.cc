@@ -23,8 +23,10 @@ limitations under the License.
 // bazel-bin/tensorflow/tools/graph_transforms/summarize_graph \
 // --in_graph=my_graph.pb
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -81,11 +83,17 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
         shape = PartialTensorShape(shape_proto);
       }
     }
-    sizes.reserve(shape.dims());
-    for (int i = 0; i < shape.dims(); ++i) {
-      sizes.push_back(shape.dim_size(i));
+    string sizes_string;
+    if (shape.dims() == -1) {
+      // Unknown shapes can have -1 for dims, so leave these blank.
+      sizes_string = "";
+    } else {
+      sizes.reserve(shape.dims());
+      for (int i = 0; i < shape.dims(); ++i) {
+        sizes.push_back(shape.dim_size(i));
+      }
+      sizes_string = str_util::Join(sizes, ",");
     }
-    string sizes_string = str_util::Join(sizes, ",");
     input_layer_shapes.push_back(sizes_string);
   }
   std::vector<string> output_layers;
@@ -116,7 +124,17 @@ Status PrintStructure(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(SortByExecutionOrder(graph, &sorted_graph));
   for (const NodeDef& node : sorted_graph.node()) {
     std::cout << node.name() << " (" << node.op() << "): ["
-              << str_util::Join(node.input(), ", ") << "]" << std::endl;
+              << str_util::Join(node.input(), ", ") << "]";
+    if (node.op() == "Const") {
+      Tensor tensor;
+      if (node.attr().count("value") &&
+          tensor.FromProto(node.attr().at("value").tensor())) {
+        std::cout << ", value=" << tensor.DebugString();
+      } else {
+        LOG(WARNING) << "Decoding Tensor failed for node" << node.name();
+      }
+    }
+    std::cout << std::endl;
   }
   return Status::OK();
 }

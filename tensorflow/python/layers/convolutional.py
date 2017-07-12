@@ -388,7 +388,7 @@ class Conv2D(_Conv):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-      width and height of the 2D convolution window.
+      height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
@@ -489,7 +489,7 @@ def conv2d(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-      width and height of the 2D convolution window.
+      height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
       all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
@@ -741,7 +741,7 @@ class SeparableConv2D(Conv2D):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -950,7 +950,7 @@ def separable_conv2d(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1033,7 +1033,7 @@ class Conv2DTranspose(Conv2D):
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1233,7 +1233,7 @@ def conv2d_transpose(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 2 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1350,6 +1350,7 @@ class Conv3DTranspose(Conv3D):
         trainable=trainable,
         name=name,
         **kwargs)
+    self.input_spec = base.InputSpec(ndim=5)
 
   def build(self, input_shape):
     if len(input_shape) != 5:
@@ -1390,6 +1391,9 @@ class Conv3DTranspose(Conv3D):
       c_axis, d_axis, h_axis, w_axis = 1, 2, 3, 4
     else:
       c_axis, d_axis, h_axis, w_axis = 4, 1, 2, 3
+
+    self.input_spec = base.InputSpec(ndim=5,
+                                     axes={c_axis: inputs_shape[c_axis]})
 
     depth = inputs_shape[d_axis]
     height = inputs_shape[h_axis]
@@ -1468,6 +1472,26 @@ class Conv3DTranspose(Conv3D):
       return self.activation(outputs)
     return outputs
 
+  def _compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    output_shape = list(input_shape)
+    if self.data_format == 'channels_first':
+      c_axis, d_axis, h_axis, w_axis = 1, 2, 3, 4
+    else:
+      c_axis, d_axis, h_axis, w_axis = 4, 1, 2, 3
+
+    kernel_d, kernel_h, kernel_w = self.kernel_size
+    stride_d, stride_h, stride_w = self.strides
+
+    output_shape[c_axis] = self.filters
+    output_shape[d_axis] = utils.deconv_output_length(
+        output_shape[d_axis], stride_d, kernel_d, self.padding)
+    output_shape[h_axis] = utils.deconv_output_length(
+        output_shape[h_axis], stride_h, kernel_h, self.padding)
+    output_shape[w_axis] = utils.deconv_output_length(
+        output_shape[w_axis], stride_w, kernel_w, self.padding)
+    return tensor_shape.TensorShape(output_shape)
+
 
 def conv3d_transpose(inputs,
                      filters,
@@ -1492,7 +1516,7 @@ def conv3d_transpose(inputs,
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 3 positive integers specifying the spatial
-      dimensions of of the filters. Can be a single integer to specify the same
+      dimensions of the filters. Can be a single integer to specify the same
       value for all spatial dimensions.
     strides: A tuple or list of 3 positive integers specifying the strides
       of the convolution. Can be a single integer to specify the same value for
@@ -1501,8 +1525,9 @@ def conv3d_transpose(inputs,
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
-      `(batch, height, width, channels)` while `channels_first` corresponds to
-      inputs with shape `(batch, channels, height, width)`.
+      `(batch, depth, height, width, channels)` while `channels_first`
+      corresponds to inputs with shape
+      `(batch, channels, depth, height, width)`.
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.

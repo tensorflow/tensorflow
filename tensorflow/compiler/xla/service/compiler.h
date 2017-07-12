@@ -92,13 +92,6 @@ class AotCompilationOptions {
 // platform.
 class Compiler {
  public:
-  // Callback signature used to dump the HLO graph during compilation.
-  // Different compiler backends will call this as they please, providing
-  // a view of the HLO at different points in compilation -- context for the
-  // dump is indicated by the label string.
-  using HloDumper =
-      std::function<void(const HloModule& module, const string& label)>;
-
   virtual ~Compiler() {}
 
   // Returns the ID of the platform that this compiler targets.
@@ -113,21 +106,20 @@ class Compiler {
   //
   // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> module, HloDumper dump_hlo,
+      std::unique_ptr<HloModule> module,
       perftools::gputools::StreamExecutor* executor) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules, and returns a corresponding
   // sequence of executable objects.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlo,
+      std::vector<std::unique_ptr<HloModule>> modules,
       std::vector<perftools::gputools::StreamExecutor*> stream_exec) = 0;
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
-                     HloDumper dump_hlo,
                      const AotCompilationOptions& options) = 0;
 
   /////

@@ -86,7 +86,7 @@ def index_table_from_tensor(mapping,
   Any lookup of an out-of-vocabulary token will return a bucket ID based on its
   hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
   `default_value`.
-  The bucket ID range is `[mapping size, mapping size + num_oov_buckets]`.
+  The bucket ID range is `[mapping size, mapping size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
@@ -300,7 +300,7 @@ class MutableHashTable(LookupInterface):
                                              default_value=-1)
   table.insert(keys, values)
   out = table.lookup(query_keys)
-  print out.eval()
+  print(out.eval())
   ```
   """
 
@@ -502,7 +502,7 @@ class MutableDenseHashTable(LookupInterface):
                                                   empty_key=0)
   table.insert(keys, values)
   out = table.lookup(query_keys)
-  print out.eval()
+  print(out.eval())
   ```
   """
 

@@ -84,7 +84,7 @@ TEST_F(ReshapeMoverTest, 1ConstantAnd1ReshapesOnRngNotMoved) {
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, rng0));
 
   auto const1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateFromShape(root_shape)));
+      HloInstruction::CreateConstant(Literal::CreateFromShape(root_shape)));
 
   builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, const1));
@@ -179,9 +179,8 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMoved) {
 TEST_F(ReshapeMoverTest, 1ConstantAnd2ReshapesMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {2, 3});
-  auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2<bool>(
-          {{true, true, false}, {false, false, true}})));
+  auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<bool>({{true, true, false}, {false, false, true}})));
 
   auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {1, 3, 1, 2}), "param1"));
@@ -263,12 +262,12 @@ TEST_F(ReshapeMoverTest, 2TrivialConstantReshapeNotMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {2, 3});
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+      Literal::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
   auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, const0));
 
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+      Literal::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
   auto reshape1 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, const1));
 
@@ -318,7 +317,7 @@ TEST_F(ReshapeMoverTest, 1NonTrivialReshapeMoved) {
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {1, 3, 1, 2}), "param0"));
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+      Literal::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
   auto reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
   builder.AddInstruction(HloInstruction::CreateBinary(
@@ -464,7 +463,7 @@ TEST_F(ReshapeMoverTest, ImplicitlyBroadcastReshapeIsNotMovedBug37787999) {
   auto reshape = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(F32, {128, 1}), param0));
   Array2D<float> a(128, 1024);
-  auto literal = LiteralUtil::CreateR2FromArray2D<float>(a);
+  auto literal = Literal::CreateR2FromArray2D<float>(a);
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   auto multiply = builder.AddInstruction(HloInstruction::CreateBinary(

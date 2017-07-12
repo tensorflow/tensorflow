@@ -115,6 +115,16 @@ class IrArray {
     Index SourceIndexOfReshape(const Shape& shape, const Shape& operand_shape,
                                llvm::IRBuilder<>* builder) const;
 
+    // Returns the index into the source operand from which a slice operation
+    // selects a value to be placed into index "this". The slice is described
+    // by starting indices `starts` and stride values `strides`.
+    //
+    // Precondition: "this" is an index into a slice whose shape is `shape`.
+    Index SourceIndexOfSlice(const Shape& shape,
+                             tensorflow::gtl::ArraySlice<int64> starts,
+                             tensorflow::gtl::ArraySlice<int64> strides,
+                             llvm::IRBuilder<>* builder) const;
+
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
     Index SourceIndexOfTranspose(

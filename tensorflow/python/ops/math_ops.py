@@ -47,6 +47,9 @@ See the @{$python/math_ops} guide.
 @@log1p
 @@sinh
 @@cosh
+@@asinh
+@@acosh
+@@atanh
 @@ceil
 @@floor
 @@maximum
@@ -165,42 +168,58 @@ from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated_args
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
 
+arg_max = deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
+arg_min = deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+
+
+def _set_doc(doc):
+  def _decorator(func):
+    func.__doc__ = doc
+    return func
+  return _decorator
+
 
 # pylint: disable=redefined-builtin
-# TODO(aselle): deprecate arg_max
-def argmax(input, axis=None, name=None, dimension=None):
+@deprecated_args(None, "Use the `axis` argument instead", "dimension")
+@_set_doc(gen_math_ops.arg_max.__doc__
+          .replace("dimensions", "axes")
+          .replace("dimension", "axis"))
+def argmax(input,
+           axis=None,
+           name=None,
+           dimension=None,
+           output_type=dtypes.int64):
   if dimension is not None:
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
   elif axis is None:
     axis = 0
-  return gen_math_ops.arg_max(input, axis, name)
+  return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
-argmax.__doc__ = (gen_math_ops.arg_max.__doc__.replace("dimensions",
-                                                       "axes").replace(
-                                                           "dimension", "axis"))
-
-
-# TODO(aselle:deprecate arg_min)
-def argmin(input, axis=None, name=None, dimension=None):
+@deprecated_args(None, "Use the `axis` argument instead", "dimension")
+@_set_doc(gen_math_ops.arg_min.__doc__
+          .replace("dimensions", "axes")
+          .replace("dimension", "axis"))
+def argmin(input,
+           axis=None,
+           name=None,
+           dimension=None,
+           output_type=dtypes.int64):
   if dimension is not None:
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
   elif axis is None:
     axis = 0
-  return gen_math_ops.arg_min(input, axis, name)
+  return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
-
-argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
-                                                       "axes").replace(
-                                                           "dimension", "axis"))
 
 # pylint: enable=redefined-builtin
 
@@ -1683,8 +1702,8 @@ def matmul(a,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must, following any transpositions, be tensors of rank >= 2 
-  where the inner 2 dimensions specify valid matrix multiplication arguments, 
+  The inputs must, following any transpositions, be tensors of rank >= 2
+  where the inner 2 dimensions specify valid matrix multiplication arguments,
   and any further outer dimensions match.
 
   Both matrices must be of the same type. The supported types are:

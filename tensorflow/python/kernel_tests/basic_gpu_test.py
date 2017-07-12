@@ -107,9 +107,12 @@ class MathBuiltinUnaryTest(test.TestCase):
 
   def _testDtype(self, dtype, use_gpu):
     data = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(dtype)
+    data_gt_1 = data + 2 # for x > 1
     self._compare(data, np.abs, math_ops.abs, use_gpu)
     self._compare(data, np.arccos, math_ops.acos, use_gpu)
     self._compare(data, np.arcsin, math_ops.asin, use_gpu)
+    self._compare(data, np.arcsinh, math_ops.asinh, use_gpu)
+    self._compare(data_gt_1, np.arccosh, math_ops.acosh, use_gpu)
     self._compare(data, np.arctan, math_ops.atan, use_gpu)
     self._compare(data, np.ceil, math_ops.ceil, use_gpu)
     self._compare(data, np.cos, math_ops.cos, use_gpu)
@@ -126,6 +129,7 @@ class MathBuiltinUnaryTest(test.TestCase):
     self._compare(data, np.square, math_ops.square, use_gpu)
     self._compare(data, np.tan, math_ops.tan, use_gpu)
     self._compare(data, np.tanh, math_ops.tanh, use_gpu)
+    self._compare(data, np.arctanh, math_ops.atanh, use_gpu)
 
   def testTypes(self):
     for dtype in [np.float32]:

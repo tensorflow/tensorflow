@@ -152,12 +152,12 @@ Status SymbolicGradientBuilder::Initialize() {
   grad_outputs_->resize(inputs_.size());
   // Populate `output_nodes_` from node ids in `outputs_`.
   output_nodes_.reserve(outputs_.size());
-  for (int i = 0; i < outputs_.size(); ++i) {
+  for (size_t i = 0; i < outputs_.size(); ++i) {
     output_nodes_.insert(outputs_[i].node()->id());
   }
   // Populate `input_nodes_` from Outputs in `inputs_`.
   input_nodes_.reserve(inputs_.size());
-  for (int i = 0; i < inputs_.size(); ++i) {
+  for (size_t i = 0; i < inputs_.size(); ++i) {
     input_nodes_.insert({inputs_[i], i});
   }
 
@@ -341,7 +341,7 @@ Status SymbolicGradientBuilder::AddGradients() {
     // gradient function to the src node/output to which it should be
     // backproped. Maybe grad functions can return a vector of Output pairs to
     // make this association explicit.
-    int dx_index = 0;
+    size_t dx_index = 0;
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
       if (dx_index == dx.size()) {

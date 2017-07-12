@@ -363,7 +363,7 @@ class ExecutorImpl : public Executor {
   friend class ExecutorState;
 
   struct ControlFlowInfo {
-    gtl::FlatSet<string, HashStr> unique_frame_names;
+    gtl::FlatSet<string> unique_frame_names;
     std::vector<string> frame_names;
   };
 
@@ -423,7 +423,7 @@ class ExecutorImpl : public Executor {
   // Mapping from frame name to static information about the frame.
   // TODO(yuanbyu): We could cache it along with the graph so to avoid
   // the overhead of constructing it for each executor instance.
-  gtl::FlatMap<string, FrameInfo*, HashStr> frame_info_;
+  gtl::FlatMap<string, FrameInfo*> frame_info_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ExecutorImpl);
 };
@@ -1209,8 +1209,7 @@ class ExecutorState {
   // child frame is composed of the name of the parent frame, the iteration
   // number at which the parent frame is creating the new frame, and the
   // name of the new frame from nodedef.
-  gtl::FlatMap<string, FrameState*, HashStr> outstanding_frames_
-      GUARDED_BY(mu_);
+  gtl::FlatMap<string, FrameState*> outstanding_frames_ GUARDED_BY(mu_);
 
   // The unique name of a frame.
   inline string MakeFrameName(FrameState* frame, int64 iter_id,
@@ -1743,7 +1742,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
           return AttachDef(errors::FailedPrecondition(
                                "Attempting to use uninitialized value ",
-                               item.kernel->def().input(i)),
+                               item.kernel->requested_input(i)),
                            item.kernel->def());
         }
       }

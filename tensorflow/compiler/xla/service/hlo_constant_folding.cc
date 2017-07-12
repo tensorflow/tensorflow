@@ -58,6 +58,13 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         continue;
       }
 
+      // Broadcasts dramatically increase the size of constants with is often
+      // detrimental to performance and memory capacity so do not fold
+      // broadcasts.
+      if (instruction->opcode() == HloOpcode::kBroadcast) {
+        continue;
+      }
+
       std::unique_ptr<Literal> result = evaluator->TryEvaluate(instruction);
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.

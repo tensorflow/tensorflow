@@ -7,6 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
@@ -51,6 +52,7 @@ py_library(
         "python/keras/applications/__init__.py",
         "python/keras/applications/imagenet_utils.py",
         "python/keras/applications/inception_v3.py",
+        "python/keras/applications/mobilenet.py",
         "python/keras/applications/resnet50.py",
         "python/keras/applications/vgg16.py",
         "python/keras/applications/vgg19.py",
@@ -239,6 +241,17 @@ py_test(
 )
 
 py_test(
+    name = "mobilenet_test",
+    size = "small",
+    srcs = ["python/keras/applications/mobilenet_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "resnet50_test",
     size = "small",
     srcs = ["python/keras/applications/resnet50_test.py"],
@@ -393,12 +406,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "normalization_test",
     size = "small",
     srcs = ["python/keras/layers/normalization_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         ":testing_utils",
         "//tensorflow/python:client_testlib",
@@ -475,6 +487,40 @@ py_test(
     deps = [
         ":keras",
         ":testing_utils",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "data_utils_test",
+    size = "small",
+    srcs = ["python/keras/utils/data_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "generic_utils_test",
+    size = "small",
+    srcs = ["python/keras/utils/generic_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "imagenet_utils_test",
+    size = "small",
+    srcs = ["python/keras/applications/imagenet_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
         "//tensorflow/python:client_testlib",
     ],
 )

@@ -35,7 +35,8 @@ class GcsFileSystem : public FileSystem {
   GcsFileSystem();
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
                 std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                size_t read_ahead_bytes, int64 initial_retry_delay_usec);
+                size_t block_size, uint32 block_count,
+                int64 initial_retry_delay_usec);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -74,7 +75,8 @@ class GcsFileSystem : public FileSystem {
 
   Status DeleteRecursively(const string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs) override;
-  size_t get_readahead_buffer_size() const { return read_ahead_bytes_; }
+  size_t block_size() const { return block_size_; }
+  uint32 block_count() const { return block_count_; }
 
  private:
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
@@ -111,11 +113,15 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
 
-  // The number of bytes to read ahead for buffering purposes in the
-  // RandomAccessFile implementation. Defaults to 256Mb.
-  size_t read_ahead_bytes_ = 256 * 1024 * 1024;
+  /// The block size for block-aligned reads in the RandomAccessFile
+  /// implementation. Defaults to 256Mb.
+  size_t block_size_ = 256 * 1024 * 1024;
 
-  // The initial delay for exponential backoffs when retrying failed calls.
+  /// The block count for the LRU cache of blocks in the RandomAccessFile
+  /// implementation.  Defaults to 1.
+  uint32 block_count_ = 1;
+
+  /// The initial delay for exponential backoffs when retrying failed calls.
   const int64 initial_retry_delay_usec_ = 1000000L;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);

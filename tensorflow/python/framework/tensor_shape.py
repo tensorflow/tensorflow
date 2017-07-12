@@ -365,7 +365,7 @@ class Dimension(object):
 def as_dimension(value):
   """Converts the given value to a Dimension.
 
-  A Dimenson input will be returned unmodified.
+  A Dimension input will be returned unmodified.
   An input of `None` will be converted to an unknown Dimension.
   An integer input will be converted to a Dimension with that value.
 
@@ -735,6 +735,36 @@ class TensorShape(object):
     """
     if not self.is_compatible_with(other):
       raise ValueError("Shapes %s and %s are incompatible" % (self, other))
+
+  def most_specific_compatible_shape(self, other):
+    """Returns the most specific TensorShape compatible with `self` and `other`.
+
+    * TensorShape([None, 1]) is the most specific TensorShape compatible with
+      both TensorShape([2, 1]) and TensorShape([5, 1]). Note that
+      TensorShape(None) is also compatible with above mentioned TensorShapes.
+
+    * TensorShape([1, 2, 3]) is the most specific TensorShape compatible with
+      both TensorShape([1, 2, 3]) and TensorShape([1, 2, 3]). There are more
+      less specific TensorShapes compatible with above mentioned TensorShapes,
+      e.g. TensorShape([1, 2, None]), TensorShape(None).
+
+    Args:
+      other: Another `TensorShape`.
+
+    Returns:
+      A `TensorShape` which is the most specific compatible shape of `self`
+      and `other`.
+    """
+
+    other = as_shape(other)
+    if self._dims is None or other.dims is None or self.ndims != other.ndims:
+      return unknown_shape()
+
+    dims = [(Dimension(None))] * self.ndims
+    for i, (d1, d2) in enumerate(zip(self._dims, other.dims)):
+      if d1 is not None and d2 is not None and d1 == d2:
+        dims[i] = d1
+    return TensorShape(dims)
 
   def is_fully_defined(self):
     """Returns True iff `self` is fully defined in every dimension."""

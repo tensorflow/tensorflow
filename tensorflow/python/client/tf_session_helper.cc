@@ -594,14 +594,6 @@ void TF_PRunSetup_wrapper(TF_DeprecatedSession* session,
       const_cast<const char**>(output_names.data()), output_names.size(),
       const_cast<const char**>(target_nodes.data()), target_nodes.size(),
       out_handle, out_status);
-  // TF_PRunSetup leaves out_handle undefined if it fails, but SWIG will call
-  // free(out_handle) on the returned handle regardless. Thus, must make sure it
-  // is valid.
-  if (TF_GetCode(out_status) != TF_OK) {
-    char* tmp = new char[1];
-    tmp[0] = '\0';
-    *out_handle = tmp;
-  }
   Py_END_ALLOW_THREADS;
 }
 
@@ -623,7 +615,7 @@ void TF_Reset_wrapper(const TF_SessionOptions* opt,
            out_status);
 }
 
-void TF_SessionRun_wrapper_helper(TF_Session* session,
+void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
                                   const TF_Buffer* run_options,
                                   const std::vector<TF_Output>& inputs,
                                   const std::vector<PyObject*>& input_ndarrays,
@@ -678,10 +670,16 @@ void TF_SessionRun_wrapper_helper(TF_Session* session,
 
   // Call TF_SessionRun() (and release GIL during execution)
   Py_BEGIN_ALLOW_THREADS;
-  TF_SessionRun(session, run_options, inputs.data(), input_vals.data(),
-                inputs.size(), outputs.data(), output_vals.data(),
-                outputs.size(), targets.data(), targets.size(), run_metadata,
-                out_status);
+  if (handle == nullptr) {
+    TF_SessionRun(session, run_options, inputs.data(), input_vals.data(),
+                  inputs.size(), outputs.data(), output_vals.data(),
+                  outputs.size(), targets.data(), targets.size(), run_metadata,
+                  out_status);
+  } else {
+    TF_SessionPRun(session, handle, inputs.data(), input_vals.data(),
+                   inputs.size(), outputs.data(), output_vals.data(),
+                   outputs.size(), targets.data(), targets.size(), out_status);
+  }
   Py_END_ALLOW_THREADS;
 
   // Create scoped containers for output tensors
@@ -692,7 +690,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session,
 
   // Convert outputs to ndarrays (in scoped containers)
   std::vector<Safe_PyObjectPtr> py_outputs_safe;
-  for (int i = 0; i < outputs.size(); ++i) {
+  for (size_t i = 0; i < outputs.size(); ++i) {
     PyObject* py_array;
     s = TFTensorToPyArray(std::move(output_vals_safe[i]), &py_array);
     if (!s.ok()) {
@@ -704,7 +702,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session,
 
   // If we reach this point, we have successfully built a list of objects so we
   // can release them from the safe container into the return vector.
-  for (int i = 0; i < outputs.size(); ++i) {
+  for (size_t i = 0; i < outputs.size(); ++i) {
     py_outputs->push_back(py_outputs_safe[i].release());
   }
 }
@@ -716,9 +714,9 @@ void TF_SessionRun_wrapper(TF_Session* session, const TF_Buffer* run_options,
                            const std::vector<TF_Operation*>& targets,
                            TF_Buffer* run_metadata, TF_Status* out_status,
                            std::vector<PyObject*>* py_outputs) {
-  TF_SessionRun_wrapper_helper(session, run_options, inputs, input_ndarrays,
-                               outputs, targets, run_metadata, out_status,
-                               py_outputs);
+  TF_SessionRun_wrapper_helper(session, nullptr, run_options, inputs,
+                               input_ndarrays, outputs, targets, run_metadata,
+                               out_status, py_outputs);
   // Release any unused ndarray references (see memory management comment in
   // TF_SessionRun_wrapper_helper)
   ClearDecrefCache();
@@ -735,6 +733,45 @@ string EqualGraphDefWrapper(const string& actual, const string& expected) {
   }
   string diff;
   return EqualGraphDef(actual_def, expected_def, &diff) ? "" : diff;
+}
+
+void TF_SessionPRunSetup_wrapper(TF_Session* session,
+                                 const std::vector<TF_Output>& inputs,
+                                 const std::vector<TF_Output>& outputs,
+                                 const std::vector<TF_Operation*>& targets,
+                                 const char** out_handle,
+                                 TF_Status* out_status) {
+  // Call TF_SessionPRunSetup() (and release GIL during execution)
+  Py_BEGIN_ALLOW_THREADS;
+  TF_SessionPRunSetup(session, inputs.data(), inputs.size(), outputs.data(),
+                      outputs.size(), targets.data(), targets.size(),
+                      out_handle, out_status);
+  Py_END_ALLOW_THREADS;
+}
+
+void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
+                            const std::vector<TF_Output>& inputs,
+                            const std::vector<PyObject*>& input_ndarrays,
+                            const std::vector<TF_Output>& outputs,
+                            TF_Status* out_status,
+                            std::vector<PyObject*>* py_outputs) {
+  const std::vector<TF_Operation*> targets;
+  TF_SessionRun_wrapper_helper(session, handle,
+                               nullptr,  // run_options
+                               inputs, input_ndarrays, outputs, targets,
+                               nullptr,  // run_metadata
+                               out_status, py_outputs);
+  // Release any unused ndarray references (see memory management comment in
+  // TF_SessionRun_wrapper_helper)
+  ClearDecrefCache();
+}
+
+std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
+    TF_Operation* oper) {
+  std::vector<TF_Operation*> control_inputs(TF_OperationNumControlInputs(oper));
+  TF_OperationGetControlInputs(oper, control_inputs.data(),
+                               control_inputs.size());
+  return control_inputs;
 }
 
 }  // namespace tensorflow

@@ -74,7 +74,7 @@ Use that package at your own risk.
 If the following version of Python is not installed on your machine,
 install it now:
 
-  * [Python 3.5.x from python.org](https://www.python.org/downloads/release/python-352/)
+  * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
 
 TensorFlow only supports version 3.5.x of Python on Windows.
 Note that Python 3.5.x comes with the pip3 package manager, which is the
@@ -115,12 +115,12 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      environment. To install the CPU-only version of TensorFlow, enter the
      following command:
 
-     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-1.2.0rc2-cp35-cp35m-win_amd64.whl</b> </pre>
+     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/cpu/tensorflow-1.2.1-cp35-cp35m-win_amd64.whl</b> </pre>
 
      To install the GPU version of TensorFlow, enter the following command
      (on a single line):
 
-     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-1.2.0rc2-cp35-cp35m-win_amd64.whl</b> </pre>
+     <pre>(tensorflow)C:\> <b>pip install --ignore-installed --upgrade https://storage.googleapis.com/tensorflow/windows/gpu/tensorflow_gpu-1.2.1-cp35-cp35m-win_amd64.whl</b> </pre>
 
 ## Validate your installation
 

@@ -25,6 +25,10 @@ The TensorFlow community has created many great projects around TensorFlow, incl
 * [Bitfusion's` GPU-enabled AWS EC2 TensorFlow AMI](https://github.com/bitfusionio/amis/tree/master/awsmrkt-bfboost-ubuntu14-cuda75-tensorflow) ([Launch AMI](https://aws.amazon.com/marketplace/pp/B01EYKBEQ0))
 * [Rust language bindings](https://github.com/google/tensorflow-rust)
 * [Operator Vectorization Library](https://github.com/opveclib/opveclib)
+* [Swift language bindings](https://github.com/PerfectlySoft/Perfect-TensorFlow)
+* [Sublime Tensorflow - A plugin for Sublime Text](https://github.com/baptisteArnaud/Sublime-Tensorflow)
+* [Edward - A library for probabilistic modeling, inference, and criticism](http://edwardlib.org) ([Github](https://github.com/blei-lab/edward), [Forum](https://discourse.edwardlib.org))
+* [GPflow - Gaussian processes in TensorFlow](https://github.com/GPflow/GPflow)
 
 ## TensorFlow Communities Around the World
 

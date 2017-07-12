@@ -23,6 +23,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "log_step_count_steps"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "master"
     mtype: "<type \'property\'>"
   }

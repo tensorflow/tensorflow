@@ -20,9 +20,9 @@ mkdir -p ~/graphs
 curl -o ~/graphs/inception5h.zip \
  https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip \
  && unzip ~/graphs/inception5h.zip -d ~/graphs/inception5h
-cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/benchmark/data/
-cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/camera/data/
-cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
+cp ~/graphs/inception5h/* tensorflow/examples/ios/benchmark/data/
+cp ~/graphs/inception5h/* tensorflow/examples/ios/camera/data/
+cp ~/graphs/inception5h/* tensorflow/examples/ios/simple/data/
 ```
 
  - Change directory to one of the samples, download the TensorFlow-experimental
@@ -30,7 +30,7 @@ cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
    long time since it is big (~450MB). For example, if you want to run the
    simple example, then:
 ```bash
-cd tensorflow/contrib/ios_examples/simple
+cd tensorflow/ios/simple
 pod install
 open tf_simple_example.xcworkspace # obs, not the .xcodeproj directory
 ```
@@ -51,9 +51,10 @@ open tf_simple_example.xcworkspace # obs, not the .xcodeproj directory
   
  - The TensorFlow-experimental pod is current about ~450MB. The reason it is 
    so big is because we are bundling multiple platforms, and the pod includes
-   all TensorFlow functionality (e.g. operations). This is convenient during
-   development, but see below section on how you can build your own custom
-   TensorFlow library to reduce the size.
+   all TensorFlow functionality (e.g. operations). The final app size after
+   build is substantially smaller though (~25MB). Working with the complete
+   pod is convenient during development, but see below section on how you can
+   build your own custom TensorFlow library to reduce the size.
 
 ### Creating Your own App
 
@@ -65,7 +66,7 @@ target 'YourProjectName'
 ```
 
  - Then you run ```pod install``` to download and install the
- TensorFlow-experimental pod, and finaly perform
+ TensorFlow-experimental pod, and finally perform
  ```open YourProjectName.xcworkspace``` and add your code.
 
  - In your apps "Build Settings", make sure to add $(inherited) to sections
@@ -145,10 +146,10 @@ rundown:
    in your project settings.
 
  - Remove any use of the `-all_load` flag in your project. The protocol buffers
-   libraries (full and lite versions) contain duplicate symbols, and the `-all_load`
-   flag will cause these duplicates to become link errors. If you were using
-   `-all_load` to avoid issues with Objective-C categories in static libraries,
-   you may be able to replace it with the `-ObjC` flag.
+   libraries (full and lite versions) contain duplicate symbols, and the
+   `-all_load` flag will cause these duplicates to become link errors. If you
+   were using `-all_load` to avoid issues with Objective-C categories in static
+   libraries, you may be able to replace it with the `-ObjC` flag.
 
 ### Reducing the binary size
 
@@ -159,7 +160,7 @@ It can be tricky to set up the right configuration in your own app to keep the
 size minimized, so if you do run into this issue we recommend you start by
 looking at the simple example to examine its size. Here's how you do that:
 
- - Open the Xcode project in tensorflow/contrib/ios_examples/simple.
+ - Open the Xcode project in tensorflow/examples/ios/simple.
 
  - Make sure you've followed the steps above to get the data files.
 
@@ -181,7 +182,7 @@ looking at the simple example to examine its size. Here's how you do that:
  - Running this command will show the size of the executable as the
    `tf_simple_example` line.
 
-Right now you'll see a size of around 23 MB, since it's including two
+Right now you'll see a size of around 25 MB, since it's including two
 architectures (armv7 and arm64). As a first step, you should make sure the size
 increase you see in your own app is similar, and if it's larger, look at the
 "Other Linker Flags" used in the Simple Xcode project settings to strip the
