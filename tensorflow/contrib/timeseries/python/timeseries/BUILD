@@ -269,9 +269,6 @@ py_test(
         "ar_model_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
     deps = [
         ":ar_model",
         ":estimators",
