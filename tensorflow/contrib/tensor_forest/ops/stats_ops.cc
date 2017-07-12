@@ -98,6 +98,7 @@ REGISTER_OP("ProcessInputV4")
     .Input("sparse_input_shape: int64")
     .Input("input_labels: float")
     .Input("input_weights: float")
+    .Input("leaf_ids: int32")
     .Output("finished_nodes: int32")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(c->UnknownDim()));
@@ -122,6 +123,7 @@ input_weights: The training batch's eample weights as a 1-d tensor.
   'input_weights[i]' gives the weight for the i-th input.
 finished_nodes: A 1-d tensor of node ids that have finished and are ready to
   grow.
+leaf_ids: `leaf_ids[i]` is the leaf id for input i.
 )doc");
 
 REGISTER_OP("FinalizeTree")

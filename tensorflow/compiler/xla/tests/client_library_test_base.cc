@@ -155,10 +155,11 @@ tensorflow::Status
 ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     const xla::Computation& computation, const Literal& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const std::function<void(const Literal& actual)>& expect_equal_or_near) {
+    const std::function<void(const Literal& actual,
+                             const string& error_message)>& verify_output) {
   // Try with no layout requirement.
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments));
-  expect_equal_or_near(*actual);
+  verify_output(*actual, "");
 
   // Try with all output layouts.
   std::vector<int64> minor_to_major(ShapeUtil::Rank(expected.shape()));
@@ -167,13 +168,78 @@ ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
     auto layout = ShapeUtil::MakeShapeWithLayout(
         expected.shape().element_type(),
         AsInt64Slice(expected.shape().dimensions()), minor_to_major);
-    VLOG(1) << "Test with output layout: "
-            << ShapeUtil::HumanStringWithLayout(layout);
     TF_ASSIGN_OR_RETURN(auto actual,
                         ExecuteAndTransfer(computation, arguments, &layout));
-    expect_equal_or_near(*actual);
+    verify_output(*actual, tensorflow::strings::StrCat(
+                               "Test with output layout: ",
+                               ShapeUtil::HumanStringWithLayout(layout)));
   } while (std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
   return tensorflow::Status::OK();
+}
+
+tensorflow::Status
+ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
+    const xla::Computation& computation, const Literal& expected,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const std::function<void(const Literal& actual,
+                             const string& error_message)>& verify_output,
+    const Shape* output_with_layout) {
+  std::vector<GlobalData*> arguments_with_layout;
+  std::vector<string> layout_strings;
+  // This is a recursive function. It's an std::function instead of a lambda
+  // because it needs to capture itself. The index is the index of the argument
+  // to try all layouts for.
+  std::function<tensorflow::Status(int64)> choose;
+  choose = [&, this](int64 index) -> tensorflow::Status {
+    if (index < arguments.size()) {
+      // Try out all layouts for the operand.
+      TF_ASSIGN_OR_RETURN(auto literal,
+                          client_->Transfer(*arguments[index], nullptr));
+      // Skip tuples because they don't have a rank.
+      if (ShapeUtil::IsTuple(literal->shape())) {
+        layout_strings.push_back(
+            ShapeUtil::HumanStringWithLayout(literal->shape()));
+        arguments_with_layout.push_back(arguments[index]);
+        TF_RETURN_IF_ERROR(choose(index + 1));
+        arguments_with_layout.pop_back();
+        layout_strings.pop_back();
+        return tensorflow::Status::OK();
+      }
+
+      std::vector<int64> minor_to_major(ShapeUtil::Rank(literal->shape()));
+      std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
+      do {
+        auto literal_relayout =
+            literal->Relayout(LayoutUtil::MakeLayout(minor_to_major));
+        layout_strings.push_back(
+            ShapeUtil::HumanStringWithLayout(literal_relayout->shape()));
+        TF_ASSIGN_OR_RETURN(auto data,
+                            client_->TransferToServer(*literal_relayout));
+        arguments_with_layout.push_back(data.get());
+        TF_RETURN_IF_ERROR(choose(index + 1));
+        arguments_with_layout.pop_back();
+        layout_strings.pop_back();
+      } while (
+          std::next_permutation(minor_to_major.begin(), minor_to_major.end()));
+      return tensorflow::Status::OK();
+    }
+
+    // Every argument has an assigned layout.
+    TF_ASSIGN_OR_RETURN(
+        auto actual,
+        ExecuteAndTransfer(
+            computation,
+            tensorflow::gtl::ArraySlice<GlobalData*>(arguments_with_layout),
+            output_with_layout));
+    string error_message = "Test with input layouts: ";
+    for (const auto& str : layout_strings) {
+      tensorflow::strings::StrAppend(&error_message, str, " ");
+    }
+    verify_output(*actual, error_message);
+    return tensorflow::Status::OK();
+  };
+
+  return choose(0);
 }
 
 tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
@@ -187,11 +253,16 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     TF_RET_CHECK(ShapeUtil::ElementIsIntegral(expected.shape()) ||
                  expected.shape().element_type() == PRED);
   }
+  auto expect_equal = [&](const Literal& actual, const string& error_message) {
+    LiteralTestUtil::ExpectEqual(expected, actual, error_message);
+  };
   if (execution_options_.debug_options().xla_test_all_output_layouts()) {
     return ComputeAndCompareLiteralWithAllOutputLayouts(
-        computation, expected, arguments, [&](const Literal& actual) {
-          LiteralTestUtil::ExpectEqual(expected, actual);
-        });
+        computation, expected, arguments, expect_equal);
+  }
+  if (execution_options_.debug_options().xla_test_all_input_layouts()) {
+    return ComputeAndCompareLiteralWithAllInputLayouts(
+        computation, expected, arguments, expect_equal, shape_with_layout);
   }
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));
@@ -205,11 +276,16 @@ tensorflow::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
     const Shape* shape_with_layout) {
   TF_RET_CHECK(ShapeUtil::ElementIsFloating(expected.shape()));
   TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  auto expect_near = [&](const Literal& actual, const string& error_message) {
+    LiteralTestUtil::ExpectNear(expected, actual, error, error_message);
+  };
   if (execution_options_.debug_options().xla_test_all_output_layouts()) {
-    return ComputeAndCompareLiteralWithAllOutputLayouts(
-        computation, expected, arguments, [&](const Literal& actual) {
-          LiteralTestUtil::ExpectNear(expected, actual, error);
-        });
+    return ComputeAndCompareLiteralWithAllOutputLayouts(computation, expected,
+                                                        arguments, expect_near);
+  }
+  if (execution_options_.debug_options().xla_test_all_input_layouts()) {
+    return ComputeAndCompareLiteralWithAllInputLayouts(
+        computation, expected, arguments, expect_near, shape_with_layout);
   }
   TF_ASSIGN_OR_RETURN(auto actual, ExecuteAndTransfer(computation, arguments,
                                                       shape_with_layout));

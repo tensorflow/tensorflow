@@ -85,13 +85,17 @@ class XlaCompiler {
       // Argument is a compile-time constant. No associated runtime parameter.
       kConstant,
 
-      // Argument is a variable resource. Has an associated runtime parameter
+      // Argument is a Variable resource. Has an associated runtime parameter
       // iff `initialized` is true.
       kVariable,
 
       // Argument is a TensorArray resource. Has an associated runtime parameter
       // iff `initialized` is true.
       kTensorArray,
+
+      // Argument is a Stack resource. Has an associated runtime parameter
+      // iff `initialized` is true.
+      kStack,
 
       // Argument is a run-time parameter.
       kParameter,
