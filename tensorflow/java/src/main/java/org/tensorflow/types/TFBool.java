@@ -16,8 +16,9 @@ limitations under the License.
 
 package org.tensorflow.types;
 
-/** The class TFBool represents a boolean. */
+/** Represents a boolean. */
 public class TFBool implements TFType {
+  private TFBool() {}
   static {
     Types.typeCodes.put(TFBool.class, org.tensorflow.DataType.BOOL);
   }

@@ -16,8 +16,9 @@ limitations under the License.
 
 package org.tensorflow.types;
 
-/** The class TFInt64 represents a 64-bit signed integer. */
+/** Represents a 64-bit signed integer. */
 public class TFInt64 implements TFType {
+  private TFInt64() {}
   static {
     Types.typeCodes.put(TFInt64.class, org.tensorflow.DataType.INT64);
   }

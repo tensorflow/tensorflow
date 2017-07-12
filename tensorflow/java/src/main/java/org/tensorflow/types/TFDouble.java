@@ -16,8 +16,9 @@ limitations under the License.
 
 package org.tensorflow.types;
 
-/** The class TFDouble represents a 64-bit double precision floating point number. */
+/** Represents a 64-bit double precision floating point number. */
 public class TFDouble implements TFType {
+  private TFDouble() {}
   static {
     Types.typeCodes.put(TFDouble.class, org.tensorflow.DataType.DOUBLE);
   }

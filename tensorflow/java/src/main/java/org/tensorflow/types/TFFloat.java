@@ -16,8 +16,9 @@ limitations under the License.
 
 package org.tensorflow.types;
 
-/** The class TFFloat represents a 32-bit single precision floating point number. */
+/** Represents a 32-bit single precision floating point number. */
 public class TFFloat implements TFType {
+  private TFFloat() {}
   static {
     Types.typeCodes.put(TFFloat.class, org.tensorflow.DataType.FLOAT);
   }
