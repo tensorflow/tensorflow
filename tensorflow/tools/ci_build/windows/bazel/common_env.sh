@@ -56,3 +56,7 @@ export PATH="/c/tools/cuda/bin:$PATH"
 
 # Set the common build options on Windows
 export BUILD_OPTS='--copt=-w --host_copt=-w --verbose_failures --experimental_ui'
+
+# Build TF with wrapper-less CROSSTOOL
+# TODO(pcloudy): Remove this after wrapper-less CROSSTOOL becomes default
+export NO_MSVC_WRAPPER=1

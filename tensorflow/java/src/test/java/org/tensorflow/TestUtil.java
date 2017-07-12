@@ -64,6 +64,14 @@ public class TestUtil {
         .output(0);
   }
 
+  public static Operation split(Graph g, String name, int[] values, int num_split) {
+    return g.opBuilder("Split", name)
+        .addInput(constant(g, "split_dim", 0))
+        .addInput(constant(g, "values", values))
+        .setAttr("num_split", num_split)
+        .build();
+  }
+
   public static void transpose_A_times_X(Graph g, int[][] a) {
     Output<TFInt32> aa = constant(g, "A", a);
     matmul(g, "Y", aa, placeholder(g, "X", TFInt32.class), true, false);

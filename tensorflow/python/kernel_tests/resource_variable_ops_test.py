@@ -163,6 +163,16 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v.load(2.0)
       self.assertEqual(2.0, v.value().eval())
 
+  def testSparseRead(self):
+    with self.test_session():
+      init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
+      v = resource_variable_ops.ResourceVariable(
+          constant_op.constant(init_value, dtype=dtypes.int32))
+      variables.global_variables_initializer().run()
+
+      value = v.sparse_read([0, 3, 1, 2]).eval()
+      self.assertAllEqual(init_value[[0, 3, 1, 2], ...], value)
+
   def testToFromProto(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(1.0)

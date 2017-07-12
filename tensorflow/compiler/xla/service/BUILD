@@ -855,7 +855,6 @@ cc_library(
         ":heap_simulator",
         ":hlo",
         ":hlo_ordering",
-        ":hlo_proto",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -1893,10 +1892,6 @@ cc_library(
         ":buffer_liveness",
         ":hlo",
         ":hlo_pass",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )
