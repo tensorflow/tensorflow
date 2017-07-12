@@ -63,14 +63,14 @@ $ bazel-bin/tensorflow/examples/label_image/label_image --image=my_image.png
 ```
 
 For a more detailed look at this code, you can check out the C++ section of the
-[Inception tutorial](https://tensorflow.org/tutorials/image_recognition/).
+[Inception tutorial](https://www.tensorflow.org/tutorials/image_recognition/).
 
 ## Python implementation
 
 label_image.py is a python implementation that provides code corresponding
 to the C++ code here. This gives more intuitive mapping between C++ and
 Python than the Python code mentioned in the
-[Inception tutorial](https://tensorflow.org/tutorials/image_recognition/).
+[Inception tutorial](https://www.tensorflow.org/tutorials/image_recognition/).
 and could be easier to add visualization or debug code.
 
 With tensorflow python package installed, you can run it like:

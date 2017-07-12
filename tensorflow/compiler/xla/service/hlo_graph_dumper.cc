@@ -287,6 +287,10 @@ string InstructionSequenceGraph(
         StrAppend(&name, " feature_index=", instruction->feature_index());
         color = kPurple;
         break;
+      case HloOpcode::kBatchNormGrad:
+        StrAppend(&name, " feature_index=", instruction->feature_index());
+        color = kPurple;
+        break;
       case HloOpcode::kReduce:
         StrAppend(&name, " dims=", Join(instruction->dimensions(), ","));
         color = kPurple;

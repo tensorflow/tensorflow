@@ -130,10 +130,10 @@ const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
 }
 
 void TFCode::Format(const std::vector<CodeNode*> roots, string* display_str,
-                    TFMultiGraphNodeProto* proto) {
+                    MultiGraphNodeProto* proto) {
   for (CodeNode* node : roots) {
     display_str->append(node->formatted_str);
-    TFMultiGraphNodeProto* child = proto->add_children();
+    MultiGraphNodeProto* child = proto->add_children();
     child->MergeFrom(node->proto());
     Format(node->show_children, display_str, child);
   }

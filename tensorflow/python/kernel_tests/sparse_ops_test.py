@@ -909,5 +909,16 @@ class SparseTransposeTest(test.TestCase):
           self.assertAllEqual(dn_trans, expected_trans)
 
 
+class SparsePlaceholderTest(test.TestCase):
+
+  def testPlaceholder(self):
+    with self.test_session(use_gpu=False):
+      foo = array_ops.sparse_placeholder(dtypes.float32, shape=(10, 47))
+      self.assertAllEqual([10, 47], foo.get_shape())
+
+      foo = array_ops.sparse_placeholder(dtypes.float32, shape=(None, 47))
+      self.assertAllEqual(None, foo.get_shape())
+
+
 if __name__ == "__main__":
   googletest.main()

@@ -365,7 +365,12 @@ Status HloCostAnalysis::HandleReshape(HloInstruction* reshape) {
 
 Status HloCostAnalysis::HandleBatchNormTraining(
     HloInstruction* batchNormTraining) {
-  // TODO(b/62294698): Implement cost analysis for batch-norm-learning.
+  // TODO(b/62294698): Implement cost analysis for batch-norm-training.
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction* batchNormGrad) {
+  // TODO(b/62294698): Implement cost analysis for batch-norm-grad.
   return Status::OK();
 }
 

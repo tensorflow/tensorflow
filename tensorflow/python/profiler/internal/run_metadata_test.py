@@ -29,12 +29,15 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.profiler import option_builder
 
 # pylint: disable=g-bad-import-order
 # XXX: this depends on pywrap_tensorflow and must come later
 from tensorflow.python.profiler import model_analyzer
 from tensorflow.python.profiler.internal import model_analyzer_testlib as lib
+
 SIZE = 1300
+builder = option_builder.ProfileOptionBuilder
 
 
 def _extract_node(run_meta, node_name):
@@ -54,7 +57,7 @@ def _run_model():
 
   with session.Session() as sess:
     run_metadata = config_pb2.RunMetadata()
-    opts = model_analyzer.PRINT_ALL_TIMING_MEMORY
+    opts = builder.time_and_memory()
     opts['min_micros'] = 0
     opts['min_bytes'] = 0
     _ = sess.run(y,
@@ -82,7 +85,7 @@ def _run_loop_model():
 
     tfprof_node = model_analyzer.profile(
         sess.graph, run_meta,
-        options=model_analyzer.PRINT_ALL_TIMING_MEMORY)
+        options=builder.time_and_memory())
     return tfprof_node, run_meta
 
 

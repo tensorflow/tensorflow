@@ -293,7 +293,7 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-    const ExecutionOptions& execution_options, Backend* backend) {
+    const ExecutionOptions& execution_options) {
   auto module_config = MakeUnique<HloModuleConfig>(program_shape);
   auto* computation_layout = module_config->mutable_entry_computation_layout();
 
@@ -678,8 +678,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
     // the program and the argument allocations.
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                         CreateModuleConfig(*program_shape, arg_allocations,
-                                           request.execution_options(),
-                                           execute_backend_.get()));
+                                           request.execution_options()));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
             << module_config->entry_computation_layout().ToString();
 
@@ -768,10 +767,9 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
       ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
                                   execute_backend_->default_device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, arg_allocations,
-                         arg->execution_options(), execute_backend_.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(*program_shape, arg_allocations,
+                                         arg->execution_options()));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -837,10 +835,9 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
       ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
                                   execute_backend_->default_device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, arg_allocations,
-                         arg->execution_options(), execute_backend_.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
+                      CreateModuleConfig(*program_shape, arg_allocations,
+                                         arg->execution_options()));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -1112,8 +1109,7 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(program_shape, {}, execution_options,
-                                         compute_constant_backend_.get()));
+                      CreateModuleConfig(program_shape, {}, execution_options));
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<Executable> executable,
@@ -1217,6 +1213,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kBatchNormTrainingRequest:
       handle_status = computation->AddBatchNormTrainingInstruction(
           arg->batch_norm_training_request());
+      break;
+    case OpRequest::kBatchNormGradRequest:
+      handle_status = computation->AddBatchNormGradInstruction(
+          arg->batch_norm_grad_request());
       break;
     case OpRequest::kBinaryOpRequest:
       handle_status =

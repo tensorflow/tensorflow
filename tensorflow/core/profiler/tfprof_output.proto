@@ -15,7 +15,7 @@ message TFProfTensorProto {
 }
 
 // A node in TensorFlow graph. Used by scope/graph view.
-message TFGraphNodeProto {
+message GraphNodeProto {
   // op name.
   string name = 1;
   // tensor value restored from checkpoint.
@@ -60,17 +60,17 @@ message TFGraphNodeProto {
 
   // Descendants of the graph. The actual descendants depend on the data
   // structure used (scope, graph).
-  repeated TFGraphNodeProto children = 12;
+  repeated GraphNodeProto children = 12;
 }
 
-// A node that groups multiple TFGraphNodeProto.
+// A node that groups multiple GraphNodeProto.
 // Depending on the 'view', the semantics of the TFmultiGraphNodeProto
 // is different:
 // code view: A node groups all TensorFlow graph nodes created by the
 //            Python code.
 // op view:   A node groups all TensorFlow graph nodes that are of type
 //            of the op (e.g. MatMul, Conv2D).
-message TFMultiGraphNodeProto {
+message MultiGraphNodeProto {
   // Name of the node.
   string name = 1;
 
@@ -96,11 +96,11 @@ message TFMultiGraphNodeProto {
   int64 total_parameters = 8;
   int64 total_float_ops = 9;
 
-  // TensorFlow graph nodes contained by the TFMultiGraphNodeProto.
-  repeated TFGraphNodeProto graph_nodes = 10;
+  // TensorFlow graph nodes contained by the MultiGraphNodeProto.
+  repeated GraphNodeProto graph_nodes = 10;
   // Descendants of the node. The actual descendants depend on the data
   // structure used.
-  repeated TFMultiGraphNodeProto children = 11;
+  repeated MultiGraphNodeProto children = 11;
 }
 
 message AdviceProto {

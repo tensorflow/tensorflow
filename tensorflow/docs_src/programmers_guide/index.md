@@ -40,14 +40,10 @@ documented in the following guide:
 
   * @{$saved_model_cli$SavedModel CLI (Command-Line Interface)}.
 
-To learn about the TensorFlow versioning scheme, consult the following two
-guides:
+To learn about the TensorFlow versioning scheme consult:
 
-  * @{$version_semantics$TensorFlow Version Semantics}, which explains
-    TensorFlow's versioning nomenclature and compatibility rules.
-  * @{$data_versions$TensorFlow Data Versioning: GraphDefs and Checkpoints},
-    which explains how TensorFlow adds versioning information to computational
-    graphs and checkpoints in order to support compatibility across versions.
+  * @{$version_compat$The TensorFlow Version Compatibility Guide}, which explains
+TensorFlow's versioning nomenclature and compatibility rules.
 
 We conclude this section with a FAQ about TensorFlow programming:
 
