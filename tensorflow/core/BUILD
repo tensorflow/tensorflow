@@ -1390,6 +1390,7 @@ cc_library(
         ],
     }),
     deps = tf_additional_lib_deps() + [
+        "@protobuf//:protobuf",
         "@snappy",
         "@zlib_archive//:zlib",
         ":lib_hash_crc32c_accelerate_internal",
@@ -1611,7 +1612,6 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         #":framework_internal_headers_lib",
-        "@protobuf//:protobuf",
         ":proto_text",
         ":version_lib",
         "//tensorflow/core/kernels:lookup_util",
