@@ -457,6 +457,32 @@ XLA_TEST_F(ReduceTest, MinReduce2DToR0) {
   ComputeAndCompareR0<float>(&builder, input_min, {}, ErrorSpec(0.0001));
 }
 
+XLA_TEST_F(ReduceTest, UnsignedInt_MinReduce) {
+  ComputationBuilder builder(client_, TestName());
+  Array2D<uint32> input({{1}, {2}});
+  auto min = CreateScalarMinComputation(U32, &builder);
+  auto input_literal = Literal::CreateR2FromArray2D(input);
+  auto initial_value =
+      builder.ConstantR0<uint32>(std::numeric_limits<uint32>::max());
+
+  builder.Reduce(builder.ConstantLiteral(*input_literal), initial_value, min,
+                 {0, 1});
+  ComputeAndCompareR0<uint32>(&builder, 1, {});
+}
+
+XLA_TEST_F(ReduceTest, UnsignedInt_MaxReduce) {
+  ComputationBuilder builder(client_, TestName());
+  Array2D<uint32> input({{1}, {2}});
+  auto max = CreateScalarMaxComputation(U32, &builder);
+  auto input_literal = Literal::CreateR2FromArray2D(input);
+  auto initial_value =
+      builder.ConstantR0<uint32>(std::numeric_limits<uint32>::min());
+
+  builder.Reduce(builder.ConstantLiteral(*input_literal), initial_value, max,
+                 {0, 1});
+  ComputeAndCompareR0<uint32>(&builder, 2, {});
+}
+
 // Reduces a matrix among dimension 1.
 XLA_TEST_F(ReduceTest, Reduce2DAmong1) {
   ComputationBuilder builder(client_, TestName());

@@ -36,18 +36,12 @@ static std::once_flag flags_init;
 static void AllocateFlags() {
   flags = new ServiceFlags;
   flags->xla_hlo_profile = false;
-  flags->xla_hlo_graph_for_compute_constant = false;
   flags->xla_dump_computations_to = "";
   flags->xla_dump_executions_to = "";
   flag_list = new std::vector<tensorflow::Flag>({
       tensorflow::Flag(
           "xla_hlo_profile", &flags->xla_hlo_profile,
           "Instrument the computation to collect per-HLO cycle counts"),
-      tensorflow::Flag(
-          "xla_hlo_graph_for_compute_constant",
-          &flags->xla_hlo_graph_for_compute_constant,
-          "If true, include hlo dumps of graphs from ComputeConstant."
-          "Such graphs still need to be matched via xla_generate_hlo_graph."),
       tensorflow::Flag("xla_dump_computations_to",
                        &flags->xla_dump_computations_to,
                        "Dumps computations that XLA executes into the provided "
