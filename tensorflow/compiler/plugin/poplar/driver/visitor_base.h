@@ -154,6 +154,8 @@ public:
 
   Status HandleBatchNormTraining(HloInstruction* batchNormTraining) override;
 
+  Status HandleBatchNormGrad(HloInstruction* batchNormGrad) override;
+
   TensorMap tensor_map;
 
   poplar::program::Sequence sequence;
