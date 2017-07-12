@@ -197,7 +197,7 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
       prefix = "multi_rnn_cell/cell_%d/cudnn_compatible_lstm_cell" % i
       w_names.append(prefix + "/kernel")
       # Three transformed bias tensors each layer:
-      # the 1st is for CudnnCompatbleLSTM(Block)Cell restore; the latter two
+      # the 1st is for CudnnCompatibleLSTM(Block)Cell restore; the latter two
       # sum up to the 1st, and are used for cuDNN restore.
       b_names.append(prefix + "/bias")
       b_names.extend([prefix + "/bias_cudnn_%d" % j for j in range(2)])
