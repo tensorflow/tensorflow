@@ -105,6 +105,12 @@ message DebugOptions {
   // the set {0, 1, 2} are tried.
   bool xla_test_all_output_layouts = 70;
 
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run for all permunations of layouts of all input
+  // arguments. For example, with 2 input arguments in 2D and 4D shapes, the
+  // computation will run 2! * 4! times.
+  bool xla_test_all_input_layouts = 71;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;

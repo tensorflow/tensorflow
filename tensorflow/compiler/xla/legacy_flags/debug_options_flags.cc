@@ -49,6 +49,7 @@ struct DebugOptionsFlags {
   bool xla_gpu_ftz;
 
   bool xla_test_all_output_layouts;
+  bool xla_test_all_input_layouts;
 
   string xla_backend_extra_options;
 };
@@ -85,6 +86,7 @@ void AllocateFlags() {
   flag_values->xla_gpu_ftz = false;
   flag_values->xla_test_all_output_layouts = false;
   flag_values->xla_backend_extra_options = "";
+  flag_values->xla_test_all_input_layouts = false;
 
   flag_objects = new std::vector<tensorflow::Flag>(
       {tensorflow::Flag(
@@ -169,6 +171,13 @@ void AllocateFlags() {
                         "all permutations of output layouts. For example, with "
                         "a 3D shape, all permutations of the set {0, 1, 2} are "
                         "tried."),
+       tensorflow::Flag("xla_test_all_input_layouts",
+                        &flag_values->xla_test_all_input_layouts,
+                        "Let ClientLibraryTestBase::ComputeAndCompare* test "
+                        "all permutations of *input* layouts. For example, for "
+                        "2 input arguments with 2D shape and 4D shape, the "
+                        "computation will run 2! * 4! times for every possible "
+                        "layouts"),
        tensorflow::Flag("xla_backend_extra_options",
                         &flag_values->xla_backend_extra_options,
                         "Extra options to pass to a backend; "
@@ -224,8 +233,11 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
       flag_values->xla_llvm_enable_noalias_metadata);
   options.set_xla_llvm_enable_invariant_load_metadata(
       flag_values->xla_llvm_enable_invariant_load_metadata);
+
   options.set_xla_test_all_output_layouts(
       flag_values->xla_test_all_output_layouts);
+  options.set_xla_test_all_input_layouts(
+      flag_values->xla_test_all_input_layouts);
 
   std::vector<string> extra_options_parts =
       tensorflow::str_util::Split(flag_values->xla_backend_extra_options, ',');
