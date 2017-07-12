@@ -10568,6 +10568,21 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorFromStringHandle"
+  input_arg {
+    name: "string_handle"
+    description: "A string representation of the given handle."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  summary: "Converts the given string representing a handle to an iterator to a resource."
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"
@@ -10590,6 +10605,21 @@ op {
     minimum: 1
   }
   summary: "Gets the next output from the given iterator."
+  is_stateful: true
+}
+op {
+  name: "IteratorToStringHandle"
+  input_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "string_handle"
+    description: "A string representation of the given handle."
+    type: DT_STRING
+  }
+  summary: "Converts the given `resource_handle` representing an iterator to a string."
   is_stateful: true
 }
 op {

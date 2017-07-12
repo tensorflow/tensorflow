@@ -11205,6 +11205,18 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorFromStringHandle"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"
@@ -11225,6 +11237,18 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorToStringHandle"
+  input_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "string_handle"
+    type: DT_STRING
   }
   is_stateful: true
 }
