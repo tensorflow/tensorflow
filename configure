@@ -11,6 +11,7 @@ SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
+CPU="$(uname -m)"
 
 function is_linux() {
   [[ "${PLATFORM}" == "linux" ]]
@@ -26,7 +27,7 @@ function is_windows() {
 }
 
 function is_ppc64le() {
-  [[ "${uname -m}" == "ppc64le" ]]
+  [[ "${CPU}" == "ppc64le" ]]
 }
 
 function sed_in_place() {
@@ -298,7 +299,7 @@ fi # TF_NEED_MKL
 
 ## Set up architecture-dependent optimization flags.
 if [ -z "$CC_OPT_FLAGS" ]; then
-  if [ is_ppc64le ]; then
+  if is_ppc64le; then
     # gcc on ppc64le does not support -march, use mcpu instead
     default_cc_opt_flags="-mcpu=native"
   else
