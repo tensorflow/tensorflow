@@ -24,7 +24,7 @@ opts = ProfileOptionBuilder(
     ).build()
 param_stats = tf.profiler.profile(
     tf.get_default_graph(),
-    cmd='code'
+    cmd='code',
     options=opts)
 
 # param_stats can be tensorflow.tfprof.GraphNodeProto or
