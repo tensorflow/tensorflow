@@ -203,8 +203,6 @@ public:
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("IPU");
   pipeline.AddPass<Inliner>();
-  pipeline.AddPass<Outliner>(1);
-  pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
 
@@ -213,7 +211,8 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<ReshapeMover>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
-
+  pipeline.AddPass<Outliner>(1);
+  pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(hlo_module).status();
 }
