@@ -106,5 +106,14 @@ class IpuXlaSimpleNetworkTest(test_util.TensorFlowTestCase):
                 self.assertAllClose(result,
                                     [1.0, 1.0])
 
+    def testDropout(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float32, [2,2], name="a")
+                output = tf.nn.dropout(pa, 0.5)
+
+                result = sess.run(output, {pa: [[1.,1.],[2.,3.]]})
+
+
 if __name__ == "__main__":
     googletest.main()
