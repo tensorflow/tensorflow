@@ -397,7 +397,7 @@ dataset = tf.contrib.data.Dataset.from_tensor_slices(filenames)
 # * Filter out lines beginning with "#" (comments).
 dataset = dataset.flat_map(
     lambda filename: (
-        tf.contrib.data.Dataset.TextLineDataset(filename)
+        tf.contrib.data.TextLineDataset(filename)
         .skip(1)
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
