@@ -8,7 +8,7 @@
 #include <map>
 #include <memory>
 
-#if TENSORFLOW_USE_GDR
+#ifdef TENSORFLOW_USE_GDR
 
 #include <fcntl.h>
 #include <rdma/rdma_cma.h>
