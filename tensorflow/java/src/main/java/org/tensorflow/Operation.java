@@ -107,10 +107,14 @@ public final class Operation {
   }
 
   /** Returns a symbolic handle to one of the tensors produced by this operation.
-   *  Warning: Does not check that the type of the tensor matches T.
+   *  Warning: Does not check that the type of the tensor matches T. It is
+   *  recommended to call this method with an explicit type parameter rather
+   *  than letting it be inferred, e.g. {@code operation.<TFInt32>.output(0)}
+   *  @param <T> The expected element type of the tensors produced by this output.
+   *  @param idx The index of the output among the outputs produced by this operation.
    */
-  @SuppressWarnings("rawtypes")
-	public <T> Output<?> output(int idx) {
+  @SuppressWarnings({ "rawtypes", "unchecked" })
+	public <T> Output<T> output(int idx) {
     return new Output(this, idx);
   }
 

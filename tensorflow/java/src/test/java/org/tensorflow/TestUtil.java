@@ -29,16 +29,16 @@ public class TestUtil {
           .setAttr("dtype", t.dataType())
           .setAttr("value", t)
           .build()
-          .output(0);
+          .<T>output(0);
     }
   }
-  public static <TFInt32> Output<TFInt32> constant(Graph g, String name, int[][] value) {
+  public static Output<TFInt32> constant(Graph g, String name, int[][] value) {
     try (Tensor<TFInt32> t = Tensor.create(value)) {
       return g.opBuilder("Const", name)
           .setAttr("dtype", t.dataType())
           .setAttr("value", t)
           .build()
-          .output(0);
+          .<TFInt32>output(0);
     }
   }
 
@@ -46,14 +46,17 @@ public class TestUtil {
     return g.opBuilder("Placeholder", name).setAttr("dtype", dtype).build().output(0);
   }
   public static <T extends TFType> Output<T> placeholder(Graph g, String name, Class<T> type) {
-    return g.opBuilder("Placeholder", name).setAttr("dtype", Types.dataType(type)).build().output(0);
+		return g.opBuilder("Placeholder", name)
+				.setAttr("dtype", Types.dataType(type))
+				.build()
+				.<T>output(0);
   }
   
   public static Output<?> addN(Graph g, Output<?>... inputs) {
     return g.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
   }
 
-  public static <T> Output<T> matmul(
+  public static <T extends TFType> Output<T> matmul(
       Graph g, String name, Output<T> a, Output<T> b, boolean transposeA, boolean transposeB) {
     return g.opBuilder("MatMul", name)
         .addInput(a)
@@ -61,7 +64,7 @@ public class TestUtil {
         .setAttr("transpose_a", transposeA)
         .setAttr("transpose_b", transposeB)
         .build()
-        .output(0);
+        .<T>output(0);
   }
 
   public static Operation split(Graph g, String name, int[] values, int num_split) {

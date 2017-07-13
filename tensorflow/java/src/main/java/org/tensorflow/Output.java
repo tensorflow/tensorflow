@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow;
 
 import java.util.Objects;
+
 /**
  * A symbolic handle to a tensor produced by an {@link Operation}.
  *

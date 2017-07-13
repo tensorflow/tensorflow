@@ -185,7 +185,7 @@ public class LabelImage {
 
     <T, U extends TFType> Output<U> cast(Output<T> value, Class<U> type) {
       DataType dtype = Types.dataType(type);
-      return g.opBuilder("Cast", "Cast").addInput(value).setAttr("DstT", dtype).build().output(0);
+      return g.opBuilder("Cast", "Cast").addInput(value).setAttr("DstT", dtype).build().<U>output(0);
     }
 
     Output<TFUInt8> decodeJpeg(Output<TFString> contents, long channels) {
@@ -193,7 +193,7 @@ public class LabelImage {
           .addInput(contents)
           .setAttr("channels", channels)
           .build()
-          .output(0);
+          .<TFUInt8>output(0);
     }
 
     <T extends TFType> Output<T> constant(String name, Object value, Class<T> type) {
@@ -202,7 +202,7 @@ public class LabelImage {
             .setAttr("dtype", Types.dataType(type))
             .setAttr("value", t)
             .build()
-            .output(0);
+            .<T>output(0);
       }
     }
   
@@ -212,7 +212,7 @@ public class LabelImage {
             .setAttr("dtype", t.dataType())
             .setAttr("value", t)
             .build()
-            .output(0);
+            .<TFString>output(0);
       }
     }
     Output<TFInt32> constant(String name, int value) {
@@ -221,7 +221,7 @@ public class LabelImage {
               .setAttr("dtype", DataType.INT32)
               .setAttr("value", t)
               .build()
-              .output(0);
+              .<TFInt32>output(0);
         }
       }
     Output<TFInt32> constant(String name, int[] value) {
@@ -230,7 +230,7 @@ public class LabelImage {
               .setAttr("dtype", DataType.INT32)
               .setAttr("value", t)
               .build()
-              .output(0);
+              .<TFInt32>output(0);
         }
       }
     Output<TFFloat> constant(String name, float value) {
@@ -239,15 +239,17 @@ public class LabelImage {
               .setAttr("dtype", DataType.FLOAT)
               .setAttr("value", t)
               .build()
-              .output(0);
+              .<TFFloat>output(0);
         }
       }
 
-    private <T> Output<T> binaryOp(String type, Output<T> in1, Output<T> in2) {
-      return g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
+    @SuppressWarnings("unchecked")
+		private <T> Output<T> binaryOp(String type, Output<T> in1, Output<T> in2) {
+      return (Output<T>)g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
     }
-    private <T, U, V> Output<T> binaryOp3(String type, Output<U> in1, Output<V> in2) {
-    	 return g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
+    @SuppressWarnings("unchecked")
+		private <T, U, V> Output<T> binaryOp3(String type, Output<U> in1, Output<V> in2) {
+    	 return (Output<T>)g.opBuilder(type, type).addInput(in1).addInput(in2).build().output(0);
     }
     private Graph g;
   }

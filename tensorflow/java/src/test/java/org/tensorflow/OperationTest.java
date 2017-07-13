@@ -106,8 +106,8 @@ public class OperationTest {
   public void outputEquality() {
     try (Graph g = new Graph()) {
       Output<TFInt32> output = TestUtil.constant(g, "c", 1);
-      Output<TFInt32> output1 = output.op().output(0);
-      Output<TFInt32> output2 = g.operation("c").output(0);
+      Output<TFInt32> output1 = output.op().<TFInt32>output(0);
+      Output<TFInt32> output2 = g.operation("c").<TFInt32>output(0);
       assertEquals(output, output1);
       assertEquals(output.hashCode(), output1.hashCode());
       assertEquals(output, output2);
@@ -119,8 +119,8 @@ public class OperationTest {
   public void outputCollection() {
     try (Graph g = new Graph()) {
       Output<TFInt32> output = TestUtil.constant(g, "c", 1);
-      Output<TFInt32> output1 = output.op().output(0);
-      Output<TFInt32> output2 = g.operation("c").output(0);
+      Output<TFInt32> output1 = output.op().<TFInt32>output(0);
+      Output<TFInt32> output2 = g.operation("c").<TFInt32>output(0);
       Set<Output<TFInt32>> ops = new HashSet<>();
       ops.addAll(Arrays.asList(output, output1, output2));
       assertEquals(1, ops.size());
