@@ -120,9 +120,9 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 }
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
-  return cfg.optimize_tensor_layout() || cfg.constant_folding() ||
-         cfg.auto_parallel().enable() || cfg.memory_optimization() > 0 ||
-         !cfg.optimizers().empty();
+  return !cfg.disable_model_pruning() || cfg.optimize_tensor_layout() ||
+         cfg.constant_folding() || cfg.auto_parallel().enable() ||
+         cfg.memory_optimization() > 0 || !cfg.optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,

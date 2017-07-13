@@ -40,6 +40,9 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/platform/cuda.h"
+
+using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -257,6 +260,10 @@ class WhereGPUOp : public AsyncOpKernel {
 
     auto create_and_check_output = [context, &d, &input, input_dims,
                                     num_true_host, done]() {
+      // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
       Tindex num_true = *num_true_host.data();
 

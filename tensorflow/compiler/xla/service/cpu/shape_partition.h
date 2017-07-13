@@ -38,7 +38,7 @@ namespace cpu {
 //
 //     [0, 1), [1, 2), [2, 3), [3, 4), [4, 5) [5, 8)
 //
-//   Note that the last parition has residule because the dimension size is
+//   Note that the last partition has residule because the dimension size is
 //   not a multiple of the partition count.
 //
 //

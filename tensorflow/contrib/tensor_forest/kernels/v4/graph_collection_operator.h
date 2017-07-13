@@ -56,8 +56,8 @@ class GraphRunnerSplitCollectionOperator : public SplitCollectionOperator {
 
   // Create a new candidate and initialize it with the given example.
   void CreateAndInitializeCandidateWithExample(
-      const std::unique_ptr<TensorDataSet>& input_data, int example,
-      int32 node_id) const override;
+      const std::unique_ptr<TensorDataSet>& input_data,
+      const InputTarget* target, int example, int32 node_id) const override;
 
   bool BestSplit(int32 node_id, SplitCandidate* best,
                  int32* depth) const override;

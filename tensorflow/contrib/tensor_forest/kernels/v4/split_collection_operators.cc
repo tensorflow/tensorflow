@@ -71,13 +71,13 @@ void SplitCollectionOperator::ExtractFromProto(
 }
 
 void SplitCollectionOperator::PackToProto(FertileStats* stats_proto) const {
-  for (int i = 0; i < stats_proto->node_to_slot_size(); ++i) {
-    auto* new_slot = stats_proto->mutable_node_to_slot(i);
-    const auto& stats = stats_.at(new_slot->node_id());
+  for (const auto& pair : stats_) {
+    auto* new_slot = stats_proto->add_node_to_slot();
+    new_slot->set_node_id(pair.first);
     if (params_.checkpoint_stats()) {
-      stats->PackToProto(new_slot);
+      pair.second->PackToProto(new_slot);
     }
-    new_slot->set_depth(stats->depth());
+    new_slot->set_depth(pair.second->depth());
   }
 }
 
@@ -100,8 +100,8 @@ bool SplitCollectionOperator::IsInitialized(int32 node_id) const {
 }
 
 void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(
-    const std::unique_ptr<TensorDataSet>& input_data, int example,
-    int32 node_id) const {
+    const std::unique_ptr<TensorDataSet>& input_data, const InputTarget* target,
+    int example, int32 node_id) const {
   // Assumes split_initializations_per_input == 1.
   decision_trees::BinaryNode split;
   float bias;
@@ -124,7 +124,7 @@ void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(
     LOG(ERROR) << "Unknown feature type " << type << ", not sure which "
                << "node type to use.";
   }
-  stats_.at(node_id)->AddSplit(split);
+  stats_.at(node_id)->AddSplit(split, input_data, target, example);
 }
 
 bool SplitCollectionOperator::BestSplit(int32 node_id,
@@ -134,6 +134,5 @@ bool SplitCollectionOperator::BestSplit(int32 node_id,
   *depth = slot->depth();
   return slot->BestSplit(best);
 }
-
 }  // namespace tensorforest
 }  // namespace tensorflow

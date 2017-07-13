@@ -214,11 +214,12 @@ XLA_TEST_P(ReducePrecisionTest, ReducePrecisionF32) {
     // Add positive values.
     input_values.push_back(tensorflow::bit_cast<float>(test_value[0]));
     expected_values.push_back(tensorflow::bit_cast<float>(test_value[index]));
-    // Add negative values.  We do this in the
+    // Add negative values.  We do this in the bitwise representation so as to
+    // avoid problems with NaN handling.
     input_values.push_back(
-        tensorflow::bit_cast<float>(test_value[0] & sign_bit));
+        tensorflow::bit_cast<float>(test_value[0] ^ sign_bit));
     expected_values.push_back(
-        tensorflow::bit_cast<float>(test_value[index] & sign_bit));
+        tensorflow::bit_cast<float>(test_value[index] ^ sign_bit));
   }
 
   // This is required for proper handling of NaN values.

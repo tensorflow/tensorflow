@@ -55,6 +55,14 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "check_load_py_test",
+    srcs = ["check_load_py_test.py"],
+    data = [
+        "//tensorflow:all_opensource_files",
+    ],
+)
+
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
@@ -136,23 +144,25 @@ sh_binary(
             ":simple_console",
             "//tensorflow:tensorflow_py",
             "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
+            "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
             "//tensorflow/contrib/keras:keras",
             "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
             "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
+            "//tensorflow/contrib/predictor:predictor_pip",
             "//tensorflow/contrib/session_bundle:session_bundle_pip",
             "//tensorflow/contrib/signal:signal_py",
             "//tensorflow/contrib/slim:slim",
             "//tensorflow/contrib/slim/python/slim/data:data_pip",
             "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
-            "//tensorflow/contrib/tpu:tpu_estimator",
-            "//tensorflow/contrib/tpu:tpu_helper_library",
-            "//tensorflow/contrib/tpu:tpu_py",
             "//tensorflow/contrib/specs:specs",
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
-            "//tensorflow/contrib/predictor:predictor_pip",
+            "//tensorflow/contrib/timeseries:timeseries_pip",
+            "//tensorflow/contrib/tpu:tpu_estimator",
+            "//tensorflow/contrib/tpu:tpu_helper_library",
+            "//tensorflow/contrib/tpu:tpu_py",
             "//tensorflow/examples/tutorials/mnist:package",
             "//tensorflow/python:distributed_framework_test_lib",
             "//tensorflow/python:meta_graph_testdata",

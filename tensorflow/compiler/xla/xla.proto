@@ -70,7 +70,7 @@ message DebugOptions {
   // Embed the compiler IR as a string in the executable.
   bool xla_embed_ir_in_executable = 33;
 
-  // Dump the compiler IR into this file/path.
+  // Dump the compiler IR into this directory as individual files.
   string xla_dump_ir_to = 34;
 
   // Eliminate implicit broadcasts when lowering user computations to HLO
@@ -99,8 +99,17 @@ message DebugOptions {
   // the generated IR.
   bool xla_llvm_enable_invariant_load_metadata = 65;
 
-  // Enable reuse of buffers between HLO operations.
-  bool xla_enable_buffer_reuse = 66;
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run n! times with all permunations of layouts for the
+  // output shape in rank n. For example, with a 3D shape, all permutations of
+  // the set {0, 1, 2} are tried.
+  bool xla_test_all_output_layouts = 70;
+
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run for all permunations of layouts of all input
+  // arguments. For example, with 2 input arguments in 2D and 4D shapes, the
+  // computation will run 2! * 4! times.
+  bool xla_test_all_input_layouts = 71;
 
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
@@ -204,6 +213,7 @@ message ResetDeviceResponse {
 
 message ComputationStatsRequest {
   ComputationHandle computation = 1;
+  DebugOptions debug_options = 2;
 }
 
 message ComputationStatsResponse {

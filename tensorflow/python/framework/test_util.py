@@ -245,7 +245,8 @@ def disable_c_api(fn):
     prev_value = ops._USE_C_API
     ops._USE_C_API = False
     try:
-      fn(*args, **kwargs)
+      with ops.Graph().as_default():
+        fn(*args, **kwargs)
     finally:
       ops._USE_C_API = prev_value
   # pylint: disable=protected-access
@@ -266,6 +267,13 @@ class TensorFlowTestCase(googletest.TestCase):
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
+    # Note: The following line is necessary because some test methods may error
+    # out from within nested graph contexts (e.g., via assertRaises and
+    # assertRaisesRegexp), which may leave ops._default_graph_stack non-empty
+    # under certain versions of Python. That would cause
+    # ops.reset_default_graph() to throw an exception if the stack were not
+    # cleared first.
+    ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
     ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
 
@@ -813,7 +821,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # pylint: enable=invalid-name
 
 
-def create_local_cluster(num_workers, num_ps, protocol="grpc"):
+def create_local_cluster(num_workers, num_ps, protocol="grpc",
+                         worker_config=None, ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
   Example:
@@ -839,6 +848,9 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
     num_ps: Number of PS servers to start.
     protocol: Communication protocol.  Allowed values are documented in
       the documentation of `tf.train.Server`.
+    worker_config: (optional) ConfigProto to initialize workers. Can be used
+      to instantiate multiple devices etc.
+    ps_config: (optional) ConfigProto to initialize PS servers.
 
   Returns:
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
@@ -860,12 +872,14 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
 
   workers = [
       server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
+          cs, job_name="worker", protocol=protocol, task_index=ix,
+          config=worker_config, start=True)
       for ix in range(num_workers)
   ]
   ps_servers = [
       server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
+          cs, job_name="ps", protocol=protocol, task_index=ix,
+          config=ps_config, start=True)
       for ix in range(num_ps)
   ]
 

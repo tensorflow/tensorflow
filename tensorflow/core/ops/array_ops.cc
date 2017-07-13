@@ -1398,6 +1398,105 @@ raising an error.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("GatherV2")
+    .Input("params: Tparams")
+    .Input("indices: Tindices")
+    .Input("axis: Taxis")
+    .Output("output: Tparams")
+    .Attr("Tparams: type")
+    .Attr("Tindices: {int32,int64}")
+    .Attr("Taxis: {int32,int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle params_shape;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &params_shape));
+
+      ShapeHandle indices_shape = c->input(1);
+      ShapeHandle unused_axis_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_axis_shape));
+      const Tensor* axis_t = c->input_tensor(2);
+
+      // If axis is unknown, we can only infer that the result is params_rank +
+      // indices_rank - 1.
+      if (axis_t == nullptr) {
+        if (c->RankKnown(params_shape) && c->RankKnown(indices_shape)) {
+          c->set_output(0, c->UnknownShapeOfRank(c->Rank(params_shape) +
+                                                 c->Rank(indices_shape) - 1));
+        } else {
+          c->set_output(0, c->UnknownShape());
+        }
+        return Status::OK();
+      }
+
+      // Note, axis can be negative.
+      int64 axis = 0;
+      if (axis_t->dtype() == DT_INT32) {
+        axis = axis_t->scalar<int32>()();
+      } else {
+        axis = axis_t->scalar<int64>()();
+      }
+
+      // Check that params has rank of at least axis + 1.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(
+          params_shape, axis < 0 ? -axis : axis + 1, &unused));
+
+      ShapeHandle params_outer_subshape;
+      TF_RETURN_IF_ERROR(
+          c->Subshape(params_shape, 0, axis, &params_outer_subshape));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(params_outer_subshape, indices_shape, &out));
+
+      // Slice from axis + 1 to the end of params_shape to collect the inner
+      // dimensions of the result. Special case -1 here since -1 + 1 wraps, and
+      // we slice from 0 to the end of shape. Subshape() handles all other
+      // out-of-bounds checking.
+      if (axis != -1) {
+        ShapeHandle params_inner_subshape;
+        TF_RETURN_IF_ERROR(
+            c->Subshape(params_shape, axis + 1, &params_inner_subshape));
+        TF_RETURN_IF_ERROR(c->Concatenate(out, params_inner_subshape, &out));
+      }
+
+      c->set_output(0, out);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Gather slices from `params` axis `axis` according to `indices`.
+
+`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+Produces an output tensor with shape `params.shape[:axis] + indices.shape +
+params.shape[axis + 1:]` where:
+
+```python
+    # Scalar indices (output is rank(params) - 1).
+    output[a_0, ..., a_n, b_0, ..., b_n] =
+      params[a_0, ..., a_n, indices, b_0, ..., b_n]
+
+    # Vector indices (output is rank(params)).
+    output[a_0, ..., a_n, i, b_0, ..., b_n] =
+      params[a_0, ..., a_n, indices[i], b_0, ..., b_n]
+
+    # Higher rank indices (output is rank(params) + rank(indices) - 1).
+    output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
+      params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+```
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+</div>
+
+params: The tensor from which to gather values. Must be at least rank
+  `axis + 1`.
+indices: Index tensor. Must be in range `[0, params.shape[axis])`.
+axis: The axis in `params` to gather `indices` from. Defaults to the first
+  dimension. Supports negative indexes.
+output: Values from `params` gathered from indices given by `indices`, with
+  shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("GatherNd")
     .Input("params: Tparams")
     .Input("indices: Tindices")
@@ -1433,15 +1532,25 @@ REGISTER_OP("GatherNd")
       return Status::OK();
     })
     .Doc(R"doc(
-Gather values or slices from `params` according to `indices`.
+Gather slices from `params` into a Tensor with shape specified by `indices`.
 
-`indices` is an integer tensor containing indices into `params`.  The last
-dimension of `indices` can be at most the rank of `params`:
+`indices` is an K-dimensional integer tensor, best thought of as a
+(K-1)-dimensional tensor of indices into `params`, where each element defines a
+slice of `params`:
+
+    output[i_0, ..., i_{K-2}] = params[indices[i0, ..., i_{K-2}]]
+
+Whereas in @{tf.gather} `indices` defines slices into the first
+dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+
+The last dimension of `indices` can be at most the rank of
+`params`:
 
     indices.shape[-1] <= params.rank
 
 The last dimension of `indices` corresponds to elements
-(if `indices.shape[-1] = params.rank`) or slices
+(if `indices.shape[-1] == params.rank`) or slices
 (if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
 of `params`.  The output tensor has shape
 
@@ -2700,6 +2809,45 @@ For example:
 ```
 # 't' is [[1, 1], [2, 2]]
 # 'paddings' is [[1, 1], [2, 2]]
+# rank of 't' is 2
+pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
+                      [0, 0, 1, 1, 0, 0]
+                      [0, 0, 2, 2, 0, 0]
+                      [0, 0, 0, 0, 0, 0]]
+```
+
+)doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("PadV2")
+    .Input("input: T")
+    .Input("paddings: Tpaddings")
+    .Input("constant_values: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
+    .SetShapeFn(PadShapeFn)
+    .Doc(R"doc(
+Pads a tensor.
+
+This operation pads `input` according to the `paddings` and `constant_values`
+you specify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is
+the rank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates
+how many padding values to add before the contents of `input` in that dimension,
+and `paddings[D, 1]` indicates how many padding values to add after the contents
+of `input` in that dimension. `constant_values` is a scalar tensor of the same
+type as `input` that indicates the value to use for padding `input`.
+
+The padded size of each dimension D of the output is:
+
+`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`
+
+For example:
+
+```
+# 't' is [[1, 1], [2, 2]]
+# 'paddings' is [[1, 1], [2, 2]]
+# 'constant_values' is 0
 # rank of 't' is 2
 pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
                       [0, 0, 1, 1, 0, 0]
@@ -4854,8 +5002,8 @@ Scatter `updates` into a new (initially zero) tensor according to `indices`.
 
 Creates a new tensor by applying sparse `updates` to individual
 values or slices within a zero tensor of the given `shape` according to
-indices.  This operator is the inverse of the [tf.gather_nd](#gather_nd)
-operator which extracts values or slices from a given tensor.
+indices.  This operator is the inverse of the @{tf.gather_nd} operator which
+extracts values or slices from a given tensor.
 
 **WARNING**: The order in which updates are applied is nondeterministic, so the
 output will be nondeterministic if `indices` contains duplicates.
@@ -4975,8 +5123,7 @@ The resulting value `output` would look like this:
 
     [1, 13, 3, 14, 14, 6, 7, 20]
 
-See [tf.scatter_nd](#scatter_nd) for more details about how to make updates to
-slices.
+See @{tf.scatter_nd} for more details about how to make updates to slices.
 
 input: A Tensor.
 indices: A Tensor. Must be one of the following types: `int32`, `int64`.

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/grpc_response_reader.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -195,13 +196,14 @@ class GrpcRemoteWorker : public WorkerInterface {
              const ::grpc::RpcMethod& method, const RequestMessage& request,
              StatusCallback done, CallOptions* call_opts)
         : call_opts_(call_opts),
-          reader_(channel, cq, method, InitContext(call_opts), request),
+          reader_(CreateClientAsyncResponseReader<ResponseMessage>(
+              channel, cq, method, InitContext(call_opts), request)),
           done_(std::move(done)) {}
 
     ~RPCState() override {}
 
     void StartRPC(ResponseMessage* response) {
-      reader_.Finish(response, &status_, this);
+      reader_->Finish(response, &status_, this);
     }
 
     void OnCompleted(bool ok) override {
@@ -219,7 +221,7 @@ class GrpcRemoteWorker : public WorkerInterface {
    private:
     CallOptions* call_opts_;
     ::grpc::ClientContext context_;
-    ::grpc::ClientAsyncResponseReader<ResponseMessage> reader_;
+    std::unique_ptr<::grpc::ClientAsyncResponseReader<ResponseMessage>> reader_;
     ::grpc::Status status_;
     StatusCallback done_;
 
