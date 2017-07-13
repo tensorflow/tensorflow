@@ -30,13 +30,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
-#include "tensorflow/core/distributed_runtime/rpc/rdma.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
+#include "tensorflow/core/distributed_runtime/rpc/rdma.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -332,11 +332,10 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
   RdmaServer* rdma_server = env()->rdma_server;
   env_->rendezvous_mgr->RecvLocalAsync(
       step_id, parsed,
-      [opts, response, done, src_dev,
-       rdma_server, dma_ok](const Status& status,
-                            const Rendezvous::Args& send_args,
-                            const Rendezvous::Args& recv_args,
-                            const Tensor& val, const bool is_dead) {
+      [opts, response, done, src_dev, rdma_server, dma_ok](
+          const Status& status, const Rendezvous::Args& send_args,
+          const Rendezvous::Args& recv_args, const Tensor& val,
+          const bool is_dead) {
         opts->ClearCancelCallback();
         if (status.ok()) {
           // DMA can only be used for Tensors that do not fall into
@@ -351,11 +350,9 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
             // DMA cases
             RecvTensorResponse proto;
             auto transport_options = proto.mutable_transport_options();
-            Status s = rdma_server->RegisterTensorDMA(val,
-                                                      src_dev,
-                                                      send_args.device_context,
-                                                      on_host,
-                                                      transport_options);
+            Status s = rdma_server->RegisterTensorDMA(
+                val, src_dev, send_args.device_context, on_host,
+                transport_options);
             if (s.ok()) {
               proto.set_is_dead(is_dead);
               proto.set_send_start_micros(Env::Default()->NowMicros());

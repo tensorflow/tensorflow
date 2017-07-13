@@ -71,7 +71,6 @@ bool IsGDRAvailable() {
 }
 
 static int TryToReadNumaNode(ibv_device* device) {
-
   static const int kUnknownNumaNode = -1;
 
   string filename = string(device->ibdev_path) + "/device/numa_node";
@@ -106,8 +105,9 @@ class BasicCPUAllocator : public SubAllocator {
 
 class BFCRdmaAllocator : public BFCAllocator {
  public:
-  BFCRdmaAllocator() :
-    BFCAllocator(new BasicCPUAllocator(), 1LL << 36, true, "cpu_rdma_bfc") {}
+  BFCRdmaAllocator()
+      : BFCAllocator(new BasicCPUAllocator(), 1LL << 36, true, "cpu_rdma_bfc") {
+  }
 };
 
 REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 300, BFCRdmaAllocator);
@@ -115,12 +115,11 @@ REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 300, BFCRdmaAllocator);
 class RdmaMemoryManager {
  public:
   RdmaMemoryManager() : pd_(nullptr, PDDeleter) {
-
     using namespace std::placeholders;
     VisitableAllocator::Visitor alloc_visitor =
-      std::bind(&RdmaMemoryManager::InsertMemoryRegion, this, _1, _2);
+        std::bind(&RdmaMemoryManager::InsertMemoryRegion, this, _1, _2);
     VisitableAllocator::Visitor free_visitor =
-      std::bind(&RdmaMemoryManager::EvictMemoryRegion, this, _1, _2);
+        std::bind(&RdmaMemoryManager::EvictMemoryRegion, this, _1, _2);
 
     // Bind GPU using bus_id
     int num_device;
@@ -180,8 +179,7 @@ class RdmaMemoryManager {
     ibv_mr* mr = ibv_reg_mr(pd_.get(), addr, length, access_flags);
     if (mr != nullptr) {
       mutex_lock l(mu_);
-      auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
-                                   addr, &Comparator);
+      auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
       mrs_.insert(iter, {mr, &MRDeleter});
     } else {
       LOG(WARNING) << "Cannot register memory region";
@@ -191,8 +189,7 @@ class RdmaMemoryManager {
   void EvictMemoryRegion(void* addr, size_t length) {
     if (length == 0) return;
     mutex_lock l(mu_);
-    auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
-                                 addr, &Comparator);
+    auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
     if (iter != std::end(mrs_) && iter->get()->addr == addr) {
       mrs_.erase(iter);
     } else {
@@ -203,8 +200,7 @@ class RdmaMemoryManager {
   ibv_mr* FindMemoryRegion(void* addr, size_t length) {
     if (length == 0) return nullptr;
     mutex_lock l(mu_);
-    auto iter = std::upper_bound(mrs_.begin(), mrs_.end(),
-                                 addr, &Comparator);
+    auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
     if (iter == std::end(mrs_) || iter->get()->addr > addr) {
       return nullptr;
     } else {
@@ -217,9 +213,7 @@ class RdmaMemoryManager {
     return rdma_manager;
   }
 
-  ibv_pd* ProtectionDomain() const {
-    return pd_.get();
-  }
+  ibv_pd* ProtectionDomain() const { return pd_.get(); }
 
  private:
   static bool Comparator(const void* ptr, const MemoryRegionPtr& other) {
@@ -233,12 +227,10 @@ class RdmaMemoryManager {
 
 class RdmaReadClient : public RdmaClient {
  public:
-  virtual Status ReadTensorViaDMA(Tensor* tensor,
-                                  Device* dst_device,
+  virtual Status ReadTensorViaDMA(Tensor* tensor, Device* dst_device,
                                   DeviceContext* dst_device_context,
                                   bool on_host,
                                   const Any& transport_options) override {
-
     RemoteMemoryRegion remote_mr;
     if (!transport_options.UnpackTo(&remote_mr)) {
       return errors::NotFound("No RDMA transport options found");
@@ -252,8 +244,8 @@ class RdmaReadClient : public RdmaClient {
           std::make_pair(std::make_pair(remote_mr.host(), remote_mr.port()),
                          RdmaEndpointPtr(nullptr, EndpointDeleter)));
       if (success || iter->second.get() == nullptr) {
-        TF_RETURN_IF_ERROR(CreateEndpoint(remote_mr.host(), remote_mr.port(),
-                                          iter->second));
+        TF_RETURN_IF_ERROR(
+            CreateEndpoint(remote_mr.host(), remote_mr.port(), iter->second));
       }
     }
     rdma_cm_id* id = iter->second.get();
@@ -264,8 +256,8 @@ class RdmaReadClient : public RdmaClient {
     ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
 
     Tensor host_copy;
-    if (mr == nullptr &&
-        dst_device->tensorflow_gpu_device_info() && (!on_host)) {
+    if (mr == nullptr && dst_device->tensorflow_gpu_device_info() &&
+        (!on_host)) {
 #if GOOGLE_CUDA
       Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
       host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
@@ -282,8 +274,8 @@ class RdmaReadClient : public RdmaClient {
 
     uint64_t start = Env::Default()->NowMicros();
 
-    if (rdma_post_read(id, nullptr, buffer->data(), buffer->size(), mr,
-                       0, remote_mr.addr(), remote_mr.rkey())) {
+    if (rdma_post_read(id, nullptr, buffer->data(), buffer->size(), mr, 0,
+                       remote_mr.addr(), remote_mr.rkey())) {
       perror("rdma_post_read");
       return errors::Unavailable("rdma_post_read failed");
     }
@@ -307,9 +299,8 @@ class RdmaReadClient : public RdmaClient {
     if (host_copy.NumElements() > 0) {
       Status s;
       Notification n;
-      GPUUtil::CopyCPUTensorToGPU(&host_copy, dst_device_context,
-                                  dst_device, tensor,
-                                  [&s, &n](const Status& status) {
+      GPUUtil::CopyCPUTensorToGPU(&host_copy, dst_device_context, dst_device,
+                                  tensor, [&s, &n](const Status& status) {
                                     s.Update(status);
                                     n.Notify();
                                   });
@@ -323,9 +314,8 @@ class RdmaReadClient : public RdmaClient {
     uint64_t end = Env::Default()->NowMicros();
 
     VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
-            << " of size " << buffer->size()
-            << " with tensor key " << remote_mr.tensor_key()
-            << " took " << (end - start) << " micros";
+            << " of size " << buffer->size() << " with tensor key "
+            << remote_mr.tensor_key() << " took " << (end - start) << " micros";
 
     return Status::OK();
   }
@@ -333,7 +323,6 @@ class RdmaReadClient : public RdmaClient {
  private:
   Status CreateEndpoint(const string& host, const string& port,
                         RdmaEndpointPtr& endpoint) {
-
     ibv_pd* pd = RdmaMemoryManager::Get()->ProtectionDomain();
     if (!pd) {
       return errors::Unavailable("RDMA is not available");
@@ -343,10 +332,9 @@ class RdmaReadClient : public RdmaClient {
     rdma_addrinfo hints = {};
     hints.ai_port_space = RDMA_PS_TCP;
     if (rdma_getaddrinfo(const_cast<char*>(host.c_str()),
-                          const_cast<char*>(port.c_str()),
-                          &hints, &addrinfo)) {
-      return errors::InvalidArgument("Cannot connect to rdma://",
-                                      host, ":", port);
+                         const_cast<char*>(port.c_str()), &hints, &addrinfo)) {
+      return errors::InvalidArgument("Cannot connect to rdma://", host, ":",
+                                     port);
     }
 
     ibv_qp_init_attr init_attr = {};
@@ -359,21 +347,21 @@ class RdmaReadClient : public RdmaClient {
     rdma_cm_id* id;
     if (rdma_create_ep(&id, addrinfo, pd, &init_attr)) {
       rdma_freeaddrinfo(addrinfo);
-      return errors::Unavailable("Cannot connect to endpoint rdma://",
-                                  host, ":", port);
+      return errors::Unavailable("Cannot connect to endpoint rdma://", host,
+                                 ":", port);
     }
     rdma_freeaddrinfo(addrinfo);
 
     if (rdma_connect(id, nullptr)) {
       rdma_destroy_ep(id);
-      return errors::Unavailable("Cannot connect to endpoint rdma://",
-                                  host, ":", port);
+      return errors::Unavailable("Cannot connect to endpoint rdma://", host,
+                                 ":", port);
     }
 
     LOG(INFO) << "RDMA endpoint connected to rdma://" << host << ":" << port;
     endpoint = RdmaEndpointPtr(id, EndpointDeleter);
     return Status::OK();
-}
+  }
 
   mutex mu_;
   std::map<std::pair<string, string>, RdmaEndpointPtr> clients_ GUARDED_BY(mu_);
@@ -382,16 +370,15 @@ class RdmaReadClient : public RdmaClient {
 class RdmaReadServer : public RdmaServer {
  public:
   RdmaReadServer(const string& host, const string& port)
-    : host_(host), port_(port),
-      listening_(nullptr, EndpointDeleter),
-      stopped_(false), next_key_(0) {}
+      : host_(host),
+        port_(port),
+        listening_(nullptr, EndpointDeleter),
+        stopped_(false),
+        next_key_(0) {}
 
-  virtual ~RdmaReadServer() {
-    Stop();
-  }
+  virtual ~RdmaReadServer() { Stop(); }
 
   virtual Status Init() override {
-
     ibv_pd* pd = RdmaMemoryManager::Get()->ProtectionDomain();
     if (!pd) {
       return errors::Unavailable("RDMA is not available");
@@ -403,8 +390,7 @@ class RdmaReadServer : public RdmaServer {
     hints.ai_port_space = RDMA_PS_TCP;
     hints.ai_flags = RAI_PASSIVE;
     if (rdma_getaddrinfo(const_cast<char*>(host_.c_str()),
-                         const_cast<char*>(port_.c_str()),
-                         &hints, &addrinfo)) {
+                         const_cast<char*>(port_.c_str()), &hints, &addrinfo)) {
       return errors::Unavailable("Cannot resolve rdma://", host_, ":", port_);
     }
 
@@ -439,7 +425,6 @@ class RdmaReadServer : public RdmaServer {
   }
 
   virtual void Run() override {
-
     stopped_ = false;
     while (!stopped_) {
       // Accept incoming connections
@@ -481,7 +466,7 @@ class RdmaReadServer : public RdmaServer {
             auto iter = tensor_buffers_.find(tensor_key);
             if (iter == std::end(tensor_buffers_)) {
               LOG(ERROR) << "Cannot find tensor buffer for tensor key "
-                          << tensor_key;
+                         << tensor_key;
               return error;
             } else {
               const TensorBuffer* buffer = iter->second;
@@ -500,12 +485,10 @@ class RdmaReadServer : public RdmaServer {
     }
   }
 
-  virtual Status RegisterTensorDMA(const Tensor& tensor,
-                                   Device* src_device,
+  virtual Status RegisterTensorDMA(const Tensor& tensor, Device* src_device,
                                    DeviceContext* src_device_context,
                                    bool on_host,
                                    Any* mutable_transport_options) override {
-
     auto buffer = DMAHelper::buffer(&tensor);
     void* addr = buffer->data();
     size_t length = buffer->size();
@@ -516,18 +499,15 @@ class RdmaReadServer : public RdmaServer {
     ibv_mr* mr = RdmaMemoryManager::Get()->FindMemoryRegion(addr, length);
 
     Tensor host_copy;
-    if (mr == nullptr &&
-        src_device->tensorflow_gpu_device_info() && (!on_host)) {
+    if (mr == nullptr && src_device->tensorflow_gpu_device_info() &&
+        (!on_host)) {
 #if GOOGLE_CUDA
       Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
       host_copy = Tensor(alloc, tensor.dtype(), tensor.shape());
       Status s;
       Notification n;
-      GPUUtil::CopyGPUTensorToCPU(src_device,
-                                  src_device_context,
-                                  &tensor,
-                                  &host_copy,
-                                  [&s, &n](const Status& status) {
+      GPUUtil::CopyGPUTensorToCPU(src_device, src_device_context, &tensor,
+                                  &host_copy, [&s, &n](const Status& status) {
                                     s.Update(status);
                                     n.Notify();
                                   });
@@ -564,9 +544,7 @@ class RdmaReadServer : public RdmaServer {
     return Status::OK();
   }
 
-  virtual void Stop() override {
-    stopped_ = true;
-  }
+  virtual void Stop() override { stopped_ = true; }
 
  private:
   const string host_;
@@ -587,9 +565,7 @@ RdmaServer* NewRdmaServer(const string& host, const string& port) {
   return new RdmaReadServer(host, port);
 }
 
-RdmaClient* NewRdmaClient() {
-  return new RdmaReadClient;
-}
+RdmaClient* NewRdmaClient() { return new RdmaReadClient; }
 
 }  // namespace tensorflow
 
@@ -601,9 +577,7 @@ RdmaServer* NewRdmaServer(const string&, const string&) {
   return new RdmaServer;
 }
 
-RdmaClient* NewRdmaClient() {
-  return new RdmaClient;
-}
+RdmaClient* NewRdmaClient() { return new RdmaClient; }
 
 }  // namespace tensorflow
 

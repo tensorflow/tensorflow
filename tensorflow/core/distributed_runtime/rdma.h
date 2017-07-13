@@ -18,11 +18,9 @@ class Tensor;
 class RdmaClient {
  public:
   using Any = ::google::protobuf::Any;
-  virtual Status ReadTensorViaDMA(Tensor* tensor,
-                                  Device* dst_device,
+  virtual Status ReadTensorViaDMA(Tensor* tensor, Device* dst_device,
                                   DeviceContext* dst_device_context,
-                                  bool on_host,
-                                  const Any& transport_options);
+                                  bool on_host, const Any& transport_options);
 };
 
 class RdmaServer {
@@ -34,8 +32,7 @@ class RdmaServer {
   virtual void Stop();
 
   using Any = ::google::protobuf::Any;
-  virtual Status RegisterTensorDMA(const Tensor& tensor,
-                                   Device* src_device,
+  virtual Status RegisterTensorDMA(const Tensor& tensor, Device* src_device,
                                    DeviceContext* src_device_context,
                                    bool on_host,
                                    Any* mutable_transport_options);

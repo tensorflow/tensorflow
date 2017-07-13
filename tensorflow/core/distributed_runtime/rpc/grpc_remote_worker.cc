@@ -136,8 +136,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     if (!logging_active) {
       cb_to_use = &done;  // No additional work to do, so just use done directly
     } else {
-      wrapper_done = [this, request, response, done,
-                      start_usec](Status s) {
+      wrapper_done = [this, request, response, done, start_usec](Status s) {
         if (logger_->LoggingActive()) {
           int64 end_usec = Env::Default()->NowMicros();
           int64 step_id = request->step_id();
@@ -181,8 +180,7 @@ class GrpcRemoteWorker : public WorkerInterface {
       cb_to_use = &wrapper_done;
     }
 
-    IssueRequest(request, response, recvtensor_,
-                 *cb_to_use, call_opts);
+    IssueRequest(request, response, recvtensor_, *cb_to_use, call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,

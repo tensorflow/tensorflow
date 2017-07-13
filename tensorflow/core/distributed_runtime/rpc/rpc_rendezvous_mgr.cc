@@ -138,16 +138,15 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
             Tensor* t = const_cast<Tensor*>(&tensor());
             auto transport_options = resp_.metadata().transport_options();
             const bool on_host = alloc_attrs_.on_host();
-            Status status = client_->ReadTensorViaDMA(t, dst_device_,
-                                                      recv_args_.device_context,
-                                                      on_host,
-                                                      transport_options);
+            Status status = client_->ReadTensorViaDMA(
+                t, dst_device_, recv_args_.device_context, on_host,
+                transport_options);
             if (!status.ok()) {
               mutex_lock l(mu_);
               status_.Update(status);
               LOG(WARNING)
-                << "Cannot find pinned memory region from allocator "
-                << dst_device_->GetAllocator(recv_args().alloc_attrs)->Name();
+                  << "Cannot find pinned memory region from allocator "
+                  << dst_device_->GetAllocator(recv_args().alloc_attrs)->Name();
             }
           }
           if (!s.ok()) {
