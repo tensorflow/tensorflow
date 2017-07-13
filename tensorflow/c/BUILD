@@ -145,6 +145,19 @@ tf_custom_op_library(
 )
 
 # -----------------------------------------------------------------------------
+# Python API target
+
+tf_cuda_library(
+    name = "python_api",
+    srcs = ["python_api.cc"],
+    hdrs = ["python_api.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        ":c_api_internal",
+    ],
+)
+
+# -----------------------------------------------------------------------------
 # Google-internal targets.
 
 filegroup(

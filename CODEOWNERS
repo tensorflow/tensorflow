@@ -1,8 +1,9 @@
 # Where component owners are known, add them here.
 
+tensorflow/core/platform/windows/* @mrry
+tensorflow/java/* @asimshankar
 tensorflow/tensorboard/* @jart @dandelionmane
 tensorflow/tools/docs/* @markdaoust
-tensorflow/java/* @asimshankar
 
 # contrib
 
@@ -46,5 +47,6 @@ tensorflow/contrib/stateless/* @girving
 tensorflow/contrib/tensor_forest/* @gilberthendry @thomascolthurst
 tensorflow/contrib/testing/* @dandelionmane
 tensorflow/contrib/timeseries/* @allenlavoie
+tensorflow/contrib/tpu/* @frankchn @saeta @jhseu
 tensorflow/contrib/training/* @joel-shor @ebrevdo
 tensorflow/contrib/util/* @sherrym

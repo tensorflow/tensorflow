@@ -548,6 +548,24 @@ class ImportGraphDefTest(test.TestCase):
             input_map={"B:0": constant_op.constant(5.0)})
       self.assertTrue("not found in graph_def: [B:0]" in str(e.exception))
 
+  def testInputMapUnusedAsInput(self):
+    with ops.Graph().as_default():
+      # Mapping an unused node output should succeed.
+      importer.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'Oi' }
+          """),
+          input_map={"A:0": constant_op.constant(5.0)})
+
+      # Mapping a non-existent output of an existing node should fail.
+      with self.assertRaises(ValueError) as e:
+        importer.import_graph_def(
+            self._MakeGraphDef("""
+            node { name: 'A' op: 'Oi' }
+            """),
+            input_map={"A:2": constant_op.constant(5.0)})
+      self.assertTrue("not found in graph_def: [A:2]" in str(e.exception))
+
   def testInputMapTypeMismatch(self):
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:

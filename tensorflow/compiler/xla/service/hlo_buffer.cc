@@ -39,18 +39,15 @@ using ::tensorflow::strings::StrCat;
 
 void HloBuffer::AddValue(const HloValue& value) {
   // If the value is already contained in this buffer, just return.
-  if (std::find(value_ids_.begin(), value_ids_.end(), value.id()) !=
-      value_ids_.end()) {
+  if (!values_.AddValue(&value)) {
     return;
   }
 
-  value_ids_.push_back(value.id());
-
-  // Add all of the locations of the HloValue to this buffer.
-  for (const HloLocation& location : value.locations()) {
-    if (std::find(locations_.begin(), locations_.end(), location) ==
-        locations_.end()) {
-      locations_.push_back(location);
+  // Add all of the positions of the HloValue to this buffer.
+  for (const HloPosition& position : value.positions()) {
+    if (std::find(positions_.begin(), positions_.end(), position) ==
+        positions_.end()) {
+      positions_.push_back(position);
     }
   }
 }
@@ -59,14 +56,14 @@ bool HloBuffer::operator==(const HloBuffer& other) const {
   bool equal = id() == other.id();
   if (equal) {
     // DCHECK because these comparisons are expensive (linear time).
-    DCHECK(value_ids() == other.value_ids());
-    DCHECK(locations() == other.locations());
+    DCHECK(values_ == other.values_);
+    DCHECK(positions() == other.positions());
   }
   return equal;
 }
 
 string HloBuffer::ToString() const {
-  return StrCat("HloBuffer ", id_, ", values: ", Join(value_ids_, ", "));
+  return StrCat("HloBuffer ", id_, ", values: ", values_.ToString());
 }
 
 std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer) {
@@ -74,21 +71,30 @@ std::ostream& operator<<(std::ostream& out, const HloBuffer& buffer) {
   return out;
 }
 
-void HloBufferSet::AddBuffer(HloBuffer::Id buffer_id) {
-  if (std::find(buffer_ids_.begin(), buffer_ids_.end(), buffer_id) ==
-      buffer_ids_.end()) {
-    buffer_ids_.push_back(buffer_id);
+void HloBufferSet::AddBuffer(const HloBuffer* buffer) {
+  auto it = std::lower_bound(buffers_.begin(), buffers_.end(), buffer,
+                             HloBuffer::IdLessThan);
+  if (it == buffers_.end() || (*it)->id() != buffer->id()) {
+    buffers_.insert(it, buffer);
   }
 }
 
 void HloBufferSet::RemoveBufferOrDie(HloBuffer::Id buffer_id) {
-  auto it = std::find(buffer_ids_.begin(), buffer_ids_.end(), buffer_id);
-  CHECK(it != buffer_ids_.end());
-  buffer_ids_.erase(it);
+  auto it = std::lower_bound(buffers_.begin(), buffers_.end(), buffer_id,
+                             [](const HloBuffer* buffer, HloBuffer::Id id) {
+                               return buffer->id() < id;
+                             });
+  CHECK(it != buffers_.end() && (*it)->id() == buffer_id)
+      << "HloBuffer " << buffer_id << " doesn't exist in set: " << ToString();
+  buffers_.erase(it);
 }
 
 string HloBufferSet::ToString() const {
-  return StrCat("HloBufferSet, buffers: ", Join(buffer_ids_, ", "));
+  return StrCat(
+      "HloBufferSet, buffers: ",
+      Join(buffers_, ", ", [](string* result, const HloBuffer* buffer) {
+        result->append(buffer->ToString());
+      }));
 }
 
 std::ostream& operator<<(std::ostream& out, const HloBufferSet& buffer_set) {
@@ -100,7 +106,7 @@ bool InstructionBufferSet::IsAmbiguous() const {
   bool is_ambiguous = false;
   ForEachElement(
       [&is_ambiguous](const ShapeIndex& index, const HloBufferSet& buffer_set) {
-        is_ambiguous |= buffer_set.buffer_ids().size() > 1;
+        is_ambiguous |= buffer_set.buffers().size() > 1;
       });
   return is_ambiguous;
 }
@@ -108,10 +114,10 @@ bool InstructionBufferSet::IsAmbiguous() const {
 bool InstructionBufferSet::IsDistinct() const {
   bool is_distinct = true;
   tensorflow::gtl::FlatSet<HloBuffer::Id> seen_ids;
-  ForEachElement([&is_distinct, &seen_ids](const ShapeIndex& index,
+  ForEachElement([&is_distinct, &seen_ids](const ShapeIndex& /*index*/,
                                            const HloBufferSet& buffer_set) {
-    for (HloBuffer::Id buffer_id : buffer_set.buffer_ids()) {
-      auto pair = seen_ids.insert(buffer_id);
+    for (const HloBuffer* buffer : buffer_set.buffers()) {
+      auto pair = seen_ids.insert(buffer->id());
       if (!pair.second) {
         is_distinct = false;
       }

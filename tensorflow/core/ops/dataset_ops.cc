@@ -533,4 +533,26 @@ REGISTER_OP("IteratorDispose")
 Releases any resources used by the given iterator.
 )doc");
 
+REGISTER_OP("IteratorToStringHandle")
+    .Input("resource_handle: resource")
+    .Output("string_handle: string")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Converts the given `resource_handle` representing an iterator to a string.
+
+resource_handle: A handle to an iterator resource.
+string_handle: A string representation of the given handle.
+)doc");
+
+REGISTER_OP("IteratorFromStringHandle")
+    .Input("string_handle: string")
+    .Output("resource_handle: resource")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Converts the given string representing a handle to an iterator to a resource.
+
+string_handle: A string representation of the given handle.
+resource_handle: A handle to an iterator resource.
+)doc");
+
 }  // namespace tensorflow

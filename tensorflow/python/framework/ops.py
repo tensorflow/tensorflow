@@ -1527,9 +1527,10 @@ class Operation(object):
       TypeError: if op is not an Operation.
       ValueError: if op is from a different graph.
     """
-    assert not self._graph._c_graph, (  # pylint: disable=protected-access
-        "Operation._add_control_input doesn't work with C API")
-    self._add_control_inputs([op])
+    if _USE_C_API:
+      c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
+    else:
+      self._add_control_inputs([op])
 
   # Methods below are used when building the NodeDef and Graph proto.
   def _recompute_node_def(self):
