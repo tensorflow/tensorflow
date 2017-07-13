@@ -88,10 +88,9 @@ class GradientTreesPredictionOp : public OpKernel {
         context, ParseProtoUnlimited(&learner_config, learner_config_str),
         errors::InvalidArgument("Unable to parse learner config config."));
 
-    prediction_vector_size_ =
-        learner_config.multi_class_strategy() == LearnerConfig::TREE_PER_CLASS
-            ? num_classes_ - 1
-            : num_classes_;
+    bool reduce_dim;
+    OP_REQUIRES_OK(context, context->GetAttr("reduce_dim", &reduce_dim));
+    prediction_vector_size_ = reduce_dim ? num_classes_ - 1 : num_classes_;
 
     only_finalized_trees_ =
         learner_config.growing_mode() == learner_config.WHOLE_TREE;
