@@ -28468,33 +28468,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "LMDBReader"
-  output_arg {
-    name: "reader_handle"
-    description: "The handle to reference the Reader."
-    type: DT_STRING
-    is_ref: true
-  }
-  attr {
-    name: "container"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
-  }
-  summary: "A Reader that outputs the records from a LMDB database."
-  is_stateful: true
-}
-op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"
