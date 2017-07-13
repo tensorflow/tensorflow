@@ -248,6 +248,15 @@ py_test(
     ],
 )
 
+py_test(
+    name = "tensor_array_test",
+    size = "small",
+    srcs = ["tests/tensor_array_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -264,6 +273,7 @@ test_suite(
         "64_bit_test",
         "allocation_finder_test",
         "batch_norm_test",
+        "tensor_array_test",
     ],
 )
 

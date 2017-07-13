@@ -24,7 +24,8 @@ namespace poplarplugin {
 bool FuseOps::ShouldFuse(HloInstruction* consumer, int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   if (producer->IsConstant() &&
-      consumer->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      consumer->opcode() == HloOpcode::kDynamicUpdateSlice &&
+      operand_index == 2) {
     return true;
   }
 
