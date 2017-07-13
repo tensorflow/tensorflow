@@ -128,7 +128,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
           learner_config=learner_config.SerializeToString(),
           apply_dropout=False,
           apply_averaging=False,
-          center_bias=False)
+          center_bias=False,
+          reduce_dim=True)
       self.assertAllClose(result.eval(), [[-0.4], [-0.4]])
       stamp_token = model_ops.tree_ensemble_stamp_token(tree_ensemble_handle)
       self.assertEqual(stamp_token.eval(), 3)
@@ -154,6 +155,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         _append_to_leaf(tree2.nodes.add().leaf, 0, 0.5)
         _append_to_leaf(tree2.nodes.add().leaf, 1, 1.2)
         _append_to_leaf(tree2.nodes.add().leaf, 0, -0.9)
+
         tree_ensemble_handle = model_ops.tree_ensemble_variable(
             stamp_token=7,
             tree_ensemble_config=tree_ensemble_config.SerializeToString(),
@@ -187,7 +189,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
             learner_config=learner_config.SerializeToString(),
             apply_dropout=False,
             apply_averaging=False,
-            center_bias=False)
+            center_bias=False,
+            reduce_dim=True)
 
         # Re-serialize tree.
         stamp_token2, serialized_config2 = model_ops.tree_ensemble_serialize(
@@ -198,6 +201,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
         # the second example will get the same bias class 1 -0.2 and leaf 3
         # payload of class 1 1.2 hence [0.0, 1.0].
         self.assertEqual(stamp_token2.eval(), 9)
+
+        # Class 2 does have scores in the leaf => it gets score 0.
         self.assertEqual(serialized_config2.eval(), serialized_config)
         self.assertAllClose(result.eval(), [[0.5, -0.2], [0, 1.0]])
 
@@ -267,7 +272,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False)
+              center_bias=False,
+              reduce_dim=True)
         self.assertAllClose([[-1.1], [-1.1]], result.eval())
         # Save before adding other trees.
         val = my_saver.save(sess, save_path)
@@ -293,7 +299,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
               learner_config=learner_config.SerializeToString(),
               apply_dropout=False,
               apply_averaging=False,
-              center_bias=False)
+              center_bias=False,
+              reduce_dim=True)
         self.assertAllClose(result.eval(), [[-11.1], [-11.1]])
 
     # Start a second session.  In that session the parameter nodes
@@ -315,7 +322,8 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
             learner_config=learner_config.SerializeToString(),
             apply_dropout=False,
             apply_averaging=False,
-            center_bias=False)
+            center_bias=False,
+            reduce_dim=True)
         # Make sure we only have the first and second tree.
         # The third tree was added after the save.
         self.assertAllClose(result.eval(), [[-1.1], [-1.1]])

@@ -22,12 +22,15 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.HashSet;
 import java.util.Set;
-
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
 import org.tensorflow.Graph;
 import org.tensorflow.Output;
 import org.tensorflow.TestUtil;
 
+/** Unit tests for {@link org.tensorflow.op.PrimitiveOp} */
+@RunWith(JUnit4.class)
 public class PrimitiveOpTest {
 
   @Test
