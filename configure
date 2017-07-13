@@ -493,9 +493,7 @@ while true; do
     read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: " TF_CUDA_VERSION
   fi
   # Set default CUDA version if not set
-  if [ -z "$TF_CUDA_VERSION" ]; then
-    TF_CUDA_VERSION="8.0"
-  fi
+  TF_CUDA_VERSION=${TF_CUDA_VERSION:-8.0}
 
   fromuser=""
   if [ -z "$CUDA_TOOLKIT_PATH" ]; then
@@ -588,9 +586,7 @@ while true; do
     read -p "Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: " TF_CUDNN_VERSION
   fi
   # Set default CUDNN version if not set
-  if [ -z "$TF_CUDNN_VERSION" ]; then
-    TF_CUDNN_VERSION="6"
-  fi
+  TF_CUDNN_VERSION=${TF_CUDNN_VERSION:-6}
 
   fromuser=""
   if [ -z "$CUDNN_INSTALL_PATH" ]; then
