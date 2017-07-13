@@ -3,7 +3,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 filegroup(
     name = "all_files",
@@ -62,10 +61,13 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "libboostedtreeprotos.so",
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//tensorflow:__subpackages__"],
-    deps = [":proto_impl"],
+    deps = [
+        ":proto_impl",
+        "@protobuf//:protobuf",
+    ],
 )

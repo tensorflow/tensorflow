@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""pywrap_tensorflow wrapper that exports all symbols with RTLD_GLOBAL."""
+"""A wrapper for TensorFlow SWIG-generated bindings."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,12 +24,7 @@ import traceback
 # pylint: disable=wildcard-import,g-import-not-at-top,unused-import,line-too-long
 
 # On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
-# python library that dynamically loads _pywrap_tensorflow.so. The
-# default mode for loading keeps all the symbol private and not
-# visible to other libraries that may be loaded. Setting the mode to
-# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
-# imported using `tf.load_op_library()` can access symbols defined in
-# _pywrap_tensorflow.so.
+# python library that dynamically loads _pywrap_tensorflow.so.
 try:
   # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
   # use `dlopen()` for dynamic loading.
