@@ -22,6 +22,9 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
 # Utils
 
 cc_library(
@@ -53,7 +56,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "sparse_column_iterable_test",
     size = "small",
     srcs = ["utils/sparse_column_iterable_test.cc"],
@@ -65,7 +68,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "examples_iterable_test",
     size = "small",
     srcs = ["utils/examples_iterable_test.cc"],
@@ -77,7 +80,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "batch_features_test",
     size = "small",
     srcs = ["utils/batch_features_test.cc"],
@@ -90,7 +93,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "dropout_utils_test",
     size = "small",
     srcs = ["utils/dropout_utils_test.cc"],
@@ -118,7 +121,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "multiple_additive_trees_test",
     size = "small",
     srcs = ["models/multiple_additive_trees_test.cc"],
@@ -161,7 +164,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "random_tree_gen_main",
     srcs = ["testutil/random_tree_gen_main.cc"],
     deps = [
@@ -187,7 +190,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "weighted_quantiles_buffer_test",
     size = "small",
     srcs = ["quantiles/weighted_quantiles_buffer_test.cc"],
@@ -201,7 +204,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "weighted_quantiles_summary_test",
     size = "small",
     srcs = ["quantiles/weighted_quantiles_summary_test.cc"],
@@ -215,7 +218,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "weighted_quantiles_stream_test",
     size = "small",
     srcs = ["quantiles/weighted_quantiles_stream_test.cc"],
@@ -241,7 +244,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "trees_test",
     size = "small",
     srcs = ["trees/decision_tree_test.cc"],
@@ -272,7 +275,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "feature-stats-accumulator_test",
     size = "small",
     srcs = ["learner/common/accumulators/feature-stats-accumulator_test.cc"],
@@ -296,7 +299,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "example_partitioner_test",
     size = "small",
     srcs = ["learner/common/partitioners/example_partitioner_test.cc"],
@@ -334,7 +337,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "feature-column-handlers_test",
     size = "small",
     srcs = [
@@ -390,7 +393,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "node-stats_test",
     size = "small",
     srcs = ["learner/stochastic/stats/node-stats_test.cc"],
