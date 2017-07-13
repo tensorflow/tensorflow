@@ -143,8 +143,8 @@ def _recursive_assert_same_structure(nest1, nest2, check_types):
   is_sequence_nest1 = is_sequence(nest1)
   if is_sequence_nest1 != is_sequence(nest2):
     raise ValueError(
-        "The two structures don't have the same nested structure. "
-        "First structure: %s, second structure: %s." % (nest1, nest2))
+        "The two structures don't have the same nested structure.\n\n"
+        "First structure: %s\n\nSecond structure: %s." % (nest1, nest2))
 
   if not is_sequence_nest1:
     return  # finished checking
@@ -194,8 +194,9 @@ def assert_same_structure(nest1, nest2, check_types=True):
   len_nest2 = len(flatten(nest2)) if is_sequence(nest2) else 1
   if len_nest1 != len_nest2:
     raise ValueError("The two structures don't have the same number of "
-                     "elements. First structure: %s, second structure: %s."
-                     % (nest1, nest2))
+                     "elements.\n\nFirst structure (%i elements): %s\n\n"
+                     "Second structure (%i elements): %s"
+                     % (len_nest1, nest1, len_nest2, nest2))
   _recursive_assert_same_structure(nest1, nest2, check_types)
 
 

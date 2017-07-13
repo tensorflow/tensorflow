@@ -662,3 +662,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "cub",
       actual = "@cub_archive//:cub",
   )
+
+  native.http_archive(
+      name = "bazel_toolchains",
+      urls = [
+          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
+      ],
+      sha256 = "3903fd93b96b42067e00b7973a2c16c34e761ad7a0b55e1557d408f352849e41",
+      strip_prefix = "bazel-toolchains-bccee4855c049d34bac481083b4c68e2fab8cc50",
+  )

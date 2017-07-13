@@ -41,13 +41,13 @@ using ::tensorflow::strings::StrCat;
 HloAliasAnalysis::HloAliasAnalysis(HloModule* module) : module_(module) {}
 
 void HloAliasAnalysis::InitializeBufferSets() {
-  std::unordered_map<HloValue::Id, HloBuffer::Id> value_to_buffer;
+  std::unordered_map<HloValue::Id, const HloBuffer*> value_to_buffer;
 
   // Initially define a buffer for every HloValue in the module.
   for (const HloValue* value : dataflow_analysis_->values()) {
-    HloBuffer& buffer = NewHloBuffer();
-    buffer.AddValue(*value);
-    value_to_buffer[value->id()] = buffer.id();
+    HloBuffer* buffer = NewHloBuffer();
+    buffer->AddValue(*value);
+    value_to_buffer[value->id()] = buffer;
   }
 
   // Construct the Instruction buffer set to contain the HloBuffers for each
@@ -61,9 +61,9 @@ void HloAliasAnalysis::InitializeBufferSets() {
           .ForEachElement(
               [this, &instruction, &value_to_buffer](
                   const ShapeIndex& index, const HloValueSet& value_set) {
-                for (HloValue::Id value_id : value_set.value_ids()) {
-                  HloBuffer::Id buffer_id = value_to_buffer.at(value_id);
-                  GetBufferSet(instruction.get(), index).AddBuffer(buffer_id);
+                for (const HloValue* value : value_set.values()) {
+                  const HloBuffer* buffer = value_to_buffer.at(value->id());
+                  GetBufferSet(instruction.get(), index).AddBuffer(buffer);
                 }
               });
     }
@@ -90,18 +90,18 @@ void HloAliasAnalysis::CombineBuffers(
     VLOG(4) << "Eliminating buffer: " << buffer_id;
 
     // Add all values held by the buffer-to-eliminate to the unified buffer.
-    for (HloValue::Id value_id : buffer.value_ids()) {
-      unified_buffer.AddValue(dataflow_analysis_->GetValue(value_id));
+    for (const HloValue* value : buffer.values()) {
+      unified_buffer.AddValue(*value);
     }
 
-    // Iterate through all locations where the buffer-to-eliminate exists and
+    // Iterate through all positions where the buffer-to-eliminate exists and
     // replace it with the unified buffer.
-    for (const HloLocation& location : buffer.locations()) {
-      VLOG(4) << "Replacing in " << location;
-      GetBufferSet(location.instruction, location.index)
+    for (const HloPosition& position : buffer.positions()) {
+      VLOG(4) << "Replacing in " << position;
+      GetBufferSet(position.instruction, position.index)
           .RemoveBufferOrDie(buffer_id);
-      GetBufferSet(location.instruction, location.index)
-          .AddBuffer(unified_buffer.id());
+      GetBufferSet(position.instruction, position.index)
+          .AddBuffer(&unified_buffer);
     }
 
     buffers_.erase(buffer_id);
@@ -120,9 +120,9 @@ Status HloAliasAnalysis::Verify() const {
     TF_RETURN_IF_ERROR(instruction_buffer_set.ForEachElementWithStatus(
         [this, &buffers_in_sets](const ShapeIndex& index,
                                  const HloBufferSet& buffer_set) -> Status {
-          for (HloBuffer::Id buffer_id : buffer_set.buffer_ids()) {
-            TF_RET_CHECK(ContainsKey(buffers_, buffer_id));
-            buffers_in_sets.insert(buffer_id);
+          for (const HloBuffer* buffer : buffer_set.buffers()) {
+            TF_RET_CHECK(ContainsKey(buffers_, buffer->id()));
+            buffers_in_sets.insert(buffer->id());
           }
           return Status::OK();
         }));
@@ -154,10 +154,11 @@ void HloAliasAnalysis::FlattenInstructionBufferSets(
         std::vector<HloBuffer::Id> to_unify;
         for (const HloInstruction* instruction : instructions) {
           const HloBufferSet& buffer_set = GetBufferSet(instruction, index);
-          to_unify.insert(to_unify.end(), buffer_set.buffer_ids().begin(),
-                          buffer_set.buffer_ids().end());
+          for (const HloBuffer* buffer : buffer_set.buffers()) {
+            to_unify.push_back(buffer->id());
+          }
         }
-        // Sort and uniquify buffers to combine.
+        // Sort and uniquify buffer ids to combine.
         std::sort(to_unify.begin(), to_unify.end());
         to_unify.erase(std::unique(to_unify.begin(), to_unify.end()),
                        to_unify.end());
@@ -166,14 +167,13 @@ void HloAliasAnalysis::FlattenInstructionBufferSets(
       });
 }
 
-HloBuffer& HloAliasAnalysis::NewHloBuffer() {
+HloBuffer* HloAliasAnalysis::NewHloBuffer() {
   HloBuffer::Id buffer_id = next_buffer_id_++;
-  auto it_added = buffers_.emplace(std::piecewise_construct,
+  auto emplaced = buffers_.emplace(std::piecewise_construct,
                                    std::forward_as_tuple(buffer_id),
                                    std::forward_as_tuple(buffer_id));
-  CHECK(it_added.second);
-
-  return it_added.first->second;
+  CHECK(emplaced.second);
+  return &emplaced.first->second;
 }
 
 string HloAliasAnalysis::ToString() const {
@@ -184,33 +184,17 @@ string HloAliasAnalysis::ToString() const {
     for (const std::unique_ptr<HloInstruction>& instruction :
          computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
-      auto buffer_str = [this](const HloBuffer& buffer) {
-        return StrCat(
-            "Buffer ", buffer.id(), ", values: ",
-            Join(buffer.value_ids(), ", ",
-                 [this](string* out, HloValue::Id value_id) {
-                   StrAppend(
-                       out,
-                       dataflow_analysis_->GetValue(value_id).ToShortString());
-                 }));
-      };
       if (ShapeUtil::IsTuple(instruction->shape())) {
         GetInstructionBufferSet(instruction.get())
-            .ForEachElement([this, &out, &buffer_str](
-                                const ShapeIndex& index,
-                                const HloBufferSet& buffer_set) {
+            .ForEachElement([this, &out](const ShapeIndex& index,
+                                         const HloBufferSet& buffer_set) {
               StrAppend(&out, "      tuple index ", index.ToString(), ":\n");
-              for (HloBuffer::Id buffer_id : buffer_set.buffer_ids()) {
-                StrAppend(&out, "        ", buffer_str(GetBuffer(buffer_id)),
-                          "\n");
-              }
+              StrAppend(&out, "        ", buffer_set.ToString(), "\n");
             });
       } else {
         const HloBufferSet top_level_buffer_set =
             GetBufferSet(instruction.get());
-        for (HloBuffer::Id buffer_id : top_level_buffer_set.buffer_ids()) {
-          StrAppend(&out, "      ", buffer_str(GetBuffer(buffer_id)), "\n");
-        }
+        StrAppend(&out, "      ", top_level_buffer_set.ToString(), "\n");
       }
     }
   }
