@@ -162,6 +162,32 @@ java_test(
     ],
 )
 
+java_test(
+    name = "PrimitiveOpTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/PrimitiveOpTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.PrimitiveOpTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "OperandsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/OperandsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.OperandsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
 filegroup(
     name = "libtensorflow_jni",
     srcs = select({

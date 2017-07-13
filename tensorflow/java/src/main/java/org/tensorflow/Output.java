@@ -22,10 +22,10 @@ import java.util.Objects;
  * <p>An Output is a symbolic handle to a tensor. The value of the Tensor is computed by executing
  * the {@link Operation} in a {@link Session}.
  *
- * <p>By implementing the {@link Input} interface, instances of this class could also be passed
- * directly in input to an operation.
+ * <p>By implementing the {@link Operand} interface, instances of this class also act as operands to
+ * {@link org.tensorflow.op.Op Op} instances.
  */
-public final class Output implements Input {
+public final class Output implements Operand {
 
   /** Handle to the idx-th output of the Operation {@code op}. */
   public Output(Operation op, int idx) {
