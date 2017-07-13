@@ -227,6 +227,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -447,6 +448,7 @@ cc_library(
         ":ir_emission_utils",
         ":shape_partition",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -531,7 +533,7 @@ cc_library(
     srcs = ["shape_partition.cc"],
     hdrs = ["shape_partition.h"],
     deps = [
-        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla:shape_util",
     ],
 )
 

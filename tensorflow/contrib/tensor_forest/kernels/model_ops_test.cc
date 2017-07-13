@@ -64,6 +64,33 @@ TEST(ModelOpsTest, TreePredictionsV4_ShapeFn) {
   INFER_OK(op, "?;?;?;?;[10,11]", "[?,?]");
 }
 
+TEST(ModelOpsTest, TraverseTreeV4_ShapeFn) {
+  ShapeInferenceTestOp op("TraverseTreeV4");
+  TF_ASSERT_OK(NodeDefBuilder("test", "TraverseTreeV4")
+                   .Input("a", 0, DT_RESOURCE)
+                   .Input("b", 1, DT_FLOAT)
+                   .Input("c", 2, DT_INT64)
+                   .Input("d", 3, DT_FLOAT)
+                   .Input("e", 5, DT_INT64)
+                   .Attr("input_spec", "")
+                   .Attr("params", "")
+                   .Finalize(&op.node_def));
+
+  // num_points = 2, sparse shape not known
+  INFER_OK(op, "?;[2,3];?;?;?", "[d1_0]");
+
+  // num_points = 2, sparse and dense shape rank known and > 1
+  INFER_OK(op, "?;[2,3];?;?;[10,11]", "[d1_0]");
+
+  // num_points = 2, sparse shape rank known and > 1
+  INFER_OK(op, "?;?;?;?;[10,11]", "[?]");
+}
+
+TEST(ModelOpsTest, UpdateModelV4_ShapeFn) {
+  ShapeInferenceTestOp op("UpdateModelV4");
+  INFER_OK(op, "[1];?;?;?", "");
+}
+
 TEST(ModelOpsTest, FeatureUsageCounts_ShapeFn) {
   ShapeInferenceTestOp op("FeatureUsageCounts");
   INFER_OK(op, "[1]", "[?]");
