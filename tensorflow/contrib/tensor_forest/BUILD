@@ -28,7 +28,6 @@ filegroup(
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # ---------------------------------- V2 ops ------------------------------------------#
 filegroup(
@@ -399,11 +398,14 @@ cc_library(
 
 # Protocol buffer dependencies shared between multiple op shared objects. This
 # avoids attempting to register the same protocol buffer multiple times.
-tf_cc_binary(
+cc_binary(
     name = "libforestprotos.so",
     linkshared = 1,
     linkstatic = 1,
-    deps = [":forest_proto_impl"],
+    deps = [
+        ":forest_proto_impl",
+        "@protobuf//:protobuf",
+    ],
 )
 
 # --------------------------------- Python -------------------------------- #
