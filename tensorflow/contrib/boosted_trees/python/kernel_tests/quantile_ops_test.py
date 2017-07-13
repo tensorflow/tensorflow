@@ -26,9 +26,12 @@ import numpy as np
 
 from tensorflow.contrib.boosted_trees.proto.quantiles_pb2 import QuantileConfig
 from tensorflow.contrib.boosted_trees.python.ops import quantile_ops
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import saver
@@ -56,12 +59,15 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
     | 5        |     1            |   5      |    6
     """
 
-    dense_float_tensor_0 = np.array([1, 2, 3, 4, 4, 5])
-    sparse_indices_0 = np.array(
-        [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]], dtype=np.int64)
-    sparse_values_0 = np.array([2, 3, 4, 5, 6])
-    sparse_shape_0 = np.array([6, 1])
-    example_weights = np.array([10, 1, 1, 1, 1, 1])
+    dense_float_tensor_0 = constant_op.constant(
+        [1, 2, 3, 4, 4, 5], dtype=dtypes.float32)
+    sparse_indices_0 = constant_op.constant(
+        [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]], dtype=dtypes.int64)
+    sparse_values_0 = constant_op.constant(
+        [2, 3, 4, 5, 6], dtype=dtypes.float32)
+    sparse_shape_0 = constant_op.constant([6, 1], dtype=dtypes.int64)
+    example_weights = constant_op.constant(
+        [10, 1, 1, 1, 1, 1], dtype=dtypes.float32)
 
     with self.test_session():
       config = self._gen_config(0.33, 3)
@@ -78,40 +84,38 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
   def testStreamingQuantileBuckets(self):
     """Sets up the quantile summary op test as follows.
 
-    Create a batch of 6 examples having a dense and sparse features.
-    The data looks like this
-    | Instance | instance weights | Dense 0
-    | 0        |     10           |   1
-    | 1        |     1            |   2
-    | 2        |     1            |   3
-    | 3        |     1            |   4
-    | 4        |     1            |   4
-    | 5        |     1            |   5
+    100 batches of data is added to the accumulator. The batches are in form:
+    [0 1 .. 99]
+    [100 101 .. 200]
+    ...
+    [9900 9901 .. 9999]
+    All the batches have 1 for all the example weights.
     """
-    dense_float_tensor_0 = np.array([1, 2, 3, 4, 4, 5])
-    example_weights = np.array([10, 1, 1, 1, 1, 1])
-
     with self.test_session() as sess:
       accumulator = quantile_ops.QuantileAccumulator(
-          init_stamp_token=0, num_quantiles=3, epsilon=0.33, name="q1")
-
+          init_stamp_token=0, num_quantiles=3, epsilon=0.01, name="q1")
       resources.initialize_resources(resources.shared_resources()).run()
+    weight_placeholder = array_ops.placeholder(dtypes.float32)
+    dense_placeholder = array_ops.placeholder(dtypes.float32)
+    update = accumulator.add_summary(
+        stamp_token=0,
+        column=dense_placeholder,
+        example_weights=weight_placeholder)
+    with self.test_session() as sess:
+      for i in range(100):
+        dense_float = np.linspace(
+            i * 100, (i + 1) * 100 - 1, num=100).reshape(-1, 1)
+        sess.run(update, {
+            dense_placeholder: dense_float,
+            weight_placeholder: np.ones(shape=(100, 1), dtype=np.float32)
+        })
 
-      are_ready_noflush, _, = (accumulator.get_buckets(stamp_token=0))
-
-      update = accumulator.add_summary(
-          stamp_token=0,
-          column=dense_float_tensor_0,
-          example_weights=example_weights)
-      with ops.control_dependencies([are_ready_noflush, update]):
-        reset = accumulator.flush(stamp_token=0, next_stamp_token=1)
-      with ops.control_dependencies([reset]):
-        are_ready_flush, buckets = (accumulator.get_buckets(stamp_token=1))
-      buckets, are_ready_noflush, are_ready_flush = (sess.run(
-          [buckets, are_ready_noflush, are_ready_flush]))
-      self.assertEqual(False, are_ready_noflush)
+    with self.test_session() as sess:
+      sess.run(accumulator.flush(stamp_token=0, next_stamp_token=1))
+      are_ready_flush, buckets = (accumulator.get_buckets(stamp_token=1))
+      buckets, are_ready_flush = (sess.run([buckets, are_ready_flush]))
       self.assertEqual(True, are_ready_flush)
-      self.assertAllEqual([1, 3, 5], buckets)
+      self.assertAllEqual([0, 3335., 6671., 9999.], buckets)
 
   def testSaveRestoreBeforeFlush(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
@@ -124,11 +128,13 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       save = saver.Saver()
       resources.initialize_resources(resources.shared_resources()).run()
 
-      sparse_indices_0 = np.array(
-          [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]], dtype=np.int64)
-      sparse_values_0 = [2.0, 3.0, 4.0, 5.0, 6.0]
-      sparse_shape_0 = np.array([6, 1])
-      example_weights = np.array([10, 1, 1, 1, 1, 1])
+      sparse_indices_0 = constant_op.constant(
+          [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]], dtype=dtypes.int64)
+      sparse_values_0 = constant_op.constant(
+          [2.0, 3.0, 4.0, 5.0, 6.0], dtype=dtypes.float32)
+      sparse_shape_0 = constant_op.constant([6, 1], dtype=dtypes.int64)
+      example_weights = constant_op.constant(
+          [10, 1, 1, 1, 1, 1], dtype=dtypes.float32, shape=[6, 1])
       update = accumulator.add_summary(
           stamp_token=0,
           column=sparse_tensor.SparseTensor(sparse_indices_0, sparse_values_0,
@@ -173,8 +179,10 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       save = saver.Saver()
       resources.initialize_resources(resources.shared_resources()).run()
 
-      example_weights = np.array([10, 1, 1, 1, 1, 1])
-      dense_float_tensor_0 = np.array([1, 2, 3, 4, 4, 5])
+      example_weights = constant_op.constant(
+          [10, 1, 1, 1, 1, 1], dtype=dtypes.float32, shape=[6, 1])
+      dense_float_tensor_0 = constant_op.constant(
+          [1, 2, 3, 4, 4, 5], dtype=dtypes.float32, shape=[6, 1])
       update = accumulator.add_summary(
           stamp_token=0,
           column=dense_float_tensor_0,
@@ -206,9 +214,11 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
     Creates array dividing range [0, 1] to 1<<16 elements equally spaced
     with weight of 1.0.
     """
-    dense_float_tensor_0 = np.array([(1.0 * i) / math.pow(
-        2.0, 16) for i in range(0, int(math.pow(2, 16)) + 1)])
-    example_weights = np.array([1] * (int(math.pow(2, 16)) + 1))
+    dense_float_tensor_0 = constant_op.constant(
+        [(1.0 * i) / math.pow(2.0, 16)
+         for i in range(0, int(math.pow(2, 16)) + 1)])
+    example_weights = constant_op.constant(
+        [1] * (int(math.pow(2, 16)) + 1), dtype=dtypes.float32)
     config = self._gen_config(0.1, 10)
 
     with self.test_session():
@@ -228,10 +238,12 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
     Creates array dividing range [0, 1] to 1<<16 elements equally spaced
     with weight same as the value.
     """
-    dense_float_tensor_0 = np.array([(1.0 * i) / math.pow(
-        2.0, 16) for i in range(0, int(math.pow(2, 16)) + 1)])
-    example_weights = np.array([(1.0 * i) / math.pow(2.0, 16)
-                                for i in range(0, int(math.pow(2, 16)) + 1)])
+    dense_float_tensor_0 = constant_op.constant(
+        [(1.0 * i) / math.pow(2.0, 16)
+         for i in range(0, int(math.pow(2, 16)) + 1)])
+    example_weights = constant_op.constant(
+        [(1.0 * i) / math.pow(2.0, 16)
+         for i in range(0, int(math.pow(2, 16)) + 1)])
 
     config = self._gen_config(0.1, 10)
 
@@ -267,28 +279,30 @@ class QuantilesOpTest(test_util.TensorFlowTestCase):
     Sparse 2: (-inf, 100]
     """
     super(QuantilesOpTest, self).setUp()
-    self._dense_float_tensor_0 = np.array([[-0.1], [0.4], [3.2], [190]])
-    self._dense_float_tensor_1 = np.array([[-1], [-15], [18], [1000]])
-
+    self._dense_float_tensor_0 = constant_op.constant(
+        [[-0.1], [0.4], [3.2], [190]], dtype=dtypes.float32)
+    self._dense_float_tensor_1 = constant_op.constant(
+        [[-1], [-15], [18], [1000]], dtype=dtypes.float32)
     # Sparse feature 0
-    self._sparse_indices_0 = np.array([[0, 0], [1, 0], [2, 0], [3, 0]])
-    self._sparse_values_0 = np.array([-2, 5.5, 16, 17.5])
-    self._sparse_shape_0 = np.array([4, 1])
+    self._sparse_indices_0 = constant_op.constant([[0, 0], [1, 0], [2, 0],
+                                                   [3, 0]])
+    self._sparse_values_0 = constant_op.constant([-2, 5.5, 16, 17.5])
+    self._sparse_shape_0 = constant_op.constant([4, 1])
     # Sprase feature 1
-    self._sparse_indices_1 = np.array([[0, 0], [2, 0], [3, 0]])
-    self._sparse_values_1 = np.array([0.1, 3, -3])
-    self._sparse_shape_1 = np.array([4, 1])
+    self._sparse_indices_1 = constant_op.constant([[0, 0], [2, 0], [3, 0]])
+    self._sparse_values_1 = constant_op.constant([0.1, 3, -3])
+    self._sparse_shape_1 = constant_op.constant([4, 1])
     # Sprase feature 2
-    self._sparse_indices_2 = np.array([[1, 0], [3, 0]])
-    self._sparse_values_2 = np.array([2, 4])
-    self._sparse_shape_2 = np.array([4, 1])
+    self._sparse_indices_2 = constant_op.constant([[1, 0], [3, 0]])
+    self._sparse_values_2 = constant_op.constant([2, 4], dtype=dtypes.float32)
+    self._sparse_shape_2 = constant_op.constant([4, 1])
     # Quantiles
-    self._dense_thresholds_0 = np.array([0.4, 5, 190])
-    self._dense_thresholds_1 = np.array([-9, 15, 1000])
+    self._dense_thresholds_0 = [0.4, 5, 190]
+    self._dense_thresholds_1 = [-9, 15, 1000]
 
-    self._sparse_thresholds_0 = np.array([5, 16, 100])
-    self._sparse_thresholds_1 = np.array([2, 5])
-    self._sparse_thresholds_2 = np.array([100])
+    self._sparse_thresholds_0 = [5, 16, 100]
+    self._sparse_thresholds_1 = [2, 5]
+    self._sparse_thresholds_2 = [100]
 
   def testDenseFeaturesOnly(self):
     with self.test_session():

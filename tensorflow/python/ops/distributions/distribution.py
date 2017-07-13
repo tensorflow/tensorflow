@@ -35,6 +35,13 @@ from tensorflow.python.ops.distributions import util
 from tensorflow.python.util import tf_inspect
 
 
+__all__ = [
+    "ReparameterizationType",
+    "FULLY_REPARAMETERIZED",
+    "NOT_REPARAMETERIZED",
+    "Distribution",
+]
+
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
     "batch_shape_tensor", "batch_shape", "event_shape_tensor", "event_shape",
     "sample", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",

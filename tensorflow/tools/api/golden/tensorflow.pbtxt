@@ -285,6 +285,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
   }
   member {
+    name: "distributions"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "double"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -739,6 +743,10 @@ tf_module {
   member_method {
     name: "clip_by_value"
     argspec: "args=[\'t\', \'clip_value_min\', \'clip_value_max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "colocate_with"
+    argspec: "args=[\'op\', \'ignore_existing\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "complex"

@@ -29,9 +29,10 @@ static Status ApplyGradientTreesPredictionShapeFn(InferenceContext* c) {
   c->GetAttr("learner_config", &learner_config_str).IgnoreError();
   LearnerConfig learner_config;
   ParseProtoUnlimited(&learner_config, learner_config_str);
+
+  bool reduce_dim;
+  c->GetAttr("reduce_dim", &reduce_dim).IgnoreError();
   // Sets the shape of the output as a matrix.
-  const bool reduce_dim =
-      learner_config.multi_class_strategy() == LearnerConfig::TREE_PER_CLASS;
   c->set_output(0, {c->Matrix(InferenceContext::kUnknownDim,
                               reduce_dim ? learner_config.num_classes() - 1
                                          : learner_config.num_classes())});
@@ -51,6 +52,7 @@ REGISTER_OP("GradientTreesPrediction")
     .Attr("apply_dropout: bool")
     .Attr("apply_averaging: bool")
     .Attr("center_bias: bool")
+    .Attr("reduce_dim: bool")
     .Input("tree_ensemble_handle: resource")
     .Input("seed: int64")
     .Input("dense_float_features: num_dense_float_features * float")
@@ -75,6 +77,7 @@ num_sparse_float_features: Number of sparse float features.
 num_sparse_int_features: Number of sparse int features.
 use_locking: Whether to use locking.
 seed: random seed to be used for dropout.
+reduce_dim: whether to reduce the dimension (legacy impl) or not.
 apply_dropout: whether to apply dropout during prediction.
 apply_averaging: whether averaging of tree ensembles should take place. If set
 to true, will be based on AveragingConfig from learner_config.

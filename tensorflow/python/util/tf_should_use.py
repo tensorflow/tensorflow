@@ -25,15 +25,15 @@ import types
 
 import six  # pylint: disable=unused-import
 
-# pylint: disable=g-bad-import-order
+# pylint: disable=g-bad-import-order,g-import-not-at-top
 try:
   from weakref import finalize
 except ImportError:
   from backports.weakref import finalize
-# pylint: enable=g-bad-import-order
 
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import tf_decorator
+# pylint: enable=g-bad-import-order,g-import-not-at-top
 
 
 class _RefInfoField(
