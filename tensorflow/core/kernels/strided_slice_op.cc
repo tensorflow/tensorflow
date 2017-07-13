@@ -22,7 +22,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/strided_slice_op.h"
-#include "tensorflow/core/kernels/dense_update_functor.h"
+#include "tensorflow/core/kernels/dense_update_ops.h"
 #include "tensorflow/core/kernels/slice_op.h"
 #include "tensorflow/core/kernels/strided_slice_op_impl.h"
 

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types_traits.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/dense_update_functor.h"
+#include "tensorflow/core/kernels/dense_update_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
