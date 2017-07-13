@@ -721,10 +721,10 @@ def _SliceHelperVar(var, slice_spec):
   A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    print sess.run(A[:2, :2]) # => [[1,2], [4,5]]
+    print(sess.run(A[:2, :2]))  # => [[1,2], [4,5]]
 
     op = A[:2,:2].assign(22. * tf.ones((2, 2)))
-    print sess.run(op) # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
+    print(sess.run(op))  # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
   ```
 
   Note that assignments currently do not support NumPy broadcasting
@@ -1556,7 +1556,7 @@ def _normalize_sparse_shape(shape, name):
     for el in shape:
       if el is None:
         return None
-  return ops.convert_to_tensor(shape, name=name)
+  return ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name)
 
 
 def sparse_placeholder(dtype, shape=None, name=None):

@@ -153,6 +153,19 @@ public class OperationTest {
     }
   }
 
+  @Test
+  public void outputList() {
+    try (Graph g = new Graph()) {
+      Operation split = TestUtil.split(g, "split", new int[] {0, 1, 2}, 3);
+      Output[] outputs = split.outputList(1, 2);
+      assertNotNull(outputs);
+      assertEquals(2, outputs.length);
+      for (int i = 0; i < outputs.length; ++i) {
+        assertEquals(i + 1, outputs[i].index());
+      }
+    }
+  }
+
   private static int split(int[] values, int num_split) {
     try (Graph g = new Graph()) {
       return g.opBuilder("Split", "Split")

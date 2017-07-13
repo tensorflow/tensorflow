@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #include <stdarg.h>
+#include <numeric>
 
 #include "tensorflow/compiler/xla/legacy_flags/util_flags.h"
 #include "tensorflow/compiler/xla/types.h"
