@@ -82,22 +82,42 @@ class WindowsEnv : public Env {
     return new StdThread(thread_options, name, fn);
   }
 
+  static VOID CALLBACK SchedClosureCallback(PTP_CALLBACK_INSTANCE Instance,
+                                            PVOID Context, PTP_WORK Work) {
+    CloseThreadpoolWork(Work);
+    std::function<void()>* f = (std::function<void()>*)Context;
+    (*f)();
+    delete f;
+  }
   void SchedClosure(std::function<void()> closure) override {
-    // TODO(b/27290852): Spawning a new thread here is wasteful, but
-    // needed to deal with the fact that many `closure` functions are
-    // blocking in the current codebase.
-    std::thread closure_thread(closure);
-    closure_thread.detach();
+    PTP_WORK work = CreateThreadpoolWork(
+        SchedClosureCallback, new std::function<void()>(std::move(closure)),
+        nullptr);
+    SubmitThreadpoolWork(work);
+  }
+
+  static VOID CALLBACK SchedClosureAfterCallback(PTP_CALLBACK_INSTANCE Instance,
+                                                 PVOID Context,
+                                                 PTP_TIMER Timer) {
+    CloseThreadpoolTimer(Timer);
+    std::function<void()>* f = (std::function<void()>*)Context;
+    (*f)();
+    delete f;
   }
 
   void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
-    // TODO(b/27290852): Consuming a thread here is wasteful, but this
-    // code is (currently) only used in the case where a step fails
-    // (AbortStep). This could be replaced by a timer thread
-    SchedClosure([this, micros, closure]() {
-      SleepForMicroseconds(micros);
-      closure();
-    });
+    PTP_TIMER timer = CreateThreadpoolTimer(
+        SchedClosureAfterCallback,
+        new std::function<void()>(std::move(closure)), nullptr);
+    // in 100 nanosecond units
+    FILETIME FileDueTime;
+    ULARGE_INTEGER ulDueTime;
+    // Negative indicates the amount of time to wait is relative to the current
+    // time.
+    ulDueTime.QuadPart = (ULONGLONG) - (10 * micros);
+    FileDueTime.dwHighDateTime = ulDueTime.HighPart;
+    FileDueTime.dwLowDateTime = ulDueTime.LowPart;
+    SetThreadpoolTimer(timer, &FileDueTime, 0, 0);
   }
 
   Status LoadLibrary(const char *library_filename, void** handle) override {
