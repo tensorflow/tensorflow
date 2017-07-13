@@ -199,7 +199,7 @@ class Axes(collections.Mapping):
   """Axis names and indices for a tensor.
 
   It is an ordered mapping, with keys given by axis name and values given
-  by Axis objets. Duplicate axis names are not allowed.
+  by Axis objects. Duplicate axis names are not allowed.
   """
 
   @tc.accepts(object, tc.List(AxisLike))

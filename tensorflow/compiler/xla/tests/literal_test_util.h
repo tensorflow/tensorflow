@@ -64,7 +64,8 @@ class LiteralTestUtil {
       const Literal& expected, const Literal& actual) TF_MUST_USE_RESULT;
 
   // Expects that expected and actual are Equal.
-  static void ExpectEqual(const Literal& expected, const Literal& actual);
+  static void ExpectEqual(const Literal& expected, const Literal& actual,
+                          const string& message = "");
 
   // Expects that expected and actual are Not Equal.
   static void ExpectNotEqual(const Literal& expected, const Literal& actual);
@@ -110,7 +111,7 @@ class LiteralTestUtil {
 
   // Expects expected and actual to be Near with the given error.
   static void ExpectNear(const Literal& expected, const Literal& actual,
-                         const ErrorSpec& error);
+                         const ErrorSpec& error, const string& message = "");
 
   // Asserts the given literal are within the given error bound of the given
   // expected values. Only supported for floating point values.

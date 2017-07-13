@@ -1,6 +1,6 @@
 # `Predictor` classes provide an interface for efficient, repeated inference.
 
-package(default_visibility = ["//third_party/tensroflow/contrib/predictor:__subpackages__"])
+package(default_visibility = ["//tensorflow/contrib/predictor:__subpackages__"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -62,7 +62,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":base_predictor",
-        "//tensorflow/python/tools:saved_model_cli",
+        "//tensorflow/contrib/saved_model:saved_model_py",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
     ],
 )
 

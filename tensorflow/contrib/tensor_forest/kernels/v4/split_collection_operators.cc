@@ -71,13 +71,13 @@ void SplitCollectionOperator::ExtractFromProto(
 }
 
 void SplitCollectionOperator::PackToProto(FertileStats* stats_proto) const {
-  for (int i = 0; i < stats_proto->node_to_slot_size(); ++i) {
-    auto* new_slot = stats_proto->mutable_node_to_slot(i);
-    const auto& stats = stats_.at(new_slot->node_id());
+  for (const auto& pair : stats_) {
+    auto* new_slot = stats_proto->add_node_to_slot();
+    new_slot->set_node_id(pair.first);
     if (params_.checkpoint_stats()) {
-      stats->PackToProto(new_slot);
+      pair.second->PackToProto(new_slot);
     }
-    new_slot->set_depth(stats->depth());
+    new_slot->set_depth(pair.second->depth());
   }
 }
 
