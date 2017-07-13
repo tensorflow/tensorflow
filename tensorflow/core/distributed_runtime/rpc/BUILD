@@ -248,13 +248,6 @@ tf_cuda_library(
     name = "rdma",
     srcs = ["rdma.cc"],
     hdrs = ["rdma.h"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_runtime",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:worker_proto_cc",
-        "//tensorflow/core/distributed_runtime:rdma",
-    ],
     linkopts = select({
         "//tensorflow:with_gdr_support": [
             "-libverbs",
@@ -262,6 +255,13 @@ tf_cuda_library(
         ],
         "//conditions:default": [],
     }),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core/distributed_runtime:rdma",
+    ],
 )
 
 tf_cuda_library(

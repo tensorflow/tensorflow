@@ -136,8 +136,8 @@ cc_test(
 
 cc_library(
     name = "rdma",
-    hdrs = ["rdma.h"],
     srcs = ["rdma.cc"],
+    hdrs = ["rdma.h"],
     deps = ["//tensorflow/core:lib"],
 )
 
