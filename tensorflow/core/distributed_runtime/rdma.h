@@ -22,23 +22,23 @@ class RdmaClient {
                                   Device* dst_device,
                                   DeviceContext* dst_device_context,
                                   bool on_host,
-                                  const Any& transport_options) = 0;
+                                  const Any& transport_options);
 };
 
 class RdmaServer {
  public:
-  virtual Status Init() = 0;
+  virtual Status Init();
 
-  virtual void Run() = 0;
+  virtual void Run();
 
-  virtual void Stop() = 0;
+  virtual void Stop();
 
   using Any = ::google::protobuf::Any;
   virtual Status RegisterTensorDMA(const Tensor& tensor,
                                    Device* src_device,
                                    DeviceContext* src_device_context,
                                    bool on_host,
-                                   Any* mutable_transport_options) = 0;
+                                   Any* mutable_transport_options);
 };
 
 }  // namespace tensorflow

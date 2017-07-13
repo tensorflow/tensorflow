@@ -8,8 +8,9 @@
 #include <map>
 #include <memory>
 
-#include <sys/fcntl.h>
+#if TENSORFLOW_USE_GDR
 
+#include <fcntl.h>
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 
@@ -591,3 +592,19 @@ RdmaClient* NewRdmaClient() {
 }
 
 }  // namespace tensorflow
+
+#else  // TENSORFLOW_USE_GDR
+
+namespace tensorflow {
+
+RdmaServer* NewRdmaServer(const string&, const string&) {
+  return new RdmaServer;
+}
+
+RdmaClient* NewRdmaClient() {
+  return new RdmaClient;
+}
+
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_USE_GDR

@@ -287,6 +287,12 @@ def tf_additional_mpi_lib_defines():
       "//conditions:default": [],
   })
 
+def tf_additional_gdr_lib_defines():
+  return select({
+      "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_GDR"],
+      "//conditions:default": [],
+  })
+
 def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
                             **kwargs):
   pass

@@ -115,6 +115,7 @@ load(
     "tf_lib_proto_parsing_deps",
     "tf_additional_verbs_lib_defines",
     "tf_additional_mpi_lib_defines",
+    "tf_additional_gdr_lib_defines",
     "tf_additional_gpu_tracer_srcs",
     "tf_additional_gpu_tracer_deps",
     "tf_additional_gpu_tracer_cuda_deps",
@@ -1359,7 +1360,8 @@ cc_library(
     defines = tf_additional_lib_defines() + [
                   "SNAPPY",
               ] + tf_additional_verbs_lib_defines() +
-              tf_additional_mpi_lib_defines(),
+              tf_additional_mpi_lib_defines() +
+              tf_additional_gdr_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": [
