@@ -57,7 +57,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
     shard_count = 20,
-    tags = ["manual"],  # b/63628385
+    tags = ["notap"],  # b/63628385
 )
 
 tf_py_test(
