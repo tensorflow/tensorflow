@@ -10931,7 +10931,9 @@ func SparseTensorDenseAdd(scope *Scope, a_indices tf.Output, a_values tf.Output,
 	return op.Output(0)
 }
 
-// Writes contents to the file at input filename. Creates file if not existing.
+// Writes contents to the file at input filename. Creates file and recursively
+//
+// creates directory if not existing.
 //
 // Arguments:
 //	filename: scalar. The name of the file to which we write the contents.
