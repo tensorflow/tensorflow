@@ -127,7 +127,8 @@ def cc_proto_library(
   native.cc_library(
       name=name + "_headers_only",
       deps=["@protobuf//:protobuf_headers"] + tf_deps(header_only_deps, "_headers_only"),
-      hdrs=gen_hdrs)
+      hdrs=gen_hdrs,
+      **kargs)
 
 def tf_proto_library_cc(name, srcs = [], has_services = None,
                         protodeps = [], header_only_protodeps = [],

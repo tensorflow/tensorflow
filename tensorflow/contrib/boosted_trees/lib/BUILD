@@ -50,7 +50,7 @@ cc_library(
         "utils/tensor_utils.h",
     ],
     deps = [
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -99,7 +99,7 @@ tf_cc_test(
     srcs = ["utils/dropout_utils_test.cc"],
     deps = [
         ":utils",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
@@ -116,7 +116,7 @@ cc_library(
     deps = [
         ":trees",
         ":utils",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
     ],
 )
@@ -129,6 +129,7 @@ tf_cc_test(
         ":batch_features_testutil",
         ":models",
         ":random_tree_gen",
+        "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
@@ -159,7 +160,7 @@ cc_library(
     srcs = ["testutil/random_tree_gen.cc"],
     hdrs = ["testutil/random_tree_gen.h"],
     deps = [
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/core:lib",
     ],
 )
@@ -169,6 +170,7 @@ tf_cc_binary(
     srcs = ["testutil/random_tree_gen_main.cc"],
     deps = [
         ":random_tree_gen",
+        "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
@@ -239,7 +241,7 @@ cc_library(
     hdrs = ["trees/decision_tree.h"],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
     ],
 )
@@ -251,6 +253,7 @@ tf_cc_test(
     deps = [
         ":trees",
         "//tensorflow/contrib/boosted_trees/lib:utils",
+        "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -305,6 +308,7 @@ tf_cc_test(
     srcs = ["learner/common/partitioners/example_partitioner_test.cc"],
     deps = [
         ":example_partitioner",
+        "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
@@ -332,7 +336,7 @@ cc_library(
     deps = [
         ":feature-split-candidate",
         ":feature-stats-accumulator",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
     ],
 )
@@ -348,6 +352,7 @@ tf_cc_test(
     ],
     deps = [
         ":feature-column-handlers",
+        "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
@@ -369,8 +374,8 @@ cc_library(
     hdrs = ["learner/stochastic/stats/node-stats.h"],
     deps = [
         ":gradient-stats",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -389,7 +394,7 @@ cc_library(
     hdrs = ["learner/stochastic/stats/feature-split-candidate.h"],
     deps = [
         ":split-stats",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
     ],
 )
 
@@ -399,6 +404,7 @@ tf_cc_test(
     srcs = ["learner/stochastic/stats/node-stats_test.cc"],
     deps = [
         ":node-stats",
+        "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
