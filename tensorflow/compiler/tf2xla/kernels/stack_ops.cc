@@ -92,16 +92,6 @@ Status MaybeInitializeStack(xla::ComputationBuilder* builder,
   return Status::OK();
 }
 
-// Pads 'x' with 'count' zero indices. 'x' must have 1 element.
-xla::ComputationDataHandle PadIndexWithZeros(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
-    int count) {
-  xla::ComputationDataHandle zero = builder->ConstantR1<int32>({0});
-  std::vector<xla::ComputationDataHandle> xs(count + 1, zero);
-  xs[0] = builder->Reshape(x, {1});
-  return builder->ConcatInDim(xs, 0);
-}
-
 class StackOp : public XlaOpKernel {
  public:
   explicit StackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -160,7 +150,7 @@ class StackPushOp : public XlaOpKernel {
     xla::ComputationDataHandle value = ctx->Input(1);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
-    auto start_indices = PadIndexWithZeros(b, index, elem_shape.dims());
+    auto start_indices = XlaHelpers::PadWithZeros(b, index, elem_shape.dims());
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
@@ -218,7 +208,8 @@ class StackPopOp : public XlaOpKernel {
     resource->value = b->Tuple({ta, index});
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
-    auto start_indices = PadIndexWithZeros(b, index, stack_shape.dims() - 1);
+    auto start_indices =
+        XlaHelpers::PadWithZeros(b, index, stack_shape.dims() - 1);
 
     auto slice_shape = stack_shape.dim_sizes();
     slice_shape[0] = 1LL;

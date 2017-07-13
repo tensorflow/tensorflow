@@ -83,6 +83,7 @@ from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import spectral_ops as spectral
+from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.profiler import profiler
 from tensorflow.python.user_ops import user_ops
@@ -213,6 +214,7 @@ _allowed_symbols.extend([
     'app',
     'bitwise',
     'compat',
+    'distributions',
     'errors',
     'estimator',
     'feature_column',
@@ -250,7 +252,8 @@ _allowed_symbols.extend([
 # referenced in the whitelist.
 remove_undocumented(__name__, _allowed_symbols, [
     framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
-    control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
+    control_flow_ops, confusion_matrix_m, distributions,
+    functional_ops, histogram_ops, io_ops,
     losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
     session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
     train, layers, profiler

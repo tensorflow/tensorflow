@@ -384,6 +384,15 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertIsInstance(x, dtypes.DType)
     self.assertEqual([dtypes.string, dtypes.double], l)
 
+  # TODO(skyewm): test adding cycles, other error cases
+  @test_util.enable_c_api
+  def testAddControlInput(self):
+    with ops.Graph().as_default():
+      x = constant_op.constant(1).op
+      y = constant_op.constant(2).op
+    y._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(y.control_inputs, [x])
+
 
 class CreateOpTest(test_util.TensorFlowTestCase):
 
@@ -1062,29 +1071,26 @@ class ComparisonTest(test_util.TensorFlowTestCase):
 
 class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
+  @test_util.enable_c_api
   def testBasic(self):
-    ops._USE_C_API = True  # pylint: disable=protected-access
-    try:
-      g = ops.Graph()
-      with g.as_default():
-        # Creating unregistered ops with _apply_op() doesn't work with the C API
-        # TODO(skyewm): address this more consistently. Possible solutions are
-        # to use registered ops in all tests, create a way to register ops in
-        # Python tests, or conditionally disable the op registration check in
-        # the C API.
-        a = constant_op.constant(1.0)
-        b = constant_op.constant(1.0)
-        with g.control_dependencies([a]):
-          c = constant_op.constant(1.0)
-          d = array_ops.identity(b)
-          e = array_ops.identity(c)
+    g = ops.Graph()
+    with g.as_default():
+      # Creating unregistered ops with _apply_op() doesn't work with the C API
+      # TODO(skyewm): address this more consistently. Possible solutions are
+      # to use registered ops in all tests, create a way to register ops in
+      # Python tests, or conditionally disable the op registration check in
+      # the C API.
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(1.0)
+      with g.control_dependencies([a]):
+        c = constant_op.constant(1.0)
+        d = array_ops.identity(b)
+        e = array_ops.identity(c)
 
-      self.assertEqual(c.op.control_inputs, [a.op])
-      self.assertEqual(d.op.control_inputs, [a.op])
-      # e should be dominated by c.
-      self.assertEqual(e.op.control_inputs, [])
-    finally:
-      ops._USE_C_API = False  # pylint: disable=protected-access
+    self.assertEqual(c.op.control_inputs, [a.op])
+    self.assertEqual(d.op.control_inputs, [a.op])
+    # e should be dominated by c.
+    self.assertEqual(e.op.control_inputs, [])
 
   def testBasicWithConversion(self):
     g = ops.Graph()
