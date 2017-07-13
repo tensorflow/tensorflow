@@ -101,6 +101,7 @@ class BiasOp : public BinaryOp<T> {
   template <int Dims>
   void Compute(OpKernelContext* ctx, const Tensor& input, const Tensor& bias,
                Tensor* output) {
+
     functor::Bias<Device, T, Dims> functor;
     functor(ctx->eigen_device<Device>(), input.tensor<T, Dims>(), bias.vec<T>(),
             output->tensor<T, Dims>());
@@ -130,7 +131,10 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
       Name("BiasAddV1").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       BiasOp<SYCLDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(double);
+
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -251,7 +255,9 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNEL);
       Name("BiasAddGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       BiasGradOp<SYCLDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNEL);
+REGISTER_KERNEL(float);
+REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 #endif  // TENSORFLOW_USE_SYCL
 
