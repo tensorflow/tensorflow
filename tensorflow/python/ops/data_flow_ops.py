@@ -513,7 +513,8 @@ class QueueBase(object):
     operations will fail. Subsequent `dequeue` and `dequeue_many`
     operations will continue to succeed if sufficient elements remain
     in the queue. Subsequent `dequeue` and `dequeue_many` operations
-    that would block will fail immediately.
+    that won't block waiting for more elements to be enqueued and 
+    will fail immediately.
 
     If `cancel_pending_enqueues` is `True`, all pending requests will also
     be canceled.
