@@ -2027,6 +2027,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/ops/distributions",
     ],
 )
 

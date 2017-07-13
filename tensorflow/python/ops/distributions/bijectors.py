@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Bijector base."""
-
+"""Core module for TensorFlow distribution bijectors."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,unused-import
-from tensorflow.python.ops.distributions.bijector_impl import Bijector
+from tensorflow.python.ops.distributions.bijector import Bijector
+from tensorflow.python.ops.distributions.identity_bijector import Identity
 
 # pylint: enable=wildcard-import,unused-import
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ["Bijector"]
+_allowed_symbols = ["Bijector", "Identity"]
 
 remove_undocumented(__name__, _allowed_symbols)

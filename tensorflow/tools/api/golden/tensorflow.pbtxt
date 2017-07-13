@@ -285,6 +285,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
   }
   member {
+    name: "distributions"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "double"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
