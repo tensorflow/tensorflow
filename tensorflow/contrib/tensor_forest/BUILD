@@ -27,6 +27,9 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
 # ---------------------------------- V2 ops ------------------------------------------#
 filegroup(
     name = "v2_op_sources",
@@ -158,7 +161,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tensor_forest_ops_test",
     size = "small",
     srcs = [
@@ -267,7 +270,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "model_ops_test",
     size = "small",
     srcs = [
@@ -276,6 +279,7 @@ cc_test(
     ],
     deps = [
         ":model_ops_lib",
+        ":tree_proto_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
@@ -349,7 +353,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "stats_ops_test",
     size = "small",
     srcs = [
@@ -358,6 +362,7 @@ cc_test(
     ],
     deps = [
         ":stats_ops_lib",
+        ":tree_proto_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
@@ -382,17 +387,21 @@ cc_library(
     ],
 )
 
-cc_binary(
-    name = "libtreeprotos.so",
-    srcs = ["//tensorflow/core:libframework.so"],
-    linkshared = 1,
-    linkstatic = 1,
+cc_library(
+    name = "tree_proto_impl",
     deps = [
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
     ],
+)
+
+tf_cc_binary(
+    name = "libtreeprotos.so",
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [":tree_proto_impl"],
 )
 
 # --------------------------------- Python -------------------------------- #

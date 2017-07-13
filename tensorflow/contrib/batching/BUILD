@@ -7,6 +7,8 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "batch_scheduler_hdrs",
     hdrs = ["batch_scheduler.h"],
@@ -23,7 +25,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "batch_scheduler_test",
     size = "small",
     srcs = ["batch_scheduler_test.cc"],
@@ -56,7 +58,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_test(
+tf_cc_test(
     name = "shared_batch_scheduler_test",
     size = "small",
     srcs = ["shared_batch_scheduler_test.cc"],
@@ -78,7 +80,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "basic_batch_scheduler_test",
     size = "small",
     srcs = ["basic_batch_scheduler_test.cc"],
@@ -91,7 +93,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "basic_batch_scheduler_benchmark",
     srcs = ["basic_batch_scheduler_benchmark.cc"],
     tags = [

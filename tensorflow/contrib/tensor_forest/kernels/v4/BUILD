@@ -14,6 +14,8 @@ filegroup(
     ),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "decision-tree-resource",
     srcs = ["decision-tree-resource.cc"],
@@ -79,13 +81,15 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "leaf_model_operators_test",
     srcs = ["leaf_model_operators_test.cc"],
     deps = [
         ":leaf_model_operators",
         ":test_utils",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core",
         "//tensorflow/core:lib",
@@ -112,13 +116,15 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "grow_stats_test",
     srcs = ["grow_stats_test.cc"],
     deps = [
         ":grow_stats",
         ":test_utils",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
@@ -154,13 +160,14 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "decision_node_evaluator_test",
     srcs = ["decision_node_evaluator_test.cc"],
     deps = [
         ":decision_node_evaluator",
         ":test_utils",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
         "//tensorflow/core",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -237,7 +244,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "params_test",
     srcs = ["params_test.cc"],
     deps = [
