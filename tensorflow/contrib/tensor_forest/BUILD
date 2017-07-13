@@ -104,7 +104,7 @@ tf_custom_op_library(
     srcs = [
         ":v2_op_defs",
         ":v2_op_sources",
-        "//tensorflow/contrib/tensor_forest:libtreeprotos.so",
+        "//tensorflow/contrib/tensor_forest:libforestprotos.so",
     ],
     deps = [":tree_utils"],
 )
@@ -248,7 +248,7 @@ tf_custom_op_library(
     name = "python/ops/_model_ops.so",
     srcs = [
         "ops/model_ops.cc",
-        "//tensorflow/contrib/tensor_forest:libtreeprotos.so",
+        "//tensorflow/contrib/tensor_forest:libforestprotos.so",
     ],
     deps = [":model_ops_lib"],
 )
@@ -278,8 +278,8 @@ tf_cc_test(
         "ops/model_ops.cc",
     ],
     deps = [
+        ":forest_proto_impl",
         ":model_ops_lib",
-        ":tree_proto_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
@@ -332,7 +332,7 @@ tf_custom_op_library(
     name = "python/ops/_stats_ops.so",
     srcs = [
         "ops/stats_ops.cc",
-        "//tensorflow/contrib/tensor_forest:libtreeprotos.so",
+        "//tensorflow/contrib/tensor_forest:libforestprotos.so",
     ],
     deps = [":stats_ops_lib"],
 )
@@ -361,8 +361,8 @@ tf_cc_test(
         "ops/stats_ops.cc",
     ],
     deps = [
+        ":forest_proto_impl",
         ":stats_ops_lib",
-        ":tree_proto_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
@@ -388,7 +388,7 @@ cc_library(
 )
 
 cc_library(
-    name = "tree_proto_impl",
+    name = "forest_proto_impl",
     deps = [
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
@@ -397,11 +397,13 @@ cc_library(
     ],
 )
 
+# Protocol buffer dependencies shared between multiple op shared objects. This
+# avoids attempting to register the same protocol buffer multiple times.
 tf_cc_binary(
-    name = "libtreeprotos.so",
+    name = "libforestprotos.so",
     linkshared = 1,
     linkstatic = 1,
-    deps = [":tree_proto_impl"],
+    deps = [":forest_proto_impl"],
 )
 
 # --------------------------------- Python -------------------------------- #

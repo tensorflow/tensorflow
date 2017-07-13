@@ -322,6 +322,14 @@ def tf_gen_op_wrappers_cc(name,
       visibility=[clean_dep("//tensorflow:internal")])
 
 
+def tf_cc_binary(srcs=[],
+                 **kwargs):
+  native.cc_binary(
+      srcs=srcs + [clean_dep("//tensorflow/core:libframework.so"),
+                   clean_dep("//tensorflow/core:libtflib.so")],
+      **kwargs)
+
+
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name,
                          out=None,
@@ -335,15 +343,12 @@ def tf_gen_op_wrapper_py(name,
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
     deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
-  native.cc_binary(
+  tf_cc_binary(
       name=tool_name,
       linkopts=["-lm"],
       copts=tf_copts(),
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
-      deps=([
-          clean_dep("//tensorflow/core:framework_internal_impl"),
-          clean_dep("//tensorflow/core:lib_internal_impl"),
-          clean_dep("//tensorflow/python:python_op_gen_main"),
+      deps=([clean_dep("//tensorflow/python:python_op_gen_main"),
       ] + deps),
       visibility=[clean_dep("//tensorflow:internal")],)
 
@@ -389,14 +394,6 @@ def tf_gen_op_wrapper_py(name,
       deps=[
           clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
       ],)
-
-
-def tf_cc_binary(srcs=[],
-                 **kwargs):
-  native.cc_binary(
-      srcs=srcs + [clean_dep("//tensorflow/core:libframework.so"),
-                   clean_dep("//tensorflow/core:libtflib.so")],
-      **kwargs)
 
 
 # Define a bazel macro that creates cc_test for tensorflow.
