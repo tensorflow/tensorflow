@@ -249,11 +249,11 @@ tf_cuda_library(
     srcs = ["rdma.cc"],
     hdrs = ["rdma.h"],
     deps = [
-        "//tensorflow/core/distributed_runtime:rdma",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core/distributed_runtime:rdma",
     ],
     linkopts = select({
         "//tensorflow:with_gdr_support": [
