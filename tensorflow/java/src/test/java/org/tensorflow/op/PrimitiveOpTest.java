@@ -27,13 +27,14 @@ import org.junit.Test;
 import org.tensorflow.Graph;
 import org.tensorflow.Output;
 import org.tensorflow.TestUtil;
+import org.tensorflow.types.TFInt32;
 
 public class PrimitiveOpTest {
 
   @Test
   public void equalsHashcode() {
     try (Graph g = new Graph()) {
-      Output array = TestUtil.constant(g, "array", new int[2]);
+      Output<TFInt32> array = TestUtil.constant(g, "array", new int[2]);
 
       PrimitiveOp test1 =
           new PrimitiveOp(g.opBuilder("Shape", "shape1").addInput(array).build()) {};

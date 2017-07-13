@@ -159,7 +159,7 @@ public class OperationTest {
   public void outputList() {
     try (Graph g = new Graph()) {
       Operation split = TestUtil.split(g, "split", new int[] {0, 1, 2}, 3);
-      Output[] outputs = split.outputList(1, 2);
+      Output<?>[] outputs = split.outputList(1, 2);
       assertNotNull(outputs);
       assertEquals(2, outputs.length);
       for (int i = 0; i < outputs.length; ++i) {
