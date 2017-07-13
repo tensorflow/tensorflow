@@ -4536,6 +4536,32 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "android_tensorflow_image_op",
+    srcs = [
+        "decode_image_op.cc",
+	],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:android": [
+            "-ldl",
+        ],
+        "//conditions:default": [],
+    }),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:android_jpeg_internal",
+        "//tensorflow/core:android_gif_internal",
+        "//tensorflow/core:android_png_internal",
+    ],
+    alwayslink = 1,
+)
+
 #   Quantization-specific OpKernels
 
 tf_kernel_library(
