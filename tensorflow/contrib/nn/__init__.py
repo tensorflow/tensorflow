@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module for deprecated ops in tf.nn.
+"""Module for variants of ops in tf.nn.
 
 @@deprecated_flipped_softmax_cross_entropy_with_logits
 @@deprecated_flipped_sparse_softmax_cross_entropy_with_logits
 @@deprecated_flipped_sigmoid_cross_entropy_with_logits
+@@rank_sampled_softmax_loss
 """
 
 from __future__ import absolute_import
