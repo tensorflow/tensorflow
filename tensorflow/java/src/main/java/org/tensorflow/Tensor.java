@@ -54,10 +54,11 @@ public final class Tensor<T> implements AutoCloseable {
   /**
    * Creates a Tensor from a Java object.
    *
-   * <p>A Tensor is a multi-dimensional array of elements of a limited set of types ({@link
-   * types}), so not all Java objects can be converted to a Tensor. In particular, {@code obj}
-   * must be either a primitive (float, double, int, long, boolean) or a multi-dimensional array of
-   * one of those primitives. For example:
+   * <p>A {@code Tensor} is a multi-dimensional array of elements of a limited set of types ({@link
+   * types}), so not all Java objects can be converted to a {@code Tensor}. In particular, the
+   * argument {@code obj} must be either a primitive (float, double, int, long, boolean, byte) or
+   * a multi-dimensional array of one of those primitives. The argument {@code type} specifies how
+   * to interpret the first argument as a TensorFlow type. For example:
    *
    * <pre>{@code
    * // Valid: A 64-bit integer scalar.
@@ -103,15 +104,15 @@ public final class Tensor<T> implements AutoCloseable {
   
   /**
    * Creates a tensor from an object whose class is inspected to figure out what the underlying data
-   * type should be. The parameter T must match the data type of the object, but this is <em>not</em> checked.
-   * Not all types T can be distinguished based on the run-time class of {@code obj}. For example,
+   * type should be. The parameter {@code T} must match the data type of the object, but this is <em>not</em> checked.
+   * Not all types {@code T} can be distinguished based on the run-time class of {@code obj}. For example,
    * a {@code byte[]} array could be either a 1-D tensor of uint8 or a scalar string.
    * Use the class {@link org.tensorflow.Tensors} for methods that create Tensors in a fully type-safe
    * way.
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
    *     system.
    */
-  public static <T> Tensor<T> create(Object obj) {
+  public static <T extends TFType> Tensor<T> create(Object obj) {
   	return create(obj, dataTypeOf(obj));
   }
   
@@ -124,7 +125,7 @@ public final class Tensor<T> implements AutoCloseable {
    * @param type the DataType representation of the type T
    * @return the new tensor
    */
-  static <T> Tensor<T> create(Object obj, DataType type) {
+  static <T extends TFType> Tensor<T> create(Object obj, DataType type) {
 	  Tensor<T> t = new Tensor<T>(type);
     t.shapeCopy = new long[numDimensions(obj)];
     fillShape(obj, 0, t.shapeCopy);

@@ -16,9 +16,10 @@ public class Types {
 
   private Types() {} // not instantiable
 
-  static final Map<Class<?>, DataType> typeCodes = new HashMap<>();
+  private static final Map<Class<?>, DataType> typeCodes = new HashMap<>();
 
-  /** Returns the DataType value corresponding to a TensorFlow type class. */
+  /** Returns the DataType value corresponding to a TensorFlow type class.
+   *  @param c The class describing the TensorFlow type of interest. */
   public static DataType dataType(Class<? extends TFType> c) {
     DataType dtype = typeCodes.get(c);
     if (dtype == null) {
@@ -27,10 +28,11 @@ public class Types {
     return dtype;
   }
 
-  static final Map<Class<?>, Object> zeros = new HashMap<>();
+  private static final Map<Class<?>, Object> zeros = new HashMap<>();
 
   /** Returns the zero value of type described by {@code c}, or null if
    *  the type (e.g., string) is not numeric and therefore has no zero value.
+   *  @param c The class describing the TensorFlow type of interest.
    */
   public static Object zeroValue(Class<? extends TFType> c) {
     return zeros.get(c);
