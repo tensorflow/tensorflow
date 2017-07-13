@@ -339,8 +339,7 @@ class TensorArrayTest(xla_test.XLATestCase):
         # Test reading wrong datatype.
         r0_bad = gen_data_flow_ops._tensor_array_read_v3(
             handle=w0.handle, index=0, dtype=dtype2, flow_in=w0.flow)
-        with self.assertRaisesOpError(
-            "TensorArray dtype is "):
+        with self.assertRaisesOpError("TensorArray dtype is "):
           r0_bad.eval()
 
         # Test reading from a different index than the one we wrote to

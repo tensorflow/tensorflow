@@ -17,7 +17,6 @@ package org.tensorflow.op;
 
 import java.util.ArrayList;
 import java.util.List;
-
 import org.tensorflow.Operand;
 import org.tensorflow.OperationBuilder;
 import org.tensorflow.Output;

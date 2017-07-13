@@ -328,6 +328,54 @@ class IteratorTest(test.TestCase):
               [1, 2, 3], dtype=dtypes.int64), constant_op.constant(
                   [4., 5., 6., 7.], dtype=dtypes.float64))))
 
+  def testIteratorStringHandle(self):
+    dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+    dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
+
+    iterator_3 = dataset_3.make_one_shot_iterator()
+    iterator_4 = dataset_4.make_one_shot_iterator()
+
+    handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+    feedable_iterator = dataset_ops.Iterator.from_string_handle(
+        handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
+    next_element = feedable_iterator.get_next()
+
+    self.assertEqual(dataset_3.output_types, feedable_iterator.output_types)
+    self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
+    self.assertEqual([], feedable_iterator.output_shapes)
+
+    with self.test_session() as sess:
+      iterator_3_handle = sess.run(iterator_3.string_handle())
+      iterator_4_handle = sess.run(iterator_4.string_handle())
+
+      self.assertEqual(
+          10, sess.run(next_element,
+                       feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          1, sess.run(next_element,
+                      feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          20, sess.run(next_element,
+                       feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          2, sess.run(next_element,
+                      feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          30, sess.run(next_element,
+                       feed_dict={handle_placeholder: iterator_4_handle}))
+      self.assertEqual(
+          3, sess.run(next_element,
+                      feed_dict={handle_placeholder: iterator_3_handle}))
+      self.assertEqual(
+          40, sess.run(next_element,
+                       feed_dict={handle_placeholder: iterator_4_handle}))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element,
+                 feed_dict={handle_placeholder: iterator_3_handle})
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element,
+                 feed_dict={handle_placeholder: iterator_4_handle})
+
 
 if __name__ == "__main__":
   test.main()
