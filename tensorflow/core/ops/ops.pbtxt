@@ -30695,7 +30695,8 @@ op {
     description: "scalar. The content to be written to the output file."
     type: DT_STRING
   }
-  summary: "Writes contents to the file at input filename. Creates file if not existing."
+  summary: "Writes contents to the file at input filename. Creates file and recursively"
+  description: "creates directory if not existing."
 }
 op {
   name: "ZerosLike"
