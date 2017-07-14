@@ -154,6 +154,7 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
+    'SummaryMetadata',
     'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 

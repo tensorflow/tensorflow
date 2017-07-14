@@ -36,9 +36,16 @@ Status FileBlockCache::Read(uint64 offset, size_t n, std::vector<char>* out) {
   if (finish < offset + n) {
     finish += block_size_;
   }
+  mutex_lock lock(mu_);
+  // If the oldest block arrived max_staleness_ in the past, flush the cache.
+  // Note that if max_staleness_ is 0, we don't expire any cached blocks.
+  if (max_staleness_ > 0 && timestamp_ > 0 &&
+      env_->NowSeconds() - timestamp_ > max_staleness_) {
+    TrimCache(0);
+    timestamp_ = 0;
+  }
   // Now iterate through the blocks, reading them one at a time. Reads are
   // locked so that only one block_fetcher call is active at any given time.
-  mutex_lock lock(mu_);
   for (uint64 pos = start; pos < finish; pos += block_size_) {
     auto entry = block_map_.find(pos);
     if (entry == block_map_.end()) {
@@ -47,10 +54,7 @@ Status FileBlockCache::Read(uint64 offset, size_t n, std::vector<char>* out) {
       // time during which the cache size exceeds its desired limit. The
       // tradeoff is that if the fetcher fails, the cache may evict a block
       // prematurely.
-      while (lru_list_.size() >= block_count_) {
-        block_map_.erase(lru_list_.back());
-        lru_list_.pop_back();
-      }
+      TrimCache(block_count_ - 1);
       std::unique_ptr<Block> block(new Block);
       TF_RETURN_IF_ERROR(block_fetcher_(pos, block_size_, &block->data));
       // Sanity check to detect interrupted reads leading to partial blocks: a
@@ -62,6 +66,10 @@ Status FileBlockCache::Read(uint64 offset, size_t n, std::vector<char>* out) {
         return errors::FailedPrecondition("File contents are inconsistent");
       }
       entry = block_map_.emplace(std::make_pair(pos, std::move(block))).first;
+      if (timestamp_ == 0) {
+        // Mark the timestamp of the first block's arrival in the cache.
+        timestamp_ = env_->NowSeconds();
+      }
     } else {
       // Cache hit. Remove the block from the LRU list at its prior location.
       lru_list_.erase(entry->second->lru_iterator);
@@ -92,6 +100,13 @@ Status FileBlockCache::Read(uint64 offset, size_t n, std::vector<char>* out) {
     }
   }
   return Status::OK();
+}
+
+void FileBlockCache::TrimCache(size_t size) {
+  while (lru_list_.size() > size) {
+    block_map_.erase(lru_list_.back());
+    lru_list_.pop_back();
+  }
 }
 
 }  // namespace tensorflow
