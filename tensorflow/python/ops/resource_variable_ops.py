@@ -35,7 +35,7 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.util import compat
 
 
-class ResourceVariable(object):
+class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
   TODO(apassos): fill this out explaining the semantics and Variable
@@ -183,6 +183,14 @@ class ResourceVariable(object):
         else:
           self._initial_value = ops.convert_to_tensor(
               initial_value, name="initial_value", dtype=dtype)
+          # pylint: disable=protected-access
+          if self._initial_value.op._get_control_flow_context() is not None:
+            raise ValueError(
+                "Initializer for variable %s is from inside a control-flow "
+                "construct, such as a loop or conditional. When creating a "
+                "variable inside a loop or conditional, use a lambda as the "
+                "initializer." % name)
+          # pylint: enable=protected-access
           self._handle = gen_resource_variable_ops.var_handle_op(
               shape=self._initial_value.get_shape(),
               dtype=self._initial_value.dtype.base_dtype,
@@ -195,8 +203,10 @@ class ResourceVariable(object):
               gen_resource_variable_ops.var_is_initialized_op(self._handle))
         if initial_value is not None:
           with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
-            self._initialize_op = gen_resource_variable_ops.assign_variable_op(
-                self._handle, self._initial_value, name=n)
+            self._initializer_op = gen_resource_variable_ops.assign_variable_op(
+                self._handle,
+                self._build_initializer_expr(self._initial_value),
+                name=n)
         with ops.name_scope("Read"), ops.colocate_with(self._handle):
           # Manually assign reads to the handle's device to avoid log messages.
           with ops.device(self._handle.device):
@@ -229,7 +239,7 @@ class ResourceVariable(object):
     self._handle = g.as_graph_element(
         ops.prepend_name_scope(variable_def.variable_name,
                                import_scope=import_scope))
-    self._initialize_op = g.as_graph_element(
+    self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(variable_def.initializer_name,
                                import_scope=import_scope))
     if variable_def.snapshot_name:
@@ -274,7 +284,7 @@ class ResourceVariable(object):
   @property
   def create(self):
     """The op responsible for initializing this variable."""
-    return self._initialize_op
+    return self._initializer_op
 
   @property
   def handle(self):
@@ -297,7 +307,12 @@ class ResourceVariable(object):
   @property
   def initializer(self):
     """The op responsible for initializing this variable."""
-    return self._initialize_op
+    return self._initializer_op
+
+  @property
+  def initial_value(self):
+    """Returns the Tensor used as the initial value for the variable."""
+    return self._initial_value
 
   @property
   def op(self):
@@ -389,6 +404,10 @@ class ResourceVariable(object):
   def _AsTensor(self):
     return self.value()
 
+  def _ref(self):
+    """Unsupported."""
+    raise NotImplementedError("ResourceVariable does not implement _ref()")
+
   @staticmethod
   def _OverloadOperator(operator):  # pylint: disable=invalid-name
     """Defer an operator overload to `ops.Tensor`.
@@ -474,7 +493,13 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
+
+# Note: registering for Variable after ResourceVariable because inheritance will
+# otherwise lead to the wrong behavior.
 ops.register_tensor_conversion_function(ResourceVariable, _dense_var_to_tensor)
+ops.register_tensor_conversion_function(
+    variables.Variable,
+    variables.Variable._TensorConversionFunction)  # pylint: disable=protected-access
 
 # pylint: disable=protected-access
 ResourceVariable._OverloadAllOperators()
@@ -530,6 +555,16 @@ ops.register_proto_function(
     from_proto=_from_proto_fn)
 ops.register_proto_function(
     ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.LOCAL_VARIABLES,
+    proto_type=variable_pb2.VariableDef,
+    to_proto=_to_proto_fn,
+    from_proto=_from_proto_fn)
+ops.register_proto_function(
+    ops.GraphKeys.MODEL_VARIABLES,
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)

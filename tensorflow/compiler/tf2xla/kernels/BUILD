@@ -54,7 +54,9 @@ tf_kernel_library(
         "softmax_op.cc",
         "spacetobatch_op.cc",
         "split_op.cc",
+        "stack_ops.cc",
         "strided_slice_op.cc",
+        "tensor_array_ops.cc",
         "tile_ops.cc",
         "training_ops.cc",
         "transpose_op.cc",
@@ -67,6 +69,7 @@ tf_kernel_library(
         "reduction_ops.h",
     ],
     deps = [
+        ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:literal_util",
@@ -87,6 +90,21 @@ tf_kernel_library(
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:transpose_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "while_op",
+    srcs = ["while_op.cc"],
+    hdrs = ["while_op.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow_opensource",
     ],
 )
 

@@ -31,7 +31,7 @@ from tensorflow.python.training import training_ops
 class AdamOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adam algorithm.
 
-  See [Kingma et. al., 2014](http://arxiv.org/abs/1412.6980)
+  See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
   ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
   """
 
@@ -113,10 +113,14 @@ class AdamOptimizer(optimizer.Optimizer):
 
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first
-    # variable.
+    # variable. Sort the var_list to make sure this device is consistent across
+    # workers (these need to go on the same PS, otherwise some updates are
+    # silently ignored).
+    first_var = min(var_list, key=lambda x: x.name)
+
     if (self._beta1_power is None or
-        self._beta1_power.graph is not var_list[0].graph):
-      with ops.colocate_with(var_list[0]):
+        self._beta1_power.graph is not first_var.graph):
+      with ops.colocate_with(first_var):
         self._beta1_power = variable_scope.variable(self._beta1,
                                                     name="beta1_power",
                                                     trainable=False)

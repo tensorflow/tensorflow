@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
@@ -49,12 +50,27 @@ def SortEigenDecomposition(e, v):
     return np.take(e, perm, -1), np.take(v, perm, -1)
 
 
+def NormalizeEigenvectorsPhase(v):
+  """Normalizes the phase of the Eigenvectors stored in the columns of `v`.
+
+  (complex) Eigenvectors are only unique up to an arbitrary phase.
+  We normalize the vectors such that the first component has phase 0.
+
+  Args:
+    v: `np.ndarray` with Eigenvectors as returned from `np.linalg.eigh`.
+
+  Returns:
+    `np.ndarray` normalized Eigenvectors.
+  """
+  reference = v / np.linalg.norm(v[..., 0:1, :], axis=-1, keepdims=True)
+  return v * reference.conj()
+
+
 def _GetSelfAdjointEigTest(dtype_, shape_):
 
   def CompareEigenVectors(self, x, y, tol):
-    # Eigenvectors are only unique up to sign so we normalize the signs first.
-    signs = np.sign(np.sum(np.divide(x, y), -2, keepdims=True))
-    x *= signs
+    x = NormalizeEigenvectorsPhase(x)
+    y = NormalizeEigenvectorsPhase(y)
     self.assertAllClose(x, y, atol=tol, rtol=tol)
 
   def CompareEigenDecompositions(self, x_e, x_v, y_e, y_v, tol):
@@ -74,16 +90,20 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
     np.random.seed(1)
     n = shape_[-1]
     batch_shape = shape_[:-2]
+    np_dtype = dtype_.as_numpy_dtype
     a = np.random.uniform(
-        low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
+        low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
+    if dtype_.is_complex:
+      a += 1j * np.random.uniform(
+          low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
     a += np.conj(a.T)
     a = np.tile(a, batch_shape + (1, 1))
-    if dtype_ == np.float32 or dtype_ == np.complex64:
+    if dtype_ in (dtypes_lib.float32, dtypes_lib.complex64):
       atol = 1e-4
     else:
       atol = 1e-12
     for compute_v in False, True:
-      np_e, np_v = np.linalg.eig(a)
+      np_e, np_v = np.linalg.eigh(a)
       with self.test_session():
         if compute_v:
           tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
@@ -95,7 +115,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
               adjoint_b=True)
           self.assertAllClose(a_ev.eval(), a, atol=atol)
 
-          # Compare to numpy.linalg.eig.
+          # Compare to numpy.linalg.eigh.
           CompareEigenDecompositions(self, np_e, np_v,
                                      tf_e.eval(), tf_v.eval(), atol)
         else:
@@ -116,25 +136,37 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
     np.random.seed(1)
     n = shape_[-1]
     batch_shape = shape_[:-2]
+    np_dtype = dtype_.as_numpy_dtype
     a = np.random.uniform(
-        low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
+        low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
+    if dtype_.is_complex:
+      a += 1j * np.random.uniform(
+          low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
     a += np.conj(a.T)
     a = np.tile(a, batch_shape + (1, 1))
     # Optimal stepsize for central difference is O(epsilon^{1/3}).
-    epsilon = np.finfo(dtype_).eps
+    epsilon = np.finfo(np_dtype).eps
     delta = 0.1 * epsilon**(1.0 / 3.0)
     # tolerance obtained by looking at actual differences using
     # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
-    if dtype_ == np.float32:
+    if dtype_ in (dtypes_lib.float32, dtypes_lib.complex64):
       tol = 1e-2
     else:
       tol = 1e-7
     with self.test_session():
       tf_a = constant_op.constant(a)
       tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)
+      # (complex) Eigenvectors are only unique up to an arbitrary phase
+      # We normalize the vectors such that the first component has phase 0.
+      reference = tf_v / linalg_ops.norm(
+          tf_v[..., 0:1, :], axis=-1, keep_dims=True)
+      tf_v *= math_ops.conj(reference)
       for b in tf_e, tf_v:
         x_init = np.random.uniform(
-            low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
+            low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
+        if dtype_.is_complex:
+          x_init += 1j * np.random.uniform(
+              low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
         x_init += np.conj(x_init.T)
         x_init = np.tile(x_init, batch_shape + (1, 1))
         theoretical, numerical = gradient_checker.compute_gradient(
@@ -150,16 +182,15 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_):
 
 
 if __name__ == '__main__':
-  for dtype in np.float32, np.float64:
-    # TODO(rmlarsen): Re-enable for np.complex64, np.complex128
-    # when we have a fix for the crash in numpy.linalg.eig.
+  for dtype in (
+      dtypes_lib.float32, dtypes_lib.float64,
+      dtypes_lib.complex64, dtypes_lib.complex128):
     for size in 1, 2, 5, 10:
       for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
         shape = batch_dims + (size, size)
-        name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
+        name = '%s_%s' % (dtype, '_'.join(map(str, shape)))
         setattr(SelfAdjointEigTest, 'testSelfAdjointEig_' + name,
                 _GetSelfAdjointEigTest(dtype, shape))
-        if dtype in [np.float32, np.float64]:
-          setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
-                  _GetSelfAdjointEigGradTest(dtype, shape))
+        setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
+                _GetSelfAdjointEigGradTest(dtype, shape))
   test.main()

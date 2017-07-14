@@ -81,7 +81,7 @@ class SubgraphTest : public ::testing::Test {
     for (const string& s : expected_nodes) {
       Node* n = FindNode(s);
       EXPECT_TRUE(n != nullptr) << s;
-      if (n->def().op() == "_Send" || n->def().op() == "_Recv") {
+      if (n->type_string() == "_Send" || n->type_string() == "_Recv") {
         EXPECT_EQ(device_info_.name(), n->assigned_device_name()) << s;
       }
     }
@@ -336,43 +336,6 @@ TEST_F(SubgraphTest, Errors) {
   EXPECT_TRUE(HasSubstr(Subgraph("", "", "foo"), "not found"));
   // No targets specified.
   EXPECT_TRUE(HasSubstr(Subgraph("", "", ""), "at least one target"));
-}
-
-TEST_F(SubgraphTest, FedOutputsPreservesOutputShapes) {
-  ExpectOK(
-      R"proto(
-        node { name: 'W1' op: 'TestParams' }
-        node { name: 'W2' op: 'TestParams' }
-        node {
-          name: 'input'
-          op: 'TestInput'
-          attr {
-            key: '_output_shapes'
-            value {
-              list {
-                shape { unknown_rank: true }
-                shape { dim { size: 23 } }
-              }
-            }
-          }
-        }
-        node { name: 't1' op: 'TestMul' input: [ 'W1', 'input:1' ] }
-        node { name: 't2' op: 'TestMul' input: [ 'W2', 't1' ] }
-        node { name: 't3_a' op: 'TestRelu' input: 't2' }
-        node { name: 't3_b' op: 'TestRelu' input: 't2' }
-      )proto");
-  EXPECT_EQ("OK", Subgraph("input:1", "", "t2"));
-  ExpectNodes("W1,W2,_recv_input_1,t1,t2");
-
-  for (Node* node : graph()->nodes()) {
-    if (node->name() == "_recv_input_1") {
-      std::vector<PartialTensorShape> shapes;
-      TF_ASSERT_OK(GetNodeAttr(node->def(), "_output_shapes", &shapes));
-      ASSERT_EQ(1, shapes.size());
-      EXPECT_TRUE(PartialTensorShape({23}).IsIdenticalTo(shapes[0]));
-      break;
-    }
-  }
 }
 
 REGISTER_OP("In").Output("o: float");

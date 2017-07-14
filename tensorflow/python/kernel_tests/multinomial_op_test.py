@@ -51,11 +51,10 @@ native_sampler = random_ops.multinomial
 
 
 class MultinomialTest(test.TestCase):
-  use_gpu = False
 
   def testSmallEntropy(self):
     random_seed.set_random_seed(1618)
-    with self.test_session(use_gpu=self.use_gpu):
+    with self.test_session(use_gpu=True):
       # A logit value of -10 corresponds to a probability of ~5e-5.
       logits = constant_op.constant([[-10., 10., -10.], [-10., -10., 10.]])
       num_samples = 1000
@@ -63,7 +62,7 @@ class MultinomialTest(test.TestCase):
       self.assertAllEqual([[1] * num_samples, [2] * num_samples], samples)
 
   def testOneOpMultipleStepsIndependent(self):
-    with self.test_session(use_gpu=self.use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       sample_op1, _ = self._make_ops(10)
       # Consecutive runs shouldn't yield identical output.
       sample1a = sess.run(sample_op1)
@@ -71,7 +70,7 @@ class MultinomialTest(test.TestCase):
       self.assertFalse(np.equal(sample1a, sample1b).all())
 
   def testTwoOpsIndependent(self):
-    with self.test_session(use_gpu=self.use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       sample_op1, sample_op2 = self._make_ops(32)
       sample1, sample2 = sess.run([sample_op1, sample_op2])
       # We expect sample1 and sample2 to be independent.
@@ -79,14 +78,14 @@ class MultinomialTest(test.TestCase):
       self.assertFalse(np.equal(sample1, sample2).all())
 
   def testTwoOpsSameSeedDrawSameSequences(self):
-    with self.test_session(use_gpu=self.use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       sample_op1, sample_op2 = self._make_ops(1000, seed=1)
       sample1, sample2 = sess.run([sample_op1, sample_op2])
       self.assertAllEqual(sample1, sample2)
 
   def testLargeLogits(self):
     for neg in [True, False]:
-      with self.test_session(use_gpu=self.use_gpu):
+      with self.test_session(use_gpu=True):
         logits = np.array([[1000.] * 5])
         if neg:
           logits *= -1
@@ -147,7 +146,7 @@ class MultinomialTest(test.TestCase):
     Returns:
       Frequencies from sampled classes; shape [batch_size, num_classes].
     """
-    with self.test_session(use_gpu=self.use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       random_seed.set_random_seed(1618)
       op = sampler(constant_op.constant(logits), num_samples)
       d = sess.run(op)
@@ -176,7 +175,7 @@ class MultinomialTest(test.TestCase):
 
   def testEmpty(self):
     classes = 5
-    with self.test_session(use_gpu=self.use_gpu):
+    with self.test_session(use_gpu=True):
       for batch in 0, 3:
         for samples in 0, 7:
           x = random_ops.multinomial(
@@ -184,22 +183,18 @@ class MultinomialTest(test.TestCase):
           self.assertEqual(x.shape, (batch, samples))
 
   def testEmptyClasses(self):
-    with self.test_session(use_gpu=self.use_gpu):
+    with self.test_session(use_gpu=True):
       x = random_ops.multinomial(array_ops.zeros([5, 0]), 7)
       with self.assertRaisesOpError("num_classes should be positive"):
         x.eval()
 
   def testNegativeMinLogits(self):
     random_seed.set_random_seed(78844)
-    with self.test_session(use_gpu=self.use_gpu):
+    with self.test_session(use_gpu=True):
       logits = constant_op.constant([[np.finfo(np.float32).min] * 1023 + [0]])
       num_samples = 1000
       samples = random_ops.multinomial(logits, num_samples).eval()
       self.assertAllEqual([[1023] * num_samples], samples)
-
-
-class MultinomialGpuTest(MultinomialTest):
-  use_gpu = True
 
 
 # Benchmarking code

@@ -111,6 +111,8 @@ class BasicDecoderTest(test.TestCase):
                           sess_results["first_finished"])
       self.assertAllEqual([False, False, False, True, True],
                           sess_results["step_finished"])
+      self.assertEqual(output_dtype.sample_id,
+                       sess_results["step_outputs"].sample_id.dtype)
       self.assertAllEqual(
           np.argmax(sess_results["step_outputs"].rnn_output, -1),
           sess_results["step_outputs"].sample_id)
@@ -186,6 +188,8 @@ class BasicDecoderTest(test.TestCase):
       self.assertAllEqual([False, False, False, False, False],
                           sess_results["first_finished"])
       self.assertAllEqual(expected_step_finished, sess_results["step_finished"])
+      self.assertEqual(output_dtype.sample_id,
+                       sess_results["step_outputs"].sample_id.dtype)
       self.assertAllEqual(expected_sample_ids,
                           sess_results["step_outputs"].sample_id)
       self.assertAllEqual(expected_step_next_inputs,
@@ -254,6 +258,7 @@ class BasicDecoderTest(test.TestCase):
         })
 
         sample_ids = sess_results["step_outputs"].sample_id
+        self.assertEqual(output_dtype.sample_id, sample_ids.dtype)
         expected_step_finished = (sample_ids == end_token)
         expected_step_next_inputs = embeddings[sample_ids]
         self.assertAllEqual(expected_step_finished,
@@ -337,6 +342,7 @@ class BasicDecoderTest(test.TestCase):
       self.assertAllEqual([False, False, False, True, True],
                           sess_results["step_finished"])
       sample_ids = sess_results["step_outputs"].sample_id
+      self.assertEqual(output_dtype.sample_id, sample_ids.dtype)
       batch_where_not_sampling = np.where(sample_ids == -1)
       batch_where_sampling = np.where(sample_ids > -1)
       self.assertAllClose(
@@ -441,6 +447,7 @@ class BasicDecoderTest(test.TestCase):
                           sess_results["step_finished"])
 
       sample_ids = sess_results["step_outputs"].sample_id
+      self.assertEqual(output_dtype.sample_id, sample_ids.dtype)
       batch_where_not_sampling = np.where(np.logical_not(sample_ids))
       batch_where_sampling = np.where(sample_ids)
 

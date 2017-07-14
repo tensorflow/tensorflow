@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Nadam for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
@@ -22,8 +21,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.training import training_ops
 from tensorflow.python.training import adam
+from tensorflow.python.training import training_ops
 
 
 class NadamOptimizer(adam.AdamOptimizer):
@@ -36,28 +35,34 @@ class NadamOptimizer(adam.AdamOptimizer):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     return training_ops.apply_adam(
-        var, m, v,
+        var,
+        m,
+        v,
         math_ops.cast(self._beta1_power, var.dtype.base_dtype),
         math_ops.cast(self._beta2_power, var.dtype.base_dtype),
         math_ops.cast(self._lr_t, var.dtype.base_dtype),
         math_ops.cast(self._beta1_t, var.dtype.base_dtype),
         math_ops.cast(self._beta2_t, var.dtype.base_dtype),
         math_ops.cast(self._epsilon_t, var.dtype.base_dtype),
-        grad, use_locking=self._use_locking,
+        grad,
+        use_locking=self._use_locking,
         use_nesterov=True).op
 
   def _resource_apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
     return training_ops.resource_apply_adam(
-        var.handle, m.handle, v.handle,
+        var.handle,
+        m.handle,
+        v.handle,
         math_ops.cast(self._beta1_power, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_power, grad.dtype.base_dtype),
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta1_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_t, grad.dtype.base_dtype),
         math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
-        grad, use_locking=self._use_locking,
+        grad,
+        use_locking=self._use_locking,
         use_nesterov=True)
 
   def _apply_sparse_shared(self, grad, var, indices, scatter_add):
@@ -71,8 +76,7 @@ class NadamOptimizer(adam.AdamOptimizer):
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = self.get_slot(var, "m")
     m_scaled_g_values = grad * (1 - beta1_t)
-    m_t = state_ops.assign(m, m * beta1_t,
-                           use_locking=self._use_locking)
+    m_t = state_ops.assign(m, m * beta1_t, use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
       # m_bar = (1 - beta1) * g_t + beta1 * m_t
@@ -84,7 +88,6 @@ class NadamOptimizer(adam.AdamOptimizer):
     with ops.control_dependencies([v_t]):
       v_t = scatter_add(v, indices, v_scaled_g_values)
     v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(var,
-                                      lr * m_bar / (v_sqrt + epsilon_t),
-                                      use_locking=self._use_locking)
+    var_update = state_ops.assign_sub(
+        var, lr * m_bar / (v_sqrt + epsilon_t), use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_bar, v_t])

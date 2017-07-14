@@ -283,7 +283,6 @@ class LocalRendezvousImpl : public Rendezvous {
     }
     CHECK(table_.insert({key_hash, item}).second);
     mu_.unlock();
-    return;
   }
 
   void StartAbort(const Status& status) override {

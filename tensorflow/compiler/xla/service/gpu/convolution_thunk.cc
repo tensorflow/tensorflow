@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/legacy_flags/convolution_thunk_flags.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -125,7 +124,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   CHECK_LE(num_dimensions, 3);
   // cuDNN does not support 1D convolutions. We therefore express 1D
   // convolutions as 2D convolutions where the first spatial dimension is 1.
-  // This matches the behaviour of TF (see definition of conv1d in
+  // This matches the behavior of TF (see definition of conv1d in
   // tensorflow/python/ops/nn_ops.py).
   const int effective_num_dimensions = std::max(2, num_dimensions);
 
@@ -258,15 +257,21 @@ tensorflow::Status ConvolutionThunk::Convolve(
 std::vector<se::dnn::AlgorithmType> ConvolutionThunk::GetAlgorithms(
     se::StreamExecutor* stream_exec) const {
   std::vector<se::dnn::AlgorithmType> algorithms;
+  // TODO(yangzihao): Currently disable the use of winograd nonfused in XLA
+  // by default. Should send in conv parameters and enable it when
+  // ShouldIncludeWinogradNonfusedAlgo() returns true.
   switch (convolution_kind_) {
     case ConvolutionKind::kBackwardFilter:
-      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(
+          /*with_winograd_nonfused=*/false, &algorithms));
       break;
     case ConvolutionKind::kBackwardInput:
-      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(
+          /*with_winograd_nonfused=*/false, &algorithms));
       break;
     case ConvolutionKind::kForward:
-      CHECK(stream_exec->GetConvolveAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveAlgorithms(/*with_winograd_nonfused=*/false,
+                                               &algorithms));
       break;
   }
   return algorithms;
@@ -281,10 +286,7 @@ tensorflow::Status ConvolutionThunk::ConvolveWithTune(
     const ConvolutionDescriptor& convolution_descriptor,
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
   // TODO(b/29126320): Try cudnn v5's new auto-tuner when it's rolled out.
-  legacy_flags::ConvolutionThunkFlags* flags =
-      legacy_flags::GetConvolutionThunkFlags();
-  if (flags->xla_gpu_autotune_convolution_algorithm &&
-      best_algorithm_.algorithm() == se::dnn::kDefaultAlgorithm) {
+  if (best_algorithm_.algorithm() == se::dnn::kDefaultAlgorithm) {
     // Auto-tuning either is disabled or only happens in the first run of this
     // function.
     VLOG(2) << "Profiling for best convolution algorithm used for "

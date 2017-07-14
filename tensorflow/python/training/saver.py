@@ -511,9 +511,7 @@ class BaseSaverBuilder(object):
           raise ValueError("At least two variables have the same name: %s" %
                            var.name)
         names_to_saveables[var.name] = var
-      elif ((isinstance(var, variables.Variable) or
-             isinstance(var, resource_variable_ops.ResourceVariable)) and
-            var._save_slice_info):
+      elif isinstance(var, variables.Variable) and var._save_slice_info:
         name = var._save_slice_info.full_name
         if name in names_to_saveables:
           if not isinstance(names_to_saveables[name], list):
@@ -573,8 +571,7 @@ class BaseSaverBuilder(object):
         slice_name = None
         # pylint: disable=protected-access
         for variable in op:
-          if (not isinstance(variable, variables.Variable) and
-              not isinstance(variable, resource_variable_ops.ResourceVariable)):
+          if not isinstance(variable, variables.Variable):
             raise ValueError("Slices must all be Variables: %s" % variable)
           if not variable._save_slice_info:
             raise ValueError("Slices must all be slices: %s" % variable)
@@ -659,7 +656,7 @@ class BaseSaverBuilder(object):
       restore_sequentially: A Bool, which if true, causes restore of different
         variables to happen sequentially within each device.
       filename: If known at graph construction time, filename used for variable
-        loading/saving.
+        loading/saving. If None, then the default name "model" will be used.
 
     Returns:
       A SaverDef proto.
@@ -677,7 +674,7 @@ class BaseSaverBuilder(object):
     with ops.name_scope(name, "save",
                         [saveable.op for saveable in saveables]) as name:
       # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant(filename)
+      filename_tensor = constant_op.constant(filename or "model")
 
       # Add the save ops.
       if sharded:
@@ -1036,7 +1033,8 @@ class Saver(object):
                allow_empty=False,
                write_version=saver_pb2.SaverDef.V2,
                pad_step_number=False,
-               save_relative_paths=False):
+               save_relative_paths=False,
+               filename=None):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -1112,6 +1110,8 @@ class Saver(object):
       save_relative_paths: If `True`, will write relative paths to the
         checkpoint state file. This is needed if the user wants to copy the
         checkpoint directory and reload from the copied directory.
+      filename: If known at graph construction time, filename used for variable
+        loading/saving.
 
     Raises:
       TypeError: If `var_list` is invalid.
@@ -1135,6 +1135,7 @@ class Saver(object):
     self._is_empty = None
     self._write_version = write_version
     self._pad_step_number = pad_step_number
+    self._filename = filename
     if not defer_build:
       self.build()
     if self.saver_def:
@@ -1167,7 +1168,8 @@ class Saver(object):
           max_to_keep=self._max_to_keep,
           keep_checkpoint_every_n_hours=self._keep_checkpoint_every_n_hours,
           name=self._name,
-          restore_sequentially=self._restore_sequentially)
+          restore_sequentially=self._restore_sequentially,
+          filename=self._filename)
     elif self.saver_def and self._name:
       # Since self._name is used as a name_scope by builder(), we are
       # overloading the use of this field to represent the "import_scope" as
@@ -1503,7 +1505,8 @@ class Saver(object):
                         collection_list=None,
                         as_text=False,
                         export_scope=None,
-                        clear_devices=False):
+                        clear_devices=False,
+                        clear_extraneous_savers=False):
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
@@ -1513,6 +1516,9 @@ class Saver(object):
       export_scope: Optional `string`. Name scope to remove.
       clear_devices: Whether or not to clear the device field for an `Operation`
         or `Tensor` during export.
+      clear_extraneous_savers: Remove any Saver-related information from the
+        graph (both Save/Restore ops and SaverDefs) that are not associated
+        with this Saver.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1524,7 +1530,8 @@ class Saver(object):
         collection_list=collection_list,
         as_text=as_text,
         export_scope=export_scope,
-        clear_devices=clear_devices)
+        clear_devices=clear_devices,
+        clear_extraneous_savers=clear_extraneous_savers)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1540,9 +1547,14 @@ class Saver(object):
     Args:
       sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
+
+    Raises:
+      ValueError: If save_path is None.
     """
     if self._is_empty:
       return
+    if save_path is None:
+      raise ValueError("Can't load save_path when it is None.")
     logging.info("Restoring parameters from %s", save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
@@ -1706,6 +1718,7 @@ def export_meta_graph(filename=None,
                       graph=None,
                       export_scope=None,
                       clear_devices=False,
+                      clear_extraneous_savers=False,
                       **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -1729,6 +1742,9 @@ def export_meta_graph(filename=None,
       is exported. graph_def and export_scope cannot both be specified.
     clear_devices: Whether or not to clear the device field for an `Operation`
       or `Tensor` during export.
+    clear_extraneous_savers: Remove any Saver-related information from the
+        graph (both Save/Restore ops and SaverDefs) that are not associated
+        with the provided SaverDef.
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1747,6 +1763,7 @@ def export_meta_graph(filename=None,
       graph=graph,
       export_scope=export_scope,
       clear_devices=clear_devices,
+      clear_extraneous_savers=clear_extraneous_savers,
       **kwargs)
   return meta_graph_def
 

@@ -66,7 +66,7 @@ struct NcclManager::CommunicatorMember {
 
 struct NcclManager::Communicator {
  public:
-  Communicator(std::vector<CommunicatorMember> members)
+  explicit Communicator(std::vector<CommunicatorMember> members)
       : num_devices(members.size()), members(std::move(members)) {}
 
   const int num_devices;

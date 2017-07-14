@@ -311,7 +311,7 @@ class MklMaxPoolingGradOp : public OpKernel {
         lt_input_user = (dnnLayout_t)input_shape.GetCurLayout();
       }
 
-      // We dont care about the output layout for now as we can create it from
+      // We don't care about the output layout for now as we can create it from
       // primitives for the max pooling fwd prop
       if (outbackprop_in_mkl_format == false) {
         CHECK_EQ(dnnLayoutCreate_F32(&lt_outbackprop_user, params.in_dim,

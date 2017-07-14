@@ -65,7 +65,7 @@ class ResampleTest(test.TestCase):
     self.assertAllEqual([compat.as_bytes(str(c))
                          for c in returned_classes], returned_data)
     total_returned = len(returned_classes)
-    # Subsampling rejects a large precentage of the initial data in
+    # Subsampling rejects a large percentage of the initial data in
     # this case.
     self.assertGreater(total_returned, 20000 * 0.2)
     class_counts = np.array([

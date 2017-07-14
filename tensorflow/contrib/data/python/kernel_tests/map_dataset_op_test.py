@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
@@ -25,12 +27,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 class MapDatasetTest(test.TestCase):
@@ -45,9 +49,9 @@ class MapDatasetTest(test.TestCase):
     """Test an dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count).
-    components = [np.arange(7),
+    components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7)]
+                  np.array(37.0) * np.arange(7))
     count = array_ops.placeholder(dtypes.int64, shape=[])
 
     dataset = self._buildMapDataset(components, count)
@@ -107,9 +111,9 @@ class MapDatasetTest(test.TestCase):
     """Test an dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset -> ParallelMapDataset(square_3) ->
     # RepeatDataset(count).
-    components = [np.arange(7),
+    components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7)]
+                  np.array(37.0) * np.arange(7))
     count = array_ops.placeholder(dtypes.int64, shape=[])
     num_threads = array_ops.placeholder(dtypes.int32, shape=[])
     output_buffer_size = array_ops.placeholder(dtypes.int64, shape=[])
@@ -175,9 +179,9 @@ class MapDatasetTest(test.TestCase):
   def _testDisposeParallelMapDataset(self, explicit_dispose):
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(1000).
-    components = [np.arange(1000),
+    components = (np.arange(1000),
                   np.array([[1, 2, 3]]) * np.arange(1000)[:, np.newaxis],
-                  np.array(37.0) * np.arange(1000)]
+                  np.array(37.0) * np.arange(1000))
 
     dataset = self._buildParallelMapDataset(components, 1000, 100, 100)
     iterator = dataset.make_initializable_iterator()
@@ -200,10 +204,11 @@ class MapDatasetTest(test.TestCase):
     self._testDisposeParallelMapDataset(False)
 
   def testParallelMapError(self):
-    components = [np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)]
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-               .map(lambda x: array_ops.check_numerics(x, "message")))
+               .map(lambda x: array_ops.check_numerics(x, "message"),
+                    num_threads=2, output_buffer_size=2))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -219,6 +224,76 @@ class MapDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testMapIgnoreError(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .map(lambda x: array_ops.check_numerics(x, "message"))
+               .ignore_errors())
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for x in [1., 2., 3., 5.]:
+        self.assertEqual(x, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testParallelMapIgnoreError(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .map(lambda x: array_ops.check_numerics(x, "message"),
+                    num_threads=2, output_buffer_size=2)
+               .ignore_errors())
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for x in [1., 2., 3., 5.]:
+        self.assertEqual(x, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testReadFileIgnoreError(self):
+    def write_string_to_file(value, filename):
+      with open(filename, "w") as f:
+        f.write(value)
+    filenames = [os.path.join(self.get_temp_dir(), "file_%d.txt" % i)
+                 for i in range(5)]
+    for filename in filenames:
+      write_string_to_file(filename, filename)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(filenames)
+               .map(io_ops.read_file, num_threads=2, output_buffer_size=2)
+               .ignore_errors())
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      # All of the files are present.
+      sess.run(init_op)
+      for filename in filenames:
+        self.assertEqual(compat.as_bytes(filename), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # Delete one of the files.
+      os.remove(filenames[0])
+
+      # Attempting to read filenames[0] will fail, but ignore_errors()
+      # will catch the error.
+      sess.run(init_op)
+      for filename in filenames[1:]:
+        self.assertEqual(compat.as_bytes(filename), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
   def testCaptureHashTable(self):
     # NOTE(mrry): We must use the V2 variants of `HashTable`
     # etc. because these produce a `tf.resource`-typed output that is
@@ -230,10 +305,7 @@ class MapDatasetTest(test.TestCase):
         lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
     input_sentences = dataset_ops.Dataset.from_tensor_slices(
-        constant_op.constant([
-            "brain brain tank salad surgery",
-            "surgery brain",
-        ]))
+        ["brain brain tank salad surgery", "surgery brain"])
 
     iterator = (input_sentences
                 .map(lambda x: string_ops.string_split([x]).values)
@@ -326,6 +398,22 @@ class MapDatasetTest(test.TestCase):
 
       # Randomness is repeatable given same seed
       self.assertAllClose(random_values, random_values_2)
+
+  def testMapDict(self):
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(lambda x: {"foo": x * 2, "bar": x ** 2})
+                .map(lambda d: d["foo"] + d["bar"])
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()

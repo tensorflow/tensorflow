@@ -21,6 +21,9 @@ namespace tensorflow {
 /// SavedModel assets directory.
 constexpr char kSavedModelAssetsDirectory[] = "assets";
 
+/// SavedModel assets.extra directory.
+constexpr char kSavedModelAssetsExtraDirectory[] = "assets.extra";
+
 /// SavedModel assets key for graph collection-def.
 constexpr char kSavedModelAssetsKey[] = "saved_model_assets";
 

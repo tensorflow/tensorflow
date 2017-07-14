@@ -28,12 +28,15 @@ limitations under the License.
 #endif
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -59,10 +62,8 @@ using tensorflow::gtl::ArraySlice;
 using tensorflow::strings::StrCat;
 using tensorflow::AllocationDescription;
 using tensorflow::DataType;
-using tensorflow::Env;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
-using tensorflow::mutex;
 using tensorflow::mutex_lock;
 using tensorflow::NameRangeMap;
 using tensorflow::NameRangesForNode;
@@ -73,11 +74,9 @@ using tensorflow::NodeBuilder;
 using tensorflow::OpDef;
 using tensorflow::OpRegistry;
 using tensorflow::PartialTensorShape;
-using tensorflow::Reset;
 using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
 using tensorflow::Session;
-using tensorflow::SessionOptions;
 using tensorflow::Status;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
@@ -167,7 +166,7 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
   if (out->data != nullptr) {
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
   }
-  const auto proto_size = in.ByteSize();
+  const auto proto_size = in.ByteSizeLong();
   void* buf = tensorflow::port::Malloc(proto_size);
   in.SerializeToArray(buf, proto_size);
   out->data = buf;
@@ -333,7 +332,7 @@ TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
     return new TF_DeprecatedSession({session});
   } else {
     DCHECK_EQ(nullptr, session);
-    return NULL;
+    return nullptr;
   }
 }
 
@@ -470,15 +469,6 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src) {
                       dimvec.size(), base, size, DeleteArray, base);
 }
 
-class TensorCApi {
- public:
-  static TensorBuffer* Buffer(const Tensor& tensor) { return tensor.buf_; }
-  static Tensor MakeTensor(TF_DataType type, const TensorShape& shape,
-                           TensorBuffer* buf) {
-    return Tensor(static_cast<DataType>(type), shape, buf);
-  }
-};
-
 // Create an empty tensor of type 'dtype'. 'shape' can be arbitrary, but has to
 // result in a zero-sized tensor.
 static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
@@ -507,7 +497,7 @@ static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
                          TF_Status* status) {
   status->status = Status::OK();
   for (int i = 0; i < noutputs; ++i) {
-    c_outputs[i] = NULL;
+    c_outputs[i] = nullptr;
   }
 }
 
@@ -632,7 +622,7 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
                   // Target nodes
                   const char** c_target_oper_names, int ntargets,
                   const char** handle, TF_Status* status) {
-  status->status = Status::OK();
+  *handle = nullptr;
 
   std::vector<tensorflow::string> input_names(ninputs);
   std::vector<tensorflow::string> output_names(noutputs);
@@ -647,16 +637,12 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
     target_oper_names[i] = c_target_oper_names[i];
   }
   tensorflow::string new_handle;
-  Status result;
-  result = s->session->PRunSetup(input_names, output_names, target_oper_names,
-                                 &new_handle);
-  if (result.ok()) {
+  status->status = s->session->PRunSetup(input_names, output_names,
+                                         target_oper_names, &new_handle);
+  if (status->status.ok()) {
     char* buf = new char[new_handle.size() + 1];
     memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
     *handle = buf;
-  } else {
-    *handle = nullptr;
-    status->status = result;
   }
 }
 
@@ -718,6 +704,49 @@ TF_Buffer* TF_GetAllOpList() {
   return ret;
 }
 
+// --------------------------------------------------------------------------
+// ListDevices & SessionListDevices API
+
+void TF_DeleteDeviceList(TF_DeviceList* s) { delete s; }
+
+TF_DeviceList* TF_SessionListDevices(TF_Session* session, TF_Status* status) {
+  TF_DeviceList* response = new TF_DeviceList;
+  status->status = session->session->ListDevices(&response->response);
+  return response;
+}
+
+TF_DeviceList* TF_DeprecatedSessionListDevices(TF_DeprecatedSession* session,
+                                               TF_Status* status) {
+  TF_DeviceList* response = new TF_DeviceList;
+  status->status = session->session->ListDevices(&response->response);
+  return response;
+}
+
+int TF_DeviceListCount(const TF_DeviceList* list) {
+  return list->response.size();
+}
+
+#define TF_DEVICELIST_METHOD(return_type, method_name, accessor, err_val) \
+  return_type method_name(const TF_DeviceList* list, const int index,     \
+                          TF_Status* status) {                            \
+    if (list == nullptr) {                                                \
+      status->status = InvalidArgument("list is null!");                  \
+      return err_val;                                                     \
+    }                                                                     \
+    if (index < 0 || index >= list->response.size()) {                    \
+      status->status = InvalidArgument("index out of bounds");            \
+      return err_val;                                                     \
+    }                                                                     \
+    return list->response[index].accessor;                                \
+  }
+
+TF_DEVICELIST_METHOD(const char*, TF_DeviceListName, name().c_str(), nullptr);
+TF_DEVICELIST_METHOD(const char*, TF_DeviceListType, device_type().c_str(),
+                     nullptr);
+TF_DEVICELIST_METHOD(int64_t, TF_DeviceListMemoryBytes, memory_limit(), -1);
+
+#undef TF_DEVICELIST_METHOD
+
 }  // end extern "C"
 
 // --------------------------------------------------------------------------
@@ -738,8 +767,7 @@ tensorflow::string OutputName(const TF_Output& output) {
 const tensorflow::AttrValue* GetAttrValue(TF_Operation* oper,
                                           const char* attr_name,
                                           TF_Status* status) {
-  const tensorflow::AttrValue* attr =
-      tensorflow::AttrSlice(oper->node.def()).Find(attr_name);
+  const tensorflow::AttrValue* attr = oper->node.attrs().Find(attr_name);
   if (attr == nullptr) {
     status->status =
         InvalidArgument("Operation has no attr named '", attr_name, "'.");
@@ -767,6 +795,7 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
   }
 
   std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
+  dim_vec.reserve(num_dims);
   for (int i = 0; i < num_dims; ++i) {
     dim_vec.push_back(ic->MakeDim(dims[i]));
   }
@@ -1135,7 +1164,7 @@ const char* TF_OperationOpType(TF_Operation* oper) {
 }
 
 const char* TF_OperationDevice(TF_Operation* oper) {
-  return oper->node.def().device().c_str();
+  return oper->node.requested_device().c_str();
 }
 
 int TF_OperationNumOutputs(TF_Operation* oper) {
@@ -1150,8 +1179,8 @@ TF_DataType TF_OperationOutputType(TF_Output oper_out) {
 int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
                                  TF_Status* status) {
   NameRangeMap name_ranges;
-  status->status = NameRangesForNode(oper->node.def(), oper->node.op_def(),
-                                     nullptr, &name_ranges);
+  status->status =
+      NameRangesForNode(oper->node, oper->node.op_def(), nullptr, &name_ranges);
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
@@ -1172,8 +1201,8 @@ TF_DataType TF_OperationInputType(TF_Input oper_in) {
 int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
                                 TF_Status* status) {
   NameRangeMap name_ranges;
-  status->status = NameRangesForNode(oper->node.def(), oper->node.op_def(),
-                                     &name_ranges, nullptr);
+  status->status =
+      NameRangesForNode(oper->node, oper->node.op_def(), &name_ranges, nullptr);
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
@@ -1411,26 +1440,27 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
   }
 }
 
-#define DEFINE_GETATTR(func, c_type, cpp_type, list_field)                     \
-  void func(TF_Operation* oper, const char* attr_name, c_type* value,          \
-            TF_Status* status) {                                               \
-    cpp_type v;                                                                \
-    status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &v); \
-    *value = static_cast<c_type>(v);                                           \
-  }                                                                            \
-  void func##List(TF_Operation* oper, const char* attr_name, c_type* values,   \
-                  int max_values, TF_Status* status) {                         \
-    const auto* attr = GetAttrValue(oper, attr_name, status);                  \
-    if (!status->status.ok()) return;                                          \
-    if (attr->value_case() != tensorflow::AttrValue::kList) {                  \
-      status->status =                                                         \
-          InvalidArgument("Value for '", attr_name, "' is not a list.");       \
-      return;                                                                  \
-    }                                                                          \
-    const auto len = std::min(max_values, attr->list().list_field##_size());   \
-    for (int i = 0; i < len; ++i) {                                            \
-      values[i] = static_cast<c_type>(attr->list().list_field(i));             \
-    }                                                                          \
+#define DEFINE_GETATTR(func, c_type, cpp_type, list_field)                   \
+  void func(TF_Operation* oper, const char* attr_name, c_type* value,        \
+            TF_Status* status) {                                             \
+    cpp_type v;                                                              \
+    status->status =                                                         \
+        tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &v);          \
+    *value = static_cast<c_type>(v);                                         \
+  }                                                                          \
+  void func##List(TF_Operation* oper, const char* attr_name, c_type* values, \
+                  int max_values, TF_Status* status) {                       \
+    const auto* attr = GetAttrValue(oper, attr_name, status);                \
+    if (!status->status.ok()) return;                                        \
+    if (attr->value_case() != tensorflow::AttrValue::kList) {                \
+      status->status =                                                       \
+          InvalidArgument("Value for '", attr_name, "' is not a list.");     \
+      return;                                                                \
+    }                                                                        \
+    const auto len = std::min(max_values, attr->list().list_field##_size()); \
+    for (int i = 0; i < len; ++i) {                                          \
+      values[i] = static_cast<c_type>(attr->list().list_field(i));           \
+    }                                                                        \
   }
 DEFINE_GETATTR(TF_OperationGetAttrInt, int64_t, tensorflow::int64, i);
 DEFINE_GETATTR(TF_OperationGetAttrFloat, float, float, f);
@@ -1441,7 +1471,8 @@ DEFINE_GETATTR(TF_OperationGetAttrType, TF_DataType, DataType, type);
 void TF_OperationGetAttrShape(TF_Operation* oper, const char* attr_name,
                               int64_t* value, int num_dims, TF_Status* status) {
   PartialTensorShape shape;
-  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &shape);
+  status->status =
+      tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &shape);
   if (!status->status.ok()) return;
   auto len = std::min(shape.dims(), num_dims);
   for (int i = 0; i < len; ++i) {
@@ -1455,7 +1486,7 @@ void TF_OperationGetAttrShapeList(TF_Operation* oper, const char* attr_name,
                                   int storage_size, TF_Status* status) {
   std::vector<PartialTensorShape> shapes;
   status->status =
-      tensorflow::GetNodeAttr(oper->node.def(), attr_name, &shapes);
+      tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &shapes);
   if (!status->status.ok()) return;
   auto len = std::min(static_cast<int>(shapes.size()), max_values);
   int64_t* p = storage;
@@ -1522,7 +1553,7 @@ void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
                                TF_Tensor** value, TF_Status* status) {
   *value = nullptr;
   Tensor t;
-  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &t);
+  status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &t);
   if (!status->status.ok()) return;
   *value = new TF_Tensor{static_cast<TF_DataType>(t.dtype()), t.shape(),
                          tensorflow::TensorCApi::Buffer(t)};
@@ -1533,7 +1564,7 @@ void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
                                    TF_Tensor** values, int max_values,
                                    TF_Status* status) {
   std::vector<Tensor> ts;
-  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &ts);
+  status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &ts);
   if (!status->status.ok()) return;
   const auto len = std::min(max_values, static_cast<int>(ts.size()));
   for (int i = 0; i < len; ++i) {
@@ -1558,6 +1589,14 @@ void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,
 }
 
 // TF_Graph functions ---------------------------------------------------------
+
+TF_Graph::TF_Graph()
+    : graph(tensorflow::OpRegistry::Global()),
+      refiner(graph.versions().producer(), graph.op_registry()),
+      num_sessions(0),
+      delete_requested(false),
+      parent(nullptr),
+      parent_inputs(nullptr) {}
 
 TF_Graph* TF_NewGraph() { return new TF_Graph; }
 
@@ -2078,7 +2117,8 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
     const int max_node_id_before = g->graph.num_node_ids();
 
     tensorflow::Scope scope =
-        NewInternalScope(&g->graph, &status->status, &g->refiner);
+        NewInternalScope(&g->graph, &status->status, &g->refiner)
+            .NewSubScope("gradients");
 
     if (dx != nullptr) {
       std::vector<tensorflow::Output> dx_arg;
@@ -2117,7 +2157,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     return new TF_Session(session, graph);
   } else {
     DCHECK_EQ(nullptr, session);
-    return NULL;
+    return nullptr;
   }
 }
 
@@ -2213,7 +2253,7 @@ static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
     const auto num_nodes = graph.num_node_ids();
     if (session->last_num_graph_nodes < num_nodes) {
       GraphDef graph_def;
-      graph_def.mutable_versions()->CopyFrom(graph.versions());
+      *graph_def.mutable_versions() = graph.versions();
       // Fill graph_def with nodes with ids in the range
       // [session->last_num_graph_nodes, num_nodes), that is the nodes
       // added since the last TF_SessionRun() call.
@@ -2285,6 +2325,8 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
                          int ninputs, const TF_Output* outputs, int noutputs,
                          const TF_Operation* const* target_opers, int ntargets,
                          const char** handle, TF_Status* status) {
+  *handle = nullptr;
+
   if (!ExtendSessionGraphHelper(session, status)) {
     return;
   }

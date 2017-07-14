@@ -89,8 +89,8 @@ static Output BuildPlaceHolderOp(const string& name, const DataType dt,
                                  const TensorShape& tensor_shape, Scope* root) {
   const Scope& scope = root->WithOpName(name);
   Node* ret;
-  const string unique_name = scope.GetUniqueNameForOp("PlaceholderV2");
-  NodeBuilder builder = NodeBuilder(unique_name, "PlaceholderV2")
+  const string unique_name = scope.GetUniqueNameForOp("Placeholder");
+  NodeBuilder builder = NodeBuilder(unique_name, "Placeholder")
                             .Attr("dtype", dt)
                             .Attr("shape", tensor_shape);
   scope.UpdateBuilder(&builder);
@@ -269,13 +269,13 @@ static Status RewriteGraphToFusedGraph(const GraphDef& original_graph,
 // 5. Fuse the original graph and run the inference the new fused graph
 TEST(RemoteFusedExecuteGraphOp, EndToEndTest) {
   // 5.1 Load original graph
-  const GraphDef original_graph =
-      RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-          NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef original_graph;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &original_graph));
 
   // 5.2 Fuse graph
   GraphDef fused_graph;
-  TF_CHECK_OK(RewriteGraphToFusedGraph(original_graph, &fused_graph));
+  TF_ASSERT_OK(RewriteGraphToFusedGraph(original_graph, &fused_graph));
 
   // 5.3 Setup session
   std::vector<Tensor> output_tensors;

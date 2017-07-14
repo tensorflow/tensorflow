@@ -270,7 +270,7 @@ func typeOf(dt DataType, shape []int64) reflect.Type {
 	if ret == nil {
 		panic(bug("DataType %v is not supported", dt))
 	}
-	for _ = range shape {
+	for range shape {
 		ret = reflect.SliceOf(ret)
 	}
 	return ret

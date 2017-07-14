@@ -49,11 +49,14 @@ void DelayedNumpyDecref(void* data, size_t len, void* obj) {
 // Actually dereferences cached numpy arrays. REQUIRES being called while
 // holding the GIL.
 void ClearDecrefCache() {
-  mutex_lock ml(*DelayedDecrefLock());
-  for (void* obj : *DecrefCache()) {
+  std::vector<void*> cache_copy;
+  {
+    mutex_lock ml(*DelayedDecrefLock());
+    cache_copy.swap(*DecrefCache());
+  }
+  for (void* obj : cache_copy) {
     Py_DECREF(reinterpret_cast<PyObject*>(obj));
   }
-  DecrefCache()->clear();
 }
 
 // Structure which keeps a reference to a Tensor alive while numpy has a pointer
@@ -81,25 +84,25 @@ PyTypeObject TensorReleaserType = {
     0,                                /* tp_itemsize */
     /* methods */
     (destructor)TensorReleaser_dealloc, /* tp_dealloc */
-    0,                                  /* tp_print */
-    0,                                  /* tp_getattr */
-    0,                                  /* tp_setattr */
-    0,                                  /* tp_compare */
-    0,                                  /* tp_repr */
-    0,                                  /* tp_as_number */
-    0,                                  /* tp_as_sequence */
-    0,                                  /* tp_as_mapping */
-    0,                                  /* tp_hash */
-    0,                                  /* tp_call */
-    0,                                  /* tp_str */
-    0,                                  /* tp_getattro */
-    0,                                  /* tp_setattro */
-    0,                                  /* tp_as_buffer */
+    nullptr,                            /* tp_print */
+    nullptr,                            /* tp_getattr */
+    nullptr,                            /* tp_setattr */
+    nullptr,                            /* tp_compare */
+    nullptr,                            /* tp_repr */
+    nullptr,                            /* tp_as_number */
+    nullptr,                            /* tp_as_sequence */
+    nullptr,                            /* tp_as_mapping */
+    nullptr,                            /* tp_hash */
+    nullptr,                            /* tp_call */
+    nullptr,                            /* tp_str */
+    nullptr,                            /* tp_getattro */
+    nullptr,                            /* tp_setattro */
+    nullptr,                            /* tp_as_buffer */
     Py_TPFLAGS_DEFAULT,                 /* tp_flags */
     "Wrapped TensorFlow Tensor",        /* tp_doc */
-    0,                                  /* tp_traverse */
-    0,                                  /* tp_clear */
-    0,                                  /* tp_richcompare */
+    nullptr,                            /* tp_traverse */
+    nullptr,                            /* tp_clear */
+    nullptr,                            /* tp_richcompare */
 };
 
 Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,

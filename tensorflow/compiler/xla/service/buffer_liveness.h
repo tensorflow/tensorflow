@@ -61,6 +61,9 @@ class BufferLiveness {
   const TuplePointsToAnalysis& points_to_analysis() const {
     return *points_to_analysis_;
   }
+  TuplePointsToAnalysis& mutable_points_to_analysis() const {
+    return *points_to_analysis_;
+  }
 
   // Returns the underlying hlo ordering used for this liveness analysis.
   const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }

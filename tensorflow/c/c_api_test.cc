@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -887,7 +888,7 @@ class CSession {
     TF_DeleteSessionOptions(opts);
   }
 
-  CSession(TF_Session* session) { session_ = session; }
+  explicit CSession(TF_Session* session) : session_(session) {}
 
   ~CSession() {
     TF_Status* s = TF_NewStatus();
@@ -911,11 +912,13 @@ class CSession {
     for (TF_Operation* o : outputs) {
       outputs_.emplace_back(TF_Output{o, 0});
     }
+    output_values_.resize(outputs_.size());
   }
 
   void SetOutputs(const std::vector<TF_Output>& outputs) {
     ResetOutputValues();
     outputs_ = outputs;
+    output_values_.resize(outputs_.size());
   }
 
   void SetTargets(std::initializer_list<TF_Operation*> targets) {
@@ -1345,7 +1348,7 @@ class CApiWhileLoopTest : public ::testing::Test {
     EXPECT_EQ(expected_value, *data);
   }
 
-  // Create a valid conditonal graph. Useful for testing unrelated errors.
+  // Create a valid conditional graph. Useful for testing unrelated errors.
   void CreateCondGraph() {
     TF_Operation* one = ScalarConst(1, params_->cond_graph, s_);
     TF_Operation* less_than =
@@ -1765,13 +1768,13 @@ class CApiGradientsTest : public ::testing::Test {
       const float const3_val[] = {1.0, 1.0, 1.0, 1.0};
       const3 = FloatConst2x2(expected_graph_, s_, const3_val, "GradInputs");
     } else {
-      const3 = OnesLike(expected_graph_, s_, matmul, "OnesLike");
+      const3 = OnesLike(expected_graph_, s_, matmul, "gradients/OnesLike");
     }
 
-    TF_Operation* matmul1 =
-        MatMul(expected_graph_, s_, const3, const1, "MatMul_1", false, true);
-    TF_Operation* matmul2 =
-        MatMul(expected_graph_, s_, const0, const3, "MatMul_2", true, false);
+    TF_Operation* matmul1 = MatMul(expected_graph_, s_, const3, const1,
+                                   "gradients/MatMul", false, true);
+    TF_Operation* matmul2 = MatMul(expected_graph_, s_, const0, const3,
+                                   "gradients/MatMul_1", true, false);
     expected_grad_outputs[0] = {matmul1, 0};
     expected_grad_outputs[1] = {matmul2, 0};
   }

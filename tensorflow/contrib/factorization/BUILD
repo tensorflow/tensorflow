@@ -171,10 +171,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:embedding_ops",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -214,7 +215,11 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "noasan",  # times out b/63678675
+        "nomsan",
+    ],
 )
 
 # Kernel tests

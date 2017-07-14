@@ -1,7 +1,7 @@
 # Installing TensorFlow for C
 
 TensorFlow provides a C API defined in
-[`c_api.h`](https://github.com/tensorflow/tensorflow/tree/master/c/c_api.h),
+[`c_api.h`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/c/c_api.h),
 which is suitable for
 [building bindings for other languages](https://www.tensorflow.org/extend/language_bindings).
 The API leans towards simplicity and uniformity rather than convenience.
@@ -73,7 +73,7 @@ After installing TensorFlow for C, enter the following code into a file named
 #include <tensorflow/c/c_api.h>
 
 int main() {
-  printf(“Hello from TensorFlow C library version %s\n”, TF_Version());
+  printf("Hello from TensorFlow C library version %s\n", TF_Version());
   return 0;
 }
 ```

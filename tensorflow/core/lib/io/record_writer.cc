@@ -80,15 +80,12 @@ RecordWriter::RecordWriter(WritableFile* dest,
 }
 
 RecordWriter::~RecordWriter() {
-#if !defined(IS_SLIM_BUILD)
-  if (IsZlibCompressed(options_)) {
-    Status s = dest_->Close();
+  if (dest_ != nullptr) {
+    Status s = Close();
     if (!s.ok()) {
       LOG(ERROR) << "Could not finish writing file: " << s;
     }
-    delete dest_;
   }
-#endif  // IS_SLIM_BUILD
 }
 
 static uint32 MaskedCrc(const char* data, size_t n) {
@@ -111,6 +108,18 @@ Status RecordWriter::WriteRecord(StringPiece data) {
   TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
   TF_RETURN_IF_ERROR(dest_->Append(data));
   return dest_->Append(StringPiece(footer, sizeof(footer)));
+}
+
+Status RecordWriter::Close() {
+#if !defined(IS_SLIM_BUILD)
+  if (IsZlibCompressed(options_)) {
+    Status s = dest_->Close();
+    delete dest_;
+    dest_ = nullptr;
+    return s;
+  }
+#endif  // IS_SLIM_BUILD
+  return Status::OK();
 }
 
 Status RecordWriter::Flush() {

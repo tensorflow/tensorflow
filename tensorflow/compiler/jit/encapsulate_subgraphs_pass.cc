@@ -25,9 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -113,8 +111,8 @@ class Encapsulator {
     // returned by _Retval nodes.
     std::unique_ptr<Graph> graph;
 
-    // Which device are these nodes on? Used both to check that all nodes
-    // are assigned to the same device, and to assign a device to the call node.
+    // Which device are these nodes on? Used to assign a device to the call
+    // node.
     string device;
 
     // NodeDef for the function call node.
@@ -165,7 +163,7 @@ static const char* const kRetValOp = "_Retval";
 // none.
 string Encapsulator::GetFunctionNameAttr(Node const* node) const {
   string attr;
-  if (!GetNodeAttr(node->def(), group_attribute_, &attr).ok()) {
+  if (!GetNodeAttr(node->attrs(), group_attribute_, &attr).ok()) {
     attr.clear();
   }
   return attr;
@@ -178,8 +176,7 @@ Status Encapsulator::SplitIntoSubgraphs() {
   std::unordered_map<Node*, Node*> node_images;
 
   // Copy all marked nodes to a subgraph. Do nothing for unmarked nodes.
-  for (Node* node : graph_in_->nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
+  for (Node* node : graph_in_->op_nodes()) {
     string func_id = GetFunctionNameAttr(node);
     if (func_id.empty()) continue;
 
@@ -193,16 +190,10 @@ Status Encapsulator::SplitIntoSubgraphs() {
     image->ClearAttr(group_attribute_);
     node_images[node] = image;
 
-    // Check the device matches any existing device.
-    string device = node->assigned_device_name().empty()
-                        ? node->def().device()
-                        : node->assigned_device_name();
-
     if (subgraph.device.empty()) {
-      subgraph.device = device;
-    } else if (subgraph.device != device) {
-      s.Update(errors::InvalidArgument(
-          "Mismatched devices for nodes to be grouped by Encapsulator"));
+      subgraph.device = node->assigned_device_name().empty()
+                            ? node->requested_device()
+                            : node->assigned_device_name();
     }
   }
 
@@ -445,8 +436,7 @@ Status Encapsulator::BuildOutputGraph(bool parallel_checking,
   std::unordered_map<const Node*, Node*> node_images;
 
   // Copy all unmarked nodes to the output graph.
-  for (Node* node : graph_in_->nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
+  for (Node* node : graph_in_->op_nodes()) {
     string func_id = GetFunctionNameAttr(node);
 
     // Don't copy nodes that going to be encapsulated, unless parallel checking
@@ -590,10 +580,10 @@ Status EncapsulateSubgraphsInFunctions(
 
 // Finds the types of the _Arg nodes, indexed by position.
 static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
-  for (Node* n : graph.nodes()) {
+  for (Node* n : graph.op_nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       if (index < 0 || index >= types->size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -607,10 +597,10 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
 // 'permutation' that maps old indices to new indices.
 static Status RenumberArguments(Graph* graph,
                                 const std::vector<int>& permutation) {
-  for (Node* n : graph->nodes()) {
+  for (Node* n : graph->op_nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       if (index < 0 || index >= permutation.size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -713,7 +703,7 @@ Status EncapsulateSubgraphsPass::Run(
 bool IsXlaCompiledKernel(const Node& node) {
   bool is_compiled = false;
   bool has_compilation_attr =
-      GetNodeAttr(node.def(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
+      GetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
       is_compiled;
   return has_compilation_attr ? is_compiled : false;
 }

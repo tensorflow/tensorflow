@@ -33,13 +33,16 @@ message OpInfo {
   // Custom parameters impacting the behavior of the op.
   map<string, AttrValue> attr = 2;
 
-  // Input types, shapes and values if known.
+  // Input data types, shapes and values if known.
   message TensorProperties {
     DataType dtype = 1;
     TensorShapeProto shape = 2;
     TensorProto value = 3;
   };
   repeated TensorProperties inputs = 3;
+
+  // Optional description of the op outputs
+  repeated TensorProperties outputs = 5;
 
   // Device on which the operation is run.
   DeviceProperties device = 4;

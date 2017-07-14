@@ -27,6 +27,19 @@ from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
+
+
+def _create_parser(base_dir):
+  # create a simple parser that pulls the export_version from the directory.
+  def parser(path):
+    match = re.match("^" + compat.as_str_any(base_dir) + "/(\\d+)$",
+                     compat.as_str_any(path.path))
+    if not match:
+      return None
+    return path._replace(export_version=int(match.group(1)))
+
+  return parser
 
 
 class GcTest(test_util.TensorFlowTestCase):
@@ -102,20 +115,24 @@ class GcTest(test_util.TensorFlowTestCase):
     # add a base_directory to ignore
     gfile.MakeDirs(os.path.join(base_dir, "ignore"))
 
-    # create a simple parser that pulls the export_version from the directory.
-    def parser(path):
-      match = re.match("^" + base_dir + "/(\\d+)$", path.path)
-      if not match:
-        return None
-      return path._replace(export_version=int(match.group(1)))
-
     self.assertEquals(
-        gc.get_paths(
-            base_dir, parser=parser), [
-                gc.Path(os.path.join(base_dir, "0"), 0),
-                gc.Path(os.path.join(base_dir, "1"), 1),
-                gc.Path(os.path.join(base_dir, "2"), 2)
-            ])
+        gc.get_paths(base_dir, _create_parser(base_dir)),
+        [
+            gc.Path(os.path.join(base_dir, "0"), 0),
+            gc.Path(os.path.join(base_dir, "1"), 1),
+            gc.Path(os.path.join(base_dir, "2"), 2)
+        ])
+
+  def testMixedStrTypes(self):
+    temp_dir = compat.as_bytes(test.get_temp_dir())
+
+    for sub_dir in ['str', b'bytes', u'unicode']:
+      base_dir = os.path.join(
+          (temp_dir if isinstance(sub_dir, bytes) else temp_dir.decode()),
+          sub_dir)
+      self.assertFalse(gfile.Exists(base_dir))
+      gfile.MakeDirs(os.path.join(compat.as_str_any(base_dir), "42"))
+      gc.get_paths(base_dir, _create_parser(base_dir))
 
 
 if __name__ == "__main__":

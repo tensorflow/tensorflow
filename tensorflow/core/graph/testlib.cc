@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -36,6 +37,10 @@ namespace tensorflow {
 REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), HostConstantOp);
 REGISTER_KERNEL_BUILDER(
     Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), HostConstantOp);
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("HostConst").Device(DEVICE_SYCL).HostMemory("output"), HostConstantOp);
+#endif // TENSORFLOW_USE_SYCL
 
 // Register the HostConst Op
 // Returns a constant tensor on the host.  Useful for writing C++ tests
@@ -416,11 +421,12 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   return ret;
 }
 
-Node* Gather(Graph* g, Node* in0, Node* in1) {
+Node* Gather(Graph* g, Node* in0, Node* in1, Node* axis) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Gather")
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "GatherV2")
                   .Input(in0)
                   .Input(in1)
+                  .Input(axis)
                   .Finalize(g, &ret));
   return ret;
 }

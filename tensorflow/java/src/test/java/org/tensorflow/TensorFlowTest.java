@@ -33,7 +33,7 @@ public class TensorFlowTest {
   public void registeredOpList() {
     // Would be nice to actually parse the output as a tensorflow.OpList protocol buffer message,
     // but as of May 2017, bazel support for generating Java code from protocol buffer definitions
-    // was not sorted out. Revisit? Till then, at least excercise the code.
+    // was not sorted out. Revisit? Till then, at least exercise the code.
     assertTrue(TensorFlow.registeredOpList().length > 0);
   }
 }

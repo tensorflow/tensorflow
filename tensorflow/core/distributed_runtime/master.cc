@@ -25,7 +25,7 @@ limitations under the License.
 // A Master discovers remote devices on-demand and keeps track of
 // statistics of those remote devices.
 //
-// Each session analyses the graph, places nodes across available
+// Each session analyzes the graph, places nodes across available
 // devices, and ultimately drives the graph computation by initiating
 // RunGraph on the workers.
 
@@ -524,6 +524,26 @@ void Master::CloseSession(const CloseSessionRequest* req,
 void Master::ListDevices(const ListDevicesRequest* req,
                          ListDevicesResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
+    if (!req->session_handle().empty()) {
+      MasterSession* session = nullptr;
+      {
+        mutex_lock l(mu_);
+        session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+        if (session != nullptr) {
+          session->Ref();
+        }
+      }
+      if (session == nullptr) {
+        done(errors::InvalidArgument(
+            "Session ", req->session_handle(),
+            " is not found. Possibly, this master has restarted."));
+        return;
+      }
+      core::ScopedUnref ref(session);
+      Status s = session->ListDevices(resp);
+      done(s);
+      return;
+    }
     std::vector<std::unique_ptr<Device>> remote_devices;
     Status s = DeviceFinder::GetRemoteDevices({}, env_, env_->worker_cache,
                                               &remote_devices);

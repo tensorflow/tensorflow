@@ -28,7 +28,7 @@ cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
+        "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//tensorflow/core/kernels/hexagon:graph_transferer",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ],

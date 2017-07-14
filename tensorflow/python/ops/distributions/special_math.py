@@ -324,7 +324,7 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
 
 
 def _log_ndtr_lower(x, series_order):
-  """Asymptotic expansion version of `Log[cdf(x)]`, apppropriate for `x<<-1`."""
+  """Asymptotic expansion version of `Log[cdf(x)]`, appropriate for `x<<-1`."""
   x_2 = math_ops.square(x)
   # Log of the term multiplying (1 + sum)
   log_scale = -0.5 * x_2 - math_ops.log(-x) - 0.5 * math.log(2. * math.pi)

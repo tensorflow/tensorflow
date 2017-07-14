@@ -46,14 +46,14 @@ For example,
   path_list = gc.get_paths("/tmp", parser)  # contains all ten Paths
 
   every_fifth = gc.mod_export_version(5)
-  print every_fifth(path_list) # shows ["/tmp/0", "/tmp/5"]
+  print(every_fifth(path_list))  # shows ["/tmp/0", "/tmp/5"]
 
   largest_three = gc.largest_export_versions(3)
-  print largest_three(all_paths)  # shows ["/tmp/7", "/tmp/8", "/tmp/9"]
+  print(largest_three(all_paths))  # shows ["/tmp/7", "/tmp/8", "/tmp/9"]
 
   both = gc.union(every_fifth, largest_three)
-  print both(all_paths)  # shows ["/tmp/0", "/tmp/5",
-                         #        "/tmp/7", "/tmp/8", "/tmp/9"]
+  print(both(all_paths))  # shows ["/tmp/0", "/tmp/5",
+                          #        "/tmp/7", "/tmp/8", "/tmp/9"]
   # delete everything not in 'both'
   to_delete = gc.negation(both)
   for p in to_delete(all_paths):
@@ -71,6 +71,7 @@ import math
 import os
 
 from tensorflow.python.platform import gfile
+from tensorflow.python.util import compat
 
 Path = collections.namedtuple('Path', 'path export_version')
 
@@ -199,7 +200,9 @@ def get_paths(base_dir, parser):
   raw_paths = gfile.ListDirectory(base_dir)
   paths = []
   for r in raw_paths:
-    p = parser(Path(os.path.join(base_dir, r), None))
+    p = parser(Path(os.path.join(compat.as_str_any(base_dir),
+                                 compat.as_str_any(r)),
+                    None))
     if p:
       paths.append(p)
   return sorted(paths)

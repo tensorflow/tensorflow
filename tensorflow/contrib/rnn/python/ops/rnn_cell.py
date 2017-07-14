@@ -79,7 +79,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
   The default non-peephole implementation is based on:
 
-    http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
+    http://www.bioinf.jku.at/publications/older/2604.pdf
 
   S. Hochreiter and J. Schmidhuber.
   "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
@@ -462,7 +462,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         state is clipped by this value prior to the cell output activation.
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
-      num_unit_shards: (optional) int, defualt 1, How to split the weight
+      num_unit_shards: (optional) int, default 1, How to split the weight
         matrix. If > 1,the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
@@ -918,7 +918,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
         state is clipped by this value prior to the cell output activation.
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
-      num_unit_shards: (optional) int, defualt 1, How to split the weight
+      num_unit_shards: (optional) int, default 1, How to split the weight
         matrix. If > 1,the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
@@ -1110,14 +1110,14 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
     if input_size is None:
       input_size = inputs.get_shape().as_list()[1]
     inputs = _linear([inputs, attns], input_size, True)
-    lstm_output, new_state = self._cell(inputs, state)
+    cell_output, new_state = self._cell(inputs, state)
     if self._state_is_tuple:
       new_state_cat = array_ops.concat(nest.flatten(new_state), 1)
     else:
       new_state_cat = new_state
     new_attns, new_attn_states = self._attention(new_state_cat, attn_states)
     with vs.variable_scope("attn_output_projection"):
-      output = _linear([lstm_output, new_attns], self._attn_size, True)
+      output = _linear([cell_output, new_attns], self._attn_size, True)
     new_attn_states = array_ops.concat(
         [new_attn_states, array_ops.expand_dims(output, 1)], 1)
     new_attn_states = array_ops.reshape(
@@ -1805,12 +1805,12 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
           period during which the gates are open.
       trainable_ratio_on: bool, weather ratio_on is trainable.
       period_init_min: float or scalar float Tensor. With value > 0.
-          Minimum value of the initalized period.
+          Minimum value of the initialized period.
           The period values are initialized by drawing from the distribution:
           e^U(log(period_init_min), log(period_init_max))
           Where U(.,.) is the uniform distribution.
       period_init_max: float or scalar float Tensor.
-          With value > period_init_min. Maximum value of the initalized period.
+          With value > period_init_min. Maximum value of the initialized period.
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope. If not `True`, and the existing scope already has
         the given variables, an error is raised.

@@ -36,7 +36,7 @@ flags.DEFINE_integer("num_examples", 10, "Number of examples to generate")
 FLAGS = flags.FLAGS
 
 def create_examples(num_examples, input_mean):
-  """Create ExampleProto's containg data."""
+  """Create ExampleProto's containing data."""
   ids = np.arange(num_examples).reshape([num_examples, 1])
   inputs = np.random.randn(num_examples, 1) + input_mean
   target = inputs - input_mean

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -58,23 +59,23 @@ TEST_F(HloOrderingTest, LastUseScheduledFirst) {
   auto sub = builder.AddInstruction(
       HloInstruction::CreateBinary(vec, HloOpcode::kSubtract, add, negate));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
   TF_ASSIGN_OR_ASSERT_OK(
       SequentialHloOrdering::HloModuleSequence sequence,
-      CreateMemoryMinimizingSequence(module, [](const LogicalBuffer& buffer) {
+      CreateMemoryMinimizingSequence(*module, [](const LogicalBuffer& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());
       }));
   // Verify that all instructions are in the sequence.
-  EXPECT_EQ(module.entry_computation()->instruction_count(),
-            sequence.at(module.entry_computation()).size());
+  EXPECT_EQ(module->entry_computation()->instruction_count(),
+            sequence.at(module->entry_computation()).size());
 
   // The first instruction should be the parameter and the last the root "sub".
-  EXPECT_EQ(param, sequence.at(module.entry_computation()).front());
-  EXPECT_EQ(sub, sequence.at(module.entry_computation()).back());
+  EXPECT_EQ(param, sequence.at(module->entry_computation()).front());
+  EXPECT_EQ(sub, sequence.at(module->entry_computation()).back());
 
-  SequentialHloOrdering ordering(&module, sequence);
+  SequentialHloOrdering ordering(module.get(), sequence);
   EXPECT_TRUE(ordering.ExecutesBefore(add, negate));
 }
 
@@ -96,14 +97,14 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   //   %c = Constant(42.0f)
   //
   // This results in a diamond-shaped callgraph.
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto builder_c = HloComputation::Builder("C");
   HloInstruction* c = builder_c.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   HloComputation* computation_c =
-      module.AddEmbeddedComputation(builder_c.Build());
+      module->AddEmbeddedComputation(builder_c.Build());
 
   auto builder_b = HloComputation::Builder("B");
   builder_b.AddInstruction(
@@ -111,22 +112,22 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   HloInstruction* b = builder_b.AddInstruction(
       HloInstruction::CreateCall(scalar_shape, {}, computation_c));
   HloComputation* computation_b =
-      module.AddEmbeddedComputation(builder_b.Build());
+      module->AddEmbeddedComputation(builder_b.Build());
 
   auto builder_a = HloComputation::Builder("A");
   HloInstruction* a = builder_a.AddInstruction(
       HloInstruction::CreateCall(scalar_shape, {}, computation_c));
   HloComputation* computation_a =
-      module.AddEmbeddedComputation(builder_a.Build());
+      module->AddEmbeddedComputation(builder_a.Build());
 
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* x = builder.AddInstruction(
       HloInstruction::CreateCall(scalar_shape, {}, computation_a));
   HloInstruction* y = builder.AddInstruction(
       HloInstruction::CreateCall(scalar_shape, {x}, computation_b));
-  module.AddEntryComputation(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
-  DependencyHloOrdering ordering(&module);
+  DependencyHloOrdering ordering(module.get());
   EXPECT_TRUE(ordering.ExecutesBefore(x, y));
   EXPECT_FALSE(ordering.ExecutesBefore(y, x));
 
@@ -155,65 +156,71 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   EXPECT_FALSE(ordering.ExecutesBefore(y, c));
 }
 
-class MinimumMemoryForSequenceTest : public HloTestBase {};
-
-TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
-  HloModule module(TestName());
+TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
+  // Tests the ordering of instructions in the body and condition of a while
+  // instruction. HLO code:
+  //
+  // body(F32[]) %param):
+  //   %negate = Negate(%param)
+  //
+  // condition(F32[] %param):
+  //   %convert = Convert<PRED>(%param)
+  //
+  // entry:
+  //   %constant = Constant(1.0)
+  //   return While(%constant, body, condition)
+  //
+  auto module = CreateNewModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
 
-  auto cond_builder = HloComputation::Builder("WhileCond");
-  // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
-  HloInstruction* cond_param = cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
-  HloInstruction* cond_iter = cond_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 0));
-  HloInstruction* cond_data = cond_builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
-  // Free cond_param[] (16 bytes), Alloc PRED[] (1 byte)
-  HloInstruction* cond_lt = cond_builder.AddInstruction(
-      HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
-                                   HloOpcode::kLt, cond_iter, cond_data));
-  HloComputation* cond_computation =
-      module.AddEmbeddedComputation(cond_builder.Build());
+  auto body_builder = HloComputation::Builder("body");
+  auto body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "body_param"));
+  auto negate = body_builder.AddInstruction(HloInstruction::CreateUnary(
+      scalar_shape, HloOpcode::kNegate, body_param));
+  HloComputation* body = module->AddEmbeddedComputation(body_builder.Build());
 
-  auto body_builder = HloComputation::Builder("WhileBody");
-  // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
-  HloInstruction* body_param = body_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
-  HloComputation* body_computation =
-      module.AddEmbeddedComputation(body_builder.Build());
+  auto cond_builder = HloComputation::Builder("condition");
+  auto cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "cond_param"));
+  auto convert = cond_builder.AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeShape(xla::PRED, {}), cond_param));
+  HloComputation* condition =
+      module->AddEmbeddedComputation(cond_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
-  // Entry params: 8 bytes (4 bytes per param), TOTAL=8
-  HloInstruction* iter = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "param_iter"));
-  HloInstruction* data = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "param_data"));
-  // Tuple: 16 bytes (8 bytes per pointer), TOTAL=24
-  HloInstruction* tuple =
-      builder.AddInstruction(HloInstruction::CreateTuple({iter, data}));
-  // While: 8 bytes (4 bytes per element), TOTAL=32
-  // Both cond and body use a max of 24 bytes, TOTAL=56
-  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
-      tuple_shape, cond_computation, body_computation, tuple));
-  HloComputation* entry_computation =
-      module.AddEntryComputation(builder.Build());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto xla_while = builder.AddInstruction(
+      HloInstruction::CreateWhile(scalar_shape, condition, body, constant));
+  module->AddEntryComputation(builder.Build());
 
-  auto size_fn = [](const LogicalBuffer& buffer) {
-    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
-  };
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, xla_while));
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, cond_param));
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, convert));
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, body_param));
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, negate));
 
-  SequentialHloOrdering::HloModuleSequence module_sequence;
-  module_sequence[cond_computation] = {cond_param, cond_iter, cond_data,
-                                       cond_lt};
-  module_sequence[body_computation] = {body_param};
-  module_sequence[entry_computation] = {iter, data, tuple, while_op};
-  EXPECT_EQ(56,
-            MinimumMemoryForSequence(module_sequence, size_fn).ValueOrDie());
+  // The while should be unordered relative to the body and condition
+  // instructions.
+  EXPECT_FALSE(ordering.ExecutesBefore(xla_while, body_param));
+  EXPECT_FALSE(ordering.ExecutesBefore(xla_while, cond_param));
+  EXPECT_FALSE(ordering.ExecutesBefore(body_param, xla_while));
+  EXPECT_FALSE(ordering.ExecutesBefore(cond_param, xla_while));
+
+  // Condition instructions should be ordered before body instructions.
+  EXPECT_TRUE(ordering.ExecutesBefore(cond_param, body_param));
+  EXPECT_TRUE(ordering.ExecutesBefore(convert, body_param));
+  EXPECT_TRUE(ordering.ExecutesBefore(cond_param, negate));
+  EXPECT_TRUE(ordering.ExecutesBefore(convert, negate));
+
+  EXPECT_FALSE(ordering.ExecutesBefore(body_param, cond_param));
 }
 
 }  // namespace
-
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

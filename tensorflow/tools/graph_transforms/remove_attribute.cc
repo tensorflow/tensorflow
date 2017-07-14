@@ -54,7 +54,7 @@ Status RemoveAttribute(const GraphDef& input_graph_def,
   output_graph_def->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
-    new_node->CopyFrom(node);
+    *new_node = node;
     if (((op_name == "*") || (op_name == node.op())) &&
         (node.attr().count(attribute_name))) {
       new_node->mutable_attr()->erase(attribute_name);

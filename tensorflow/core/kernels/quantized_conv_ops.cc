@@ -211,7 +211,7 @@ class Im2ColConvFunctor {
         ++warning_count;
         LOG(WARNING)
             << "For kernel '" << context->op_kernel().name() << "' from input '"
-            << context->op_kernel().def().input(0)
+            << context->op_kernel().requested_input(0)
             << "': Zero is not representable in the quantized range used by the"
             << " input. This means QuantizedConv2d has to fall back to a slow"
             << " implementation, since the border of zero values can't be"

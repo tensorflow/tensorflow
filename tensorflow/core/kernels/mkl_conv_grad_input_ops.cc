@@ -295,7 +295,7 @@ class MklConv2DCustomBackpropInputOp : public OpKernel {
         dnnDelete_F32(mkl_convert_filter);
       } else {
         // If we do not need any layout conversion for filter, then
-        // we direclty assign input filter to resources[].
+        // we directly assign input filter to resources[].
         conv_res[dnnResourceFilter] =
             static_cast<void*>(const_cast<T*>(filter.flat<T>().data()));
       }

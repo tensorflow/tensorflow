@@ -30,9 +30,11 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -61,6 +63,9 @@ class HloInstruction {
     kTransposeDot,        // Fused into a dot with transposed operands.
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.
+
+    kCustom,              // Custom category for backend-specific fusions that
+                          // do not match any of the more specific ones.
   };
 
   ~HloInstruction();
@@ -129,6 +134,13 @@ class HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
+  // Creates a reduce-precision op, where operand is the data to reduce in
+  // precision, and exponent_bits and mantissa_bits describe the precision to
+  // reduce it to.
+  static std::unique_ptr<HloInstruction> CreateReducePrecision(
+      const Shape& shape, HloInstruction* operand, const int exponent_bits,
+      const int mantissa_bits);
+
   // Creates a cross replica sum op.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
       const Shape& shape, HloInstruction* operand);
@@ -165,7 +177,8 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateSlice(
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> start_indices,
-      tensorflow::gtl::ArraySlice<int64> limit_indices);
+      tensorflow::gtl::ArraySlice<int64> limit_indices,
+      tensorflow::gtl::ArraySlice<int64> strides);
 
   // Creates a slice instruction, where the first operand is sliced by
   // start indices specified in the second operand, and by size specfied in
@@ -205,6 +218,17 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReduceWindow(
       const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
       const Window& window, HloComputation* reduce_computation);
+
+  // Creates a batch-norm-training instruction.
+  static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
+      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+      HloInstruction* offset, float epsilon, int64 feature_index);
+
+  // Creates a batch-norm-grad instruction.
+  static std::unique_ptr<HloInstruction> CreateBatchNormGrad(
+      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+      HloInstruction* mean, HloInstruction* variance,
+      HloInstruction* grad_output, float epsilon, int64 feature_index);
 
   // Creates a scatter computation that scatters the `source` array to the
   // selected indices of each window.
@@ -500,14 +524,12 @@ class HloInstruction {
   // As ToString, but returns a shorter string.
   string ToShortString() const;
 
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const;
+
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   string ToCategory() const;
-
-  // Returns the string concatenation of parent name and this instructions
-  // name. This name is guaranteed to be unique among all instructions in the
-  // HloModule.
-  string FullyQualifiedName() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
   //
@@ -522,6 +544,18 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
   int64 channel_id() const { return channel_id_; }
 
+  // Returns feature_index field associated with the instruction. The index
+  // represents the index of the feature dimension.
+  //
+  // Precondition: opcode() == HloOpcode::kBatchNormTraining
+  int64 feature_index() const { return feature_index_; }
+
+  // Returns a epsilon value associated with the instruction. The is a small
+  // number added to the variance to avoid divide-by-zero error.
+  //
+  // Precondition: opcode() == HloOpcode::kBatchNormTraining
+  float epsilon() const { return epsilon_; }
+
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
   // and is target-dependent.
@@ -531,7 +565,7 @@ class HloInstruction {
   // Returns a tag to be used in tracing.
   //
   // Precondition: opcode() == HloOpcode::kTrace
-  const string& tracing_tag() const;
+  string TracingTag() const;
 
   // Returns whether the instruction is a constant.
   bool IsConstant() const;
@@ -581,6 +615,13 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kFusion
   const std::vector<HloInstruction*>& fused_parameters() const;
 
+  // Returns true if this instruction is a fusion instruction that generates
+  // multiple outputs.
+  const bool IsMultiOutputFusion() const {
+    return (opcode() == HloOpcode::kFusion &&
+            fused_expression_root()->opcode() == HloOpcode::kTuple);
+  }
+
   FusionKind fusion_kind() const {
     CHECK_EQ(HloOpcode::kFusion, opcode_);
     return fusion_kind_;
@@ -626,6 +667,15 @@ class HloInstruction {
     return slice_limits_;
   }
 
+  // Returns the stride in the given dimension for a slice node.
+  //
+  // Precondition: opcode() == HloOpcode::kSlice
+  int64 slice_strides(int64 dimension) const {
+    CHECK_EQ(HloOpcode::kSlice, opcode_);
+    return slice_strides_[dimension];
+  }
+  const std::vector<int64>& slice_strides() const { return slice_strides_; }
+
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
   //
@@ -637,6 +687,22 @@ class HloInstruction {
   const std::vector<int64>& dynamic_slice_sizes() const {
     CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
     return dynamic_slice_sizes_;
+  }
+
+  // Returns the number of exponent bits for a reduce-precision node.
+  //
+  // Precondition: opcode() == HloOpcode::kReducePrecision
+  int32 exponent_bits() const {
+    CHECK_EQ(HloOpcode::kReducePrecision, opcode_);
+    return exponent_bits_;
+  }
+
+  // Returns the number of mantissa bits for a reduce-precision node.
+  //
+  // Precondition: opcode() == HloOpcode::kReducePrecision
+  int32 mantissa_bits() const {
+    CHECK_EQ(HloOpcode::kReducePrecision, opcode_);
+    return mantissa_bits_;
   }
 
   // Returns data on the window in a windowed operation such as
@@ -686,6 +752,16 @@ class HloInstruction {
     return called_computations_;
   }
 
+  // Replaces all called computations based on a map function. This is needed
+  // when we clone hlo_computations and want to let the instructions to point
+  // to the newly cloned nodes.
+  void ReplaceCalledComputations(
+      std::function<HloComputation*(HloComputation*)> map_function) {
+    for (int64 i = 0; i < called_computations_.size(); ++i) {
+      called_computations_[i] = map_function(called_computations_[i]);
+    }
+  }
+
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
   // after performing necessary implicit broadcast
@@ -720,9 +796,9 @@ class HloInstruction {
   std::tuple<bool, std::vector<int64>, std::vector<int64>>
   ReshapeMerelyInsertsOrDeletes1SizedDimensions() const;
 
-  // Returns the opcode string for this instruction. Compared with
-  // HloOpcodeString method, this wrapper dumps additional information
-  // such as fusion kind.
+  // Returns the opcode string for this instruction. This is the result from
+  // HloOpcodeString plus, for fusion nodes, the fusion kind, separated by a
+  // ':'.
   string ExtendedOpcodeStr() const;
 
   // Returns a string identifier for this instruction. If no string identifier
@@ -760,8 +836,22 @@ class HloInstruction {
     parent_fusion_instruction_ = fusion_instruction;
   }
 
+  // Get/Set the number of partitions per outer dimension (in order, starting
+  // with outer-most dimension first). Currently used by the parallel cpu
+  // backend to partition HLOs into parallel tasks.
+  // TODO(b/62783254) Replace these methods with a more general way to
+  // annotate HLOs with backend-specific information.
+  const std::vector<int64>& outer_dimension_partitions() const {
+    return outer_dimension_partitions_;
+  }
+  void set_outer_dimension_partitions(
+      const std::vector<int64>& outer_dimension_partitions);
+
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+
+  // Helper class for computing OperandElementUse for kFusion.
+  class FusionReusesParamElements;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(
@@ -792,12 +882,6 @@ class HloInstruction {
   std::unique_ptr<HloInstruction> CloneFusionWithNewOperands(
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
-
-  // Inner DFS traversal function -- this function being called (rather than
-  // Accept above) allows us to distinguish the root of the traversal.
-  Status AcceptInternal(DfsHloVisitor* visitor,
-                        const CompareFunction* operand_order,
-                        bool ignore_control_predecessors);
 
   // CHECKs various invariants of a fusion instruction.
   void CheckFusionInstruction() const;
@@ -837,6 +921,11 @@ class HloInstruction {
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
+  std::vector<int64> slice_strides_;
+
+  // The bit sizes for a reduce-precision operation.
+  int32 exponent_bits_;
+  int32 mantissa_bits_;
 
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).
@@ -908,6 +997,14 @@ class HloInstruction {
   // Only present for kRng.
   RandomDistribution distribution_;
 
+  // A small float number added to the variance to avoid divide-by-zero error.
+  // Only present for kBatchNormTraining.
+  float epsilon_;
+
+  // An integer value representing the index of the feature dimension.
+  // Only present for kBatchNormTraining.
+  int64 feature_index_;
+
   // Represents a unique identifier for each Send/Recv instruction pair.
   // Only present for kSend or kRecv.
   int64 channel_id_ = -1;
@@ -923,6 +1020,10 @@ class HloInstruction {
 
   // Metadata for debugging.
   OpMetadata metadata_;
+
+  // The number of partitions per outer dimension (listed in order from
+  // outer-most dimension first).
+  std::vector<int64> outer_dimension_partitions_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };

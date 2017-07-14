@@ -105,6 +105,7 @@ static void BM_DequantizeMinCombinedCpu(int iters) {
   auto root = Scope::NewRootScope().ExitOnError();
   const int64 num_values = 1500 * 250;
   std::vector<T> inputs;
+  inputs.reserve(num_values);
   for (int i = 0; i < num_values; ++i) inputs.push_back(i);
   ops::Dequantize(root, test::AsTensor<T>(inputs),
                   test::AsTensor<float>({-1.5f}),

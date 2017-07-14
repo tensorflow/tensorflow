@@ -663,22 +663,29 @@ class StreamingTruePositivesTest(test.TestCase):
     _assert_local_variables(self, ('true_positives/count:0',))
 
   def testUnweighted(self):
-    for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
-      predictions = math_ops.cast(constant_op.constant(
-          ((1, 0, 1, 0),
-           (0, 1, 1, 1),
-           (0, 0, 0, 0))), dtype=dtype)
-      labels = math_ops.cast(constant_op.constant(
-          ((0, 1, 1, 0),
-           (1, 0, 0, 0),
-           (0, 0, 0, 0))), dtype=dtype)
-      tp, tp_update_op = metrics.streaming_true_positives(predictions, labels)
+    for expand_predictions in [True, False]:
+      for expand_labels in [True, False]:
+        for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+          predictions = math_ops.cast(constant_op.constant(
+              ((1, 0, 1, 0),
+               (0, 1, 1, 1),
+               (0, 0, 0, 0))), dtype=dtype)
+          if expand_predictions:
+            predictions = array_ops.expand_dims(predictions, 2)
+          labels = math_ops.cast(constant_op.constant(
+              ((0, 1, 1, 0),
+               (1, 0, 0, 0),
+               (0, 0, 0, 0))), dtype=dtype)
+          if expand_labels:
+            labels = array_ops.expand_dims(labels, 2)
+          tp, tp_update_op = metrics.streaming_true_positives(predictions,
+                                                              labels)
 
-      with self.test_session() as sess:
-        sess.run(variables.local_variables_initializer())
-        self.assertEqual(0, tp.eval())
-        self.assertEqual(1, tp_update_op.eval())
-        self.assertEqual(1, tp.eval())
+          with self.test_session() as sess:
+            sess.run(variables.local_variables_initializer())
+            self.assertEqual(0, tp.eval())
+            self.assertEqual(1, tp_update_op.eval())
+            self.assertEqual(1, tp.eval())
 
   def testWeighted(self):
     for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
@@ -712,22 +719,29 @@ class StreamingFalseNegativesTest(test.TestCase):
     _assert_local_variables(self, ('false_negatives/count:0',))
 
   def testUnweighted(self):
-    for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
-      predictions = math_ops.cast(constant_op.constant(
-          ((1, 0, 1, 0),
-           (0, 1, 1, 1),
-           (0, 0, 0, 0))), dtype=dtype)
-      labels = math_ops.cast(constant_op.constant(
-          ((0, 1, 1, 0),
-           (1, 0, 0, 0),
-           (0, 0, 0, 0))), dtype=dtype)
-      fn, fn_update_op = metrics.streaming_false_negatives(predictions, labels)
+    for expand_predictions in [True, False]:
+      for expand_labels in [True, False]:
+        for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+          predictions = math_ops.cast(constant_op.constant(
+              ((1, 0, 1, 0),
+               (0, 1, 1, 1),
+               (0, 0, 0, 0))), dtype=dtype)
+          if expand_predictions:
+            predictions = array_ops.expand_dims(predictions, 2)
+          labels = math_ops.cast(constant_op.constant(
+              ((0, 1, 1, 0),
+               (1, 0, 0, 0),
+               (0, 0, 0, 0))), dtype=dtype)
+          if expand_labels:
+            labels = array_ops.expand_dims(labels, 2)
+          fn, fn_update_op = metrics.streaming_false_negatives(predictions,
+                                                               labels)
 
-      with self.test_session() as sess:
-        sess.run(variables.local_variables_initializer())
-        self.assertEqual(0, fn.eval())
-        self.assertEqual(2, fn_update_op.eval())
-        self.assertEqual(2, fn.eval())
+          with self.test_session() as sess:
+            sess.run(variables.local_variables_initializer())
+            self.assertEqual(0, fn.eval())
+            self.assertEqual(2, fn_update_op.eval())
+            self.assertEqual(2, fn.eval())
 
   def testWeighted(self):
     for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
@@ -761,22 +775,29 @@ class StreamingFalsePositivesTest(test.TestCase):
     _assert_local_variables(self, ('false_positives/count:0',))
 
   def testUnweighted(self):
-    for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
-      predictions = math_ops.cast(constant_op.constant(
-          ((1, 0, 1, 0),
-           (0, 1, 1, 1),
-           (0, 0, 0, 0))), dtype=dtype)
-      labels = math_ops.cast(constant_op.constant(
-          ((0, 1, 1, 0),
-           (1, 0, 0, 0),
-           (0, 0, 0, 0))), dtype=dtype)
-      fp, fp_update_op = metrics.streaming_false_positives(predictions, labels)
+    for expand_predictions in [True, False]:
+      for expand_labels in [True, False]:
+        for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+          predictions = math_ops.cast(constant_op.constant(
+              ((1, 0, 1, 0),
+               (0, 1, 1, 1),
+               (0, 0, 0, 0))), dtype=dtype)
+          if expand_predictions:
+            predictions = array_ops.expand_dims(predictions, 2)
+          labels = math_ops.cast(constant_op.constant(
+              ((0, 1, 1, 0),
+               (1, 0, 0, 0),
+               (0, 0, 0, 0))), dtype=dtype)
+          if expand_labels:
+            labels = array_ops.expand_dims(labels, 2)
+          fp, fp_update_op = metrics.streaming_false_positives(predictions,
+                                                               labels)
 
-      with self.test_session() as sess:
-        sess.run(variables.local_variables_initializer())
-        self.assertEqual(0, fp.eval())
-        self.assertEqual(4, fp_update_op.eval())
-        self.assertEqual(4, fp.eval())
+          with self.test_session() as sess:
+            sess.run(variables.local_variables_initializer())
+            self.assertEqual(0, fp.eval())
+            self.assertEqual(4, fp_update_op.eval())
+            self.assertEqual(4, fp.eval())
 
   def testWeighted(self):
     for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
@@ -814,22 +835,29 @@ class StreamingTrueNegativesTest(test.TestCase):
     _assert_local_variables(self, ('true_negatives/count:0',))
 
   def testUnweighted(self):
-    for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
-      predictions = math_ops.cast(constant_op.constant(
-          ((1, 0, 1, 0),
-           (0, 1, 1, 1),
-           (0, 0, 0, 0))), dtype=dtype)
-      labels = math_ops.cast(constant_op.constant(
-          ((0, 1, 1, 0),
-           (1, 0, 0, 0),
-           (0, 0, 0, 0))), dtype=dtype)
-      tn, tn_update_op = metrics.streaming_true_negatives(predictions, labels)
+    for expand_predictions in [True, False]:
+      for expand_labels in [True, False]:
+        for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+          predictions = math_ops.cast(constant_op.constant(
+              ((1, 0, 1, 0),
+               (0, 1, 1, 1),
+               (0, 0, 0, 0))), dtype=dtype)
+          if expand_predictions:
+            predictions = array_ops.expand_dims(predictions, 2)
+          labels = math_ops.cast(constant_op.constant(
+              ((0, 1, 1, 0),
+               (1, 0, 0, 0),
+               (0, 0, 0, 0))), dtype=dtype)
+          if expand_labels:
+            labels = array_ops.expand_dims(labels, 2)
+          tn, tn_update_op = metrics.streaming_true_negatives(predictions,
+                                                              labels)
 
-      with self.test_session() as sess:
-        sess.run(variables.local_variables_initializer())
-        self.assertEqual(0, tn.eval())
-        self.assertEqual(5, tn_update_op.eval())
-        self.assertEqual(5, tn.eval())
+          with self.test_session() as sess:
+            sess.run(variables.local_variables_initializer())
+            self.assertEqual(0, tn.eval())
+            self.assertEqual(5, tn_update_op.eval())
+            self.assertEqual(5, tn.eval())
 
   def testWeighted(self):
     for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
@@ -1327,6 +1355,99 @@ class StreamingRecallTest(test.TestCase):
       self.assertEqual(0, recall.eval())
 
 
+class StreamingCurvePointsTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metric_ops.streaming_curve_points(
+        predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
+    _assert_local_variables(
+        self,
+        ('curve_points/true_positives:0', 'curve_points/false_negatives:0',
+         'curve_points/false_positives:0', 'curve_points/true_negatives:0'))
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    points, _ = metric_ops.streaming_curve_points(
+        labels=array_ops.ones((10, 1)),
+        predictions=array_ops.ones((10, 1)),
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [points])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metric_ops.streaming_curve_points(
+        labels=array_ops.ones((10, 1)),
+        predictions=array_ops.ones((10, 1)),
+        updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def _testValueTensorIsIdempotent(self, curve):
+    predictions = constant_op.constant(
+        np.random.uniform(size=(10, 3)), dtype=dtypes_lib.float32)
+    labels = constant_op.constant(
+        np.random.uniform(high=2, size=(10, 3)), dtype=dtypes_lib.float32)
+
+    points, update_op = metric_ops.streaming_curve_points(
+        labels, predictions=predictions, curve=curve)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      sess.run(update_op)
+      initial_points = points.eval()
+
+      sess.run(update_op)
+      self.assertAllClose(initial_points, points.eval())
+
+  def testValueTensorIsIdempotentROC(self):
+    self._testValueTensorIsIdempotent(curve='ROC')
+
+  def testValueTensorIsIdempotentPR(self):
+    self._testValueTensorIsIdempotent(curve='PR')
+
+  def _testCase(self, labels, predictions, curve, expected_points):
+    with self.test_session() as sess:
+      predictions_tensor = constant_op.constant(
+          predictions, dtype=dtypes_lib.float32)
+      labels_tensor = constant_op.constant(labels, dtype=dtypes_lib.float32)
+      points, update_op = metric_ops.streaming_curve_points(
+          labels=labels_tensor,
+          predictions=predictions_tensor,
+          num_thresholds=3,
+          curve=curve)
+
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+
+      self.assertAllClose(expected_points, points.eval())
+
+  def testEdgeCasesROC(self):
+    self._testCase([[1]], [[1]], 'ROC', [[0, 1], [0, 1], [0, 0]])
+    self._testCase([[0]], [[0]], 'ROC', [[1, 1], [0, 1], [0, 1]])
+    self._testCase([[0]], [[1]], 'ROC', [[1, 1], [1, 1], [0, 1]])
+    self._testCase([[1]], [[0]], 'ROC', [[0, 1], [0, 0], [0, 0]])
+
+  def testManyValuesROC(self):
+    self._testCase([[1.0, 0.0, 0.0, 1.0, 1.0, 1.0]],
+                   [[0.2, 0.3, 0.4, 0.6, 0.7, 0.8]], 'ROC',
+                   [[1.0, 1.0], [0.0, 0.75], [0.0, 0.0]])
+
+  def testEdgeCasesPR(self):
+    self._testCase([[1]], [[1]], 'PR', [[1, 1], [1, 1], [0, 1]])
+    self._testCase([[0]], [[0]], 'PR', [[1, 0], [1, 1], [1, 1]])
+    self._testCase([[0]], [[1]], 'PR', [[1, 0], [1, 0], [1, 1]])
+    self._testCase([[1]], [[0]], 'PR', [[1, 1], [0, 1], [0, 1]])
+
+  def testManyValuesPR(self):
+    self._testCase([[1.0, 0.0, 0.0, 1.0, 1.0, 1.0]],
+                   [[0.2, 0.3, 0.4, 0.6, 0.7, 0.8]], 'PR',
+                   [[1.0, 4.0 / 6.0], [0.75, 1.0], [0.0, 1.0]])
+
+
 class StreamingAUCTest(test.TestCase):
 
   def setUp(self):
@@ -1507,7 +1628,7 @@ class StreamingAUCTest(test.TestCase):
       self.assertAlmostEqual(1, auc.eval(), 6)
 
   def np_auc(self, predictions, labels, weights):
-    """Computes the AUC explicitely using Numpy.
+    """Computes the AUC explicitly using Numpy.
 
     Args:
       predictions: an ndarray with shape [N].
@@ -4062,11 +4183,6 @@ class StreamingRootMeanSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(math.sqrt(13), rmse.eval(), 5)
 
 
-def _reweight(predictions, labels, weights):
-  return (np.concatenate([[p] * int(w) for p, w in zip(predictions, weights)]),
-          np.concatenate([[l] * int(w) for l, w in zip(labels, weights)]))
-
-
 class StreamingCovarianceTest(test.TestCase):
 
   def setUp(self):
@@ -4156,8 +4272,9 @@ class StreamingCovarianceTest(test.TestCase):
       cov, update_op = metrics.streaming_covariance(
           predictions, labels, weights=weights)
 
-      p, l = _reweight([2, 4, 6, 8], [1, 3, 2, 7], [0, 1, 3, 1])
-      expected_cov = np.cov(p, l)[0, 1]
+      expected_cov = np.cov([2, 4, 6, 8],
+                            [1, 3, 2, 7],
+                            fweights=[0, 1, 3, 1])[0, 1]
       sess.run(variables.local_variables_initializer())
       self.assertAlmostEqual(expected_cov, sess.run(update_op))
       self.assertAlmostEqual(expected_cov, cov.eval())
@@ -4176,14 +4293,17 @@ class StreamingCovarianceTest(test.TestCase):
       cov, update_op = metrics.streaming_covariance(predictions_t, labels_t)
 
       sess.run(variables.local_variables_initializer())
-      prev_expected_cov = 0.
+      prev_expected_cov = NAN
       for i in range(n // stride):
         feed_dict = {
             predictions_t: predictions[stride * i:stride * (i + 1)],
             labels_t: labels[stride * i:stride * (i + 1)]
         }
-        self.assertAlmostEqual(
-            prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
+        self.assertEqual(np.isnan(prev_expected_cov),
+                         np.isnan(sess.run(cov, feed_dict=feed_dict)))
+        if not np.isnan(prev_expected_cov):
+          self.assertAlmostEqual(
+              prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
         expected_cov = np.cov(predictions[:stride * (i + 1)],
                               labels[:stride * (i + 1)])[0, 1]
         self.assertAlmostEqual(
@@ -4210,18 +4330,21 @@ class StreamingCovarianceTest(test.TestCase):
           predictions_t, labels_t, weights=weights_t)
 
       sess.run(variables.local_variables_initializer())
-      prev_expected_cov = 0.
+      prev_expected_cov = NAN
       for i in range(n // stride):
         feed_dict = {
             predictions_t: predictions[stride * i:stride * (i + 1)],
             labels_t: labels[stride * i:stride * (i + 1)],
             weights_t: weights[stride * i:stride * (i + 1)]
         }
-        self.assertAlmostEqual(
-            prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
-        p, l = _reweight(predictions[:stride * (i + 1)],
-                         labels[:stride * (i + 1)], weights[:stride * (i + 1)])
-        expected_cov = np.cov(p, l)[0, 1]
+        self.assertEqual(np.isnan(prev_expected_cov),
+                         np.isnan(sess.run(cov, feed_dict=feed_dict)))
+        if not np.isnan(prev_expected_cov):
+          self.assertAlmostEqual(
+              prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
+        expected_cov = np.cov(predictions[:stride * (i + 1)],
+                              labels[:stride * (i + 1)],
+                              fweights=weights[:stride * (i + 1)])[0, 1]
         self.assertAlmostEqual(
             expected_cov, sess.run(update_op, feed_dict=feed_dict), 5)
         self.assertAlmostEqual(
@@ -4332,8 +4455,7 @@ class StreamingPearsonRTest(test.TestCase):
       pearson_r, update_op = metrics.streaming_pearson_correlation(
           predictions_t, labels_t, weights=weights_t)
 
-      p, l = _reweight(predictions, labels, weights)
-      cmat = np.cov(p, l)
+      cmat = np.cov(predictions, labels, fweights=weights)
       expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
       sess.run(variables.local_variables_initializer())
       self.assertAlmostEqual(expected_r, sess.run(update_op))
@@ -4354,14 +4476,17 @@ class StreamingPearsonRTest(test.TestCase):
           predictions_t, labels_t)
 
       sess.run(variables.local_variables_initializer())
-      prev_expected_r = 0.
+      prev_expected_r = NAN
       for i in range(n // stride):
         feed_dict = {
             predictions_t: predictions[stride * i:stride * (i + 1)],
             labels_t: labels[stride * i:stride * (i + 1)]
         }
-        self.assertAlmostEqual(
-            prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
+        self.assertEqual(np.isnan(prev_expected_r),
+                         np.isnan(sess.run(pearson_r, feed_dict=feed_dict)))
+        if not np.isnan(prev_expected_r):
+          self.assertAlmostEqual(
+              prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
         expected_r = np.corrcoef(predictions[:stride * (i + 1)],
                                  labels[:stride * (i + 1)])[0, 1]
         self.assertAlmostEqual(
@@ -4388,24 +4513,68 @@ class StreamingPearsonRTest(test.TestCase):
           predictions_t, labels_t, weights=weights_t)
 
       sess.run(variables.local_variables_initializer())
-      prev_expected_r = 0.
+      prev_expected_r = NAN
       for i in range(n // stride):
         feed_dict = {
             predictions_t: predictions[stride * i:stride * (i + 1)],
             labels_t: labels[stride * i:stride * (i + 1)],
             weights_t: weights[stride * i:stride * (i + 1)]
         }
-        self.assertAlmostEqual(
-            prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
-        p, l = _reweight(predictions[:stride * (i + 1)],
-                         labels[:stride * (i + 1)], weights[:stride * (i + 1)])
-        cmat = np.cov(p, l)
+        self.assertEqual(np.isnan(prev_expected_r),
+                         np.isnan(sess.run(pearson_r, feed_dict=feed_dict)))
+        if not np.isnan(prev_expected_r):
+          self.assertAlmostEqual(
+              prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
+        cmat = np.cov(predictions[:stride * (i + 1)],
+                      labels[:stride * (i + 1)],
+                      fweights=weights[:stride * (i + 1)])
         expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
         self.assertAlmostEqual(
             expected_r, sess.run(update_op, feed_dict=feed_dict), 5)
         self.assertAlmostEqual(
             expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
         prev_expected_r = expected_r
+
+  def testMultiUpdateWithErrorAndSingletonBatches(self):
+    with self.test_session() as sess:
+      np.random.seed(123)
+      n = 100
+      predictions = np.random.randn(n)
+      labels = 0.5 * predictions + np.random.randn(n)
+      stride = 10
+      weights = (np.arange(n).reshape(n//stride, stride) % stride == 0)
+      for row in weights:
+        np.random.shuffle(row)
+      # Now, weights is one-hot by row - one item per batch has non-zero weight.
+      weights = weights.reshape((n,))
+
+      predictions_t = array_ops.placeholder(dtypes_lib.float32, [stride])
+      labels_t = array_ops.placeholder(dtypes_lib.float32, [stride])
+      weights_t = array_ops.placeholder(dtypes_lib.float32, [stride])
+
+      pearson_r, update_op = metrics.streaming_pearson_correlation(
+          predictions_t, labels_t, weights=weights_t)
+
+      sess.run(variables.local_variables_initializer())
+      for i in range(n // stride):
+        feed_dict = {
+            predictions_t: predictions[stride * i:stride * (i + 1)],
+            labels_t: labels[stride * i:stride * (i + 1)],
+            weights_t: weights[stride * i:stride * (i + 1)]
+        }
+        cmat = np.cov(predictions[:stride * (i + 1)],
+                      labels[:stride * (i + 1)],
+                      fweights=weights[:stride * (i + 1)])
+        expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
+        actual_r = sess.run(update_op, feed_dict=feed_dict)
+        self.assertEqual(np.isnan(expected_r), np.isnan(actual_r))
+        self.assertEqual(np.isnan(expected_r),
+                         np.isnan(sess.run(pearson_r, feed_dict=feed_dict)))
+        if not np.isnan(expected_r):
+          self.assertAlmostEqual(
+              expected_r, actual_r, 5)
+          self.assertAlmostEqual(
+              expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
 
 
 class StreamingMeanCosineDistanceTest(test.TestCase):

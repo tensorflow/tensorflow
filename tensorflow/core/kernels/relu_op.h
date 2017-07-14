@@ -175,10 +175,6 @@ void EluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
 
 }  // namespace tensorflow
 
-#ifdef TENSORFLOW_USE_SYCL
-#undef EIGEN_USE_SYCL
-#endif // TENSORFLOW_USE_SYCL
-
 #undef EIGEN_USE_THREADS
 
 #endif  // TENSORFLOW_KERNELS_RELU_OP_H_

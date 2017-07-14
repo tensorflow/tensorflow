@@ -1,4 +1,4 @@
-FROM nvidia/cuda:8.0-cudnn5-devel-ubuntu16.04
+FROM nvidia/cuda:8.0-cudnn6-devel-ubuntu16.04
 
 MAINTAINER Craig Citro <craigcitro@google.com>
 
@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zlib1g-dev \
         openjdk-8-jdk \
         openjdk-8-jre-headless \
+        wget \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -57,7 +58,7 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.4.5
+ENV BAZEL_VERSION 0.5.0
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \

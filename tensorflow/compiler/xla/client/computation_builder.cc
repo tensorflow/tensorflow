@@ -165,9 +165,10 @@ ComputationDataHandle ComputationBuilder::ConstantOp(
   }
 
   ConstantRequest request;
-  Literal* literal = request.mutable_literal();
-  populate(literal);
-  VLOG(3) << "created constant: " << literal->ShortDebugString();
+  Literal literal;
+  populate(&literal);
+  *request.mutable_literal() = literal.ToProto();
+  VLOG(3) << "created constant: " << request.literal().ShortDebugString();
   OpRequest op_request;
   *op_request.mutable_constant_request() = request;
   *op_request.mutable_computation() = computation_.handle();
@@ -255,7 +256,8 @@ void ComputationBuilder::CheckSameShape(const ComputationDataHandle& lhs,
 ComputationDataHandle ComputationBuilder::Slice(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices) {
+    tensorflow::gtl::ArraySlice<int64> limit_indices,
+    tensorflow::gtl::ArraySlice<int64> stride) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
@@ -267,6 +269,9 @@ ComputationDataHandle ComputationBuilder::Slice(
   }
   for (int64 index : limit_indices) {
     request.add_limit_indices(index);
+  }
+  for (int64 index : stride) {
+    request.add_stride(index);
   }
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
@@ -966,6 +971,11 @@ ComputationDataHandle ComputationBuilder::Sign(
   return UnaryOp(UNOP_SIGN, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Cos(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_COS, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);
@@ -1406,6 +1416,72 @@ ComputationDataHandle ComputationBuilder::ReduceWindowWithGeneralPadding(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::BatchNormTraining(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& offset, float epsilon, int64 feature_index) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+  BatchNormTrainingRequest request;
+  *request.mutable_operand() = operand;
+  *request.mutable_scale() = scale;
+  *request.mutable_offset() = offset;
+  request.set_epsilon(epsilon);
+  request.set_feature_index(feature_index);
+
+  OpRequest op_request;
+  *op_request.mutable_batch_norm_training_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
+
+  OpResponse response;
+
+  VLOG(2) << "making BatchNormTraining request";
+
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
+}
+
+ComputationDataHandle ComputationBuilder::BatchNormInference(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& offset, const ComputationDataHandle& mean,
+    const ComputationDataHandle& variance, float epsilon, int64 feature_index) {
+  // TODO(b/62843645): Implement BatchNormInference.
+  NoteError(Unimplemented("BatchNormInference is not implemented yet."));
+  return ComputationDataHandle();
+}
+
+ComputationDataHandle ComputationBuilder::BatchNormGrad(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& mean, const ComputationDataHandle& var,
+    const ComputationDataHandle& grad_output, float epsilon,
+    int64 feature_index) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+  BatchNormGradRequest request;
+  *request.mutable_operand() = operand;
+  *request.mutable_scale() = scale;
+  *request.mutable_mean() = mean;
+  *request.mutable_variance() = var;
+  *request.mutable_grad_output() = grad_output;
+  request.set_epsilon(epsilon);
+  request.set_feature_index(feature_index);
+
+  OpRequest op_request;
+  *op_request.mutable_batch_norm_grad_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
+
+  OpResponse response;
+
+  VLOG(2) << "making BatchNormGrad request";
+
+  Status s = client_->stub()->Op(&op_request, &response);
+
+  return ParseOpResponse(s, &response);
+}
+
 ComputationDataHandle ComputationBuilder::CrossReplicaSum(
     const ComputationDataHandle& operand) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
@@ -1482,6 +1558,28 @@ ComputationDataHandle ComputationBuilder::SelectAndScatterWithGeneralPadding(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::ReducePrecision(
+    const ComputationDataHandle& operand, const int exponent_bits,
+    const int mantissa_bits) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  ReducePrecisionRequest request;
+  *request.mutable_operand() = operand;
+  request.set_exponent_bits(exponent_bits);
+  request.set_mantissa_bits(mantissa_bits);
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_reduce_precision_request() = request;
+  AddOpMetadata(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making reduce-precision request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
+}
+
 void ComputationBuilder::Send(const ComputationDataHandle& operand,
                               const ChannelHandle& handle) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
@@ -1498,8 +1596,8 @@ void ComputationBuilder::Send(const ComputationDataHandle& operand,
   OpResponse response;
 
   VLOG(2) << "making send request";
-  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
-  VLOG(2) << "done with request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  VLOG(2) << "done with op request";
 
   if (!s.ok()) {
     NoteError(s);
@@ -1523,9 +1621,7 @@ ComputationDataHandle ComputationBuilder::Recv(const Shape& shape,
   OpResponse response;
 
   VLOG(2) << "making recv request";
-  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
-  VLOG(2) << "done with request";
-
+  Status s = client_->stub()->Op(&op_request, &response);
   return ParseOpResponse(s, &response);
 }
 

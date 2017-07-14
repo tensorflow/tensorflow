@@ -162,6 +162,32 @@ Status Log1pGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Log1p", Log1pGrad);
 
+Status SinhGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = sinh(x)
+  // dy/dx = cosh(x)
+  auto dydx = Cosh(scope, op.input(0));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Sinh", SinhGrad);
+
+Status CoshGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = cosh(x)
+  // dy/dx = sinh(x)
+  auto dydx = Sinh(scope, op.input(0));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Cosh", CoshGrad);
+
 Status TanhGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
@@ -176,6 +202,46 @@ Status TanhGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Tanh", TanhGrad);
+
+Status AsinhGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = asinh(x)
+  // dy/dx = 1 / cosh(y)
+  auto dydx = Reciprocal(scope, Cosh(scope, op.output(0)));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Asinh", AsinhGrad);
+
+Status AcoshGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = acosh(x)
+  // dy/dx = 1 / sinh(y)
+  auto dydx = Reciprocal(scope, Sinh(scope, op.output(0)));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Acosh", AcoshGrad);
+
+Status AtanhGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = atanh(x)
+  // dy/dx = 1 / (1 - x^2)
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  auto dydx = Reciprocal(scope, Sub(scope, one, Square(scope, op.input(0))));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Atanh", AtanhGrad);
 
 Status SigmoidGrad(const Scope& scope, const Operation& op,
                    const std::vector<Output>& grad_inputs,
@@ -350,7 +416,7 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
                         const string& attr_adj_x, const string& attr_adj_y,
                         std::vector<Output>* grad_outputs) {
   DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->def(), "T", &dtype));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->attrs(), "T", &dtype));
   if (dtype == DT_COMPLEX64 || dtype == DT_COMPLEX128) {
     return errors::Unimplemented(
         "MatMul gradient for complex data type is not supported yet.");
@@ -358,8 +424,10 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
 
   bool ta;
   bool tb;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->def(), attr_adj_x, &ta));
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->def(), attr_adj_y, &tb));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), attr_adj_x, &ta));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), attr_adj_y, &tb));
 
   if (!ta && !tb) {
     return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, op.input(1),

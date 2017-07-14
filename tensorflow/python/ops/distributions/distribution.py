@@ -35,6 +35,13 @@ from tensorflow.python.ops.distributions import util
 from tensorflow.python.util import tf_inspect
 
 
+__all__ = [
+    "ReparameterizationType",
+    "FULLY_REPARAMETERIZED",
+    "NOT_REPARAMETERIZED",
+    "Distribution",
+]
+
 _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
     "batch_shape_tensor", "batch_shape", "event_shape_tensor", "event_shape",
     "sample", "log_prob", "prob", "log_cdf", "cdf", "log_survival_function",
@@ -176,7 +183,7 @@ class _DistributionMeta(abc.ABCMeta):
 class ReparameterizationType(object):
   """Instances of this class represent how sampling is reparameterized.
 
-  Two static instances exist in the distritributions library, signifying
+  Two static instances exist in the distributions library, signifying
   one of two possible properties for samples from a distribution:
 
   `FULLY_REPARAMETERIZED`: Samples from the distribution are fully

@@ -90,6 +90,8 @@ def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
     if ord_ == 'euclidean' or (axis_ is None and len(shape) > 2):
       self.skipTest("Not supported by numpy.linalg.norm")
     matrix = np.random.randn(*shape_).astype(dtype_)
+    if dtype_ in (np.complex64, np.complex128):
+      matrix += 1j * np.random.randn(*shape_).astype(dtype_)
     _CompareNorm(self, matrix)
 
   return Test

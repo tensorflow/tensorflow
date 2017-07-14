@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -52,7 +51,6 @@ class ParallelCpuExecutable : public Executable {
       std::unique_ptr<SimpleOrcJIT> jit,
       std::unique_ptr<BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloModuleConfig> module_config,
       std::unique_ptr<std::map<HloInstruction*, string>> instruction_functions,
       std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
       std::unordered_map<const HloInstruction*,
@@ -81,6 +79,20 @@ class ParallelCpuExecutable : public Executable {
 
   void set_ir_module_string(const string& ir_module_string) {
     ir_module_string_ = ir_module_string;
+  }
+
+  static int64 ShapeSizeBytes(const Shape& shape) {
+    // On the cpu, opaques are pointers.
+    if (ShapeUtil::IsOpaque(shape)) {
+      return sizeof(void*);
+    }
+    return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  }
+
+  const Status EqualOrFail(const Executable& executable) {
+    // TODO(b/62952745) Implement equality test on CPU parallel executable.
+    return Unimplemented(
+        "Equality test on CPU parallel executable is not implemented.");
   }
 
  private:

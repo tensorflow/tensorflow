@@ -10,7 +10,8 @@
 * Python 3.6 support on Windows.
 * Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
-* Added ibverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
+* Added libverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
+* Bring `tf.feature_column.*` into the API. Non-deprecated functionality from `tf.contrib.layers.*` is moved to `tf.feature_column.*` with cosmetic changes.
 * `RNNCell` objects now subclass `tf.layers.Layer`.  The strictness described
   in the TensorFlow 1.1 release is gone:  The first time an RNNCell is used,
   it caches its scope.  All future uses of the RNNCell will reuse variables from
@@ -24,15 +25,6 @@
   parameters, write: `MultiRNNCell([LSTMCell(...) for _ in range(5)])`.
   If at all unsure, first test your code with TF 1.1; ensure it raises no
   errors, and then upgrade to TF 1.2.
-* TensorForest Estimator now supports SavedModel export for serving.
-* Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
-* TensorFlow C library now available for Windows.
-* We released a new open-source version of TensorBoard.
-* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/programmers_guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
-* Android releases of TensorFlow are now pushed to jcenter for easier
-  integration into apps. See
-  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md
-  for more details.
 * RNNCells' variable names have been renamed for consistency with Keras layers.
   Specifically, the previous variable names "weights" and "biases" have
   been changed to "kernel" and "bias", respectively.
@@ -64,6 +56,15 @@
   Activation: rectified linear unit (ReLU)
   Data manipulation: multi-dimensional transposition (conversion), split,
   concat, sum and scale.
+* TensorForest Estimator now supports SavedModel export for serving.
+* Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
+* TensorFlow C library now available for Windows.
+* We released a new open-source version of TensorBoard.
+* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/programmers_guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
+* Android releases of TensorFlow are now pushed to jcenter for easier
+  integration into apps. See
+  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md
+  for more details.
 
 ## Deprecations
 
@@ -94,6 +95,9 @@
 * In python, `Operation.get_attr` on type attributes returns the Python DType
   version of the type to match expected get_attr documentation rather than the
   protobuf enum.
+* tensorflow/contrib/rnn undergoes RNN cell variable renaming for
+  consistency with Keras layers. Specifically, the previous variable names
+  "weights" and "biases" are changed to "kernel" and "bias", respectively.
 * Changed MIN_SDK version to 8.0 when building iOS libraries.
 * Fixed LIBXSMM integration.
 * Make decode_jpeg/decode_png/decode_gif handle all formats, since users frequently try to decode an image as the wrong type.
@@ -158,7 +162,6 @@ ZhipengShen, Ziming Dong, zjj2wry
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
-
 
 # Release 1.1.0
 

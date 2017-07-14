@@ -513,6 +513,18 @@ class CursesUI(base_ui.BaseUI):
   def get_help(self):
     return self._command_handler_registry.get_help()
 
+  def _addstr(self, *args):
+    try:
+      self._stdscr.addstr(*args)
+    except curses.error:
+      pass
+
+  def _refresh_pad(self, pad, *args):
+    try:
+      pad.refresh(*args)
+    except curses.error:
+      pass
+
   def _screen_create_command_textbox(self, existing_command=None):
     """Create command textbox on screen.
 
@@ -522,8 +534,8 @@ class CursesUI(base_ui.BaseUI):
     """
 
     # Display the tfdbg prompt.
-    self._stdscr.addstr(self._max_y - self._command_textbox_height, 0,
-                        self.CLI_PROMPT, curses.A_BOLD)
+    self._addstr(self._max_y - self._command_textbox_height, 0,
+                 self.CLI_PROMPT, curses.A_BOLD)
     self._stdscr.refresh()
 
     self._command_window.clear()
@@ -710,7 +722,8 @@ class CursesUI(base_ui.BaseUI):
       # Empty command: take no action. Should not exit.
       return
 
-    screen_info = {"cols": self._max_x}
+    # Take into account scroll bar width.
+    screen_info = {"cols": self._max_x - 2}
     exit_token = None
     if self._command_handler_registry.is_registered(prefix):
       try:
@@ -947,7 +960,7 @@ class CursesUI(base_ui.BaseUI):
     color_pair = (self._default_color_pair if color is None else
                   self._color_pairs[color])
 
-    self._stdscr.addstr(row, 0, line, color_pair | attr)
+    self._addstr(row, 0, line, color_pair | attr)
     self._screen_refresh()
 
   def _screen_new_output_pad(self, rows, cols):
@@ -1077,6 +1090,9 @@ class CursesUI(base_ui.BaseUI):
         self._toast("Pattern not found", color=self._ERROR_TOAST_COLOR_PAIR)
     elif is_refresh:
       self._scroll_output(_SCROLL_REFRESH)
+    elif debugger_cli_common.INIT_SCROLL_POS_KEY in output.annotations:
+      line_index = output.annotations[debugger_cli_common.INIT_SCROLL_POS_KEY]
+      self._scroll_output(_SCROLL_TO_LINE_INDEX, line_index=line_index)
     else:
       self._output_pad_row = 0
       self._scroll_output(_SCROLL_HOME)
@@ -1231,10 +1247,9 @@ class CursesUI(base_ui.BaseUI):
   def _screen_scroll_output_pad(self, pad, viewport_top, viewport_left,
                                 screen_location_top, screen_location_left,
                                 screen_location_bottom, screen_location_right):
-    pad.refresh(viewport_top, viewport_left, screen_location_top,
-                screen_location_left, screen_location_bottom,
-                screen_location_right)
-
+    self._refresh_pad(pad, viewport_top, viewport_left, screen_location_top,
+                      screen_location_left, screen_location_bottom,
+                      screen_location_right)
     self._scroll_bar = ScrollBar(
         self._max_x - 2,
         3,
@@ -1245,9 +1260,9 @@ class CursesUI(base_ui.BaseUI):
 
     (scroll_pad, _, _) = self._display_lines(
         self._scroll_bar.layout(), self._output_num_rows - 1)
-    scroll_pad.refresh(
-        0, 0, self._output_top_row + 1, self._max_x - 2,
-        self._output_num_rows + 1, self._max_x - 1)
+    self._refresh_pad(scroll_pad, 0, 0, self._output_top_row + 1,
+                      self._max_x - 2, self._output_num_rows + 1,
+                      self._max_x - 1)
 
   def _scroll_output(self, direction, line_index=None):
     """Scroll the output pad.
@@ -1328,15 +1343,14 @@ class CursesUI(base_ui.BaseUI):
 
   def _screen_render_nav_bar(self):
     if self._nav_bar_pad:
-      self._nav_bar_pad.refresh(0, 0, self._nav_bar_row, 0,
-                                self._output_pad_screen_location.top,
-                                self._max_x)
+      self._refresh_pad(self._nav_bar_pad, 0, 0, self._nav_bar_row, 0,
+                        self._output_pad_screen_location.top, self._max_x)
 
   def _screen_render_menu_pad(self):
     if self._main_menu_pad:
-      self._main_menu_pad.refresh(0, 0, self._output_pad_screen_location.top, 0,
-                                  self._output_pad_screen_location.top,
-                                  self._max_x)
+      self._refresh_pad(
+          self._main_menu_pad, 0, 0, self._output_pad_screen_location.top, 0,
+          self._output_pad_screen_location.top, self._max_x)
 
   def _compile_ui_status_summary(self):
     """Compile status summary about this Curses UI instance.
