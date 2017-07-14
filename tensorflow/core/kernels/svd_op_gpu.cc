@@ -34,6 +34,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
+// I need to transpose V afterwards
+#include "transpose_functor.h"
+#include <vector>
+
+// Logging
 #include <stdio.h>
 
 namespace tensorflow {
@@ -74,7 +79,8 @@ class SvdOpGpu : public AsyncOpKernel {
     // Allocate output.
     Tensor* outputU;
     Tensor* outputS;
-    Tensor* outputVT;
+    Tensor outputVT;
+    Tensor* outputV;
     
     //modify shapes
     TensorShape shapeRaw = input.shape();
@@ -89,16 +95,21 @@ class SvdOpGpu : public AsyncOpKernel {
     if (compute_uv_) {
         TensorShape shapeU = shapeRaw;
         TensorShape shapeVT = shapeRaw;
+        TensorShape shapeV = shapeRaw;
         if (full_matrices_) {
             shapeU.AddDim(m);
             shapeU.AddDim(m);
             shapeVT.AddDim(n);
             shapeVT.AddDim(n);
+            shapeV.AddDim(n);
+            shapeV.AddDim(n);
         } else {
             shapeU.AddDim(m);
             shapeU.AddDim(p);
-            shapeVT.AddDim(n);
             shapeVT.AddDim(p);
+            shapeVT.AddDim(n);
+            shapeV.AddDim(n);
+            shapeV.AddDim(p);
         }
         OP_REQUIRES_OK_ASYNC(context,
                          context->allocate_output(
@@ -106,7 +117,11 @@ class SvdOpGpu : public AsyncOpKernel {
                          done);
         OP_REQUIRES_OK_ASYNC(context,
                          context->allocate_output(
-                             2, shapeVT, &outputVT),
+                             2, shapeV, &outputV),
+                         done);
+        OP_REQUIRES_OK_ASYNC(context,
+                         context->allocate_temp(
+                             outputV->dtype(), shapeVT, &outputVT),
                          done);
     } else {
         //allocate dummy shapes
@@ -116,7 +131,7 @@ class SvdOpGpu : public AsyncOpKernel {
                          done);
         OP_REQUIRES_OK_ASYNC(context,
                          context->allocate_output(
-                             2, TensorShape({0}), &outputVT),
+                             2, TensorShape({0}), &outputV),
                          done);
     }                    
     
@@ -145,7 +160,7 @@ class SvdOpGpu : public AsyncOpKernel {
     Scalar* outputVT_reshaped_ptr = NULL;
     if (compute_uv_) {
         auto outputU_reshaped = outputU->template flat_inner_dims<Scalar, 3>();
-        auto outputVT_reshaped = outputVT->template flat_inner_dims<Scalar, 3>();
+        auto outputVT_reshaped = outputVT.template flat_inner_dims<Scalar, 3>();
         outputU_reshaped_ptr = outputU_reshaped.data();
         outputVT_reshaped_ptr = outputVT_reshaped.data();
     }
@@ -208,6 +223,16 @@ class SvdOpGpu : public AsyncOpKernel {
         context,
         solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
         done);
+        
+    if (compute_uv_) {
+        // Transpose VT and copy to output tensor V
+        std::vector<int32> perm;
+        for (size_t i=0; i<ndims-2; ++i) perm.push_back(i);
+        perm.push_back(ndims-1); //transpose last two dimensions
+        perm.push_back(ndims-2);
+        gtl::ArraySlice<int32> permAS(perm);
+        DoTranspose(context->eigen_device<GPUDevice>(), outputVT, permAS, outputV);
+    }
   }
   
 private:
