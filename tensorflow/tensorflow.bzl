@@ -195,6 +195,14 @@ def tf_gen_op_libs(op_lib_names, deps=None):
         linkstatic=1,)
 
 
+def tf_cc_binary(srcs=[],
+                 **kwargs):
+  native.cc_binary(
+      srcs=srcs + [clean_dep("//tensorflow:libframework.so"),
+                   clean_dep("//tensorflow:libtflib.so")],
+      **kwargs)
+
+
 def tf_gen_op_wrapper_cc(name,
                          out_ops_file,
                          pkg="",
@@ -206,7 +214,7 @@ def tf_gen_op_wrapper_cc(name,
   tool = out_ops_file + "_gen_cc"
   if deps == None:
     deps = [pkg + ":" + name + "_op_lib"]
-  native.cc_binary(
+  tf_cc_binary(
       name=tool,
       copts=tf_copts(),
       linkopts=["-lm"],
@@ -320,14 +328,6 @@ def tf_gen_op_wrappers_cc(name,
       copts=tf_copts(),
       alwayslink=1,
       visibility=[clean_dep("//tensorflow:internal")])
-
-
-def tf_cc_binary(srcs=[],
-                 **kwargs):
-  native.cc_binary(
-      srcs=srcs + [clean_dep("//tensorflow:libframework.so"),
-                   clean_dep("//tensorflow:libtflib.so")],
-      **kwargs)
 
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.

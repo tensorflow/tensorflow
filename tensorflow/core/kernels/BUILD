@@ -4579,7 +4579,7 @@ tf_cc_test(
 )
 
 # Android-only test for quantization utilities.
-cc_binary(
+tf_cc_binary(
     name = "quantization_utils_test_android_only",
     testonly = 1,
     srcs = ["quantization_utils_test.cc"],
@@ -4613,8 +4613,6 @@ cc_binary(
             "//tensorflow/core:test",
             "//tensorflow/cc:cc_ops",
             "//tensorflow/cc:client_session",
-            "//tensorflow/core:framework_internal_impl",
-            "//tensorflow/core:lib_internal_impl",
             "//tensorflow/core:tensor_testutil",
             "//tensorflow/core:test_main",
         ],
