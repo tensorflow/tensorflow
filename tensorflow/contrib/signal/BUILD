@@ -29,6 +29,7 @@ cuda_py_tests(
         ":signal_py",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
