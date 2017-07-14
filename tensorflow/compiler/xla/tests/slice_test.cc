@@ -32,92 +32,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class SliceTest : public ClientLibraryTestBase {
- protected:
-  template <typename NativeT>
-  void RunSliceTenToTwo() {
-    std::vector<NativeT> constant;
-    constant.reserve(10);
-    for (int i = 0; i < 10; ++i) {
-      constant.push_back(static_cast<NativeT>(i));
-    }
-
-    ComputationBuilder builder(client_, TestName());
-    auto original = builder.ConstantR1<NativeT>(constant);
-    builder.Slice(original, {2}, {4}, {1});
-
-    const std::vector<NativeT> expected = {static_cast<NativeT>(2),
-                                           static_cast<NativeT>(3)};
-    ComputeAndCompareR1<NativeT>(&builder, expected, {});
-  }
-};
-
-XLA_TEST_F(SliceTest, SliceZeroToZeroF32) {
-  ComputationBuilder builder(client_, TestName());
-  auto original = builder.ConstantR1<float>({});
-  builder.Slice(original, {0}, {0}, {1});
-
-  ComputeAndCompareR1<float>(&builder, {}, {});
-}
-
-XLA_TEST_F(SliceTest, SliceTenToZeroF32) {
-  ComputationBuilder builder(client_, TestName());
-  std::vector<float> constant(10, 0.3);
-  auto original = builder.ConstantR1<float>(constant);
-  builder.Slice(original, {7}, {7}, {1});
-
-  ComputeAndCompareR1<float>(&builder, {}, {});
-}
-
-TEST_F(SliceTest, SliceTenToTwoF32) { RunSliceTenToTwo<float>(); }
-
-XLA_TEST_F(SliceTest, SliceTenToTwoF64) { RunSliceTenToTwo<double>(); }
-
-TEST_F(SliceTest, SliceTenToTwoU32) { RunSliceTenToTwo<uint32>(); }
-
-TEST_F(SliceTest, SliceTenToTwoS32) { RunSliceTenToTwo<int32>(); }
-
-XLA_TEST_F(SliceTest, SliceTenToTwoU64) { RunSliceTenToTwo<uint64>(); }
-
-XLA_TEST_F(SliceTest, SliceTenToTwoS64) { RunSliceTenToTwo<int64>(); }
-
-TEST_F(SliceTest, SliceTenToTen) {
-  const std::vector<float> values = {0.0, 1.0, 2.0, 3.0, 4.0,
-                                     5.0, 6.0, 7.0, 8.0, 9.0};
-
-  ComputationBuilder builder(client_, TestName());
-  auto original = builder.ConstantR1<float>(values);
-  builder.Slice(original, {0}, {10}, {1});
-
-  ComputeAndCompareR1<float>(&builder, values, {}, ErrorSpec(0.000001));
-}
-
-TEST_F(SliceTest, SliceLastFourOf1024) {
-  std::vector<float> values(1024);
-  std::iota(values.begin(), values.end(), 0.0);
-
-  ComputationBuilder builder(client_, TestName());
-  auto original = builder.ConstantR1<float>(values);
-  builder.Slice(original, {1024 - 4}, {1024}, {1});
-
-  const std::vector<float> expected = {1020, 1021, 1022, 1023};
-  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.000001));
-}
-
-// TODO(b/28491443): Fix wrong result on CPU and GPU. Failed on
-// 2016-05-01. Also b/28508652
-TEST_F(SliceTest, DISABLED_SliceUnaligned1024In4096Values) {
-  std::vector<float> values(4096);
-  std::iota(values.begin(), values.end(), 0.0);
-
-  ComputationBuilder builder(client_, TestName());
-  auto original = builder.ConstantR1<float>(values);
-  builder.Slice(original, {7}, {7 + 1024}, {1});
-
-  std::vector<float> expected(1024);
-  std::iota(values.begin(), values.end(), 7.0);
-  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.000001));
-}
+class SliceTest : public ClientLibraryTestBase {};
 
 XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
   ComputationBuilder builder(client_, TestName());
@@ -208,6 +123,70 @@ TEST_F(SliceTest, SliceR4ThreeDimsMiddleMinor) {
   ComputeAndCompareR4(&builder, *expected, {}, ErrorSpec(0.000001));
 }
 
+struct R1Spec {
+  int64 input_dim0;
+  int64 slice_start;
+  int64 slice_limit;
+  int64 slice_stride;
+};
+
+// Parameterized test that generates R1 values, slices them according
+// to the R1Spec, and compares the result with a computed version.
+class SliceR1Test : public ClientLibraryTestBase,
+                    public ::testing::WithParamInterface<R1Spec> {
+ protected:
+  template <typename NativeT>
+  void Run(const R1Spec& spec) {
+    std::vector<NativeT> input(spec.input_dim0);
+    std::iota(input.begin(), input.end(), NativeT());
+
+    ComputationBuilder builder(client_, TestName());
+    auto original = builder.ConstantR1<NativeT>(input);
+    builder.Slice(original, {spec.slice_start}, {spec.slice_limit},
+                  {spec.slice_stride});
+
+    std::vector<NativeT> expected;
+    for (int i = spec.slice_start; i < spec.slice_limit;
+         i += spec.slice_stride) {
+      expected.push_back(i);
+    }
+
+    ComputeAndCompareR1<NativeT>(&builder, expected, {});
+  }
+};
+
+XLA_TEST_P(SliceR1Test, DoIt) {
+  Run<float>(GetParam());
+  Run<double>(GetParam());
+  Run<uint32>(GetParam());
+  Run<int32>(GetParam());
+  Run<uint64>(GetParam());
+  Run<int64>(GetParam());
+}
+
+INSTANTIATE_TEST_CASE_P(                  //
+    SliceR1TestInstantiation,             //
+    SliceR1Test,                          //
+    ::testing::Values(                    //
+        R1Spec{10, 0, 0, 1},              //
+        R1Spec{10, 7, 7, 1},              //
+        R1Spec{10, 2, 4, 1},              //
+        R1Spec{10, 2, 4, 1},              //
+        R1Spec{10, 2, 4, 1},              //
+        R1Spec{10, 2, 4, 1},              //
+        R1Spec{10, 2, 4, 1},              //
+        R1Spec{10, 2, 4, 1},              //
+        R1Spec{10, 0, 10, 1},             //
+        R1Spec{1024, 1024 - 4, 1024, 1},  //
+        R1Spec{4096, 7, 7 + 1024, 1},     //
+        R1Spec{10, 0, 10, 2},             //
+        R1Spec{10, 0, 10, 3},             //
+        R1Spec{10, 0, 10, 4},             //
+        R1Spec{10, 0, 10, 5},             //
+        R1Spec{10, 0, 10, 10}             //
+        )                                 //
+);
+
 struct R2Spec {
   int64 input_dim0;
   int64 input_dim1;
@@ -222,13 +201,13 @@ struct R2Spec {
 class SliceR2Test : public ClientLibraryTestBase,
                     public ::testing::WithParamInterface<R2Spec> {};
 
-TEST_P(SliceR2Test, DoIt) {
+XLA_TEST_P(SliceR2Test, DoIt) {
   const R2Spec& spec = GetParam();
   Array2D<int32> input(spec.input_dim0, spec.input_dim1);
   input.FillUnique();
 
   ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR2FromArray2D<int32>(input);
+  auto a = builder.ConstantR2FromArray2DWithLayout<int32>(input, spec.layout);
   builder.Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
   std::unique_ptr<Array2D<int32>> expected = ReferenceUtil::Slice2D(
@@ -257,6 +236,18 @@ INSTANTIATE_TEST_CASE_P(
         R2Spec {384, 512, {{128, 256}}, {{256, 384}}, {{1, 1}},
           LayoutUtil::MakeLayout({1, 0})},
         R2Spec {357, 512, {{111, 256}}, {{301, 384}}, {{1, 1}},
+          LayoutUtil::MakeLayout({1, 0})},
+        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{1, 2}},
+          LayoutUtil::MakeLayout({0, 1})},
+        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{1, 2}},
+          LayoutUtil::MakeLayout({1, 0})},
+        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{2, 1}},
+          LayoutUtil::MakeLayout({0, 1})},
+        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{2, 1}},
+          LayoutUtil::MakeLayout({1, 0})},
+        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{2, 2}},
+          LayoutUtil::MakeLayout({0, 1})},
+        R2Spec {10, 10, {{0, 0}}, {{10, 10}}, {{2, 2}},
           LayoutUtil::MakeLayout({1, 0})}
     )
 );
