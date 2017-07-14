@@ -515,7 +515,10 @@ py_test(
     size = "small",
     srcs = ["python/keras/utils/data_utils_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "noasan",  # times out
+        "notsan",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
