@@ -11,7 +11,6 @@ SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
-CPU="$(uname -m)"
 
 function is_linux() {
   [[ "${PLATFORM}" == "linux" ]]
@@ -27,7 +26,7 @@ function is_windows() {
 }
 
 function is_ppc64le() {
-  [[ "${CPU}" == "ppc64le" ]]
+  [[ "$(uname -m)" == "ppc64le" ]]
 }
 
 function sed_in_place() {
