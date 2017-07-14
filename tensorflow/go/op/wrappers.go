@@ -18768,14 +18768,16 @@ func Imag(scope *Scope, input tf.Output, optional ...ImagAttr) (output tf.Output
 // Arguments:
 //	filenames: A scalar or a vector containing the name(s) of the file(s) to be
 // read.
-func TextLineDataset(scope *Scope, filenames tf.Output) (handle tf.Output) {
+//	compression_type: A scalar containing either (i) the empty string (no
+// compression), (ii) "ZLIB", or (iii) "GZIP".
+func TextLineDataset(scope *Scope, filenames tf.Output, compression_type tf.Output) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "TextLineDataset",
 		Input: []tf.Input{
-			filenames,
+			filenames, compression_type,
 		},
 	}
 	op := scope.AddOperation(opspec)
