@@ -228,6 +228,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
 
   poplar::DeviceInfo dev_info;
+  dev_info.IPUExchangeType =
+      poplar::DeviceInfo::ExchangeType::AGGRESSIVE_MULTICAST;
+
   poplar::DeviceOptions dev_opts;
   dev_opts.convertFloat16 = true;
 
