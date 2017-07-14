@@ -174,6 +174,10 @@ REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<double>), double);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex64>), complex64);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex128>), complex128);
+REGISTER_LINALG_OP_GPU("BatchCholesky", (CholeskyOpGpu<float>), float);
+REGISTER_LINALG_OP_GPU("BatchCholesky", (CholeskyOpGpu<double>), double);
+REGISTER_LINALG_OP_GPU("BatchCholesky", (CholeskyOpGpu<float>), complex64);
+REGISTER_LINALG_OP_GPU("BatchCholesky", (CholeskyOpGpu<double>), complex128);
 
 #endif  // GOOGLE_CUDA
 
