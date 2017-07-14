@@ -7,6 +7,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <vector>
 
 #ifdef TENSORFLOW_USE_GDR
 
@@ -221,7 +222,7 @@ class RdmaMemoryManager {
   }
 
   ProtectionDomainPtr pd_;
-  std::list<MemoryRegionPtr> mrs_ GUARDED_BY(mu_);
+  std::vector<MemoryRegionPtr> mrs_ GUARDED_BY(mu_);
   mutex mu_;
 };
 
