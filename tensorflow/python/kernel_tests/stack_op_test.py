@@ -45,14 +45,21 @@ class StackOpTest(test.TestCase):
     np.random.seed(7)
     with self.test_session(use_gpu=True):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-        data = np.random.randn(*shape)
-        # Convert [data[0], data[1], ...] separately to tensorflow
-        # TODO(irving): Remove list() once we handle maps correctly
-        xs = list(map(constant_op.constant, data))
-        # Pack back into a single tensorflow tensor
-        c = array_ops.stack(xs)
-        self.assertAllEqual(c.eval(), data)
+        for dtype in [np.float32, np.int32, np.int64]:
+          data = np.random.randn(*shape).astype(dtype)
+          # Convert [data[0], data[1], ...] separately to tensorflow
+          # TODO(irving): Remove list() once we handle maps correctly
+          xs = list(map(constant_op.constant, data))
+          # Pack back into a single tensorflow tensor
+          c = array_ops.stack(xs)
+          self.assertAllEqual(c.eval(), data)
 
+  def testSimpleParallel(self):
+    np.random.seed(7)
+    with self.test_session(use_gpu=True):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+        data = np.random.randn(*shape).astype(np.float32)
+        xs = list(map(constant_op.constant, data))
         c = array_ops.parallel_stack(xs)
         self.assertAllEqual(c.eval(), data)
 
@@ -60,30 +67,39 @@ class StackOpTest(test.TestCase):
     np.random.seed(7)
     with self.test_session(use_gpu=True):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+        for dtype in [np.float32, np.int32, np.int64]:
+          data = np.random.randn(*shape).astype(dtype)
+          # Pack back into a single tensorflow tensor directly using np array
+          c = array_ops.stack(data)
+          # This is implemented via a Const:
+          self.assertEqual(c.op.type, "Const")
+          self.assertAllEqual(c.eval(), data)
+
+          # Python lists also work for 1-D case:
+          if len(shape) == 1:
+            data_list = list(data)
+            cl = array_ops.stack(data_list)
+            self.assertEqual(cl.op.type, "Const")
+            self.assertAllEqual(cl.eval(), data)
+
+        # Verify that shape induction works with shapes produced via const stack
+        a = constant_op.constant([1, 2, 3, 4, 5, 6])
+        b = array_ops.reshape(a, array_ops.stack([2, 3]))
+        self.assertAllEqual(b.get_shape(), [2, 3])
+
+  def testConstParallel(self):
+    np.random.seed(7)
+    with self.test_session(use_gpu=True):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
         data = np.random.randn(*shape).astype(np.float32)
-        # Pack back into a single tensorflow tensor directly using np array
-        c = array_ops.stack(data)
-        # This is implemented via a Const:
-        self.assertEqual(c.op.type, "Const")
-        self.assertAllEqual(c.eval(), data)
-
-        c = array_ops.parallel_stack(data)
-        self.assertAllEqual(c.eval(), data)
-
-        # Python lists also work for 1-D case:
         if len(shape) == 1:
           data_list = list(data)
-          cl = array_ops.stack(data_list)
-          self.assertEqual(cl.op.type, "Const")
-          self.assertAllEqual(cl.eval(), data)
-
           cl = array_ops.parallel_stack(data_list)
           self.assertAllEqual(cl.eval(), data)
 
-      # Verify that shape induction works with shapes produced via const stack
-      a = constant_op.constant([1, 2, 3, 4, 5, 6])
-      b = array_ops.reshape(a, array_ops.stack([2, 3]))
-      self.assertAllEqual(b.get_shape(), [2, 3])
+        data = np.random.randn(*shape).astype(np.float32)
+        c = array_ops.parallel_stack(data)
+        self.assertAllEqual(c.eval(), data)
 
   def testGradientsAxis0(self):
     np.random.seed(7)
