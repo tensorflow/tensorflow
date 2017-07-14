@@ -153,6 +153,7 @@ tf_cuda_library(
     hdrs = ["python_api.h"],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        ":c_api",
         ":c_api_internal",
     ],
 )

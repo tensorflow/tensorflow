@@ -170,6 +170,7 @@ tf_cc_test(
     srcs = ["file_block_cache_test.cc"],
     deps = [
         ":file_block_cache",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

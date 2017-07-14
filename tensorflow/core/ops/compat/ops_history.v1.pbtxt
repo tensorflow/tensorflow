@@ -29353,6 +29353,27 @@ op {
     name: "filenames"
     type: DT_STRING
   }
+  input_arg {
+    name: "compression_type"
+    description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
+  name: "TextLineDataset"
+  input_arg {
+    name: "filenames"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "compression_type"
+    type: DT_STRING
+  }
   output_arg {
     name: "handle"
     type: DT_RESOURCE

@@ -26,6 +26,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.nn.python.ops.cross_entropy import *
+from tensorflow.contrib.nn.python.ops.sampling_ops import *
 # pylint: enable=unused-import,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented

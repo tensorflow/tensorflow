@@ -403,9 +403,8 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
       llvm::Value* tuple_element_address =
           EmitTempBufferPointer(buffer, tuple_element_shape);
 
-      TF_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kInfeed,
-                                           ByteSizeOf(tuple_element_shape),
-                                           tuple_element_address));
+      TF_RETURN_IF_ERROR(EmitXfeedTransfer(
+          XfeedKind::kInfeed, tuple_element_shape, tuple_element_address));
 
       tuple_element_addresses.push_back(tuple_element_address);
     }
@@ -413,8 +412,8 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
     llvm_ir::EmitTuple(llvm_ir::IrArray(target_address, shape),
                        tuple_element_addresses, &ir_builder_);
   } else {
-    TF_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kInfeed, ByteSizeOf(shape),
-                                         target_address));
+    TF_RETURN_IF_ERROR(
+        EmitXfeedTransfer(XfeedKind::kInfeed, shape, target_address));
   }
 
   emitted_value_[infeed] = target_address;
@@ -422,8 +421,9 @@ Status IrEmitter::HandleInfeed(HloInstruction* infeed) {
   return Status::OK();
 }
 
-Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, int64 length,
+Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                                     llvm::Value* program_buffer_address) {
+  int64 length = ByteSizeOf(shape);
   if (length <= 0 || length > std::numeric_limits<int32>::max()) {
     return InvalidArgument(
         "xfeed (infeed or outfeed) buffer length %lld is outside the valid "
@@ -432,14 +432,19 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, int64 length,
   }
   int32 length_32 = static_cast<int32>(length);
 
+  int32 shape_length;
+  TF_ASSIGN_OR_RETURN(llvm::Value * shape_ptr,
+                      llvm_ir::EncodeSelfDescribingShapeConstant(
+                          shape, &shape_length, &ir_builder_));
+
   // The signature of the acquire infeed buffer function is:
   //
   //   (void*)(int32 length);
-  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   llvm::Type* int32_type = ir_builder_.getInt32Ty();
-  llvm::FunctionType* acquire_type =
-      llvm::FunctionType::get(i8_ptr_type, {int32_type},
-                              /*isVarArg=*/false);
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::FunctionType* acquire_type = llvm::FunctionType::get(
+      i8_ptr_type, {int32_type, i8_ptr_type, int32_type},
+      /*isVarArg=*/false);
 
   llvm::Function* acquire_func;
   if (kind == XfeedKind::kInfeed) {
@@ -455,7 +460,8 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, int64 length,
   //
   //   (void)(int32 length, void* buffer);
   llvm::FunctionType* release_type = llvm::FunctionType::get(
-      ir_builder_.getVoidTy(), {int32_type, i8_ptr_type},
+      ir_builder_.getVoidTy(),
+      {int32_type, i8_ptr_type, i8_ptr_type, int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* release_func;
@@ -468,8 +474,13 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, int64 length,
   }
   release_func->setCallingConv(llvm::CallingConv::C);
 
-  llvm::Value* acquired_pointer =
-      ir_builder_.CreateCall(acquire_func, {ir_builder_.getInt32(length_32)});
+  // Implementation note: this call informs the runtime that it wants a buffer
+  // of size exactly 'length_32', and the runtime is responsible for
+  // check-failing the process if there is a mismatch, versus passing us back a
+  // buffer that we might overrun.
+  llvm::Value* acquired_pointer = ir_builder_.CreateCall(
+      acquire_func, {ir_builder_.getInt32(length_32), shape_ptr,
+                     ir_builder_.getInt32(shape_length)});
 
   if (kind == XfeedKind::kInfeed) {
     // Copy to the program buffer address from the acquired buffer.
@@ -482,7 +493,8 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, int64 length,
   }
 
   ir_builder_.CreateCall(release_func,
-                         {ir_builder_.getInt32(length_32), acquired_pointer});
+                         {ir_builder_.getInt32(length_32), acquired_pointer,
+                          shape_ptr, ir_builder_.getInt32(shape_length)});
 
   return Status::OK();
 }
@@ -493,8 +505,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 
   llvm::Value* value = GetEmittedValueFor(operand);
   if (!ShapeUtil::IsTuple(operand_shape)) {
-    return EmitXfeedTransfer(XfeedKind::kOutfeed, ByteSizeOf(operand_shape),
-                             value);
+    return EmitXfeedTransfer(XfeedKind::kOutfeed, operand_shape, value);
   }
 
   TF_RET_CHECK(!ShapeUtil::IsNestedTuple(operand_shape));
@@ -505,8 +516,8 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
     llvm::Value* tuple_element = llvm_ir::EmitGetTupleElement(
         tuple_element_shape, i, MinimumAlignmentForShape(tuple_element_shape),
         value, &ir_builder_);
-    TF_RETURN_IF_ERROR(EmitXfeedTransfer(
-        XfeedKind::kOutfeed, ByteSizeOf(tuple_element_shape), tuple_element));
+    TF_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kOutfeed,
+                                         tuple_element_shape, tuple_element));
   }
 
   return Status::OK();
