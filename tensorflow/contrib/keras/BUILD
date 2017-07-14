@@ -327,6 +327,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/convolutional_recurrent_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -341,6 +342,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
+        "noasan",  # times out b/63678675
         "notsan",
     ],
     deps = [
@@ -461,7 +463,10 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/lstm_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # http://b/62189182
+    tags = [
+        "noasan",  # times out b/63678675
+        "notsan",  # http://b/62189182
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
