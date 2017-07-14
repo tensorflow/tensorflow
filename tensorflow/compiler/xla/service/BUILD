@@ -937,7 +937,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "batchnorm_rewriter_test",
     size = "small",
     srcs = ["batchnorm_rewriter_test.cc"],
