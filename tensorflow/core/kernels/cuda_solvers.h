@@ -176,7 +176,8 @@ class CudaSolver {
   template <typename Scalar>
   Status Potrs(cublasFillMode_t uplo, int n, int nrhs, const Scalar* dev_A, int
   lda, Scalar* dev_B, int ldb, int* dev_lapack_info) const;
-
+  */
+ 
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
@@ -184,6 +185,7 @@ class CudaSolver {
   Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
              int* dev_lapack_info) const;
 
+  /*
   // Uses LU factorization to solve A * X = B.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
   template <typename Scalar>
