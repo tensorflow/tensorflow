@@ -434,9 +434,7 @@ cc_library_with_android_deps(
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
