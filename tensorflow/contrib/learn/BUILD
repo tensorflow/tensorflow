@@ -588,6 +588,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/head_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":learn",
         "//tensorflow/core:protos_all_py",

@@ -50,7 +50,9 @@ class CpuTransferManager : public GenericTransferManager {
   StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
       perftools::gputools::StreamExecutor* executor, int64 size,
       const void* source);
-  Status TransferBufferFromOutfeed(
+
+  // On success, returns the shape that was transferred from the outfeed.
+  StatusOr<Shape> TransferBufferFromOutfeed(
       perftools::gputools::StreamExecutor* executor, int64 size,
       void* destination);
 

@@ -28468,33 +28468,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "LMDBReader"
-  output_arg {
-    name: "reader_handle"
-    description: "The handle to reference the Reader."
-    type: DT_STRING
-    is_ref: true
-  }
-  attr {
-    name: "container"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
-  }
-  summary: "A Reader that outputs the records from a LMDB database."
-  is_stateful: true
-}
-op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"
@@ -29776,6 +29749,11 @@ op {
   input_arg {
     name: "filenames"
     description: "A scalar or a vector containing the name(s) of the file(s) to be\nread."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "compression_type"
+    description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
     type: DT_STRING
   }
   output_arg {

@@ -436,6 +436,33 @@ class BaseDNNModelFnTest(object):
           else:
             self.fail('Invalid mode: {}'.format(mode))
 
+  def test_features_tensor_raises_value_error(self):
+    """Tests that passing a Tensor for features raises a ValueError."""
+    hidden_units = (2, 2)
+    logits_dimension = 3
+    inputs = ([[10.]], [[8.]])
+    expected_logits = [[0, 0, 0]]
+
+    with ops.Graph().as_default():
+      training_util.create_global_step()
+      head = mock_head(
+          self,
+          hidden_units=hidden_units,
+          logits_dimension=logits_dimension,
+          expected_logits=expected_logits)
+      with self.assertRaisesRegexp(ValueError, 'features should be a dict'):
+        self._dnn_model_fn(
+            features=constant_op.constant(inputs),
+            labels=constant_op.constant([[1]]),
+            mode=model_fn.ModeKeys.TRAIN,
+            head=head,
+            hidden_units=hidden_units,
+            feature_columns=[
+                feature_column.numeric_column(
+                    'age', shape=np.array(inputs).shape[1:])
+            ],
+            optimizer=mock_optimizer(self, hidden_units))
+
 
 class BaseDNNClassifierEvaluateTest(object):
 

@@ -85,7 +85,7 @@ def _dnn_linear_combined_model_fn(
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
-    features: `Tensor` or dict of `Tensor` (depends on data passed to `fit`).
+    features: dict of `Tensor`.
     labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of dtype
       `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
@@ -114,8 +114,12 @@ def _dnn_linear_combined_model_fn(
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`
-      are empty at the same time, or `input_layer_partitioner` is missing.
+      are empty at the same time, or `input_layer_partitioner` is missing,
+      or features has the wrong type.
   """
+  if not isinstance(features, dict):
+    raise ValueError('features should be a dictionary of `Tensor`s. '
+                     'Given type: {}'.format(type(features)))
   if not linear_feature_columns and not dnn_feature_columns:
     raise ValueError(
         'Either linear_feature_columns or dnn_feature_columns must be defined.')

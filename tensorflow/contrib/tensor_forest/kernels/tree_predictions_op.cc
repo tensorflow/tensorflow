@@ -51,6 +51,16 @@ void Evaluate(OpKernelContext* context,
   const int32 num_classes = static_cast<int32>(weights.shape().dim_size(1));
   const int32 num_nodes = static_cast<int32>(tree_tensor.shape().dim_size(0));
 
+  // Tree has not been grown or initialized.
+  if (tree(0, CHILDREN_INDEX) == FREE_NODE) {
+    for (int i = start; i < end; i++) {
+      for (int c = 1; c < num_classes; c++) {
+        out(i, c - 1) = 1.0 / num_classes;
+      }
+    }
+    return;
+  }
+
   for (int i = start; i < end; i++) {
     int node_index = 0;
     int parent = -1;

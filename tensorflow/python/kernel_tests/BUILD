@@ -2064,6 +2064,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["noasan"],  # times out b/63680444
 )
 
 cuda_py_test(

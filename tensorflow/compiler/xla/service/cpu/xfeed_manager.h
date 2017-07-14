@@ -22,7 +22,9 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -38,7 +40,11 @@ class XfeedBuffer {
 
   virtual int32 length() = 0;
   virtual void* data() = 0;
-  virtual void Done() = 0;
+
+  // The 'shape' parameter reflects what shape the embedded program was
+  // expecting / producing with respect to this XfeedBuffer. E.g. this will
+  // contain information about the layout of an outfed buffer.
+  virtual void Done(StatusOr<Shape> shape) = 0;
 };
 
 // Reusable component for managing the infeed and outfeed queue state.
@@ -70,7 +76,13 @@ class XfeedQueueManager {
   // BlockingDequeuBuffer and not yet released. length and data must
   // match the buffer->length() and buffer->data() for the current
   // buffer.
-  void ReleaseCurrentBuffer(int32 length, void* data);
+  //
+  // 'shape' communicates the shape of the buffer being released. If the program
+  // passed a value that could not be decoded as a shape, 'shape' will be an
+  // error status. In the case of outfeed, this indicates the layout of the
+  // shape that has been outfed. In the case of infeed, this can be used for
+  // sanity checking purposes.
+  void ReleaseCurrentBuffer(int32 length, void* data, StatusOr<Shape> shape);
 
  private:
   tensorflow::mutex mu_;
