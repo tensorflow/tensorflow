@@ -29,15 +29,19 @@ namespace tensorflow {
 
 class SYCLAllocator : public Allocator {
  public:
-  SYCLAllocator(Eigen::QueueInterface *queue);
+  SYCLAllocator(Eigen::QueueInterface* queue);
   virtual ~SYCLAllocator() override;
   string Name() override;
-  void *AllocateRaw(size_t alignment, size_t num_bytes) override;
-  void DeallocateRaw(void *ptr) override;
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+  void DeallocateRaw(void* ptr) override;
 
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
-  void Synchronize() { sycl_device_->synchronize(); }
-  bool Ok() { return sycl_device_->ok(); }
+  void Synchronize() {
+    if (sycl_device_) {
+      sycl_device_->synchronize();
+    }
+  }
+  bool Ok() { return sycl_device_ && sycl_device_->ok(); }
   void GetStats(AllocatorStats* stats) override;
   // The SYCL buffers keep track of their size, so we already have tracking.
   bool TracksAllocationSizes() override { return true; }
@@ -46,8 +50,14 @@ class SYCLAllocator : public Allocator {
   // AllocatedSize(void* ptr) by default.
   size_t RequestedSize(void* ptr) override;
   Eigen::SyclDevice* getSyclDevice() { return sycl_device_; }
+  // Clear the SYCL device used by the Allocator
+  void ClearSYCLDevice() {
+    delete sycl_device_;
+    sycl_device_ = nullptr;
+  }
+
  private:
-  Eigen::SyclDevice *sycl_device_;  // owned
+  Eigen::SyclDevice* sycl_device_;  // owned
 
   mutable mutex mu_;
   AllocatorStats stats_ GUARDED_BY(mu_);
