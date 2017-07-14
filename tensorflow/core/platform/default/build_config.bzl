@@ -45,6 +45,7 @@ def cc_proto_library(
         internal_bootstrap_hack=False,
         use_grpc_plugin=False,
         default_runtime="//:protobuf",
+        default_header=False,
         **kargs):
   """Bazel rule to create a C++ protobuf library from proto source files
   NOTE: the rule is only an internal workaround to generate protos. The
@@ -116,15 +117,22 @@ def cc_proto_library(
   if use_grpc_plugin:
     cc_libs += ["//external:grpc_lib"]
 
+  if default_header:
+    header_only_name = name
+    impl_name = name + "_impl"
+  else:
+    header_only_name = name + "_headers_only"
+    impl_name = name
+    
   native.cc_library(
-      name=name,
+      name=impl_name,
       srcs=gen_srcs,
       hdrs=gen_hdrs,
       deps=cc_libs + deps,
       includes=includes,
       **kargs)
   native.cc_library(
-      name=name + "_headers_only",
+      name=header_only_name,
       deps=["@protobuf//:protobuf_headers"],
       hdrs=gen_hdrs,
       **kargs)
@@ -138,7 +146,8 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
                         j2objc_api_version = 1,
                         cc_api_version = 2, go_api_version = 2,
                         java_api_version = 2, py_api_version = 2,
-                        js_api_version = 2, js_codegen = "jspb"):
+                        js_api_version = 2, js_codegen = "jspb",
+                        default_header = False):
   native.filegroup(
       name = name + "_proto_srcs",
       srcs = srcs + tf_deps(protodeps, "_proto_srcs"),
@@ -164,6 +173,7 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       use_grpc_plugin = use_grpc_plugin,
       testonly = testonly,
       visibility = visibility,
+      default_header = default_header,
   )
 
 def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
@@ -187,7 +197,8 @@ def tf_proto_library(name, srcs = [], has_services = None,
                      cc_api_version = 2, go_api_version = 2,
                      j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
-                     js_api_version = 2, js_codegen = "jspb"):
+                     js_api_version = 2, js_codegen = "jspb",
+                     default_header = False):
   """Make a proto library, possibly depending on other proto libraries."""
   tf_proto_library_cc(
       name = name,
@@ -196,6 +207,7 @@ def tf_proto_library(name, srcs = [], has_services = None,
       cc_libs = cc_libs,
       testonly = testonly,
       visibility = visibility,
+      default_header = default_header,
   )
 
   tf_proto_library_py(
