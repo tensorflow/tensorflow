@@ -14,16 +14,21 @@
 # ==============================================================================
 """##Signal ops.
 
-@@frames
+@@frame
 @@hamming_window
 @@hann_window
+@@overlap_and_add
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.signal.python.ops.shape_ops import frames
+from tensorflow.contrib.signal.python.ops.reconstruction_ops import overlap_and_add
+from tensorflow.contrib.signal.python.ops.shape_ops import frame
+# `frame` used to be named `frames`, which is a noun and not a verb.
+# Keep an alias to `frames` for backwards compatibility.
+from tensorflow.contrib.signal.python.ops.shape_ops import frame as frames
 from tensorflow.contrib.signal.python.ops.window_ops import hamming_window
 from tensorflow.contrib.signal.python.ops.window_ops import hann_window
 

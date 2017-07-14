@@ -315,6 +315,7 @@ class LayoutAssignment : public HloPassInterface {
 
   ComputationLayout* entry_computation_layout_;
 
+ protected:
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
