@@ -143,8 +143,8 @@ CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
                            llvm::CodeGenOpt::Level opt_level,
-                           OptimizationCallback pre_optimization_callback,
-                           OptimizationCallback post_optimization_callback)
+                           CompilerFunctor::ModuleHook pre_optimization_hook,
+                           CompilerFunctor::ModuleHook post_optimization_hook)
     : target_machine_(
           CHECK_NOTNULL(llvm::EngineBuilder()
                             .setTargetOptions(target_options)
@@ -160,8 +160,8 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
                                      opt_level, GetAvailableIntrinsics(),
-                                     std::move(pre_optimization_callback),
-                                     std::move(post_optimization_callback))) {
+                                     std::move(pre_optimization_hook),
+                                     std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }

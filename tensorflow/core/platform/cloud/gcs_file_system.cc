@@ -62,6 +62,10 @@ constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
 // The environment variable that overrides the block count in the LRU cache of
 // blocks read from GCS.
 constexpr char kBlockCount[] = "GCS_READ_CACHE_BLOCK_COUNT";
+// The environment variable that overrides the maximum staleness of cached file
+// contents. Once any block of a file reaches this staleness, all cached blocks
+// will be evicted on the next read.
+constexpr char kMaxStaleness[] = "GCS_READ_CACHE_MAX_STALENESS";
 // The file statistics returned by Stat() for directories.
 const FileStatistics DIRECTORY_STAT(0, 0, true);
 
@@ -213,29 +217,19 @@ Status GetBoolValue(const Json::Value& parent, const string& name,
   return Status::OK();
 }
 
-/// A GCS-based implementation of a random access file with a read-ahead buffer.
+/// A GCS-based implementation of a random access file with an LRU block cache.
 class GcsRandomAccessFile : public RandomAccessFile {
  public:
-  GcsRandomAccessFile(const string& bucket, const string& object,
-                      AuthProvider* auth_provider,
-                      HttpRequest::Factory* http_request_factory,
-                      size_t block_size, uint32 block_count)
-      : bucket_(bucket),
-        object_(object),
-        auth_provider_(auth_provider),
-        http_request_factory_(http_request_factory),
-        file_block_cache_(
-            block_size, block_count,
-            [this](uint64 offset, size_t n, std::vector<char>* out) {
-              return LoadBufferFromGCS(offset, n, out);
-            }) {}
+  explicit GcsRandomAccessFile(
+      const std::shared_ptr<FileBlockCache>& file_block_cache)
+      : file_block_cache_(file_block_cache) {}
 
   /// The implementation of reads with an LRU block cache. Thread safe.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     result->clear();
     std::vector<char> out;
-    TF_RETURN_IF_ERROR(file_block_cache_.Read(offset, n, &out));
+    TF_RETURN_IF_ERROR(file_block_cache_->Read(offset, n, &out));
     std::memcpy(scratch, out.data(), std::min(out.size(), n));
     *result = StringPiece(scratch, std::min(out.size(), n));
     if (result->size() < n) {
@@ -249,29 +243,8 @@ class GcsRandomAccessFile : public RandomAccessFile {
   }
 
  private:
-  /// A helper function to actually read the data from GCS.
-  Status LoadBufferFromGCS(uint64_t offset, size_t n, std::vector<char>* out) {
-    string auth_token;
-    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
-
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
-    TF_RETURN_IF_ERROR(
-        request->SetUri(strings::StrCat("https://", kStorageHost, "/", bucket_,
-                                        "/", request->EscapeString(object_))));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-    TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
-    TF_RETURN_IF_ERROR(request->SetResultBuffer(out));
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
-                                    bucket_, "/", object_);
-    return Status::OK();
-  }
-
-  string bucket_;
-  string object_;
-  AuthProvider* auth_provider_;
-  HttpRequest::Factory* http_request_factory_;
-  mutable FileBlockCache file_block_cache_;
+  /// The LRU block cache for this file.
+  mutable std::shared_ptr<FileBlockCache> file_block_cache_;
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -283,11 +256,13 @@ class GcsWritableFile : public WritableFile {
   GcsWritableFile(const string& bucket, const string& object,
                   AuthProvider* auth_provider,
                   HttpRequest::Factory* http_request_factory,
+                  std::function<void()> file_cache_erase,
                   int64 initial_retry_delay_usec)
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
         http_request_factory_(http_request_factory),
+        file_cache_erase_(std::move(file_cache_erase)),
         sync_needed_(true),
         initial_retry_delay_usec_(initial_retry_delay_usec) {
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
@@ -305,11 +280,13 @@ class GcsWritableFile : public WritableFile {
                   AuthProvider* auth_provider,
                   const string& tmp_content_filename,
                   HttpRequest::Factory* http_request_factory,
+                  std::function<void()> file_cache_erase,
                   int64 initial_retry_delay_usec)
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
         http_request_factory_(http_request_factory),
+        file_cache_erase_(std::move(file_cache_erase)),
         sync_needed_(true),
         initial_retry_delay_usec_(initial_retry_delay_usec) {
     tmp_content_filename_ = tmp_content_filename;
@@ -377,6 +354,8 @@ class GcsWritableFile : public WritableFile {
             TF_RETURN_IF_ERROR(RequestUploadSessionStatus(
                 session_uri, &completed, &already_uploaded));
             if (completed) {
+              // Erase the file from the file cache on every successful write.
+              file_cache_erase_();
               // It's unclear why UploadToSession didn't return OK in the
               // previous attempt, but GCS reports that the file is fully
               // uploaded, so succeed.
@@ -529,6 +508,8 @@ class GcsWritableFile : public WritableFile {
         request->SetPutFromFile(tmp_content_filename_, start_offset));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when uploading ",
                                     GetGcsPath());
+    // Erase the file from the file cache on every successful write.
+    file_cache_erase_();
     return Status::OK();
   }
 
@@ -542,6 +523,7 @@ class GcsWritableFile : public WritableFile {
   string tmp_content_filename_;
   std::ofstream outfile_;
   HttpRequest::Factory* http_request_factory_;
+  std::function<void()> file_cache_erase_;
   bool sync_needed_;  // whether there is buffered data that needs to be synced
   int64 initial_retry_delay_usec_;
 };
@@ -557,55 +539,107 @@ class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   std::unique_ptr<char[]> data_;
   uint64 length_;
 };
+
+// Helper function to extract an environment variable and convert it into a
+// value of type T.
+template <typename T>
+bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
+               T* value) {
+  const char* env_value = std::getenv(varname);
+  if (!env_value) {
+    return false;
+  }
+  return convert(env_value, value);
+}
+
 }  // namespace
 
 GcsFileSystem::GcsFileSystem()
     : auth_provider_(new GoogleAuthProvider()),
       http_request_factory_(new HttpRequest::Factory()) {
   // Apply the sys env override for the readahead buffer size if it's provided.
-  const char* readahead_buffer_size_env = std::getenv(kReadaheadBufferSize);
-  if (readahead_buffer_size_env) {
-    uint64 value;
-    if (strings::safe_strtou64(readahead_buffer_size_env, &value)) {
-      block_size_ = value;
-    }
+  uint64 v64;
+  if (GetEnvVar(kReadaheadBufferSize, strings::safe_strtou64, &v64)) {
+    block_size_ = v64;
   }
   // Apply the override for the block size if provided. This takes precedence
   // over the readahead buffer size.
-  const char* block_size_env = std::getenv(kBlockSize);
-  if (block_size_env) {
-    uint64 value;
-    if (strings::safe_strtou64(block_size_env, &value)) {
-      block_size_ = value * 1024 * 1024;
-    }
+  if (GetEnvVar(kBlockSize, strings::safe_strtou64, &v64)) {
+    block_size_ = v64 * 1024 * 1024;
   }
   // Apply the override for the block count if provided.
-  const char* block_count_env = std::getenv(kBlockCount);
-  if (block_count_env) {
-    uint32 value;
-    if (strings::safe_strtou32(block_count_env, &value)) {
-      block_count_ = value;
-    }
+  uint32 v32;
+  if (GetEnvVar(kBlockCount, strings::safe_strtou32, &v32)) {
+    block_count_ = v32;
+  }
+  // Apply the override for max staleness if provided.
+  if (GetEnvVar(kMaxStaleness, strings::safe_strtou64, &v64)) {
+    max_staleness_ = v64;
   }
 }
 
 GcsFileSystem::GcsFileSystem(
     std::unique_ptr<AuthProvider> auth_provider,
     std::unique_ptr<HttpRequest::Factory> http_request_factory,
-    size_t block_size, uint32 block_count, int64 initial_retry_delay_usec)
+    size_t block_size, uint32 block_count, uint64 max_staleness,
+    int64 initial_retry_delay_usec)
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       block_size_(block_size),
       block_count_(block_count),
+      max_staleness_(max_staleness),
       initial_retry_delay_usec_(initial_retry_delay_usec) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
-  result->reset(new GcsRandomAccessFile(bucket, object, auth_provider_.get(),
-                                        http_request_factory_.get(),
-                                        block_size_, block_count_));
+  // `file_cache_` is a container of FileBlockCache, keyed by filename. We look
+  // up the filename in this container to see if we have a FileBlockCache for
+  // it. If the FileBlockCache for `fname` exists in file_cache_, we return it.
+  // Otherwise, we create a new FileBlockCache with a block fetcher that calls
+  // GcsFileSystem::LoadBufferFromGCS for the bucket and object derived from
+  // `fname`. If a FileBlockCache is created, it is added to `file_cache_` only
+  // if `max_staleness_` > 0 (indicating that new random acesss files will
+  // tolerate stale reads coming from FileBlockCache instances that persist
+  // across file close/open boundaries).
+  std::shared_ptr<FileBlockCache> file_block_cache;
+  mutex_lock lock(mu_);
+  auto entry = file_cache_.find(fname);
+  if (entry == file_cache_.end()) {
+    file_block_cache.reset(new FileBlockCache(
+        block_size_, block_count_, max_staleness_,
+        [this, bucket, object](uint64 offset, size_t n,
+                               std::vector<char>* out) {
+          return LoadBufferFromGCS(bucket, object, offset, n, out);
+        }));
+    if (max_staleness_ > 0) {
+      file_cache_[fname] = file_block_cache;
+    }
+  } else {
+    file_block_cache = entry->second;
+  }
+  result->reset(new GcsRandomAccessFile(file_block_cache));
+  return Status::OK();
+}
+
+// A helper function to actually read the data from GCS.
+Status GcsFileSystem::LoadBufferFromGCS(const string& bucket,
+                                        const string& object, uint64_t offset,
+                                        size_t n, std::vector<char>* out) {
+  string auth_token;
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+
+  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+  TF_RETURN_IF_ERROR(request->Init());
+  TF_RETURN_IF_ERROR(
+      request->SetUri(strings::StrCat("https://", kStorageHost, "/", bucket,
+                                      "/", request->EscapeString(object))));
+  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+  TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
+  TF_RETURN_IF_ERROR(request->SetResultBuffer(out));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
+                                  bucket, "/", object);
   return Status::OK();
 }
 
@@ -615,6 +649,10 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
                                     http_request_factory_.get(),
+                                    [this, fname]() {
+                                      mutex_lock lock(mu_);
+                                      file_cache_.erase(fname);
+                                    },
                                     initial_retry_delay_usec_));
   return Status::OK();
 }
@@ -653,9 +691,14 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   // Create a writable file and pass the old content to it.
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
-  result->reset(new GcsWritableFile(
-      bucket, object, auth_provider_.get(), old_content_filename,
-      http_request_factory_.get(), initial_retry_delay_usec_));
+  result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
+                                    old_content_filename,
+                                    http_request_factory_.get(),
+                                    [this, fname]() {
+                                      mutex_lock lock(mu_);
+                                      file_cache_.erase(fname);
+                                    },
+                                    initial_retry_delay_usec_));
   return Status::OK();
 }
 

@@ -200,8 +200,8 @@ TEST_F(SliceTest, Slice_16x4_To_16x2) {
 TEST_F(SliceTest, SliceR4ThreeDimsMiddleMinor) {
   Array4D<float> values(2, 2, 24, 256);
   values.FillRandom(3.14f);
-  auto expected =
-      ReferenceUtil::Slice4D(values, {{1, 0, 8, 0}}, {{2, 2, 16, 128}});
+  auto expected = ReferenceUtil::Slice4D(
+      values, {{1, 0, 8, 0}}, {{2, 2, 16, 128}}, /*strides=*/{{1, 1, 1, 1}});
   ComputationBuilder builder(client_, TestName());
   auto original = builder.ConstantR4FromArray4D(values);
   builder.Slice(original, {1, 0, 8, 0}, {2, 2, 16, 128}, {1, 1, 1, 1});
@@ -231,8 +231,8 @@ TEST_P(SliceR2Test, DoIt) {
   auto a = builder.ConstantR2FromArray2D<int32>(input);
   builder.Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
-  std::unique_ptr<Array2D<int32>> expected =
-      ReferenceUtil::Slice2D(input, spec.slice_starts, spec.slice_limits);
+  std::unique_ptr<Array2D<int32>> expected = ReferenceUtil::Slice2D(
+      input, spec.slice_starts, spec.slice_limits, spec.slice_strides);
   ComputeAndCompareR2<int32>(&builder, *expected, {});
 }
 

@@ -15,6 +15,8 @@
 """##Signal ops.
 
 @@frames
+@@hamming_window
+@@hann_window
 """
 
 from __future__ import absolute_import
@@ -22,6 +24,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.signal.python.ops.shape_ops import frames
+from tensorflow.contrib.signal.python.ops.window_ops import hamming_window
+from tensorflow.contrib.signal.python.ops.window_ops import hann_window
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__)

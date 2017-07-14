@@ -1768,13 +1768,13 @@ class CApiGradientsTest : public ::testing::Test {
       const float const3_val[] = {1.0, 1.0, 1.0, 1.0};
       const3 = FloatConst2x2(expected_graph_, s_, const3_val, "GradInputs");
     } else {
-      const3 = OnesLike(expected_graph_, s_, matmul, "OnesLike");
+      const3 = OnesLike(expected_graph_, s_, matmul, "gradients/OnesLike");
     }
 
-    TF_Operation* matmul1 =
-        MatMul(expected_graph_, s_, const3, const1, "MatMul_1", false, true);
-    TF_Operation* matmul2 =
-        MatMul(expected_graph_, s_, const0, const3, "MatMul_2", true, false);
+    TF_Operation* matmul1 = MatMul(expected_graph_, s_, const3, const1,
+                                   "gradients/MatMul", false, true);
+    TF_Operation* matmul2 = MatMul(expected_graph_, s_, const0, const3,
+                                   "gradients/MatMul_1", true, false);
     expected_grad_outputs[0] = {matmul1, 0};
     expected_grad_outputs[1] = {matmul2, 0};
   }
