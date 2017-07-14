@@ -131,6 +131,12 @@ class LiteralTestUtil {
           std::initializer_list<std::initializer_list<NativeT>>>
           expected,
       const Literal& actual, const ErrorSpec& error);
+  template <typename NativeT>
+  static void ExpectR4Near(
+      std::initializer_list<std::initializer_list<
+          std::initializer_list<std::initializer_list<NativeT>>>>
+          expected,
+      const Literal& actual, const ErrorSpec& error);
 
   // Asserts the given literal are within the given error bound to the given
   // array. Only supported for floating point values.
@@ -280,6 +286,15 @@ template <typename NativeT>
         expected,
     const Literal& actual, const ErrorSpec& error) {
   ExpectNear(*Literal::CreateR3<NativeT>(expected), actual, error);
+}
+
+template <typename NativeT>
+/* static */ void LiteralTestUtil::ExpectR4Near(
+    std::initializer_list<std::initializer_list<
+        std::initializer_list<std::initializer_list<NativeT>>>>
+        expected,
+    const Literal& actual, const ErrorSpec& error) {
+  ExpectNear(*Literal::CreateR4<NativeT>(expected), actual, error);
 }
 
 template <typename NativeT>
