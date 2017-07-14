@@ -6,6 +6,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "all_kernels",
     deps = [
@@ -49,7 +51,7 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_test(
+tf_cc_test(
     name = "clustering_ops_test",
     size = "small",
     srcs = ["clustering_ops_test.cc"],

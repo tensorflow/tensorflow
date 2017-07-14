@@ -18,6 +18,7 @@ load(
     "if_mobile",
     "if_not_mobile",
     "py_test",
+    "tf_cc_test",
 )
 
 filegroup(
@@ -232,7 +233,7 @@ cc_library(
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "session_bundle_test",
     size = "small",
     srcs = ["session_bundle_test.cc"],
@@ -336,7 +337,7 @@ cc_library(
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "signature_test",
     size = "small",
     srcs = ["signature_test.cc"],
@@ -392,7 +393,7 @@ cc_library(
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "bundle_shim_test",
     size = "small",
     srcs = ["bundle_shim_test.cc"],

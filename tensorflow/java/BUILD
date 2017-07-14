@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:private"])
 licenses(["notice"])  # Apache 2.0
 
 load("build_defs", "JAVACOPTS")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 java_library(
     name = "tensorflow",
@@ -201,7 +202,7 @@ LINKER_VERSION_SCRIPT = ":config/version_script.lds"
 
 LINKER_EXPORTED_SYMBOLS = ":config/exported_symbols.lds"
 
-cc_binary(
+tf_cc_binary(
     name = "libtensorflow_jni.so",
     # Set linker options to strip out anything except the JNI
     # symbols from the library. This reduces the size of the library
@@ -238,7 +239,7 @@ genrule(
     tools = [":generate_pom"],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "generate_pom",
     srcs = ["generate_pom.cc"],
     deps = ["//tensorflow/c:c_api"],

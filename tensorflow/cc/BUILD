@@ -11,6 +11,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_binary",
     "tf_copts",
     "tf_gen_op_wrappers_cc",
     "cc_library_with_android_deps",
@@ -474,7 +475,7 @@ tf_gen_op_wrappers_cc(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "tutorials_example_trainer",
     srcs = ["tutorials/example_trainer.cc"],
     copts = tf_copts(),
