@@ -500,7 +500,10 @@ py_test(
     size = "medium",
     srcs = ["canned/linear_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "noasan",  # times out b/63680444
+    ],
     deps = [
         ":estimator",
         ":export_export",
