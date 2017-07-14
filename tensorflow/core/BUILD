@@ -418,17 +418,6 @@ tf_cuda_library(
     deps = [":framework_internal"],
 )
 
-cc_binary(
-    name = "libframework.so",
-    srcs = [":libtflib.so"],
-    linkshared = 1,
-    linkstatic = 1,
-    deps = [
-        ":framework",
-        ":framework_internal_impl",
-    ],
-)
-
 cc_library(
     name = "overflow",
     hdrs = ["util/overflow.h"],
@@ -780,10 +769,6 @@ cc_library(
 
 tf_cuda_library(
     name = "tensorflow_opensource",
-    srcs = [
-        ":libframework.so",
-        ":libtflib.so",
-    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -814,8 +799,6 @@ cc_library(
         "framework/fake_input.cc",
         "framework/function_testlib.cc",
         "graph/testlib.cc",
-        ":libframework.so",
-        ":libtflib.so",
     ],
     hdrs = [
         "common_runtime/kernel_benchmark_testlib.h",
@@ -1400,16 +1383,6 @@ cc_library(
         ":lib_hash_crc32c_accelerate_internal",
         ":lib_proto_parsing",
         ":lib_internal",
-    ],
-)
-
-cc_binary(
-    name = "libtflib.so",
-    linkshared = 1,
-    linkstatic = 1,
-    deps = [
-        ":lib",
-        ":lib_internal_impl",
     ],
 )
 
@@ -2014,9 +1987,6 @@ cc_library(
 cc_library(
     name = "lib_test_internal",
     testonly = 1,
-    srcs = [
-        ":libtflib.so",
-    ],
     hdrs = [
         "lib/gtl/manual_constructor.h",
         "lib/io/block.h",

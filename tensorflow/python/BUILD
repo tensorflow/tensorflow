@@ -20,6 +20,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
@@ -264,11 +265,10 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "framework/test_file_system.so",
     srcs = [
         "framework/test_file_system.cc",
-        "//tensorflow/core:libframework.so",
     ],
     copts = if_not_windows(["-Wno-sign-compare"]),
     linkopts = select({
