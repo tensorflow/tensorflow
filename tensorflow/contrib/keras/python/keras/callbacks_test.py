@@ -43,6 +43,9 @@ INPUT_DIM = 3
 NUM_HIDDEN = 5
 BATCH_SIZE = 5
 
+def target():
+  while True:
+    pass
 
 class KerasCallbacksTest(test.TestCase):
 
@@ -586,9 +589,6 @@ class KerasCallbacksTest(test.TestCase):
 
       # Start an arbitrary process that should run during model
       # training and be terminated after training has completed.
-      def target():
-        while True:
-          pass
 
       p = multiprocessing.Process(target=target)
       p.start()
