@@ -412,7 +412,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
 
   poplar::Tensor partial;
   TF_ASSIGN_OR_RETURN(partial,
-                      AddTensor(graph, inst, partial_shape, res));
+                      AddPlainTensor(graph, inst, partial_shape));
 
   poplar::Tensor init;
   TF_ASSIGN_OR_RETURN(init, BroadcastTensor(init_val, partial_shape));
