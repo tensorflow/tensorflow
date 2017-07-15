@@ -75,7 +75,7 @@ PoplarShapeFromXlaShape(const xla::Shape &xla_shape) {
   return shape;
 }
 
-static port::StatusOr<poplar::Tensor>
+port::StatusOr<poplar::Tensor>
 AddPlainTensor(poplar::Graph& graph,
                const HloInstruction* inst,
                const xla::Shape& shape) {

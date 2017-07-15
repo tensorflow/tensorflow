@@ -28,6 +28,11 @@ std::vector <size_t>
 PoplarShapeFromXlaShape(const xla::Shape &xla_shape);
 
 port::StatusOr<poplar::Tensor>
+AddPlainTensor(poplar::Graph& graph,
+               const HloInstruction* inst,
+               const xla::Shape& shape);
+
+port::StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
           const HloInstruction* inst,
           const xla::Shape& shape,
