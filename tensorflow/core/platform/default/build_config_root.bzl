@@ -10,7 +10,7 @@ def tf_sycl_tests_tags():
 
 def tf_additional_plugin_deps():
   return select({
-      "//tensorflow:with_xla_support": [],
+      "//tensorflow:with_xla_support": ["//tensorflow/compiler/jit"],
       "//conditions:default": [],
   })
 

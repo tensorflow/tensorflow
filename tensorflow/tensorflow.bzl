@@ -1024,11 +1024,9 @@ def tf_py_wrap_cc(name,
       ]
   })
 
-  native.cc_binary(
+  tf_cc_binary(
       name=cc_library_name,
-      srcs=[module_name + ".cc",
-            "//tensorflow:libframework.so",
-            "//tensorflow:libtflib.so"],
+      srcs=[module_name + ".cc"],
       copts=(copts + if_not_windows([
           "-Wno-self-assign", "-Wno-sign-compare", "-Wno-write-strings"
       ]) + tf_extension_copts()),
