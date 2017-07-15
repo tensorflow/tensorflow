@@ -276,6 +276,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   }
 
   VLOG(1) << "Compiling main computation " << entry->name();
+  XLA_VLOG_LINES(1, entry->ToString());
 
   EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {
