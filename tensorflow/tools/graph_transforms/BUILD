@@ -9,6 +9,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
     "tf_copts",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_py_test",
 )
@@ -176,7 +177,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "transform_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -221,7 +222,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "summarize_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -231,7 +232,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "compare_graphs",
     srcs = ["compare_graphs.cc"],
     copts = tf_copts(),

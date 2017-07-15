@@ -21,6 +21,8 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "global_data",
     srcs = ["global_data.cc"],
@@ -44,7 +46,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "padding_test",
     size = "small",
     srcs = ["padding_test.cc"],

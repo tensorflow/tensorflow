@@ -12,6 +12,11 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 cc_library(
     name = "static_schedule",
     srcs = ["static_schedule.cc"],
@@ -33,7 +38,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "static_schedule_test",
     size = "small",
     srcs = ["static_schedule_test.cc"],
@@ -69,7 +74,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "auto_parallel_test",
     size = "small",
     srcs = ["auto_parallel_test.cc"],
@@ -105,7 +110,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "constant_folding_test",
     size = "small",
     srcs = ["constant_folding_test.cc"],
@@ -168,7 +173,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "model_pruner_test",
     size = "small",
     srcs = ["model_pruner_test.cc"],
@@ -204,7 +209,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "memory_optimizer_test",
     size = "small",
     srcs = ["memory_optimizer_test.cc"],
@@ -241,7 +246,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "layout_optimizer_test",
     size = "small",
     srcs = ["layout_optimizer_test.cc"],
