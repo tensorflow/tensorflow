@@ -19,6 +19,7 @@ py_library(
         "api/keras/activations/__init__.py",
         "api/keras/applications/__init__.py",
         "api/keras/applications/inception_v3/__init__.py",
+        "api/keras/applications/mobilenet/__init__.py",
         "api/keras/applications/resnet50/__init__.py",
         "api/keras/applications/vgg16/__init__.py",
         "api/keras/applications/vgg19/__init__.py",
