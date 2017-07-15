@@ -263,7 +263,7 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -276,10 +276,11 @@ tf_custom_op_library(
     srcs = [
         "kernels/model_ops.cc",
         "ops/model_ops.cc",
+        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
     ],
 )
@@ -318,11 +319,12 @@ tf_custom_op_library(
     srcs = [
         "kernels/split_handler_ops.cc",
         "ops/split_handler_ops.cc",
+        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:feature-column-handlers",
-        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
     ],
 )
 
@@ -333,8 +335,8 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:feature-column-handlers",
-        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -347,7 +349,7 @@ tf_gen_op_libs(
     op_lib_names = [
         "training_ops",
     ],
-    deps = ["//tensorflow/contrib/boosted_trees/proto:learner_proto_cc"],
+    deps = ["//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only"],
 )
 
 tf_gen_op_wrapper_py(
@@ -379,12 +381,13 @@ tf_custom_op_library(
     srcs = [
         "kernels/training_ops.cc",
         "ops/training_ops.cc",
+        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
     ],
 )
@@ -396,9 +399,9 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
@@ -410,7 +413,7 @@ tf_kernel_library(
 # Prediction Ops.
 tf_gen_op_libs(
     op_lib_names = ["prediction_ops"],
-    deps = ["//tensorflow/contrib/boosted_trees/proto:learner_proto_cc"],
+    deps = ["//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only"],
 )
 
 tf_gen_op_wrapper_py(
@@ -418,6 +421,7 @@ tf_gen_op_wrapper_py(
     out = "python/ops/gen_prediction_ops.py",
     deps = [
         ":prediction_ops_op_lib",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
     ],
 )
 
@@ -442,13 +446,14 @@ tf_custom_op_library(
     srcs = [
         "kernels/prediction_ops.cc",
         "ops/prediction_ops.cc",
+        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:example_partitioner",
         "//tensorflow/contrib/boosted_trees/lib:models",
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
     ],
 )
@@ -462,8 +467,8 @@ tf_kernel_library(
         "//tensorflow/contrib/boosted_trees/lib:example_partitioner",
         "//tensorflow/contrib/boosted_trees/lib:models",
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
@@ -508,11 +513,12 @@ tf_custom_op_library(
     srcs = [
         "kernels/quantile_ops.cc",
         "ops/quantile_ops.cc",
+        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
-        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:quantile_stream_resource",
     ],
 )
@@ -525,7 +531,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
-        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:quantile_stream_resource",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -569,8 +575,8 @@ tf_kernel_library(
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
@@ -584,11 +590,12 @@ tf_custom_op_library(
     srcs = [
         "kernels/ensemble_optimizer_ops.cc",
         "ops/ensemble_optimizer_ops.cc",
+        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc_headers_only",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc_headers_only",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
     ],
 )

@@ -195,6 +195,14 @@ def tf_gen_op_libs(op_lib_names, deps=None):
         linkstatic=1,)
 
 
+def tf_cc_binary(srcs=[],
+                 **kwargs):
+  native.cc_binary(
+      srcs=srcs + [clean_dep("//tensorflow:libframework.so"),
+                   clean_dep("//tensorflow:libtflib.so")],
+      **kwargs)
+
+
 def tf_gen_op_wrapper_cc(name,
                          out_ops_file,
                          pkg="",
@@ -206,7 +214,7 @@ def tf_gen_op_wrapper_cc(name,
   tool = out_ops_file + "_gen_cc"
   if deps == None:
     deps = [pkg + ":" + name + "_op_lib"]
-  native.cc_binary(
+  tf_cc_binary(
       name=tool,
       copts=tf_copts(),
       linkopts=["-lm"],
@@ -335,14 +343,12 @@ def tf_gen_op_wrapper_py(name,
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
     deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
-  native.cc_binary(
+  tf_cc_binary(
       name=tool_name,
       linkopts=["-lm"],
       copts=tf_copts(),
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
-      deps=([
-          clean_dep("//tensorflow/core:framework"),
-          clean_dep("//tensorflow/python:python_op_gen_main")
+      deps=([clean_dep("//tensorflow/python:python_op_gen_main"),
       ] + deps),
       visibility=[clean_dep("//tensorflow:internal")],)
 
@@ -396,24 +402,18 @@ def tf_gen_op_wrapper_py(name,
 def tf_cc_test(name,
                srcs,
                deps,
-               linkstatic=0,
-               tags=[],
-               data=[],
-               size="medium",
+               extra_copts=[],
                suffix="",
-               args=None,
-               linkopts=[]):
+               linkopts=[],
+               **kwargs):
   native.cc_test(
       name="%s%s" % (name, suffix),
-      srcs=srcs,
-      size=size,
-      args=args,
-      copts=tf_copts(),
-      data=data,
-      deps=deps,
+      srcs=srcs + [clean_dep("//tensorflow:libframework.so"),
+                   clean_dep("//tensorflow:libtflib.so")],
+      copts=tf_copts() + extra_copts,
       linkopts=["-lpthread", "-lm"] + linkopts,
-      linkstatic=linkstatic,
-      tags=tags)
+      deps=deps,
+      **kwargs)
 
 
 # Part of the testing workflow requires a distinguishable name for the build
@@ -481,15 +481,15 @@ def tf_cuda_only_cc_test(name,
                     linkopts=[]):
   native.cc_test(
     name="%s%s" % (name, "_gpu"),
-    srcs=srcs,
+    srcs=srcs + ["//tensorflow:libframework.so",
+                 "//tensorflow:libtflib.so"],
     size=size,
     args=args,
     copts= _cuda_copts() + tf_copts(),
     data=data,
     deps=deps + if_cuda([
         clean_dep("//tensorflow/core:cuda"),
-        clean_dep("//tensorflow/core:gpu_lib"),
-    ]),
+        clean_dep("//tensorflow/core:gpu_lib")]),
     linkopts=["-lpthread", "-lm"] + linkopts,
     linkstatic=linkstatic,
     tags=tags)
@@ -858,6 +858,7 @@ def tf_custom_op_library_additional_deps():
       "@protobuf//:protobuf_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
+
   ]
 
 
@@ -940,7 +941,8 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
 
   native.cc_binary(
       name=name,
-      srcs=srcs,
+      srcs=srcs + [clean_dep("//tensorflow:libframework.so"),
+                   clean_dep("//tensorflow:libtflib.so")],
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(),
@@ -1022,7 +1024,7 @@ def tf_py_wrap_cc(name,
       ]
   })
 
-  native.cc_binary(
+  tf_cc_binary(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
       copts=(copts + if_not_windows([

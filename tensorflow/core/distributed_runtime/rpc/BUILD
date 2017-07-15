@@ -32,6 +32,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # For platform specific build config
 load(
@@ -295,7 +296,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "grpc_tensorflow_server",
     srcs = [
         "grpc_tensorflow_server.cc",
@@ -303,12 +304,11 @@ cc_binary(
     deps = [
         ":grpc_server_lib",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:data_flow",
         "@grpc//:grpc++_unsecure",
+        "@protobuf//:protobuf",
     ],
 )
 
@@ -324,7 +324,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_binary(
+tf_cc_binary(
     name = "grpc_testlib_server",
     testonly = 1,
     srcs = [
@@ -334,8 +334,6 @@ cc_binary(
         ":grpc_server_lib",
         ":grpc_testlib_ops",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:constant_op",

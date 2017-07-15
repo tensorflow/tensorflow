@@ -28,6 +28,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
+    "tf_cc_binary",
     "tf_copts",
     "tf_opts_nortti_if_android",
     "tf_kernel_library",
@@ -3409,7 +3410,7 @@ cc_library(
     deps = ["//tensorflow/core:framework_headers_lib"],
 )
 
-cc_test(
+tf_cc_test(
     name = "loss_test",
     size = "small",
     srcs = ["loss_test.cc"],
@@ -3798,14 +3799,13 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "spectrogram_convert_test_data",
     testonly = 1,
     srcs = ["spectrogram_convert_test_data.cc"],
     deps = [
         ":spectrogram_test_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -4579,7 +4579,7 @@ tf_cc_test(
 )
 
 # Android-only test for quantization utilities.
-cc_binary(
+tf_cc_binary(
     name = "quantization_utils_test_android_only",
     testonly = 1,
     srcs = ["quantization_utils_test.cc"],
@@ -4613,7 +4613,6 @@ cc_binary(
             "//tensorflow/core:test",
             "//tensorflow/cc:cc_ops",
             "//tensorflow/cc:client_session",
-            "//tensorflow/core:framework",
             "//tensorflow/core:tensor_testutil",
             "//tensorflow/core:test_main",
         ],
