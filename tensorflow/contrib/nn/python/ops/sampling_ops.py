@@ -105,7 +105,6 @@ def _rank_resample(weights, biases, inputs, sampled_values, num_resampled,
   return resampled, true_expected_count, resampled_expected_count
 
 
-# TODO(ccolby): Before checkin, Add reference to TAPAS paper when in arxiv.org.
 def rank_sampled_softmax_loss(weights,
                               biases,
                               labels,
