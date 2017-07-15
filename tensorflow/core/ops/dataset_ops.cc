@@ -393,6 +393,7 @@ filename: A path on the filesystem where we should cache the dataset. Note: this
 
 REGISTER_OP("TextLineDataset")
     .Input("filenames: string")
+    .Input("compression_type: string")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): validate
                                                // that `filenames` is
@@ -403,6 +404,8 @@ Creates a dataset that emits the lines of one or more text files.
 
 filenames: A scalar or a vector containing the name(s) of the file(s) to be
   read.
+compression_type: A scalar containing either (i) the empty string (no
+  compression), (ii) "ZLIB", or (iii) "GZIP".
 )doc");
 
 REGISTER_OP("FixedLengthRecordDataset")

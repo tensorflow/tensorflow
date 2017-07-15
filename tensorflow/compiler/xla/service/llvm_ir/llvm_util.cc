@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/casts.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -134,6 +135,24 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder) {
     }
   }
   return result_type;
+}
+
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32* shape_size, llvm::IRBuilder<>* ir_builder) {
+  string encoded_shape = shape.SerializeAsString();
+  if (encoded_shape.size() > std::numeric_limits<int32>::max()) {
+    return InternalError("Encoded shape size exceeded int32 size limit.");
+  }
+  *shape_size = static_cast<int32>(encoded_shape.size());
+  return ir_builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
+}
+
+StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                  int32 size_bytes) {
+  Shape shape;
+  TF_RET_CHECK(shape.ParseFromArray(shape_ptr, size_bytes));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
+  return shape;
 }
 
 namespace {

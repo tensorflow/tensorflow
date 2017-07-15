@@ -106,6 +106,19 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder);
 
+// Returns a value that represents a pointer to a global string constant that
+// encodes the shape as a serialized protobuf.
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32* shape_size, llvm::IRBuilder<>* ir_builder);
+
+// Inverses the encoding of a Shape protobuf into an LLVM global variable.
+//
+// This is intended to be called from the runtime to decode the llvm::Constants
+// that are created via ConvertShapeToSelfDescribingConstant and subsequently
+// embedded into the program.
+StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                  int32 size_bytes);
+
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,

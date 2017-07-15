@@ -56,11 +56,13 @@ bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
                           string* diff,
                           const EqualGraphDefOptions& options = {});
 
-#define TF_EXPECT_GRAPH_EQ(expected, actual)                  \
-  do {                                                        \
-    string diff;                                              \
-    EXPECT_TRUE(EqualGraphDef(actual, expected, &diff))       \
-        << diff << "\nActual: " << SummarizeGraphDef(actual); \
+#define TF_EXPECT_GRAPH_EQ(expected, actual)            \
+  do {                                                  \
+    string diff;                                        \
+    EXPECT_TRUE(EqualGraphDef(actual, expected, &diff)) \
+        << diff << "\nExpected:\n"                      \
+        << SummarizeGraphDef(expected) << "\nActual:\n" \
+        << SummarizeGraphDef(actual);                   \
   } while (false)
 
 }  // namespace tensorflow

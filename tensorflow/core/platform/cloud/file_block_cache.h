@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -44,11 +45,13 @@ class FileBlockCache {
   typedef std::function<Status(uint64, size_t, std::vector<char>*)>
       BlockFetcher;
 
-  FileBlockCache(uint64 block_size, uint32 block_count,
-                 BlockFetcher block_fetcher)
+  FileBlockCache(uint64 block_size, uint32 block_count, uint64 max_staleness,
+                 BlockFetcher block_fetcher, Env* env = Env::Default())
       : block_size_(block_size),
         block_count_(block_count),
-        block_fetcher_(block_fetcher) {}
+        max_staleness_(max_staleness),
+        block_fetcher_(block_fetcher),
+        env_(env) {}
 
   /// Read `n` bytes starting at `offset` into `out`. This method will return:
   ///
@@ -66,13 +69,20 @@ class FileBlockCache {
   Status Read(uint64 offset, size_t n, std::vector<char>* out);
 
  private:
+  /// Trim the LRU cache until its size is at most `size` blocks.
+  void TrimCache(size_t size) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// The size of the blocks stored in the LRU cache, as well as the size of the
   /// reads from the underlying filesystem.
   const uint64 block_size_;
   /// The maximum number of blocks allowed in the LRU cache.
   const uint32 block_count_;
+  /// The maximum staleness of any block in the LRU cache, in seconds.
+  const uint64 max_staleness_;
   /// The callback to read a block from the underlying filesystem.
   const BlockFetcher block_fetcher_;
+  /// The Env from which we read timestamps.
+  Env* const env_;  // not owned
 
   /// \brief A block of a file.
   ///
@@ -85,7 +95,7 @@ class FileBlockCache {
     std::list<uint64>::iterator lru_iterator;
   };
 
-  /// Guards access to the block map and LRU list.
+  /// Guards access to the block map, LRU list, and cache timestamp.
   mutex mu_;
 
   /// The block map (map from offset in the file to Block object).
@@ -94,6 +104,11 @@ class FileBlockCache {
   /// The LRU list of offsets in the file. The front of the list is the position
   /// of the most recently accessed block.
   std::list<uint64> lru_list_ GUARDED_BY(mu_);
+
+  /// The most recent timestamp (in seconds since epoch) at which the block map
+  /// transitioned from empty to non-empty.  A value of 0 means the block map is
+  /// currently empty.
+  uint64 timestamp_ GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

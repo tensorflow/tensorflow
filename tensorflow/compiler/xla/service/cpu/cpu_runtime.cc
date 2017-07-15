@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <functional>
 
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace cpu {
@@ -33,38 +35,79 @@ XfeedManager* GetXfeedManager() {
 }  // namespace cpu
 }  // namespace xla
 
-void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
-    xla::int32 buffer_length) {
-  VLOG(2) << "AcquireInfeedBufferForDequeue";
+namespace {
+
+tensorflow::string ShapeString(const void* shape_ptr, xla::int32 shape_length) {
+  xla::StatusOr<xla::Shape> shape =
+      xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
+  if (shape.ok()) {
+    return xla::ShapeUtil::HumanStringWithLayout(shape.ValueOrDie());
+  }
+  return "<invalid shape>";
+}
+
+}  // namespace
+
+void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(xla::int32 buffer_length,
+                                                      const void* shape,
+                                                      xla::int32 shape_length) {
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "AcquireInfeedBufferForDequeue: "
+              << ShapeString(shape, shape_length);
+  }
   xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
   // Wait until there's a buffer to dequeue.
   xla::cpu::runtime::XfeedBuffer* buffer =
       xfeed->infeed()->BlockingDequeueBuffer();
-  CHECK_EQ(buffer->length(), buffer_length);
+  CHECK_EQ(buffer->length(), buffer_length)
+      << "XLA program infeed request buffer size " << buffer_length
+      << " did not match the runtime's infed buffer length " << buffer->length()
+      << "; program reports desired shape: "
+      << ShapeString(shape, shape_length);
   return buffer->data();
 }
 
-void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(xla::int32 buffer_length,
-                                                       void* buffer_ptr) {
-  VLOG(2) << "ReleaseInfeedBufferAfterDequeue";
+void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
+    xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
+    xla::int32 shape_length) {
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "ReleaseInfeedBufferAfterDeque: "
+              << ShapeString(shape_ptr, shape_length);
+  }
   xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
-  xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr);
+  xla::StatusOr<xla::Shape> shape =
+      xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
+  xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
+                                        std::move(shape));
 }
 
 void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
-    xla::int32 buffer_length) {
-  VLOG(2) << "AcquireOutfeedBufferForPopulation";
+    xla::int32 buffer_length, const void* shape_ptr, xla::int32 shape_length) {
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "AcquireOutfeedBufferForPopulation: "
+              << ShapeString(shape_ptr, shape_length);
+  }
   xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
   // Wait until there's a buffer to dequeue.
   xla::cpu::runtime::XfeedBuffer* buffer =
       xfeed->outfeed()->BlockingDequeueBuffer();
-  CHECK_EQ(buffer->length(), buffer_length);
+  CHECK_EQ(buffer->length(), buffer_length)
+      << "XLA program outfeed request buffer size " << buffer_length
+      << " did not match the runtime's outfeed buffer length "
+      << buffer->length() << "; program reports outfed shape: "
+      << ShapeString(shape_ptr, shape_length);
   return buffer->data();
 }
 
 void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
-    xla::int32 buffer_length, void* buffer_ptr) {
-  VLOG(2) << "ReleaseOutfeedBufferAfterPopulation";
+    xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
+    xla::int32 shape_length) {
+  if (VLOG_IS_ON(2)) {
+    LOG(INFO) << "ReleaseOutfeedBufferAfterPopulation: "
+              << ShapeString(shape_ptr, shape_length);
+  }
   xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
-  xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr);
+  xla::StatusOr<xla::Shape> shape =
+      xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
+  xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr, shape);
 }
