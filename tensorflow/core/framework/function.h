@@ -38,6 +38,7 @@ class GraphDef;
 class OpKernel;
 class ResourceMgr;
 class ScopedStepContainer;
+class StepStatsCollector;
 class Node;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
@@ -402,7 +403,8 @@ class FunctionLibraryRuntime {
     int64 step_id = 0;
 
     // Per-step container.
-    ScopedStepContainer* step_container;
+    ScopedStepContainer* step_container = nullptr;
+    StepStatsCollector* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
   };
