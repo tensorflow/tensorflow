@@ -677,7 +677,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "affine_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/bijectors/affine_test.py"],
     additional_deps = [
         ":bijectors_py",
