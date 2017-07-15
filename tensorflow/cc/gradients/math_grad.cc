@@ -463,6 +463,30 @@ Status BatchMatMulGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
 
+Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
+                             const std::vector<Output>& grad_inputs,
+                             std::vector<Output>* grad_outputs) {
+  // f = (x - y) * (x - y)
+  // df/dx = 2 * (x - y) * (+1)
+  // df/dy = 2 * (x - y) * (-1)
+  const auto two = Cast(scope, Const(scope, 2), op.input(0).type());
+  const auto difference = Subtract(scope, op.input(0), op.input(1));
+  const auto interim = Mul(scope, two, difference);
+  const auto df_dx = interim;
+  const auto df_dy = Negate(scope, interim);
+
+  // grad(x) = grad(f) * conj(df/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, df_dx)));
+
+  // grad(y) = grad(f) * conj(df/dy)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, df_dy)));
+
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("SquaredDifference", SquaredDifferenceGrad);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

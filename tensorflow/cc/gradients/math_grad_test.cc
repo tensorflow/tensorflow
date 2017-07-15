@@ -737,6 +737,108 @@ TEST_F(CWiseUnaryComplexGradTest, Conj) {
   TestCWiseGradComplex(CONJ, x, dy, dx_expected);
 }
 
+class BinaryGradFunctionTest : public ::testing::Test {
+ protected:
+  using TheDataType = float;
+  using CalcExpectedGradient = std::function<TheDataType(
+      const TheDataType x, const TheDataType y, const TheDataType df)>;
+  using CreateFunctionToTest =
+      std::function<Output(const Scope& scope, const Input& x, const Input& y)>;
+
+  void TestGradient(const CreateFunctionToTest& get_function_to_test,
+                    const CalcExpectedGradient& calc_df_dx,
+                    const CalcExpectedGradient& calc_df_dy) {
+    const Scope scope(Scope::NewRootScope().WithDevice("/cpu:0"));
+    const TensorShape tensor_shape(
+        {GetRandForSizes(), GetRandForSizes(), GetRandForSizes()});
+    const Output x = Const(scope, GetRandTensor(tensor_shape));
+    const Output y = Const(scope, GetRandTensor(tensor_shape));
+    const Output df = Const(scope, GetRandTensor(tensor_shape));
+    const Output expected_df_dx = Const(
+        scope, GetExpectedGradient(scope, tensor_shape, x, y, df, calc_df_dx));
+    const Output expected_df_dy = Const(
+        scope, GetExpectedGradient(scope, tensor_shape, x, y, df, calc_df_dy));
+    const Output f = get_function_to_test(scope, x, y);
+
+    // All data & info have been collected => run test itself:
+
+    std::vector<Output> actual_gradients;
+    TF_ASSERT_OK(test::CallGradFunction(scope, Operation(f.node()), {df},
+                                        &actual_gradients));
+
+    auto check = [&scope](const Output& actual_gradient,
+                          const Output& expected_gradient) {
+      Tensor actual;
+      Tensor expected;
+      test::GetTensor(scope, actual_gradient, &actual);
+      test::GetTensor(scope, expected_gradient, &expected);
+      test::ExpectClose(actual, expected);
+    };
+
+    check(actual_gradients[0], expected_df_dx);
+    check(actual_gradients[1], expected_df_dy);
+  }
+
+  static Tensor GetExpectedGradient(
+      const Scope& scope, const TensorShape& tensor_shape,
+      const Output& x_output, const Output& y_output, const Output& df_output,
+      const CalcExpectedGradient& calc_expected_gradient) {
+    Tensor x_tensor;
+    Tensor y_tensor;
+    Tensor df_tensor;
+    test::GetTensor(scope, x_output, &x_tensor);
+    test::GetTensor(scope, y_output, &y_tensor);
+    test::GetTensor(scope, df_output, &df_tensor);
+
+    Tensor result(DataTypeToEnum<TheDataType>::v(), tensor_shape);
+    for (int64 i = 0; i < tensor_shape.num_elements(); ++i) {
+      TheDataType& r = result.flat<TheDataType>()(i);
+      const TheDataType x = x_tensor.flat<TheDataType>()(i);
+      const TheDataType y = y_tensor.flat<TheDataType>()(i);
+      const TheDataType df = df_tensor.flat<TheDataType>()(i);
+      r = calc_expected_gradient(x, y, df);
+    }
+
+    return result;
+  }
+
+  static Tensor GetRandTensor(const TensorShape& tensor_shape) {
+    Tensor result(DataTypeToEnum<TheDataType>::v(), tensor_shape);
+    test::FillFn<TheDataType>(&result, [](const int) {
+      return static_cast<TheDataType>(GetRandForValues());
+    });
+    // LOG(INFO) << "Rand Tensor: " << result.flat<TheDataType>();
+    return result;
+  }
+
+  static TheDataType GetRandForValues() {
+    // Range: [-5000.; +5000.]
+    return static_cast<int64>(random::New64() % 100) - 50;
+  }
+  static int GetRandForSizes() {
+    // Range: [2; 7]
+    return 2 + (random::New64() % 5);
+    // return 1 + (random::New64() % 2);
+  }
+};
+
+TEST_F(BinaryGradFunctionTest, SquaredDifference) {
+  auto get_function_to_test = [](const Scope& scope, const Input& x,
+                                 const Input& y) {
+    return SquaredDifference(scope, x, y);
+  };
+  auto calc_df_dx = [](const TheDataType x, const TheDataType y,
+                       const TheDataType df) {
+    return static_cast<TheDataType>(2) * (x - y) * df;
+  };
+
+  auto calc_df_dy = [](const TheDataType x, const TheDataType y,
+                       const TheDataType df) {
+    return static_cast<TheDataType>(-2) * (x - y) * df;
+  };
+  TestGradient(get_function_to_test, calc_df_dx, calc_df_dy);
+}
+
 class MathGradTest : public ::testing::Test {
  protected:
   MathGradTest() : root_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
