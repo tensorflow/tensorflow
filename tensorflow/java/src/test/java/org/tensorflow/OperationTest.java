@@ -24,6 +24,7 @@ import static org.junit.Assert.fail;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -150,6 +151,19 @@ public class OperationTest {
       splitWithInputList(new int[] {0, 1}, 2, "inputs");
     } catch (IllegalArgumentException iae) {
       // expected
+    }
+  }
+
+  @Test
+  public void outputList() {
+    try (Graph g = new Graph()) {
+      Operation split = TestUtil.split(g, "split", new int[] {0, 1, 2}, 3);
+      Output[] outputs = split.outputList(1, 2);
+      assertNotNull(outputs);
+      assertEquals(2, outputs.length);
+      for (int i = 0; i < outputs.length; ++i) {
+        assertEquals(i + 1, outputs[i].index());
+      }
     }
   }
 

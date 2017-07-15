@@ -38,6 +38,7 @@ class GraphDef;
 class OpKernel;
 class ResourceMgr;
 class ScopedStepContainer;
+class StepStatsCollector;
 class Node;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
@@ -354,9 +355,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   };
 
   const OpRegistryInterface* const default_registry_;
-  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>, HashStr>
+  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
       function_defs_;
-  gtl::FlatMap<string, string, HashStr> func_grad_;
+  gtl::FlatMap<string, string> func_grad_;
 
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
@@ -402,7 +403,8 @@ class FunctionLibraryRuntime {
     int64 step_id = 0;
 
     // Per-step container.
-    ScopedStepContainer* step_container;
+    ScopedStepContainer* step_container = nullptr;
+    StepStatsCollector* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
   };

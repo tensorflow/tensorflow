@@ -2027,6 +2027,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/ops/distributions",
     ],
 )
 
@@ -2378,6 +2379,7 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2787,6 +2789,7 @@ tf_py_wrap_cc(
         ":tf_session_helper",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",

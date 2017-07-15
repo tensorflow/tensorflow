@@ -47,7 +47,7 @@ def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
   """A model_fn for linear models that use a gradient-based optimizer.
 
   Args:
-    features: Dict of `Tensor`.
+    features: dict of `Tensor`.
     labels: `Tensor` of shape `[batch_size, logits_dimension]`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
@@ -63,8 +63,11 @@ def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
     An `EstimatorSpec` instance.
 
   Raises:
-    ValueError: If mode or params are invalid.
+    ValueError: mode or params are invalid, or features has the wrong type.
   """
+  if not isinstance(features, dict):
+    raise ValueError('features should be a dictionary of `Tensor`s. '
+                     'Given type: {}'.format(type(features)))
   optimizer = optimizers.get_optimizer_instance(
       optimizer or _get_default_optimizer(feature_columns),
       learning_rate=_LEARNING_RATE)

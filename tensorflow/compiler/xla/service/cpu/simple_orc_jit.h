@@ -48,7 +48,6 @@ class SimpleOrcJIT {
           llvm::Module&)>;
   using CompileLayerT = llvm::orc::IRCompileLayer<ObjLayerT, CompileFtor>;
   using ModuleHandleT = CompileLayerT::ModuleHandleT;
-  using OptimizationCallback = CompilerFunctor::OptimizationCallback;
 
   // Create a new JIT, targeting the host architecture.
   // The |target_options| parameter allows customization of certain code
@@ -56,14 +55,14 @@ class SimpleOrcJIT {
   // can be reassociated, etc.).
   // The |opt_level| parameter controls the optimization level of the code
   // generator.
-  // The |pre_optimization_callback| is invoked on the module before any IR
+  // The |pre_optimization_hook| is invoked on the module before any IR
   // level optimizations are applied.
-  // The |post_optimization_callback| is invoked on the module after all IR
+  // The |post_optimization_hook| is invoked on the module after all IR
   // level optimizations are applied.
   SimpleOrcJIT(const llvm::TargetOptions& target_options,
                llvm::CodeGenOpt::Level opt_level,
-               OptimizationCallback pre_optimization_callback,
-               OptimizationCallback post_optimization_callback);
+               CompilerFunctor::ModuleHook pre_optimization_hook,
+               CompilerFunctor::ModuleHook post_optimization_hook);
 
   // Data layout this JIT was created with.
   const llvm::DataLayout& data_layout() const { return data_layout_; }

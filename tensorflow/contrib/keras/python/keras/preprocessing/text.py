@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import OrderedDict
+from hashlib import md5
 import string
 import sys
 
@@ -61,8 +62,45 @@ def one_hot(text,
             filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
             lower=True,
             split=' '):
+  return hashing_trick(
+      text, n, hash_function=hash, filters=filters, lower=lower, split=split)
+
+
+def hashing_trick(text,
+                  n,
+                  hash_function=None,
+                  filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
+                  lower=True,
+                  split=' '):
+  """Converts a text to a sequence of indexes in a fixed-size hashing space.
+
+  Arguments:
+      text: Input text (string).
+      n: Dimension of the hashing space.
+      hash_function: if `None` uses python `hash` function, can be 'md5' or
+          any function that takes in input a string and returns a int.
+          Note that `hash` is not a stable hashing function, so
+          it is not consistent across different runs, while 'md5'
+          is a stable hashing function.
+      filters: Sequence of characters to filter out.
+      lower: Whether to convert the input to lowercase.
+      split: Sentence split marker (string).
+
+  Returns:
+      A list of integer word indices (unicity non-guaranteed).
+
+  `0` is a reserved index that won't be assigned to any word.
+
+  Two or more words may be assigned to the same index, due to possible
+  collisions by the hashing function.
+  """
+  if hash_function is None:
+    hash_function = hash
+  elif hash_function == 'md5':
+    hash_function = lambda w: int(md5(w.encode()).hexdigest(), 16)
+
   seq = text_to_word_sequence(text, filters=filters, lower=lower, split=split)
-  return [(abs(hash(w)) % (n - 1) + 1) for w in seq]
+  return [(hash_function(w) % (n - 1) + 1) for w in seq]
 
 
 class Tokenizer(object):

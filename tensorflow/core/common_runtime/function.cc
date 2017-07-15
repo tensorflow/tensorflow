@@ -261,6 +261,7 @@ class CallOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
     opts.step_container = ctx->step_container();
+    opts.stats_collector = ctx->stats_collector();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -545,6 +546,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
   exec_args.step_container = opts.step_container;
+
+  exec_args.stats_collector = opts.stats_collector;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = *opts.runner;

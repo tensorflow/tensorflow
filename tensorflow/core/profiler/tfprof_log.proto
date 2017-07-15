@@ -27,6 +27,6 @@ message OpLogEntry {
   CodeDef code_def = 4;
 }
 
-message OpLog {
+message OpLogProto {
   repeated OpLogEntry log_entries = 1;
 }

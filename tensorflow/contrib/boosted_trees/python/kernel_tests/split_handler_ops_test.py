@@ -54,6 +54,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               l2_regularization=1,
               tree_complexity_regularization=0,
               min_node_weight=0,
+              class_id=-1,
               feature_column_group_id=0,
               multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = sess.run([partitions, gains, splits])
@@ -125,6 +126,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               l2_regularization=1,
               tree_complexity_regularization=0,
               min_node_weight=0,
+              class_id=-1,
               feature_column_group_id=0,
               multiclass_strategy=learner_pb2.LearnerConfig.FULL_HESSIAN))
       partitions, gains, splits = sess.run([partitions, gains, splits])
@@ -163,6 +165,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               l2_regularization=1,
               tree_complexity_regularization=0,
               min_node_weight=0,
+              class_id=-1,
               feature_column_group_id=0,
               multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = sess.run([partitions, gains, splits])
@@ -200,6 +203,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               min_node_weight=0,
               feature_column_group_id=0,
               bias_feature_id=-1,
+              class_id=-1,
               multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = (sess.run([partitions, gains, splits]))
     self.assertAllEqual([0, 1], partitions)
@@ -283,6 +287,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
             min_node_weight=0,
             feature_column_group_id=0,
             bias_feature_id=-1,
+            class_id=-1,
             multiclass_strategy=learner_pb2.LearnerConfig.FULL_HESSIAN))
     partitions, gains, splits = (sess.run([partitions, gains, splits]))
 
@@ -326,6 +331,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               min_node_weight=0,
               feature_column_group_id=0,
               bias_feature_id=-1,
+              class_id=-1,
               multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = sess.run([partitions, gains, splits])
     self.assertAllEqual([0, 1], partitions)
@@ -420,6 +426,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               min_node_weight=0,
               feature_column_group_id=0,
               bias_feature_id=-1,
+              class_id=-1,
               multiclass_strategy=learner_pb2.LearnerConfig.FULL_HESSIAN))
       partitions, gains, splits = sess.run([partitions, gains, splits])
     self.assertAllEqual([0, 1], partitions)
@@ -456,6 +463,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
               min_node_weight=0,
               feature_column_group_id=0,
               bias_feature_id=-1,
+              class_id=-1,
               multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS))
       partitions, gains, splits = (sess.run([partitions, gains, splits]))
     self.assertEqual(0, len(partitions))

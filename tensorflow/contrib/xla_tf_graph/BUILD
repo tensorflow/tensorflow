@@ -51,6 +51,7 @@ cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:core_cpu_internal",

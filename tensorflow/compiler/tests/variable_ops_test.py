@@ -54,6 +54,54 @@ class VariableOpsTest(XLATestCase):
         self.assertAllClose(np.array([[2, 3], [4, 5]], dtype=dtype),
                             sess.run(y, {p: 1}))
 
+  def testSparseRead0DIndices(self):
+    for dtype in self.numeric_types:
+      init = np.array([[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], dtype=dtype)
+      with self.test_session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable(init)
+        sess.run(variables.variables_initializer([v]))
+        x = v.sparse_read(2)
+        self.assertAllClose(np.array([8, 9, 10, 11], dtype=dtype), sess.run(x))
+
+  def testSparseRead1DIndices(self):
+    for dtype in self.numeric_types:
+      init = np.array([[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], dtype=dtype)
+      with self.test_session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable(init)
+        sess.run(variables.variables_initializer([v]))
+        x = v.sparse_read([2, 1])
+        self.assertAllClose(
+            np.array([[8, 9, 10, 11], [4, 5, 6, 7]], dtype=dtype), sess.run(x))
+
+  def testSparseRead2DIndices(self):
+    for dtype in self.numeric_types:
+      init = np.array([[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]], dtype=dtype)
+      with self.test_session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable(init)
+        sess.run(variables.variables_initializer([v]))
+        x = v.sparse_read([[2, 1], [0, 2]])
+        self.assertAllClose(
+            np.array(
+                [[[8, 9, 10, 11], [4, 5, 6, 7]], [[0, 1, 2, 3], [8, 9, 10,
+                                                                 11]]],
+                dtype=dtype), sess.run(x))
+
+  def testSparseRead2DIndices3DTensor(self):
+    for dtype in self.numeric_types:
+      init = np.array(
+          [[[0, 1, 2], [3, 4, 5]], [[10, 11, 12], [13, 14, 15]],
+           [[20, 21, 22], [23, 24, 25]], [[30, 31, 32], [33, 34, 35]]],
+          dtype=dtype)
+      with self.test_session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable(init)
+        sess.run(variables.variables_initializer([v]))
+        x = v.sparse_read([[2, 1], [3, 0]])
+        self.assertAllClose(
+            np.array(
+                [[[[20, 21, 22], [23, 24, 25]], [[10, 11, 12], [13, 14, 15]]],
+                 [[[30, 31, 32], [33, 34, 35]], [[0, 1, 2], [3, 4, 5]]]],
+                dtype=dtype), sess.run(x))
+
   def testReadWrite(self):
     """Tests initialization, reading, and writing a resource variable."""
     with self.test_session() as session:

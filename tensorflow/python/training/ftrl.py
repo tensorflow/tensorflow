@@ -66,10 +66,16 @@ class FtrlOptimizer(optimizer.Optimizer):
       l2_shrinkage_regularization_strength: A float value, must be greater than
         or equal to zero. This differs from L2 above in that the L2 above is a
         stabilization penalty, whereas this L2 shrinkage is a magnitude penalty.
-        Specifically, the FTRL formulation can be written as:
-        w_{t+1} = argmin_w(\hat{g}_{1:t}w + L1*||w||_1 + L2*||w||_2), where
+        The FTRL formulation can be written as:
+        w_{t+1} = argmin_w(\hat{g}_{1:t}w + L1*||w||_1 + L2*||w||_2^2), where
         \hat{g} = g + (2*L2_shrinkage*w), and g is the gradient of the loss
         function w.r.t. the weights w.
+        Specifically, in the absence of L1 regularization, it is equivalent to
+        the following update rule:
+        w_{t+1} = w_t - lr_t / (1 + 2*L2*lr_t) * g_t -
+                  2*L2_shrinkage*lr_t / (1 + 2*L2*lr_t) * w_t
+        where lr_t is the learning rate at t.
+        When input is sparse shrinkage will only happen on the active weights.
 
     Raises:
       ValueError: If one of the arguments is invalid.
