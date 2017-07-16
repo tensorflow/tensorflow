@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 import pandas as pd
 import tensorflow as tf
 
@@ -29,10 +31,12 @@ FEATURES = ["crim", "zn", "indus", "nox", "rm",
 LABEL = "medv"
 
 
-def input_fn(data_set):
-  feature_cols = {k: tf.constant(data_set[k].values) for k in FEATURES}
-  labels = tf.constant(data_set[LABEL].values)
-  return feature_cols, labels
+def get_input_fn(data_set, num_epochs=None, shuffle=True):
+  return tf.estimator.inputs.pandas_input_fn(
+      x=pd.DataFrame({k: data_set[k].values for k in FEATURES}),
+      y=pd.Series(data_set[LABEL].values),
+      num_epochs=num_epochs,
+      shuffle=shuffle)
 
 
 def main(unused_argv):
@@ -47,24 +51,29 @@ def main(unused_argv):
                                skiprows=1, names=COLUMNS)
 
   # Feature cols
-  feature_cols = [tf.contrib.layers.real_valued_column(k)
-                  for k in FEATURES]
+  feature_cols = [tf.feature_column.numeric_column(k) for k in FEATURES]
 
   # Build 2 layer fully connected DNN with 10, 10 units respectively.
-  regressor = tf.contrib.learn.DNNRegressor(
-      feature_columns=feature_cols, hidden_units=[10, 10])
+  regressor = tf.estimator.DNNRegressor(feature_columns=feature_cols,
+                                        hidden_units=[10, 10],
+                                        model_dir="/tmp/boston_model")
 
-  # Fit
-  regressor.fit(input_fn=lambda: input_fn(training_set), steps=5000)
+  # Train
+  regressor.train(input_fn=get_input_fn(training_set), steps=5000)
 
-  # Score accuracy
-  ev = regressor.evaluate(input_fn=lambda: input_fn(test_set), steps=1)
+  # Evaluate loss over one epoch of test_set.
+  ev = regressor.evaluate(
+      input_fn=get_input_fn(test_set, num_epochs=1, shuffle=False))
   loss_score = ev["loss"]
   print("Loss: {0:f}".format(loss_score))
 
-  # Print out predictions
-  y = regressor.predict(input_fn=lambda: input_fn(prediction_set))
-  print("Predictions: {}".format(str(y)))
+  # Print out predictions over a slice of prediction_set.
+  y = regressor.predict(
+      input_fn=get_input_fn(prediction_set, num_epochs=1, shuffle=False))
+  # .predict() returns an iterator of dicts; convert to a list and print
+  # predictions
+  predictions = list(p["predictions"] for p in itertools.islice(y, 6))
+  print("Predictions: {}".format(str(predictions)))
 
 if __name__ == "__main__":
   tf.app.run()

@@ -14,7 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <deque>
+#include <utility>
 #include <vector>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#define PATH_MAX MAX_PATH
+#else
+#include <unistd.h>
+#endif
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -86,7 +96,7 @@ Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
 
 Status Env::RegisterFileSystem(const string& scheme,
                                FileSystemRegistry::Factory factory) {
-  return file_system_registry_->Register(scheme, factory);
+  return file_system_registry_->Register(scheme, std::move(factory));
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
@@ -121,6 +131,52 @@ Status Env::FileExists(const string& fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);
+}
+
+bool Env::FilesExist(const std::vector<string>& files,
+                     std::vector<Status>* status) {
+  std::unordered_map<string, std::vector<string>> files_per_fs;
+  for (const auto& file : files) {
+    StringPiece scheme, host, path;
+    io::ParseURI(file, &scheme, &host, &path);
+    files_per_fs[scheme.ToString()].push_back(file);
+  }
+
+  std::unordered_map<string, Status> per_file_status;
+  bool result = true;
+  for (auto itr : files_per_fs) {
+    FileSystem* file_system = file_system_registry_->Lookup(itr.first);
+    bool fs_result;
+    std::vector<Status> local_status;
+    std::vector<Status>* fs_status = status ? &local_status : nullptr;
+    if (!file_system) {
+      fs_result = false;
+      if (fs_status) {
+        Status s = errors::Unimplemented("File system scheme ", itr.first,
+                                         " not implemented");
+        local_status.resize(itr.second.size(), s);
+      }
+    } else {
+      fs_result = file_system->FilesExist(itr.second, fs_status);
+    }
+    if (fs_status) {
+      result &= fs_result;
+      for (int i = 0; i < itr.second.size(); ++i) {
+        per_file_status[itr.second[i]] = fs_status->at(i);
+      }
+    } else if (!fs_result) {
+      // Return early
+      return false;
+    }
+  }
+
+  if (status) {
+    for (const auto& file : files) {
+      status->push_back(per_file_status[file]);
+    }
+  }
+
+  return result;
 }
 
 Status Env::GetChildren(const string& dir, std::vector<string>* result) {
@@ -195,6 +251,26 @@ Status Env::RenameFile(const string& src, const string& target) {
                                  " not implemented");
   }
   return src_fs->RenameFile(src, target);
+}
+
+string Env::GetExecutablePath() {
+  char exe_path[PATH_MAX] = {0};
+#ifdef __APPLE__
+  uint32_t buffer_size(0U);
+  _NSGetExecutablePath(nullptr, &buffer_size);
+  char unresolved_path[buffer_size];
+  _NSGetExecutablePath(unresolved_path, &buffer_size);
+  CHECK(realpath(unresolved_path, exe_path));
+#elif defined(PLATFORM_WINDOWS)
+  HMODULE hModule = GetModuleHandle(NULL);
+  GetModuleFileName(hModule, exe_path, MAX_PATH);
+#else
+  CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
+#endif
+  // Make sure it's null-terminated:
+  exe_path[sizeof(exe_path) - 1] = 0;
+
+  return exe_path;
 }
 
 Thread::~Thread() {}

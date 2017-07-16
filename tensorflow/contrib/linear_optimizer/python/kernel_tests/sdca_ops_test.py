@@ -18,23 +18,32 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from threading import Thread
+import threading
 
-import tensorflow as tf
-
-from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _ShardedMutableDenseHashTable
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
-from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SparseFeatureColumn
+from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
+from tensorflow.core.example import example_pb2
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework.test_util import TensorFlowTestCase
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sdca_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import googletest
 
 _MAX_ITERATIONS = 100
 _SHARD_NUMBERS = [None, 1, 3, 10]
 _NUM_LOSS_PARTITIONS = [2, 4]
 
+
 def make_example_proto(feature_dict, target, value=1.0):
-  e = tf.train.Example()
+  e = example_pb2.Example()
   features = e.features
 
   features.feature['target'].float_list.value.append(target)
@@ -51,43 +60,60 @@ def make_example_dict(example_protos, example_weights):
 
   def parse_examples(example_protos):
     features = {
-        'target': tf.FixedLenFeature(shape=[1],
-                                     dtype=tf.float32,
-                                     default_value=0),
-        'age_indices': tf.VarLenFeature(dtype=tf.int64),
-        'age_values': tf.VarLenFeature(dtype=tf.float32),
-        'gender_indices': tf.VarLenFeature(dtype=tf.int64),
-        'gender_values': tf.VarLenFeature(dtype=tf.float32)
+        'target':
+            parsing_ops.FixedLenFeature(
+                shape=[1], dtype=dtypes.float32, default_value=0),
+        'age_indices':
+            parsing_ops.VarLenFeature(dtype=dtypes.int64),
+        'age_values':
+            parsing_ops.VarLenFeature(dtype=dtypes.float32),
+        'gender_indices':
+            parsing_ops.VarLenFeature(dtype=dtypes.int64),
+        'gender_values':
+            parsing_ops.VarLenFeature(dtype=dtypes.float32)
     }
-    return tf.parse_example(
+    return parsing_ops.parse_example(
         [e.SerializeToString() for e in example_protos], features)
 
   parsed = parse_examples(example_protos)
   sparse_features = [
       SparseFeatureColumn(
-          tf.reshape(
-              tf.split(1, 2, parsed['age_indices'].indices)[0], [-1]),
-          tf.reshape(parsed['age_indices'].values, [-1]),
-          tf.reshape(parsed['age_values'].values, [-1])), SparseFeatureColumn(
-              tf.reshape(
-                  tf.split(1, 2, parsed['gender_indices'].indices)[0], [-1]),
-              tf.reshape(parsed['gender_indices'].values, [-1]),
-              tf.reshape(parsed['gender_values'].values, [-1]))
+          array_ops.reshape(
+              array_ops.split(
+                  value=parsed['age_indices'].indices,
+                  num_or_size_splits=2,
+                  axis=1)[0], [-1]),
+          array_ops.reshape(parsed['age_indices'].values, [-1]),
+          array_ops.reshape(parsed['age_values'].values, [-1])),
+      SparseFeatureColumn(
+          array_ops.reshape(
+              array_ops.split(
+                  value=parsed['gender_indices'].indices,
+                  num_or_size_splits=2,
+                  axis=1)[0], [-1]),
+          array_ops.reshape(parsed['gender_indices'].values, [-1]),
+          array_ops.reshape(parsed['gender_values'].values, [-1]))
   ]
-  return dict(sparse_features=sparse_features,
-              dense_features=[],
-              example_weights=example_weights,
-              example_labels=tf.reshape(parsed['target'], [-1]),
-              example_ids=['%d' % i for i in range(0, len(example_protos))])
+  return dict(
+      sparse_features=sparse_features,
+      dense_features=[],
+      example_weights=example_weights,
+      example_labels=array_ops.reshape(parsed['target'], [-1]),
+      example_ids=['%d' % i for i in range(0, len(example_protos))])
 
 
 def make_variable_dict(max_age, max_gender):
   # TODO(sibyl-toe9oF2e):  Figure out how to derive max_age & max_gender from
   # examples_dict.
-  age_weights = tf.Variable(tf.zeros([max_age + 1], dtype=tf.float32))
-  gender_weights = tf.Variable(tf.zeros([max_gender + 1], dtype=tf.float32))
-  return dict(sparse_features_weights=[age_weights, gender_weights],
-              dense_features_weights=[])
+  age_weights = variables_lib.Variable(
+      array_ops.zeros(
+          [max_age + 1], dtype=dtypes.float32))
+  gender_weights = variables_lib.Variable(
+      array_ops.zeros(
+          [max_gender + 1], dtype=dtypes.float32))
+  return dict(
+      sparse_features_weights=[age_weights, gender_weights],
+      dense_features_weights=[])
 
 
 def make_dense_examples_and_variables_dicts(dense_features_values, weights,
@@ -107,20 +133,20 @@ def make_dense_examples_and_variables_dicts(dense_features_values, weights,
   dense_tensors = []
   dense_weights = []
   for dense_feature in dense_features_values:
-    dense_tensor = tf.convert_to_tensor(dense_feature, dtype=tf.float32)
-    check_shape_op = tf.Assert(
-        tf.less_equal(tf.rank(dense_tensor), 2),
+    dense_tensor = ops.convert_to_tensor(dense_feature, dtype=dtypes.float32)
+    check_shape_op = control_flow_ops.Assert(
+        math_ops.less_equal(array_ops.rank(dense_tensor), 2),
         ['dense_tensor shape must be [batch_size, dimension] or [batch_size]'])
     # Reshape to [batch_size, dense_column_dimension].
-    with tf.control_dependencies([check_shape_op]):
-      dense_tensor = tf.reshape(dense_tensor,
-                                [dense_tensor.get_shape().as_list()[0], -1])
+    with ops.control_dependencies([check_shape_op]):
+      dense_tensor = array_ops.reshape(
+          dense_tensor, [dense_tensor.get_shape().as_list()[0], -1])
     dense_tensors.append(dense_tensor)
     # Add variables of shape [feature_column_dimension].
     dense_weights.append(
-        tf.Variable(
-            tf.zeros(
-                [dense_tensor.get_shape().as_list()[1]], dtype=tf.float32)))
+        variables_lib.Variable(
+            array_ops.zeros(
+                [dense_tensor.get_shape().as_list()[1]], dtype=dtypes.float32)))
 
   examples_dict = dict(
       sparse_features=[],
@@ -135,15 +161,16 @@ def make_dense_examples_and_variables_dicts(dense_features_values, weights,
 
 
 def get_binary_predictions_for_logistic(predictions, cutoff=0.5):
-  return tf.cast(
-      tf.greater_equal(predictions, tf.ones_like(predictions) * cutoff),
-      dtype=tf.int32)
+  return math_ops.cast(
+      math_ops.greater_equal(predictions,
+                             array_ops.ones_like(predictions) * cutoff),
+      dtype=dtypes.int32)
 
 
 def get_binary_predictions_for_hinge(predictions):
-  return tf.cast(
-      tf.greater_equal(predictions, tf.zeros_like(predictions)),
-      dtype=tf.int32)
+  return math_ops.cast(
+      math_ops.greater_equal(predictions, array_ops.zeros_like(predictions)),
+      dtype=dtypes.int32)
 
 
 # TODO(sibyl-Mooth6ku): Add tests that exercise L1 and Shrinking.
@@ -152,8 +179,8 @@ class SdcaModelTest(TensorFlowTestCase):
   """Base SDCA optimizer test class for any loss type."""
 
   def _single_threaded_test_session(self):
-    config = tf.ConfigProto(inter_op_parallelism_threads=1,
-                            intra_op_parallelism_threads=1)
+    config = config_pb2.ConfigProto(
+        inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
     return self.test_session(use_gpu=False, config=config)
 
 
@@ -163,25 +190,28 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
   def testSimple(self):
     # Setup test data
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
         variables = make_variable_dict(1, 1)
-        options = dict(symmetric_l2_regularization=1,
-                       symmetric_l1_regularization=0,
-                       num_table_shards=num_shards,
-                       loss_type='logistic_loss')
+        options = dict(
+            symmetric_l2_regularization=1,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.global_variables_initializer().run()
+        variables_lib.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -202,18 +232,20 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(0.525457, loss.eval(), atol=0.01)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 1], predicted_labels.eval())
-        self.assertAllClose(0.01,
-                            lr.approximate_duality_gap().eval(),
-                            rtol=1e-2,
-                            atol=1e-2)
+        self.assertAllClose(
+            0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
 
   def testDistributedSimple(self):
     # Setup test data
     example_protos = [
-        make_example_proto({'age': [0],
-                            'gender': [0]}, 0),
-        make_example_proto({'age': [1],
-                            'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
@@ -229,7 +261,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
               num_loss_partitions=num_loss_partitions)
 
           lr = SdcaModel(examples, variables, options)
-          tf.global_variables_initializer().run()
+          variables_lib.global_variables_initializer().run()
           unregularized_loss = lr.unregularized_loss(examples)
           loss = lr.regularized_loss(examples)
           predictions = lr.predictions(examples)
@@ -245,7 +277,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
 
           threads = []
           for _ in range(num_loss_partitions):
-            threads.append(Thread(target=Minimize))
+            threads.append(threading.Thread(target=Minimize))
             threads[-1].start()
 
           for t in threads:
@@ -270,25 +302,28 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     # The algorithm should behave as if we have an L2 of 1 in optimization but
     # 0 in regularized_loss.
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
         variables = make_variable_dict(1, 1)
-        options = dict(symmetric_l2_regularization=0,
-                       symmetric_l1_regularization=0,
-                       num_table_shards=num_shards,
-                       loss_type='logistic_loss')
+        options = dict(
+            symmetric_l2_regularization=0,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.global_variables_initializer().run()
+        variables_lib.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -305,31 +340,33 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(0.40244, loss.eval(), atol=0.01)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 1], predicted_labels.eval())
-        self.assertAllClose(0.01,
-                            lr.approximate_duality_gap().eval(),
-                            rtol=1e-2,
-                            atol=1e-2)
+        self.assertAllClose(
+            0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
 
   def testSomeUnweightedExamples(self):
     # Setup test data with 4 examples, but should produce the same
     # results as testSimple.
     example_protos = [
         # Will be used.
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
         # Will be ignored.
-        make_example_proto(
-            {'age': [1],
-             'gender': [0]}, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [0]
+        }, 0),
         # Will be used.
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
         # Will be ignored.
-        make_example_proto(
-            {'age': [1],
-             'gender': [0]}, 1),
+        make_example_proto({
+            'age': [1],
+            'gender': [0]
+        }, 1),
     ]
     example_weights = [1.0, 0.0, 1.0, 0.0]
     for num_shards in _SHARD_NUMBERS:
@@ -337,13 +374,14 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         # Only use examples 0 and 2
         examples = make_example_dict(example_protos, example_weights)
         variables = make_variable_dict(1, 1)
-        options = dict(symmetric_l2_regularization=1,
-                       symmetric_l1_regularization=0,
-                       num_table_shards=num_shards,
-                       loss_type='logistic_loss')
+        options = dict(
+            symmetric_l2_regularization=1,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.global_variables_initializer().run()
+        variables_lib.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -356,33 +394,34 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(0.525457, loss.eval(), atol=0.01)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllClose([0, 1, 1, 1], predicted_labels.eval())
-        self.assertAllClose(0.01,
-                            lr.approximate_duality_gap().eval(),
-                            rtol=1e-2,
-                            atol=1e-2)
+        self.assertAllClose(
+            0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
 
   def testFractionalExampleLabel(self):
     # Setup test data with 1 positive, and 1 mostly-negative example.
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0.1),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0.1),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
         variables = make_variable_dict(1, 1)
-        options = dict(symmetric_l2_regularization=1,
-                       symmetric_l1_regularization=0,
-                       num_table_shards=num_shards,
-                       loss_type='logistic_loss')
+        options = dict(
+            symmetric_l2_regularization=1,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.global_variables_initializer().run()
+        variables_lib.global_variables_initializer().run()
         with self.assertRaisesOpError(
             'Only labels of 0.0 or 1.0 are supported right now.'):
           lr.minimize().run()
@@ -390,31 +429,36 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
   def testImbalanced(self):
     # Setup test data with 1 positive, and 3 negative examples.
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [2],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [3],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [2],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [3],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [1.0, 1.0, 1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
         variables = make_variable_dict(3, 1)
-        options = dict(symmetric_l2_regularization=1,
-                       symmetric_l1_regularization=0,
-                       num_table_shards=num_shards,
-                       loss_type='logistic_loss')
+        options = dict(
+            symmetric_l2_regularization=1,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.global_variables_initializer().run()
+        variables_lib.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -423,39 +467,39 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           train_op.run()
         lr.update_weights(train_op).run()
 
-        self.assertAllClose(0.226487 + 0.102902,
-                            unregularized_loss.eval(),
-                            atol=0.08)
+        self.assertAllClose(
+            0.226487 + 0.102902, unregularized_loss.eval(), atol=0.08)
         self.assertAllClose(0.328394 + 0.131364, loss.eval(), atol=0.01)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 0, 0, 1], predicted_labels.eval())
-        self.assertAllClose(0.0,
-                            lr.approximate_duality_gap().eval(),
-                            rtol=2e-2,
-                            atol=1e-2)
+        self.assertAllClose(
+            0.0, lr.approximate_duality_gap().eval(), rtol=2e-2, atol=1e-2)
 
   def testImbalancedWithExampleWeights(self):
     # Setup test data with 1 positive, and 1 negative example.
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [3.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
         variables = make_variable_dict(1, 1)
-        options = dict(symmetric_l2_regularization=1,
-                       symmetric_l1_regularization=0,
-                       num_table_shards=num_shards,
-                       loss_type='logistic_loss')
+        options = dict(
+            symmetric_l2_regularization=1,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.global_variables_initializer().run()
+        variables_lib.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -468,33 +512,34 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(0.408044, loss.eval(), atol=0.012)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 1], predicted_labels.eval())
-        self.assertAllClose(0.0,
-                            lr.approximate_duality_gap().eval(),
-                            rtol=2e-2,
-                            atol=1e-2)
+        self.assertAllClose(
+            0.0, lr.approximate_duality_gap().eval(), rtol=2e-2, atol=1e-2)
 
   def testInstancesOfOneClassOnly(self):
     # Setup test data with 1 positive (ignored), and 1 negative example.
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [0]}, 1),  # Shares gender with the instance above.
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [0]
+        }, 1),  # Shares gender with the instance above.
     ]
     example_weights = [1.0, 0.0]  # Second example "omitted" from training.
     for num_shards in _SHARD_NUMBERS:
       with self._single_threaded_test_session():
         examples = make_example_dict(example_protos, example_weights)
         variables = make_variable_dict(1, 1)
-        options = dict(symmetric_l2_regularization=1,
-                       symmetric_l1_regularization=0,
-                       num_table_shards=num_shards,
-                       loss_type='logistic_loss')
+        options = dict(
+            symmetric_l2_regularization=1,
+            symmetric_l1_regularization=0,
+            num_table_shards=num_shards,
+            loss_type='logistic_loss')
 
         lr = SdcaModel(examples, variables, options)
-        tf.global_variables_initializer().run()
+        variables_lib.global_variables_initializer().run()
         unregularized_loss = lr.unregularized_loss(examples)
         loss = lr.regularized_loss(examples)
         predictions = lr.predictions(examples)
@@ -506,18 +551,20 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         self.assertAllClose(0.525457, loss.eval(), atol=0.01)
         predicted_labels = get_binary_predictions_for_logistic(predictions)
         self.assertAllEqual([0, 0], predicted_labels.eval())
-        self.assertAllClose(0.01,
-                            lr.approximate_duality_gap().eval(),
-                            rtol=1e-2,
-                            atol=1e-2)
+        self.assertAllClose(
+            0.01, lr.approximate_duality_gap().eval(), rtol=1e-2, atol=1e-2)
 
   def testOutOfRangeSparseFeatures(self):
     # Setup test data
     example_protos = [
-        make_example_proto({'age': [0],
-                            'gender': [0]}, 0),
-        make_example_proto({'age': [1],
-                            'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [1.0, 1.0]
     with self._single_threaded_test_session():
@@ -529,9 +576,10 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           loss_type='logistic_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       train_op = lr.minimize()
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, 'indices.*'):
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   'indices.*'):
         train_op.run()
 
   def testOutOfRangeDenseFeatures(self):
@@ -542,18 +590,18 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           labels=[1.0, 0.0])
       # Replace with a variable of size 1 instead of 2.
       variables['dense_features_weights'] = [
-          tf.Variable(tf.zeros(
-              [1], dtype=tf.float32))
+          variables_lib.Variable(array_ops.zeros(
+              [1], dtype=dtypes.float32))
       ]
       options = dict(
           symmetric_l2_regularization=1.0,
           symmetric_l1_regularization=0,
           loss_type='logistic_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       train_op = lr.minimize()
       with self.assertRaisesRegexp(
-          tf.errors.InvalidArgumentError,
+          errors_impl.InvalidArgumentError,
           'More dense features than we have parameters for.*'):
         train_op.run()
 
@@ -567,23 +615,26 @@ class SdcaWithLinearLossTest(SdcaModelTest):
   def testSimple(self):
     # Setup test data
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, -10.0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 14.0),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, -10.0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 14.0),
     ]
     example_weights = [1.0, 1.0]
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=1,
-                     symmetric_l1_regularization=0,
-                     loss_type='squared_loss')
+      options = dict(
+          symmetric_l2_regularization=1,
+          symmetric_l1_regularization=0,
+          loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       predictions = lr.predictions(examples)
       train_op = lr.minimize()
       for _ in range(_MAX_ITERATIONS):
@@ -592,44 +643,46 @@ class SdcaWithLinearLossTest(SdcaModelTest):
 
       # Predictions should be 2/3 of label due to minimizing regularized loss:
       #   (label - 2 * weight)^2 / 2 + L2 * 2 * weight^2
-      self.assertAllClose([-20.0 / 3.0, 28.0 / 3.0],
-                          predictions.eval(),
-                          rtol=0.005)
+      self.assertAllClose(
+          [-20.0 / 3.0, 28.0 / 3.0], predictions.eval(), rtol=0.005)
       # Approximate gap should be very close to 0.0. (In fact, because the gap
       # is only approximate, it is likely that upon convergence the duality gap
       # can have a tiny negative value).
-      self.assertAllClose(0.0,
-                          lr.approximate_duality_gap().eval(),
-                          atol=1e-2)
+      self.assertAllClose(0.0, lr.approximate_duality_gap().eval(), atol=1e-2)
 
   def testL2Regularization(self):
     # Setup test data
     example_protos = [
         # 2 identical examples
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, -10.0),
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, -10.0),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, -10.0),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, -10.0),
         # 2 more identical examples
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 14.0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 14.0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 14.0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 14.0),
     ]
     example_weights = [1.0, 1.0, 1.0, 1.0]
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=16,
-                     symmetric_l1_regularization=0,
-                     loss_type='squared_loss')
+      options = dict(
+          symmetric_l2_regularization=16,
+          symmetric_l1_regularization=0,
+          loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -649,22 +702,25 @@ class SdcaWithLinearLossTest(SdcaModelTest):
   def testL1Regularization(self):
     # Setup test data
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, -10.0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 14.0),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, -10.0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 14.0),
     ]
     example_weights = [1.0, 1.0]
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=1.0,
-                     symmetric_l1_regularization=4.0,
-                     loss_type='squared_loss')
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=4.0,
+          loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       prediction = lr.predictions(examples)
       loss = lr.regularized_loss(examples)
 
@@ -684,24 +740,27 @@ class SdcaWithLinearLossTest(SdcaModelTest):
   def testFeatureValues(self):
     # Setup test data
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, -10.0, -2.0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 14.0, 2.0),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, -10.0, -2.0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 14.0, 2.0),
     ]
     example_weights = [5.0, 3.0]
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
 
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=1,
-                     symmetric_l1_regularization=0,
-                     loss_type='squared_loss')
+      options = dict(
+          symmetric_l2_regularization=1,
+          symmetric_l1_regularization=0,
+          loss_type='squared_loss')
 
       lr = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -721,9 +780,8 @@ class SdcaWithLinearLossTest(SdcaModelTest):
       # w_2* = w_4* = 2 \cdot s_2 y_2/(\lambda + 8 s_2). Equivalently, due to
       # regularization and example weights, the predictions are within:
       # 8 \cdot s_i /(\lambda + 8 \cdot s_i) of the labels.
-      self.assertAllClose([-10 * 40.0 / 41.0, 14.0 * 24 / 25.0],
-                          predictions.eval(),
-                          atol=0.01)
+      self.assertAllClose(
+          [-10 * 40.0 / 41.0, 14.0 * 24 / 25.0], predictions.eval(), atol=0.01)
 
   def testDenseFeaturesWithDefaultWeights(self):
     with self._single_threaded_test_session():
@@ -731,11 +789,12 @@ class SdcaWithLinearLossTest(SdcaModelTest):
           dense_features_values=[[[1.0], [0.0]], [0.0, 1.0]],
           weights=[1.0, 1.0],
           labels=[10.0, -5.0])
-      options = dict(symmetric_l2_regularization=1.0,
-                     symmetric_l1_regularization=0,
-                     loss_type='squared_loss')
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -750,9 +809,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
       # In this case the (unnormalized regularized) loss will be:
       # 1/2(10-5)^2 + 1/2(5-5/2)^2 + 1/2(5^2 + (5/2)^2) = 125.0/4. The actual
       # loss should be further normalized by the sum of example weights.
-      self.assertAllClose([5.0, -2.5],
-                          predictions.eval(),
-                          rtol=0.01)
+      self.assertAllClose([5.0, -2.5], predictions.eval(), rtol=0.01)
       loss = lr.regularized_loss(examples)
       self.assertAllClose(125.0 / 8.0, loss.eval(), atol=0.01)
 
@@ -762,11 +819,12 @@ class SdcaWithLinearLossTest(SdcaModelTest):
           dense_features_values=[[[1.0, 0.0], [0.0, 1.0]]],
           weights=[20.0, 10.0],
           labels=[10.0, -5.0])
-      options = dict(symmetric_l2_regularization=5.0,
-                     symmetric_l1_regularization=0,
-                     loss_type='squared_loss')
+      options = dict(
+          symmetric_l2_regularization=5.0,
+          symmetric_l1_regularization=0,
+          loss_type='squared_loss')
       lr = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       predictions = lr.predictions(examples)
 
       train_op = lr.minimize()
@@ -783,9 +841,7 @@ class SdcaWithLinearLossTest(SdcaModelTest):
       # In this case the (unnormalized regularized) loss will be:
       # s_1/2(8-10)^2 + s_2/2(5-10/3)^2 + 5.0/2(8^2 + (10/3)^2) = 2175.0/9. The
       # actual loss should be further normalized by the sum of example weights.
-      self.assertAllClose([8.0, -10.0/3],
-                          predictions.eval(),
-                          rtol=0.01)
+      self.assertAllClose([8.0, -10.0 / 3], predictions.eval(), rtol=0.01)
       loss = lr.regularized_loss(examples)
       self.assertAllClose(2175.0 / 270.0, loss.eval(), atol=0.01)
 
@@ -796,22 +852,25 @@ class SdcaWithHingeLossTest(SdcaModelTest):
   def testSimple(self):
     # Setup test data
     example_protos = [
-        make_example_proto(
-            {'age': [0],
-             'gender': [0]}, 0),
-        make_example_proto(
-            {'age': [1],
-             'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [1.0, 1.0]
     with self._single_threaded_test_session():
       examples = make_example_dict(example_protos, example_weights)
       variables = make_variable_dict(1, 1)
-      options = dict(symmetric_l2_regularization=1.0,
-                     symmetric_l1_regularization=0,
-                     loss_type='hinge_loss')
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
 
       # Before minimization, the weights default to zero. There is no loss due
       # to regularization, only unregularized loss which is 0.5 * (1+1) = 1.0.
@@ -849,7 +908,7 @@ class SdcaWithHingeLossTest(SdcaModelTest):
           symmetric_l1_regularization=0,
           loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
 
@@ -876,11 +935,12 @@ class SdcaWithHingeLossTest(SdcaModelTest):
           dense_features_values=[[[1.0, 0.5], [1.0, -0.5]]],
           weights=[1.0, 1.0],
           labels=[1.0, 0.0])
-      options = dict(symmetric_l2_regularization=1.0,
-                     symmetric_l1_regularization=0,
-                     loss_type='hinge_loss')
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
 
@@ -906,11 +966,12 @@ class SdcaWithHingeLossTest(SdcaModelTest):
           dense_features_values=[[[1.0], [1.0]], [[0.5], [-0.5]]],
           weights=[3.0, 1.0],
           labels=[1.0, 0.0])
-      options = dict(symmetric_l2_regularization=1.0,
-                     symmetric_l1_regularization=0,
-                     loss_type='hinge_loss')
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
       predictions = model.predictions(examples)
       binary_predictions = get_binary_predictions_for_hinge(predictions)
       train_op = model.minimize()
@@ -939,10 +1000,14 @@ class SdcaWithSmoothHingeLossTest(SdcaModelTest):
   def testSimple(self):
     # Setup test data
     example_protos = [
-        make_example_proto({'age': [0],
-                            'gender': [0]}, 0),
-        make_example_proto({'age': [1],
-                            'gender': [1]}, 1),
+        make_example_proto({
+            'age': [0],
+            'gender': [0]
+        }, 0),
+        make_example_proto({
+            'age': [1],
+            'gender': [1]
+        }, 1),
     ]
     example_weights = [1.0, 1.0]
     with self._single_threaded_test_session():
@@ -953,7 +1018,7 @@ class SdcaWithSmoothHingeLossTest(SdcaModelTest):
           symmetric_l1_regularization=0,
           loss_type='smooth_hinge_loss')
       model = SdcaModel(examples, variables, options)
-      tf.global_variables_initializer().run()
+      variables_lib.global_variables_initializer().run()
 
       # Before minimization, the weights default to zero. There is no loss due
       # to regularization, only unregularized loss which is 0.5 * (1+1) = 1.0.
@@ -980,27 +1045,6 @@ class SdcaWithSmoothHingeLossTest(SdcaModelTest):
       self.assertAllClose(0.44, regularized_loss.eval(), atol=0.02)
 
 
-class SparseFeatureColumnTest(SdcaModelTest):
-  """Tests for SparseFeatureColumn.
-  """
-
-  def testBasic(self):
-    expected_example_indices = [1, 1, 1, 2]
-    expected_feature_indices = [0, 1, 2, 0]
-    sfc = SparseFeatureColumn(expected_example_indices,
-                              expected_feature_indices, None)
-    self.assertTrue(isinstance(sfc.example_indices, tf.Tensor))
-    self.assertTrue(isinstance(sfc.feature_indices, tf.Tensor))
-    self.assertEqual(sfc.feature_values, None)
-    with self._single_threaded_test_session():
-      self.assertAllEqual(expected_example_indices, sfc.example_indices.eval())
-      self.assertAllEqual(expected_feature_indices, sfc.feature_indices.eval())
-    expected_feature_values = [1.0, 2.0, 3.0, 4.0]
-    sfc = SparseFeatureColumn([1, 1, 1, 2], [0, 1, 2, 0],
-                              expected_feature_values)
-    with self._single_threaded_test_session():
-      self.assertAllEqual(expected_feature_values, sfc.feature_values.eval())
-
 class SdcaFprintTest(SdcaModelTest):
   """Tests for the SdcaFprint op.
 
@@ -1013,80 +1057,12 @@ class SdcaFprintTest(SdcaModelTest):
 
   def testFprint(self):
     with self._single_threaded_test_session():
-      in_data = tf.constant(['abc', 'very looooooong string', 'def'])
-      out_data = gen_sdca_ops._sdca_fprint(in_data)
+      in_data = constant_op.constant(['abc', 'very looooooong string', 'def'])
+      out_data = gen_sdca_ops.sdca_fprint(in_data)
       self.assertAllEqual([[4143508125394299908, -6879828354153669051],
                            [5849691694103072671, -4874542629849009556],
                            [603227410218889250, 8762207001949257490]],
                           out_data.eval())
-
-
-class ShardedMutableDenseHashTableTest(SdcaModelTest):
-  """Tests for the _ShardedMutableHashTable class."""
-
-  def testShardedMutableHashTable(self):
-    for num_shards in [1, 3, 10]:
-      with self._single_threaded_test_session():
-        default_val = -1
-        empty_key = 0
-        keys = tf.constant([11, 12, 13], tf.int64)
-        values = tf.constant([0, 1, 2], tf.int64)
-        table = _ShardedMutableDenseHashTable(
-            tf.int64, tf.int64, default_val, empty_key, num_shards=num_shards)
-        self.assertAllEqual(0, table.size().eval())
-
-        table.insert(keys, values).run()
-        self.assertAllEqual(3, table.size().eval())
-
-        input_string = tf.constant([11, 12, 14], tf.int64)
-        output = table.lookup(input_string)
-        self.assertAllEqual([3], output.get_shape())
-        self.assertAllEqual([0, 1, -1], output.eval())
-
-  def testShardedMutableHashTableVectors(self):
-    for num_shards in [1, 3, 10]:
-      with self._single_threaded_test_session():
-        default_val = [-0.1, 0.2]
-        empty_key = [0, 1]
-        keys = tf.constant([[11, 12], [13, 14], [15, 16]], tf.int64)
-        values = tf.constant([[0.5, 0.6], [1.5, 1.6], [2.5, 2.6]], tf.float32)
-        table = _ShardedMutableDenseHashTable(
-            tf.int64, tf.float32, default_val, empty_key, num_shards=num_shards)
-        self.assertAllEqual(0, table.size().eval())
-
-        table.insert(keys, values).run()
-        self.assertAllEqual(3, table.size().eval())
-
-        input_string = tf.constant([[11, 12], [13, 14], [11, 14]], tf.int64)
-        output = table.lookup(input_string)
-        self.assertAllEqual([3, 2], output.get_shape())
-        self.assertAllClose([[0.5, 0.6], [1.5, 1.6], [-0.1, 0.2]],
-                            output.eval())
-
-  def testExportSharded(self):
-    with self._single_threaded_test_session():
-      empty_key = -2
-      default_val = -1
-      num_shards = 2
-      keys = tf.constant([10, 11, 12], tf.int64)
-      values = tf.constant([2, 3, 4], tf.int64)
-      table = _ShardedMutableDenseHashTable(
-          tf.int64, tf.int64, default_val, empty_key, num_shards=num_shards)
-      self.assertAllEqual(0, table.size().eval())
-
-      table.insert(keys, values).run()
-      self.assertAllEqual(3, table.size().eval())
-
-      keys_list, values_list = table.export_sharded()
-      self.assertAllEqual(num_shards, len(keys_list))
-      self.assertAllEqual(num_shards, len(values_list))
-
-      # Exported keys include empty key buckets set to the empty_key
-      self.assertAllEqual(set([-2, 10, 12]), set(keys_list[0].eval().flatten()))
-      self.assertAllEqual(set([-2, 11]), set(keys_list[1].eval().flatten()))
-      # Exported values include empty value buckets set to 0
-      self.assertAllEqual(set([0, 2, 4]), set(values_list[0].eval().flatten()))
-      self.assertAllEqual(set([0, 3]), set(values_list[1].eval().flatten()))
 
 
 if __name__ == '__main__':

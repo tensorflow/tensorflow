@@ -27,11 +27,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Size;
-import android.view.MotionEvent;
+import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
 import org.tensorflow.demo.env.Logger;
+import org.tensorflow.demo.R;
 
 public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -150,14 +151,17 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   }
 
   protected void setFragment() {
-    final Fragment fragment = CameraConnectionFragment.newInstance(
-        new CameraConnectionFragment.ConnectionCallback(){
-          @Override
-          public void onPreviewSizeChosen(final Size size, final int rotation) {
-            CameraActivity.this.onPreviewSizeChosen(size, rotation);
-          }
-        },
-        this, getLayoutId(), getDesiredPreviewFrameSize());
+    final Fragment fragment =
+        CameraConnectionFragment.newInstance(
+            new CameraConnectionFragment.ConnectionCallback() {
+              @Override
+              public void onPreviewSizeChosen(final Size size, final int rotation) {
+                CameraActivity.this.onPreviewSizeChosen(size, rotation);
+              }
+            },
+            this,
+            getLayoutId(),
+            getDesiredPreviewFrameSize());
 
     getFragmentManager()
         .beginTransaction()
@@ -178,35 +182,38 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
-  @Override
-  public boolean onTouchEvent(final MotionEvent event) {
-    if (event.getAction() == MotionEvent.ACTION_DOWN) {
-      debug = !debug;
-      requestRender();
-    }
-
-    return false;
-  }
-
   public boolean isDebug() {
     return debug;
   }
 
   public void requestRender() {
-    final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
+    final OverlayView overlay = (OverlayView) findViewById(R.id.debug_overlay);
     if (overlay != null) {
       overlay.postInvalidate();
     }
   }
 
-  public void addCallback(OverlayView.DrawCallback callback) {
-    final OverlayView overlay = (OverlayView) findViewById(R.id.overlay);
+  public void addCallback(final OverlayView.DrawCallback callback) {
+    final OverlayView overlay = (OverlayView) findViewById(R.id.debug_overlay);
     if (overlay != null) {
       overlay.addCallback(callback);
     }
   }
 
+  public void onSetDebug(final boolean debug) {}
+
+  @Override
+  public boolean onKeyDown(final int keyCode, final KeyEvent event) {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+      debug = !debug;
+      requestRender();
+      onSetDebug(debug);
+      return true;
+    }
+    return super.onKeyDown(keyCode, event);
+  }
+
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
-  protected abstract int getDesiredPreviewFrameSize();
+  protected abstract Size getDesiredPreviewFrameSize();
 }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
 #include "public/gemmlowp.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -57,6 +58,9 @@ void GemmlowpMultiply(OpKernelContext* op_context, const quint8* a_data,
   gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::int32_t,
                                    gemmlowp::DefaultL8R8BitDepthParams>(
       &context, lhs, rhs, &result, -offset_a, -offset_b, empty_pipeline);
+  // Since gemmlowp uses assembly to write to the output, msan won't detect
+  // the output buffer as written to, so we mark it manually.
+  TF_ANNOTATE_MEMORY_IS_INITIALIZED(c_data_as_int32, m * n * sizeof(int32));
 }
 
 template <class T1, class T2, class Toutput>
@@ -135,7 +139,7 @@ class QuantizedMatMulOp : public OpKernel {
       // Gemmlowp/meta code path works on 32 & 64 bit Arm with NEON Simd and
       // allows optimized quantized 8bit to 32bit gemm.
       meta::QuantizedGemm(context, transpose_a_, transpose_b_, a_data, b_data,
-                          c_data, m, n, k, offset_a, offset_b, lda, ldb, ldc);
+                          c_data, m, n, k, -offset_a, -offset_b, lda, ldb, ldc);
     } else if (std::is_same<T1, quint8>() && std::is_same<T2, quint8>() &&
                std::is_same<Toutput, qint32>() && (offset_c == 0) &&
                (mult_c == 1) && (shift_c == 0) && (transpose_c == false)) {

@@ -16,75 +16,13 @@ limitations under the License.
 syntax = "proto3";
 
 import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/cluster.proto";
 
 package tensorflow;
 option cc_enable_arenas = true;
 option java_outer_classname = "ServerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-
-// This file contains protos to be used when defining a TensorFlow
-// cluster, and a server within that cluster.
-//
-// EXAMPLES
-// --------
-//
-// 1. A single-process cluster, containing "/job:local/task:0".
-//
-//    Cluster:
-//      job { name: 'local' tasks { key: 0 value: 'localhost:2222' } }
-//
-//    Server:
-//      cluster { $CLUSTER } job_name: 'local' task_index: 0
-//
-// 2. A two-process cluster, containing "/job:local/task:{0,1}".
-//
-//    Cluster:
-//      job { name: 'local' tasks { key: 0 value: 'localhost:2222' }
-//                          tasks { key: 1 value: 'localhost:2223' } }
-//
-//    Servers:
-//      cluster { $CLUSTER } job_name: 'local' task_index: 0
-//      cluster { $CLUSTER } job_name: 'local' task_index: 1
-//
-// 3. A two-job cluster, containing "/job:worker/task:{0,1,2}" and
-//    "/job:ps/task:{0,1}".
-//
-//    Cluster:
-//      job { name: 'worker' tasks { key: 0 value: 'worker1:2222' }
-//                           tasks { key: 1 value: 'worker2:2222' }
-//                           tasks { key: 2 value: 'worker3:2222' } }
-//      job { name: 'ps'     tasks { key: 0 value: 'ps0:2222' }
-//                           tasks { key: 1 value: 'ps1:2222' } }
-//
-//    Servers:
-//      cluster { $CLUSTER } job_name: 'worker' task_index: 0
-//      cluster { $CLUSTER } job_name: 'worker' task_index: 1
-//      cluster { $CLUSTER } job_name: 'worker' task_index: 2
-//      cluster { $CLUSTER } job_name: 'ps'     task_index: 0
-//      cluster { $CLUSTER } job_name: 'ps'     task_index: 1
-
-// Defines a single job in a TensorFlow cluster.
-message JobDef {
-  // The name of this job.
-  string name = 1;
-
-  // Mapping from task ID to "hostname:port" string.
-  //
-  // If the `name` field contains "worker", and the `tasks` map contains a
-  // mapping from 7 to "example.org:2222", then the device prefix
-  // "/job:worker/task:7" will be assigned to "example.org:2222".
-  //
-  // NOTE(mrry): Currently, only a dense task ID space starting at 0 is
-  // supported.
-  map<int32, string> tasks = 2;
-}
-
-// Defines a TensorFlow cluster as a set of jobs.
-message ClusterDef {
-  // The jobs that comprise the cluster.
-  repeated JobDef job = 1;
-}
 
 // Defines the configuration of a single TensorFlow server.
 message ServerDef {

@@ -32,6 +32,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#ifdef TENSORFLOW_USE_LIBXSMM
+#include "tensorflow/core/kernels/xsmm_conv2d.h"
+#endif
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -61,8 +64,8 @@ struct LaunchGeneric {
                      TensorFormat data_format) {
     CHECK(data_format == FORMAT_NHWC) << "Generic conv implementation only "
                                          "supports NHWC tensor format for now.";
-    if (filter.dim_size(1) == filter.dim_size(0) && filter.dim_size(0) == 1 &&
-        row_stride == 1 && col_stride == 1) {
+    if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
+        col_stride == 1) {
       // For 1x1 kernel, the 2D convolution is reduced to matrix
       // multiplication.
       //
@@ -82,6 +85,21 @@ struct LaunchGeneric {
           input.shaped<T, 2>({conv_width, filter.dim_size(2)}),
           filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)}),
           dim_pair);
+    } else if (filter.dim_size(0) == input.dim_size(1) &&
+               filter.dim_size(1) == input.dim_size(2) &&
+               padding == Eigen::PADDING_VALID) {
+      // If the input data and filter have the same height/width,
+      // the 2D convolution is reduced to matrix multiplication.
+      const int k =  // Length of reduction dimension.
+          filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+      functor::MatMulConvFunctor<Device, T>()(
+          ctx->eigen_device<Device>(),
+          output->shaped<T, 2>({input.dim_size(0), filter.dim_size(3)}),
+          input.shaped<T, 2>({input.dim_size(0), k}),
+          filter.shaped<T, 2>({k, filter.dim_size(3)}), dim_pair);
     } else {
       functor::SpatialConvolution<Device, T>()(
           ctx->eigen_device<Device>(), output->tensor<T, 4>(),
@@ -99,6 +117,12 @@ class LaunchConv2DOp<CPUDevice, T> {
               const Tensor& input, const Tensor& filter, int row_stride,
               int col_stride, const Eigen::PaddingType& padding, Tensor* output,
               TensorFormat data_format) {
+    if (data_format != FORMAT_NHWC) {
+      ctx->SetStatus(
+          errors::Unimplemented("Generic conv implementation only supports "
+                                "NHWC tensor format for now."));
+      return;
+    }
     LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
                                         col_stride, padding, output,
                                         data_format);
@@ -157,6 +181,75 @@ class LaunchDeepConvOp<CPUDevice, float> {
   }
 };
 
+#ifdef TENSORFLOW_USE_LIBXSMM
+template <typename Device, typename T>
+class LaunchXsmmConvOp {
+ public:
+  static bool Run(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int batch, int input_rows,
+                  int input_cols, int in_depth, int filter_rows,
+                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
+                  int out_cols, int out_depth, int stride_rows, int stride_cols,
+                  Tensor* output, TensorFormat data_format) {
+    return false;
+  }
+};
+
+template <>
+class LaunchXsmmConvOp<CPUDevice, float> {
+ public:
+  static bool Run(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int batch, int input_rows,
+                  int input_cols, int in_depth, int filter_rows,
+                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
+                  int out_cols, int out_depth, int stride_rows, int stride_cols,
+                  Tensor* output, TensorFormat data_format) {
+    auto num_threads =
+        ctx->device()->tensorflow_cpu_worker_threads()->num_threads;
+    // See libxsmm_dnn.h for this struct definition.
+    libxsmm_dnn_conv_desc desc;
+    desc.N = batch;
+    desc.C = in_depth;
+    desc.H = input_rows;
+    desc.W = input_cols;
+    desc.K = out_depth;
+    desc.R = filter_rows;
+    desc.S = filter_cols;
+    desc.u = stride_rows;
+    desc.v = stride_cols;
+    desc.pad_h = pad_rows;
+    desc.pad_w = pad_cols;
+    desc.pad_h_in = 0;
+    desc.pad_w_in = 0;
+    desc.pad_h_out = 0;
+    desc.pad_w_out = 0;
+    desc.threads = num_threads;
+    desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
+    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
+    desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
+    desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
+    desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE_OVERWRITE;
+    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
+
+    if (!CanUseXsmmConv2D(desc, data_format)) {
+      return false;
+    }
+
+    if (!CanUseXsmmConv2D(desc, data_format)) {
+      return false;
+    }
+
+    auto input_ptr = input.template flat<float>().data();
+    auto filter_ptr = filter.template flat<float>().data();
+    auto output_ptr = output->template flat<float>().data();
+
+    bool success = functor::XsmmFwdConv2D<CPUDevice, float>()(
+        ctx, desc, input_ptr, filter_ptr, output_ptr);
+    return success;
+  }
+};
+#endif
+
 template <typename Device, typename T>
 class Conv2DOp : public BinaryOp<T> {
  public:
@@ -200,18 +293,19 @@ class Conv2DOp : public BinaryOp<T> {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
-                                           std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
+          errors::InvalidArgument("filter too large"));
     }
 
     // The last dimension for input is in_depth. It must be the same as the
     // filter's in_depth.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
@@ -219,18 +313,20 @@ class Conv2DOp : public BinaryOp<T> {
     // The second dimension for input is rows/height.
     // The first dimension for filter is rows/height.
     const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
     // The third dimension for input is columns/width.
     // The second dimension for filter is columns/width.
     const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -274,6 +370,15 @@ class Conv2DOp : public BinaryOp<T> {
     if (out_shape.num_elements() == 0) {
       return;
     }
+
+#ifdef TENSORFLOW_USE_LIBXSMM
+    if (LaunchXsmmConvOp<Device, T>::Run(
+            context, input, filter, batch, input_rows, input_cols, in_depth,
+            filter_rows, filter_cols, pad_rows, pad_cols, out_rows, out_cols,
+            out_depth, stride_rows, stride_cols, output, data_format_)) {
+      return;
+    }
+#endif
 
     if (LaunchDeepConvOp<Device, T>::Run(
             context, input, filter, batch, input_rows, input_cols, in_depth,
@@ -332,7 +437,9 @@ int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
 }
 
 // A dummy type to group forward convolution autotune results together.
-struct ConvAutoTuneGroup {};
+struct ConvAutoTuneGroup {
+  static string name() { return "Conv"; }
+};
 typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
                           perftools::gputools::dnn::AlgorithmConfig>
     AutoTuneConv;
@@ -358,6 +465,7 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
   }
 
   Tensor input = input_param;
+
   if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
       col_stride == 1 && data_format == FORMAT_NHWC) {
     // 1x1 filter, so call cublas directly.
@@ -382,9 +490,37 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
       ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
                                       ", n=", n, ", k=", k));
     }
+    return;
+  } else if (filter.dim_size(0) == input.dim_size(1) &&
+             filter.dim_size(1) == input.dim_size(2) &&
+             padding == Eigen::PADDING_VALID && data_format == FORMAT_NHWC) {
+    // The input data and filter have the same height/width, so call cublas
+    // directly.
+    const uint64 m = input.dim_size(0);
+    const uint64 k =
+        filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+    const uint64 n = filter.dim_size(3);
 
+    auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
+                                input.template flat<T>().size());
+    auto b_ptr = AsDeviceMemory(filter.template flat<T>().data(),
+                                filter.template flat<T>().size());
+    auto c_ptr = AsDeviceMemory(output->template flat<T>().data(),
+                                output->template flat<T>().size());
+
+    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    bool blas_launch_status =
+        stream
+            ->ThenBlasGemm(no_transpose, no_transpose, n, m, k, 1.0f, b_ptr, n,
+                           a_ptr, k, 0.0f, &c_ptr, n)
+            .ok();
+    if (!blas_launch_status) {
+      ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
+                                      ", n=", n, ", k=", k));
+    }
     return;
   }
+
   int padding_rows = 0;
   int padding_cols = 0;
   const int64 in_batch = GetTensorDim(input, data_format, 'N');
@@ -507,29 +643,33 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
                      transformed_output.template flat<T>().size());
 
   static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
+      // default value is in bytes despite the name of the environment variable
+      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
       );
 
   int device_id = stream->parent()->device_ordinal();
+  DataType dtype = input.dtype();
   ConvParameters conv_parameters = {
-      in_batch,      // batch
-      in_depths,     // in_depths
-      in_rows,       // in_rows
-      in_cols,       // in_cols
-      out_depths,    // out_depths
-      patch_rows,    // filter_rows
-      patch_cols,    // filter_cols
-      row_stride,    // stride_rows
-      col_stride,    // stride_cols
-      padding_rows,  // padding_rows
-      padding_cols,  // padding_cols
-      device_id,     // device_id
+      in_batch,          // batch
+      in_depths,         // in_depths
+      {{in_rows,         // in_rows
+        in_cols}},       // in_cols
+      out_depths,        // out_depths
+      {{patch_rows,      // filter_rows
+        patch_cols}},    // filter_cols
+      {{row_stride,      // stride_rows
+        col_stride}},    // stride_cols
+      {{padding_rows,    // padding_rows
+        padding_cols}},  // padding_cols
+      dtype,             // tensor datatype
+      device_id,         // device_id
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmType> algorithms;
-    CHECK(stream->parent()->GetConvolveAlgorithms(&algorithms));
+    CHECK(stream->parent()->GetConvolveAlgorithms(
+        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
@@ -558,9 +698,10 @@ void LaunchConv2DOp<GPUDevice, T>::launch(
         }
       }
     }
-    OP_REQUIRES(ctx, best_result.is_valid() &&
-                         best_result.algorithm() != kDefaultAlgorithm,
-                errors::NotFound("No algorithm worked!"));
+    OP_REQUIRES(
+        ctx,
+        best_result.is_valid() && best_result.algorithm() != kDefaultAlgorithm,
+        errors::NotFound("No algorithm worked!"));
     OP_REQUIRES(ctx,
                 best_result_no_scratch.is_valid() &&
                     best_result_no_scratch.algorithm() != kDefaultAlgorithm,

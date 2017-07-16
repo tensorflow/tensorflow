@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb_text.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -36,10 +37,20 @@ string SummarizeString(const string& str) {
 string SummarizeTensor(const TensorProto& tensor_proto) {
   Tensor t;
   if (!t.FromProto(tensor_proto)) {
-    return strings::StrCat("<Invalid TensorProto: ",
-                           ProtoShortDebugString(tensor_proto), ">");
+    return strings::StrCat(
+        "<Invalid TensorProto: ", ProtoShortDebugString(tensor_proto), ">");
   }
   return t.DebugString();
+}
+
+string SummarizeFunc(const NameAttrList& func) {
+  std::vector<string> entries;
+  for (auto p : func.attr()) {
+    entries.push_back(
+        strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
+  }
+  std::sort(entries.begin(), entries.end());
+  return strings::StrCat(func.name(), "[", str_util::Join(entries, ", "), "]");
 }
 
 }  // namespace
@@ -100,20 +111,18 @@ string SummarizeAttrValue(const AttrValue& attr_value) {
           strings::StrAppend(&ret,
                              SummarizeTensor(attr_value.list().tensor(i)));
         }
+      } else if (attr_value.list().func_size() > 0) {
+        for (int i = 0; i < attr_value.list().func_size(); ++i) {
+          if (i > 0) strings::StrAppend(&ret, ", ");
+          strings::StrAppend(&ret, SummarizeFunc(attr_value.list().func(i)));
+        }
       }
 
       strings::StrAppend(&ret, "]");
       return ret;
     }
     case AttrValue::kFunc: {
-      std::vector<string> entries;
-      for (auto p : attr_value.func().attr()) {
-        entries.push_back(
-            strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
-      }
-      sort(entries.begin(), entries.end());
-      return strings::StrCat(attr_value.func().name(), "[",
-                             str_util::Join(entries, ", "), "]");
+      return SummarizeFunc(attr_value.func());
     }
     case AttrValue::kPlaceholder:
       return strings::StrCat("$", attr_value.placeholder());
@@ -154,16 +163,9 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   VALIDATE_FIELD(type, "type", kType);
   VALIDATE_FIELD(shape, "shape", kShape);
   VALIDATE_FIELD(tensor, "tensor", kTensor);
+  VALIDATE_FIELD(func, "func", kFunc);
 
 #undef VALIDATE_FIELD
-
-  if (attr_value.value_case() == AttrValue::kFunc) {
-    if (type != "func") {
-      return errors::InvalidArgument(
-          "AttrValue had value with type 'func' when '", type, "' expected");
-    }
-    ++num_set;
-  }
 
   if (attr_value.value_case() == AttrValue::kPlaceholder) {
     return errors::InvalidArgument(
@@ -192,8 +194,13 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
         "AttrValue missing value with expected type '", type, "'");
   }
 
-  // Ref types and DT_INVALID are illegal.
+  // Ref types and DT_INVALID are illegal, and DataTypes must
+  // be a valid enum type.
   if (type == "type") {
+    if (!DataType_IsValid(attr_value.type())) {
+      return errors::InvalidArgument("AttrValue has invalid DataType enum: ",
+                                     attr_value.type());
+    }
     if (IsRefType(attr_value.type())) {
       return errors::InvalidArgument(
           "AttrValue must not have reference type value of ",
@@ -205,6 +212,10 @@ Status AttrValueHasType(const AttrValue& attr_value, StringPiece type) {
   } else if (type == "list(type)") {
     for (auto as_int : attr_value.list().type()) {
       const DataType dtype = static_cast<DataType>(as_int);
+      if (!DataType_IsValid(dtype)) {
+        return errors::InvalidArgument("AttrValue has invalid DataType enum: ",
+                                       as_int);
+      }
       if (IsRefType(dtype)) {
         return errors::InvalidArgument(
             "AttrValue must not have reference type value of ",
@@ -277,15 +288,17 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out) {
   return ProtoParseFromString(to_parse, out);
 }
 
+void SetAttrValue(const AttrValue& value, AttrValue* out) { *out = value; }
+
 #define DEFINE_SET_ATTR_VALUE_ONE(ARG_TYPE, FIELD) \
   void SetAttrValue(ARG_TYPE value, AttrValue* out) { out->set_##FIELD(value); }
 
-#define DEFINE_SET_ATTR_VALUE_LIST(ARG_TYPE, FIELD)              \
-  void SetAttrValue(ARG_TYPE value, AttrValue* out) {            \
-    out->mutable_list(); /* create list() even if value empty */ \
-    for (const auto& v : value) {                                \
-      out->mutable_list()->add_##FIELD(v);                       \
-    }                                                            \
+#define DEFINE_SET_ATTR_VALUE_LIST(ARG_TYPE, FIELD)                       \
+  void SetAttrValue(ARG_TYPE value, AttrValue* out) {                     \
+    out->mutable_list()->Clear(); /* create list() even if value empty */ \
+    for (const auto& v : value) {                                         \
+      out->mutable_list()->add_##FIELD(v);                                \
+    }                                                                     \
   }
 
 #define DEFINE_SET_ATTR_VALUE_BOTH(ARG_TYPE, FIELD) \
@@ -309,7 +322,7 @@ void SetAttrValue(StringPiece value, AttrValue* out) {
 }
 
 void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     out->mutable_list()->add_s(v.data(), v.size());
   }
@@ -328,14 +341,14 @@ void SetAttrValue(const PartialTensorShape& value, AttrValue* out) {
 }
 
 void SetAttrValue(const gtl::ArraySlice<TensorShape> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
   }
 }
 
 void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     *out->mutable_list()->add_shape() = v;
   }
@@ -343,7 +356,7 @@ void SetAttrValue(gtl::ArraySlice<TensorShapeProto> value, AttrValue* out) {
 
 void SetAttrValue(const gtl::ArraySlice<PartialTensorShape> value,
                   AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     v.AsProto(out->mutable_list()->add_shape());
   }
@@ -358,7 +371,7 @@ void SetAttrValue(const Tensor& value, AttrValue* out) {
 }
 
 void SetAttrValue(const gtl::ArraySlice<Tensor> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     if (v.NumElements() > 1) {
       v.AsProtoTensorContent(out->mutable_list()->add_tensor());
@@ -373,7 +386,7 @@ void SetAttrValue(const TensorProto& value, AttrValue* out) {
 }
 
 void SetAttrValue(const gtl::ArraySlice<TensorProto> value, AttrValue* out) {
-  out->mutable_list();  // Create list() even if value empty.
+  out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     *out->mutable_list()->add_tensor() = v;
   }
@@ -383,21 +396,55 @@ void SetAttrValue(const NameAttrList& value, AttrValue* out) {
   *out->mutable_func() = value;
 }
 
+void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out) {
+  out->mutable_list()->Clear();  // Create list() even if value empty.
+  for (const auto& v : value) {
+    *out->mutable_list()->add_func() = v;
+  }
+}
+
+// Wrapper around protocol buffer serialization that requests deterministic
+// serialization, in particular for Map fields, which serialize in a random
+// order by default. Returns true on success.
+template <typename T>
+static bool DeterministicSerialization(const T& t, string* result) {
+  const int size = t.ByteSize();
+  *result = string(size, '\0');
+  ::tensorflow::protobuf::io::ArrayOutputStream array_stream(&(*result)[0],
+                                                             size);
+  ::tensorflow::protobuf::io::CodedOutputStream output_stream(&array_stream);
+  output_stream.SetSerializationDeterministic(true);
+  t.SerializeWithCachedSizes(&output_stream);
+  return !output_stream.HadError() && size == output_stream.ByteCount();
+}
+
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b) {
   string a_str, b_str;
-  a.SerializeToString(&a_str);
-  b.SerializeToString(&b_str);
+  DeterministicSerialization(a, &a_str);
+  DeterministicSerialization(b, &b_str);
   // Note: it should be safe to compare proto serializations of the attr
   // values since at most one field should be set in each (indeed, it
   // must be the same field if they are to compare equal).
   // Exception: there are multiple equivalent representations of
   // TensorProtos.  So a return value of true implies a == b, but not the
   // converse.
+  // TODO(phawkins): this is incorrect for NameAttrList attributes that may
+  // contain nested AttrValue maps.
   return a_str == b_str;
 }
 
 bool HasPlaceHolder(const AttrValue& val) {
   switch (val.value_case()) {
+    case AttrValue::kList: {
+      for (const NameAttrList& func : val.list().func()) {
+        for (const auto& p : func.attr()) {
+          if (HasPlaceHolder(p.second)) {
+            return true;
+          }
+        }
+      }
+      break;
+    }
     case AttrValue::kFunc:
       for (const auto& p : val.func().attr()) {
         if (HasPlaceHolder(p.second)) {
@@ -415,6 +462,16 @@ bool HasPlaceHolder(const AttrValue& val) {
 
 bool SubstitutePlaceholders(SubstituteFunc substitute, AttrValue* value) {
   switch (value->value_case()) {
+    case AttrValue::kList: {
+      for (NameAttrList& func : *value->mutable_list()->mutable_func()) {
+        for (auto& p : *func.mutable_attr()) {
+          if (!SubstitutePlaceholders(substitute, &p.second)) {
+            return false;
+          }
+        }
+      }
+      break;
+    }
     case AttrValue::kFunc:
       for (auto& p : *(value->mutable_func()->mutable_attr())) {
         if (!SubstitutePlaceholders(substitute, &p.second)) {

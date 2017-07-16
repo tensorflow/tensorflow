@@ -7,6 +7,8 @@ load("platform", "readlink_command")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["LICENSE.text"])
+
 config_setting(
     name = "using_sycl",
     values = {
@@ -31,7 +33,7 @@ cc_library(
         sycl_library_path("ComputeCpp")
     ],
     includes = ["include/"],
-    linkstatic = 1,
+    linkstatic = 0,
 )
 
 cc_library(

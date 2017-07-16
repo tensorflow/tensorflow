@@ -27,6 +27,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -47,7 +50,7 @@ namespace benchmark_model {
 
 Status InitializeSession(int num_threads, const string& graph,
                          std::unique_ptr<Session>* session,
-                         std::unique_ptr<StatSummarizer>* stats) {
+                         std::unique_ptr<GraphDef>* graph_def) {
   LOG(INFO) << "Loading TensorFlow.";
 
   tensorflow::SessionOptions options;
@@ -58,74 +61,207 @@ Status InitializeSession(int num_threads, const string& graph,
   LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
 
   session->reset(tensorflow::NewSession(options));
+  graph_def->reset(new GraphDef());
   tensorflow::GraphDef tensorflow_graph;
-  Status s = ReadBinaryProto(Env::Default(), graph, &tensorflow_graph);
+  Status s = ReadBinaryProto(Env::Default(), graph, graph_def->get());
   if (!s.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return s;
   }
 
-  stats->reset(new tensorflow::StatSummarizer(tensorflow_graph));
-
-  s = (*session)->Create(tensorflow_graph);
+  s = (*session)->Create(*(graph_def->get()));
   if (!s.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Session: " << s;
     return s;
   }
 
-  // Clear the proto to save memory space.
-  tensorflow_graph.Clear();
+  return Status::OK();
+}
+
+template <class T>
+void InitializeTensor(const std::vector<float>& initialization_values,
+                      Tensor* input_tensor) {
+  auto type_tensor = input_tensor->flat<T>();
+  type_tensor = type_tensor.constant(0);
+  if (!initialization_values.empty()) {
+    for (int i = 0; i < initialization_values.size(); ++i) {
+      type_tensor(i) = static_cast<T>(initialization_values[i]);
+    }
+  }
+}
+
+void CreateTensorsFromInputInfo(
+    const std::vector<InputLayerInfo>& inputs,
+    std::vector<std::pair<string, tensorflow::Tensor> >* input_tensors) {
+  for (const InputLayerInfo& input : inputs) {
+    Tensor input_tensor(input.data_type, input.shape);
+    switch (input.data_type) {
+      case DT_INT32: {
+        InitializeTensor<int32>(input.initialization_values, &input_tensor);
+        break;
+      }
+      case DT_FLOAT: {
+        InitializeTensor<float>(input.initialization_values, &input_tensor);
+        break;
+      }
+      case DT_QUINT8: {
+        InitializeTensor<quint8>(input.initialization_values, &input_tensor);
+        break;
+      }
+      case DT_UINT8: {
+        InitializeTensor<uint8>(input.initialization_values, &input_tensor);
+        break;
+      }
+      case DT_BOOL: {
+        InitializeTensor<bool>(input.initialization_values, &input_tensor);
+        break;
+      }
+      case DT_STRING: {
+        if (!input.initialization_values.empty()) {
+          LOG(FATAL) << "Initialization values are not supported for strings";
+        }
+        auto type_tensor = input_tensor.flat<string>();
+        type_tensor = type_tensor.constant("");
+        break;
+      }
+      default:
+        LOG(FATAL) << "Unsupported input type: "
+                   << DataTypeString(input.data_type);
+    }
+    input_tensors->push_back({input.name, input_tensor});
+  }
+}
+
+Status GetOutputShapes(const std::vector<InputLayerInfo>& inputs,
+                       const std::set<string>& wanted_shapes, Session* session,
+                       std::unordered_map<string, TensorShape>* node_shapes) {
+  std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
+  CreateTensorsFromInputInfo(inputs, &input_tensors);
+  std::vector<tensorflow::Tensor> output_tensors;
+  std::vector<string> output_tensor_names;
+  for (const string& wanted_shape : wanted_shapes) {
+    bool is_input = false;
+    for (const std::pair<string, tensorflow::Tensor>& input_tensor :
+         input_tensors) {
+      if (input_tensor.first == wanted_shape) {
+        (*node_shapes)[wanted_shape] = input_tensor.second.shape();
+        is_input = true;
+        break;
+      }
+    }
+    if (!is_input) {
+      output_tensor_names.push_back(wanted_shape);
+    }
+  }
+  TF_RETURN_IF_ERROR(
+      session->Run(input_tensors, output_tensor_names, {}, &output_tensors));
+  CHECK_EQ(output_tensors.size(), output_tensor_names.size());
+  for (int i = 0; i < output_tensor_names.size(); ++i) {
+    const string& wanted_shape_name = output_tensor_names[i];
+    const TensorShape& found_shape = output_tensors[i].shape();
+    (*node_shapes)[wanted_shape_name] = found_shape;
+  }
+  return Status::OK();
+}
+
+Status CalculateFlops(const GraphDef& graph,
+                      const std::vector<InputLayerInfo>& inputs,
+                      Session* session, int64* total_flops,
+                      std::unordered_map<string, int64>* flops_by_op) {
+  std::unordered_set<string> floppable_ops = {
+      "Conv2D", "MatMul", "QuantizedConv2D", "QuantizedMatMul",
+      "DepthwiseConv2dNative"};
+
+  std::set<string> wanted_shapes;
+  for (const NodeDef& node : graph.node()) {
+    if (floppable_ops.count(node.op())) {
+      for (const string& input : node.input()) {
+        wanted_shapes.insert(input);
+      }
+      wanted_shapes.insert(node.name());
+    }
+  }
+  std::unordered_map<string, TensorShape> found_shapes;
+  TF_RETURN_IF_ERROR(
+      GetOutputShapes(inputs, wanted_shapes, session, &found_shapes));
+
+  *total_flops = 0;
+  for (const NodeDef& node : graph.node()) {
+    if (floppable_ops.count(node.op())) {
+      int64 current_flops = 0;
+      // This is a very crude approximation to FLOPs that only looks at a few
+      // op types that commonly form the bulk of the computation for many
+      // models. It's included here because getting even an approximate value
+      // for FLOPs is still very useful for estimating utilization, versus a
+      // device's theoretical maximum FLOPs/second.
+      if ((node.op() == "Conv2D") || (node.op() == "QuantizedConv2D")) {
+        const TensorShape& filter_shape = found_shapes[node.input(1)];
+        const TensorShape& output_shape = found_shapes[node.name()];
+        int64 filter_height = filter_shape.dim_size(0);
+        int64 filter_width = filter_shape.dim_size(1);
+        int64 filter_in_depth = filter_shape.dim_size(2);
+        int64 output_count = output_shape.num_elements();
+        current_flops =
+            output_count * filter_in_depth * filter_height * filter_width * 2;
+      } else if ((node.op() == "MatMul") || (node.op() == "QuantizedMatMul")) {
+        const bool transpose_a = node.attr().at("transpose_a").b();
+        const TensorShape& a_shape = found_shapes[node.input(0)];
+        const TensorShape& output_shape = found_shapes[node.name()];
+        int64 k;
+        if (transpose_a) {
+          k = a_shape.dim_size(0);
+        } else {
+          k = a_shape.dim_size(1);
+        }
+        int64 output_count = output_shape.num_elements();
+        current_flops = k * output_count * 2;
+      } else if (node.op() == "DepthwiseConv2dNative") {
+        const TensorShape& filter_shape = found_shapes[node.input(1)];
+        const TensorShape& output_shape = found_shapes[node.name()];
+        int64 filter_height = filter_shape.dim_size(0);
+        int64 filter_width = filter_shape.dim_size(1);
+        int64 output_count = output_shape.num_elements();
+        current_flops = output_count * filter_height * filter_width * 2;
+      }
+      (*flops_by_op)[node.op()] += current_flops;
+      *total_flops += current_flops;
+    }
+  }
   return Status::OK();
 }
 
 Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
                     const std::vector<string>& outputs, Session* session,
-                    StatSummarizer* stats) {
+                    StatSummarizer* stats, int64* inference_time_us) {
   std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
-  for (const InputLayerInfo& input : inputs) {
-    Tensor input_tensor(input.data_type, input.shape);
-    switch (input.data_type) {
-      case DT_INT32: {
-        auto int_tensor = input_tensor.flat<int32>();
-        int_tensor = int_tensor.constant(0.0);
-        break;
-      }
-      case DT_FLOAT: {
-        auto float_tensor = input_tensor.flat<float>();
-        float_tensor = float_tensor.constant(0.0);
-        break;
-      }
-      case DT_QUINT8: {
-        auto int_tensor = input_tensor.flat<quint8>();
-        int_tensor = int_tensor.constant(0.0);
-        break;
-      }
-      default:
-        LOG(FATAL) << "Unsupported input type: " << input.data_type;
-    }
-    input_tensors.push_back({input.name, input_tensor});
-  }
+  CreateTensorsFromInputInfo(inputs, &input_tensors);
 
   std::vector<tensorflow::Tensor> output_tensors;
 
   tensorflow::Status s;
 
   RunOptions run_options;
-  run_options.set_trace_level(RunOptions::FULL_TRACE);
-  RunMetadata run_metadata;
+  if (stats != nullptr) {
+    run_options.set_trace_level(RunOptions::FULL_TRACE);
+  }
 
+  RunMetadata run_metadata;
+  const int64 start_time = Env::Default()->NowMicros();
   s = session->Run(run_options, input_tensors, outputs, {}, &output_tensors,
                    &run_metadata);
+  const int64 end_time = Env::Default()->NowMicros();
+  *inference_time_us = end_time - start_time;
 
   if (!s.ok()) {
     LOG(ERROR) << "Error during inference: " << s;
+    return s;
   }
 
-  assert(run_metadata.has_step_stats());
-
-  const StepStats& step_stats = run_metadata.step_stats();
-
-  stats->ProcessStepStats(step_stats);
+  if (stats != nullptr) {
+    assert(run_metadata.has_step_stats());
+    const StepStats& step_stats = run_metadata.step_stats();
+    stats->ProcessStepStats(step_stats);
+  }
 
   return s;
 }
@@ -133,15 +269,24 @@ Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
 Status TimeMultipleRuns(double sleep_seconds, int num_runs,
                         const std::vector<InputLayerInfo>& inputs,
                         const std::vector<string>& outputs, Session* session,
-                        StatSummarizer* stats) {
+                        StatSummarizer* stats, int64* total_time_us) {
   // Convert the run_delay string into a timespec.
   timespec req;
   req.tv_sec = static_cast<time_t>(sleep_seconds);
   req.tv_nsec = (sleep_seconds - req.tv_sec) * 1000000000;
 
-  LOG(INFO) << "Running benchmark";
+  *total_time_us = 0;
+
+  LOG(INFO) << "Running benchmark for " << num_runs << " iterations "
+            << (stats != nullptr ? "with" : "without")
+            << " detailed stat logging:";
+
+  Stat<int64> stat;
   for (int i = 0; i < num_runs; ++i) {
-    Status run_status = RunBenchmark(inputs, outputs, session, stats);
+    int64 time;
+    Status run_status = RunBenchmark(inputs, outputs, session, stats, &time);
+    stat.UpdateStat(time);
+    *total_time_us += time;
     if (!run_status.ok()) {
       LOG(INFO) << "Failed on run " << i;
       return run_status;
@@ -151,9 +296,16 @@ Status TimeMultipleRuns(double sleep_seconds, int num_runs,
     // This can be helpful to determine the effect of mobile processor
     // scaling and thermal throttling.
     if (sleep_seconds > 0.0) {
+#ifdef PLATFORM_WINDOWS
+      Sleep(sleep_seconds * 1000);
+#else
       nanosleep(&req, nullptr);
+#endif
     }
   }
+  std::stringstream stream;
+  stat.OutputToStream(&stream);
+  LOG(INFO) << stream.str() << std::endl;
 
   return Status::OK();
 }
@@ -163,6 +315,7 @@ int Main(int argc, char** argv) {
   string input_layer_string = "input:0";
   string input_layer_shape_string = "1,224,224,3";
   string input_layer_type_string = "float";
+  string input_layer_values_string = "";
   string output_layer_string = "output:0";
   int num_runs = 50;
   string run_delay = "-1.0";
@@ -170,12 +323,24 @@ int Main(int argc, char** argv) {
   string benchmark_name = "";
   string output_prefix = "";
   bool show_sizes = false;
+  bool show_run_order = true;
+  int run_order_limit = 0;
+  bool show_time = true;
+  int time_limit = 10;
+  bool show_memory = true;
+  int memory_limit = 10;
+  bool show_type = true;
+  bool show_summary = true;
+  bool show_flops = false;
+  int warmup_runs = 2;
 
   std::vector<Flag> flag_list = {
       Flag("graph", &graph, "graph file name"),
       Flag("input_layer", &input_layer_string, "input layer names"),
       Flag("input_layer_shape", &input_layer_shape_string, "input layer shape"),
       Flag("input_layer_type", &input_layer_type_string, "input layer type"),
+      Flag("input_layer_values", &input_layer_values_string,
+           "values to initialize the inputs with"),
       Flag("output_layer", &output_layer_string, "output layer name"),
       Flag("num_runs", &num_runs, "number of runs"),
       Flag("run_delay", &run_delay, "delay between runs in seconds"),
@@ -183,6 +348,20 @@ int Main(int argc, char** argv) {
       Flag("benchmark_name", &benchmark_name, "benchmark name"),
       Flag("output_prefix", &output_prefix, "benchmark output prefix"),
       Flag("show_sizes", &show_sizes, "whether to show sizes"),
+      Flag("show_run_order", &show_run_order,
+           "whether to list stats by run order"),
+      Flag("run_order_limit", &run_order_limit,
+           "how many items to show by run order"),
+      Flag("show_time", &show_time, "whether to list stats by time taken"),
+      Flag("time_limit", &time_limit, "how many items to show by time taken"),
+      Flag("show_memory", &show_memory, "whether to list stats by memory used"),
+      Flag("memory_limit", &memory_limit,
+           "how many items to show by memory used"),
+      Flag("show_type", &show_type, "whether to list stats by op type"),
+      Flag("show_summary", &show_summary,
+           "whether to show a summary of the stats"),
+      Flag("show_flops", &show_flops, "whether to estimate the model's FLOPs"),
+      Flag("warmup_runs", &warmup_runs, "how many runs to initialize model"),
   };
   string usage = Flags::Usage(argv[0], flag_list);
   const bool parse_result = Flags::Parse(&argc, argv, flag_list);
@@ -197,6 +376,8 @@ int Main(int argc, char** argv) {
       str_util::Split(input_layer_shape_string, ':');
   std::vector<string> input_layer_types =
       str_util::Split(input_layer_type_string, ',');
+  std::vector<string> input_layer_values =
+      str_util::Split(input_layer_values_string, ':');
   std::vector<string> output_layers = str_util::Split(output_layer_string, ',');
   if ((input_layers.size() != input_layer_shapes.size()) ||
       (input_layers.size() != input_layer_types.size())) {
@@ -231,14 +412,27 @@ int Main(int argc, char** argv) {
   LOG(INFO) << "Benchmark name: [" << benchmark_name << "]";
   LOG(INFO) << "Output prefix: [" << output_prefix << "]";
   LOG(INFO) << "Show sizes: [" << show_sizes << "]";
+  LOG(INFO) << "Warmup runs: [" << warmup_runs << "]";
 
   std::unique_ptr<Session> session;
   std::unique_ptr<StatSummarizer> stats;
+  std::unique_ptr<GraphDef> graph_def;
   Status initialize_status =
-      InitializeSession(num_threads, graph, &session, &stats);
+      InitializeSession(num_threads, graph, &session, &graph_def);
   if (!initialize_status.ok()) {
     return -1;
   }
+
+  StatSummarizerOptions stats_options;
+  stats_options.show_run_order = show_run_order;
+  stats_options.run_order_limit = run_order_limit;
+  stats_options.show_time = show_time;
+  stats_options.time_limit = time_limit;
+  stats_options.show_memory = show_memory;
+  stats_options.memory_limit = memory_limit;
+  stats_options.show_type = show_type;
+  stats_options.show_summary = show_summary;
+  stats.reset(new tensorflow::StatSummarizer(stats_options));
 
   const double sleep_seconds = std::strtod(run_delay.c_str(), nullptr);
 
@@ -251,23 +445,65 @@ int Main(int argc, char** argv) {
     CHECK(str_util::SplitAndParseAsInts(input_layer_shapes[n], ',', &sizes))
         << "Incorrect size string specified: " << input_layer_shapes[n];
     for (int i = 0; i < sizes.size(); ++i) {
+      int32 size = sizes[i];
+      if (size == -1) {
+        LOG(ERROR) << "Any unknown sizes in the shapes (-1's) must be replaced"
+                   << " with the size you want to benchmark with.";
+        return -1;
+      }
       input.shape.AddDim(sizes[i]);
     }
     input.name = input_layers[n];
+    if (n < input_layer_values.size()) {
+      CHECK(str_util::SplitAndParseAsFloats(input_layer_values[n], ',',
+                                            &input.initialization_values))
+          << "Incorrect initialization values string specified: "
+          << input_layer_values[n];
+    }
     inputs.push_back(input);
   }
 
-  const int64 start_time = Env::Default()->NowMicros();
-  Status time_status =
-      TimeMultipleRuns(sleep_seconds, num_runs, inputs, output_layers,
-                       session.get(), stats.get());
-  const int64 end_time = Env::Default()->NowMicros();
-  const double wall_time = (end_time - start_time) / 1000000.0;
+  // If requested, run through the graph first to preinitialize everything
+  // before the benchmarking runs.
+  int64 warmup_time_us = 0;
+  if (warmup_runs > 0) {
+    Status warmup_time_status =
+        TimeMultipleRuns(sleep_seconds, warmup_runs, inputs, output_layers,
+                         session.get(), nullptr, &warmup_time_us);
+    if (!warmup_time_status.ok()) {
+      LOG(ERROR) << "Timing failed with " << warmup_time_status;
+      return -1;
+    }
+  }
 
-  if (!time_status.ok()) {
-    LOG(ERROR) << "Timing failed with " << time_status;
+  // Capture overall inference time without stat logging overhead. This is the
+  // timing data that can be compared to other libaries.
+  int64 no_stat_time_us = 0;
+  Status no_stat_time_status =
+      TimeMultipleRuns(sleep_seconds, num_runs, inputs, output_layers,
+                       session.get(), nullptr, &no_stat_time_us);
+  const double no_stat_wall_time = no_stat_time_us / 1000000.0;
+  if (!no_stat_time_status.ok()) {
+    LOG(ERROR) << "Timing failed with " << no_stat_time_status;
     return -1;
   }
+
+  // Run again to gather detailed log stats to get a better idea of where
+  // relative time is going within the graph.
+  int64 stat_time_us = 0;
+  Status stat_time_status =
+      TimeMultipleRuns(sleep_seconds, num_runs, inputs, output_layers,
+                       session.get(), stats.get(), &stat_time_us);
+  if (!stat_time_status.ok()) {
+    LOG(ERROR) << "Timing failed with " << stat_time_status;
+    return -1;
+  }
+
+  LOG(INFO) << "Average inference timings in us: "
+            << "Warmup: "
+            << (warmup_runs > 0 ? warmup_time_us / warmup_runs : 0) << ", "
+            << "no stats: " << no_stat_time_us / num_runs << ", "
+            << "with stats: " << stat_time_us / num_runs;
 
   stats->PrintStepStats();
 
@@ -275,20 +511,73 @@ int Main(int argc, char** argv) {
     stats->PrintOutputs();
   }
 
+  if (show_flops) {
+    int64 total_flops;
+    std::unordered_map<string, int64> flops_by_op;
+    Status flop_status = CalculateFlops(*graph_def, inputs, session.get(),
+                                        &total_flops, &flops_by_op);
+    if (!flop_status.ok()) {
+      LOG(ERROR) << "FLOPs calculation failed with " << flop_status;
+      return -1;
+    }
+    string pretty_flops;
+    if (total_flops < 1000) {
+      pretty_flops = strings::StrCat(total_flops, " FLOPs");
+    } else if (total_flops < (1000 * 1000)) {
+      const float rounded_flops = (total_flops / 1000.0f);
+      pretty_flops = strings::StrCat(rounded_flops, "k FLOPs");
+    } else if (total_flops < (1000 * 1000 * 1000)) {
+      const float rounded_flops = round(total_flops / 1000.0f) / 1000.0f;
+      pretty_flops = strings::StrCat(rounded_flops, " million FLOPs");
+    } else {
+      const float rounded_flops =
+          round(total_flops / (1000.0f * 1000.0f)) / 1000.0f;
+      pretty_flops = strings::StrCat(rounded_flops, " billion FLOPs");
+    }
+    LOG(INFO) << "FLOPs estimate: " << strings::HumanReadableNum(total_flops);
+    const double mean_run_time = no_stat_wall_time / num_runs;
+    LOG(INFO) << "FLOPs/second: "
+              << strings::HumanReadableNum(
+                     static_cast<int64>(total_flops / mean_run_time));
+  }
+
   if (!benchmark_name.empty() && !output_prefix.empty()) {
     // Compute the total number of values per input.
     int64 total_size = inputs[0].shape.num_elements();
 
     // Throughput in MB/s
-    const double throughput = DataTypeSize(inputs[0].data_type) * total_size *
-                              num_runs / static_cast<double>(wall_time) /
-                              (1024 * 1024);
+    const double throughput =
+        DataTypeSize(inputs[0].data_type) * total_size * num_runs /
+        static_cast<double>(no_stat_wall_time) / (1024 * 1024);
 
     // Report the stats.
     TestReporter reporter(output_prefix, benchmark_name);
-    reporter.Initialize();
-    reporter.Benchmark(num_runs, -1.0, wall_time, throughput);
-    reporter.Close();
+    TF_QCHECK_OK(reporter.Initialize());
+    TF_QCHECK_OK(
+        reporter.Benchmark(num_runs, -1.0, no_stat_wall_time, throughput));
+    TF_QCHECK_OK(reporter.Close());
+
+    std::map<string, int64> node_type_map_count;
+    std::map<string, int64> node_type_map_time;
+    std::map<string, int64> node_type_map_memory;
+    std::map<string, int64> node_type_map_times_called;
+
+    int64 accumulated_us;
+    stats->ComputeStatsByType(&node_type_map_count, &node_type_map_time,
+                              &node_type_map_memory,
+                              &node_type_map_times_called, &accumulated_us);
+    for (const auto& time : node_type_map_time) {
+      std::stringstream stream;
+      stream << benchmark_name << "_" << time.first;
+      TestReporter node_reporter(output_prefix, stream.str());
+
+      LOG(INFO) << "Outputting: [" << time.first << "]";
+
+      TF_QCHECK_OK(node_reporter.Initialize());
+      TF_QCHECK_OK(node_reporter.Benchmark(
+          num_runs, -1.0, (time.second * num_runs) / 1000000.0f, -1.0));
+      TF_QCHECK_OK(node_reporter.Close());
+    }
   }
 
   return 0;

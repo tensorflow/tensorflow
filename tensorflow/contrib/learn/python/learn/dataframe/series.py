@@ -20,6 +20,8 @@ from __future__ import print_function
 
 from abc import ABCMeta
 
+from tensorflow.python.util.deprecation import deprecated
+
 
 class Series(object):
   """A single output series.
@@ -106,6 +108,7 @@ class Series(object):
 class PredefinedSeries(Series):
   """A `Series` that requires the cache to already map a given name."""
 
+  @deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
   def __init__(self, name, feature_spec):
     super(PredefinedSeries, self).__init__()
     self._name = name
@@ -144,6 +147,7 @@ class PredefinedSeries(Series):
 class TransformedSeries(Series):
   """A `Series` that results from applying a `Transform` to a list of inputs."""
 
+  @deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
   def __init__(self, input_series, transform, output_name):
     super(TransformedSeries, self).__init__()
     self._input_series = input_series

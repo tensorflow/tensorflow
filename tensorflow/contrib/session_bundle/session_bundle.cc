@@ -22,6 +22,7 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -43,12 +44,13 @@ namespace serving {
 namespace {
 
 auto* load_attempt_count = monitoring::Counter<2>::New(
-    "/tensorflow/contrib/session_bundle/load_attempt_count", "model_path",
-    "status",
-    "The number of times a SessionBundle was requested to be loaded.");
+    "/tensorflow/contrib/session_bundle/load_attempt_count",
+    "The number of times a SessionBundle was requested to be loaded.",
+    "model_path", "status");
 auto* load_latency = monitoring::Counter<1>::New(
-    "/tensorflow/contrib/session_bundle/load_latency", "model_path",
-    "Latency in microseconds for SessionBundles that were successfully loaded.");
+    "/tensorflow/contrib/session_bundle/load_latency",
+    "Latency in microseconds for SessionBundles that were successfully loaded.",
+    "model_path");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 
@@ -161,6 +163,13 @@ Status LoadSessionBundleFromPathUsingRunOptionsInternal(
   LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
+
+  // Deprecated SessionBundle models may fail to load because newly added
+  // attributes are not added to the Graph in the default Session initialization
+  // flow. Add an explicit call here when first loading the graph from disk.
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(bundle->meta_graph_def.mutable_graph_def(),
+                                *OpRegistry::Global(), 0 /* node_offset */));
 
   const auto& collection_def_map = bundle->meta_graph_def.collection_def();
   const auto graph_it = bundle->meta_graph_def.collection_def().find(kGraphKey);

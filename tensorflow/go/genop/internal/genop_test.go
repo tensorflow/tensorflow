@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package internal
 
@@ -39,14 +41,16 @@ summary: "No. Op."
 `,
 			wanted: `
 // No. Op.
-func NoOp(scope *Scope) {
+//
+// Returns the created operation.
+func NoOp(scope *Scope) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "NoOp",
 	}
-	scope.AddOperation(opspec)
+	return scope.AddOperation(opspec)
 }
 `,
 		},
@@ -187,7 +191,7 @@ type DecodeJpegAttr func(optionalAttr)
 // DecodeJpegChannels sets the optional channels attribute to value.
 //
 // value: Number of color channels for the decoded image.
-// If not specified, defaults to i:0
+// If not specified, defaults to 0
 func DecodeJpegChannels(value int64) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["channels"] = value
@@ -198,7 +202,7 @@ func DecodeJpegChannels(value int64) DecodeJpegAttr {
 //
 // value: If true use a slower but nicer upscaling of the
 // chroma planes (yuv420/422 only).
-// If not specified, defaults to b:true
+// If not specified, defaults to true
 func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["fancy_upscaling"] = value
@@ -209,7 +213,7 @@ func DecodeJpegFancyUpscaling(value bool) DecodeJpegAttr {
 //
 // value: The minimum required fraction of lines before a truncated
 // input is accepted.
-// If not specified, defaults to f:1
+// If not specified, defaults to 1
 func DecodeJpegAcceptableFraction(value float32) DecodeJpegAttr {
 	return func(m optionalAttr) {
 		m["acceptable_fraction"] = value
@@ -330,7 +334,7 @@ description: "Some description here."
 type ShapeNAttr func(optionalAttr)
 
 // ShapeNOutType sets the optional out_type attribute to value.
-// If not specified, defaults to type:DT_INT32
+// If not specified, defaults to DT_INT32
 func ShapeNOutType(value tf.DataType) ShapeNAttr {
 	return func(m optionalAttr) {
 		m["out_type"] = value

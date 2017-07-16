@@ -97,7 +97,7 @@ class TensorFlowDataFrame(df.DataFrame):
       graph: the `Graph` in which the `DataFrame` should be built.
       session: the `Session` in which to run the columns of the `DataFrame`.
       start_queues: if true, queues will be started before running and halted
-        after producting `n` batches.
+        after producing `n` batches.
       initialize_variables: if true, variables will be initialized.
       **kwargs: Additional keyword arguments e.g. `num_epochs`.
 

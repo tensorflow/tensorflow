@@ -78,5 +78,82 @@ TEST(WavIO, BasicOdd) {
   EXPECT_EQ(54, result.size());
 }
 
+TEST(WavIO, EncodeThenDecode) {
+  float audio[] = {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f};
+  string wav_data;
+  TF_ASSERT_OK(EncodeAudioAsS16LEWav(audio, 44100, 2, 3, &wav_data));
+  std::vector<float> decoded_audio;
+  uint32 decoded_sample_count;
+  uint16 decoded_channel_count;
+  uint32 decoded_sample_rate;
+  TF_ASSERT_OK(DecodeLin16WaveAsFloatVector(
+      wav_data, &decoded_audio, &decoded_sample_count, &decoded_channel_count,
+      &decoded_sample_rate));
+  EXPECT_EQ(2, decoded_channel_count);
+  EXPECT_EQ(3, decoded_sample_count);
+  EXPECT_EQ(44100, decoded_sample_rate);
+  for (int i = 0; i < 6; ++i) {
+    EXPECT_NEAR(audio[i], decoded_audio[i], 1e-4f) << "i=" << i;
+  }
+}
+
+TEST(WavIO, BasicMono) {
+  std::vector<uint8> wav_data = {
+      'R', 'I', 'F', 'F',  // ChunkID
+      44, 0, 0, 0,         // ChunkSize: 36 + SubChunk2Size
+      'W', 'A', 'V', 'E',  // Format
+      'f', 'm', 't', ' ',  // Subchunk1ID
+      16, 0, 0, 0,         // Subchunk1Size
+      1, 0,                // AudioFormat: 1=PCM
+      1, 0,                // NumChannels
+      0x44, 0xac, 0, 0,    // SampleRate: 44100
+      0x88, 0x58, 0x1, 0,  // BytesPerSecond: SampleRate * NumChannels *
+                           //                 BitsPerSample/8
+      2, 0,                // BytesPerSample: NumChannels * BitsPerSample/8
+      16, 0,               // BitsPerSample
+      'd', 'a', 't', 'a',  // Subchunk2ID
+      8, 0, 0, 0,          // Subchunk2Size: NumSamples * NumChannels *
+                           //                BitsPerSample/8
+      0, 0,                // Sample 1: 0
+      0xff, 0x7f,          // Sample 2: 32767 (saturated)
+      0, 0,                // Sample 3: 0
+      0x00, 0x80,          // Sample 4: -32768 (saturated)
+  };
+  string expected(wav_data.begin(), wav_data.end());
+  float audio[] = {0.0f, 1.0f, 0.0f, -1.0f};
+  string result;
+  TF_EXPECT_OK(EncodeAudioAsS16LEWav(audio, 44100, 1, 4, &result));
+  EXPECT_EQ(expected, result);
+}
+
+TEST(WavIO, BasicStereo) {
+  std::vector<uint8> wav_data = {
+      'R', 'I', 'F', 'F',  // ChunkID
+      44, 0, 0, 0,         // ChunkSize: 36 + SubChunk2Size
+      'W', 'A', 'V', 'E',  // Format
+      'f', 'm', 't', ' ',  // Subchunk1ID
+      16, 0, 0, 0,         // Subchunk1Size
+      1, 0,                // AudioFormat: 1=PCM
+      2, 0,                // NumChannels
+      0x44, 0xac, 0, 0,    // SampleRate: 44100
+      0x10, 0xb1, 0x2, 0,  // BytesPerSecond: SampleRate * NumChannels *
+                           //                 BitsPerSample/8
+      4, 0,                // BytesPerSample: NumChannels * BitsPerSample/8
+      16, 0,               // BitsPerSample
+      'd', 'a', 't', 'a',  // Subchunk2ID
+      8, 0, 0, 0,          // Subchunk2Size: NumSamples * NumChannels *
+                           //                BitsPerSample/8
+      0, 0,                // Sample 1: 0
+      0xff, 0x7f,          // Sample 2: 32767 (saturated)
+      0, 0,                // Sample 3: 0
+      0x00, 0x80,          // Sample 4: -32768 (saturated)
+  };
+  string expected(wav_data.begin(), wav_data.end());
+  float audio[] = {0.0f, 1.0f, 0.0f, -1.0f};
+  string result;
+  TF_EXPECT_OK(EncodeAudioAsS16LEWav(audio, 44100, 2, 2, &result));
+  EXPECT_EQ(expected, result);
+}
+
 }  // namespace wav
 }  // namespace tensorflow

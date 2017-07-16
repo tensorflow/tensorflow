@@ -19,8 +19,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
@@ -28,153 +26,104 @@ namespace tensorflow {
 
 namespace {
 
-// Windows is not currently supported.
-constexpr char kCurlLibLinux[] = "libcurl.so.3";
-constexpr char kCurlLibMac[] = "/usr/lib/libcurl.3.dylib";
-
-constexpr char kCertsPath[] = "/etc/ssl/certs";
-
 // Set to 1 to enable verbose debug output from curl.
 constexpr uint64 kVerboseOutput = 0;
 
 // Timeout for the whole request. Set only to prevent hanging indefinitely.
 constexpr uint32 kRequestTimeoutSeconds = 3600;  // 1 hour
+
 // Timeout for the connection phase.
 constexpr uint32 kConnectTimeoutSeconds = 120;  // 2 minutes
 
-/// An implementation that dynamically loads libcurl and forwards calls to it.
+// The maximum period of request inactivity, after which the request
+// is terminated.
+constexpr uint64 kInactivityTimeoutSeconds = 60;  // 1 minute
+
+// Proxy to the real libcurl implementation.
 class LibCurlProxy : public LibCurl {
  public:
   static LibCurlProxy* Load() {
     static LibCurlProxy* libcurl = []() -> LibCurlProxy* {
-      std::unique_ptr<LibCurlProxy> libcurl(new LibCurlProxy);
-      Status status = libcurl->LoadAndBind();
-      if (!status.ok()) {
-        return nullptr;
-      }
-      libcurl->curl_global_init_(CURL_GLOBAL_ALL);
-      return libcurl.release();
+      curl_global_init(CURL_GLOBAL_ALL);
+      return new LibCurlProxy;
     }();
-
     return libcurl;
   }
 
-  CURL* curl_easy_init() override {
-    return curl_easy_init_();
-  }
+  CURL* curl_easy_init() override { return ::curl_easy_init(); }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             uint64 param) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             const char* param) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             void* param) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(void*, size_t, size_t,
                                             FILE*)) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
   }
+
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(const void*, size_t, size_t,
                                             void*)) override {
-    return curl_easy_setopt_(curl, option, param);
+    return ::curl_easy_setopt(curl, option, param);
+  }
+
+  CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
+                            int (*param)(void* clientp, curl_off_t dltotal,
+                                         curl_off_t dlnow, curl_off_t ultotal,
+                                         curl_off_t ulnow)) override {
+    return ::curl_easy_setopt(curl, option, param);
   }
 
   CURLcode curl_easy_perform(CURL* curl) override {
-    return curl_easy_perform_(curl);
+    return ::curl_easy_perform(curl);
   }
 
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              uint64* value) override {
-    return curl_easy_getinfo_(curl, info, value);
+    return ::curl_easy_getinfo(curl, info, value);
   }
+
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              double* value) override {
-    return curl_easy_getinfo_(curl, info, value);
+    return ::curl_easy_getinfo(curl, info, value);
   }
+
   void curl_easy_cleanup(CURL* curl) override {
-    return curl_easy_cleanup_(curl);
+    return ::curl_easy_cleanup(curl);
   }
+
   char* curl_easy_escape(CURL* curl, const char* str, int length) override {
-    return curl_easy_escape_(curl, str, length);
+    return ::curl_easy_escape(curl, str, length);
   }
 
   curl_slist* curl_slist_append(curl_slist* list, const char* str) override {
-    return curl_slist_append_(list, str);
+    return ::curl_slist_append(list, str);
   }
 
   void curl_slist_free_all(curl_slist* list) override {
-    return curl_slist_free_all_(list);
+    return ::curl_slist_free_all(list);
   }
 
-  void curl_free(void* p) override {
-    curl_free_(p);
-  }
-
- private:
-  Status LoadAndBind() {
-    auto TryLoadAndBind = [this](const char* name, void** handle) -> Status {
-      TF_RETURN_IF_ERROR(Env::Default()->LoadLibrary(name, handle));
-#define BIND_CURL_FUNC(function)                             \
-  do {                                                       \
-    void* symbol_ptr = nullptr;                              \
-    TF_RETURN_IF_ERROR(Env::Default()->GetSymbolFromLibrary( \
-        *handle, #function, &symbol_ptr));                   \
-    *reinterpret_cast<void**>(&(function##_)) = symbol_ptr;  \
-  } while (0)
-
-      BIND_CURL_FUNC(curl_global_init);
-      BIND_CURL_FUNC(curl_easy_init);
-      BIND_CURL_FUNC(curl_easy_setopt);
-      BIND_CURL_FUNC(curl_easy_perform);
-      BIND_CURL_FUNC(curl_easy_getinfo);
-      BIND_CURL_FUNC(curl_slist_append);
-      BIND_CURL_FUNC(curl_slist_free_all);
-      BIND_CURL_FUNC(curl_easy_cleanup);
-      BIND_CURL_FUNC(curl_easy_escape);
-      BIND_CURL_FUNC(curl_free);
-#undef BIND_CURL_FUNC
-      return Status::OK();
-    };
-
-    // This may have been linked statically; if curl_easy_init is in the
-    // current binary, no need to search for a dynamic version.
-    Status status = TryLoadAndBind(nullptr, &handle_);
-    if (status.ok()) {
-      return status;
-    }
-    status = TryLoadAndBind(kCurlLibLinux, &handle_);
-    if (status.ok()) {
-      return status;
-    }
-    return TryLoadAndBind(kCurlLibMac, &handle_);
-  }
-
-  void* handle_ = nullptr;
-  CURLcode (*curl_global_init_)(int64) = nullptr;
-  CURL* (*curl_easy_init_)(void) = nullptr;
-  CURLcode (*curl_easy_setopt_)(CURL*, CURLoption, ...) = nullptr;
-  CURLcode (*curl_easy_perform_)(CURL* curl) = nullptr;
-  CURLcode (*curl_easy_getinfo_)(CURL* curl, CURLINFO info, ...) = nullptr;
-  void (*curl_easy_cleanup_)(CURL* curl) = nullptr;
-  curl_slist* (*curl_slist_append_)(curl_slist* list,
-                                    const char* str) = nullptr;
-  void (*curl_slist_free_all_)(curl_slist* list) = nullptr;
-  char* (*curl_easy_escape_)(CURL* curl, const char* str, int length) = nullptr;
-  void (*curl_free_)(void* p) = nullptr;
+  void curl_free(void* p) override { ::curl_free(p); }
 };
 }  // namespace
 
 HttpRequest::HttpRequest() : HttpRequest(LibCurlProxy::Load()) {}
 
-HttpRequest::HttpRequest(LibCurl* libcurl) : libcurl_(libcurl) {
+HttpRequest::HttpRequest(LibCurl* libcurl, Env* env)
+    : libcurl_(libcurl), env_(env) {
   default_response_buffer_.reserve(CURL_MAX_WRITE_SIZE);
 }
 
@@ -194,19 +143,16 @@ Status HttpRequest::Init() {
   if (is_initialized_) {
     return errors::FailedPrecondition("Already initialized.");
   }
-  if (!libcurl_) {
-    return errors::FailedPrecondition(
-        "Could not initialize the libcurl library. Please make sure that "
-        "libcurl is installed in the OS or statically linked to the "
-        "TensorFlow binary.");
-  }
   curl_ = libcurl_->curl_easy_init();
   if (!curl_) {
     return errors::Internal("Couldn't initialize a curl session.");
   }
 
+  // NOTE: CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt is configured by
+  //       default in //third_party:curl.BUILD and can be customized via an
+  //       environment variable.
+
   libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput);
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_CAPATH, kCertsPath);
   libcurl_->curl_easy_setopt(
       curl_, CURLOPT_USERAGENT,
       strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
@@ -217,6 +163,12 @@ Status HttpRequest::Init() {
                              kConnectTimeoutSeconds);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
                              CURL_HTTP_VERSION_2_0);
+
+  // Set up the progress meter.
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
+                             &HttpRequest::ProgressCallback);
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
@@ -300,6 +252,8 @@ Status HttpRequest::SetPutFromFile(const string& body_filepath, size_t offset) {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                              reinterpret_cast<void*>(put_body_));
+  // Using the default CURLOPT_READFUNCTION, which is doing an fread() on the
+  // FILE * userdata set with CURLOPT_READDATA.
   return Status::OK();
 }
 
@@ -311,6 +265,8 @@ Status HttpRequest::SetPutEmptyBody() {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
   curl_headers_ =
       libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                             reinterpret_cast<void*>(this));
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
                              &HttpRequest::ReadCallback);
   return Status::OK();
@@ -340,6 +296,8 @@ Status HttpRequest::SetPostEmptyBody() {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
   curl_headers_ =
       libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
+                             reinterpret_cast<void*>(this));
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
                              &HttpRequest::ReadCallback);
   return Status::OK();
@@ -422,7 +380,7 @@ Status HttpRequest::Send() {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
                              &HttpRequest::HeaderCallback);
 
-  char error_buffer[CURL_ERROR_SIZE];
+  char error_buffer[CURL_ERROR_SIZE] = {0};
   libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer);
 
   const auto curl_result = libcurl_->curl_easy_perform(curl_);
@@ -432,31 +390,80 @@ Status HttpRequest::Send() {
 
   libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code_);
 
+  const auto& error_message = strings::StrCat(
+      "Error executing an HTTP request (HTTP response code ", response_code_,
+      ", error code ", curl_result, ", error message '", error_buffer, "')");
+
+  Status result;
   switch (response_code_) {
+    // The group of response codes indicating that the request achieved
+    // the expected goal.
     case 200:  // OK
     case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
       if (curl_result != CURLE_OK) {
-        // UNAVAILABLE can be retried by the caller, e.g by RetryingFileSystem.
-        return errors::Unavailable(
-            strings::StrCat("libcurl failed with error code ", curl_result,
-                            ": ", error_buffer));
+        // This means the server executed the request successfully, but then
+        // something went wrong during the transmission of the response.
+        result = errors::Unavailable(error_message);
+      } else {
+        result = Status::OK();
       }
-      return Status::OK();
-    case 401:
-    case 403:
-      return errors::PermissionDenied("Not authorized to access the resource.");
-    case 404:
-      return errors::NotFound("The requested resource was not found.");
+      break;
     case 416:  // Requested Range Not Satisfiable
+      // The requested range had no overlap with the available range.
+      // This doesn't indicate an error, but this does mean an empty response
+      // body.
       response_buffer_->clear();
-      return Status::OK();
-    default:
-      // UNAVAILABLE can be retried by the caller, e.g by RetryingFileSystem.
-      return errors::Unavailable(
-          strings::StrCat("Unexpected response code ", response_code_));
+      result = Status::OK();
+      break;
+
+    // INVALID_ARGUMENT indicates a problem with how the request is constructed.
+    case 400:  // Bad Request
+    case 411:  // Length Required
+      result = errors::InvalidArgument(error_message);
+      break;
+
+    // PERMISSION_DENIED indicates an authentication or an authorization issue.
+    case 401:  // Unauthorized
+    case 403:  // Forbidden
+      result = errors::PermissionDenied(error_message);
+      break;
+
+    // NOT_FOUND indicates that the requested resource does not exist.
+    case 404:  // Not found
+    case 410:  // Gone
+      result = errors::NotFound(error_message);
+      break;
+
+    // FAILED_PRECONDITION indicates that the request failed because some
+    // of the underlying assumptions were not satisfied. The request
+    // shouldn't be retried unless the external context has changed.
+    case 302:  // Found
+    case 303:  // See Other
+    case 304:  // Not Modified
+    case 307:  // Temporary Redirect
+    case 308:  // Resume Incomplete
+    case 412:  // Precondition Failed
+    case 413:  // Payload Too Large
+      result = errors::FailedPrecondition(error_message);
+      break;
+
+    // UNAVAILABLE indicates a problem that can go away if the request
+    // is just retried without any modification.
+    case 409:  // Conflict
+    case 429:  // Too Many Requests
+    case 500:  // Internal Server Error
+    case 502:  // Bad Gateway
+    case 503:  // Service Unavailable
+    default:   // All other HTTP response codes also should be retried.
+      result = errors::Unavailable(error_message);
+      break;
   }
+  if (!result.ok()) {
+    response_buffer_->clear();
+  }
+  return result;
 }
 
 Status HttpRequest::CheckInitialized() const {
@@ -486,5 +493,32 @@ string HttpRequest::GetResponseHeader(const string& name) const {
 }
 
 uint64 HttpRequest::GetResponseCode() const { return response_code_; }
+
+// Cancels the transmission if no progress has been made for too long.
+int HttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
+                                  curl_off_t dlnow, curl_off_t ultotal,
+                                  curl_off_t ulnow) {
+  auto that = reinterpret_cast<HttpRequest*>(this_object);
+  const auto now = that->env_->NowSeconds();
+  const auto current_progress = dlnow + ulnow;
+  if (that->last_progress_timestamp_ == 0 ||
+      current_progress > that->last_progress_bytes_) {
+    // This is the first time the callback is called or some progress
+    // was made since the last tick.
+    that->last_progress_timestamp_ = now;
+    that->last_progress_bytes_ = current_progress;
+    return 0;
+  }
+
+  if (now - that->last_progress_timestamp_ > kInactivityTimeoutSeconds) {
+    LOG(ERROR) << "The transmission has been stuck at " << current_progress
+               << " bytes for " << now - that->last_progress_timestamp_
+               << " seconds and will be aborted.";
+    return 1;  // Will abort the request.
+  }
+
+  // No progress was made since the last call, but we should wait a bit longer.
+  return 0;
+}
 
 }  // namespace tensorflow

@@ -18,52 +18,96 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 from tensorflow.python.saved_model import utils
 
 
-class UtilsTest(tf.test.TestCase):
+class UtilsTest(test.TestCase):
 
-  def testBuildTensorInfo(self):
-    x = tf.placeholder(tf.float32, 1, name="x")
+  def testBuildTensorInfoDense(self):
+    x = array_ops.placeholder(dtypes.float32, 1, name="x")
     x_tensor_info = utils.build_tensor_info(x)
     self.assertEqual("x:0", x_tensor_info.name)
     self.assertEqual(types_pb2.DT_FLOAT, x_tensor_info.dtype)
     self.assertEqual(1, len(x_tensor_info.tensor_shape.dim))
     self.assertEqual(1, x_tensor_info.tensor_shape.dim[0].size)
 
-  def testBuildSignatureDef(self):
-    x = tf.placeholder(tf.float32, 1, name="x")
+  def testBuildTensorInfoSparse(self):
+    x = sparse_tensor.SparseTensor(indices=[[3, 3], [4, 4], [5, 5]],
+                                   values=[103.0, 104.0, 105.0],
+                                   dense_shape=[42, 69])
     x_tensor_info = utils.build_tensor_info(x)
-    inputs = dict()
-    inputs["foo-input"] = x_tensor_info
+    self.assertEqual(x.values.name,
+                     x_tensor_info.coo_sparse.values_tensor_name)
+    self.assertEqual(x.indices.name,
+                     x_tensor_info.coo_sparse.indices_tensor_name)
+    self.assertEqual(x.dense_shape.name,
+                     x_tensor_info.coo_sparse.dense_shape_tensor_name)
+    self.assertEqual(types_pb2.DT_FLOAT, x_tensor_info.dtype)
+    self.assertEqual(2, len(x_tensor_info.tensor_shape.dim))
+    self.assertEqual(42, x_tensor_info.tensor_shape.dim[0].size)
+    self.assertEqual(69, x_tensor_info.tensor_shape.dim[1].size)
 
-    y = tf.placeholder(tf.float32, name="y")
-    y_tensor_info = utils.build_tensor_info(y)
-    outputs = dict()
-    outputs["foo-output"] = y_tensor_info
+  def testGetTensorFromInfoDense(self):
+    expected = array_ops.placeholder(dtypes.float32, 1, name="x")
+    tensor_info = utils.build_tensor_info(expected)
+    actual = utils.get_tensor_from_tensor_info(tensor_info)
+    self.assertIsInstance(actual, ops.Tensor)
+    self.assertEqual(expected.name, actual.name)
 
-    signature_def = utils.build_signature_def(inputs, outputs,
-                                              "foo-method-name")
-    self.assertEqual("foo-method-name", signature_def.method_name)
+  def testGetTensorFromInfoSparse(self):
+    expected = array_ops.sparse_placeholder(dtypes.float32, name="x")
+    tensor_info = utils.build_tensor_info(expected)
+    actual = utils.get_tensor_from_tensor_info(tensor_info)
+    self.assertIsInstance(actual, sparse_tensor.SparseTensor)
+    self.assertEqual(expected.values.name, actual.values.name)
+    self.assertEqual(expected.indices.name, actual.indices.name)
+    self.assertEqual(expected.dense_shape.name, actual.dense_shape.name)
 
-    # Check inputs in signature def.
-    self.assertEqual(1, len(signature_def.inputs))
-    x_tensor_info_actual = signature_def.inputs["foo-input"]
-    self.assertEqual("x:0", x_tensor_info_actual.name)
-    self.assertEqual(types_pb2.DT_FLOAT, x_tensor_info_actual.dtype)
-    self.assertEqual(1, len(x_tensor_info_actual.tensor_shape.dim))
-    self.assertEqual(1, x_tensor_info_actual.tensor_shape.dim[0].size)
+  def testGetTensorFromInfoInOtherGraph(self):
+    with ops.Graph().as_default() as expected_graph:
+      expected = array_ops.placeholder(dtypes.float32, 1, name="right")
+      tensor_info = utils.build_tensor_info(expected)
+    with ops.Graph().as_default():  # Some other graph.
+      array_ops.placeholder(dtypes.float32, 1, name="other")
+    actual = utils.get_tensor_from_tensor_info(tensor_info,
+                                               graph=expected_graph)
+    self.assertIsInstance(actual, ops.Tensor)
+    self.assertIs(actual.graph, expected_graph)
+    self.assertEqual(expected.name, actual.name)
 
-    # Check outputs in signature def.
-    self.assertEqual(1, len(signature_def.outputs))
-    y_tensor_info_actual = signature_def.outputs["foo-output"]
-    self.assertEqual("y:0", y_tensor_info_actual.name)
-    self.assertEqual(types_pb2.DT_FLOAT, y_tensor_info_actual.dtype)
-    self.assertEqual(0, len(y_tensor_info_actual.tensor_shape.dim))
+  def testGetTensorFromInfoInScope(self):
+    # Build a TensorInfo with name "bar/x:0".
+    with ops.Graph().as_default():
+      with ops.name_scope("bar"):
+        unscoped = array_ops.placeholder(dtypes.float32, 1, name="x")
+        tensor_info = utils.build_tensor_info(unscoped)
+        self.assertEqual("bar/x:0", tensor_info.name)
+    # Build a graph with node "foo/bar/x:0", akin to importing into scope foo.
+    with ops.Graph().as_default():
+      with ops.name_scope("foo"):
+        with ops.name_scope("bar"):
+          expected = array_ops.placeholder(dtypes.float32, 1, name="x")
+      self.assertEqual("foo/bar/x:0", expected.name)
+      # Test that tensor is found by prepending the import scope.
+      actual = utils.get_tensor_from_tensor_info(tensor_info,
+                                                 import_scope="foo")
+      self.assertEqual(expected.name, actual.name)
 
+  def testGetTensorFromInfoRaisesErrors(self):
+    expected = array_ops.placeholder(dtypes.float32, 1, name="x")
+    tensor_info = utils.build_tensor_info(expected)
+    tensor_info.name = "blah:0"  # Nonexistant name.
+    with self.assertRaises(KeyError):
+      utils.get_tensor_from_tensor_info(tensor_info)
+    tensor_info.ClearField("name")  # Malformed (missing encoding).
+    with self.assertRaises(ValueError):
+      utils.get_tensor_from_tensor_info(tensor_info)
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

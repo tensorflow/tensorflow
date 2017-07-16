@@ -71,6 +71,10 @@ def load_op_library(library_filename):
   op_list.ParseFromString(compat.as_bytes(op_list_str))
   wrappers = py_tf.GetPythonWrappers(op_list_str)
 
+  # Delete the library handle to release any memory held in C
+  # that are no longer needed.
+  py_tf.TF_DeleteLibraryHandle(lib_handle)
+
   # Get a unique name for the module.
   module_name = hashlib.md5(wrappers).hexdigest()
   if module_name in sys.modules:

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -170,6 +171,12 @@ class Session {
                       const std::vector<string>& output_names,
                       std::vector<Tensor>* outputs);
 
+  /// \brief List devices in the session.
+  ///
+  /// Retrieves the list of available devices within the session, and populates
+  /// *response. This API is optional. If it is unimplemented, Status will
+  /// return a corresponding error message, and *response will be unmodified.
+  virtual Status ListDevices(std::vector<DeviceAttributes>* response) = 0;
   /// \brief Closes this session.
   ///
   /// Closing a session releases the resources used by this session
@@ -188,10 +195,26 @@ Status NewSession(const SessionOptions& options, Session** out_session);
 
 /// \brief Resets resource containers associated with a target.
 ///
+/// Reset() allows misbehaving or slow sessions to be aborted and closed, and
+/// causes their resources eventually to be released.  Reset() does not wait
+/// for the computations in old sessions to cease; it merely starts the
+/// process of tearing them down.  However, if a new session is started after
+/// a Reset(), the new session is isolated from changes that old sessions
+/// (started prior to the Reset()) may continue to make to resources, provided
+/// all those resources are in containers listed in "containers".
+///
+/// Old sessions may continue to have side-effects on resources not in
+/// containers listed in "containers", and thus may affect future
+/// sessions' results in ways that are hard to predict.  Thus, if well-defined
+/// behavior is desired, it is recommended that all containers be listed in
+/// "containers".
+///
 /// `containers` is a vector of string representation of resource container
 /// names. When a resource container is reset, the resources held by the
 /// container will be released. In particular, all Variables in the container
-/// will become undefined.
+/// will become undefined.  If the "containers" vector is empty, the default
+/// container is assumed.  If the "containers" vector is non-empty, the
+/// default container should be listed explicitly.
 ///
 /// If Reset succeeds, this function will return `OK()`. Otherwise, this
 /// function will return an error status.

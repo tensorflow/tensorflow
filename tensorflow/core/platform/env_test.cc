@@ -18,6 +18,7 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -32,7 +33,7 @@ namespace {
 string CreateTestFile(Env* env, const string& filename, int length) {
   string input(length, 0);
   for (int i = 0; i < length; i++) input[i] = i;
-  WriteStringToFile(env, filename, input);
+  TF_CHECK_OK(WriteStringToFile(env, filename, input));
   return input;
 }
 
@@ -53,15 +54,33 @@ string BaseDir() { return io::JoinPath(testing::TmpDir(), "base_dir"); }
 
 class DefaultEnvTest : public ::testing::Test {
  protected:
-  void SetUp() override { env_->CreateDir(BaseDir()); }
+  void SetUp() override { TF_CHECK_OK(env_->CreateDir(BaseDir())); }
 
   void TearDown() override {
     int64 undeleted_files, undeleted_dirs;
-    env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs);
+    TF_CHECK_OK(
+        env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs));
   }
 
   Env* env_ = Env::Default();
 };
+
+TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
+  const string filename = io::JoinPath(BaseDir(), "out_of_range");
+  const string input = CreateTestFile(env_, filename, 2);
+  std::unique_ptr<RandomAccessFile> f;
+  TF_EXPECT_OK(env_->NewRandomAccessFile(filename, &f));
+
+  // Reading past EOF should give an OUT_OF_RANGE error
+  StringPiece result;
+  char scratch[3];
+  EXPECT_EQ(error::OUT_OF_RANGE, f->Read(0, 3, &result, scratch).code());
+  EXPECT_EQ(input, result);
+
+  // Exact read to EOF works.
+  TF_EXPECT_OK(f->Read(0, 2, &result, scratch));
+  EXPECT_EQ(input, result);
+}
 
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
@@ -235,10 +254,10 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
   env_->SleepForMicroseconds(sleep_time);
   const int64 delta = env_->NowMicros() - start;
 
-  // Subtract 50 from the sleep_time for this check because NowMicros can
+  // Subtract 200 from the sleep_time for this check because NowMicros can
   // sometimes give slightly inconsistent values between the start and the
   // finish (e.g. because the two calls run on different CPUs).
-  EXPECT_GE(delta, sleep_time - 50);
+  EXPECT_GE(delta, sleep_time - 200);
 }
 
 class TmpDirFileSystem : public NullFileSystem {
@@ -272,6 +291,11 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
   TF_EXPECT_OK(env->FileExists(create_path));
+}
+
+TEST_F(DefaultEnvTest, GetExecutablePath) {
+  Env* env = Env::Default();
+  TF_EXPECT_OK(env->FileExists(env->GetExecutablePath()));
 }
 
 }  // namespace tensorflow

@@ -127,9 +127,11 @@ template <>
 ExampleTensorMap ExampleStore<FloatFiller>::serialized_example =
     ExampleStore<FloatFiller>::GetSerializedExamples();
 
-template <typename S, bool BenchmarkDense>
+enum BenchmarkType { kDense, kSparse, kVarLenDense };
+
+template <typename S, BenchmarkType b_type>
 struct BenchmarkOptions {
-  bool benchmark_dense = BenchmarkDense;
+  int benchmark_type = b_type;
   typedef S Store;
   typename S::Filler filler;
 };
@@ -145,19 +147,28 @@ static Graph* ParseExample(int batch_size, int num_keys, int feature_size) {
   std::vector<NodeBuilder::NodeOut> dense_keys;
   std::vector<NodeBuilder::NodeOut> dense_defaults;
   std::vector<DataType> sparse_types;
-  std::vector<TensorShape> dense_shapes;
+  std::vector<PartialTensorShape> dense_shapes;
   Options opt;
   for (int i = 0; i < num_keys; ++i) {
     Tensor key(DT_STRING, TensorShape());
     key.scalar<string>()() = strings::Printf("feature_%d", i);
-    if (opt.benchmark_dense) {
-      dense_keys.emplace_back(test::graph::Constant(g, key));
-      dense_defaults.emplace_back(test::graph::Constant(
-          g, opt.filler.make_dense_default(feature_size)));
-      dense_shapes.push_back(TensorShape({feature_size}));
-    } else {
-      sparse_keys.emplace_back(test::graph::Constant(g, key));
-      sparse_types.push_back(opt.filler.dtype);
+    switch (opt.benchmark_type) {
+      case kDense:
+        dense_keys.emplace_back(test::graph::Constant(g, key));
+        dense_defaults.emplace_back(test::graph::Constant(
+            g, opt.filler.make_dense_default(feature_size)));
+        dense_shapes.push_back(PartialTensorShape({feature_size}));
+        break;
+      case kVarLenDense:
+        dense_keys.emplace_back(test::graph::Constant(g, key));
+        dense_defaults.emplace_back(
+            test::graph::Constant(g, opt.filler.make_dense_default(1)));
+        dense_shapes.push_back(PartialTensorShape({-1}));
+        break;
+      case kSparse:
+        sparse_keys.emplace_back(test::graph::Constant(g, key));
+        sparse_types.push_back(opt.filler.dtype);
+        break;
     }
   }
 
@@ -176,12 +187,18 @@ static Graph* ParseExample(int batch_size, int num_keys, int feature_size) {
 }
 
 // Benchmark settings (Sparse, Dense) X (Bytes, Int64, Float)
-typedef BenchmarkOptions<ExampleStore<BytesFiller>, false> SparseString;
-typedef BenchmarkOptions<ExampleStore<BytesFiller>, true> DenseString;
-typedef BenchmarkOptions<ExampleStore<Int64Filler>, false> SparseInt64;
-typedef BenchmarkOptions<ExampleStore<Int64Filler>, true> DenseInt64;
-typedef BenchmarkOptions<ExampleStore<FloatFiller>, false> SparseFloat;
-typedef BenchmarkOptions<ExampleStore<FloatFiller>, true> DenseFloat;
+typedef BenchmarkOptions<ExampleStore<BytesFiller>, kSparse> SparseString;
+typedef BenchmarkOptions<ExampleStore<BytesFiller>, kDense> DenseString;
+typedef BenchmarkOptions<ExampleStore<BytesFiller>, kVarLenDense>
+    VarLenDenseString;
+typedef BenchmarkOptions<ExampleStore<Int64Filler>, kSparse> SparseInt64;
+typedef BenchmarkOptions<ExampleStore<Int64Filler>, kDense> DenseInt64;
+typedef BenchmarkOptions<ExampleStore<Int64Filler>, kVarLenDense>
+    VarLenDenseInt64;
+typedef BenchmarkOptions<ExampleStore<FloatFiller>, kSparse> SparseFloat;
+typedef BenchmarkOptions<ExampleStore<FloatFiller>, kDense> DenseFloat;
+typedef BenchmarkOptions<ExampleStore<FloatFiller>, kVarLenDense>
+    VarLenDenseFloat;
 
 // B == batch_size, K == num_keys. F == feature_size.
 // K must be one of 10, 100, 1000
@@ -205,9 +222,12 @@ typedef BenchmarkOptions<ExampleStore<FloatFiller>, true> DenseFloat;
 
 BM_AllParseExample(SparseString);
 BM_AllParseExample(DenseString);
+BM_AllParseExample(VarLenDenseString);
 BM_AllParseExample(SparseInt64);
 BM_AllParseExample(DenseInt64);
+BM_AllParseExample(VarLenDenseInt64);
 BM_AllParseExample(SparseFloat);
 BM_AllParseExample(DenseFloat);
+BM_AllParseExample(VarLenDenseFloat);
 
 }  // end namespace tensorflow

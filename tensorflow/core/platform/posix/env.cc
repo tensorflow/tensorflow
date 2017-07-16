@@ -44,7 +44,7 @@ class StdThread : public Thread {
   StdThread(const ThreadOptions& thread_options, const string& name,
             std::function<void()> fn)
       : thread_(fn) {}
-  ~StdThread() { thread_.join(); }
+  ~StdThread() override { thread_.join(); }
 
  private:
   std::thread thread_;
@@ -58,12 +58,6 @@ class PosixEnv : public Env {
 
   bool MatchPath(const string& path, const string& pattern) override {
     return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
-  }
-
-  uint64 NowMicros() override {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return static_cast<uint64>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
   void SleepForMicroseconds(int64 micros) override {

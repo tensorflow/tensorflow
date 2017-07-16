@@ -24,21 +24,6 @@ REGISTER5(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16, int16,
           int32, int64);
 REGISTER5(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
           complex64, complex128);
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Div")                                 \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          BinaryOp<SYCLDevice, functor::div<TYPE>>);  \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("RealDiv")                             \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          BinaryOp<SYCLDevice, functor::div<TYPE>>);
-REGISTER_SYCL_KERNEL(float)
-#undef REGISTER_SYCL_KERNEL
-#endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA
 REGISTER9(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
           uint16, int16, int64, complex64, complex128);
@@ -59,4 +44,15 @@ REGISTER_KERNEL_BUILDER(Name("Div")
                         BinaryOp<CPUDevice, functor::safe_div<int32>>);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER2(BinaryOp, SYCL, "Div", functor::div, float, double);
+REGISTER2(BinaryOp, SYCL, "RealDiv", functor::div, float, double);
+REGISTER_KERNEL_BUILDER(Name("Div")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::safe_div<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

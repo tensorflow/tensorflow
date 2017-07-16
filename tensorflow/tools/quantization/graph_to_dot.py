@@ -24,20 +24,19 @@ from __future__ import print_function
 
 import re
 
-import tensorflow as tf
-
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 
+FLAGS = flags.FLAGS
 
-FLAGS = tf.flags.FLAGS
-
-tf.flags.DEFINE_string("graph", "", """TensorFlow 'GraphDef' file to load.""")
-tf.flags.DEFINE_bool("input_binary", True,
-                     """Whether the input files are in binary format.""")
-tf.flags.DEFINE_string("dot_output", "", """Where to write the DOT output.""")
+flags.DEFINE_string("graph", "", """TensorFlow 'GraphDef' file to load.""")
+flags.DEFINE_bool("input_binary", True,
+                  """Whether the input files are in binary format.""")
+flags.DEFINE_string("dot_output", "", """Where to write the DOT output.""")
 
 
 def main(unused_args):
@@ -66,4 +65,4 @@ def main(unused_args):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  app.run()

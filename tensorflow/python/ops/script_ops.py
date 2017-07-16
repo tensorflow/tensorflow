@@ -12,13 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""## Script Language Operators.
 
-TensorFlow provides allows you to wrap python/numpy functions as
-TensorFlow operators.
+"""Script Language Operators. See the @{$python/script_ops} guide.
 
 @@py_func
-
 """
 
 # pylint: disable=g-bad-name
@@ -29,8 +26,10 @@ from __future__ import print_function
 import threading
 
 import numpy as np
+import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
 
@@ -83,6 +82,10 @@ class FuncRegistry(object):
     if func is None:
       raise ValueError("callback %s is not found" % token)
     ret = func(*args)
+    # Strings seem to lead to a memory leak here if they're not wrapped in a
+    # list.
+    if isinstance(ret, six.binary_type):
+      ret = [ret]
     # Ensures that we return either a single numpy array or a list of numpy
     # arrays.
     if isinstance(ret, (tuple, list)):
@@ -168,10 +171,16 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   # We tie the registered function's life-time with the current
   # default graph. I.e., when the current graph is destroyed, we
   # should remove its py funcs.
-  cleanup = CleanupFunc(token)
   g = ops.get_default_graph()
+
   # pylint: disable=protected-access
-  #
+  while isinstance(g, function._FuncGraph):
+    # If the py_func was declared inside a _FuncGraph, its lifetime should be
+    # bound to that of the outer graph instead.
+    g = g._outer_graph
+
+  cleanup = CleanupFunc(token)
+
   # TODO(zhifengc): Consider adding a Graph method to collect
   # `cleanup` objects in one of its member.
   if not hasattr(g, "_cleanup_py_funcs_used_in_graph"):
@@ -181,20 +190,21 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   # will be destroyed and their __del__ will remove the 'token' from
   # the funcs registry.
   g._cleanup_py_funcs_used_in_graph.append(cleanup)
+  # pylint: enable=protected-access
 
   if isinstance(Tout, (list, tuple)):
     is_list_or_tuple = True
   else:
     Tout = [Tout]
     is_list_or_tuple = False
+  # pylint: disable=protected-access
   if stateful:
     result = gen_script_ops._py_func(
         input=inp, token=token, Tout=Tout, name=name)
-    # pylint: enable=protected-access
   else:
     result = gen_script_ops._py_func_stateless(
         input=inp, token=token, Tout=Tout, name=name)
-    # pylint: enable=protected-access
+  # pylint: enable=protected-access
   return result if is_list_or_tuple else result[0]
 
 

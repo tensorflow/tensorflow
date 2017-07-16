@@ -13,26 +13,32 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matrix_inverse."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class QrOpTest(tf.test.TestCase):
+class QrOpTest(test.TestCase):
 
   def testWrongDimensions(self):
     # The input to qr should be a tensor of at least rank 2.
-    scalar = tf.constant(1.)
+    scalar = constant_op.constant(1.)
     with self.assertRaisesRegexp(ValueError,
                                  "Shape must be at least rank 2 but is rank 0"):
-      tf.qr(scalar)
-    vector = tf.constant([1., 2.])
+      linalg_ops.qr(scalar)
+    vector = constant_op.constant([1., 2.])
     with self.assertRaisesRegexp(ValueError,
                                  "Shape must be at least rank 2 but is rank 1"):
-      tf.qr(vector)
+      linalg_ops.qr(vector)
 
 
 def _GetQrOpTest(dtype_, shape_, use_static_shape_):
@@ -67,13 +73,13 @@ def _GetQrOpTest(dtype_, shape_, use_static_shape_):
     else:
       tol = 1e-14
     # Tests that a ~= q*r.
-    a_recon = tf.matmul(q, r)
+    a_recon = math_ops.matmul(q, r)
     self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
-    xx = tf.matmul(tf.conj(x), x, transpose_a=True)
-    identity = tf.matrix_band_part(tf.ones_like(xx), 0, 0)
+    xx = math_ops.matmul(math_ops.conj(x), x, transpose_a=True)
+    identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
     if is_single:
       tol = 1e-5
     else:
@@ -92,10 +98,10 @@ def _GetQrOpTest(dtype_, shape_, use_static_shape_):
     for full_matrices in False, True:
       with self.test_session() as sess:
         if use_static_shape_:
-          x_tf = tf.constant(x_np)
+          x_tf = constant_op.constant(x_np)
         else:
-          x_tf = tf.placeholder(dtype_)
-        q_tf, r_tf = tf.qr(x_tf, full_matrices=full_matrices)
+          x_tf = array_ops.placeholder(dtype_)
+        q_tf, r_tf = linalg_ops.qr(x_tf, full_matrices=full_matrices)
 
         if use_static_shape_:
           q_tf_val, r_tf_val = sess.run([q_tf, r_tf])
@@ -134,4 +140,4 @@ if __name__ == "__main__":
                                  use_static_shape)
             setattr(QrOpTest, "testQr_" + name,
                     _GetQrOpTest(dtype, shape, use_static_shape))
-  tf.test.main()
+  test.main()

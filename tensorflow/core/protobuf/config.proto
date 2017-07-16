@@ -9,6 +9,9 @@ option java_package = "org.tensorflow.framework";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
+import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/cluster.proto";
+import "tensorflow/core/protobuf/rewriter_config.proto";
 
 message GPUOptions {
   // A value between 0 and 1 that indicates what fraction of the
@@ -52,6 +55,28 @@ message GPUOptions {
   // specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
   // physical to visible device mapping prior to invoking TensorFlow.
   string visible_device_list = 5;
+
+  // In the event polling loop sleep this many microseconds between
+  // PollEvents calls, when the queue is not empty.  If value is not
+  // set or set to 0, gets set to a non-zero default.
+  int32 polling_active_delay_usecs = 6;
+
+  // In the event polling loop sleep this many millisconds between
+  // PollEvents calls, when the queue is empty.  If value is not
+  // set or set to 0, gets set to a non-zero default.
+  int32 polling_inactive_delay_msecs = 7;
+
+  // Force all tensors to be gpu_compatible. On a GPU-enabled TensorFlow,
+  // enabling this option forces all CPU tensors to be allocated with Cuda
+  // pinned memory. Normally, TensorFlow will infer which tensors should be
+  // allocated as the pinned memory. But in case where the inference is
+  // incomplete, this option can significantly speed up the cross-device memory
+  // copy performance as long as it fits the memory.
+  // Note that this option is not something that should be
+  // enabled by default for unknown or very large models, since all Cuda pinned
+  // memory is unpageable, having too much pinned memory might negatively impact
+  // the overall host system performance.
+  bool force_gpu_compatible = 8;
 };
 
 // Options passed to the graph optimizer
@@ -78,6 +103,19 @@ message OptimizerOptions {
   }
 
   Level opt_level = 3;
+
+  // Control the use of the compiler/jit.  Experimental.
+  enum GlobalJitLevel {
+    DEFAULT = 0;  // Default setting ("off" now, but later expected to be "on")
+    OFF = -1;
+    // The following settings turn on compilation, with higher values being
+    // more aggressive.  Higher values may reduce opportunities for parallelism
+    // and may use more memory.  (At present, there is no distinction, but this
+    // is expected to change.)
+    ON_1 = 1;
+    ON_2 = 2;
+  }
+  GlobalJitLevel global_jit_level = 5;
 }
 
 message GraphOptions {
@@ -120,6 +158,11 @@ message GraphOptions {
   // If > 0, record a timeline every this many steps.
   // EXPERIMENTAL: This currently has no effect in MasterSession.
   int32 timeline_step = 8;
+
+  // Options that control the type and amount of graph rewriting.
+  // Not currently configurable via the public Python API (i.e. there is no API
+  // stability guarantee if you import RewriterConfig explicitly).
+  RewriterConfig rewrite_options = 10;
 };
 
 message ThreadPoolOptionProto {
@@ -128,6 +171,32 @@ message ThreadPoolOptionProto {
   // 0 means the system picks a value based on where this option proto is used
   // (see the declaration of the specific field for more info).
   int32 num_threads = 1;
+
+  // The global name of the threadpool.
+  //
+  // If empty, then the threadpool is made and used according to the scope it's
+  // in - e.g., for a session threadpool, it is used by that session only.
+  //
+  // If non-empty, then:
+  // - a global threadpool associated with this name is looked
+  //   up or created. This allows, for example, sharing one threadpool across
+  //   many sessions (e.g., like the default behavior, if
+  //   inter_op_parallelism_threads is not configured), but still partitioning
+  //   into a large and small pool.
+  // - if the threadpool for this global_name already exists, then it is an
+  //   error if the existing pool was created using a different num_threads
+  //   value as is specified on this call.
+  // - threadpools created this way are never garbage collected.
+  string global_name = 2;
+};
+
+message RPCOptions {
+  // If true, always use RPC to contact the session target.
+  //
+  // If false (the default option), TensorFlow may use an optimized
+  // transport for client-master communication that avoids the RPC
+  // stack. This option is primarily for used testing the RPC stack.
+  bool use_rpc_for_inprocess_master = 1;
 };
 
 // Session configuration parameters.
@@ -166,13 +235,24 @@ message ConfigProto {
   bool use_per_session_threads = 9;
 
   // This option is experimental - it may be replaced with a different mechanism
-  // in the future. The intended use is for when some session invocations need
-  // to run in a background pool limited to a small number of threads.
+  // in the future.
   //
   // Configures session thread pools. If this is configured, then RunOptions for
   // a Run call can select the thread pool to use.
   //
-  // If a pool's num_threads is 0, then inter_op_parallelism_threads is used.
+  // The intended use is for when some session invocations need to run in a
+  // background pool limited to a small number of threads:
+  // - For example, a session may be configured to have one large pool (for
+  // regular compute) and one small pool (for periodic, low priority work);
+  // using the small pool is currently the mechanism for limiting the inter-op
+  // parallelism of the low priority work.  Note that it does not limit the
+  // parallelism of work spawned by a single op kernel implementation.
+  // - Using this setting is normally not needed in training, but may help some
+  // serving use cases.
+  // - It is also generally recommended to set the global_name field of this
+  // proto, to avoid creating multiple large pools. It is typically better to
+  // run the non-low-priority work, even across sessions, in a single large
+  // pool.
   repeated ThreadPoolOptionProto session_inter_op_thread_pool = 12;
 
   // Assignment of Nodes to Devices is recomputed every placement_period
@@ -207,33 +287,17 @@ message ConfigProto {
   // and not overridden on a per-operation basis, this value will be used as the
   // deadline for all blocking operations.
   int64 operation_timeout_in_ms = 11;
+
+  // Options that apply when this session uses the distributed runtime.
+  RPCOptions rpc_options = 13;
+
+  // Optional list of all workers to use in this session.
+  ClusterDef cluster_def = 14;
+
+  // Next: 15
 };
 
-// EXPERIMENTAL. Option for watching a node.
-message DebugTensorWatch {
-  // Name of the node to watch.
-  string node_name = 1;
-
-  // Output slot to watch.
-  // The semantics of output_slot == -1 is that the node is only watched for
-  // completion, but not for any output tensors. See NodeCompletionCallback
-  // in debug_gateway.h.
-  // TODO(cais): Implement this semantics.
-  int32 output_slot = 2;
-
-  // Name(s) of the debugging op(s).
-  // One or more than one probes on a tensor.
-  // e.g., {"DebugIdentity", "DebugNanCount"}
-  repeated string debug_ops = 3;
-
-  // URL(s) for debug targets(s).
-  //   E.g., "file:///foo/tfdbg_dump", "grpc://localhost:11011"
-  // Each debug op listed in debug_ops will publish its output tensor (debug
-  // signal) to all URLs in debug_urls.
-  repeated string debug_urls = 4;
-}
-
-// EXPERIMENTAL. Options for a single Run() call.
+// Options for a single Run() call.
 message RunOptions {
   // TODO(pbar) Turn this into a TraceOptions proto which allows
   // tracing to be controlled in a more orthogonal manner?
@@ -251,15 +315,17 @@ message RunOptions {
   // The thread pool to use, if session_inter_op_thread_pool is configured.
   int32 inter_op_thread_pool = 3;
 
-  // Debugging options
-  repeated DebugTensorWatch debug_tensor_watch_opts = 4;
-
   // Whether the partition graph(s) executed by the executor(s) should be
   // outputted via RunMetadata.
   bool output_partition_graphs = 5;
+
+  // EXPERIMENTAL.  Options used to initialize DebuggerState, if enabled.
+  DebugOptions debug_options = 6;
+
+  reserved 4;
 }
 
-// EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.
+// Metadata output (i.e., non-Tensor) for a single Run() call.
 message RunMetadata {
   // Statistics traced for this step. Populated if tracing is turned on via the
   // "RunOptions" proto.

@@ -18,9 +18,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
 
 REGISTER_OP("SymbolicGradient")
     .Input("input: Tin")

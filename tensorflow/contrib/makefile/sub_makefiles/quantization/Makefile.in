@@ -34,13 +34,30 @@ $(wildcard $(GTEST_DIR)/src/*.cc) \
 $(wildcard $(GTEST_DIR)/src/*.h) \
 $(GTEST_HEADERS)
 
+# CAVEAT: We should disable TENSORFLOW_DISABLE_META while running
+# quantized_matmul on Android because it crashes in
+# MultiThreadGemm in tensorflow/core/kernels/meta_support.cc
+# TODO(satok): Remove once it's fixed
+CXXFLAGS += -DTENSORFLOW_DISABLE_META
+
+GRAPH_TRANSFER_SRCS := \
+tensorflow/cc/framework/scope.cc \
+tensorflow/cc/framework/ops.cc \
+tensorflow/cc/ops/const_op.cc \
+tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
+tensorflow/core/kernels/hexagon/graph_transferer.cc \
+tensorflow/core/kernels/hexagon/graph_transferer_test.cc \
+tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \
+tensorflow/core/kernels/hexagon/hexagon_ops_definitions.cc \
+tensorflow/core/kernels/remote_fused_graph_execute_op.cc \
+tensorflow/core/kernels/remote_fused_graph_execute_utils.cc \
+tensorflow/core/ops/remote_fused_graph_ops.cc \
+tensorflow/core/platform/posix/test.cc
+
 QUANTIZATION_TEST_SRCS := \
-tensorflow/core/ops/math_ops.cc \
-tensorflow/core/kernels/quantize_op.cc \
-tensorflow/core/kernels/quantized_conv_ops.cc \
-tensorflow/core/kernels/quantized_matmul_op.cc \
-tensorflow/core/kernels/quantized_matmul_op_test.cc \
+$(GRAPH_TRANSFER_SRCS) \
 tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc \
+tensorflow/core/kernels/hexagon/graph_transferer_test.cc \
 tensorflow/contrib/makefile/test/test_main.cc
 
 QUANTIZATION_TEST_OBJS := $(addprefix $(OBJDIR), $(QUANTIZATION_TEST_SRCS:.cc=.o))
@@ -59,6 +76,7 @@ $(OBJDIR)gtest-all.o: $(GTEST_SRCS) $(QUANTIZATION_TEST_OBJS)
 	$(GTEST_DIR)/src/gtest-all.cc -o $@
 
 $(LIBDIR)gtest.a: $(OBJDIR)gtest-all.o
+	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $@ $^
 
 $(QUANTIZATION_TEST_BIN_PATH): $(LIB_PATH) $(LIBDIR)gtest.a $(QUANTIZATION_TEST_OBJS)

@@ -20,7 +20,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 #define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_DEVICE_H_
 
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -80,6 +84,14 @@ class BaseGPUDevice : public LocalDevice {
   void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
                              DeviceContext* dc, Allocator* allocator) override;
 
+  // Returns the id of this device within the native driver system; e.g., for
+  // CUDA this is the ordinal of the GPU within the system.
+  int gpu_id() const { return gpu_id_; }
+
+  // The executor that provides control for the device; e.g., for CUDA this
+  // corresponds to the cuda context.
+  gpu::StreamExecutor* executor() const { return executor_; }
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
@@ -88,12 +100,14 @@ class BaseGPUDevice : public LocalDevice {
 
  private:
   struct StreamGroup {
-    gpu::Stream* compute;
-    gpu::Stream* host_to_device;
-    gpu::Stream* device_to_host;
-    gpu::Stream* device_to_device;
+    gpu::Stream* compute = nullptr;
+    gpu::Stream* host_to_device = nullptr;
+    gpu::Stream* device_to_host = nullptr;
+    gpu::Stream* device_to_device = nullptr;
   };
-  gtl::InlinedVector<StreamGroup, 4> streams_;
+  class StreamGroupFactory;
+
+  gtl::InlinedVector<StreamGroup*, 4> streams_;
   gtl::InlinedVector<char*, 4> scratch_;
   std::vector<GPUDeviceContext*> device_contexts_;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
@@ -105,6 +119,8 @@ class BaseGPUDevice : public LocalDevice {
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
+
+  void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {

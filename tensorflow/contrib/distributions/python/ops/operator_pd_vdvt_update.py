@@ -145,9 +145,9 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
       else:
         v_shape = array_ops.shape(v)
         v_rank = array_ops.rank(v)
-        v_batch_shape = array_ops.slice(v_shape, [0], [v_rank - 2])
+        v_batch_shape = array_ops.strided_slice(v_shape, [0], [v_rank - 2])
         r = array_ops.gather(v_shape, v_rank - 1)  # Last dim of v
-        id_shape = array_ops.concat(0, (v_batch_shape, [r, r]))
+        id_shape = array_ops.concat((v_batch_shape, [r, r]), 0)
       return operator_pd_identity.OperatorPDIdentity(
           id_shape, v.dtype, verify_pd=self._verify_pd)
 
@@ -223,23 +223,30 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
         r_d = array_ops.rank(diag)
 
       # Check tensor rank.
-      checks.append(check_ops.assert_rank(v, r_op))
+      checks.append(check_ops.assert_rank(
+          v, r_op, message="v is not the same rank as operator."))
       if diag is not None:
-        checks.append(check_ops.assert_rank(diag, r_op - 1))
+        checks.append(check_ops.assert_rank(
+            diag, r_op - 1, message="diag is not the same rank as operator."))
 
       # Check batch shape
       checks.append(check_ops.assert_equal(
-          operator.batch_shape(), array_ops.slice(s_v, [0], [r_v - 2])))
+          operator.batch_shape(), array_ops.strided_slice(s_v, [0], [r_v - 2]),
+          message="v does not have same batch shape as operator."))
       if diag is not None:
         checks.append(check_ops.assert_equal(
-            operator.batch_shape(), array_ops.slice(s_d, [0], [r_d - 1])))
+            operator.batch_shape(), array_ops.strided_slice(
+                s_d, [0], [r_d - 1]),
+            message="diag does not have same batch shape as operator."))
 
       # Check event shape
       checks.append(check_ops.assert_equal(
-          operator.vector_space_dimension(), array_ops.gather(s_v, r_v - 2)))
+          operator.vector_space_dimension(), array_ops.gather(s_v, r_v - 2),
+          message="v does not have same event shape as operator."))
       if diag is not None:
         checks.append(check_ops.assert_equal(
-            array_ops.gather(s_v, r_v - 1), array_ops.gather(s_d, r_d - 1)))
+            array_ops.gather(s_v, r_v - 1), array_ops.gather(s_d, r_d - 1),
+            message="diag does not have same event shape as v."))
 
       v = control_flow_ops.with_dependencies(checks, v)
       if diag is not None:
@@ -299,20 +306,24 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     #                = det(C) * det(D) * det(M)
     #
     # Here we compute the Cholesky factor of "C", then pass the result on.
-    diag_chol_c = array_ops.matrix_diag_part(
-        self._chol_capacitance(batch_mode=False))
-    return self._sqrt_log_det_core(diag_chol_c)
+    abs_diag_chol_c = math_ops.abs(array_ops.matrix_diag_part(
+        self._chol_capacitance(batch_mode=False)))
+    return self._sqrt_log_det_core(abs_diag_chol_c)
 
   def _batch_sqrt_log_det(self):
     # Here we compute the Cholesky factor of "C", then pass the result on.
-    diag_chol_c = array_ops.matrix_diag_part(
-        self._chol_capacitance(batch_mode=True))
-    return self._sqrt_log_det_core(diag_chol_c)
+    abs_diag_chol_c = math_ops.abs(array_ops.matrix_diag_part(
+        self._chol_capacitance(batch_mode=True)))
+    return self._sqrt_log_det_core(abs_diag_chol_c)
 
   def _chol_capacitance(self, batch_mode):
     """Cholesky factorization of the capacitance term."""
     # Cholesky factor for (D^{-1} + V^T M^{-1} V), which is sometimes
     # known as the "capacitance" matrix.
+    # We can do a Cholesky decomposition, since a priori M is a
+    # positive-definite Hermitian matrix, which causes the "capacitance" to
+    # also be positive-definite Hermitian, and thus have a Cholesky
+    # decomposition.
 
     # self._operator will use batch if need be. Automatically.  We cannot force
     # that here.
@@ -335,7 +346,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     #                = det(C) * det(D) * det(M)
     # Multiply by 2 here because this is the log-det of the Cholesky factor of C
     log_det_c = 2 * math_ops.reduce_sum(
-        math_ops.log(diag_chol_c),
+        math_ops.log(math_ops.abs(diag_chol_c)),
         reduction_indices=[-1])
     # Add together to get Log[det(M + VDV^T)], the Log-det of the updated square
     # root.

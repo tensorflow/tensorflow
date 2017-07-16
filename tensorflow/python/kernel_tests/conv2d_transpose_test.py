@@ -12,19 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for convolution related functionality in tensorflow.ops.nn."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
+
 from tensorflow.python.client import device_lib
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import nn_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
 
-class Conv2DTransposeTest(tf.test.TestCase):
+class Conv2DTransposeTest(test.TestCase):
 
   def testConv2DTransposeSingleStride(self):
     with self.test_session():
@@ -37,10 +43,12 @@ class Conv2DTransposeTest(tf.test.TestCase):
       # Filter: [kernel_height, kernel_width, output_depth, input_depth]
       f_shape = [3, 3, 2, 3]
 
-      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
-      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                      padding="SAME")
+      x = constant_op.constant(
+          1.0, shape=x_shape, name="x", dtype=dtypes.float32)
+      f = constant_op.constant(
+          1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
+      output = nn_ops.conv2d_transpose(
+          x, f, y_shape, strides=strides, padding="SAME")
       value = output.eval()
 
       # We count the number of cells being added at the locations in the output.
@@ -73,10 +81,12 @@ class Conv2DTransposeTest(tf.test.TestCase):
       # Filter: [kernel_height, kernel_width, output_depth, input_depth]
       f_shape = [3, 3, 2, 3]
 
-      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
-      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                      padding="SAME")
+      x = constant_op.constant(
+          1.0, shape=x_shape, name="x", dtype=dtypes.float32)
+      f = constant_op.constant(
+          1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
+      output = nn_ops.conv2d_transpose(
+          x, f, y_shape, strides=strides, padding="SAME")
       value = output.eval()
 
       for n in xrange(x_shape[0]):
@@ -104,10 +114,12 @@ class Conv2DTransposeTest(tf.test.TestCase):
       # Filter: [kernel_height, kernel_width, output_depth, input_depth]
       f_shape = [3, 3, 2, 3]
 
-      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
-      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                      padding="VALID")
+      x = constant_op.constant(
+          1.0, shape=x_shape, name="x", dtype=dtypes.float32)
+      f = constant_op.constant(
+          1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
+      output = nn_ops.conv2d_transpose(
+          x, f, y_shape, strides=strides, padding="VALID")
       value = output.eval()
 
       cache_values = np.zeros(y_shape, dtype=np.float32)
@@ -121,10 +133,10 @@ class Conv2DTransposeTest(tf.test.TestCase):
             for h in xrange(pad, y_shape[1] - pad):
               target = 3.0
               # We add a case for locations divisible by the stride.
-              h_in = h % strides[
-                  1] == 0 and h > pad and h < y_shape[1] - 1 - pad
-              w_in = w % strides[
-                  2] == 0 and w > pad and w < y_shape[2] - 1 - pad
+              h_in = h % strides[1] == 0 and h > pad and h < y_shape[
+                  1] - 1 - pad
+              w_in = w % strides[2] == 0 and w > pad and w < y_shape[
+                  2] - 1 - pad
               if h_in and w_in:
                 target += 9.0
               elif h_in or w_in:
@@ -148,19 +160,19 @@ class Conv2DTransposeTest(tf.test.TestCase):
     x_val = np.random.random_sample(x_shape).astype(np.float64)
     f_val = np.random.random_sample(f_shape).astype(np.float64)
     with self.test_session():
-      x = tf.constant(x_val, name="x", dtype=tf.float32)
-      f = tf.constant(f_val, name="f", dtype=tf.float32)
-      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                      padding="SAME")
-      err = tf.test.compute_gradient_error(
-          [x, f], [x_shape, f_shape], output, y_shape)
+      x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
+      f = constant_op.constant(f_val, name="f", dtype=dtypes.float32)
+      output = nn_ops.conv2d_transpose(
+          x, f, y_shape, strides=strides, padding="SAME")
+      err = gradient_checker.compute_gradient_error([x, f], [x_shape, f_shape],
+                                                    output, y_shape)
     print("conv2d_transpose gradient err = %g " % err)
     err_tolerance = 0.0005
     self.assertLess(err, err_tolerance)
 
   def testConv2DTransposeSingleStrideNCHW(self):
-    # `NCHW` data fomat is only supported for `GPU` device.
-    if tf.test.is_gpu_available():
+    # `NCHW` data fomat is only supported for CUDA device.
+    if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 1, 1]
 
@@ -171,11 +183,13 @@ class Conv2DTransposeTest(tf.test.TestCase):
         # Filter: [kernel_height, kernel_width, output_depth, input_depth]
         f_shape = [3, 3, 2, 3]
 
-        x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-        f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+        x = constant_op.constant(
+            1.0, shape=x_shape, name="x", dtype=dtypes.float32)
+        f = constant_op.constant(
+            1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
 
-        output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                     padding="SAME", data_format='NCHW')
+        output = nn_ops.conv2d_transpose(
+            x, f, y_shape, strides=strides, padding="SAME", data_format="NCHW")
 
         value = output.eval()
         for n in xrange(x_shape[0]):
@@ -192,8 +206,8 @@ class Conv2DTransposeTest(tf.test.TestCase):
                 self.assertAllClose(target, value[n, k, h, w])
 
   def testConv2DTransposeSameNCHW(self):
-    # `NCHW` data fomat is only supported for `GPU` device.
-    if tf.test.is_gpu_available():
+    # `NCHW` data fomat is only supported for CUDA device.
+    if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 2, 2]
 
@@ -204,11 +218,13 @@ class Conv2DTransposeTest(tf.test.TestCase):
         # Filter: [kernel_height, kernel_width, output_depth, input_depth]
         f_shape = [3, 3, 2, 3]
 
-        x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-        f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
+        x = constant_op.constant(
+            1.0, shape=x_shape, name="x", dtype=dtypes.float32)
+        f = constant_op.constant(
+            1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
 
-        output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                          padding="SAME", data_format='NCHW')
+        output = nn_ops.conv2d_transpose(
+            x, f, y_shape, strides=strides, padding="SAME", data_format="NCHW")
 
         value = output.eval()
         for n in xrange(x_shape[0]):
@@ -226,8 +242,8 @@ class Conv2DTransposeTest(tf.test.TestCase):
                 self.assertAllClose(target, value[n, k, h, w])
 
   def testConv2DTransposeValidNCHW(self):
-    # `NCHW` data fomat is only supported for `GPU` device.
-    if tf.test.is_gpu_available():
+    # `NCHW` data fomat is only supported for CUDA device.
+    if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 2, 2]
 
@@ -238,10 +254,12 @@ class Conv2DTransposeTest(tf.test.TestCase):
         # Filter: [kernel_height, kernel_width, output_depth, input_depth]
         f_shape = [3, 3, 2, 3]
 
-        x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-        f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
-        output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                        padding="VALID", data_format='NCHW')
+        x = constant_op.constant(
+            1.0, shape=x_shape, name="x", dtype=dtypes.float32)
+        f = constant_op.constant(
+            1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
+        output = nn_ops.conv2d_transpose(
+            x, f, y_shape, strides=strides, padding="VALID", data_format="NCHW")
 
         value = output.eval()
         cache_values = np.zeros(y_shape, dtype=np.float32)
@@ -253,10 +271,10 @@ class Conv2DTransposeTest(tf.test.TestCase):
               for h in xrange(pad, y_shape[2] - pad):
                 target = 3.0
                 # We add a case for locations divisible by the stride.
-                h_in = h % strides[
-                    2] == 0 and h > pad and h < y_shape[2] - 1 - pad
-                w_in = w % strides[
-                    3] == 0 and w > pad and w < y_shape[3] - 1 - pad
+                h_in = h % strides[2] == 0 and h > pad and h < y_shape[
+                    2] - 1 - pad
+                w_in = w % strides[3] == 0 and w > pad and w < y_shape[
+                    3] - 1 - pad
                 if h_in and w_in:
                   target += 9.0
                 elif h_in or w_in:
@@ -273,4 +291,4 @@ class Conv2DTransposeTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

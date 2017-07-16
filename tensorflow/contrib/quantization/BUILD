@@ -22,6 +22,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":ops",
+        "//tensorflow/python:array_ops_gen",
     ],
 )
 
@@ -34,9 +35,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:array_ops_gen",
+        "//tensorflow/python:common_shapes",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops_gen",
     ],
 )
 

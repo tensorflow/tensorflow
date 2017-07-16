@@ -81,7 +81,7 @@ TEST(NotificationTest, TestMultipleThreadsWaitingOnNotification) {
 TEST(NotificationTest, TestWaitWithTimeoutOnNotifiedNotification) {
   Notification n;
   n.Notify();
-  EXPECT_TRUE(WaitForNotificationWithTimeout(&n, 1000));
+  EXPECT_TRUE(WaitForNotificationWithTimeout(&n, 1000 * 1000));
 }
 
 }  // namespace

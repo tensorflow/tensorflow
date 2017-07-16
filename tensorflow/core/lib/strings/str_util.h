@@ -30,7 +30,7 @@ namespace str_util {
 
 // Returns a version of 'src' where unprintable characters have been
 // escaped using C-style escape sequences.
-string CEscape(const string& src);
+string CEscape(StringPiece src);
 
 // Copies "source" to "dest", rewriting C-style escape sequences --
 // '\n', '\r', '\\', '\ooo', etc -- to their ASCII equivalents.
@@ -85,6 +85,11 @@ string Uppercase(StringPiece s);
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
 
+// Replaces the first occurrence (if replace_all is false) or all occurrences
+// (if replace_all is true) of oldsub in s with newsub.
+string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
+                     bool replace_all);
+
 // Join functionality
 template <typename T>
 string Join(const T& s, const char* sep);
@@ -108,9 +113,12 @@ struct SkipWhitespace {
   }
 };
 
-std::vector<string> Split(StringPiece text, char delim);
+// Split strings using any of the supplied delimiters. For example:
+// Split("a,b.c,d", ".,") would return {"a", "b", "c", "d"}.
+std::vector<string> Split(StringPiece text, StringPiece delims);
+
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, char delim, Predicate p);
+std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p);
 
 // Split "text" at "delim" characters, and parse each component as
 // an integer.  If successful, adds the individual numbers in order
@@ -119,6 +127,8 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result);
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int64>* result);
+bool SplitAndParseAsFloats(StringPiece text, char delim,
+                           std::vector<float>* result);
 
 // ------------------------------------------------------------------
 // Implementation details below
@@ -157,17 +167,17 @@ string Join(const T& s, const char* sep, Formatter f) {
   return result;
 }
 
-inline std::vector<string> Split(StringPiece text, char delim) {
-  return Split(text, delim, AllowEmpty());
+inline std::vector<string> Split(StringPiece text, StringPiece delims) {
+  return Split(text, delims, AllowEmpty());
 }
 
 template <typename Predicate>
-std::vector<string> Split(StringPiece text, char delim, Predicate p) {
+std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
   std::vector<string> result;
   size_t token_start = 0;
   if (!text.empty()) {
     for (size_t i = 0; i < text.size() + 1; i++) {
-      if ((i == text.size()) || (text[i] == delim)) {
+      if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
         StringPiece token(text.data() + token_start, i - token_start);
         if (p(token)) {
           result.push_back(token.ToString());
@@ -177,6 +187,15 @@ std::vector<string> Split(StringPiece text, char delim, Predicate p) {
     }
   }
   return result;
+}
+
+inline std::vector<string> Split(StringPiece text, char delim) {
+  return Split(text, StringPiece(&delim, 1));
+}
+
+template <typename Predicate>
+std::vector<string> Split(StringPiece text, char delims, Predicate p) {
+  return Split(text, StringPiece(&delims, 1), p);
 }
 
 }  // namespace str_util

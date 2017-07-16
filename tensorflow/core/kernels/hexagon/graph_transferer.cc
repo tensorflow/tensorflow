@@ -17,63 +17,106 @@ limitations under the License.
 
 #include <algorithm>
 #include <cinttypes>
-#include <unordered_map>
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
 namespace tensorflow {
 
+// function alias
+constexpr auto AddOutputTensorShapeTypeByTensorShapeMap =
+    &RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap;
+
 constexpr bool DBG_DUMP_VERIFICATION_STRING = false;
 constexpr bool DBG_DUMP_PARAMS = false;
 
-const string INPUTS_NODE_PREFIX = "inputs_for_";
-const string OUTPUTS_NODE_PREFIX = "outputs_for_";
-const string DATA_NODE_PREFIX = "data_for_op_";
-const string CONST_SHAPE_PREFIX = "const_shape_";
-const string PADDING_PREFIX = "NN_PAD_";
-const string PADDING_ATTR_NAME = "padding";
-const string STRIDES_ATTR_NAME = "strides";
-const string KSIZE_ATTR_NAME = "ksize";
-const string PADDING_VALID_STR = "VALID";
-const string PADDING_SAME_STR = "SAME";
-const string PADDING_NA = "NA";
-const string NULL_OUTPUT_NAME = "NULL";
+const char RESHAPE_NODE_TYPE_STRING[] = "Reshape";
+const char SOURCE_NODE_NAME[] = "_SOURCE";
+const char SINK_NODE_NAME[] = "_SINK";
+const char INPUTS_NODE_PREFIX[] = "inputs_for_";
+const char OUTPUTS_NODE_PREFIX[] = "outputs_for_";
+const char DATA_NODE_PREFIX[] = "data_for_op_";
+const char CONST_SHAPE_PREFIX[] = "const_shape_";
+const char CONST_VAL_PREFIX[] = "const_val_";
+const char CONST_TENSOR_PREFIX[] = "const_tensor_";
+const char PADDING_ATTR_NAME[] = "padding";
+const char STRIDES_ATTR_NAME[] = "strides";
+const char KEEP_DIMS_ATTR_NAME[] = "keep_dims";
+const char KSIZE_ATTR_NAME[] = "ksize";
+const char NULL_OUTPUT_NAME[] = "NULL";
+const char AGGREGATED_INPUT_NODE_NAME[] = "graph_transfer_aggregated_input";
+const int PADDING_NA_ID = 0;  // VALID = 1, SAME = 2
+
+// This is a temporary workaround to support android build
+// where std::string is not supported even with c++11 option.
+template <typename T>
+static string ToString(T val) {
+  std::stringstream stream;
+  stream << val;
+  return stream.str();
+}
+
+static Node* FindMutableNodeByName(const string& name, Graph* graph) {
+  const TensorId tid = ParseTensorName(name);
+  for (Node* node : graph->nodes()) {
+    if (node != nullptr && node->name() == tid.first) {
+      return node;
+    }
+  }
+  return nullptr;
+}
 
 /**
  * graph loading functions
  * - LoadGraphFromProto
- * - LoadGraphFromProtoFile
+ * - LoadGraphFromProptoFile
  * These functions read a graph definition and store parameters
  * of node to transfer the graph to SOC.
  */
 Status GraphTransferer::LoadGraphFromProto(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const GraphDef& graph_def,
-    const std::vector<InputNodeInfo>& input_node_info_list,
+    const std::vector<std::pair<string, Tensor>>& input_node_info_list,
     const std::vector<string>& output_node_names,
-    const OutputTensorMap& output_tensor_map) {
-  ImportGraphDefOptions opts;
+    const bool shape_inference_for_unknown_shape) {
   Graph graph(OpRegistry::Global());
-  ShapeRefiner shape_refiner(graph.op_registry());
-  VLOG(1) << "Start import graph";
-  Status status = ImportGraphDef(opts, graph_def, &graph, &shape_refiner);
+  ShapeRefiner shape_refiner(graph.versions(), graph.op_registry());
+  Status status = ImportGraphDef({}, graph_def, &graph, &shape_refiner);
   if (!status.ok()) {
-    VLOG(1) << "Failed to import graph " << status.ToString();
     return status;
   }
+
+  if (shape_inference_for_unknown_shape) {
+    status = RemoteFusedGraphExecuteUtils::PropagateShapeInference(
+        graph_def, input_node_info_list, &graph, &shape_refiner);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+
+  TF_RETURN_IF_ERROR(TransformGraphToAddAggregatedInputNode(
+      input_node_info_list, &graph, &shape_refiner));
 
   std::unordered_multimap<string, const Node*> op_name_to_node_multimap(
       graph.num_nodes());
   for (const Node* const node : graph.nodes()) {
+    if (node == nullptr) {
+      continue;
+    }
     CacheNode(*node);
   }
 
   for (const Node* const node : graph.nodes()) {
+    if (node == nullptr) {
+      continue;
+    }
     VLOG(1) << "<Node> " << node->name();
     for (const Node* const input_node : node->in_nodes()) {
       const string& name = input_node->name();
@@ -83,10 +126,60 @@ Status GraphTransferer::LoadGraphFromProto(
   }
 
   for (const Node* const node : graph.nodes()) {
-    RegisterNodeIfAllInputsAreCached(ops_definitions, shape_refiner, *node,
-                                     false, input_node_info_list,
-                                     output_node_names, output_tensor_map);
+    if (node == nullptr) {
+      continue;
+    }
+    status = RegisterNodeIfAllInputsAreCached(
+        ops_definitions, shape_refiner, *node, false, input_node_info_list,
+        output_node_names);
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to transfer graph " << status;
+      return status;
+    }
   }
+
+  SortParams(output_node_names);
+
+  for (const std::pair<string, Tensor>& input_node_info :
+       input_node_info_list) {
+    GraphTransferInfo::GraphInputNodeInfo& graph_input_node_info =
+        *graph_transfer_info_.add_graph_input_node_info();
+    graph_input_node_info.set_name(input_node_info.first);
+    graph_input_node_info.set_dtype(input_node_info.second.dtype());
+    for (const int64 dim : ToTensorShapeArray(input_node_info.second.shape())) {
+      graph_input_node_info.add_shape(dim);
+    }
+  }
+
+  for (const string& output_node_name : output_node_names) {
+    const TensorId tid = ParseTensorName(output_node_name);
+    const string node_name = tid.first.ToString();
+    const int port = tid.second;
+    const int node_id = node_name_to_id_cache_map_.at(node_name);
+    const Node* node = node_name_cache_list_.at(node_id);
+    CHECK_NOTNULL(node);
+
+    GraphTransferInfo::GraphOutputNodeInfo& graph_output_node_info =
+        *graph_transfer_info_.add_graph_output_node_info();
+    graph_output_node_info.set_name(strings::StrCat(node_name, ":", port));
+
+    // Get output tensor shape type
+    std::vector<DataType> data_types;
+    std::vector<TensorShape> shapes;
+    status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
+        node->attrs(), &data_types, &shapes);
+    if (status.ok()) {
+      CHECK(data_types.size() > port);
+      graph_output_node_info.set_dtype(data_types.at(port));
+      for (const int64 dim : ToTensorShapeArray(shapes.at(port))) {
+        graph_output_node_info.add_shape(dim);
+      }
+    }
+  }
+
+  graph_transfer_info_.set_destination(
+      ops_definitions.GetTransferDestination());
+
   ClearCache();
   if (DBG_DUMP_PARAMS) {
     DumpNodeTransferParams();
@@ -100,12 +193,14 @@ Status GraphTransferer::LoadGraphFromProto(
 Status GraphTransferer::LoadGraphFromProtoFile(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const string& graph_def_path,
-    const std::vector<InputNodeInfo>& input_node_info_list,
-    const std::vector<string>& output_node_names,
-    const OutputTensorMap& output_tensor_map, const bool is_text_proto) {
+    const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+    const std::vector<string>& output_node_names, const bool is_text_proto,
+    const bool shape_inference_for_unknown_shape,
+    const bool dry_run_for_unknown_shape) {
   GraphDef graph_def;
   string output;
   Status status;
+  VLOG(1) << "Parse file " << graph_def_path;
   if (is_text_proto) {
     status = ReadFileToString(Env::Default(), graph_def_path, &output);
     if (!protobuf::TextFormat::ParseFromString(output, &graph_def)) {
@@ -115,192 +210,98 @@ Status GraphTransferer::LoadGraphFromProtoFile(
     status = ReadBinaryProto(Env::Default(), graph_def_path, &graph_def);
   }
   if (!status.ok()) {
+    VLOG(1) << "Failed to load graph " << status;
     return status;
   }
+  if (dry_run_for_unknown_shape) {
+    VLOG(1) << "Dry run graph to obtain shape of nodes";
+    RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
+    status = RemoteFusedGraphExecuteUtils::DryRunInferenceForAllNode(
+        graph_def, input_node_info_list, true, &tensor_shape_map);
+    if (!status.ok()) {
+      return status;
+    }
+    for (NodeDef& node_def : *graph_def.mutable_node()) {
+      TF_CHECK_OK(AddOutputTensorShapeTypeByTensorShapeMap(tensor_shape_map,
+                                                           &node_def));
+    }
+  }
+  VLOG(1) << "Load graph with output tensors";
   return LoadGraphFromProto(ops_definitions, graph_def, input_node_info_list,
-                            output_node_names, output_tensor_map);
+                            output_node_names,
+                            shape_inference_for_unknown_shape);
 }
 
-Status GraphTransferer::LoadGraphFromProtoFile(
-    const IGraphTransferOpsDefinitions& ops_definitions,
-    const string& graph_def_path,
-    const std::vector<InputNodeInfo>& input_node_info_list,
-    const std::vector<string>& output_node_names,
-    const OutputTensorMap& output_tensor_map) {
-  GraphDef graph_def;
-  string output;
-  Status status = ReadFileToString(Env::Default(), graph_def_path, &output);
-  if (!status.ok()) {
-    return status;
+void GraphTransferer::SortParams(const std::vector<string>& output_node_names) {
+  // TODO(satok): optimize complexity
+  std::unordered_map<int, GraphTransferInfo::NodeInputInfo*> input_map;
+  for (GraphTransferInfo::NodeInputInfo& input :
+       *graph_transfer_info_.mutable_node_input_info()) {
+    input_map.emplace(input.node_id(), &input);
   }
-  if (!protobuf::TextFormat::ParseFromString(output, &graph_def)) {
-    return errors::InvalidArgument("Cannot parse proto string.");
-  }
-  LoadGraphFromProto(ops_definitions, graph_def, input_node_info_list,
-                     output_node_names, output_tensor_map);
-  return Status();
-}
 
-/**
- * Dryrun functions
- * - DryRunInference
- * To determine shapes of output tensors of all nodes, dryrun the graph.
- * This function supplies memory allocation information when loading
- * the graph.
- * TODO(satok): Delete this function when all shapes of ops are implemented.
- * This function doesn't work if some ops changes its shape even if input shape
- * is fixed.
- */
-/* static */ Status GraphTransferer::DryRunInference(
-    const GraphDef& graph_def,
-    const std::vector<InputNodeInfo>& input_node_info_list,
-    const std::vector<string>& output_node_names, const bool initialize_by_zero,
-    std::vector<tensorflow::Tensor>* output_tensors) {
-  // Create input tensor vector.  If "initialize_by_zero" is true,
-  // input tensor fields are initialized by 0.
-  std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
-  for (const InputNodeInfo& input : input_node_info_list) {
-    CHECK(input.tensor.IsInitialized());
-    if (!initialize_by_zero) {
-      input_tensors.push_back({input.name, input.tensor});
+  // Setup dependency map placeholder
+  std::vector<int> output_node_ids;
+  std::unordered_map<int, std::unordered_set<int>> dependency_map;
+  for (const GraphTransferInfo::NodeInfo& params :
+       graph_transfer_info_.node_info()) {
+    const int node_id = params.node_id();
+    for (const string& output_node_name : output_node_names) {
+      if (params.name() == output_node_name) {
+        output_node_ids.emplace_back(node_id);
+      }
+    }
+
+    dependency_map.emplace(std::piecewise_construct, std::make_tuple(node_id),
+                           std::make_tuple());
+    if (params.input_count() == 0) {
       continue;
     }
-    // If input tensor is not initialized, initialize by 0-filling
-    const DataType data_type = input.tensor.dtype();
-    const TensorShape& shape = input.tensor.shape();
-    Tensor input_tensor(data_type, shape);
-    switch (data_type) {
-      case DT_INT32: {
-        auto int_tensor = input_tensor.flat<int32>();
-        int_tensor = int_tensor.constant(0.0);
-        break;
-      }
-      case DT_FLOAT: {
-        auto float_tensor = input_tensor.flat<float>();
-        float_tensor = float_tensor.constant(0.0);
-        break;
-      }
-      case DT_QUINT8: {
-        auto int_tensor = input_tensor.flat<quint8>();
-        int_tensor = int_tensor.constant(0.0);
-        break;
-      }
-      default:
-        LOG(FATAL) << "Unsupported input type: " << data_type;
-    }
-    input_tensors.push_back({input.name, input_tensor});
-  }
-
-  // Setup session
-  CHECK(output_tensors != nullptr);
-  SessionOptions session_options;
-  session_options.env = Env::Default();
-  std::unique_ptr<Session> session =
-      std::unique_ptr<Session>(NewSession(session_options));
-  Status status = session->Create(graph_def);
-  if (!status.ok()) {
-    return status;
-  }
-
-  // Setup session arguments
-  RunOptions run_options;
-  run_options.set_trace_level(RunOptions::FULL_TRACE);
-  RunMetadata run_metadata;
-
-  // Run inference with all node as output
-  status = session->Run(run_options, input_tensors, output_node_names, {},
-                        output_tensors, &run_metadata);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error during inference: " << status;
-    return status;
-  }
-  return Status();
-}
-
-/* static */ Status GraphTransferer::DryRunInferenceForAllNode(
-    const GraphDef& graph_def,
-    const std::vector<GraphTransferer::InputNodeInfo>& input_node_info_list,
-    const bool initialize_by_zero, OutputTensorInfo* const output_tensor_info) {
-  CHECK(output_tensor_info != nullptr);
-  auto& output_tensors = output_tensor_info->output_tensors;
-  output_tensors.reserve(graph_def.node_size());
-  auto& output_tensor_map = output_tensor_info->output_tensor_map;
-  std::vector<string> output_node_names;
-  for (const NodeDef& node : graph_def.node()) {
-    if (!IsInputNode(input_node_info_list, node.name())) {
-      output_node_names.emplace_back(node.name());
+    CHECK_EQ(input_map.count(node_id), 1);
+    for (const GraphTransferInfo::NodeInput& node_input :
+         input_map.at(node_id)->node_input()) {
+      dependency_map.at(node_id).emplace(node_input.node_id());
     }
   }
-  const Status status =
-      DryRunInference(graph_def, input_node_info_list, output_node_names,
-                      initialize_by_zero, &output_tensors);
-  CHECK(output_node_names.size() == output_tensors.size());
 
-  // Append output tensor of input node in advance to create a map
-  // to avoid memory reallocation inside vector
-  for (const InputNodeInfo& input_node_info : input_node_info_list) {
-    output_tensors.push_back(input_node_info.tensor);
+  // Create dependency map traversed from output nodes
+  std::unordered_set<int> completed;
+  for (int output_node_id : output_node_ids) {
+    FillDependencyRec(output_node_id, dependency_map, completed);
   }
 
-  for (int i = 0; i < output_node_names.size(); ++i) {
-    const string& name = output_node_names.at(i);
-    CHECK(output_tensor_map.count(name) == 0);
-    output_tensor_map[name] = &output_tensors.at(i);
-  }
-  for (int i = 0; i < input_node_info_list.size(); ++i) {
-    const string& name = input_node_info_list.at(i).name;
-    CHECK(output_tensor_map.count(name) == 0);
-    output_tensor_map.emplace(
-        name, &output_tensors.at(output_node_names.size() - 1 + i));
-  }
-  CHECK(graph_def.node_size() == output_tensors.size());
-  return status;
+  std::sort(graph_transfer_info_.mutable_node_info()->begin(),
+            graph_transfer_info_.mutable_node_info()->end(),
+            TransferParamsComparator(dependency_map));
 }
 
-const std::vector<GraphTransferer::ConstNodeTransferParams>&
-GraphTransferer::GetConstNodeParams() const {
-  return const_node_transfer_params_list_;
+void GraphTransferer::EnableStrictCheckMode(const bool enable) {
+  strict_check_mode_ = enable;
 }
 
-const std::vector<GraphTransferer::NodeTransferParams>&
-GraphTransferer::GetOpNodeParams() const {
-  return node_transfer_params_list_;
+void GraphTransferer::SetSerializedGraphTransferInfo(
+    const string& serialized_proto) {
+  graph_transfer_info_.ParseFromString(serialized_proto);
 }
 
-const std::vector<GraphTransferer::NodeInputParams>&
-GraphTransferer::GetNodeInputParams() const {
-  return node_input_params_list_;
+const GraphTransferInfo& GraphTransferer::GetGraphTransferInfo() const {
+  return graph_transfer_info_;
 }
 
-const std::vector<GraphTransferer::NodeOutputParams>&
-GraphTransferer::GetNodeOutputParams() const {
-  return node_output_params_list_;
+GraphTransferInfo& GraphTransferer::GetMutableGraphTransferInfo() {
+  return graph_transfer_info_;
 }
 
-int GraphTransferer::CacheNode(const Node& node) {
+void GraphTransferer::CacheNode(const Node& node) {
   if (node_name_to_id_cache_map_.count(node.name()) > 0) {
-    VLOG(1) << "Emplace node to cache failed";
-    // TODO(satok): check here?
-    return -1;
+    return;
   }
-  VLOG(1) << "Cache node: " << node.name() << ", " << node.op_def().name();
   node_name_cache_list_.emplace_back(&node);
+  const int node_id = node_name_cache_list_.size() - 1;
   bool emplace_succeeded = false;
-  std::tie(std::ignore, emplace_succeeded) = node_name_to_id_cache_map_.emplace(
-      node.name(), node_name_cache_list_.size() - 1);
+  std::tie(std::ignore, emplace_succeeded) =
+      node_name_to_id_cache_map_.emplace(node.name(), node_id);
   CHECK(emplace_succeeded);
-  return node_name_cache_list_.size() - 1;
-}
-
-/* static */ bool GraphTransferer::IsInputNode(
-    const std::vector<InputNodeInfo>& input_node_info_list,
-    const string& node_name) {
-  for (const InputNodeInfo& input_node_info : input_node_info_list) {
-    if (node_name == input_node_info.name) {
-      return true;
-    }
-  }
-  return false;
 }
 
 bool GraphTransferer::AreAllInputsCached(const Node& node) const {
@@ -314,284 +315,646 @@ bool GraphTransferer::AreAllInputsCached(const Node& node) const {
   return true;
 }
 
-void GraphTransferer::RegisterNode(
-    const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
-    const Node& node, const std::vector<InputNodeInfo>& input_node_info_list,
-    const std::vector<string>& output_node_names) {
-  VLOG(1) << "Register node: " << node.name();
-  if (IsInputNode(input_node_info_list, node.name())) {
-    RegisterInputNode(ops_definitions, shape_refiner, output_tensor_map, node);
-  } else if (std::find(output_node_names.begin(), output_node_names.end(),
-                       node.name()) != output_node_names.end()) {
-    RegisterOutputNode(ops_definitions, shape_refiner, output_tensor_map, node);
-  } else if (node.IsConstant()) {
-    RegisterConstantNode(shape_refiner, node, output_tensor_map);
-  } else if (HasPaddingAndStrides(node)) {
-    RegisterNodeWithPaddingAndStrides(ops_definitions, shape_refiner,
-                                      output_tensor_map, node);
-  } else {
-    // TODO(satok): register params for nodes which are supported by SOC
-    VLOG(1) << "Not implemented for " << node.type_string();
+Status GraphTransferer::TransformGraphToAddAggregatedInputNode(
+    const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+    Graph* graph, ShapeRefiner* shape_refiner) {
+  // Transform a remote fused graph to add an aggregated input node which takes
+  // all inputs of the remote graph.
+  DataTypeVector input_data_types;
+  std::vector<DataType> data_types;
+  std::vector<TensorShape> shapes;
+  std::vector<string> input_nodes;
+  for (int i = 0; i < input_node_info_list.size(); ++i) {
+    Node* node = FindMutableNodeByName(input_node_info_list.at(i).first, graph);
+    CHECK_NOTNULL(node);
+    input_nodes.emplace_back(node->name());
+    input_data_types.emplace_back(input_node_info_list.at(i).second.dtype());
+    data_types.emplace_back(input_node_info_list.at(i).second.dtype());
+    shapes.emplace_back(input_node_info_list.at(i).second.shape());
   }
+
+  NodeDef input_node_def;
+  auto builder =
+      NodeBuilder(AGGREGATED_INPUT_NODE_NAME, "RemoteFusedGraphExecute")
+          .Input(std::vector<NodeBuilder::NodeOut>{})
+          .Attr("Tinputs", DataTypeVector{})
+          .Attr("Toutputs", input_data_types)
+          .Attr("serialized_remote_fused_graph_execute_info", "")
+          .Attr(RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
+                data_types)
+          .Attr(RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES, shapes);
+
+  Node* input_node;
+  TF_RETURN_IF_ERROR(builder.Finalize(graph, &input_node));
+  CHECK_NOTNULL(input_node);
+
+  bool refined;
+  TF_RETURN_IF_ERROR(
+      shape_refiner->UpdateNode(input_node, false /* relax */, &refined));
+
+  shape_inference::InferenceContext* context =
+      shape_refiner->GetContext(input_node);
+  for (int i = 0; i < input_node_info_list.size(); ++i) {
+    shape_inference::ShapeHandle handle;
+    TF_RETURN_IF_ERROR(context->MakeShapeFromTensorShape(
+        input_node_info_list.at(i).second.shape(), &handle));
+    TF_RETURN_IF_ERROR(shape_refiner->SetShape(input_node, i, handle));
+  }
+
+  // Cache the aggregate input node first as it's consumed first.
+  CacheNode(*input_node);
+
+  std::vector<Node*> original_input_nodes(input_nodes.size());
+
+  for (int i = 0; i < input_nodes.size(); ++i) {
+    const string& node_name = input_nodes.at(i);
+    Node* original_input_node = FindMutableNodeByName(node_name, graph);
+    CHECK_NOTNULL(original_input_node);
+    CHECK_EQ(1, original_input_node->num_outputs());  // replaced by identity.
+    Node* created_node;
+    TF_RETURN_IF_ERROR(RemoteFusedGraphExecuteUtils::BuildIdentityOpNode(
+        node_name, AGGREGATED_INPUT_NODE_NAME, i, data_types.at(i), graph,
+        &created_node));
+    CHECK_NOTNULL(created_node);
+    std::vector<DataType> data_types;
+    std::vector<TensorShape> shapes;
+    Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
+        original_input_node->def(), &data_types, &shapes);
+    if (status.ok()) {
+      created_node->AddAttr(
+          RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES, data_types);
+      created_node->AddAttr(RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES,
+                            shapes);
+    }
+    for (const Edge* out_edge : original_input_node->out_edges()) {
+      Node* dst = out_edge->dst();
+      int dst_port = out_edge->dst_input();
+      // Unused edge will be removed when removing node.
+      graph->AddEdge(created_node, 0, dst, dst_port);
+    }
+    original_input_nodes[i] = original_input_node;
+
+    TF_RETURN_IF_ERROR(
+        shape_refiner->UpdateNode(created_node, false /* relax */, &refined));
+
+    shape_inference::InferenceContext* context =
+        shape_refiner->GetContext(created_node);
+    CHECK_NOTNULL(context);
+
+    // Cache replaced input node next to the aggregated input node.
+    CacheNode(*created_node);
+  }
+
+  // Remove original input nodes after adding new input nodes to avoid
+  // reusing same pointer in Graph.
+  for (Node* original_input_node : original_input_nodes) {
+    graph->RemoveNode(original_input_node);
+  }
+
+  return Status::OK();
 }
 
-void GraphTransferer::RegisterConstantNode(
+Status GraphTransferer::RegisterNode(
+    const IGraphTransferOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node,
-    const OutputTensorMap& output_tensor_map) {
+    const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+    const std::vector<string>& output_node_names) {
+  VLOG(1) << "Register node: " << node.name() << ", " << std::hex
+          << node_name_to_id_cache_map_.at(node.name());
+  if (node.name() == SOURCE_NODE_NAME || node.name() == SINK_NODE_NAME) {
+    // Just ignore sink and source
+    return Status::OK();
+  } else if (node.name() == AGGREGATED_INPUT_NODE_NAME) {
+    RegisterInputNode(ops_definitions, shape_refiner, node);
+    return Status::OK();
+  } else if (node.IsConstant()) {
+    RegisterConstantNode(shape_refiner, node);
+  } else if (IsPadNode(node)) {
+    RegisterPadNode(ops_definitions, shape_refiner, node);
+  } else if (HasPaddingAndStrides(node)) {
+    RegisterNodeWithPaddingAndStrides(ops_definitions, shape_refiner, node);
+  } else if (NeedsToAddRank(node)) {
+    RegisterNodeWithRank(ops_definitions, shape_refiner, node);
+  } else if (IsNodeFlattenReshape(node, shape_refiner)) {
+    RegisterFlattenNode(ops_definitions, shape_refiner, node);
+  } else if (ops_definitions.GetOpIdFor(node.type_string(), {}) !=
+             IGraphTransferOpsDefinitions::INVALID_OP_ID) {
+    // TODO(satok): Set correct data type if it's given.
+    RegisterGenericNode(ops_definitions, shape_refiner, node);
+  } else {
+    return errors::InvalidArgument(node.type_string() +
+                                   " has not been implemented yet.");
+  }
+
+  return Status::OK();
+}
+
+void GraphTransferer::RegisterConstantNode(const ShapeRefiner& shape_refiner,
+                                           const Node& node) {
   VLOG(1) << "Register constant node: " << node.name();
-  CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
+  CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const string data_name = DATA_NODE_PREFIX + std::to_string(id);
   const int output_node_size = node.num_outputs();
-  CHECK(output_node_size == 1);
+  CHECK_EQ(output_node_size, 1);
   // TODO(satok): support multiple outputs?
   const int output_index = 0;
   const DataType dt = node.output_type(output_index);
-  const size_t max_bytes_per_data =
-      checkpoint::TensorSliceWriter::MaxBytesPerElement(dt);
+  const size_t max_bytes_per_data = DataTypeSize(dt);
+  CHECK_GT(max_bytes_per_data, 0)
+      << "dt = " << dt << ", " + DataTypeString(dt) << ", "
+      << max_bytes_per_data << ", " << static_cast<int>(DataTypeSize(dt))
+      << ",,,,,,,";
   shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
   shape_inference::ShapeHandle shape_handle = context->output(output_index);
   const shape_inference::DimensionHandle num_elements_dim =
       context->NumElements(shape_handle);
-  std::array<int64, SHAPE_ARRAY_SIZE> shape;
+  std::array<int64, SHAPE_ARRAY_SIZE> shape_array;
   int data_size;
-  if (context->ValueKnown(num_elements_dim)) {
-    const int64 num_output_elements = context->Value(num_elements_dim);
-    data_size = max_bytes_per_data * num_output_elements;
-    shape = BuildShapeArray(shape_handle, context);
-    CheckShape(output_tensor_map, node.name(), shape);
-  } else {
-    // Use output tensor for unknown shape
-    // TODO(stok): Remove this fallback
-    CHECK(!output_tensor_map.empty());
-    const TensorShape& tensor_shape =
-        output_tensor_map.at(node.name())->shape();
-    shape = ToTensorShapeArray(tensor_shape);
-    data_size = max_bytes_per_data * tensor_shape.num_elements();
-  }
+  // Shape of constant node must be known
   CHECK(context->ValueKnown(num_elements_dim));
-  const_node_transfer_params_list_.emplace_back(
-      ConstNodeTransferParams{node.name(),
-                              id,
-                              {{shape[0], shape[1], shape[2], shape[3]}},
-                              data_name,
-                              data_size});
+  const int64 num_output_elements = context->Value(num_elements_dim);
+  data_size = max_bytes_per_data * num_output_elements;
+  shape_array = BuildShapeArray(shape_handle, context);
+
+  GraphTransferInfo::ConstNodeInfo& const_node_info =
+      *graph_transfer_info_.add_const_node_info();
+  const_node_info.set_name(node.name());
+  const_node_info.set_node_id(id);
+  // TODO(satok): Make this generic. Never assume rank is 4.
+  CHECK_EQ(4, SHAPE_ARRAY_SIZE);
+  const_node_info.add_shape(shape_array[0]);
+  const_node_info.add_shape(shape_array[1]);
+  const_node_info.add_shape(shape_array[2]);
+  const_node_info.add_shape(shape_array[3]);
+  const TensorProto* proto = nullptr;
+  TF_CHECK_OK(GetNodeAttr(node.attrs(), "value", &proto));
+  Tensor const_tensor;
+  TF_CHECK_OK(MakeTensorFromProto(*proto, &const_tensor));
+
+  const_node_info.set_dtype(const_tensor.dtype());
+  if (data_size > 0) {
+    const_node_info.set_data(const_tensor.tensor_data().data(), data_size);
+  }
 }
 
 int GraphTransferer::RegisterConstantShape(const std::vector<int>& shape) {
   VLOG(1) << "Cache constant shape.";
   // TODO(satok): Handle non-4dim strides
-  CHECK(shape.size() == 4);
-  const string shape_name = CONST_SHAPE_PREFIX + std::to_string(shape.at(0)) +
-                            'x' + std::to_string(shape.at(1)) + 'x' +
-                            std::to_string(shape.at(2)) + 'x' +
-                            std::to_string(shape.at(3));
+  CHECK_EQ(shape.size(), 4);
+  const string shape_name = CONST_SHAPE_PREFIX + ToString(shape.at(0)) + 'x' +
+                            ToString(shape.at(1)) + 'x' +
+                            ToString(shape.at(2)) + 'x' + ToString(shape.at(3));
   if (node_name_to_id_cache_map_.count(shape_name) <= 0) {
     node_name_cache_list_.emplace_back(nullptr);
     const int id = node_name_cache_list_.size() - 1;
     node_name_to_id_cache_map_.emplace(shape_name, id);
-    const_node_transfer_params_list_.emplace_back(ConstNodeTransferParams{
-        shape_name, id, {{shape[0], shape[1], shape[2], shape[3]}}, "", 0});
+    GraphTransferInfo::ConstNodeInfo& const_node_info =
+        *graph_transfer_info_.add_const_node_info();
+    const_node_info.set_name(shape_name);
+    const_node_info.set_node_id(id);
+    // TODO(satok): Make this generic. Never assume rank is 5.
+    const_node_info.add_shape(static_cast<int64>(shape[0]));
+    const_node_info.add_shape(static_cast<int64>(shape[1]));
+    const_node_info.add_shape(static_cast<int64>(shape[2]));
+    const_node_info.add_shape(static_cast<int64>(shape[3]));
   }
   return node_name_to_id_cache_map_[shape_name];
 }
 
+int GraphTransferer::RegisterConstTensor(const Tensor& tensor,
+                                         const string& suffix) {
+  VLOG(1) << "Cache const tensor.";
+  const int dims = tensor.shape().dims();
+  CHECK(dims <= 4);
+  const string node_name = strings::StrCat(CONST_TENSOR_PREFIX, "_", suffix);
+  if (node_name_to_id_cache_map_.count(node_name) <= 0) {
+    node_name_cache_list_.emplace_back(nullptr);
+    const int id = node_name_cache_list_.size() - 1;
+    node_name_to_id_cache_map_.emplace(node_name, id);
+    GraphTransferInfo::ConstNodeInfo& const_node_info =
+        *graph_transfer_info_.add_const_node_info();
+    const_node_info.set_name(node_name);
+    const_node_info.set_node_id(id);
+    CHECK_EQ(4, SHAPE_ARRAY_SIZE);
+    for (int i = 0; i < SHAPE_ARRAY_SIZE; ++i) {
+      if (i < SHAPE_ARRAY_SIZE - dims) {
+        const_node_info.add_shape(1);
+      } else {
+        const_node_info.add_shape(
+            tensor.shape().dim_size(i - (SHAPE_ARRAY_SIZE - dims)));
+      }
+    }
+    const_node_info.set_dtype(tensor.dtype());
+    const_node_info.set_data(tensor.tensor_data().data(),
+                             tensor.tensor_data().size());
+  }
+  return node_name_to_id_cache_map_[node_name];
+}
+
+int GraphTransferer::RegisterConstScalar(const DataType dt, const int val,
+                                         const int dst_id,
+                                         const int dst_input_count) {
+  VLOG(1) << "Cache const.";
+  const string val_name =
+      CONST_VAL_PREFIX + ToString(dst_id) + '_' + ToString(dst_input_count);
+  if (node_name_to_id_cache_map_.count(val_name) <= 0) {
+    node_name_cache_list_.emplace_back(nullptr);
+    const int id = node_name_cache_list_.size() - 1;
+    node_name_to_id_cache_map_.emplace(val_name, id);
+    GraphTransferInfo::ConstNodeInfo& const_node_info =
+        *graph_transfer_info_.add_const_node_info();
+    const_node_info.set_name(val_name);
+    const_node_info.set_node_id(id);
+    // TODO(satok): Do not assume rank is 4 here.
+    const_node_info.add_shape(static_cast<int64>(1));
+    const_node_info.add_shape(static_cast<int64>(1));
+    const_node_info.add_shape(static_cast<int64>(1));
+    const_node_info.add_shape(static_cast<int64>(1));
+    const_node_info.set_data(&val, DataTypeSize(dt));
+  }
+  return node_name_to_id_cache_map_[val_name];
+}
+
 bool GraphTransferer::HasPaddingAndStrides(const Node& node) {
-  return node.def().attr().count(PADDING_ATTR_NAME) > 0 &&
-         node.def().attr().count(STRIDES_ATTR_NAME) > 0;
+  auto attrs = node.attrs();
+  return attrs.Find(PADDING_ATTR_NAME) != nullptr &&
+         attrs.Find(STRIDES_ATTR_NAME) != nullptr;
+}
+
+bool GraphTransferer::NeedsToAddRank(const Node& node) {
+  const string& op_type = node.def().op();
+  if (op_type == "Transpose" || op_type == "ExpandDims") {
+    return true;
+  }
+  return false;
+}
+
+bool GraphTransferer::IsPadNode(const Node& node) {
+  const string& op_type = node.def().op();
+  if (op_type == "Pad") {
+    return true;
+  }
+  return false;
+}
+
+bool GraphTransferer::IsNodeFlattenReshape(const Node& node,
+                                           const ShapeRefiner& shape_refiner) {
+  // Check if node is reshape op
+  if (node.type_string() != RESHAPE_NODE_TYPE_STRING) {
+    return false;
+  }
+
+  shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
+  // Check if output count is valid
+  if (context->num_outputs() != 1) {
+    return false;
+  }
+
+  shape_inference::ShapeHandle shape_handle = context->output(0);
+  std::array<int64, SHAPE_ARRAY_SIZE> shape_array;
+  const shape_inference::DimensionHandle dim_handle =
+      context->NumElements(shape_handle);
+
+  // Obtain shape of output of node
+  if (context->ValueKnown(dim_handle)) {
+    shape_array = BuildShapeArray(shape_handle, context);
+  } else {
+    std::vector<TensorShape> shapes;
+    TF_CHECK_OK(RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
+        node.attrs(), nullptr, &shapes));
+
+    // Number of outputs should be 1 for reshape node.
+    CHECK_EQ(1, shapes.size());
+    shape_array = ToTensorShapeArray(shapes.at(0));
+  }
+
+  // check if reshape op just does flatten
+  if (shape_array[0] == 1 && shape_array[1] == 1 && shape_array[2] == 1) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 void GraphTransferer::RegisterNodeWithPaddingAndStrides(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
-    const Node& node) {
-  CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
+    const ShapeRefiner& shape_refiner, const Node& node) {
+  CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
   shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
-  CHECK(node.def().attr().count(PADDING_ATTR_NAME) > 0);
+  CHECK(node.attrs().Find(PADDING_ATTR_NAME));
   // TODO(satok): Use context->GetAttr(...) instead?
   Padding padding;
-  context->GetAttr(PADDING_ATTR_NAME, &padding);
-  CHECK(node.def().attr().count(STRIDES_ATTR_NAME) > 0);
+  TF_CHECK_OK(context->GetAttr(PADDING_ATTR_NAME, &padding));
+  CHECK(node.attrs().Find(STRIDES_ATTR_NAME));
   std::vector<int32> strides;
-  context->GetAttr(STRIDES_ATTR_NAME, &strides);
+  TF_CHECK_OK(context->GetAttr(STRIDES_ATTR_NAME, &strides));
   const int stride_id = RegisterConstantShape(strides);
   std::vector<int> extra_inputs{stride_id};
-  if (node.def().attr().count(KSIZE_ATTR_NAME) > 0) {
+  if (node.attrs().Find(KSIZE_ATTR_NAME)) {
     std::vector<int32> kernel_sizes;
-    context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes);
+    TF_CHECK_OK(context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes));
     const int ksize_id = RegisterConstantShape(kernel_sizes);
-    extra_inputs.push_back(ksize_id);
+    extra_inputs.insert(extra_inputs.begin(), ksize_id);
   }
-  const std::string padding_str =
-      padding == VALID ? PADDING_VALID_STR : PADDING_SAME_STR;
-  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string());
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string(), {});
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount())
-      << node.type_string();
-  AppendNodeParamsWithIoParams(shape_refiner, output_tensor_map, node,
-                               node.name(), id, node.type_string(), op_type_id,
-                               padding_str, node.num_inputs(), extra_inputs,
-                               node.num_outputs(), true /* append_input */,
-                               true /* append_output */);
+      << "Op " << node.type_string() << " not found in map(id = " << op_type_id
+      << ")";
+  // Safety check of padding id
+  CHECK(padding == Padding::VALID ? 1 : 2);
+  AppendNodeParamsWithIoParams(
+      shape_refiner, node, node.name(), id, node.type_string(), op_type_id,
+      static_cast<int>(padding), node.num_inputs(), extra_inputs,
+      node.num_outputs(), true /* append_input */, true /* append_output */);
+}
+
+void GraphTransferer::RegisterNodeWithRank(
+    const IGraphTransferOpsDefinitions& ops_definitions,
+    const ShapeRefiner& shape_refiner, const Node& node) {
+  CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
+  const int id = node_name_to_id_cache_map_[node.name()];
+  shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
+  const Node* input0_node;
+  TF_CHECK_OK(node.input_node(0, &input0_node));
+  CHECK_NOTNULL(input0_node);
+  std::vector<TensorShape> shapes;
+  Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
+      input0_node->def(), nullptr, &shapes);
+  CHECK_EQ(1, shapes.size()) << "Output size should be 1.";
+  const int const_val_id =
+      RegisterConstScalar(DT_INT32, shapes.at(0).dims(), id, node.num_inputs());
+  std::vector<int> extra_inputs{const_val_id};
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string(), {});
+  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount())
+      << "Op " << node.type_string() << " not found in map(id = " << op_type_id
+      << ")";
+  bool keep_dims = false;
+  int padding_id = PADDING_NA_ID;
+  if (context->GetAttr(KEEP_DIMS_ATTR_NAME, &keep_dims).ok()) {
+    padding_id = keep_dims ? Padding::SAME : Padding::VALID;
+  }
+
+  AppendNodeParamsWithIoParams(
+      shape_refiner, node, node.name(), id, node.type_string(), op_type_id,
+      padding_id, node.num_inputs(), extra_inputs, node.num_outputs(),
+      true /* append_input */, true /* append_output */);
+}
+
+void GraphTransferer::RegisterPadNode(
+    const IGraphTransferOpsDefinitions& ops_definitions,
+    const ShapeRefiner& shape_refiner, const Node& node) {
+  static constexpr int PAD_WIDTH = 4;
+  static constexpr int PAD_HEIGHT = 2;
+  VLOG(1) << "Register generic node: " << node.name();
+  CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
+  const int id = node_name_to_id_cache_map_[node.name()];
+
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string(), {});
+  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
+
+  CHECK_EQ(2, node.num_inputs());
+
+  GraphTransferInfo::NodeInputInfo& node_input_info =
+      *graph_transfer_info_.add_node_input_info();
+  node_input_info.set_node_id(id);
+
+  AddNodeInputByInputIndex(node, 0, &node_input_info);
+
+  const Edge* edge = nullptr;
+  TF_CHECK_OK(node.input_edge(1, &edge));
+  const Node* input_node = edge->src();
+  CHECK_NOTNULL(input_node);
+  CHECK(input_node->IsConstant());
+
+  const TensorProto* tensor_proto = nullptr;
+  TF_CHECK_OK(GetNodeAttr(input_node->def(), "value", &tensor_proto));
+  CHECK_NOTNULL(tensor_proto);
+  Tensor const_tensor;
+  TF_CHECK_OK(MakeTensorFromProto(*tensor_proto, &const_tensor));
+  CHECK_EQ(2, const_tensor.shape().dims());
+  CHECK_EQ(PAD_HEIGHT, const_tensor.shape().dim_size(1));
+  if (const_tensor.shape().dim_size(0) == PAD_WIDTH) {
+    AddNodeInputByInputIndex(node, 1, &node_input_info);
+  } else if (const_tensor.shape().dim_size(0) < PAD_WIDTH) {
+    const int width = const_tensor.shape().dim_size(0);
+    const TensorProto* proto = nullptr;
+    TF_CHECK_OK(GetNodeAttr(input_node->def(), "value", &proto));
+    Tensor const_tensor;
+    TF_CHECK_OK(MakeTensorFromProto(*proto, &const_tensor));
+    CHECK_EQ(DT_INT32, const_tensor.dtype());
+    // reshape tensor input to be rank 4.
+    // TODO(satok): Never assume rank is 4.
+    Tensor new_const_tensor(const_tensor.dtype(), TensorShape{4, 2});
+    for (int i = 0; i < PAD_HEIGHT; ++i) {
+      for (int j = 0; j < PAD_WIDTH; ++j) {
+        if (j < PAD_WIDTH - width) {
+          new_const_tensor.matrix<int32>()(j, i) = 0;
+        } else {
+          new_const_tensor.matrix<int32>()(j, i) =
+              const_tensor.matrix<int32>()(j - (PAD_WIDTH - width), i);
+        }
+      }
+    }
+
+    const int id = RegisterConstTensor(
+        new_const_tensor,
+        strings::StrCat(input_node->name(), "_", node.name(), "_1"));
+
+    GraphTransferInfo::NodeInput& node_input =
+        *node_input_info.add_node_input();
+    node_input.set_node_id(id);
+    node_input.set_output_port(0);
+  } else {
+    CHECK(false);
+  }
+
+  AppendNodeParamsWithIoParams(
+      shape_refiner, node, node.name(), id, node.type_string(), op_type_id,
+      PADDING_NA_ID, node.num_inputs(), {}, node.num_outputs(),
+      false /* append_input */, true /* append_output */);
 }
 
 void GraphTransferer::RegisterInputNode(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
-    const Node& node) {
-  VLOG(1) << "Register input node: " << node.name();
-  CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
+    const ShapeRefiner& shape_refiner, const Node& node) {
+  const string op_type = node.type_string();
+  VLOG(1) << "Register input node: " << node.name() << ", " << op_type;
+  CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const string op_type = IGraphTransferOpsDefinitions::INPUT_OP_NAME;
-  const int op_type_id = ops_definitions.GetOpIdFor(op_type);
-  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor("INPUT", {});
+  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount())
+      << "Op" << node.name() << ", " << op_type << " is not supported,"
+      << op_type_id;
   AppendNodeParamsWithIoParams(
-      shape_refiner, output_tensor_map, node, node.name(), id,
-      IGraphTransferOpsDefinitions::INPUT_OP_NAME, op_type_id, PADDING_NA,
-      node.num_inputs(), {}, node.num_outputs(), true /* append_input */,
-      true /* append_output */);
+      shape_refiner, node, node.name(), id, node.type_string(), op_type_id,
+      PADDING_NA_ID, node.num_inputs(), {}, node.num_outputs(),
+      true /* append_input */, true /* append_output */);
 }
 
-void GraphTransferer::RegisterOutputNode(
+void GraphTransferer::RegisterFlattenNode(
     const IGraphTransferOpsDefinitions& ops_definitions,
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
-    const Node& node) {
-  VLOG(1) << "Register output node: " << node.name();
-  CHECK(node_name_to_id_cache_map_.count(node.name()) == 1);
+    const ShapeRefiner& shape_refiner, const Node& node) {
+  VLOG(1) << "Register flatten node: " << node.name();
+  CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
-  const string op_type = IGraphTransferOpsDefinitions::OUTPUT_OP_NAME;
-  const int op_type_id = ops_definitions.GetOpIdFor(op_type);
+  const string op_type = IGraphTransferOpsDefinitions::FLATTEN_OP_NAME;
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(op_type, {});
   CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
-  // TODO(satok): Set output for output node?
+
   AppendNodeParamsWithIoParams(
-      shape_refiner, output_tensor_map, node, node.name(), id, op_type,
-      op_type_id, PADDING_NA, node.num_inputs(), {}, 0 /* outputs_size */,
-      true /* append_input */, false /* append_output */);
+      shape_refiner, node, node.name(), id, node.type_string(), op_type_id,
+      PADDING_NA_ID, node.num_inputs(), {}, node.num_outputs(),
+      true /* append_input */, true /* append_output */);
+}
+
+void GraphTransferer::RegisterGenericNode(
+    const IGraphTransferOpsDefinitions& ops_definitions,
+    const ShapeRefiner& shape_refiner, const Node& node) {
+  VLOG(1) << "Register generic node: " << node.name();
+  CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
+  const int id = node_name_to_id_cache_map_[node.name()];
+  // TODO(satok): Set correct data type if it's given.
+  const int op_type_id = ops_definitions.GetOpIdFor(node.type_string(), {});
+  CHECK(op_type_id >= 0 && op_type_id < ops_definitions.GetTotalOpsCount());
+
+  AppendNodeParamsWithIoParams(
+      shape_refiner, node, node.name(), id, node.type_string(), op_type_id,
+      PADDING_NA_ID, node.num_inputs(), {}, node.num_outputs(),
+      true /* append_input */, true /* append_output */);
 }
 
 // TODO(satok): Remove this function.
 // TODO(satok): Remove only_register_const_node.
-bool GraphTransferer::RegisterNodeIfAllInputsAreCached(
+Status GraphTransferer::RegisterNodeIfAllInputsAreCached(
     const IGraphTransferOpsDefinitions& ops_definitions,
     const ShapeRefiner& shape_refiner, const Node& node,
     const bool only_register_const_node,
-    const std::vector<InputNodeInfo>& input_node_info_list,
-    const std::vector<string>& output_node_names,
-    const OutputTensorMap& output_tensor_map) {
+    const std::vector<std::pair<string, Tensor>>& input_node_info_list,
+    const std::vector<string>& output_node_names) {
   if (only_register_const_node && !node.IsConstant()) {
-    return false;
+    return Status();
   }
   CHECK(AreAllInputsCached(node));
-  RegisterNode(ops_definitions, shape_refiner, output_tensor_map, node,
-               input_node_info_list, output_node_names);
-  return true;
+  return RegisterNode(ops_definitions, shape_refiner, node,
+                      input_node_info_list, output_node_names);
 }
 
 // CAVEAT: Append inputs and outputs params accordingly
 void GraphTransferer::AppendNodeParams(const string& name, const int id,
                                        const string& type, const int type_id,
-                                       const string& padding_str,
-                                       const int inputs_size,
+                                       const int padding, const int inputs_size,
                                        const std::vector<int>& extra_inputs,
                                        const int outputs_size) {
-  VLOG(1) << "Append node params: " << name;
-  // TODO(satok): store padding as Padding?
-  const string output_name = OUTPUTS_NODE_PREFIX + std::to_string(id);
-  node_transfer_params_list_.emplace_back(
-      NodeTransferParams{name, id, type, type_id, PADDING_PREFIX + padding_str,
-                         INPUTS_NODE_PREFIX + std::to_string(id),
-                         inputs_size + static_cast<int>(extra_inputs.size()),
-                         outputs_size <= 0 ? NULL_OUTPUT_NAME : output_name,
-                         static_cast<int>(outputs_size)});
+  GraphTransferInfo::NodeInfo& node_info =
+      *graph_transfer_info_.add_node_info();
+  node_info.set_name(name);
+  node_info.set_node_id(id);
+  node_info.set_type_name(type);
+  node_info.set_soc_op_id(type_id);
+  node_info.set_padding_id(padding);
+  node_info.set_input_count(inputs_size +
+                            static_cast<int>(extra_inputs.size()));
+  node_info.set_output_count(static_cast<int>(outputs_size));
+}
+
+void GraphTransferer::AddNodeInputByInputIndex(
+    const Node& node, const int idx,
+    GraphTransferInfo::NodeInputInfo* node_input_info) {
+  const Edge* edge = nullptr;
+  TF_CHECK_OK(node.input_edge(idx, &edge));
+  const Node* input_node = edge->src();
+  CHECK_NOTNULL(input_node);
+  const int port = edge->src_output();
+
+  const std::string& op_name = input_node->name();
+  CHECK_GT(node_name_to_id_cache_map_.count(op_name), 0) << op_name;
+  const int src_id = node_name_to_id_cache_map_[op_name];
+  GraphTransferInfo::NodeInput& node_input = *node_input_info->add_node_input();
+  node_input.set_node_id(src_id);
+  node_input.set_output_port(port);
 }
 
 void GraphTransferer::AppendNodeInputParams(
     const int id, const Node& node, const std::vector<int>& extra_inputs) {
   VLOG(1) << "Append input params: " << node.name() << ", " << node.num_inputs()
           << ", " << extra_inputs.size();
-  NodeInputParams input_params;
-  input_params.node_id = id;
+  GraphTransferInfo::NodeInputInfo& node_input_info =
+      *graph_transfer_info_.add_node_input_info();
+  node_input_info.set_node_id(id);
   for (int i = 0; i < node.num_inputs(); ++i) {
-    const Node* input_node = nullptr;
-    TF_CHECK_OK(node.input_node(i, &input_node));
-    const std::string& op_name = input_node->name();
-    CHECK(node_name_to_id_cache_map_.count(op_name) > 0) << op_name;
-    const int src_id = node_name_to_id_cache_map_[op_name];
-    input_params.input_node_id_and_output_port_list.emplace_back(
-        std::make_tuple(src_id, i));
+    AddNodeInputByInputIndex(node, i, &node_input_info);
   }
   for (const int extra_input : extra_inputs) {
-    input_params.input_node_id_and_output_port_list.emplace_back(
-        std::make_tuple(extra_input, 0));
+    GraphTransferInfo::NodeInput& node_input =
+        *node_input_info.add_node_input();
+    node_input.set_node_id(extra_input);
+    node_input.set_output_port(0);
   }
-  node_input_params_list_.emplace_back(input_params);
 }
 
-void GraphTransferer::AppendNodeOutputParams(
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
-    const int id, const Node& node) {
+void GraphTransferer::AppendNodeOutputParams(const ShapeRefiner& shape_refiner,
+                                             const int id, const Node& node) {
   VLOG(1) << "Append output params: " << node.name() << ", "
           << node.num_outputs();
-  NodeOutputParams node_output_params;
-  node_output_params.node_id = id;
+  GraphTransferInfo::NodeOutputInfo& node_output_info =
+      *graph_transfer_info_.add_node_output_info();
+  node_output_info.set_node_id(id);
+
+  std::vector<DataType> data_types;
+  std::vector<TensorShape> shapes;
+  Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
+      node.attrs(), &data_types, &shapes);
+
   for (int i = 0; i < node.num_outputs(); ++i) {
-    const Node* output_node = nullptr;
-    for (const Edge* const output_edge : node.out_edges()) {
-      if (output_edge->src_output() == i) {
-        output_node = output_edge->src();
-      }
-    }
-    CHECK(output_node != nullptr);
+    int data_size = -1;
     const int output_index = i;
     const DataType dt = node.output_type(output_index);
-    const size_t max_bytes_per_data =
-        checkpoint::TensorSliceWriter::MaxBytesPerElement(dt);
+    const size_t max_bytes_per_data = DataTypeSize(dt);
+
     shape_inference::InferenceContext* context =
-        shape_refiner.GetContext(output_node);
-    shape_inference::ShapeHandle shape_handle = context->output(output_index);
-    const shape_inference::DimensionHandle num_elements_dim =
-        context->NumElements(shape_handle);
-    int data_size = -1;
-    if (context->ValueKnown(num_elements_dim)) {
+        shape_refiner.GetContext(&node);
+
+    if (context != nullptr && context->ValueKnown(context->NumElements(
+                                  context->output(output_index)))) {
+      const shape_inference::DimensionHandle num_elements_dim =
+          context->NumElements(context->output(output_index));
       const int64 num_output_elements = context->Value(num_elements_dim);
       data_size = max_bytes_per_data * num_output_elements;
-      if (!output_tensor_map.empty()) {
-        CHECK(output_tensor_map.count(node.name()) == 1) << node.name();
-        const TensorShape& tensor_shape =
-            output_tensor_map.at(node.name())->shape();
-        CHECK(num_output_elements == tensor_shape.num_elements());
+      if (status.ok()) {
+        TF_CHECK_OK(status);
+        CHECK_EQ(shapes.at(i).num_elements(), num_output_elements);
       }
     } else {
-      // Use dryrun result to get the output data size
-      // TODO(satok): Remove and stop using dryrun result
-      CHECK(!output_tensor_map.empty());
-      CHECK(output_tensor_map.count(node.name()) == 1);
-      const TensorShape& tensor_shape =
-          output_tensor_map.at(node.name())->shape();
-      data_size = max_bytes_per_data * tensor_shape.num_elements();
+      TF_CHECK_OK(status);
+      // Use attribute attached to node
+      data_size = max_bytes_per_data * shapes.at(i).num_elements();
     }
-    CHECK(data_size >= 0);
-    node_output_params.max_sizes.push_back(data_size);
+    CHECK_GE(data_size, 0);
+    node_output_info.add_max_byte_size(data_size);
   }
-  node_output_params_list_.emplace_back(node_output_params);
 }
 
 void GraphTransferer::AppendNodeParamsWithIoParams(
-    const ShapeRefiner& shape_refiner, const OutputTensorMap& output_tensor_map,
-    const Node& node, const string& name, const int id, const string& type,
-    const int type_id, const string& padding_str, const int inputs_size,
-    const std::vector<int>& extra_inputs, const int outputs_size,
-    const bool append_input_params, const bool append_output_params) {
+    const ShapeRefiner& shape_refiner, const Node& node, const string& name,
+    const int id, const string& type, const int type_id, const int padding,
+    const int inputs_size, const std::vector<int>& extra_inputs,
+    const int outputs_size, const bool append_input_params,
+    const bool append_output_params) {
   VLOG(1) << "Append node with io params: " << node.name();
   if (append_input_params) {
     AppendNodeInputParams(id, node, extra_inputs);
   }
   if (append_output_params) {
-    AppendNodeOutputParams(shape_refiner, output_tensor_map, id, node);
+    AppendNodeOutputParams(shape_refiner, id, node);
   }
-  AppendNodeParams(name, id, type, type_id, padding_str, inputs_size,
-                   extra_inputs, outputs_size);
+  AppendNodeParams(name, id, type, type_id, padding, inputs_size, extra_inputs,
+                   outputs_size);
 }
 
 /* static */ std::array<int64, GraphTransferer::SHAPE_ARRAY_SIZE>
@@ -650,20 +1013,100 @@ GraphTransferer::ToTensorShapeArray(const TensorShape& shape) {
   }
 }
 
-/* static */ void GraphTransferer::CheckShape(
-    const OutputTensorMap& output_tensor_map, const string& node_name,
-    const std::array<int64, SHAPE_ARRAY_SIZE>& expected) {
-  if (output_tensor_map.empty()) {
-    // As output_tensor_map is empty, skip checking tensor shape.
+/* static */ string GraphTransferer::ToPaddingDebugString(const int padding) {
+  switch (padding) {
+    case 0:
+      return "NN_PAD_NA";
+    case Padding::VALID:
+      return "NN_PAD_VALID";
+    case Padding::SAME:
+      return "NN_PAD_SAME";
+    default:
+      CHECK(false);
+      return "";
+  }
+}
+
+GraphTransferer::TransferParamsComparator::TransferParamsComparator(
+    const std::unordered_map<int, std::unordered_set<int>>& dep_map)
+    : dependency_map_(dep_map) {}
+
+bool GraphTransferer::TransferParamsComparator::operator()(
+    const GraphTransferInfo::NodeInfo& obj0,
+    const GraphTransferInfo::NodeInfo& obj1) {
+  const int node_id0 = obj0.node_id();
+  const int node_id1 = obj1.node_id();
+  bool obj0_uses_obj1 = false;
+  if (dependency_map_.count(node_id0) > 0) {
+    obj0_uses_obj1 = dependency_map_.at(node_id0).count(node_id1) > 0;
+  }
+  bool obj1_uses_obj0 = false;
+  if (dependency_map_.count(node_id1) > 0) {
+    obj1_uses_obj0 = dependency_map_.at(node_id1).count(node_id0) > 0;
+  }
+  CHECK(!obj0_uses_obj1 || !obj1_uses_obj0);
+  if (obj0_uses_obj1) {
+    return false;
+  } else if (obj1_uses_obj0) {
+    return true;
+  }
+  // If there is no dependency between two nodes, it expects that
+  // the execution order follows node id order.
+  return node_id0 < node_id1;
+}
+
+/* static */ void GraphTransferer::FillDependencyRec(
+    const int node_id,
+    std::unordered_map<int, std::unordered_set<int>>& dep_map,
+    std::unordered_set<int>& completed) {
+  if (dep_map.count(node_id) == 0 || dep_map.at(node_id).empty() ||
+      completed.count(node_id) == 1) {
     return;
   }
-  VLOG(1) << "Check shape for " << node_name;
-  CHECK(output_tensor_map.count(node_name) == 1);
-  const std::array<int64, SHAPE_ARRAY_SIZE> actual =
-      ToTensorShapeArray(output_tensor_map.at(node_name)->shape());
-  for (int i = 0; i < SHAPE_ARRAY_SIZE; ++i) {
-    CHECK(expected[i] == actual[i]);
+  CHECK_EQ(dep_map.count(node_id), 1);
+
+  // Complete children's dependency map
+  for (int child_node_id : dep_map.at(node_id)) {
+    CHECK(child_node_id != node_id);
+    if (completed.count(child_node_id) != 0) {
+      continue;
+    }
+    FillDependencyRec(child_node_id, dep_map, completed);
   }
+
+  // Find additional depending ids
+  std::vector<int> depending_ids;
+  for (int child_node_id : dep_map.at(node_id)) {
+    if (dep_map.count(child_node_id) == 0) {
+      continue;
+    }
+    for (int depending_id : dep_map.at(child_node_id)) {
+      depending_ids.emplace_back(depending_id);
+    }
+  }
+
+  // Insert additional depending ids
+  for (int depending_id : depending_ids) {
+    if (dep_map.at(node_id).count(depending_id) == 0) {
+      dep_map.at(node_id).emplace(depending_id);
+    }
+  }
+
+  // DP: Record completed node id
+  completed.emplace(node_id);
+}
+
+/* static */ Status GraphTransferer::MakeTensorFromProto(
+    const TensorProto& tensor_proto, Tensor* tensor) {
+  if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
+    Tensor parsed(tensor_proto.dtype());
+    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+      *tensor = parsed;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Cannot parse tensor from proto: ",
+                                 tensor_proto.DebugString());
 }
 
 void GraphTransferer::ClearCache() {
@@ -673,41 +1116,52 @@ void GraphTransferer::ClearCache() {
 
 void GraphTransferer::DumpNodeTransferParams() const {
   LOG(INFO) << "*** Const Nodes ***";
-  for (const ConstNodeTransferParams& params :
-       const_node_transfer_params_list_) {
-    LOG(INFO) << "[ " << params.node_id << " \"" << params.name << "\" (Const)";
-    LOG(INFO) << "  shape: " << params.shape[0] << params.shape[1]
-              << params.shape[2] << params.shape[3];
-    LOG(INFO) << "  data_name: " << params.data_name;
-    LOG(INFO) << "  data_size: " << params.data_size << " bytes"
+  for (const GraphTransferInfo::ConstNodeInfo& params :
+       graph_transfer_info_.const_node_info()) {
+    // TODO(satok): Stop assuming shape size is 4.
+    CHECK_EQ(params.shape_size(), 4);
+    LOG(INFO) << "[ " << params.node_id() << " \"" << params.name()
+              << "\" (Const)";
+    LOG(INFO) << "  shape: " << params.shape(0) << params.shape(1)
+              << params.shape(2) << params.shape(3);
+    LOG(INFO) << "  data_name: "
+              << (params.data().length() <= 0
+                      ? ""
+                      : DATA_NODE_PREFIX + ToString(params.node_id()));
+    LOG(INFO) << "  data_size: " << params.data().length() << " bytes"
               << " ]";
   }
   LOG(INFO) << "******\n";
   LOG(INFO) << "*** Op Nodes ***";
-  for (const NodeTransferParams& params : node_transfer_params_list_) {
-    LOG(INFO) << "[ " << params.node_id << " \"" << params.name;
-    LOG(INFO) << "  type: " << params.type;
-    LOG(INFO) << "  padding: " << params.padding;
-    LOG(INFO) << "  inputs: " << params.inputs_name
-              << ", size = " << params.inputs_size;
-    LOG(INFO) << "  outputs: " << params.outputs_name
-              << ", size = " << params.outputs_size << " ]";
+  for (const GraphTransferInfo::NodeInfo& params :
+       graph_transfer_info_.node_info()) {
+    LOG(INFO) << "[ " << params.node_id() << " \"" << params.name();
+    LOG(INFO) << "  type: " << params.type_name();
+    LOG(INFO) << "  padding: " << ToPaddingDebugString(params.padding_id());
+    LOG(INFO) << "  inputs: " << INPUTS_NODE_PREFIX + ToString(params.node_id())
+              << ", size = " << params.input_count();
+    LOG(INFO) << "  outputs: "
+              << (params.output_count() <= 0
+                      ? NULL_OUTPUT_NAME
+                      : (OUTPUTS_NODE_PREFIX + ToString(params.node_id())))
+              << ", size = " << params.output_count() << " ]";
   }
   LOG(INFO) << "******\n";
   LOG(INFO) << "*** Node input params ***";
-  for (const NodeInputParams& params : node_input_params_list_) {
-    LOG(INFO) << "[ " << params.node_id << " ]";
-    for (const std::tuple<int, int>& pair :
-         params.input_node_id_and_output_port_list) {
-      LOG(INFO) << "    src node id = " << std::get<0>(pair)
-                << ", output port = " << std::get<1>(pair);
+  for (const GraphTransferInfo::NodeInputInfo& params :
+       graph_transfer_info_.node_input_info()) {
+    LOG(INFO) << "[ " << params.node_id() << " ]";
+    for (const GraphTransferInfo::NodeInput& node_input : params.node_input()) {
+      LOG(INFO) << "    src node id = " << node_input.node_id()
+                << ", output port = " << node_input.output_port();
     }
   }
   LOG(INFO) << "******\n";
   LOG(INFO) << "*** Node output params ***";
-  for (const NodeOutputParams& params : node_output_params_list_) {
-    LOG(INFO) << "[ " << params.node_id << " ]";
-    for (const int max_size : params.max_sizes) {
+  for (const GraphTransferInfo::NodeOutputInfo& params :
+       graph_transfer_info_.node_output_info()) {
+    LOG(INFO) << "[ " << params.node_id() << " ]";
+    for (const int max_size : params.max_byte_size()) {
       LOG(INFO) << "    max_size = " << max_size;
     }
   }
@@ -715,48 +1169,62 @@ void GraphTransferer::DumpNodeTransferParams() const {
 }
 
 void GraphTransferer::DumpVerificationStringOfNodeTransferParams() const {
-  for (const ConstNodeTransferParams& params :
-       const_node_transfer_params_list_) {
+  for (const GraphTransferInfo::ConstNodeInfo& params :
+       graph_transfer_info_.const_node_info()) {
     std::stringstream sstream;
-    sstream << "---(CONST) [" << std::hex << params.node_id << ","
-            << params.shape[0] << "," << params.shape[1] << ","
-            << params.shape[2] << "," << params.shape[3] << ","
-            << params.data_name << "," << params.data_size << "," << params.name
-            << "]";
+    // TODO(satok): Stop assuming shape size is 4.
+    CHECK_EQ(params.shape_size(), 4);
+    sstream << "---(CONST) [" << std::hex << params.node_id() << std::dec << ","
+            << params.shape(0) << "," << params.shape(1) << ","
+            << params.shape(2) << "," << params.shape(3) << ","
+            << (params.data().length() <= 0
+                    ? ""
+                    : DATA_NODE_PREFIX + ToString(params.node_id()))
+            << "," << params.data().length() << "," << params.name() << "]";
     LOG(INFO) << sstream.str();
   }
-  LOG(INFO) << "Const node count = " << const_node_transfer_params_list_.size();
-  for (const NodeTransferParams& params : node_transfer_params_list_) {
+  LOG(INFO) << "Const node count = "
+            << graph_transfer_info_.const_node_info_size();
+  for (const GraphTransferInfo::NodeInfo& params :
+       graph_transfer_info_.node_info()) {
     std::stringstream sstream;
-    sstream << "---(OP) [" << params.name.c_str() << "," << std::hex
-            << params.node_id << "," << params.soc_op_id << ","
-            << params.padding << "," << params.inputs_name << ","
-            << params.inputs_size << "," << params.outputs_name << ","
-            << params.outputs_size << "," << params.type << "]";
+    sstream << "---(OP) [" << params.name().c_str() << "," << std::hex
+            << params.node_id() << std::dec << "," << params.soc_op_id() << ","
+            << ToPaddingDebugString(params.padding_id()) << ","
+            << INPUTS_NODE_PREFIX + ToString(params.node_id()) << ","
+            << params.input_count() << ","
+            << (params.output_count() <= 0
+                    ? NULL_OUTPUT_NAME
+                    : (OUTPUTS_NODE_PREFIX + ToString(params.node_id())))
+            << "," << params.output_count() << "," << params.type_name() << "]";
     LOG(INFO) << sstream.str();
   }
-  LOG(INFO) << "Op node count = " << node_transfer_params_list_.size();
-  for (const NodeInputParams& params : node_input_params_list_) {
+  LOG(INFO) << "Op node count = " << graph_transfer_info_.node_info_size();
+  for (const GraphTransferInfo::NodeInputInfo& params :
+       graph_transfer_info_.node_input_info()) {
     std::stringstream sstream;
-    sstream << "---(INPUT) [" << std::hex << params.node_id;
-    for (const std::tuple<int, int>& pair :
-         params.input_node_id_and_output_port_list) {
-      sstream << "," << std::get<0>(pair) << "," << std::get<1>(pair);
+    sstream << "---(INPUT) [" << std::hex << params.node_id() << std::dec;
+    for (const GraphTransferInfo::NodeInput& node_input : params.node_input()) {
+      sstream << "," << std::hex << node_input.node_id() << std::dec << ","
+              << node_input.output_port();
     }
     sstream << "]";
     LOG(INFO) << sstream.str();
   }
-  LOG(INFO) << "Input params count = " << node_input_params_list_.size();
-  for (const NodeOutputParams& params : node_output_params_list_) {
+  LOG(INFO) << "Input params count = "
+            << graph_transfer_info_.node_input_info_size();
+  for (const GraphTransferInfo::NodeOutputInfo& params :
+       graph_transfer_info_.node_output_info()) {
     std::stringstream sstream;
-    sstream << "---(OUTPUT) [" << std::hex << params.node_id;
-    for (const int max_size : params.max_sizes) {
+    sstream << "---(OUTPUT) [" << std::hex << params.node_id() << std::dec;
+    for (const int max_size : params.max_byte_size()) {
       sstream << "," << max_size;
     }
     sstream << "]";
     LOG(INFO) << sstream.str();
   }
-  LOG(INFO) << "Output params count = " << node_input_params_list_.size();
+  LOG(INFO) << "Output params count = "
+            << graph_transfer_info_.node_output_info_size();
 }
 
 }  // namespace tensorflow

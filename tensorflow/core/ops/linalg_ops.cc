@@ -189,7 +189,7 @@ Status SvdShapeFn(InferenceContext* c) {
 REGISTER_OP("MatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
@@ -218,7 +218,7 @@ REGISTER_OP("MatrixInverse")
     .Input("input: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Computes the inverse of one or more square invertible matrices or their
@@ -245,15 +245,24 @@ Equivalent to np.linalg.inv
 REGISTER_OP("Cholesky")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Computes the Cholesky decomposition of one or more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices, with the same constraints as the single matrix Cholesky
-decomposition above. The output is a tensor of the same shape as the input
+form square matrices.
+
+The input has to be symmetric and positive definite. Only the lower-triangular
+part of the input will be used for this operation. The upper-triangular part
+will not be read.
+
+The output is a tensor of the same shape as the input
 containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
+
+**Note**: The gradient computation on GPU is faster for large matrices but
+not for large batch dimensions when the submatrices are small. In this
+case it might be faster to use the CPU.
 
 input: Shape is `[..., M, M]`.
 output: Shape is `[..., M, M]`.
@@ -318,7 +327,7 @@ REGISTER_OP("SelfAdjointEigV2")
     .Output("e: T")
     .Output("v: T")
     .Attr("compute_v: bool = True")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(SelfAdjointEigV2ShapeFn)
     .Doc(R"doc(
 Computes the eigen decomposition of one or more square self-adjoint matrices.
@@ -326,7 +335,7 @@ Computes the eigen decomposition of one or more square self-adjoint matrices.
 Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
 `input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
 
-```prettyprint
+```python
 # a is a tensor.
 # e is a tensor of eigenvalues.
 # v is a tensor of eigenvectors.
@@ -373,7 +382,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Output("output: T")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       return MatrixSolveShapeFn(c, true /* square (*/);
     })
@@ -439,14 +448,14 @@ matrix and right-hand sides in the batch:
 If `fast` is `True`, then the solution is computed by solving the normal
 equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
 \\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the least-squares
-problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||A Z - B||_F^2 +
+problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k} } ||A Z - B||_F^2 +
 \lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is computed as
 \\(X = A^T (A A^T + \lambda I)^{-1} B\\), which (for \\(\lambda = 0\\)) is the
 minimum-norm solution to the under-determined linear system, i.e.
-\\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||Z||_F^2 \\), subject to
+\\(X = \mathrm{argmin}_{Z \in \Re^{n \times k} } ||Z||_F^2 \\), subject to
 \\(A Z = B\\). Notice that the fast path is only numerically stable when
 \\(A\\) is numerically full rank and has a condition number
-\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\) or\\(\lambda\\) is
+\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach} } }\\) or\\(\lambda\\) is
 sufficiently large.
 
 If `fast` is `False` an algorithm based on the numerically robust complete
@@ -478,7 +487,7 @@ Computes the QR decompositions of one or more matrices.
 Computes the QR decomposition of each inner matrix in `tensor` such that
 `tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
 
-```prettyprint
+```python
 # a is a tensor.
 # q is a tensor of orthonormal matrices.
 # r is a tensor of upper triangular matrices.
@@ -512,7 +521,7 @@ Computes the singular value decompositions of one or more matrices.
 Computes the SVD of each inner matrix in `input` such that
 `input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`
 
-```prettyprint
+```python
 # a is a tensor containing a batch of matrices.
 # s is a tensor of singular values for each matrix.
 # u is the tensor containing of left singular vectors for each matrix.
@@ -551,7 +560,7 @@ REGISTER_OP("BatchSelfAdjointEig")
 REGISTER_OP("BatchMatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double, complex64, complex128}")
     .Deprecated(13, "Use MatrixDeterminant instead.");
 
 REGISTER_OP("BatchMatrixInverse")

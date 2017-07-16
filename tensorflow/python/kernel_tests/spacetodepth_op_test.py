@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Functional tests for SpacetoDepth op."""
 
 from __future__ import absolute_import
@@ -20,19 +19,24 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class SpaceToDepthTest(tf.test.TestCase):
+class SpaceToDepthTest(test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs):
     with self.test_session(use_gpu=True):
-      x_tf = tf.space_to_depth(tf.to_float(inputs), block_size)
+      x_tf = array_ops.space_to_depth(math_ops.to_float(inputs), block_size)
       self.assertAllEqual(x_tf.eval(), outputs)
 
   def testBasic(self):
-    x_np = [[[[1], [2]],
-             [[3], [4]]]]
+    x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 2
     x_out = [[[[1, 2, 3, 4]]]]
     self._testOne(x_np, block_size, x_out)
@@ -40,24 +44,18 @@ class SpaceToDepthTest(tf.test.TestCase):
   # Tests for larger input dimensions. To make sure elements are
   # correctly ordered spatially.
   def testLargerInput2x2(self):
-    x_np = [[[[1], [2], [5], [6]],
-             [[3], [4], [7], [8]],
-             [[9], [10], [13], [14]],
-             [[11], [12], [15], [16]]]]
+    x_np = [[[[1], [2], [5], [6]], [[3], [4], [7], [8]],
+             [[9], [10], [13], [14]], [[11], [12], [15], [16]]]]
     block_size = 2
-    x_out = [[[[1, 2, 3, 4],
-               [5, 6, 7, 8]],
-              [[9, 10, 11, 12],
-               [13, 14, 15, 16]]]]
+    x_out = [[[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12],
+                                             [13, 14, 15, 16]]]]
     self._testOne(x_np, block_size, x_out)
 
   # Tests for larger input dimensions. To make sure elements are
   # correctly ordered in depth. Here, larger block size.
   def testLargerInput4x4(self):
-    x_np = [[[[1], [2], [5], [6]],
-             [[3], [4], [7], [8]],
-             [[9], [10], [13], [14]],
-             [[11], [12], [15], [16]]]]
+    x_np = [[[[1], [2], [5], [6]], [[3], [4], [7], [8]],
+             [[9], [10], [13], [14]], [[11], [12], [15], [16]]]]
     block_size = 4
     x_out = [[[[1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16]]]]
     self._testOne(x_np, block_size, x_out)
@@ -65,8 +63,7 @@ class SpaceToDepthTest(tf.test.TestCase):
   # Tests for larger input depths.
   # To make sure elements are properly interleaved in depth.
   def testDepthInterleaved(self):
-    x_np = [[[[1, 10], [2, 20]],
-             [[3, 30], [4, 40]]]]
+    x_np = [[[[1, 10], [2, 20]], [[3, 30], [4, 40]]]]
     block_size = 2
     x_out = [[[[1, 10, 2, 20, 3, 30, 4, 40]]]]
     self._testOne(x_np, block_size, x_out)
@@ -74,8 +71,7 @@ class SpaceToDepthTest(tf.test.TestCase):
   # Tests for larger input depths. Here an odd depth.
   # To make sure elements are properly interleaved in depth.
   def testDepthInterleavedDepth3(self):
-    x_np = [[[[1, 2, 3], [4, 5, 6]],
-             [[7, 8, 9], [10, 11, 12]]]]
+    x_np = [[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]]]
     block_size = 2
     x_out = [[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
     self._testOne(x_np, block_size, x_out)
@@ -89,24 +85,25 @@ class SpaceToDepthTest(tf.test.TestCase):
              [[9, 90], [10, 100], [13, 130], [14, 140]],
              [[11, 110], [12, 120], [15, 150], [16, 160]]]]
     block_size = 2
-    x_out = [[[[1, 10, 2, 20, 3, 30, 4, 40],
-               [5, 50, 6, 60, 7, 70, 8, 80]],
+    x_out = [[[[1, 10, 2, 20, 3, 30, 4, 40], [5, 50, 6, 60, 7, 70, 8, 80]],
               [[9, 90, 10, 100, 11, 110, 12, 120],
                [13, 130, 14, 140, 15, 150, 16, 160]]]]
     self._testOne(x_np, block_size, x_out)
 
   def testBlockSize2Batch10(self):
     block_size = 2
+
     def batch_input_elt(i):
       return [[[1 * i], [2 * i], [5 * i], [6 * i]],
               [[3 * i], [4 * i], [7 * i], [8 * i]],
               [[9 * i], [10 * i], [13 * i], [14 * i]],
               [[11 * i], [12 * i], [15 * i], [16 * i]]]
+
     def batch_output_elt(i):
-      return [[[1 * i, 2 * i, 3 * i, 4 * i],
-               [5 * i, 6 * i, 7 * i, 8 * i]],
+      return [[[1 * i, 2 * i, 3 * i, 4 * i], [5 * i, 6 * i, 7 * i, 8 * i]],
               [[9 * i, 10 * i, 11 * i, 12 * i],
                [13 * i, 14 * i, 15 * i, 16 * i]]]
+
     batch_size = 10
     x_np = [batch_input_elt(i) for i in range(batch_size)]
     x_out = [batch_output_elt(i) for i in range(batch_size)]
@@ -114,15 +111,10 @@ class SpaceToDepthTest(tf.test.TestCase):
 
   # Tests for different width and height.
   def testNonSquare(self):
-    x_np = [[[[1, 10], [2, 20]],
-             [[3, 30], [4, 40]],
-             [[5, 50], [6, 60]],
-             [[7, 70], [8, 80]],
-             [[9, 90], [10, 100]],
-             [[11, 110], [12, 120]]]]
+    x_np = [[[[1, 10], [2, 20]], [[3, 30], [4, 40]], [[5, 50], [6, 60]],
+             [[7, 70], [8, 80]], [[9, 90], [10, 100]], [[11, 110], [12, 120]]]]
     block_size = 2
-    x_out = [[[[1, 10, 2, 20, 3, 30, 4, 40]],
-              [[5, 50, 6, 60, 7, 70, 8, 80]],
+    x_out = [[[[1, 10, 2, 20, 3, 30, 4, 40]], [[5, 50, 6, 60, 7, 70, 8, 80]],
               [[9, 90, 10, 100, 11, 110, 12, 120]]]]
     self._testOne(x_np, block_size, x_out)
 
@@ -130,88 +122,80 @@ class SpaceToDepthTest(tf.test.TestCase):
 
   def testInputWrongDimMissingDepth(self):
     # The input is missing the last dimension ("depth")
-    x_np = [[[1, 2],
-             [3, 4]]]
+    x_np = [[[1, 2], [3, 4]]]
     block_size = 2
     with self.assertRaises(ValueError):
-      out_tf = tf.space_to_depth(x_np, block_size)
+      out_tf = array_ops.space_to_depth(x_np, block_size)
       out_tf.eval()
 
   def testInputWrongDimMissingBatch(self):
     # The input is missing the first dimension ("batch")
-    x_np = [[[1], [2]],
-            [[3], [4]]]
+    x_np = [[[1], [2]], [[3], [4]]]
     block_size = 2
     with self.assertRaises(ValueError):
-      _ = tf.space_to_depth(x_np, block_size)
+      _ = array_ops.space_to_depth(x_np, block_size)
 
   def testBlockSize0(self):
     # The block size is 0.
-    x_np = [[[[1], [2]],
-             [[3], [4]]]]
+    x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 0
     with self.assertRaises(ValueError):
-      out_tf = tf.space_to_depth(x_np, block_size)
+      out_tf = array_ops.space_to_depth(x_np, block_size)
       out_tf.eval()
 
   def testBlockSizeOne(self):
     # The block size is 1. The block size needs to be > 1.
-    x_np = [[[[1], [2]],
-             [[3], [4]]]]
+    x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 1
     with self.assertRaises(ValueError):
-      out_tf = tf.space_to_depth(x_np, block_size)
+      out_tf = array_ops.space_to_depth(x_np, block_size)
       out_tf.eval()
 
   def testBlockSizeLarger(self):
     # The block size is too large for this input.
-    x_np = [[[[1], [2]],
-             [[3], [4]]]]
+    x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 10
     with self.assertRaises(ValueError):
-      out_tf = tf.space_to_depth(x_np, block_size)
+      out_tf = array_ops.space_to_depth(x_np, block_size)
       out_tf.eval()
 
   def testBlockSizeNotDivisibleWidth(self):
     # The block size divides width but not height.
-    x_np = [[[[1], [2], [3]],
-             [[3], [4], [7]]]]
+    x_np = [[[[1], [2], [3]], [[3], [4], [7]]]]
     block_size = 3
     with self.assertRaises(ValueError):
-      _ = tf.space_to_depth(x_np, block_size)
+      _ = array_ops.space_to_depth(x_np, block_size)
 
   def testBlockSizeNotDivisibleHeight(self):
     # The block size divides height but not width.
-    x_np = [[[[1], [2]],
-             [[3], [4]],
-             [[5], [6]]]]
+    x_np = [[[[1], [2]], [[3], [4]], [[5], [6]]]]
     block_size = 3
     with self.assertRaises(ValueError):
-      _ = tf.space_to_depth(x_np, block_size)
+      _ = array_ops.space_to_depth(x_np, block_size)
 
   def testBlockSizeNotDivisibleBoth(self):
     # The block size does not divide neither width or height.
-    x_np = [[[[1], [2]],
-             [[3], [4]]]]
+    x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 3
     with self.assertRaises(ValueError):
-      _ = tf.space_to_depth(x_np, block_size)
+      _ = array_ops.space_to_depth(x_np, block_size)
 
   def testUnknownShape(self):
-    t = tf.space_to_depth(tf.placeholder(tf.float32), block_size=4)
+    t = array_ops.space_to_depth(
+        array_ops.placeholder(dtypes.float32), block_size=4)
     self.assertEqual(4, t.get_shape().ndims)
 
 
-class SpaceToDepthGradientTest(tf.test.TestCase):
+class SpaceToDepthGradientTest(test.TestCase):
 
   # Check the gradients.
   def _checkGrad(self, x, block_size):
     assert 4 == x.ndim
     with self.test_session(use_gpu=True):
-      tf_x = tf.convert_to_tensor(x)
-      tf_y = tf.space_to_depth(tf_x, block_size)
+      tf_x = ops.convert_to_tensor(x)
+      tf_y = array_ops.space_to_depth(tf_x, block_size)
       epsilon = 1e-2
-      ((x_jacob_t, x_jacob_n)) = tf.test.compute_gradient(
+      ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
           tf_x,
           x.shape,
           tf_y,
@@ -225,9 +209,9 @@ class SpaceToDepthGradientTest(tf.test.TestCase):
   # tensor of shape [b, h * block_size, w * block_size, d].
   def _compare(self, b, h, w, d, block_size):
     block_size_sq = block_size * block_size
-    x = np.random.normal(
-        0, 1, b * h * w * d * block_size_sq).astype(np.float32).reshape(
-            [b, h * block_size, w * block_size, d])
+    x = np.random.normal(0, 1, b * h * w * d *
+                         block_size_sq).astype(np.float32).reshape(
+                             [b, h * block_size, w * block_size, d])
 
     self._checkGrad(x, block_size)
 
@@ -243,4 +227,4 @@ class SpaceToDepthGradientTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

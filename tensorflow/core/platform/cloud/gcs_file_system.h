@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
+#include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -35,7 +36,8 @@ class GcsFileSystem : public FileSystem {
   GcsFileSystem();
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
                 std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                size_t read_ahead_bytes, int32 max_upload_attempts);
+                size_t block_size, uint32 block_count, uint64 max_staleness,
+                int64 initial_retry_delay_usec);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -74,6 +76,9 @@ class GcsFileSystem : public FileSystem {
 
   Status DeleteRecursively(const string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs) override;
+  size_t block_size() const { return block_size_; }
+  uint32 block_count() const { return block_count_; }
+  uint64 max_staleness() const { return max_staleness_; }
 
  private:
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
@@ -107,16 +112,34 @@ class GcsFileSystem : public FileSystem {
                        FileStatistics* stat);
   Status RenameObject(const string& src, const string& target);
 
+  /// Loads file contents from GCS for a given bucket and object.
+  Status LoadBufferFromGCS(const string& bucket, const string& object,
+                           uint64_t offset, size_t n, std::vector<char>* out);
+
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
 
-  // The number of bytes to read ahead for buffering purposes in the
-  // RandomAccessFile implementation. Defaults to 256Mb.
-  const size_t read_ahead_bytes_ = 256 * 1024 * 1024;
+  /// Guards access to the file cache.
+  mutex mu_;
 
-  // The max number of attempts to upload a file to GCS using the resumable
-  // upload API.
-  const int32 max_upload_attempts_ = 5;
+  /// Cache from filename to FileBlockCache. Populated iff max_staleness_ > 0.
+  std::map<string, std::shared_ptr<FileBlockCache>> file_cache_ GUARDED_BY(mu_);
+
+  /// The block size for block-aligned reads in the RandomAccessFile
+  /// implementation. Defaults to 256Mb.
+  size_t block_size_ = 256 * 1024 * 1024;
+
+  /// The block count for the LRU cache of blocks in the RandomAccessFile
+  /// implementation.  Defaults to 1.
+  uint32 block_count_ = 1;
+
+  /// The maximum staleness of cached file blocks across close/open boundaries.
+  /// Defaults to 0, meaning that file blocks do not persist across close/open
+  /// boundaries.
+  uint64 max_staleness_ = 0;
+
+  /// The initial delay for exponential backoffs when retrying failed calls.
+  const int64 initial_retry_delay_usec_ = 1000000L;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
 };

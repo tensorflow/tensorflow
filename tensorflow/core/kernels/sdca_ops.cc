@@ -64,7 +64,7 @@ using sdca::ExampleStatistics;
 using sdca::ModelWeights;
 
 struct ComputeOptions {
-  ComputeOptions(OpKernelConstruction* const context) {
+  explicit ComputeOptions(OpKernelConstruction* const context) {
     string loss_type;
     OP_REQUIRES_OK(context, context->GetAttr("loss_type", &loss_type));
     if (loss_type == "logistic_loss") {
@@ -142,7 +142,8 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
 
   Tensor mutable_example_state_data_t(*example_state_data_t);
   auto example_state_data = mutable_example_state_data_t.matrix<float>();
-  context->set_output("out_example_state_data", mutable_example_state_data_t);
+  OP_REQUIRES_OK(context, context->set_output("out_example_state_data",
+                                              mutable_example_state_data_t));
 
   if (options.adaptative) {
     OP_REQUIRES_OK(context,
@@ -224,7 +225,7 @@ class SdcaOptimizer : public OpKernel {
   explicit SdcaOptimizer(OpKernelConstruction* const context)
       : OpKernel(context), options_(context) {}
 
-  void Compute(OpKernelContext* const context) override {
+  void Compute(OpKernelContext* context) override {
     DoCompute(options_, context);
   }
 
@@ -244,7 +245,7 @@ class SdcaShrinkL1 : public OpKernel {
     OP_REQUIRES_OK(context, regularizations_.Initialize(context));
   }
 
-  void Compute(OpKernelContext* const context) override {
+  void Compute(OpKernelContext* context) override {
     OpMutableInputList weights_inputs;
     OP_REQUIRES_OK(context,
                    context->mutable_input_list("weights", &weights_inputs));
@@ -287,7 +288,7 @@ class SdcaFprint : public OpKernel {
   explicit SdcaFprint(OpKernelConstruction* const context)
       : OpKernel(context) {}
 
-  void Compute(OpKernelContext* const context) override {
+  void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input.shape()),
                 errors::InvalidArgument("Input must be a vector, got shape ",

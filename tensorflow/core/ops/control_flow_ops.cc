@@ -30,6 +30,13 @@ Status SwitchShape(InferenceContext* c) {
   ShapeHandle out = c->input(0);
   c->set_output(0, out);
   c->set_output(1, out);
+
+  // Handle resource shape / dtype.
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr) {
+    c->set_output_handle_shapes_and_types(0, *handle_data);
+    c->set_output_handle_shapes_and_types(1, *handle_data);
+  }
   return Status::OK();
 }
 }  // namespace
@@ -153,7 +160,7 @@ Forwards the value of an available tensor from `inputs` to `output`.
 `Merge` waits for at least one of the tensors in `inputs` to become available.
 It is usually combined with `Switch` to implement branching.
 
-`Merge` forwards the first tensor for become available to `output`, and sets
+`Merge` forwards the first tensor to become available to `output`, and sets
 `value_index` to its index in `inputs`.
 
 inputs: The input tensors, exactly one of which will become available.
@@ -190,7 +197,17 @@ REGISTER_OP("Enter")
     .Attr("frame_name: string")
     .Attr("is_constant: bool = false")
     .Attr("parallel_iterations: int = 10")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());
+
+      // Handle resource shape / dtype, if present.
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Creates or finds a child frame, and makes `data` available to the child frame.
 
@@ -314,9 +331,13 @@ Only useful as a placeholder for control edges.
 // --------------------------------------------------------------------------
 REGISTER_OP("Abort")
     .Attr("error_msg: string = ''")
+    .Attr("exit_without_error: bool = false")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Raise a exception to abort the process when called.
+
+If exit_without_error is true, the process will exit normally,
+otherwise it will exit with a SIGABORT signal.
 
 Returns nothing but an exception.
 

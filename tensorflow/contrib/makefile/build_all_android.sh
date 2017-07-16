@@ -18,11 +18,12 @@
 set -e
 
 usage() {
-  echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-t:]"
+  echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-s:t:Tx:X]"
+  echo "-E enable experimental hexnn ops"
   echo "-s [sub_makefiles] sub makefiles separated by white space"
   echo "-t [build_target] build target for Android makefile [default=all]"
   echo "-T only build tensorflow"
-  echo "-x use hexagon library located at ../hexagon/<libs and include>"
+  echo "-x [hexagon library path] copy and hexagon libraries in the specified path"
   exit 1
 }
 
@@ -31,23 +32,26 @@ if [[ -z "${NDK_ROOT}" ]]; then
     exit 1
 fi
 
-while getopts "s:t:Tx" opt_name; do
+while getopts "Es:t:Tx:" opt_name; do
   case "$opt_name" in
+    E) ENABLE_EXPERIMENTAL_HEXNN_OPS="true";;
     s) SUB_MAKEFILES="${OPTARG}";;
     t) BUILD_TARGET="${OPTARG}";;
     T) ONLY_MAKE_TENSORFLOW="true";;
-    x) USE_HEXAGON="true";;
+    x) HEXAGON_LIB_PATH="${OPTARG}";;
     *) usage;;
   esac
 done
 shift $((OPTIND - 1))
 
 # Make sure we're in the correct directory, at the root of the source tree.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd ${SCRIPT_DIR}/../../../
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+cd "${SCRIPT_DIR}"/../../../
 
 source "${SCRIPT_DIR}/build_helper.subr"
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
+
+HEXAGON_DOWNLOAD_PATH="tensorflow/contrib/makefile/downloads/hexagon"
 
 if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
   # Remove any old files first.
@@ -63,20 +67,38 @@ else
   make -f tensorflow/contrib/makefile/Makefile clean_except_protobuf_libs
 fi
 
+if [[ ! -z "${HEXAGON_LIB_PATH}" ]]; then
+    echo "Copy hexagon libraries from ${HEXAGON_LIB_PATH}"
+
+    mkdir -p "${HEXAGON_DOWNLOAD_PATH}/libs"
+    cp -fv "${HEXAGON_LIB_PATH}/libhexagon_controller.so" \
+"${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_controller.so"
+    cp -fv "${HEXAGON_LIB_PATH}/libhexagon_nn_skel.so" \
+"${HEXAGON_DOWNLOAD_PATH}/libs/libhexagon_nn_skel.so"
+
+    USE_HEXAGON="true"
+fi
+
 if [[ "${USE_HEXAGON}" == "true" ]]; then
-    HEXAGON_PARENT_DIR=$(cd ../hexagon && pwd)
+    HEXAGON_PARENT_DIR=$(cd "${HEXAGON_DOWNLOAD_PATH}" >/dev/null && pwd)
     HEXAGON_LIBS="${HEXAGON_PARENT_DIR}/libs"
-    HEXAGON_INCLUDE="${HEXAGON_PARENT_DIR}/include"
+    HEXAGON_INCLUDE=$(cd "tensorflow/core/platform/hexagon" >/dev/null && pwd)
+fi
+
+if [[ "${ENABLE_EXPERIMENTAL_HEXNN_OPS}" == "true" ]]; then
+    EXTRA_MAKE_ARGS+=("ENABLE_EXPERIMENTAL_HEXNN_OPS=true")
 fi
 
 if [[ -z "${BUILD_TARGET}" ]]; then
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
-SUB_MAKEFILES="${SUB_MAKEFILES}"
+SUB_MAKEFILES="${SUB_MAKEFILES}" ${EXTRA_MAKE_ARGS[@]}
 else
+    # BUILD_TARGET explicitly uncommented to allow multiple targets to be
+    # passed to make in a single build_all_android.sh invocation.
     make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
          TARGET=ANDROID NDK_ROOT="${NDK_ROOT}" CC_PREFIX="${CC_PREFIX}" \
 HEXAGON_LIBS="${HEXAGON_LIBS}" HEXAGON_INCLUDE="${HEXAGON_INCLUDE}" \
-SUB_MAKEFILES="${SUB_MAKEFILES}" "${BUILD_TARGET}"
+SUB_MAKEFILES="${SUB_MAKEFILES}" ${EXTRA_MAKE_ARGS[@]} ${BUILD_TARGET}
 fi

@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -76,7 +77,8 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       Tensor element;
       // Here, ManyOutShape returns zeros for undetermined shapes,
       // which is exactly what we want to use.
-      ctx->allocate_temp(component_dtypes_[i], ManyOutShape(i, 0), &element);
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(component_dtypes_[i],
+                                             ManyOutShape(i, 0), &element));
       tuple.emplace_back(element);
     }
     callback(tuple);
@@ -118,7 +120,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
                 }
               }
-              if (allow_small_batch && queues_[0].size() > 0) {
+              if (allow_small_batch && !queues_[0].empty()) {
                 // Request all remaining elements in the queue.
                 queue_size = queues_[0].size();
                 attempt->tuples.clear();
@@ -179,8 +181,9 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
 
                   Tensor element;
-                  attempt->context->allocate_temp(component_dtypes_[i], shape,
-                                                  &element);
+                  attempt->context->SetStatus(attempt->context->allocate_temp(
+                      component_dtypes_[i], shape, &element));
+                  if (!attempt->context->status().ok()) return kComplete;
 
                   bool has_dynamic_shape = !partial_shape.IsFullyDefined();
                   if (has_dynamic_shape) {
@@ -276,7 +279,11 @@ Status PaddingFIFOQueue::CompatibleNodeDefShapes(
 }
 
 Status PaddingFIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
-  TF_RETURN_IF_ERROR(MatchesNodeDefOp(node_def, "PaddingFIFOQueue"));
+  if (!MatchesNodeDefOp(node_def, "PaddingFIFOQueue").ok() &&
+      !MatchesNodeDefOp(node_def, "PaddingFIFOQueueV2").ok()) {
+    return errors::InvalidArgument("Expected PaddingFIFOQueue, found ",
+                                   node_def.op());
+  }
   TF_RETURN_IF_ERROR(MatchesNodeDefCapacity(node_def, capacity_));
   TF_RETURN_IF_ERROR(MatchesNodeDefTypes(node_def));
   TF_RETURN_IF_ERROR(CompatibleNodeDefShapes(node_def));

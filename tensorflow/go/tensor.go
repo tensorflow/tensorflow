@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package tensorflow
 
@@ -108,6 +110,35 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	return t, nil
 }
 
+// ReadTensor constructs a Tensor with the provided type and shape from the
+// serialized tensor contents in r.
+//
+// See also WriteContentsTo.
+func ReadTensor(dataType DataType, shape []int64, r io.Reader) (*Tensor, error) {
+	if err := isTensorSerializable(dataType); err != nil {
+		return nil, err
+	}
+	nbytes := typeOf(dataType, nil).Size() * uintptr(numElements(shape))
+	var shapePtr *C.int64_t
+	if len(shape) > 0 {
+		shapePtr = (*C.int64_t)(unsafe.Pointer(&shape[0]))
+	}
+	t := &Tensor{
+		c:     C.TF_AllocateTensor(C.TF_DataType(dataType), shapePtr, C.int(len(shape)), C.size_t(nbytes)),
+		shape: shape,
+	}
+	runtime.SetFinalizer(t, (*Tensor).finalize)
+	raw := tensorData(t.c)
+	n, err := r.Read(raw)
+	if err != nil {
+		return nil, err
+	}
+	if uintptr(n) != nbytes {
+		return nil, fmt.Errorf("expected serialized tensor to be %v bytes, read %v", nbytes, n)
+	}
+	return t, nil
+}
+
 // newTensorFromC takes ownership of c and returns the owning Tensor.
 func newTensorFromC(c *C.TF_Tensor) *Tensor {
 	var shape []int64
@@ -154,6 +185,21 @@ func (t *Tensor) Value() interface{} {
 		}
 	}
 	return reflect.Indirect(val).Interface()
+}
+
+// WriteContentsTo writes the serialized contents of t to w.
+//
+// Returns the number of bytes written. See ReadTensor for
+// reconstructing a Tensor from the serialized form.
+//
+// WARNING: WriteContentsTo is not comprehensive and will fail
+// if t.DataType() is non-numeric (e.g., String). See
+// https://github.com/tensorflow/tensorflow/issues/6003.
+func (t *Tensor) WriteContentsTo(w io.Writer) (int64, error) {
+	if err := isTensorSerializable(t.DataType()); err != nil {
+		return 0, err
+	}
+	return io.Copy(w, bytes.NewReader(tensorData(t.c)))
 }
 
 func tensorData(c *C.TF_Tensor) []byte {
@@ -224,7 +270,7 @@ func typeOf(dt DataType, shape []int64) reflect.Type {
 	if ret == nil {
 		panic(bug("DataType %v is not supported", dt))
 	}
-	for _ = range shape {
+	for range shape {
 		ret = reflect.SliceOf(ret)
 	}
 	return ret
@@ -255,8 +301,16 @@ func byteSizeOfEncodedStrings(val interface{}) uintptr {
 
 // encodeTensor writes v to the specified buffer using the format specified in
 // c_api.h. Use stringEncoder for String tensors.
-func encodeTensor(w io.Writer, v reflect.Value) error {
+func encodeTensor(w *bytes.Buffer, v reflect.Value) error {
 	switch v.Kind() {
+	case reflect.Bool:
+		b := byte(0)
+		if v.Bool() {
+			b = 1
+		}
+		if err := w.WriteByte(b); err != nil {
+			return err
+		}
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Write(w, nativeEndian, v.Interface()); err != nil {
 			return err
@@ -289,8 +343,14 @@ func encodeTensor(w io.Writer, v reflect.Value) error {
 
 // decodeTensor decodes the Tensor from the buffer to ptr using the format
 // specified in c_api.h. Use stringDecoder for String tensors.
-func decodeTensor(r io.Reader, shape []int64, typ reflect.Type, ptr reflect.Value) error {
+func decodeTensor(r *bytes.Reader, shape []int64, typ reflect.Type, ptr reflect.Value) error {
 	switch typ.Kind() {
+	case reflect.Bool:
+		b, err := r.ReadByte()
+		if err != nil {
+			return err
+		}
+		ptr.Elem().SetBool(b == 1)
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Read(r, nativeEndian, ptr.Interface()); err != nil {
 			return err
@@ -383,6 +443,23 @@ func (d *stringDecoder) decode(ptr reflect.Value, shape []int64) error {
 
 func bug(format string, args ...interface{}) error {
 	return fmt.Errorf("BUG: Please report at https://github.com/tensorflow/tensorflow/issues with the note: Go TensorFlow %v: %v", Version(), fmt.Sprintf(format, args...))
+}
+
+func isTensorSerializable(dataType DataType) error {
+	// For numeric types, the serialized Tensor matches the in-memory
+	// representation.  See the implementation of Tensor::AsProtoContent in
+	// https://www.tensorflow.org/code/tensorflow/core/framework/tensor.cc
+	//
+	// The more appropriate way to be in sync with Tensor::AsProtoContent
+	// would be to have the TensorFlow C library export functions for
+	// serialization and deserialization of Tensors.  Till then capitalize
+	// on knowledge of the implementation for numeric types.
+	switch dataType {
+	case Float, Double, Int32, Uint8, Int16, Int8, Complex, Int64, Bool, Quint8, Qint32, Bfloat16, Qint16, Quint16, Uint16, Complex128, Half:
+		return nil
+	default:
+		return fmt.Errorf("serialization of tensors with the DataType %d is not yet supported, see https://github.com/tensorflow/tensorflow/issues/6003", dataType)
+	}
 }
 
 // nativeEndian is the byte order for the local platform. Used to send back and

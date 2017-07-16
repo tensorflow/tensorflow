@@ -13,15 +13,57 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Ops for building neural network seq2seq layers and losses."""
+"""Ops for building neural network seq2seq decoders and losses.
+
+See the @{$python/contrib.seq2seq} guide.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
+# pylint: disable=unused-import,wildcard-import,line-too-long
+from tensorflow.contrib.seq2seq.python.ops.attention_wrapper import *
+from tensorflow.contrib.seq2seq.python.ops.basic_decoder import *
+from tensorflow.contrib.seq2seq.python.ops.beam_search_decoder import *
+from tensorflow.contrib.seq2seq.python.ops.beam_search_ops import *
+from tensorflow.contrib.seq2seq.python.ops.decoder import *
+from tensorflow.contrib.seq2seq.python.ops.helper import *
+from tensorflow.contrib.seq2seq.python.ops.loss import *
+from tensorflow.python.util.all_util import remove_undocumented
+# pylint: enable=unused-import,widcard-import,line-too-long
 
-# pylint: disable=unused-import,line-too-long
-from tensorflow.contrib.seq2seq.python.ops import layers
-from tensorflow.contrib.seq2seq.python.ops import loss
-# pylint: enable=unused-import,line-too-long
+_allowed_symbols = [
+    "sequence_loss",
+    "Decoder",
+    "dynamic_decode",
+    "BasicDecoder",
+    "BasicDecoderOutput",
+    "BeamSearchDecoder",
+    "BeamSearchDecoderOutput",
+    "BeamSearchDecoderState",
+    "Helper",
+    "CustomHelper",
+    "FinalBeamSearchDecoderOutput",
+    "gather_tree",
+    "GreedyEmbeddingHelper",
+    "SampleEmbeddingHelper",
+    "ScheduledEmbeddingTrainingHelper",
+    "ScheduledOutputTrainingHelper",
+    "TrainingHelper",
+    "BahdanauAttention",
+    "LuongAttention",
+    "hardmax",
+    "AttentionWrapperState",
+    "AttentionWrapper",
+    "AttentionMechanism",
+    "tile_batch",
+    "safe_cumprod",
+    "monotonic_attention",
+    "monotonic_probability_fn",
+    "BahdanauMonotonicAttention",
+    "LuongMonotonicAttention",
+]
+
+
+remove_undocumented(__name__, _allowed_symbols)

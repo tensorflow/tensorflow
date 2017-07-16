@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib import nn as contrib_nn
 from tensorflow.contrib.labeled_tensor.python.ops import core
 from tensorflow.python.ops import nn
-
 
 relu = core.define_unary_op('relu', nn.relu)
 relu6 = core.define_unary_op('relu6', nn.relu6)
@@ -31,12 +31,12 @@ softplus = core.define_unary_op('softplus', nn.softplus)
 l2_loss = core.define_unary_op('l2_loss', nn.l2_loss)
 sigmoid_cross_entropy_with_logits = core.define_binary_op(
     'sigmoid_cross_entropy_with_logits',
-    nn.sigmoid_cross_entropy_with_logits)
+    contrib_nn.deprecated_flipped_sigmoid_cross_entropy_with_logits)
 softmax = core.define_unary_op('softmax', nn.softmax)
 log_softmax = core.define_unary_op('log_softmax', nn.log_softmax)
 softmax_cross_entropy_with_logits = core.define_binary_op(
     'softmax_cross_entropy_with_logits',
-    nn.softmax_cross_entropy_with_logits)
+    contrib_nn.deprecated_flipped_softmax_cross_entropy_with_logits)
 sparse_softmax_cross_entropy_with_logits = core.define_binary_op(
     'sparse_softmax_cross_entropy_with_logits',
-    nn.sparse_softmax_cross_entropy_with_logits)
+    contrib_nn.deprecated_flipped_sparse_softmax_cross_entropy_with_logits)

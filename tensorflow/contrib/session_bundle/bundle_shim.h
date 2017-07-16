@@ -32,43 +32,29 @@ namespace tensorflow {
 namespace serving {
 namespace internal {
 
-// Loads a SavedModel from a session-bundle path. Uses the provided
-// session-options to set up the session in the bundle. Also, uses the supplied
-// run-options for the session run calls.
-Status LoadSavedModelFromLegacySessionBundlePath(
-    const SessionOptions& session_options, const RunOptions& run_options,
-    const StringPiece session_bundle_export_dir, SavedModelBundle* bundle);
+// Adds an entry (key and value) to the input map of the signature def. Builds
+// TensorInfos for the SignatureDefs by using the name and dtype information
+// from the supplied map.
+void AddInputToSignatureDef(
+    const string& tensor_name,
+    const std::unordered_map<string, DataType>& tensor_name_to_dtype,
+    const string& input_map_key, SignatureDef* signature_def);
 
-// Adds an entry (key and value) to the input map of the signature def.
-void AddInputToSignatureDef(const string& tensor_name,
-                            const string& input_map_key,
-                            SignatureDef* signature_def);
+// Adds an entry (key and value) to the output map of the signature def. Builds
+// TensorInfos for the SignatureDefs by using the name and dtype information
+// from the supplied map.
+void AddOutputToSignatureDef(
+    const string& tensor_name,
+    const std::unordered_map<string, DataType>& tensor_name_to_dtype,
+    const string& output_map_key, SignatureDef* signature_def);
 
-// Adds an entry (key and value) to the output map of the signature def.
-void AddOutputToSignatureDef(const string& tensor_name,
-                             const string& output_map_key,
-                             SignatureDef* signature_def);
+// Converts signatures in the MetaGraphDef into a SignatureDefs in the
+// MetaGraphDef.
+Status ConvertSignaturesToSignatureDefs(MetaGraphDef* meta_graph_def);
 
-// Converts a SessionBundle to a SavedModel bundle.
+// Converts a SessionBundle to a SavedModelBundle.
 Status ConvertSessionBundleToSavedModelBundle(
     SessionBundle& session_bundle, SavedModelBundle* saved_model_bundle);
-
-// Converts signatures in the MetaGraphDef into a SignatureDef in the
-// MetaGraphDef.
-Status ConvertSignaturesToSignatureDef(MetaGraphDef* meta_graph_def);
-
-// Converts the default signature, if any, from the MetaGraphDef into a
-// SignatureDef in the MetaGraphDef. Only supports up conversion for
-// `ClassificationSignature` and `RegressionSignature`.
-Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
-                                             MetaGraphDef* meta_graph_def);
-
-// Converts the named signatures, if any, from the MetaGraphDef into the
-// SignatureDef in the MetaGraphDef. Up conversion, in this case, requires the
-// set of named signatures to contain at least two GenericSignatures
-// corresponding to `inputs` and `outputs`.
-Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
-                                            MetaGraphDef* meta_graph_def);
 
 }  // namespace internal
 

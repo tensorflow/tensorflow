@@ -20,13 +20,14 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"

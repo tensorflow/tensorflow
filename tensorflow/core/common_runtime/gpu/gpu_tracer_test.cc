@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
 
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -41,12 +42,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Session* CreateSession() {
+std::unique_ptr<Session> CreateSession() {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 1;
   (*options.config.mutable_device_count())["GPU"] = 1;
   options.config.set_allow_soft_placement(true);
-  return NewSession(options);
+  return std::unique_ptr<Session>(NewSession(options));
 }
 
 class GPUTracerTest : public ::testing::Test {
@@ -82,7 +83,7 @@ class GPUTracerTest : public ::testing::Test {
   }
 
  protected:
-  void ExpectFailure(Status status, error::Code code) {
+  void ExpectFailure(const Status& status, error::Code code) {
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
       LOG(INFO) << "Status message: " << status.error_message();
@@ -97,24 +98,21 @@ class GPUTracerTest : public ::testing::Test {
 };
 
 TEST_F(GPUTracerTest, StartStop) {
-  std::unique_ptr<GPUTracer> tracer;
-  tracer.reset(CreateGPUTracer());
+  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   TF_EXPECT_OK(tracer->Stop());
 }
 
 TEST_F(GPUTracerTest, StopBeforeStart) {
-  std::unique_ptr<GPUTracer> tracer;
-  tracer.reset(CreateGPUTracer());
+  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Stop());
   TF_EXPECT_OK(tracer->Stop());
 }
 
 TEST_F(GPUTracerTest, CollectBeforeStart) {
-  std::unique_ptr<GPUTracer> tracer;
-  tracer.reset(CreateGPUTracer());
+  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
   if (!tracer) return;
   StepStats stats;
   StepStatsCollector collector(&stats);
@@ -123,8 +121,7 @@ TEST_F(GPUTracerTest, CollectBeforeStart) {
 }
 
 TEST_F(GPUTracerTest, CollectBeforeStop) {
-  std::unique_ptr<GPUTracer> tracer;
-  tracer.reset(CreateGPUTracer());
+  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   StepStats stats;
@@ -135,10 +132,8 @@ TEST_F(GPUTracerTest, CollectBeforeStop) {
 }
 
 TEST_F(GPUTracerTest, StartTwoTracers) {
-  std::unique_ptr<GPUTracer> tracer1;
-  tracer1.reset(CreateGPUTracer());
-  std::unique_ptr<GPUTracer> tracer2;
-  tracer2.reset(CreateGPUTracer());
+  std::unique_ptr<GPUTracer> tracer1(CreateGPUTracer());
+  std::unique_ptr<GPUTracer> tracer2(CreateGPUTracer());
   if (!tracer1 || !tracer2) return;
 
   TF_EXPECT_OK(tracer1->Start());
@@ -151,12 +146,11 @@ TEST_F(GPUTracerTest, StartTwoTracers) {
 
 TEST_F(GPUTracerTest, RunWithTracer) {
   // On non-GPU platforms, we may not support GPUTracer.
-  std::unique_ptr<GPUTracer> tracer;
-  tracer.reset(CreateGPUTracer());
+  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
-  std::unique_ptr<Session> session(CreateSession());
+  auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -179,12 +173,11 @@ TEST_F(GPUTracerTest, RunWithTracer) {
 }
 
 TEST_F(GPUTracerTest, TraceToStepStatsCollector) {
-  std::unique_ptr<GPUTracer> tracer;
-  tracer.reset(CreateGPUTracer());
+  std::unique_ptr<GPUTracer> tracer(CreateGPUTracer());
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
-  std::unique_ptr<Session> session(CreateSession());
+  auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -209,7 +202,7 @@ TEST_F(GPUTracerTest, TraceToStepStatsCollector) {
 
 TEST_F(GPUTracerTest, RunWithTraceOption) {
   Initialize({3, 2, -1, 0});
-  std::unique_ptr<Session> session(CreateSession());
+  auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
   std::vector<std::pair<string, Tensor>> inputs;

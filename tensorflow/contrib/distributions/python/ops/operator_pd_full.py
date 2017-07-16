@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [

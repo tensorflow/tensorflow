@@ -104,12 +104,15 @@ class CudnnSupport : public dnn::DnnSupport {
                      ScratchAllocator* workspace_allocator) override;
 
   bool GetConvolveAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType>* out_algorithms) override;
 
   bool GetConvolveBackwardDataAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType>* out_algorithms) override;
 
   bool GetConvolveBackwardFilterAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(
@@ -134,7 +137,43 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
       DeviceMemory<float>* offset_backprop) override;
 
-  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+                  const DeviceMemory<float>& input_data,
+                  const dnn::FilterDescriptor& filter_descriptor,
+                  const DeviceMemory<float>& filter_data,
+                  const dnn::ConvolutionDescriptor& convolution_descriptor,
+                  const DeviceMemory<float>& biases,
+                  dnn::ActivationMode activation_mode,
+                  const dnn::BatchDescriptor& output_descriptor,
+                  DeviceMemory<float>* output_data,
+                  ScratchAllocator* scratch_allocator,
+                  const dnn::AlgorithmConfig& algorithm_config,
+                  dnn::ProfileResult* output_profile_result) override;
+
+  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+                  const DeviceMemory<double>& input_data,
+                  const dnn::FilterDescriptor& filter_descriptor,
+                  const DeviceMemory<double>& filter_data,
+                  const dnn::ConvolutionDescriptor& convolution_descriptor,
+                  const DeviceMemory<double>& biases,
+                  dnn::ActivationMode activation_mode,
+                  const dnn::BatchDescriptor& output_descriptor,
+                  DeviceMemory<double>* output_data) override;
+
+  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+                  const DeviceMemory<Eigen::half>& input_data,
+                  const dnn::FilterDescriptor& filter_descriptor,
+                  const DeviceMemory<Eigen::half>& filter_data,
+                  const dnn::ConvolutionDescriptor& convolution_descriptor,
+                  const DeviceMemory<Eigen::half>& biases,
+                  dnn::ActivationMode activation_mode,
+                  const dnn::BatchDescriptor& output_descriptor,
+                  DeviceMemory<Eigen::half>* output_data,
+                  ScratchAllocator* scratch_allocator,
+                  const dnn::AlgorithmConfig& algorithm_config,
+                  dnn::ProfileResult* output_profile_result) override;
+
+  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<float>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,
                   const DeviceMemory<float>& filter_data,
@@ -153,7 +192,7 @@ class CudnnSupport : public dnn::DnnSupport {
                   const dnn::BatchDescriptor& output_descriptor,
                   DeviceMemory<double>* output_data) override;
 
-  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+  bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<Eigen::half>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,
                   const DeviceMemory<Eigen::half>& filter_data,
@@ -163,6 +202,32 @@ class CudnnSupport : public dnn::DnnSupport {
                   ScratchAllocator* scratch_allocator,
                   const dnn::AlgorithmConfig& algorithm_config,
                   dnn::ProfileResult* output_profile_result) override;
+
+  bool DoConvolveQuantized(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8>& filter_coefficients,
+      const DeviceMemory<float>& coefficient_scales,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data) override {
+    LOG(ERROR) << "DoConvolveQuantized not supported by cuDNN";
+    return false;
+  }
+
+  bool DoConvolveQuantized(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int16>& filter_coefficients,
+      const DeviceMemory<float>& coefficient_scales,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data) override {
+    LOG(ERROR) << "DoConvolveQuantized not supported by cuDNN";
+    return false;
+  }
 
   bool DoSeparableConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -277,7 +342,14 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoActivate(Stream* stream, dnn::ActivationMode activation_mode,
                   const dnn::BatchDescriptor& dimensions,
                   const DeviceMemory<float>& input_data,
-                  DeviceMemory<float>* output_data) override;
+                  DeviceMemory<float>* output_data, uint64 options) override;
+
+  bool DoPoolForward(Stream* stream,
+                     const dnn::PoolingDescriptor& pooling_dimensions,
+                     const dnn::BatchDescriptor& input_dimensions,
+                     const DeviceMemory<double>& input_data,
+                     const dnn::BatchDescriptor& output_dimensions,
+                     DeviceMemory<double>* output_data) override;
 
   bool DoPoolForward(Stream* stream,
                      const dnn::PoolingDescriptor& pooling_dimensions,
@@ -292,6 +364,15 @@ class CudnnSupport : public dnn::DnnSupport {
                      const DeviceMemory<Eigen::half>& input_data,
                      const dnn::BatchDescriptor& output_dimensions,
                      DeviceMemory<Eigen::half>* output_data) override;
+
+  bool DoPoolBackward(Stream* stream,
+                      const dnn::PoolingDescriptor& pooling_dimensions,
+                      const dnn::BatchDescriptor& input_dimensions,
+                      const DeviceMemory<double>& input_data,
+                      const dnn::BatchDescriptor& output_dimensions,
+                      const DeviceMemory<double>& output_data,
+                      const DeviceMemory<double>& input_diff_data,
+                      DeviceMemory<double>* output_diff_data) override;
 
   bool DoPoolBackward(Stream* stream,
                       const dnn::PoolingDescriptor& pooling_dimensions,
@@ -370,6 +451,13 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::BatchDescriptor* output_batch_descriptor);
 
+  bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
+                         dnn::DataType input_type,
+                         const DeviceMemoryBase& input_data,
+                         const dnn::BatchDescriptor& output_desc,
+                         dnn::DataType output_type, float scale,
+                         DeviceMemoryBase* output_data) override;
+
  private:
   // Guards the enqueueing of DNN operations via the dnn_handle_ below.
   mutex dnn_handle_mutex_;
@@ -432,6 +520,8 @@ class CudnnSupport : public dnn::DnnSupport {
                       const dnn::FilterDescriptor& filter_descriptor,
                       const DeviceMemory<T>& filter_data,
                       const dnn::ConvolutionDescriptor& convolution_descriptor,
+                      const DeviceMemory<T>& biases,
+                      dnn::ActivationMode activation_mode,
                       const dnn::BatchDescriptor& output_descriptor,
                       DeviceMemory<T>* output_data,
                       ScratchAllocator* scratch_allocator,

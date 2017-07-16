@@ -19,6 +19,9 @@ message VariableDef {
 
   // Support for saving variables as slices of a larger variable.
   SaveSliceInfoDef save_slice_info_def = 4;
+
+  // Whether to represent this as a ResourceVariable.
+  bool is_resource = 5;
 }
 
 message SaveSliceInfoDef {

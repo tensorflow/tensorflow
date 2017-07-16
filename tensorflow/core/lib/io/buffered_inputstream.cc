@@ -150,6 +150,24 @@ Status BufferedInputStream::Seek(int64 position) {
   return SkipNBytes(position - bufpos);
 }
 
+Status BufferedInputStream::ReadAll(string* result) {
+  result->clear();
+  Status status;
+  while (status.ok()) {
+    status = FillBuffer();
+    if (limit_ == 0) {
+      break;
+    }
+    result->append(buf_);
+    pos_ = limit_;
+  }
+
+  if (errors::IsOutOfRange(status)) {
+    return Status::OK();
+  }
+  return status;
+}
+
 Status BufferedInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   pos_ = 0;
@@ -163,7 +181,7 @@ Status BufferedInputStream::ReadLine(string* result) {
 
 string BufferedInputStream::ReadLineAsString() {
   string result;
-  ReadLineHelper(&result, true);
+  ReadLineHelper(&result, true).IgnoreError();
   return result;
 }
 

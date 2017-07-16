@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_ENV_H_
 
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -25,9 +26,7 @@ namespace gputools {
 namespace port {
 
 using tensorflow::Env;
-using tensorflow::ReadFileToString;
 using tensorflow::Thread;
-using tensorflow::WriteStringToFile;
 
 inline Status FileExists(const string& filename) {
   return Env::Default()->FileExists(filename);

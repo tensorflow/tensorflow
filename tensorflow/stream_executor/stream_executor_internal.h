@@ -48,27 +48,9 @@ limitations under the License.
 namespace perftools {
 namespace gputools {
 
-class KernelBase;
 class Stream;
 class Timer;
 
-namespace blas {
-class BlasSupport;
-}  // namespace blas
-
-namespace fft {
-class Support;
-}  // namespace fft
-
-namespace rng {
-class RngSupport;
-}  // namespace rng
-
-}  // namespace gputools
-}  // namespace perftools
-
-namespace perftools {
-namespace gputools {
 namespace internal {
 
 // Platform-dependent interface class for the generic Events interface, in
@@ -184,7 +166,7 @@ class StreamExecutorInterface {
   }
   virtual bool Launch(Stream *stream, const ThreadDim &thread_dims,
                       const BlockDim &block_dims, const KernelBase &k,
-                      const std::vector<KernelArg> &args) {
+                      const KernelArgsArrayBase &args) {
     return false;
   }
   virtual void *Allocate(uint64 size) = 0;
@@ -199,18 +181,20 @@ class StreamExecutorInterface {
   virtual bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) = 0;
   virtual bool SynchronousMemSet(DeviceMemoryBase *location, int value,
                                  uint64 size) = 0;
-  virtual bool SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
-                                 const void *host_src, uint64 size) = 0;
-  virtual bool SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &gpu_src,
-                                 uint64 size) = 0;
-  virtual bool SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *gpu_dst,
-                                               const DeviceMemoryBase &gpu_src,
-                                               uint64 size) = 0;
+  virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
+                                         const void *host_src, uint64 size) = 0;
+  virtual port::Status SynchronousMemcpy(void *host_dst,
+                                         const DeviceMemoryBase &gpu_src,
+                                         uint64 size) = 0;
+  virtual port::Status SynchronousMemcpyDeviceToDevice(
+      DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
+      uint64 size) = 0;
   virtual bool MemZero(Stream *stream, DeviceMemoryBase *location,
                        uint64 size) = 0;
-  virtual bool Memset(Stream *stream, DeviceMemoryBase *location,
-                      uint8 pattern, uint64 size) = 0;
+  virtual bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+                      uint64 size) {
+    return false;
+  }
   virtual bool Memset32(Stream *stream, DeviceMemoryBase *location,
                         uint32 pattern, uint64 size) = 0;
   virtual bool Memcpy(Stream *stream, void *host_dst,
@@ -257,9 +241,6 @@ class StreamExecutorInterface {
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
   virtual DeviceDescription *PopulateDeviceDescription() const = 0;
-
-  virtual KernelArg DeviceMemoryToKernelArg(
-      const DeviceMemoryBase &gpu_mem) const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific
   // Executor implementation. When this is called, the PIMPL interface has
@@ -320,7 +301,7 @@ class StreamExecutorInterface {
   // Creates a new DnnSupport object, ownership is transferred to the caller.
   // If SupportsDnn() is false, this will always return null.
   //
-  // If SupportsDnn() is true, this may return null, for example, if the RNG
+  // If SupportsDnn() is true, this may return null, for example, if the DNN
   // initialization fails.
   virtual dnn::DnnSupport *CreateDnn() { return nullptr; }
 

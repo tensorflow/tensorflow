@@ -48,9 +48,10 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 
-__all__ = ["crf_sequence_score", "crf_log_norm", "crf_log_likelihood",
-           "crf_unary_score", "crf_binary_score", "CrfForwardRnnCell",
-           "viterbi_decode"]
+__all__ = [
+    "crf_sequence_score", "crf_log_norm", "crf_log_likelihood",
+    "crf_unary_score", "crf_binary_score", "CrfForwardRnnCell", "viterbi_decode"
+]
 
 
 def _lengths_to_masks(lengths, max_length):

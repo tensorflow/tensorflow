@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
 
+#include <utility>
+
 #include "grpc++/grpc++.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/grpc_response_reader.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -37,9 +40,10 @@ class GrpcRemoteWorker : public WorkerInterface {
   explicit GrpcRemoteWorker(SharedGrpcChannelPtr channel,
                             ::grpc::CompletionQueue* completion_queue,
                             WorkerCacheLogger* logger)
-      : channel_(channel),
+      : channel_(std::move(channel)),
         cq_(completion_queue),
         getstatus_(Method(GrpcWorkerMethod::kGetStatus)),
+        createworkersession_(Method(GrpcWorkerMethod::kCreateWorkerSession)),
         registergraph_(Method(GrpcWorkerMethod::kRegisterGraph)),
         deregistergraph_(Method(GrpcWorkerMethod::kDeregisterGraph)),
         rungraph_(Method(GrpcWorkerMethod::kRunGraph)),
@@ -58,6 +62,12 @@ class GrpcRemoteWorker : public WorkerInterface {
     IssueRequest(request, response, getstatus_, std::move(done));
   }
 
+  void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
+                                CreateWorkerSessionResponse* response,
+                                StatusCallback done) override {
+    IssueRequest(request, response, createworkersession_, std::move(done));
+  }
+
   void RegisterGraphAsync(const RegisterGraphRequest* request,
                           RegisterGraphResponse* response,
                           StatusCallback done) override {
@@ -73,6 +83,12 @@ class GrpcRemoteWorker : public WorkerInterface {
   void RunGraphAsync(CallOptions* call_opts, const RunGraphRequest* request,
                      RunGraphResponse* response, StatusCallback done) override {
     IssueRequest(request, response, rungraph_, std::move(done), call_opts);
+  }
+  void RunGraphAsync(CallOptions* call_opts, RunGraphRequestWrapper* request,
+                     MutableRunGraphResponseWrapper* response,
+                     StatusCallback done) override {
+    IssueRequest(&request->ToProto(), get_proto_from_wrapper(response),
+                 rungraph_, std::move(done), call_opts);
   }
 
   void CleanupGraphAsync(const CleanupGraphRequest* request,
@@ -132,8 +148,9 @@ class GrpcRemoteWorker : public WorkerInterface {
             // the RecvTensor response can not have been sent before
             // the RecvTensor request, and must have been sent before
             // it was received.
-            send_start_usec = std::max(start_usec, static_cast<int64>(
-                response->metadata().send_start_micros()));
+            send_start_usec = std::max(
+                start_usec,
+                static_cast<int64>(response->metadata().send_start_micros()));
             send_start_usec = std::min(send_start_usec, end_usec - 1);
           }
           const string& key = request->rendezvous_key();
@@ -157,7 +174,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     }
 
     IssueRequest(req_copy ? req_copy : request, response, recvtensor_,
-                 std::move(*cb_to_use), call_opts);
+                 *cb_to_use, call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
@@ -179,13 +196,14 @@ class GrpcRemoteWorker : public WorkerInterface {
              const ::grpc::RpcMethod& method, const RequestMessage& request,
              StatusCallback done, CallOptions* call_opts)
         : call_opts_(call_opts),
-          reader_(channel, cq, method, InitContext(call_opts), request),
+          reader_(CreateClientAsyncResponseReader<ResponseMessage>(
+              channel, cq, method, InitContext(call_opts), request)),
           done_(std::move(done)) {}
 
     ~RPCState() override {}
 
     void StartRPC(ResponseMessage* response) {
-      reader_.Finish(response, &status_, this);
+      reader_->Finish(response, &status_, this);
     }
 
     void OnCompleted(bool ok) override {
@@ -203,7 +221,7 @@ class GrpcRemoteWorker : public WorkerInterface {
    private:
     CallOptions* call_opts_;
     ::grpc::ClientContext context_;
-    ::grpc::ClientAsyncResponseReader<ResponseMessage> reader_;
+    std::unique_ptr<::grpc::ClientAsyncResponseReader<ResponseMessage>> reader_;
     ::grpc::Status status_;
     StatusCallback done_;
 
@@ -239,6 +257,7 @@ class GrpcRemoteWorker : public WorkerInterface {
   ::grpc::CompletionQueue* cq_;
 
   const ::grpc::RpcMethod getstatus_;
+  const ::grpc::RpcMethod createworkersession_;
   const ::grpc::RpcMethod registergraph_;
   const ::grpc::RpcMethod deregistergraph_;
   const ::grpc::RpcMethod rungraph_;
@@ -257,7 +276,7 @@ class GrpcRemoteWorker : public WorkerInterface {
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      WorkerCacheLogger* logger) {
-  return new GrpcRemoteWorker(channel, completion_queue, logger);
+  return new GrpcRemoteWorker(std::move(channel), completion_queue, logger);
 }
 
 }  // namespace tensorflow

@@ -19,13 +19,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions
+from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn as core_pandas_input_fn
 
 try:
   # pylint: disable=g-import-not-at-top
   import pandas as pd
   HAS_PANDAS = True
+except IOError:
+  # Pandas writes a temporary file during import. If it fails, don't use pandas.
+  HAS_PANDAS = False
 except ImportError:
   HAS_PANDAS = False
 
@@ -43,6 +45,25 @@ PANDAS_DTYPES = {
     'float64': 'float',
     'bool': 'i'
 }
+
+
+def pandas_input_fn(x,
+                    y=None,
+                    batch_size=128,
+                    num_epochs=1,
+                    shuffle=True,
+                    queue_capacity=1000,
+                    num_threads=1,
+                    target_column='target'):
+  """This input_fn diffs from the core version with default `shuffle`."""
+  return core_pandas_input_fn(x=x,
+                              y=y,
+                              batch_size=batch_size,
+                              shuffle=shuffle,
+                              num_epochs=num_epochs,
+                              queue_capacity=queue_capacity,
+                              num_threads=num_threads,
+                              target_column=target_column)
 
 
 def extract_pandas_data(data):
@@ -120,58 +141,3 @@ def extract_pandas_labels(labels):
                        'float, or bool. Found: ' + ', '.join(error_report))
   else:
     return labels
-
-
-def pandas_input_fn(x, y=None, batch_size=128, num_epochs=None, shuffle=True,
-                    queue_capacity=1000, num_threads=1, target_column='target',
-                    index_column='index'):
-  """Returns input function that would feed pandas DataFrame into the model.
-
-  Note: If y's index doesn't match x's index exception will be raised.
-
-  Args:
-    x: pandas `DataFrame` object.
-    y: pandas `Series` object.
-    batch_size: int, size of batches to return.
-    num_epochs: int, number of epochs to iterate over data. If `None` will
-      run indefinetly.
-    shuffle: int, if shuffle the queue. Please make sure you don't shuffle at
-      prediction time.
-    queue_capacity: int, size of queue to accumulate.
-    num_threads: int, number of threads used for reading and enqueueing.
-    target_column: str, used to pack `y` into `x` DataFrame under this column.
-    index_column: str, name of the feature return with index.
-
-  Returns:
-    Function, that has signature of ()->(dict of `features`, `target`)
-
-  Raises:
-    ValueError: if `target_column` column is already in `x` DataFrame.
-  """
-  def input_fn():
-    """Pandas input function."""
-    if y is not None:
-      if target_column in x:
-        raise ValueError('Found already column \'%s\' in x, please change '
-                         'target_column to something else. Current columns '
-                         'in x: %s', target_column, x.columns)
-      if not np.array_equal(x.index, y.index):
-        raise ValueError('Index for x and y are mismatch, this will lead '
-                         'to missing values. Please make sure they match or '
-                         'use .reset_index() method.\n'
-                         'Index for x: %s\n'
-                         'Index for y: %s\n', x.index, y.index)
-      x[target_column] = y
-    queue = feeding_functions.enqueue_data(
-        x, queue_capacity, shuffle=shuffle, num_threads=num_threads,
-        enqueue_size=batch_size, num_epochs=num_epochs)
-    if num_epochs is None:
-      features = queue.dequeue_many(batch_size)
-    else:
-      features = queue.dequeue_up_to(batch_size)
-    features = dict(zip([index_column] + list(x.columns), features))
-    if y is not None:
-      target = features.pop(target_column)
-      return features, target
-    return features
-  return input_fn

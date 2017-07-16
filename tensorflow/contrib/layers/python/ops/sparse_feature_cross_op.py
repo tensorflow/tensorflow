@@ -17,10 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.layers.ops import gen_sparse_feature_cross_op
 from tensorflow.contrib.util import loader
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -81,7 +80,7 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
 
   indices = [sp_input.indices for sp_input in sparse_inputs]
   values = [sp_input.values for sp_input in sparse_inputs]
-  shapes = [sp_input.shape for sp_input in sparse_inputs]
+  shapes = [sp_input.dense_shape for sp_input in sparse_inputs]
   out_type = dtypes.int64 if hashed_output else dtypes.string
 
   internal_type = dtypes.string
@@ -96,7 +95,7 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
 
   if hash_key:
     indices_out, values_out, shape_out = (
-        _sparse_feature_cross_op.sparse_feature_cross_v2(
+        gen_sparse_feature_cross_op.sparse_feature_cross_v2(
             indices,
             values,
             shapes,
@@ -109,7 +108,7 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
             name=name))
   else:
     indices_out, values_out, shape_out = (
-        _sparse_feature_cross_op.sparse_feature_cross(
+        gen_sparse_feature_cross_op.sparse_feature_cross(
             indices,
             values,
             shapes,

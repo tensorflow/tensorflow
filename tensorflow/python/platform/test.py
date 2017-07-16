@@ -13,68 +13,47 @@
 # limitations under the License.
 # ==============================================================================
 
-# pylint: disable=g-short-docstring-punctuation
-"""## Unit tests
+"""Testing.
 
-TensorFlow provides a convenience class inheriting from `unittest.TestCase`
-which adds methods relevant to TensorFlow tests.  Here is an example:
+See the @{$python/test} guide.
 
-```python
-    import tensorflow as tf
-
-
-    class SquareTest(tf.test.TestCase):
-
-      def testSquare(self):
-        with self.test_session():
-          x = tf.square([2, 3])
-          self.assertAllEqual(x.eval(), [4, 9])
-
-
-    if __name__ == '__main__':
-      tf.test.main()
-```
-
-`tf.test.TestCase` inherits from `unittest.TestCase` but adds a few additional
-methods.  We will document these methods soon.
+Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
+depending on the python version.
 
 @@main
 @@TestCase
 @@test_src_dir_path
-
-## Utilities
-
 @@assert_equal_graph_def
 @@get_temp_dir
 @@is_built_with_cuda
 @@is_gpu_available
-
-## Gradient checking
-
-[`compute_gradient`](#compute_gradient) and
-[`compute_gradient_error`](#compute_gradient_error) perform numerical
-differentiation of graphs for comparison against registered analytic gradients.
-
+@@gpu_device_name
 @@compute_gradient
 @@compute_gradient_error
+@@create_local_cluster
 
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
+# pylint: disable=g-bad-import-order
 from tensorflow.python.client import device_lib as _device_lib
 from tensorflow.python.framework import test_util as _test_util
 from tensorflow.python.platform import googletest as _googletest
 from tensorflow.python.util.all_util import remove_undocumented
 
 # pylint: disable=unused-import
-from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
 from tensorflow.python.framework.test_util import assert_equal_graph_def
+from tensorflow.python.framework.test_util import create_local_cluster
+from tensorflow.python.framework.test_util import TensorFlowTestCase as TestCase
+from tensorflow.python.framework.test_util import gpu_device_name
 
 from tensorflow.python.ops.gradient_checker import compute_gradient_error
 from tensorflow.python.ops.gradient_checker import compute_gradient
-# pylint: enable=unused-import
+# pylint: enable=unused-import,g-bad-import-order
 
 import sys
 if sys.version_info.major == 2:
@@ -85,10 +64,13 @@ else:
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
 
+# Import StubOutForTesting class
+StubOutForTesting = _googletest.StubOutForTesting  # pylint: disable=invalid-name
 
-def main():
+
+def main(argv=None):
   """Runs all unit tests."""
-  return _googletest.main()
+  return _googletest.main(argv)
 
 
 def get_temp_dir():
@@ -137,18 +119,11 @@ def is_gpu_available(cuda_only=False):
                for x in _device_lib.list_local_devices())
 
 
-def gpu_device_name():
-  """Returns the name of a GPU device if available or the empty string."""
-  for x in _device_lib.list_local_devices():
-    if x.device_type == 'GPU' or x.device_type == 'SYCL':
-      return x.name()
-  return ''
-
-
 _allowed_symbols = [
     # We piggy-back googletest documentation.
     'Benchmark',
     'mock',
+    'StubOutForTesting',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

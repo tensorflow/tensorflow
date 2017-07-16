@@ -141,14 +141,15 @@ port::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
   }
 
   StreamExecutor* naked_executor = executor.ValueOrDie().get();
-  executor_cache_.Insert(config, executor.ConsumeValueOrDie());
+  SE_RETURN_IF_ERROR(
+      executor_cache_.Insert(config, executor.ConsumeValueOrDie()));
   return naked_executor;
 }
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = port::MakeUnique<StreamExecutor>(
-      this, new CUDAExecutor(config.plugin_config));
+      this, port::MakeUnique<CUDAExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
@@ -185,3 +186,8 @@ static void InitializeCudaPlatform() {
 
 REGISTER_MODULE_INITIALIZER(cuda_platform,
                             perftools::gputools::InitializeCudaPlatform());
+
+DECLARE_MODULE_INITIALIZER(multi_platform_manager);
+// Note that module initialization sequencing is not supported in the
+// open-source project, so this will be a no-op there.
+REGISTER_MODULE_INITIALIZER_SEQUENCE(cuda_platform, multi_platform_manager);

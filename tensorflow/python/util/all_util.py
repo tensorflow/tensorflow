@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect as _inspect
 import re as _re
 import sys as _sys
+
+from tensorflow.python.util import tf_inspect as _tf_inspect
+
 
 _reference_pattern = _re.compile(r'^@@(\w+)$', flags=_re.MULTILINE)
 
@@ -45,7 +47,7 @@ def make_all(module_name, doc_string_modules=None):
   if doc_string_modules is None:
     doc_string_modules = [_sys.modules[module_name]]
   cur_members = set([name for name, _
-                     in _inspect.getmembers(_sys.modules[module_name])])
+                     in _tf_inspect.getmembers(_sys.modules[module_name])])
 
   results = set()
   for doc_module in doc_string_modules:
@@ -83,8 +85,7 @@ def reveal_undocumented(symbol_name, target_module=None):
 
 def remove_undocumented(module_name, allowed_exception_list=None,
                         doc_string_modules=None):
-  """Removes symbols in a module that are not referenced by a docstring that
-  contributes to documentation.
+  """Removes symbols in a module that are not referenced by a docstring.
 
   Args:
     module_name: the name of the module (usually `__name__`).
@@ -100,7 +101,7 @@ def remove_undocumented(module_name, allowed_exception_list=None,
   """
   current_symbols = set(dir(_sys.modules[module_name]))
   should_have = make_all(module_name, doc_string_modules)
-  should_have += allowed_exception_list
+  should_have += allowed_exception_list or []
   extra_symbols = current_symbols - set(should_have)
   target_module = _sys.modules[module_name]
   for extra_symbol in extra_symbols:

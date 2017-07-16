@@ -193,7 +193,8 @@ message Example {
 //   - If a FeatureList L exists, it may be empty (zero length).
 //   - If a FeatureList L is non-empty, all features within the FeatureList
 //     must have the same data type T. Even across SequenceExamples, the type T
-//     of the FeatureList identified by the same key must be the same.
+//     of the FeatureList identified by the same key must be the same. An entry
+//     without any values may serve as an empty feature.
 //   - If a FeatureList L is non-empty, it is up to the parser configuration
 //     to determine if all features within the FeatureList must
 //     have the same size.  The same holds for this FeatureList across multiple

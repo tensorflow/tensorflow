@@ -20,6 +20,10 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/versions.pb_text.h"
@@ -178,14 +182,8 @@ void OpsUsedByGraph(const GraphDef& graph_def,
   while (!functions_to_process.empty()) {
     const FunctionDef* fun = functions_to_process.back();
     functions_to_process.pop_back();
-    if (fun->node_def_size() > 0) {
-      for (const auto& node : fun->node_def()) {
-        mark_op_as_used(node.op());
-      }
-    } else {  // TODO(josh11b): Eventually drop support for this.
-      for (const auto& node : fun->node()) {
-        mark_op_as_used(node.op());
-      }
+    for (const auto& node : fun->node_def()) {
+      mark_op_as_used(node.op());
     }
   }
 

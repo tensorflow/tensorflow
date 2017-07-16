@@ -21,345 +21,460 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph) {
-  LOG(INFO) << "StatSummarizer found " << tensorflow_graph.node_size()
-            << " nodes";
-  for (const auto& node : tensorflow_graph.node()) {
-    nodes_in_def_order_.push_back(node.name());
-    node_types_[node.name()] = node.op();
+StatSummarizer::StatSummarizer(const StatSummarizerOptions& options)
+    : options_(options) {}
+
+StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
+    : StatSummarizer(StatSummarizerOptions()) {}
+
+StatSummarizer::~StatSummarizer() {}
+
+void StatSummarizer::Reset() {
+  run_total_us_.Reset();
+  memory_.Reset();
+  details_.clear();
+}
+
+void StatSummarizer::Validate(const Detail* detail,
+                              const NodeExecStats& ns) const {
+  if (detail->outputs.size() != ns.output_size()) {
+    LOG(WARNING) << "Number of outputs changed between runs for '"
+                 << ns.node_name() << "' - was " << detail->outputs.size()
+                 << ", now " << ns.output_size();
+  } else {
+    for (const auto& output : ns.output()) {
+      const int32 slot = output.slot();
+      if ((slot < 0) || (slot >= ns.output_size())) {
+        // This is not a hard error for Switch ops, so just pass.
+        continue;
+      }
+      const auto& stored = detail->outputs[slot];
+      const auto& current = output.tensor_description();
+
+      bool do_tensors_match =
+          (stored.dtype() == current.dtype()) &&
+          (stored.shape().dim_size() == current.shape().dim_size());
+
+      if (do_tensors_match) {
+        for (int i = 0; i < stored.shape().dim_size(); ++i) {
+          if (stored.shape().dim(i).size() != current.shape().dim(i).size()) {
+            do_tensors_match = false;
+            break;
+          }
+        }
+      }
+
+      if (!do_tensors_match) {
+        LOG(WARNING) << "Output tensor changed between runs for '"
+                     << ns.node_name();
+      }
+    }
   }
 }
 
-void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
-  int64 curr_total = 0;
-  int64 mem_total = 0;
-  if (timing_details_.empty() && !step_stats.dev_stats().empty() &&
-      !step_stats.dev_stats(0).node_stats().empty()) {
-    first_node_start_micros_ =
-        step_stats.dev_stats(0).node_stats(0).all_start_micros();
+namespace {
+std::string OpType(const DeviceStepStats& ds, const NodeExecStats& ns) {
+  // There is no published specification of how DeviceStats and NodeStats
+  // are filled in. Thus, we live with the fragility of this implementation.
+  //
+  // Note that NodeStats.node_name may NOT refer to a node in the Graph.
+  // This can happen if, either:
+  // (1) The DeviceStats corresponds to statistics from the GPUTracer
+  //     logging (which adds devices whose name contains either "/stream"
+  //     or "/memcpy" to the StepStats), OR
+  // (2) The graph was partitioned, and thus the NodeStats refers to
+  //     the SendTensor or RecvTensor operations added.
+  // For these cases, return "<>" as the "type" of the operation.
+  //
+  // The StatSummarizer was initially aimed at CPU execution on mobile, where
+  // there was no GPUTracing and no graph partitioning, so the conditions above
+  // do not occur.
+  //
+  // It would be nice to have a clearer spec for StepStats so utilities such as
+  // this class can handle nodes that do not appear in the original graph
+  // gracefully. Till then, duplicate what is done by:
+  // https://www.tensorflow.org/code/tensorflow/python/client/timeline.py
+  // and rely on the unittest.
+  if (ds.device().find("/stream") != std::string::npos ||
+      ds.device().find("/memcpy") != std::string::npos) {
+    // Stats from the GPUTracer, does not correspond to TensorFlow ops.
+    return "<>";
   }
+  // timeline_label should be of the format: <node_name> = <op_type>(<args>)
+  // Extract <op_type>.
+  const std::string sep(" = ");
+  const std::string& label = ns.timeline_label();
+  std::string::size_type start = label.find(sep);
+  if (start == std::string::npos) return "<>";
+  start += sep.size();
+  std::string::size_type end = label.find("(", start);
+  if (end == std::string::npos) return "<>";
+  return label.substr(start, end - start);
+}
+}  // namespace
 
+void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
+  int64 curr_total_us = 0;
+  int64 mem_total = 0;
+
+  int64 first_node_start_us =
+      step_stats.dev_stats(0).node_stats(0).all_start_micros();
+
+  int node_num = 0;
   for (const auto& ds : step_stats.dev_stats()) {
     for (const auto& ns : ds.node_stats()) {
-      // timing stats
+      // NOTE(blackhc): To better support GPUs:
+      // GPU kernels are duplicated both in /stream:all and their
+      // /stream:$index. GPU memcpys are duplicated both in /memcpy and their
+      // /stream:$index. So only keep /stream:all and /memcpy and ignore all
+      // /stream:$index to only count GPU executions once.
+      if (ds.device().find("/stream") != std::string::npos &&
+          ds.device().find("/stream:all") == std::string::npos) {
+        continue;
+      }
+
+      std::string name = ns.node_name();
+      std::string op_type = "<>";
+      // NOTE(blackhc): we have to ensure that all keys into the detail map
+      // are unique, so we add [Kernel] or [MemCpy] as a suffix to the name.
+      // To make the node type summary work better, we prefix "gpu:" to
+      // the op type when the info is from a /gpu/stream or /memcpy channel.
+      if (ds.device().find("/stream") != std::string::npos) {
+        // node_name: name ":" opType
+        auto parts = str_util::Split(ns.node_name(), ':');
+        if (parts.size() == 2) {
+          name = parts[0] + " [Kernel]";
+          op_type = "gpu:" + parts[1];
+        }
+      } else if (ds.device().find("/memcpy") != std::string::npos) {
+        // node_name: name (":" opType)? ":" memCpyType
+        auto parts = str_util::Split(ns.node_name(), ':');
+        if (parts.size() == 2 || parts.size() == 3) {
+          name = parts.front() + " [MemCpy]";
+          // We don't care about the actual op type (it might not be available
+          // for edge_ memcpys). We only care that it's a memcpy for now.
+          op_type = "gpu:" + parts.back();
+        }
+      } else {
+        op_type = OpType(ds, ns);
+      }
+
+      ++node_num;
       const int64 curr_time = ns.all_end_rel_micros();
-      curr_total += curr_time;
-      auto result = timing_details_.emplace(ns.node_name(), Detail());
+      curr_total_us += curr_time;
+      auto result = details_.emplace(name, Detail());
       Detail* detail = &(result.first->second);
+
+      detail->start_us.UpdateStat(ns.all_start_micros() - first_node_start_us);
+      detail->rel_end_us.UpdateStat(curr_time);
+
+      // If this is the first pass, initialize some values.
       if (result.second) {
-        detail->first_rel_end = curr_time;
-        detail->first_start = ns.all_start_micros() - first_node_start_micros_;
-        detail->total = curr_time;
+        detail->name = name;
+        detail->type = op_type;
+
+        detail->run_order = node_num;
+
         detail->outputs.resize(ns.output_size());
         for (const auto& output : ns.output()) {
           const int32 slot = output.slot();
           if ((slot < 0) || (slot >= ns.output_size())) {
-            LOG(ERROR) << "Bad output slot '" << slot << "' for '"
-                       << ns.node_name() << "'";
+            // This is not a hard error for Switch ops, so just pass.
             continue;
           }
           detail->outputs[slot] = output.tensor_description();
         }
-      } else {
-        detail->total += curr_time;
-        if (detail->outputs.size() != ns.output_size()) {
-          LOG(WARNING) << "Number of outputs changed between runs for '"
-                       << ns.node_name() << "' - was " << detail->outputs.size()
-                       << ", now " << ns.output_size();
-        } else {
-          for (const auto& output : ns.output()) {
-            const int32 slot = output.slot();
-            if ((slot < 0) || (slot >= ns.output_size())) {
-              LOG(ERROR) << "Bad output slot '" << slot << "' for '"
-                         << ns.node_name() << "'";
-              continue;
-            }
-            const auto& stored = detail->outputs[slot];
-            const auto& current = output.tensor_description();
-            bool do_shapes_match = true;
-            if (stored.shape().dim_size() != current.shape().dim_size()) {
-              do_shapes_match = false;
-            } else {
-              for (int i = 0; i < stored.shape().dim_size(); ++i) {
-                if (stored.shape().dim(i).size() !=
-                    current.shape().dim(i).size()) {
-                  do_shapes_match = false;
-                }
-              }
 
-              if ((stored.dtype() != current.dtype()) || !do_shapes_match) {
-                LOG(WARNING) << "Output tensor changed between runs for '"
-                             << ns.node_name();
-              }
-            }
-          }
-        }
+        detail->times_called = 0;
       }
 
-      // memory stats
-      auto mem_result = memory_details_.emplace(ns.node_name(), Detail());
-      bool first = mem_result.second;
-      auto& val = mem_result.first->second;
+      int64 curr_node_mem = 0;
       for (const auto& mem : ns.memory()) {
         const int64 mem_usage = mem.total_bytes();
-        mem_total += mem_usage;
-
-        if (first) {
-          first = false;
-          val.first_start = mem_total - mem_usage;
-          val.first_rel_end = mem_usage;
-          val.total = 0;
-        } else if (mem_result.second) {
-          val.first_rel_end += mem_usage;
-        }
-        val.total += mem_usage;
+        curr_node_mem += mem_usage;
       }
+      detail->mem_used.UpdateStat(curr_node_mem);
+      mem_total += curr_node_mem;
+
+      ++detail->times_called;
+
+      Validate(detail, ns);
     }
   }
-  run_total_micros_.UpdateStat(curr_total);
+
+  run_total_us_.UpdateStat(curr_total_us);
   memory_.UpdateStat(mem_total);
 }
 
 std::string StatSummarizer::ShortSummary() const {
   std::stringstream stream;
-  stream << run_total_micros_.count() << " runs, avg " << std::setprecision(4)
-         << run_total_micros_.avg() / 1000.0 << " ms, " << node_types_.size()
-         << " nodes defined " << timing_details_.size() << " nodes observed"
-         << std::endl;
-  stream << std::setprecision(9) << memory_.avg() / 1000.0 << " avg KB per run."
-         << std::endl;
+  stream << "Timings (microseconds): ";
+  run_total_us_.OutputToStream(&stream);
+  stream << std::endl;
+
+  stream << "Memory (bytes): ";
+  memory_.OutputToStream(&stream);
+  stream << std::endl;
+
+  stream << details_.size() << " nodes observed" << std::endl;
   return stream.str();
 }
 
-std::string StatSummarizer::HeaderString() const {
+std::ostream& InitField(std::ostream& stream, int width) {
+  stream << "\t" << std::right << std::setw(width) << std::fixed
+         << std::setprecision(3);
+  return stream;
+}
+
+std::string StatSummarizer::HeaderString(const string& title) const {
   std::stringstream stream;
-  stream << std::setw(9) << "[start]" << std::setw(9) << "[first]"
-         << std::setw(9) << "[avg]";
-  stream << "\t" << std::setw(8) << "[%]"
-         << " ";
-  stream << "\t" << std::setw(8) << "[cdf%]"
-         << " ";
-  stream << "\t" << std::setw(10) << "[Op]";
+
+  stream << "============================== " << title
+         << " ==============================" << std::endl;
+
+  InitField(stream, 24) << "[node type]";
+  InitField(stream, 9) << "[start]";
+  InitField(stream, 9) << "[first]";
+  InitField(stream, 9) << "[avg ms]";
+  InitField(stream, 8) << "[%]";
+  InitField(stream, 8) << "[cdf%]";
+  InitField(stream, 10) << "[mem KB]";
+  InitField(stream, 9) << "[times called]";
   stream << "\t"
          << "[Name]";
   return stream.str();
 }
 
-std::string StatSummarizer::ColumnString(const std::string& name,
-                                         const Detail& detail,
-                                         int64 cumulative_stat_on_node,
-                                         Stat<int64> stat) const {
+std::string StatSummarizer::ColumnString(const Detail& detail,
+                                         const int64 cumulative_stat_on_node,
+                                         const Stat<int64>& stat) const {
+  const double start_ms = detail.start_us.avg() / 1000.0;
+  const double first_time_ms = detail.rel_end_us.first() / 1000.0;
+  const double avg_time_ms = detail.rel_end_us.avg() / 1000.0;
+  const double percentage = detail.rel_end_us.sum() * 100.0 / stat.sum();
+  const double cdf_percentage = (cumulative_stat_on_node * 100.0f) / stat.sum();
+  const int64 times_called = detail.times_called / num_runs();
+
   std::stringstream stream;
-  stream << std::fixed << std::setprecision(3) << std::setw(9)
-         << detail.first_start / 1000.0;
-  stream << std::fixed << std::setprecision(3) << std::setw(9)
-         << detail.first_rel_end / 1000.0;
-
-  double avg_time_ms = detail.total / 1000.0 / num_runs();
-  stream << std::fixed << std::setprecision(3) << std::setw(9) << avg_time_ms;
-
-  double percentage = detail.total * 100.0 / stat.sum();
-  stream << "\t" << std::fixed << std::setprecision(3) << std::setw(7)
-         << percentage << "%";
-
-  double cdf_percentage = cumulative_stat_on_node * 100.0 / stat.sum();
-  stream << "\t" << std::fixed << std::setprecision(3) << std::setw(7)
-         << cdf_percentage << "%";
-
-  stream << "\t" << std::setw(10);
-  auto op_it = node_types_.find(name);
-  if (op_it != node_types_.end()) {
-    stream << op_it->second;
-  } else {
-    stream << " ";
-  }
-
-  stream << "\t" << name;
+  InitField(stream, 24) << detail.type;
+  InitField(stream, 9) << start_ms;
+  InitField(stream, 9) << first_time_ms;
+  InitField(stream, 9) << avg_time_ms;
+  InitField(stream, 7) << percentage << "%";
+  InitField(stream, 7) << cdf_percentage << "%";
+  InitField(stream, 10) << detail.mem_used.newest() / 1000.0;
+  InitField(stream, 9) << times_called;
+  stream << "\t" << detail.name;
 
   return stream.str();
 }
 
-std::string StatSummarizer::GetStatsBySorting(SortingMetric sorting_metric,
-                                              double cdf_cutoff_ratio,
-                                              int num_max_nodes_to_print,
-                                              bool use_memory) const {
-  std::map<std::string, Detail> details;
-  Stat<int64> stat;
-  if (use_memory) {
-    details = memory_details_;
-    stat = memory_;
-  } else {
-    details = timing_details_;
-    stat = run_total_micros_;
-  }
-  num_max_nodes_to_print =
-      std::min<int>(num_max_nodes_to_print, details.size());
+void StatSummarizer::OrderNodesByMetric(
+    SortingMetric metric, std::vector<const Detail*>* details) const {
+  std::priority_queue<std::pair<string, const Detail*>> sorted_list;
+  const int num_nodes = details_.size();
 
+  for (const auto& det : details_) {
+    const Detail* detail = &(det.second);
+    std::stringstream stream;
+    stream << std::setw(20) << std::right << std::setprecision(10)
+           << std::fixed;
+
+    switch (metric) {
+      case BY_NAME:
+        stream << detail->name;
+        break;
+      case BY_RUN_ORDER:
+        stream << num_nodes - detail->run_order;
+        break;
+      case BY_TIME:
+        stream << detail->rel_end_us.avg();
+        break;
+      case BY_MEMORY:
+        stream << detail->mem_used.avg();
+        break;
+      case BY_TYPE:
+        stream << detail->type;
+        break;
+      default:
+        stream << "";
+        break;
+    }
+
+    sorted_list.emplace(stream.str(), detail);
+  }
+
+  while (!sorted_list.empty()) {
+    auto entry = sorted_list.top();
+    sorted_list.pop();
+    details->push_back(entry.second);
+  }
+}
+
+void StatSummarizer::ComputeStatsByType(
+    std::map<string, int64>* node_type_map_count,
+    std::map<string, int64>* node_type_map_time,
+    std::map<string, int64>* node_type_map_memory,
+    std::map<string, int64>* node_type_map_times_called,
+    int64* accumulated_us) const {
+  int64 run_count = run_total_us_.count();
+
+  for (const auto& det : details_) {
+    const string node_name = det.first;
+    const Detail& detail = det.second;
+
+    int64 curr_time_val =
+        static_cast<int64>(detail.rel_end_us.sum() / run_count);
+    *accumulated_us += curr_time_val;
+
+    int64 curr_memory_val = detail.mem_used.newest();
+
+    const string& node_type = detail.type;
+
+    (*node_type_map_count)[node_type] += 1;
+    (*node_type_map_time)[node_type] += curr_time_val;
+    (*node_type_map_memory)[node_type] += curr_memory_val;
+    (*node_type_map_times_called)[node_type] += detail.times_called / run_count;
+  }
+}
+
+std::string StatSummarizer::GetStatsByNodeType() const {
   std::stringstream stream;
-  stream << ShortSummary() << std::endl;
-  string out_opt = "duration";
-  string unit = "ms";
-  if (use_memory) {
-    out_opt = "memory usage";
-    unit = "KB";
-  }
-  if (sorting_metric == SortingMetric::BY_TOTAL) {
-    stream << "============ Top by " << out_opt << " in " << unit
-           << " =================" << std::endl;
-  } else {
-    CHECK(sorting_metric == SortingMetric::BY_RUN_ORDER);
-    stream << "============ By run order (" << unit
-           << ") =================" << std::endl;
-  }
-  stream << HeaderString() << std::endl;
 
-  std::priority_queue<
-      std::pair<int64, const std::pair<const std::string, Detail>*>>
-      statistics;
-  for (const auto& entry : details) {
-    statistics.emplace(sorting_metric == SortingMetric::BY_TOTAL
-                           ? entry.second.total
-                           : -entry.second.first_start,
-                       &entry);
-  }
+  stream << "============================== Summary by node type "
+            "=============================="
+         << std::endl;
 
-  const int64 cutoff_point = stat.sum() * cdf_cutoff_ratio;
+  LOG(INFO) << "Number of nodes executed: " << details_.size();
+
+  std::map<string, int64> node_type_map_count;
+  std::map<string, int64> node_type_map_time;
+  std::map<string, int64> node_type_map_memory;
+  std::map<string, int64> node_type_map_times_called;
   int64 accumulated_us = 0;
 
-  for (int i = 0; !statistics.empty() && i < num_max_nodes_to_print &&
-                  accumulated_us <= cutoff_point;
-       ++i) {
-    accumulated_us += statistics.top().second->second.total;
-    stream << ColumnString(statistics.top().second->first,
-                           statistics.top().second->second, accumulated_us,
-                           stat)
-           << std::endl;
-    statistics.pop();
+  ComputeStatsByType(&node_type_map_count, &node_type_map_time,
+                     &node_type_map_memory, &node_type_map_times_called,
+                     &accumulated_us);
+
+  // Sort them.
+  std::priority_queue<std::pair<int64, std::pair<string, int64>>> timings;
+  for (const auto& node_type : node_type_map_time) {
+    const int64 mem_used = node_type_map_memory[node_type.first];
+    timings.emplace(node_type.second,
+                    std::pair<string, int64>(node_type.first, mem_used));
   }
 
+  InitField(stream, 24) << "[Node type]";
+  InitField(stream, 9) << "[count]";
+  InitField(stream, 10) << "[avg ms]";
+  InitField(stream, 11) << "[avg %]";
+  InitField(stream, 11) << "[cdf %]";
+  InitField(stream, 10) << "[mem KB]";
+  InitField(stream, 10) << "[times called]";
+  stream << std::endl;
+
+  float cdf = 0.0f;
+  while (!timings.empty()) {
+    auto entry = timings.top();
+    timings.pop();
+
+    const string node_type = entry.second.first;
+    const float memory = entry.second.second / 1000.0f;
+
+    const int64 node_type_total_us = entry.first;
+    const float time_per_run_ms = node_type_total_us / 1000.0f;
+
+    const float percentage =
+        ((entry.first / static_cast<float>(accumulated_us)) * 100.0f);
+    cdf += percentage;
+
+    InitField(stream, 24) << node_type;
+    InitField(stream, 9) << node_type_map_count[node_type];
+    InitField(stream, 10) << time_per_run_ms;
+    InitField(stream, 10) << percentage << "%";
+    InitField(stream, 10) << cdf << "%";
+    InitField(stream, 10) << memory;
+    InitField(stream, 9) << node_type_map_times_called[node_type];
+    stream << std::endl;
+  }
+  stream << std::endl;
   return stream.str();
 }
 
-std::string StatSummarizer::GetStatsByTopDurations(
-    double cdf_cutoff, int num_max_nodes_to_print) const {
-  return GetTimingStatsByTopDurations(cdf_cutoff, num_max_nodes_to_print);
-}
+std::string StatSummarizer::GetStatsByMetric(const string& title,
+                                             SortingMetric sorting_metric,
+                                             int num_stats) const {
+  std::vector<const Detail*> details;
+  OrderNodesByMetric(sorting_metric, &details);
 
-std::string StatSummarizer::GetStatsByRunOrder() const {
-  return GetTimingStatsByRunOrder();
-}
+  double cumulative_stat_on_node = 0;
 
-std::string StatSummarizer::GetStatsByOrderOfNodeDefinitions() const {
-  return GetTimingStatsByOrderOfNodeDefinitions();
-}
-
-std::string StatSummarizer::GetTimingStatsByTopDurations(
-    double cdf_cutoff, int num_max_nodes_to_print) const {
-  return GetStatsBySorting(SortingMetric::BY_TOTAL, cdf_cutoff,
-                           num_max_nodes_to_print, false);
-}
-
-std::string StatSummarizer::GetTimingStatsByRunOrder() const {
-  return GetStatsBySorting(SortingMetric::BY_RUN_ORDER, 1.0,
-                           std::numeric_limits<int>::max(), false);
-}
-
-std::string StatSummarizer::GetTimingStatsByOrderOfNodeDefinitions() const {
-  return GetStatsByOrderOfNodeDefinitions(false);
-}
-
-std::string StatSummarizer::GetMemoryStatsByUsage(
-    double cdf_cutoff, int num_max_nodes_to_print) const {
-  return GetStatsBySorting(SortingMetric::BY_TOTAL, cdf_cutoff,
-                           num_max_nodes_to_print, true);
-}
-
-std::string StatSummarizer::GetMemoryStatsByRunOrder() const {
-  return GetStatsBySorting(SortingMetric::BY_RUN_ORDER, 1.0,
-                           std::numeric_limits<int>::max(), true);
-}
-
-std::string StatSummarizer::GetMemoryStatsByOrderOfNodeDefinitions() const {
-  return GetStatsByOrderOfNodeDefinitions(true);
-}
-
-std::string StatSummarizer::GetStatsByOrderOfNodeDefinitions(
-    bool use_memory) const {
-  string type;
-  if (use_memory) {
-    type = "Memory Usage";
-  } else {
-    type = "Timings";
-  }
   std::stringstream stream;
-  stream << ShortSummary() << std::endl;
-  stream << "============ " << type
-         << " by order of graph definition =================" << std::endl;
-  stream << HeaderString() << std::endl;
-
-  int64 accumulated_us = 0;
-  auto details = use_memory ? memory_details_ : timing_details_;
-  Stat<int64> stat = use_memory ? memory_ : run_total_micros_;
-
-  for (const auto& node_name_op : nodes_in_def_order_) {
-    auto detail_it = details.find(node_name_op);
-    if (detail_it == details.end()) {
-      continue;
+  stream << HeaderString(title) << std::endl;
+  int stat_num = 0;
+  for (auto detail : details) {
+    ++stat_num;
+    if (num_stats > 0 && stat_num > num_stats) {
+      break;
     }
-    accumulated_us += detail_it->second.total;
-    stream << ColumnString(detail_it->first, detail_it->second, accumulated_us,
-                           stat)
+
+    // TODO(andrewharp): Make this keep track of the particular metric for cdf.
+    cumulative_stat_on_node += detail->rel_end_us.sum();
+    stream << ColumnString(*detail, cumulative_stat_on_node, run_total_us_)
            << std::endl;
-    details.erase(detail_it);
   }
-
-  if (!details.empty()) {
-    stream << "============ "
-           << "The rest have different names between NodeExecStats and GraphDef"
-           << "============ " << std::endl;
-
-    for (const auto& entry : details) {
-      // Prints the remaining nodes whose names are different from the name in
-      // graph definition.
-      accumulated_us += entry.second.total;
-      stream << ColumnString(entry.first, entry.second, accumulated_us, stat)
-             << std::endl;
-    }
-  }
-
+  stream << std::endl;
   return stream.str();
 }
 
 std::string StatSummarizer::GetOutputString() const {
   std::stringstream stream;
-  stream << "Total time (us): " << run_total_micros_ << std::endl;
-  stream << GetTimingStatsByRunOrder();
-  stream << GetTimingStatsByTopDurations();
-  stream << "Total Memory (bytes): " << memory_ << std::endl;
-  stream << GetMemoryStatsByRunOrder();
-  stream << GetMemoryStatsByUsage();
+  if (options_.show_run_order) {
+    stream << GetStatsByMetric("Run Order", BY_RUN_ORDER,
+                               options_.run_order_limit);
+  }
+  if (options_.show_time) {
+    stream << GetStatsByMetric("Top by Computation Time", BY_TIME,
+                               options_.time_limit);
+  }
+  if (options_.show_memory) {
+    stream << GetStatsByMetric("Top by Memory Use", BY_MEMORY,
+                               options_.memory_limit);
+  }
+  if (options_.show_type) {
+    stream << GetStatsByNodeType();
+  }
+  if (options_.show_summary) {
+    stream << ShortSummary() << std::endl;
+  }
   return stream.str();
 }
 
 void StatSummarizer::PrintStepStats() const {
-  LOG(INFO) << GetOutputString();
-  LOG(INFO);
+  string output = GetOutputString();
+  std::istringstream iss(output);
+  for (std::string line; std::getline(iss, line);) {
+    LOG(INFO) << line;
+  }
 }
 
 void StatSummarizer::PrintOutputs() const {
   std::priority_queue<
       std::pair<int64, const std::pair<const std::string, Detail>*>>
       timings;
-  for (const auto& entry : timing_details_) {
-    timings.emplace(-entry.second.first_start, &entry);
+  for (const auto& entry : details_) {
+    timings.emplace(-entry.second.start_us.avg(), &entry);
   }
 
   LOG(INFO) << "============ Node output tensor sizes in run order ========";

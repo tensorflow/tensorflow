@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -87,7 +88,7 @@ class Barrier : public ResourceBase {
   template <typename T>
   void TryInsertMany(const Tensor& keys, int component_index,
                      const Tensor& values, OpKernelContext* ctx,
-                     DoneCallback callback) {
+                     const DoneCallback& callback) {
     TensorShape element_shape = values.shape();
     OP_REQUIRES_ASYNC(
         ctx, keys.NumElements() == 0 || element_shape.num_elements() > 0,
@@ -194,7 +195,8 @@ class Barrier : public ResourceBase {
   }
 
   void TryTakeMany(int num_elements, bool allow_small_batch, int64 timeout,
-                   OpKernelContext* ctx, IndicesKeysValuesCallback callback) {
+                   OpKernelContext* ctx,
+                   const IndicesKeysValuesCallback& callback) {
     int num_elements_to_deliver = num_elements;
     {
       mutex_lock lock(mu_);
@@ -246,7 +248,7 @@ class Barrier : public ResourceBase {
   }
 
   void Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
-             DoneCallback callback) {
+             const DoneCallback& callback) {
     mutex_lock lock(mu_);
     // We're allowed to close twice if the first close wasn't a
     // cancel but the second one is.
@@ -398,7 +400,8 @@ class Barrier : public ResourceBase {
   }
 
   void CloseQueueLocked(OpKernelContext* ctx, bool cancel_pending_enqueues,
-                        DoneCallback callback) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                        const DoneCallback& callback)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // CloseQueueLocked may only be called with mu_ held.
     if (!cancel_pending_enqueues && queue_closed_) {
       callback();
@@ -410,7 +413,7 @@ class Barrier : public ResourceBase {
     }
     queue_closed_ = true;
     if (cancel_pending_enqueues) queue_cancelled_ = true;
-    if (!ready_queue_->closed()) {
+    if (!ready_queue_->is_closed()) {
       ready_queue_->Close(ctx, cancel_pending_enqueues, callback);
     }
   }
@@ -432,14 +435,10 @@ class Barrier : public ResourceBase {
   TF_DISALLOW_COPY_AND_ASSIGN(Barrier);
 };
 
-class BarrierOp : public OpKernel {
+class BarrierOp : public ResourceOpKernel<Barrier> {
  public:
   explicit BarrierOp(OpKernelConstruction* context)
-      : OpKernel(context), barrier_handle_set_(false) {
-    OP_REQUIRES_OK(context,
-                   context->allocate_persistent(tensorflow::DT_STRING,
-                                                tensorflow::TensorShape({2}),
-                                                &barrier_handle_, nullptr));
+      : ResourceOpKernel(context) {
     OP_REQUIRES_OK(
         context, context->GetAttr("component_types", &value_component_types_));
     OP_REQUIRES_OK(context,
@@ -458,34 +457,19 @@ class BarrierOp : public OpKernel {
                     "limited capacity."));
   }
 
-  ~BarrierOp() override {
-    // If the barrier object was not shared, delete it.
-    if (barrier_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
-      TF_CHECK_OK(cinfo_.resource_manager()->Delete<Barrier>(cinfo_.container(),
-                                                             cinfo_.name()));
-    }
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    mutex_lock l(mu_);
-    if (!barrier_handle_set_) {
-      OP_REQUIRES_OK(ctx, SetBarrierHandle(ctx));
-    }
-    ctx->set_output_ref(0, &mu_, barrier_handle_.AccessTensor(ctx));
-  }
-
  private:
-  Status SetBarrierHandle(OpKernelContext* ctx) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    TF_RETURN_IF_ERROR(cinfo_.Init(ctx->resource_manager(), def()));
-    Barrier* barrier = nullptr;
-    auto creator = [this](Barrier** ret) {
-      *ret = new Barrier(value_component_types_, value_component_shapes_,
-                         cinfo_.name());
-      return (*ret)->Initialize();
-    };
-    TF_RETURN_IF_ERROR(cinfo_.resource_manager()->LookupOrCreate<Barrier>(
-        cinfo_.container(), cinfo_.name(), &barrier, creator));
-    core::ScopedUnref unref_me(barrier);
+  Status CreateResource(Barrier** barrier) override
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    *barrier = new Barrier(value_component_types_, value_component_shapes_,
+                           cinfo_.name());
+    if (*barrier == nullptr) {
+      return errors::ResourceExhausted("Failed to allocate barrier");
+    }
+    return (*barrier)->Initialize();
+  }
+
+  Status VerifyResource(Barrier* barrier) override
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (barrier->component_types() != value_component_types_) {
       return errors::InvalidArgument(
           "Shared barrier '", cinfo_.name(), "' has component types ",
@@ -500,20 +484,11 @@ class BarrierOp : public OpKernel {
           " but requested component shapes were ",
           TensorShapeUtils::ShapeListString(value_component_shapes_));
     }
-    auto h = barrier_handle_.AccessTensor(ctx)->flat<string>();
-    h(0) = cinfo_.container();
-    h(1) = cinfo_.name();
-    barrier_handle_set_ = true;
     return Status::OK();
   }
 
   DataTypeVector value_component_types_;
   std::vector<TensorShape> value_component_shapes_;
-  ContainerInfo cinfo_;
-
-  mutex mu_;
-  PersistentTensor barrier_handle_ GUARDED_BY(mu_);
-  bool barrier_handle_set_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(BarrierOp);
 };

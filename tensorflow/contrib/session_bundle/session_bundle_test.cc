@@ -40,9 +40,9 @@ namespace serving {
 namespace {
 
 // Constants for the export path and file-names.
-const char kExportPath[] = "session_bundle/example/half_plus_two/00000123";
+const char kExportPath[] = "session_bundle/testdata/half_plus_two/00000123";
 const char kExportCheckpointV2Path[] =
-    "session_bundle/example/half_plus_two_ckpt_v2/00000123";
+    "session_bundle/testdata/half_plus_two_ckpt_v2/00000123";
 const char kMetaGraphDefFilename[] = "export.meta";
 const char kVariablesFilename[] = "export-00000-of-00001";
 
@@ -270,12 +270,12 @@ class SessionBundleTest : public ::testing::Test {
   // MetaGraphDef.
   // Returns the path of the export.
   // ** Should only be called once per test **
-  string SetupExport(MetaGraphDefTwiddler twiddler) {
+  string SetupExport(const MetaGraphDefTwiddler& twiddler) {
     return SetupExport(twiddler, kVariablesFilename, kMetaGraphDefFilename);
   }
   // SetupExport that allows for the variables and meta_graph_def filenames
   // to be overridden.
-  string SetupExport(MetaGraphDefTwiddler twiddler,
+  string SetupExport(const MetaGraphDefTwiddler& twiddler,
                      const string& variables_filename,
                      const string& meta_graph_def_filename) {
     // Construct a unique path name based on the test name.

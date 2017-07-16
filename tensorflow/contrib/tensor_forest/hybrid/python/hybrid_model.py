@@ -20,7 +20,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.tensor_forest.python import tensor_forest
+from tensorflow.contrib.framework.python.ops import variables as framework_variables
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -45,7 +45,7 @@ class HybridModel(object):
                **kwargs):
 
     self.device_assigner = (
-        device_assigner or tensor_forest.RandomForestDeviceAssigner())
+        device_assigner or framework_variables.VariableDeviceChooser())
 
     self.params = params
 
@@ -67,7 +67,7 @@ class HybridModel(object):
     # results.
     if isinstance(layer, collections.Iterable):
       return math_ops.reduce_mean(
-          array_ops.pack([l.inference_graph(data) for l in layer]), 0)
+          array_ops.stack([l.inference_graph(data) for l in layer]), 0)
     # If this is a single layer, return its inference result.
     else:
       return layer.inference_graph(data)
@@ -117,8 +117,8 @@ class HybridModel(object):
     else:
       loss = math_ops.reduce_mean(
           nn_ops.sparse_softmax_cross_entropy_with_logits(
-              self.training_inference_graph(data),
-              array_ops.squeeze(math_ops.to_int32(labels))),
+              labels=array_ops.squeeze(math_ops.to_int32(labels)),
+              logits=self.training_inference_graph(data)),
           name="loss")
     if self.regularizer:
       loss += layers.apply_regularization(self.regularizer,

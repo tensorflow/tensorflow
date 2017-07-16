@@ -59,7 +59,7 @@ defines the key of the hash function. `key` is an array of 2 elements.
 A strong hash is important when inputs may be malicious, e.g. URLs with
 additional components. Adversaries could try to make their inputs hash to the
 same bucket for a denial-of-service attack or to skew the results. A strong
-hash prevents this by making it dificult, if not infeasible, to compute inputs
+hash prevents this by making it difficult, if not infeasible, to compute inputs
 that hash to the same bucket. This comes at a cost of roughly 4x higher compute
 time than `tf.string_to_hash_bucket_fast`.
 
@@ -95,21 +95,18 @@ REGISTER_OP("ReduceJoin")
     .Attr("keep_dims: bool = false")
     .Attr("separator: string = ''")
     .Output("output: string")
-    .SetShapeFn(shape_inference::ReductionShapeForReduceJoin)
+    .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Joins a string Tensor across the given dimensions.
 
 Computes the string join across dimensions in the given string Tensor of shape
 `[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input
 strings with the given separator (default: empty string).  Negative indices are
-counted backwards from the end, with `-1` being equivalent to `n - 1`.  Passing
-an empty `reduction_indices` joins all strings in linear index order and outputs
-a scalar string.
-
+counted backwards from the end, with `-1` being equivalent to `n - 1`.
 
 For example:
 
-```
+```python
 # tensor `a` is [["a", "b"], ["c", "d"]]
 tf.reduce_join(a, 0) ==> ["ac", "bd"]
 tf.reduce_join(a, 1) ==> ["ab", "cd"]
@@ -222,9 +219,10 @@ Let N be the size of source (typically N will be the batch size). Split each
 element of `input` based on `delimiter` and return a `SparseTensor`
 containing the splitted tokens. Empty tokens are ignored.
 
-`delimiter` can be empty or a single-byte character. If `delimiter` is an empty
- string, each element of `input` is split into individual single-byte character
- strings, including splitting of UTF-8 multibyte sequences.
+`delimiter` can be empty, or a string of split characters. If `delimiter` is an
+ empty string, each element of `input` is split into individual single-byte
+ character strings, including splitting of UTF-8 multibyte sequences. Otherwise
+ every character of `delimiter` is a potential split point.
 
 For example:
   N = 2, input[0] is 'hello world' and input[1] is 'a b c', then the output
@@ -239,7 +237,7 @@ For example:
   values = ['hello', 'world', 'a', 'b', 'c']
 
 input: 1-D. Strings to split.
-delimiter: 0-D. Delimiter character, or empty string.
+delimiter: 0-D. Delimiter characters (bytes), or empty string.
 indices: A dense matrix of int64 representing the indices of the sparse tensor.
 values: A vector of strings corresponding to the splited values.
 shape: a length-2 vector of int64 representing the shape of the sparse
@@ -310,10 +308,10 @@ REGISTER_OP("Substr")
     .Doc(R"doc(
 Return substrings from `Tensor` of strings.
 
-For each string in the input `Tensor`, creates a substring starting at index 
-`pos` with a total length of `len`. 
+For each string in the input `Tensor`, creates a substring starting at index
+`pos` with a total length of `len`.
 
-If `len` defines a substring that would extend beyond the length of the input 
+If `len` defines a substring that would extend beyond the length of the input
 string, then as many characters as possible are used.
 
 If `pos` is negative or specifies a character index larger than any of the input
@@ -322,7 +320,7 @@ strings, then an `InvalidArgumentError` is thrown.
 `pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
 Op creation.
 
-*NOTE*: `Substr` supports broadcasting up to two dimensions. More about 
+*NOTE*: `Substr` supports broadcasting up to two dimensions. More about
 broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
@@ -332,7 +330,7 @@ Examples
 
 Using scalar `pos` and `len`:
 
-```
+```python
 input = [b'Hello', b'World']
 position = 1
 length = 3
@@ -342,7 +340,7 @@ output = [b'ell', b'orl']
 
 Using `pos` and `len` with same shape as `input`:
 
-```
+```python
 input = [[b'ten', b'eleven', b'twelve'],
          [b'thirteen', b'fourteen', b'fifteen'],
          [b'sixteen', b'seventeen', b'eighteen']]
@@ -384,7 +382,7 @@ length =   [3, 2, 1]
 output = [b'hir', b'ee', b'n"]
 ```
 
-input: Tensor of strings 
+input: Tensor of strings
 pos: Scalar defining the position of first character in each substring
 len: Scalar defining the number of characters to include in each substring
 output: Tensor of substrings

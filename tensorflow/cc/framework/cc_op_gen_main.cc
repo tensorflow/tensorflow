@@ -24,10 +24,10 @@ namespace tensorflow {
 namespace {
 
 void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
-                   bool include_internal) {
+                   const std::string& overrides_fnames, bool include_internal) {
   OpList ops;
   OpRegistry::Global()->Export(include_internal, &ops);
-  WriteCCOps(ops, dot_h, dot_cc);
+  WriteCCOps(ops, dot_h, dot_cc, overrides_fnames);
 }
 
 }  // namespace
@@ -35,15 +35,18 @@ void PrintAllCCOps(const std::string& dot_h, const std::string& dot_cc,
 
 int main(int argc, char* argv[]) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
-  if (argc != 4) {
+  if (argc != 5) {
+    for (int i = 1; i < argc; ++i) {
+      fprintf(stderr, "Arg %d = %s\n", i, argv[i]);
+    }
     fprintf(stderr,
-            "Usage: %s out.h out.cc include_internal\n"
+            "Usage: %s out.h out.cc overrides1.pbtxt,2.pbtxt include_internal\n"
             "  include_internal: 1 means include internal ops\n",
             argv[0]);
     exit(1);
   }
 
-  bool include_internal = tensorflow::StringPiece("1") == argv[3];
-  tensorflow::PrintAllCCOps(argv[1], argv[2], include_internal);
+  bool include_internal = tensorflow::StringPiece("1") == argv[4];
+  tensorflow::PrintAllCCOps(argv[1], argv[2], argv[3], include_internal);
   return 0;
 }

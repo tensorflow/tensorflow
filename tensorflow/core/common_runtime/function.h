@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMMON_RUNTIME_FUNCTION_H_
 
 #include <functional>
+#include <memory>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -25,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+
+static constexpr const char* const kNoInlineAttr = "_noinline";
 
 // Registers a default customizable kernel creator for a function call.
 //
@@ -126,7 +129,7 @@ void DumpGraph(StringPiece label, const Graph* g);
 // OptimizeGraph mutates **g extensively and replaces '*g' with a
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
-void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g);
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g);
 
 // Convert the Graph of a function to a GraphDef.
 //
@@ -146,6 +149,19 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // TODO(zhifengc): Asks math expert to say the comment again.
 FunctionBody* SymbolicGradient(const FunctionBody& f);
 
+// Given a "caller" in graph "g", which is a function call of a function
+// to "fbody". Replaces the "caller" with fbody->graph and connects
+// edges properly.
+void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
+                        Node* caller, const FunctionBody* fbody);
+
+// Instantiates FunctionDef into a graph. Set *fbody to point to the
+// FunctionBody that holds the instantiated FunctionDef.
+Status FunctionDefToBodyHelper(
+    const FunctionDef& fdef, const AttrSlice& attrs,
+    const FunctionLibraryDefinition* const lib_def,
+    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
+    FunctionBody** fbody);
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_COMMON_RUNTIME_FUNCTION_H_

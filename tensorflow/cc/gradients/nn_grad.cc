@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/ops/nn_ops.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
@@ -45,10 +46,23 @@ Status SoftmaxGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Softmax", SoftmaxGrad);
 
+Status LogSoftmaxGrad(const Scope& scope, const Operation& op,
+                   const std::vector<Output>& grad_inputs,
+                   std::vector<Output>* grad_outputs) {
+
+  auto softmax = Exp(scope, op.output(0));
+  auto sum = Sum(scope, grad_inputs[0], {1}, Sum::KeepDims(true));
+  auto mul = Mul(scope, sum, softmax);
+  auto dx = Sub(scope, grad_inputs[0], mul);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("LogSoftmax", LogSoftmaxGrad);
+
 Status ReluGradHelper(const Scope& scope, const Operation& op,
                       const std::vector<Output>& grad_inputs,
                       std::vector<Output>* grad_outputs) {
-  auto dx = ReluGrad(scope, grad_inputs[0], op.input(0));
+  auto dx = internal::ReluGrad(scope, grad_inputs[0], op.input(0));
   grad_outputs->push_back(dx);
   return scope.status();
 }
@@ -57,7 +71,7 @@ REGISTER_GRADIENT_OP("Relu", ReluGradHelper);
 Status Relu6GradHelper(const Scope& scope, const Operation& op,
                        const std::vector<Output>& grad_inputs,
                        std::vector<Output>* grad_outputs) {
-  auto dx = Relu6Grad(scope, grad_inputs[0], op.input(0));
+  auto dx = internal::Relu6Grad(scope, grad_inputs[0], op.input(0));
   grad_outputs->push_back(dx);
   return scope.status();
 }
@@ -66,7 +80,7 @@ REGISTER_GRADIENT_OP("Relu6", Relu6GradHelper);
 Status EluGradHelper(const Scope& scope, const Operation& op,
                      const std::vector<Output>& grad_inputs,
                      std::vector<Output>* grad_outputs) {
-  auto dx = EluGrad(scope, grad_inputs[0], op.output(0));
+  auto dx = internal::EluGrad(scope, grad_inputs[0], op.output(0));
   grad_outputs->push_back(dx);
   return scope.status();
 }

@@ -61,7 +61,7 @@ Status ReplaceSendRecvs(const GraphDef& original_graph_def,
       }
     }
     NodeDef new_node;
-    new_node.CopyFrom(node);
+    new_node = node;
     new_node.mutable_input()->Clear();
     for (const string& old_input : node.input()) {
       string input_prefix;
@@ -84,32 +84,31 @@ Status ReplaceSendRecvs(const GraphDef& original_graph_def,
     string removed_node_name = entry.second;
     const NodeDef* removed_node = original_map[removed_node_name];
     NodeDef new_node;
-    new_node.CopyFrom(*removed_node);
+    new_node = *removed_node;
     nodes_to_add.push_back(new_node);
   }
 
   for (const NodeDef& node : nodes_to_add) {
-    output_graph_def->mutable_node()->Add()->CopyFrom(node);
+    *output_graph_def->mutable_node()->Add() = node;
   }
   return Status::OK();
 }
 
 Status RemoveUnusedNodes(const GraphDef& input_graph_def,
-                         const std::vector<string>& inputs,
-                         const std::vector<string>& outputs,
+                         const TransformFuncContext& context,
                          GraphDef* output_graph_def) {
   std::map<string, const NodeDef*> node_map;
   MapNamesToNodes(input_graph_def, &node_map);
 
-  std::map<string, bool> used_nodes;
-  for (const string& input : inputs) {
-    used_nodes[input] = true;
+  std::set<string> used_nodes;
+  for (const string& input : context.input_names) {
+    used_nodes.insert(input);
   }
-  std::vector<string> current_nodes = outputs;
+  std::vector<string> current_nodes = context.output_names;
   while (!current_nodes.empty()) {
-    std::vector<string> next_nodes;
+    std::set<string> next_nodes;
     for (const string& node_name : current_nodes) {
-      used_nodes[node_name] = true;
+      used_nodes.insert(node_name);
       if (node_map.count(node_name) == 0) {
         LOG(ERROR) << "Bad graph structure, no node named '" << node_name
                    << "' found for input lookup";
@@ -120,11 +119,11 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
       for (const string& input_name : node.input()) {
         const string& input_node_name = NodeNameFromInput(input_name);
         if (used_nodes.count(input_node_name) == 0) {
-          next_nodes.push_back(input_node_name);
+          next_nodes.insert(input_node_name);
         }
       }
     }
-    current_nodes = next_nodes;
+    current_nodes = std::vector<string>(next_nodes.begin(), next_nodes.end());
   }
   FilterGraphDef(
       input_graph_def,
@@ -134,9 +133,10 @@ Status RemoveUnusedNodes(const GraphDef& input_graph_def,
   return Status::OK();
 }
 
+// Converts any sub-graphs that can be resolved into constant expressions into
+// single Const ops.
 Status FoldConstants(const GraphDef& input_graph_def,
-                     const std::vector<string>& inputs,
-                     const std::vector<string>& outputs,
+                     const TransformFuncContext& context,
                      GraphDef* output_graph_def) {
   // Some older GraphDefs have saved _output_shapes attributes which are out of
   // date and cause import errors, so clean them up first.
@@ -147,21 +147,26 @@ Status FoldConstants(const GraphDef& input_graph_def,
   TF_RETURN_IF_ERROR(
       ImportGraphDef(import_opts, cleaned_graph_def, &input_graph, nullptr));
   DeviceAttributes device_attributes;
+  subgraph::RewriteGraphMetadata metadata;
   TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
-      &input_graph, inputs, outputs, {}, device_attributes));
-  if (!DoConstantFolding(ConstantFoldingOptions(), nullptr, Env::Default(),
-                         nullptr, &input_graph)) {
-    return errors::InvalidArgument("Constant folding failed");
-  }
+      &input_graph, context.input_names, context.output_names, {},
+      device_attributes, false /* use_function_convention */, &metadata));
+  bool was_mutated;
+  TF_RETURN_IF_ERROR(ConstantFold(ConstantFoldingOptions(), nullptr,
+                                  Env::Default(), nullptr, &input_graph,
+                                  &was_mutated));
   GraphDef folded_graph_def;
   input_graph.ToGraphDef(&folded_graph_def);
   GraphDef send_recvs_replaced;
-  TF_RETURN_IF_ERROR(ReplaceSendRecvs(input_graph_def, folded_graph_def, inputs,
-                                      outputs, &send_recvs_replaced));
-  TF_RETURN_IF_ERROR(RemoveUnusedNodes(send_recvs_replaced, inputs, outputs,
-                                       output_graph_def));
+  TF_RETURN_IF_ERROR(ReplaceSendRecvs(input_graph_def, folded_graph_def,
+                                      context.input_names, context.output_names,
+                                      &send_recvs_replaced));
+  TF_RETURN_IF_ERROR(
+      RemoveUnusedNodes(send_recvs_replaced, context, output_graph_def));
   return Status::OK();
 }
+
+REGISTER_GRAPH_TRANSFORM("fold_constants", FoldConstants);
 
 }  // namespace graph_transforms
 }  // namespace tensorflow

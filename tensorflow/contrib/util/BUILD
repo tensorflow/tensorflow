@@ -27,7 +27,6 @@ cc_binary(
     srcs = ["convert_graphdef_memmapped_format.cc"],
     deps = [
         ":convert_graphdef_memmapped_format_lib",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
@@ -66,7 +65,12 @@ py_library(
     name = "util_py",
     srcs = glob(["**/*.py"]),
     srcs_version = "PY2AND3",
-    deps = [],
+    deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+    ],
 )
 
 filegroup(

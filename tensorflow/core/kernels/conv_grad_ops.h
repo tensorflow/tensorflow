@@ -178,14 +178,14 @@ struct ConvBackpropSpatialDimension {
   int64 expanded_output_size;
 
   // Number of padding elements to be added before/after this dimension of
-  // the input when computing Conv2DBackpropInput.
+  // the input when computing Conv?DBackpropInput.
   int64 pad_before, pad_after;
 };
 
-// Computed dimensions for a Conv2D backpropagation.
-struct Conv2DBackpropDimensions {
+// Computed dimensions for a backwards convolution.
+struct ConvBackpropDimensions {
   // Information about each spatial dimension.
-  ConvBackpropSpatialDimension rows, cols;
+  gtl::InlinedVector<ConvBackpropSpatialDimension, 3> spatial_dims;
 
   // Batch size.
   int64 batch_size;
@@ -194,14 +194,16 @@ struct Conv2DBackpropDimensions {
   int64 in_depth, out_depth;
 };
 
-// Common code between implementations of Conv2DBackpropInput and
-// Conv2DBackpropFilter. Verifies that the dimensions all match, and computes
-// sizes/padding for rows and columns.
-Status Conv2DBackpropComputeDimensions(
-    StringPiece label, const TensorShape& input_shape,
-    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const std::vector<int32>& strides, Padding padding,
-    TensorFormat data_format, Conv2DBackpropDimensions* dims);
+// Common code between implementations of Conv?DBackpropInput and
+// Conv?DBackpropFilter. Verifies that the dimensions all match, and computes
+// sizes/padding for the spatial dimensions.
+Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
+                                     const TensorShape& input_shape,
+                                     const TensorShape& filter_shape,
+                                     const TensorShape& out_backprop_shape,
+                                     const std::vector<int32>& strides,
+                                     Padding padding, TensorFormat data_format,
+                                     ConvBackpropDimensions* dims);
 
 }  // namespace tensorflow
 

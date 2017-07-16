@@ -189,10 +189,10 @@ struct Expector<T, true> {
     }
   }
 
-  static void Near(const T& a, const T& b, const double abs_err) {
+  static void Near(const T& a, const T& b, const double abs_err, int index) {
     if (a != b) {  // Takes care of inf.
-      EXPECT_LE(double(Eigen::numext::abs(a - b)), abs_err) << "a = " << a
-                                                            << " b = " << b;
+      EXPECT_LE(double(Eigen::numext::abs(a - b)), abs_err)
+          << "a = " << a << " b = " << b << " index = " << index;
     }
   }
 
@@ -202,7 +202,7 @@ struct Expector<T, true> {
     auto a = x.flat<T>();
     auto b = y.flat<T>();
     for (int i = 0; i < a.size(); ++i) {
-      Near(a(i), b(i), abs_err);
+      Near(a(i), b(i), abs_err, i);
     }
   }
 };

@@ -69,6 +69,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_KERNEL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_KERNEL_H_
 
+#include <array>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -76,9 +77,10 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
+#include "tensorflow/stream_executor/lib/array_slice.h"
+#include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 
 namespace perftools {
 namespace gputools {
@@ -134,6 +136,8 @@ class KernelMetadata {
 // Thread-compatible.
 class KernelBase {
  public:
+  KernelBase(KernelBase &&) = default;
+
   // Constructs an "empty" (not-yet-loaded) kernel instance.
   //
   // parent is the StreamExecutor that will be responsible for loading the
@@ -265,24 +269,220 @@ struct IsSharedDeviceMemory<SharedDeviceMemory<U>> {
   static constexpr bool value = true;
 };
 
-// KernelArg encapsulates the information necessary for a back-end executor to
-// configure a kernel to launch using the given argument.
+// Basic data about a kernel argument.
 struct KernelArg {
-  // Indicates the type of an argument: normal, to be passed to the kernel
-  // in the standard manner, or shared memory, which has distinct
-  // rules for specification per backend.
-  enum Type {
-    kNormal,
-    kSharedMemory,
-  } type;
+  bool is_shared;
+  const void *address;
+  size_t size;
+};
 
-  // The data to pass to the kernel - either a pointer to device memory, or the
-  // argument value. compact_array is used to prevent smaller args (ex. u8, u64)
-  // from requiring heap allocation.
-  port::InlinedVector<uint8, 4> data;
+// An iterator for traversing all the arguments of a KernelArgsArray.
+class KernelArgIterator {
+ public:
+  KernelArgIterator(int number_of_argument_addresses,
+                    int number_of_shared_memory_arguments,
+                    const void *const *arg_addresses_data,
+                    const size_t *arg_sizes_data,
+                    const size_t *shmem_bytes_data,
+                    const size_t *shmem_indices_data)
+      : arg_index_(0),
+        number_of_arguments_(number_of_argument_addresses +
+                             number_of_shared_memory_arguments),
+        arg_address_iter_(arg_addresses_data),
+        arg_size_iter_(arg_sizes_data),
+        shmem_bytes_iter_(shmem_bytes_data),
+        shmem_indices_iter_(shmem_indices_data),
+        shmem_indices_end_(shmem_indices_data +
+                           number_of_shared_memory_arguments) {}
 
-  // The size of this argument in bytes.
-  uint64 bytes;
+  // Returns true if another argument is present in the iterator.
+  bool has_next() { return arg_index_ < number_of_arguments_; }
+
+  // Returns the next argument in the iterator.
+  //
+  // Returns a default-constructed KernelArg if there is no next argument.
+  KernelArg next() {
+    KernelArg result;
+    if (!has_next()) {
+      return result;
+    } else if ((shmem_indices_iter_ != shmem_indices_end_) &&
+               (arg_index_ == *shmem_indices_iter_)) {
+      result.is_shared = true;
+      result.address = nullptr;
+      result.size = *shmem_bytes_iter_;
+      ++shmem_indices_iter_;
+      ++shmem_bytes_iter_;
+    } else {
+      result.is_shared = false;
+      result.address = *arg_address_iter_;
+      result.size = *arg_size_iter_;
+      ++arg_address_iter_;
+      ++arg_size_iter_;
+    }
+    ++arg_index_;
+    return result;
+  }
+
+ private:
+  size_t arg_index_;
+  size_t number_of_arguments_;
+  const void *const *arg_address_iter_;
+  const size_t *arg_size_iter_;
+  const size_t *shmem_bytes_iter_;
+  const size_t *shmem_indices_iter_;
+  const size_t *const shmem_indices_end_;
+};
+
+// Base class for KernelArgsArray.
+//
+// Supports all the getter methods that do not depend on the compile-time number
+// of arguments template parameter.
+//
+// This class exists as a way to pass kernel arguments to
+// StreamExecutorInterface::Launch. That Launch method is virtual, so it can't
+// be templated to accept any KernelArgsArray type, therfore a reference to this
+// base type is passed instead.
+//
+// Performance is not a concern here because each of these methods will be
+// called at most once per kernel launch. Past performance concerns with
+// KernelArgsArray have been in reference to the argument packing routines which
+// are called once per kernel argument. Those packing routines are now handled
+// by the templated KernelArgsArray subclass of this class where they can take
+// advantage of compile-time knowledge of the number of arguments in order to be
+// very efficient.
+class KernelArgsArrayBase {
+ public:
+  virtual ~KernelArgsArrayBase() = default;
+
+  // Gets the number of arguments added so far, including shared memory
+  // arguments.
+  virtual size_t number_of_arguments() const = 0;
+
+  // Gets the total number of shared memory bytes added so far.
+  virtual uint64 number_of_shared_bytes() const = 0;
+
+  // Gets the list of argument addresses.
+  virtual port::ArraySlice<const void *> argument_addresses() const = 0;
+
+  // Gets an iterator to the arguments in the array.
+  virtual KernelArgIterator arg_iterator() const = 0;
+};
+
+// A list of arguments for a kernel call.
+//
+// The template parameter kNumArgs is the maximum number of arguments which can
+// be stored in the list.
+//
+// Contains a list of addresses for non-shared-memory arguments and a list of
+// sizes for shared-memory arguments. Since the shared-memory arguments may be
+// interspersed with the non-shared-memory arguments, it also stores a list of
+// the indices at which the shared-memory arguments appeared.
+//
+// For example, if the argument address list contains {a, b, c, d, e}, the
+// shared-memory arguments list contains the sizes of {A, B, C}, and the
+// shared-memory indices list contains {0, 3, 5}, then the original list of
+// arguments was {A, a, b, B, c, C, d, e}.
+//
+// This way of storing the arguments makes CUDA kernel calls efficient because
+// they only require the argument address list and the total number of shared
+// bytes, but it also makes it possible for OpenCL kernel calls because they
+// depend on the location of each shared-memory argument and its size.
+//
+// Note that the code for adding arguments has been identified as a performance
+// hotspot in some real-world applications so this structure has been optimized
+// for the performance of argument adding.
+template <size_t kNumArgs>
+class KernelArgsArray : public KernelArgsArrayBase {
+ public:
+  explicit KernelArgsArray()
+      : total_shared_memory_bytes_(0),
+        number_of_argument_addresses_(0),
+        number_of_shared_memory_arguments_(0) {}
+
+  // Adds an argument to the list.
+  //
+  // Note that the address of the argument is stored, so the input must not go
+  // out of scope before the instance of this class that calls this method does.
+  template <typename T>
+  void add_argument(const T &arg) {
+    argument_addresses_[number_of_argument_addresses_] =
+        static_cast<const void *>(&arg);
+    argument_sizes_[number_of_argument_addresses_] = sizeof(arg);
+    ++number_of_argument_addresses_;
+  }
+
+  // Adds a device memory argument to the list.
+  void add_device_memory_argument(const DeviceMemoryBase &arg) {
+    const void **copy_ptr =
+        &device_memory_opaque_pointers_[number_of_argument_addresses_];
+    *copy_ptr = arg.opaque();
+    argument_addresses_[number_of_argument_addresses_] = copy_ptr;
+    argument_sizes_[number_of_argument_addresses_] = sizeof(void *);
+    ++number_of_argument_addresses_;
+  }
+
+  // Adds a shared memory argument to the list.
+  //
+  // The only significant information about a shared argument is its size, so
+  // that is the only parameter in this function.
+  void add_shared_bytes(size_t number_of_bytes) {
+    shared_memory_indices_[number_of_shared_memory_arguments_] =
+        number_of_argument_addresses_ + number_of_shared_memory_arguments_;
+    shared_memory_bytes_[number_of_shared_memory_arguments_] = number_of_bytes;
+    ++number_of_shared_memory_arguments_;
+    total_shared_memory_bytes_ += number_of_bytes;
+  }
+
+  // Gets the number of arguments added so far, including shared memory
+  // arguments.
+  size_t number_of_arguments() const override {
+    return number_of_argument_addresses_ + number_of_shared_memory_arguments_;
+  }
+
+  // Gets the total number of shared memory bytes added so far.
+  uint64 number_of_shared_bytes() const override {
+    return total_shared_memory_bytes_;
+  }
+
+  // Gets the list of argument addresses.
+  port::ArraySlice<const void *> argument_addresses() const override {
+    return port::ArraySlice<const void *>(argument_addresses_.data(),
+                                          number_of_argument_addresses_);
+  }
+
+  // Gets an iterator to the arguments in the array.
+  KernelArgIterator arg_iterator() const override {
+    return KernelArgIterator(
+        number_of_argument_addresses_, number_of_shared_memory_arguments_,
+        argument_addresses_.data(), argument_sizes_.data(),
+        shared_memory_bytes_.data(), shared_memory_indices_.data());
+  }
+
+ private:
+  // A place to store copies of opaque pointers from device memory arguments.
+  std::array<const void *, kNumArgs> device_memory_opaque_pointers_;
+
+  // Addresses for non-shared-memory arguments.
+  std::array<const void *, kNumArgs> argument_addresses_;
+
+  // Sizes for non-shared-memory arguments.
+  std::array<size_t, kNumArgs> argument_sizes_;
+
+  // Size in bytes for each shared memory argument.
+  std::array<size_t, kNumArgs> shared_memory_bytes_;
+
+  // Indices in the arguments array for shared memory arguments.
+  std::array<size_t, kNumArgs> shared_memory_indices_;
+
+  // Total of all shared memory sizes.
+  size_t total_shared_memory_bytes_;
+
+  // Number of significant entries in argument_addresses_ and argument_sizes_.
+  size_t number_of_argument_addresses_;
+
+  // Number of significant entries in shared_memory_bytes_ and
+  // shared_memory_indices_.
+  size_t number_of_shared_memory_arguments_;
 };
 
 // Typed variant of KernelBase, like a typed device function pointer. See the
@@ -298,6 +498,8 @@ struct KernelArg {
 template <typename... Params>
 class TypedKernel : public KernelBase {
  public:
+  static constexpr size_t kNumberOfParameters = sizeof...(Params);
+
   // Delegates to KernelBase::KernelBase(), see that constructor.
   explicit TypedKernel(StreamExecutor *parent) : KernelBase(parent) {}
 
@@ -318,13 +520,19 @@ class TypedKernel : public KernelBase {
   //
   // Const refs are taken as parameters on all of the handlers to avoid
   // implicit type promotion of integers.
-  void PackParams(std::vector<KernelArg> *args, Params... params) const {
+  //
+  // WARNING: as a performance optimization this method may store pointers to
+  // some of the input parameters in the kernel args structure, so any params
+  // passed into this method must live at least as long as the kernel args
+  // structure.
+  void PackParams(KernelArgsArray<kNumberOfParameters> *args,
+                  Params &... params) const {
     PackOneParam(args, params...);
   }
 
   template <typename T, typename... RestOfParams>
-  void PackOneParam(std::vector<KernelArg> *args, const T &arg,
-                    const RestOfParams... rest) const {
+  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args, const T &arg,
+                    const RestOfParams &... rest) const {
     PackOneParam(args, arg);
     PackOneParam(args, rest...);
   }
@@ -334,7 +542,7 @@ class TypedKernel : public KernelBase {
   // separate implementation below.
   template <typename T>
   void PackOneParam(
-      std::vector<KernelArg> *args, const T &arg,
+      KernelArgsArray<kNumberOfParameters> *args, const T &arg,
       typename std::enable_if<!IsDeviceMemoryValueLike<T>::value &&
                               !IsDeviceMemoryPointer<T>::value &&
                               !IsSharedDeviceMemory<T>::value>::type * =
@@ -343,44 +551,40 @@ class TypedKernel : public KernelBase {
                   "cannot pass raw pointer to the device");
     static_assert(!std::is_convertible<T, DeviceMemoryBase>::value,
                   "cannot pass device memory as a normal value");
-    const uint8 *arg_ptr = reinterpret_cast<const uint8 *>(&arg);
-    args->emplace_back(KernelArg{
-        KernelArg::kNormal,
-        port::InlinedVector<uint8, 4>{arg_ptr, arg_ptr + sizeof(arg)}, sizeof(arg)});
+    args->add_argument(arg);
   }
 
   // DeviceMemoryBase family reference override.
   template <typename T>
   void PackOneParam(
-      std::vector<KernelArg> *args, const T &arg,
+      KernelArgsArray<kNumberOfParameters> *args, const T &arg,
       typename std::enable_if<IsDeviceMemoryValueLike<T>::value>::type * =
           nullptr) const {
-    args->emplace_back(parent()->DeviceMemoryToKernelArg(arg));
+    args->add_device_memory_argument(arg);
   }
 
   // DeviceMemoryBase family pointer override.
   template <typename T>
   void PackOneParam(
-      std::vector<KernelArg> *args, T arg,
+      KernelArgsArray<kNumberOfParameters> *args, T arg,
       typename std::enable_if<IsDeviceMemoryPointer<T>::value>::type * =
           nullptr) const {
     DeviceMemoryBase *ptr = static_cast<DeviceMemoryBase *>(arg);
-    args->emplace_back(parent()->DeviceMemoryToKernelArg(*ptr));
+    args->add_device_memory_argument(*ptr);
   }
 
   // Dynamic shared device memory has a size, but no associated allocation on
   // the host; internally, the device will allocate storage.
   template <typename T>
   void PackOneParam(
-      std::vector<KernelArg> *args, T arg,
+      KernelArgsArray<kNumberOfParameters> *args, T arg,
       typename std::enable_if<IsSharedDeviceMemory<T>::value>::type * =
           nullptr) const {
-    args->emplace_back(KernelArg{KernelArg::kSharedMemory,
-                                 port::InlinedVector<uint8, 4>(), arg.size()});
+    args->add_shared_bytes(arg.size());
   }
 
   // Base case for variadic template expansion - nothing to do!
-  void PackOneParam(std::vector<KernelArg> *args) const {}
+  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args) const {}
 
   SE_DISALLOW_COPY_AND_ASSIGN(TypedKernel);
 };

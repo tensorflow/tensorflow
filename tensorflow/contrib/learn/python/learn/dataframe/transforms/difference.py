@@ -28,7 +28,7 @@ from tensorflow.python.ops import sparse_ops
 def _negate_sparse(st):
   return sparse_tensor.SparseTensor(indices=st.indices,
                                     values=-st.values,
-                                    shape=st.shape)
+                                    dense_shape=st.dense_shape)
 
 
 @series.Series.register_binary_op("__sub__")

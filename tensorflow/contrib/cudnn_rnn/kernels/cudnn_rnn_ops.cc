@@ -40,9 +40,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/stream_executor_util.h"
 #endif  // GOOGLE_CUDA
 
 /*
@@ -66,7 +68,7 @@ limitations under the License.
  * TensorFlow is responsible for making sure the memory is alive long enough
  * and recycles afterwards.
  *
-*/
+ */
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -77,6 +79,12 @@ using GPUDevice = Eigen::GpuDevice;
 
 template <typename Device, typename T, typename Index>
 class CudnnRNNParamsSizeOp;
+
+template <typename Device, typename T>
+class CudnnRNNParamsToCanonical;
+
+template <typename Device, typename T>
+class CudnnRNNCanonicalToParams;
 
 template <typename Device, typename T>
 class CudnnRNNForwardOp;
@@ -96,6 +104,7 @@ using perftools::gputools::dnn::RnnInputMode;
 using perftools::gputools::dnn::RnnDirectionMode;
 using perftools::gputools::dnn::ToDataType;
 using perftools::gputools::DeviceMemory;
+using perftools::gputools::DeviceMemoryBase;
 using perftools::gputools::ScratchAllocator;
 using perftools::gputools::port::StatusOr;
 
@@ -184,10 +193,21 @@ DeviceMemory<U> CastDeviceMemory(Tensor* tensor) {
       tensor->template flat<T>().size() * sizeof(T));
 }
 
+DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
+                                   int64 offset, int64 size) {
+  const void* base_ptr = device_memory.opaque();
+  void* offset_ptr =
+      const_cast<char*>(reinterpret_cast<const char*>(base_ptr) + offset);
+  CHECK(offset + size <= device_memory.size())
+      << "The slice is not within the region of DeviceMemory.";
+  return DeviceMemoryBase(offset_ptr, size);
+}
+
 inline Status FromExecutorStatus(const perftools::gputools::port::Status& s) {
-  return s.ok() ? Status::OK() : Status(static_cast<tensorflow::error::Code>(
-                                            static_cast<int>(s.code())),
-                                        s.error_message());
+  return s.ok() ? Status::OK()
+                : Status(static_cast<tensorflow::error::Code>(
+                             static_cast<int>(s.code())),
+                         s.error_message());
 }
 
 template <typename T>
@@ -209,8 +229,9 @@ inline perftools::gputools::port::Status ToExecutorStatus(const Status& s) {
 // should be alive for the span of the Cudnn RNN itself.
 class CudnnRNNWorkspaceAllocator : public ScratchAllocator {
  public:
-  virtual ~CudnnRNNWorkspaceAllocator() {}
-  CudnnRNNWorkspaceAllocator(OpKernelContext* context) : context_(context) {}
+  ~CudnnRNNWorkspaceAllocator() override {}
+  explicit CudnnRNNWorkspaceAllocator(OpKernelContext* context)
+      : context_(context) {}
   int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override {
     return std::numeric_limits<int64>::max();
   }
@@ -226,8 +247,7 @@ class CudnnRNNWorkspaceAllocator : public ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return perftools::gputools::port::StatusOr<
-        perftools::gputools::DeviceMemory<uint8>>(
+    return StatusOr<DeviceMemory<uint8>>(
         AsDeviceMemory<uint8>(&temporary_memory));
   }
   int64 TotalByteSize() { return total_byte_size_; }
@@ -245,7 +265,7 @@ class CudnnRNNWorkspaceAllocator : public ScratchAllocator {
 template <typename T>
 class CudnnRNNReserveSpaceAllocator : public ScratchAllocator {
  public:
-  virtual ~CudnnRNNReserveSpaceAllocator() {}
+  ~CudnnRNNReserveSpaceAllocator() override {}
   CudnnRNNReserveSpaceAllocator(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
   int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override {
@@ -278,6 +298,43 @@ class CudnnRNNReserveSpaceAllocator : public ScratchAllocator {
   int output_index_;
 };
 
+// A helper to allocate persistent memory for Cudnn RNN models, which is
+// expected to live between kernel invocations.
+// This class is not thread-safe.
+class CudnnRNNPersistentSpaceAllocator : public ScratchAllocator {
+ public:
+  explicit CudnnRNNPersistentSpaceAllocator(OpKernelContext* context)
+      : context_(context) {}
+
+  ~CudnnRNNPersistentSpaceAllocator() override {}
+
+  int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override {
+    return std::numeric_limits<int64>::max();
+  }
+
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(
+      perftools::gputools::Stream* stream, int64 byte_size) override {
+    if (total_byte_size_ != 0) {
+      return Status(error::FAILED_PRECONDITION,
+                    "Persistent space allocator can only be called once");
+    }
+
+    Status allocation_status = context_->allocate_persistent(
+        DT_UINT8, TensorShape({byte_size}), &handle_, nullptr);
+    if (!allocation_status.ok()) {
+      return ToExecutorStatus(allocation_status);
+    }
+    total_byte_size_ += byte_size;
+    return AsDeviceMemory<uint8>(handle_.AccessTensor(context_));
+  }
+  int64 TotalByteSize() { return total_byte_size_; }
+
+ private:
+  int64 total_byte_size_ = 0;
+  PersistentTensor handle_;
+  OpKernelContext* context_;  // not owned
+};
+
 struct CudnnModelTypes {
   RnnMode rnn_mode;
   TFRNNInputMode rnn_input_mode;
@@ -299,6 +356,16 @@ struct CudnnModelShapes {
   TensorShape input_shape;
   TensorShape output_shape;
   TensorShape hidden_state_shape;
+  // At present only fields related to cached RnnDescriptor are concerned.
+  bool IsCompatibleWith(const CudnnModelShapes& rhs) const {
+    return num_layers == rhs.num_layers && input_size == rhs.input_size &&
+           num_units == rhs.num_units && dir_count == rhs.dir_count;
+  }
+  string RnnDescDebugString() {
+    return strings::Printf(
+        "[num_layers, input_size, num_units, dir_count]: [%d, %d, %d, %d]",
+        num_layers, input_size, num_units, dir_count);
+  }
 };
 
 // Extract and checks the forward input tensors, parameters, and shapes from the
@@ -357,13 +424,48 @@ Status ExtractForwardInput(OpKernelContext* context,
 
 using perftools::gputools::dnn::RnnDescriptor;
 
+template <typename T>
+void RestoreParams(const OpInputList params_input,
+                   const std::vector<RnnDescriptor::ParamsRegion>& params,
+                   DeviceMemoryBase* data_dst,
+                   perftools::gputools::Stream* stream) {
+  int num_params = params.size();
+  CHECK(params_input.size() == num_params)
+      << "Number of params mismatch. Expected " << params_input.size()
+      << ", got " << num_params;
+  for (int i = 0; i < params.size(); i++) {
+    int64 size_in_bytes = params[i].size;
+    int64 size = size_in_bytes / sizeof(T);
+    CHECK(size == params_input[i].NumElements())
+        << "Params size mismatch. Expected " << size << ", got "
+        << params_input[i].NumElements();
+    auto data_src_ptr = StreamExecutorUtil::AsDeviceMemory<T>(params_input[i]);
+    DeviceMemoryBase data_dst_ptr =
+        SliceDeviceMemory(*data_dst, params[i].offset, size_in_bytes);
+    stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+  }
+}
+
 }  // namespace
+
+// Note: all following kernels depend on a RnnDescriptor instance, which
+// according to Cudnn official doc should be kept around and reused across all
+// Cudnn kernels in the same model.
+// In Tensorflow, we don't pass the reference across different OpKernels,
+// rather, recreate it separately in each OpKernel, which does no cause issue:
+// CudnnDropoutDescriptor keeps a reference to a memory for
+// random number generator state. During recreation, this state is lost.
+// However, only forward-pass Cudnn APIs make use of the state.
 
 // A common base class for RNN kernels. It extracts common attributes and
 // shape validations.
 class CudnnRNNKernelCommon : public OpKernel {
  protected:
-  CudnnRNNKernelCommon(OpKernelConstruction* context) : OpKernel(context) {
+  explicit CudnnRNNKernelCommon(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("dropout", &dropout_));
+    OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
+    OP_REQUIRES_OK(context, context->GetAttr("seed2", &seed2_));
     string str;
     OP_REQUIRES_OK(context, context->GetAttr("rnn_mode", &str));
     OP_REQUIRES_OK(context, ParseRNNMode(str, &model_types_.rnn_mode));
@@ -373,6 +475,10 @@ class CudnnRNNKernelCommon : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("direction", &str));
     OP_REQUIRES_OK(
         context, ParseRNNDirectionMode(str, &model_types_.rnn_direction_mode));
+    // Reset CudnnRnnDescriptor and related random number generate states in
+    // every Compute() call.
+    OP_REQUIRES_OK(context, ReadBoolFromEnvVar("TF_CUDNN_RESET_RND_GEN_STATE",
+                                               false, &reset_rnd_gen_state_));
   }
 
   bool HasInputC() const { return model_types_.HasInputC(); }
@@ -382,6 +488,9 @@ class CudnnRNNKernelCommon : public OpKernel {
     return model_types_.rnn_direction_mode;
   }
   CudnnModelTypes model_types() const { return model_types_; }
+  float dropout() const { return dropout_; }
+  uint64 seed() { return (static_cast<uint64>(seed_) << 32) | seed2_; }
+  bool ResetRndGenState() { return reset_rnd_gen_state_; }
 
   template <typename T>
   Status ExtractCudnnRNNParamsInfo(OpKernelContext* context,
@@ -408,11 +517,14 @@ class CudnnRNNKernelCommon : public OpKernel {
     RnnInputMode input_mode;
     TF_RETURN_IF_ERROR(
         ToRNNInputMode(rnn_input_mode(), num_units, input_size, &input_mode));
+
     auto* stream = context->op_device_context()->stream();
+    // ExtracCudnnRNNParamsInfo is only called by op_kernels that do not require
+    // random number generator, therefore set state_allocator to nullptr.
     auto rnn_desc_s = stream->parent()->createRnnDescriptor(
         num_layers, num_units, input_size, input_mode, rnn_direction_mode(),
-        rnn_mode(), ToDataType<T>::value, 0.f /*dropout*/, 0 /*seed*/,
-        nullptr /*state_allocator*/);
+        rnn_mode(), ToDataType<T>::value, dropout(), seed(),
+        nullptr /* state_allocator */);
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
     }
@@ -421,6 +533,11 @@ class CudnnRNNKernelCommon : public OpKernel {
   }
 
  private:
+  int seed_;
+  int seed2_;
+  float dropout_;
+  bool reset_rnd_gen_state_;
+
   CudnnModelTypes model_types_;
 };
 
@@ -457,6 +574,164 @@ REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsSize")
                             .TypeConstraint<float>("T")
                             .TypeConstraint<int32>("S"),
                         CudnnRNNParamsSizeOp<GPUDevice, float, int32>);
+
+// Convert weight and bias params from a platform-specific layout to the
+// canonical form.
+template <typename T>
+class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
+ public:
+  typedef GPUDevice Device;
+  explicit CudnnRNNParamsToCanonical(OpKernelConstruction* context)
+      : CudnnRNNKernelCommon(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("num_params", &num_params_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(3);
+    auto input_ptr = StreamExecutorUtil::AsDeviceMemory<T>(input);
+    auto* stream = context->op_device_context()->stream();
+
+    std::unique_ptr<RnnDescriptor> rnn_desc;
+    OP_REQUIRES_OK(context, ExtractCudnnRNNParamsInfo<T>(context, &rnn_desc));
+    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    CHECK(params_size_in_bytes % sizeof(T) == 0)
+        << "params_size_in_bytes must be multiple of element size";
+
+    const Tensor* num_units_t = nullptr;
+    OP_REQUIRES_OK(context, context->input("num_units", &num_units_t));
+    CHECK(TensorShapeUtils::IsScalar(num_units_t->shape()))
+        << "num_units is not a scalar";
+    int num_units = num_units_t->scalar<int>()();
+
+    const Tensor* input_size_t = nullptr;
+    OP_REQUIRES_OK(context, context->input("input_size", &input_size_t));
+    CHECK(TensorShapeUtils::IsScalar(input_size_t->shape()))
+        << "input_size is not a scalar";
+    int input_size = input_size_t->scalar<int>()();
+
+    const Tensor* num_layers_t = nullptr;
+    OP_REQUIRES_OK(context, context->input("num_layers", &num_layers_t));
+    CHECK(TensorShapeUtils::IsScalar(num_layers_t->shape()))
+        << "num_layers is not a scalar";
+    int num_layers = num_layers_t->scalar<int>()();
+    int num_params_per_layer = num_params_ / num_layers;
+
+    CHECK(num_params_ == rnn_desc->ParamsWeightRegions().size())
+        << "Number of params mismatch. Expected " << num_params_ << ", got "
+        << rnn_desc->ParamsWeightRegions().size();
+    for (int i = 0; i < rnn_desc->ParamsWeightRegions().size(); i++) {
+      int64 size_in_bytes = rnn_desc->ParamsWeightRegions()[i].size;
+      int64 size = size_in_bytes / sizeof(T);
+      int width = (i < num_params_per_layer / 2) ? input_size : num_units;
+      int height = num_units;
+      CHECK(size == width * height) << "Params size mismatch. Expected "
+                                    << width * height << ", got " << size;
+      // If data is aligned, use slice view to avoid expensive memcpy.
+      bool start_aligned =
+          rnn_desc->ParamsWeightRegions()[i].offset % EIGEN_MAX_ALIGN_BYTES ==
+          0;
+      bool size_aligned = size_in_bytes % EIGEN_MAX_ALIGN_BYTES == 0;
+      if (start_aligned && size_aligned) {
+        int start = rnn_desc->ParamsWeightRegions()[i].offset / sizeof(T);
+        int end = start + size_in_bytes / sizeof(T);
+        context->set_output(i, input.Slice(start, end));
+      } else {
+        Tensor* output = nullptr;
+        OP_REQUIRES_OK(context, context->allocate_output(
+                                    i, TensorShape({width, height}), &output));
+        DeviceMemoryBase data_src_ptr = SliceDeviceMemory(
+            input_ptr, rnn_desc->ParamsWeightRegions()[i].offset,
+            size_in_bytes);
+        auto data_dst_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*output);
+        stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+      }
+    }
+
+    OP_REQUIRES(context, num_params_ == rnn_desc->ParamsBiasRegions().size(),
+                errors::InvalidArgument("Number of params mismatch. Expected ",
+                                        num_params_, ", got ",
+                                        rnn_desc->ParamsBiasRegions().size()));
+    for (int i = 0; i < rnn_desc->ParamsBiasRegions().size(); i++) {
+      int64 size_in_bytes = rnn_desc->ParamsBiasRegions()[i].size;
+      int64 size = size_in_bytes / sizeof(T);
+      OP_REQUIRES(context, size == num_units,
+                  errors::InvalidArgument("Params size mismatch. Expected ",
+                                          num_units, ", got ", size));
+
+      // If data is aligned, use slice view to avoid expensive memcpy.
+      bool start_aligned =
+          rnn_desc->ParamsBiasRegions()[i].offset % EIGEN_MAX_ALIGN_BYTES == 0;
+      bool size_aligned = size_in_bytes % EIGEN_MAX_ALIGN_BYTES == 0;
+      if (start_aligned && size_aligned) {
+        int start = rnn_desc->ParamsBiasRegions()[i].offset / sizeof(T);
+        int end = start + size_in_bytes / sizeof(T);
+        context->set_output(num_params_ + i, input.Slice(start, end));
+      } else {
+        Tensor* output = nullptr;
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(num_params_ + i,
+                                                TensorShape({size}), &output));
+        DeviceMemoryBase data_src_ptr = SliceDeviceMemory(
+            input_ptr, rnn_desc->ParamsBiasRegions()[i].offset, size_in_bytes);
+        auto data_dst_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*output);
+        stream->ThenMemcpy(&data_dst_ptr, data_src_ptr, size_in_bytes);
+      }
+    }
+  }
+
+ private:
+  int num_params_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsToCanonical")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("num_layers")
+                            .HostMemory("num_units")
+                            .HostMemory("input_size")
+                            .TypeConstraint<float>("T"),
+                        CudnnRNNParamsToCanonical<GPUDevice, float>);
+
+// Convert weight and bias params from the canonical form to a
+// platform-specific layout.
+template <typename T>
+class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
+ public:
+  typedef GPUDevice Device;
+  explicit CudnnRNNCanonicalToParams(OpKernelConstruction* context)
+      : CudnnRNNKernelCommon(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    std::unique_ptr<RnnDescriptor> rnn_desc;
+    OP_REQUIRES_OK(context, ExtractCudnnRNNParamsInfo<T>(context, &rnn_desc));
+    int64 params_size_in_bytes = rnn_desc->ParamsSizeInBytes();
+    CHECK(params_size_in_bytes % sizeof(T) == 0)
+        << "params_size_in_bytes must be multiple of element size";
+    Tensor* output = nullptr;
+    int params_size = params_size_in_bytes / sizeof(T);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, {params_size}, &output));
+    auto output_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*output);
+    auto* stream = context->op_device_context()->stream();
+
+    OpInputList weights;
+    OP_REQUIRES_OK(context, context->input_list("weights", &weights));
+    RestoreParams<T>(weights, rnn_desc->ParamsWeightRegions(), &output_ptr,
+                     stream);
+
+    OpInputList biases;
+    OP_REQUIRES_OK(context, context->input_list("biases", &biases));
+    RestoreParams<T>(biases, rnn_desc->ParamsBiasRegions(), &output_ptr,
+                     stream);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("CudnnRNNCanonicalToParams")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("num_layers")
+                            .HostMemory("num_units")
+                            .HostMemory("input_size")
+                            .TypeConstraint<float>("T"),
+                        CudnnRNNCanonicalToParams<GPUDevice, float>);
 
 // Run the forward operation of the RNN model.
 template <typename T>
@@ -502,16 +777,32 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     OP_REQUIRES_OK(context,
                    ToRNNInputMode(rnn_input_mode(), model_shapes.num_units,
                                   model_shapes.input_size, &input_mode));
-    // TODO(zhengxq): add dropout support.
     // TODO(zhengxq): cache the descriptor so we don't have to create them all
     // the time.
     auto data_type = ToDataType<T>::value;
-    auto rnn_desc_s = executor->createRnnDescriptor(
-        model_shapes.num_layers, model_shapes.num_units,
-        model_shapes.input_size, input_mode, rnn_direction_mode(), rnn_mode(),
-        data_type, 0.f /*dropout*/, 0 /*seed*/, nullptr /*state_allocator*/);
-    OP_REQUIRES_OK(context, FromExecutorStatus(rnn_desc_s));
-    auto rnn_desc = rnn_desc_s.ConsumeValueOrDie();
+    {
+      mutex_lock l(mu_);
+      if (model_shapes_ == nullptr) {
+        model_shapes_.reset(new CudnnModelShapes(model_shapes));
+      } else {
+        OP_REQUIRES(context, model_shapes_->IsCompatibleWith(model_shapes),
+                    errors::InvalidArgument(
+                        "Incompatible rnn model shapes inferred: expecting ",
+                        model_shapes_->RnnDescDebugString(), ", getting ",
+                        model_shapes.RnnDescDebugString(), "."));
+      }
+      if (rnn_desc_ == nullptr || ResetRndGenState()) {
+        dropout_state_allocator_.reset(
+            new CudnnRNNPersistentSpaceAllocator(context));
+        auto rnn_desc_s = executor->createRnnDescriptor(
+            model_shapes_->num_layers, model_shapes_->num_units,
+            model_shapes_->input_size, input_mode, rnn_direction_mode(),
+            rnn_mode(), data_type, dropout(), seed(),
+            dropout_state_allocator_.get());
+        OP_REQUIRES_OK(context, FromExecutorStatus(rnn_desc_s));
+        rnn_desc_ = std::move(rnn_desc_s.ConsumeValueOrDie());
+      }
+    }
 
     auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
         input_shape.dim_size(0), input_shape.dim_size(1),
@@ -557,21 +848,30 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     // Creates a memory callback for the workspace. The memory lives to the end
     // of this kernel calls.
     CudnnRNNWorkspaceAllocator workspace_allocator(context);
-    bool launch_status =
-        stream
-            ->ThenRnnForward(
-                *rnn_desc, *input_desc, input_data, *hidden_state_desc,
-                input_h_data, *hidden_state_desc, input_c_data, params_data,
-                *output_desc, &output_data, *hidden_state_desc, &output_h_data,
-                *hidden_state_desc, &output_c_data, is_training_,
-                &reserve_space_allocator, &workspace_allocator)
-            .ok();
+    bool launch_status = false;
+    {
+      mutex_lock l(mu_);
+      launch_status =
+          stream
+              ->ThenRnnForward(
+                  *rnn_desc_, *input_desc, input_data, *hidden_state_desc,
+                  input_h_data, *hidden_state_desc, input_c_data, params_data,
+                  *output_desc, &output_data, *hidden_state_desc,
+                  &output_h_data, *hidden_state_desc, &output_c_data,
+                  is_training_, &reserve_space_allocator, &workspace_allocator)
+              .ok();
+    }
     OP_REQUIRES(context, launch_status,
                 errors::Internal("Failed to call ThenRnnForward"));
   }
 
  private:
+  mutex mu_;
   bool is_training_;
+  std::unique_ptr<CudnnModelShapes> model_shapes_ GUARDED_BY(mu_);
+  std::unique_ptr<RnnDescriptor> rnn_desc_ GUARDED_BY(mu_);
+  std::unique_ptr<CudnnRNNPersistentSpaceAllocator> dropout_state_allocator_
+      GUARDED_BY(mu_);
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -612,9 +912,9 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* output_h = nullptr;
     OP_REQUIRES_OK(context, context->input("output_h", &output_h));
     OP_REQUIRES(context, output_h->shape() == hidden_state_shape,
-                errors::InvalidArgument("Invalid output_h shape: ",
-                                        output_h->shape().DebugString(), " ",
-                                        hidden_state_shape.DebugString()));
+                errors::InvalidArgument(
+                    "Invalid output_h shape: ", output_h->shape().DebugString(),
+                    " ", hidden_state_shape.DebugString()));
     const Tensor* output_c = nullptr;
     if (HasInputC()) {
       // Only LSTM uses input_c and output_c. So for all other models, we only
@@ -685,15 +985,32 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     OP_REQUIRES_OK(context,
                    ToRNNInputMode(rnn_input_mode(), model_shapes.num_units,
                                   model_shapes.input_size, &input_mode));
-    // TODO(zhengxq): add dropout support.
     // TODO(zhengxq): cache the descriptor so we don't have to create them all
     // the time.
-    auto rnn_desc_s = executor->createRnnDescriptor(
-        model_shapes.num_layers, model_shapes.num_units,
-        model_shapes.input_size, input_mode, rnn_direction_mode(), rnn_mode(),
-        data_type, 0.f /*dropout*/, 0 /*seed*/, nullptr /*state_allocator*/);
-    OP_REQUIRES_OK(context, FromExecutorStatus(rnn_desc_s));
-    auto rnn_desc = rnn_desc_s.ConsumeValueOrDie();
+    {
+      mutex_lock l(mu_);
+      if (model_shapes_ == nullptr) {
+        model_shapes_.reset(new CudnnModelShapes(model_shapes));
+      } else {
+        OP_REQUIRES(context, model_shapes_->IsCompatibleWith(model_shapes),
+                    errors::InvalidArgument(
+                        "Incompatible rnn model shapes inferred: expecting ",
+                        model_shapes_->RnnDescDebugString(), ", getting ",
+                        model_shapes.RnnDescDebugString(), "."));
+      }
+
+      if (rnn_desc_ == nullptr || ResetRndGenState()) {
+        dropout_state_allocator_.reset(
+            new CudnnRNNPersistentSpaceAllocator(context));
+        auto rnn_desc_s = executor->createRnnDescriptor(
+            model_shapes.num_layers, model_shapes.num_units,
+            model_shapes.input_size, input_mode, rnn_direction_mode(),
+            rnn_mode(), data_type, dropout(), seed(),
+            dropout_state_allocator_.get());
+        OP_REQUIRES_OK(context, FromExecutorStatus(rnn_desc_s));
+        rnn_desc_ = std::move(rnn_desc_s.ConsumeValueOrDie());
+      }
+    }
 
     auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
         input_shape.dim_size(0), input_shape.dim_size(1),
@@ -743,21 +1060,32 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     // Creates a memory callback for the workspace. The memory lives to the end
     // of this kernel calls.
     CudnnRNNWorkspaceAllocator workspace_allocator(context);
-    bool launch_status =
-        stream
-            ->ThenRnnBackward(
-                *rnn_desc, *input_desc, input_data, *hidden_state_desc,
-                input_h_data, *hidden_state_desc, input_c_data, params_data,
-                *output_desc, output_data, *hidden_state_desc, output_h_data,
-                *hidden_state_desc, output_c_data, output_backprop_data,
-                output_h_backprop_data, output_c_backprop_data,
-                &input_backprop_data, &input_h_backprop_data,
-                &input_c_backprop_data, &params_backprop_data,
-                &reserve_space_uint8, &workspace_allocator)
-            .ok();
+    bool launch_status = false;
+    {
+      mutex_lock l(mu_);
+      launch_status =
+          stream
+              ->ThenRnnBackward(
+                  *rnn_desc_, *input_desc, input_data, *hidden_state_desc,
+                  input_h_data, *hidden_state_desc, input_c_data, params_data,
+                  *output_desc, output_data, *hidden_state_desc, output_h_data,
+                  *hidden_state_desc, output_c_data, output_backprop_data,
+                  output_h_backprop_data, output_c_backprop_data,
+                  &input_backprop_data, &input_h_backprop_data,
+                  &input_c_backprop_data, &params_backprop_data,
+                  &reserve_space_uint8, &workspace_allocator)
+              .ok();
+    }
     OP_REQUIRES(context, launch_status,
                 errors::Internal("Failed to call ThenRnnBackward"));
   }
+
+ private:
+  mutex mu_;
+  std::unique_ptr<CudnnModelShapes> model_shapes_ GUARDED_BY(mu_);
+  std::unique_ptr<RnnDescriptor> rnn_desc_ GUARDED_BY(mu_);
+  std::unique_ptr<CudnnRNNPersistentSpaceAllocator> dropout_state_allocator_
+      GUARDED_BY(mu_);
 };
 
 REGISTER_KERNEL_BUILDER(

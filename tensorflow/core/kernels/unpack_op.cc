@@ -32,6 +32,10 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
+
 template <typename Device, typename T>
 class UnpackOp : public OpKernel {
  public:
@@ -148,5 +152,22 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                         UnpackOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                          \
+      Name("Unpack").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      UnpackOp<SYCLDevice, type>)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int32>("T"),
+                        UnpackOp<CPUDevice, int32>);
+#undef REGISTER_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

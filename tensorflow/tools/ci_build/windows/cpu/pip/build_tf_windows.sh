@@ -32,44 +32,36 @@ set -e
 # This script is under <repo_root>/tensorflow/tools/ci_build/windows/cpu/pip/
 # Change into repository root.
 script_dir=$(dirname $0)
-cd ${script_dir%%tensorflow/tools/ci_build/windows/cpu/pip}
+cd ${script_dir%%tensorflow/tools/ci_build/windows/cpu/pip}.
 
-# Use a temporary directory with a short name.
-export TMPDIR="C:/tmp"
+# Setting up the environment variables Bazel and ./configure needs
+source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
+  || { echo "Failed to source common_env.sh" >&2; exit 1; }
 
-# Set bash path
-export BAZEL_SH="C:/tools/msys64/usr/bin/bash"
+# load bazel_test_lib.sh
+source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
+  || { echo "Failed to source bazel_test_lib.sh" >&2; exit 1; }
 
-# Set Python path for ./configure
-export PYTHON_BIN_PATH="C:/Program Files/Anaconda3/python"
+run_configure_for_cpu_build
 
-# Set Python path for cc_configure.bzl
-export BAZEL_PYTHON="C:/Program Files/Anaconda3/python"
+clean_output_base
 
-# Set Visual Studio path
-export BAZEL_VS="C:/Program Files (x86)/Microsoft Visual Studio 14.0"
+bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
-# Add python into PATH, it's needed because gen_git_source.py uses
-# '/usr/bin/env python' as a shebang
-export PATH="/c/Program Files/Anaconda3:$PATH"
+# Create a python test directory to avoid package name conflict
+PY_TEST_DIR="py_test_dir"
+create_python_test_dir "${PY_TEST_DIR}"
 
-export TF_NEED_CUDA=0
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}"
 
-# bazel clean --expunge doesn't work on Windows yet.
-# Clean the output base manually to ensure build correctness
-bazel clean
-output_base=$(bazel info output_base)
-bazel shutdown
-# Sleep 5s to wait for jvm shutdown completely
-# otherwise rm will fail with device or resource busy error
-sleep 5
-rm -rf ${output_base}
+# Running python tests on Windows needs pip package installed
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
+reinstall_tensorflow_pip ${PIP_NAME}
 
-echo "" | ./configure
-
-bazel build -c opt --cpu=x64_windows_msvc --host_cpu=x64_windows_msvc\
-    --copt="/w" --verbose_failures --experimental_ui\
-      tensorflow/tools/pip_package:build_pip_package || exit $?
-
-
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package $PWD
+# Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
+# which will result testing system installed tensorflow
+bazel test -c opt $BUILD_OPTS -k --test_output=errors \
+  --define=no_tensorflow_py_deps=true --test_lang_filters=py \
+  --test_tag_filters=-no_pip,-no_windows \
+  --build_tag_filters=-no_pip,-no_windows --build_tests_only \
+  //${PY_TEST_DIR}/tensorflow/python/...

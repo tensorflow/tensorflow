@@ -12,19 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Library for getting system information during TensorFlow tests."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import multiprocessing
 import platform
 import re
 import socket
-
-import tensorflow as tf
 
 # pylint: disable=g-bad-import-order
 # Note: cpuinfo and psutil are not installed for you in the TensorFlow
@@ -36,6 +34,7 @@ import psutil
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import gfile
 from tensorflow.tools.test import gpu_info_lib
 
 
@@ -81,7 +80,7 @@ def gather_cpu_info():
 
   # Gather num_cores_allowed
   try:
-    with tf.gfile.GFile('/proc/self/status') as fh:
+    with gfile.GFile('/proc/self/status', 'rb') as fh:
       nc = re.search(r'(?m)^Cpus_allowed:\s*(.*)$', fh.read())
     if nc:  # e.g. 'ff' => 8, 'fff' => 12
       cpu_info.num_cores_allowed = (
@@ -97,7 +96,7 @@ def gather_cpu_info():
   cpu_info.cpu_info = info['brand']
   cpu_info.num_cores = info['count']
   cpu_info.mhz_per_cpu = info['hz_advertised_raw'][0] / 1.0e6
-  l2_cache_size = re.match(r'(\d+)', str(info['l2_cache_size']))
+  l2_cache_size = re.match(r'(\d+)', str(info.get('l2_cache_size', '')))
   if l2_cache_size:
     # If a value is returned, it's in KB
     cpu_info.cache_size['L2'] = int(l2_cache_size.group(0)) * 1024
@@ -105,9 +104,10 @@ def gather_cpu_info():
   # Try to get the CPU governor
   try:
     cpu_governors = set([
-        tf.gfile.GFile(f, 'r').readline().rstrip()
-        for f in tf.gfile.Glob(
-            '/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor')])
+        gfile.GFile(f, 'r').readline().rstrip()
+        for f in glob.glob(
+            '/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor')
+    ])
     if cpu_governors:
       if len(cpu_governors) > 1:
         cpu_info.cpu_governor = 'mixed'

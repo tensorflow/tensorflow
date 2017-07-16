@@ -13,81 +13,55 @@ py_binary(
     name = "boston",
     srcs = ["boston.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
     name = "hdf5_classification",
     srcs = ["hdf5_classification.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_binary(
     name = "iris",
     srcs = ["iris.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
     name = "iris_custom_decay_dnn",
     srcs = ["iris_custom_decay_dnn.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
     name = "iris_custom_model",
     srcs = ["iris_custom_model.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
     name = "iris_run_config",
     srcs = ["iris_run_config.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "iris_val_based_early_stopping",
-    srcs = ["iris_val_based_early_stopping.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "iris_with_pipeline",
-    srcs = ["iris_with_pipeline.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
     name = "random_forest_mnist",
-    srcs = [
-        "random_forest_mnist.py",
-    ],
+    srcs = ["random_forest_mnist.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -95,9 +69,7 @@ py_binary(
     name = "resnet",
     srcs = ["resnet.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
@@ -106,6 +78,8 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -115,6 +89,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -124,6 +99,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -133,18 +109,15 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
 py_binary(
     name = "wide_n_deep_tutorial",
-    srcs = [
-        "wide_n_deep_tutorial.py",
-    ],
+    srcs = ["wide_n_deep_tutorial.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_binary(
@@ -153,7 +126,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/examples/tutorials/mnist:input_data",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -161,9 +134,7 @@ py_binary(
     name = "multiple_gpu",
     srcs = ["multiple_gpu.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 sh_test(
@@ -176,12 +147,9 @@ sh_test(
         ":iris_custom_decay_dnn",
         ":iris_custom_model",
         ":iris_run_config",
-        ":iris_val_based_early_stopping",
-        ":iris_with_pipeline",
         ":random_forest_mnist",
         ":resnet",
         ":text_classification",
-        ":text_classification_builtin_rnn_model",
         ":text_classification_character_cnn",
         ":text_classification_character_rnn",
         ":text_classification_cnn",

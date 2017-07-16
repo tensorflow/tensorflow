@@ -104,7 +104,8 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     # and would give a bad result for a batch matrix, so aways use
     # matrix_diag_part.
     diag = array_ops.matrix_diag_part(self._chol)
-    det = 2.0 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
+    det = 2.0 * math_ops.reduce_sum(math_ops.log(math_ops.abs(diag)),
+                                    reduction_indices=[-1])
     det.set_shape(self.get_shape()[:-2])
     return det
 

@@ -19,8 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
@@ -70,7 +74,7 @@ def get_global_step(graph=None):
     TypeError: If the global step tensor has a non-integer type, or if it is not
       a `Variable`.
   """
-  graph = ops.get_default_graph() if graph is None else graph
+  graph = graph or ops.get_default_graph()
   global_step_tensor = None
   global_step_tensors = graph.get_collection(ops.GraphKeys.GLOBAL_STEP)
   if len(global_step_tensors) == 1:
@@ -88,6 +92,50 @@ def get_global_step(graph=None):
   return global_step_tensor
 
 
+def create_global_step(graph=None):
+  """Create global step tensor in graph.
+
+  Args:
+    graph: The graph in which to create the global step tensor. If missing,
+      use default graph.
+
+  Returns:
+    Global step tensor.
+
+  Raises:
+    ValueError: if global step tensor is already defined.
+  """
+  graph = graph or ops.get_default_graph()
+  if get_global_step(graph) is not None:
+    raise ValueError('"global_step" already exists.')
+  # Create in proper graph and base name_scope.
+  with graph.as_default() as g, g.name_scope(None):
+    return variable_scope.get_variable(
+        ops.GraphKeys.GLOBAL_STEP,
+        shape=[],
+        dtype=dtypes.int64,
+        initializer=init_ops.zeros_initializer(),
+        trainable=False,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP])
+
+
+def get_or_create_global_step(graph=None):
+  """Returns and create (if necessary) the global step tensor.
+
+  Args:
+    graph: The graph in which to create the global step tensor. If missing, use
+      default graph.
+
+  Returns:
+    The global step tensor.
+  """
+  graph = graph or ops.get_default_graph()
+  global_step_tensor = get_global_step(graph)
+  if global_step_tensor is None:
+    global_step_tensor = create_global_step(graph)
+  return global_step_tensor
+
+
 def assert_global_step(global_step_tensor):
   """Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 
@@ -95,7 +143,9 @@ def assert_global_step(global_step_tensor):
     global_step_tensor: `Tensor` to test.
   """
   if not (isinstance(global_step_tensor, variables.Variable) or
-          isinstance(global_step_tensor, ops.Tensor)):
+          isinstance(global_step_tensor, ops.Tensor) or
+          isinstance(global_step_tensor,
+                     resource_variable_ops.ResourceVariable)):
     raise TypeError(
         'Existing "global_step" must be a Variable or Tensor: %s.' %
         global_step_tensor)

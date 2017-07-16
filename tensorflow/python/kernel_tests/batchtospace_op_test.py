@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Functional tests for BatchToSpace op.
 
 Additional tests are included in spacetobatch_op_test.py, where the BatchToSpace
@@ -24,16 +23,20 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.platform import test
 
 
 class PythonOpImpl(object):
 
   @staticmethod
   def batch_to_space(*args, **kwargs):
-    return tf.batch_to_space(*args, **kwargs)
+    return array_ops.batch_to_space(*args, **kwargs)
 
 
 class CppOpImpl(object):
@@ -43,7 +46,7 @@ class CppOpImpl(object):
     return gen_array_ops._batch_to_space(*args, **kwargs)
 
 
-class BatchToSpaceDepthToSpace(tf.test.TestCase, PythonOpImpl):
+class BatchToSpaceDepthToSpace(test.TestCase, PythonOpImpl):
 
   # Verifies that: batch_to_space(x) = transpose(depth_to_space(transpose(x)))
   def testDepthToSpaceTranspose(self):
@@ -51,10 +54,10 @@ class BatchToSpaceDepthToSpace(tf.test.TestCase, PythonOpImpl):
     block_size = 2
     crops = np.zeros((2, 2), dtype=np.int32)
     y1 = self.batch_to_space(x, crops, block_size=block_size)
-    y2 = tf.transpose(
-        tf.depth_to_space(
-            tf.transpose(x, [3, 1, 2, 0]),
-            block_size=block_size), [3, 1, 2, 0])
+    y2 = array_ops.transpose(
+        array_ops.depth_to_space(
+            array_ops.transpose(x, [3, 1, 2, 0]), block_size=block_size),
+        [3, 1, 2, 0])
     with self.test_session():
       self.assertAllEqual(y1.eval(), y2.eval())
 
@@ -63,7 +66,7 @@ class BatchToSpaceDepthToSpaceCpp(BatchToSpaceDepthToSpace, CppOpImpl):
   pass
 
 
-class BatchToSpaceErrorHandlingTest(tf.test.TestCase, PythonOpImpl):
+class BatchToSpaceErrorHandlingTest(test.TestCase, PythonOpImpl):
 
   def testInputWrongDimMissingBatch(self):
     # The input is missing the first dimension ("batch")
@@ -110,8 +113,8 @@ class BatchToSpaceErrorHandlingTest(tf.test.TestCase, PythonOpImpl):
 
   def testUnknownShape(self):
     t = self.batch_to_space(
-        tf.placeholder(tf.float32),
-        tf.placeholder(tf.int32),
+        array_ops.placeholder(dtypes.float32),
+        array_ops.placeholder(dtypes.int32),
         block_size=4)
     self.assertEqual(4, t.get_shape().ndims)
 
@@ -121,7 +124,7 @@ class BatchToSpaceErrorHandlingCppTest(BatchToSpaceErrorHandlingTest,
   pass
 
 
-class BatchToSpaceNDErrorHandlingTest(tf.test.TestCase):
+class BatchToSpaceNDErrorHandlingTest(test.TestCase):
 
   def _testStaticShape(self, input_shape, block_shape, paddings, error):
     block_shape = np.array(block_shape)
@@ -129,7 +132,7 @@ class BatchToSpaceNDErrorHandlingTest(tf.test.TestCase):
 
     # Try with sizes known at graph construction time.
     with self.assertRaises(error):
-      _ = tf.batch_to_space_nd(
+      _ = array_ops.batch_to_space_nd(
           np.zeros(input_shape, np.float32), block_shape, paddings)
 
   def _testDynamicShape(self, input_shape, block_shape, paddings):
@@ -137,16 +140,19 @@ class BatchToSpaceNDErrorHandlingTest(tf.test.TestCase):
     paddings = np.array(paddings)
 
     # Try with sizes unknown at graph construction time.
-    input_placeholder = tf.placeholder(tf.float32)
-    block_shape_placeholder = tf.placeholder(tf.int32, shape=block_shape.shape)
-    paddings_placeholder = tf.placeholder(tf.int32)
-    t = tf.batch_to_space_nd(input_placeholder, block_shape_placeholder,
-                             paddings_placeholder)
+    input_placeholder = array_ops.placeholder(dtypes.float32)
+    block_shape_placeholder = array_ops.placeholder(
+        dtypes.int32, shape=block_shape.shape)
+    paddings_placeholder = array_ops.placeholder(dtypes.int32)
+    t = array_ops.batch_to_space_nd(input_placeholder, block_shape_placeholder,
+                                    paddings_placeholder)
 
     with self.assertRaises(ValueError):
-      _ = t.eval({input_placeholder: np.zeros(input_shape, np.float32),
-                  block_shape_placeholder: block_shape,
-                  paddings_placeholder: paddings})
+      _ = t.eval({
+          input_placeholder: np.zeros(input_shape, np.float32),
+          block_shape_placeholder: block_shape,
+          paddings_placeholder: paddings
+      })
 
   def _testShape(self, input_shape, block_shape, paddings, error):
     self._testStaticShape(input_shape, block_shape, paddings, error)
@@ -176,54 +182,62 @@ class BatchToSpaceNDErrorHandlingTest(tf.test.TestCase):
 
   def testUnknownShape(self):
     # Verify that input shape and paddings shape can be unknown.
-    _ = tf.batch_to_space_nd(
-        tf.placeholder(tf.float32),
-        tf.placeholder(tf.int32, shape=(2,)),
-        tf.placeholder(tf.int32))
+    _ = array_ops.batch_to_space_nd(
+        array_ops.placeholder(dtypes.float32),
+        array_ops.placeholder(
+            dtypes.int32, shape=(2,)),
+        array_ops.placeholder(dtypes.int32))
 
     # Only number of input dimensions is known.
-    t = tf.batch_to_space_nd(
-        tf.placeholder(tf.float32, shape=(None, None, None, None)),
-        tf.placeholder(tf.int32, shape=(2,)),
-        tf.placeholder(tf.int32))
+    t = array_ops.batch_to_space_nd(
+        array_ops.placeholder(
+            dtypes.float32, shape=(None, None, None, None)),
+        array_ops.placeholder(
+            dtypes.int32, shape=(2,)),
+        array_ops.placeholder(dtypes.int32))
     self.assertEqual(4, t.get_shape().ndims)
 
     # Dimensions are partially known.
-    t = tf.batch_to_space_nd(
-        tf.placeholder(tf.float32, shape=(None, None, None, 2)),
-        tf.placeholder(tf.int32, shape=(2,)),
-        tf.placeholder(tf.int32))
+    t = array_ops.batch_to_space_nd(
+        array_ops.placeholder(
+            dtypes.float32, shape=(None, None, None, 2)),
+        array_ops.placeholder(
+            dtypes.int32, shape=(2,)),
+        array_ops.placeholder(dtypes.int32))
     self.assertEqual([None, None, None, 2], t.get_shape().as_list())
 
     # Dimensions are partially known.
-    t = tf.batch_to_space_nd(
-        tf.placeholder(tf.float32, shape=(3 * 2 * 3, None, None, 2)), [2, 3],
-        tf.placeholder(tf.int32))
+    t = array_ops.batch_to_space_nd(
+        array_ops.placeholder(
+            dtypes.float32, shape=(3 * 2 * 3, None, None, 2)), [2, 3],
+        array_ops.placeholder(dtypes.int32))
     self.assertEqual([3, None, None, 2], t.get_shape().as_list())
 
     # Dimensions are partially known.
-    t = tf.batch_to_space_nd(
-        tf.placeholder(tf.float32, shape=(3 * 2 * 3, None, 2, 2)), [2, 3],
+    t = array_ops.batch_to_space_nd(
+        array_ops.placeholder(
+            dtypes.float32, shape=(3 * 2 * 3, None, 2, 2)), [2, 3],
         [[1, 1], [0, 1]])
     self.assertEqual([3, None, 5, 2], t.get_shape().as_list())
 
     # Dimensions are fully known.
-    t = tf.batch_to_space_nd(
-        tf.placeholder(tf.float32, shape=(3 * 2 * 3, 2, 1, 2)), [2, 3],
+    t = array_ops.batch_to_space_nd(
+        array_ops.placeholder(
+            dtypes.float32, shape=(3 * 2 * 3, 2, 1, 2)), [2, 3],
         [[1, 1], [0, 0]])
     self.assertEqual([3, 2, 3, 2], t.get_shape().as_list())
 
 
-class BatchToSpaceGradientTest(tf.test.TestCase, PythonOpImpl):
+class BatchToSpaceGradientTest(test.TestCase, PythonOpImpl):
 
   # Check the gradients.
   def _checkGrad(self, x, crops, block_size):
     assert 4 == x.ndim
     with self.test_session():
-      tf_x = tf.convert_to_tensor(x)
+      tf_x = ops.convert_to_tensor(x)
       tf_y = self.batch_to_space(tf_x, crops, block_size)
       epsilon = 1e-5
-      ((x_jacob_t, x_jacob_n)) = tf.test.compute_gradient(
+      ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
           tf_x,
           x.shape,
           tf_y,
@@ -240,8 +254,8 @@ class BatchToSpaceGradientTest(tf.test.TestCase, PythonOpImpl):
     x = np.random.normal(0, 1, b * h * w * d *
                          block_size_sq).astype(np.float32).reshape(
                              [b * block_size * block_size, h, w, d])
-    crops = np.array([[crop_beg, crop_end], [crop_beg, crop_end]],
-                     dtype=np.int32)
+    crops = np.array(
+        [[crop_beg, crop_end], [crop_beg, crop_end]], dtype=np.int32)
 
     self._checkGrad(x, crops, block_size)
 
@@ -270,17 +284,17 @@ class BatchToSpaceGradientCppTest(BatchToSpaceGradientTest, CppOpImpl):
   pass
 
 
-class BatchToSpaceNDGradientTest(tf.test.TestCase):
+class BatchToSpaceNDGradientTest(test.TestCase):
 
   # Check the gradients.
   def _checkGrad(self, x, block_shape, crops):
     block_shape = np.array(block_shape)
     crops = np.array(crops).reshape((len(block_shape), 2))
     with self.test_session():
-      tf_x = tf.convert_to_tensor(x)
-      tf_y = tf.batch_to_space_nd(tf_x, block_shape, crops)
+      tf_x = ops.convert_to_tensor(x)
+      tf_y = array_ops.batch_to_space_nd(tf_x, block_shape, crops)
       epsilon = 1e-5
-      ((x_jacob_t, x_jacob_n)) = tf.test.compute_gradient(
+      ((x_jacob_t, x_jacob_n)) = gradient_checker.compute_gradient(
           tf_x,
           x.shape,
           tf_y,
@@ -310,4 +324,4 @@ class BatchToSpaceNDGradientTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

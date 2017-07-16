@@ -63,6 +63,10 @@ TEST(SemverTest, VersionStringFollowsSemver) {
   if (major == 0 && minor <= 11) {
     return;
   }
+  if (str_util::ConsumePrefix(&semver, "head")) {
+    ASSERT_TRUE(semver.empty());
+    return;
+  }
   ASSERT_TRUE(str_util::ConsumeLeadingDigits(&semver, &patch));
   if (semver.empty()) return;
   if (semver[0] == '-') {

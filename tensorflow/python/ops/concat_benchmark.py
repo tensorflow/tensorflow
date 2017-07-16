@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmark for split and grad of split."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,14 +22,18 @@ import itertools
 import random
 import time
 
-import tensorflow as tf
-
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_boolean("use_gpu", True, """Run GPU benchmarks.""")
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
 def build_graph(device, input_shape, variable, num_inputs, axis, grad):
-  """Build a graph containing a sequence of batch normalizations.
+  """Build a graph containing a sequence of concat operations.
 
   Args:
     device: string, the device to run on.
@@ -41,36 +46,37 @@ def build_graph(device, input_shape, variable, num_inputs, axis, grad):
   Returns:
     An array of tensors to run()
   """
-  with tf.device("/%s:0" % device):
+  with ops.device("/%s:0" % device):
     if not variable:
-      inputs = [tf.zeros(input_shape) for _ in range(num_inputs)]
+      inputs = [array_ops.zeros(input_shape) for _ in range(num_inputs)]
     else:
       if axis == 1:
         inputs = [
-            tf.zeros([
+            array_ops.zeros([
                 input_shape[0],
                 random.randint(max(1, input_shape[1] - 5), input_shape[1] + 5)
             ]) for _ in range(num_inputs)
         ]
       else:
         inputs = [
-            tf.zeros([
+            array_ops.zeros([
                 random.randint(max(1, input_shape[0] - 5), input_shape[0] + 5),
                 input_shape[1]
             ]) for _ in range(num_inputs)
         ]
 
-    outputs = [tf.concat(axis, inputs) for _ in range(100)]
+    outputs = [array_ops.concat(inputs, axis) for _ in range(100)]
     if grad:
-      return tf.group(*list(
-          itertools.chain.from_iterable(
-              [tf.gradients(output, inputs) for output in outputs])))
+      return control_flow_ops.group(*list(
+          itertools.chain.from_iterable([
+              gradients_impl.gradients(output, inputs) for output in outputs
+          ])))
     else:
-      return tf.group(*outputs)
+      return control_flow_ops.group(*outputs)
 
 
-class ConcatBenchmark(tf.test.Benchmark):
-  """Benchmark batch normalization."""
+class ConcatBenchmark(test.Benchmark):
+  """Benchmark concat."""
 
   def _run_graph(self, device, input_shape, variable, num_inputs, axis, grad,
                  num_iters):
@@ -88,15 +94,15 @@ class ConcatBenchmark(tf.test.Benchmark):
     Returns:
       The duration of the run in seconds.
     """
-    graph = tf.Graph()
+    graph = ops.Graph()
     with graph.as_default():
       outputs = build_graph(device, input_shape, variable, num_inputs, axis,
                             grad)
-    config = tf.ConfigProto(graph_options=tf.GraphOptions(
-        optimizer_options=tf.OptimizerOptions(
-            opt_level=tf.OptimizerOptions.L0)))
-    with tf.Session(graph=graph, config=config) as session:
-      tf.global_variables_initializer().run()
+    config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
+        optimizer_options=config_pb2.OptimizerOptions(
+            opt_level=config_pb2.OptimizerOptions.L0)))
+    with session_lib.Session(graph=graph, config=config) as session:
+      variables.global_variables_initializer().run()
       _ = session.run(outputs)  # warm up.
       start_time = time.time()
       for _ in range(num_iters):
@@ -128,14 +134,14 @@ class ConcatBenchmark(tf.test.Benchmark):
     shapes = [[2000, 8], [8, 2000], [100, 18], [1000, 18], [100, 97],
               [1000, 97], [10000, 1], [1, 10000]]
     axis_ = [0, 1]
-    num_inputs = 256
-    num_iters = [20] * len(shapes)
+    num_inputs = 20
+    num_iters = [10] * len(shapes)
     variable = [False, True]  # fixed input size or not
     for shape, iters in zip(shapes, num_iters):
       for axis in axis_:
         for v in variable:
-          self._run_graph("gpu", shape, v, num_inputs, axis, True, iters)
+          self._run_graph("cpu", shape, v, num_inputs, axis, True, iters)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

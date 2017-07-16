@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import functools
 
-import tensorflow as tf
+from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
 
@@ -30,7 +30,7 @@ def _test_function(unused_arg=0):
   pass
 
 
-class GetQualifiedNameTest(tf.test.TestCase):
+class GetQualifiedNameTest(test.TestCase):
 
   def test_method(self):
     self.assertEqual(
@@ -38,12 +38,11 @@ class GetQualifiedNameTest(tf.test.TestCase):
         decorator_utils.get_qualified_name(GetQualifiedNameTest.test_method))
 
   def test_function(self):
-    self.assertEqual(
-        "_test_function",
-        decorator_utils.get_qualified_name(_test_function))
+    self.assertEqual("_test_function",
+                     decorator_utils.get_qualified_name(_test_function))
 
 
-class AddNoticeToDocstringTest(tf.test.TestCase):
+class AddNoticeToDocstringTest(test.TestCase):
 
   def _check(self, doc, expected):
     self.assertEqual(
@@ -56,25 +55,47 @@ class AddNoticeToDocstringTest(tf.test.TestCase):
         expected)
 
   def test_regular(self):
-    self._check("Brief\n\nDocstring",
-                "Brief (suffix)\n\nGo away\nInstructions\n\nDocstring")
+    expected = ("Brief (suffix)\n\nGo away\nInstructions\n\nDocstring\n\n"
+                "Args:\n  arg1: desc")
+    # No indent for main docstring
+    self._check("Brief\n\nDocstring\n\nArgs:\n  arg1: desc", expected)
+    # 2 space indent for main docstring, blank lines not indented
+    self._check("Brief\n\n  Docstring\n\n  Args:\n    arg1: desc", expected)
+    # 2 space indent for main docstring, blank lines indented as well.
+    self._check("Brief\n  \n  Docstring\n  \n  Args:\n    arg1: desc", expected)
+    # No indent for main docstring, first line blank.
+    self._check("\n  Brief\n  \n  Docstring\n  \n  Args:\n    arg1: desc",
+                expected)
+    # 2 space indent, first line blank.
+    self._check("\n  Brief\n  \n  Docstring\n  \n  Args:\n    arg1: desc",
+                expected)
 
   def test_brief_only(self):
-    self._check("Brief",
-                "Brief (suffix)\n\nGo away\nInstructions")
+    expected = "Brief (suffix)\n\nGo away\nInstructions"
+    self._check("Brief", expected)
+    self._check("Brief\n", expected)
+    self._check("Brief\n  ", expected)
+    self._check("\nBrief\n  ", expected)
+    self._check("\n  Brief\n  ", expected)
 
   def test_no_docstring(self):
-    self._check(None,
-                "Nothing here\n\nGo away\nInstructions")
-    self._check("",
-                "Nothing here\n\nGo away\nInstructions")
+    expected = "Nothing here\n\nGo away\nInstructions"
+    self._check(None, expected)
+    self._check("", expected)
 
   def test_no_empty_line(self):
-    self._check("Brief\nDocstring",
-                "Brief (suffix)\n\nGo away\nInstructions\n\nDocstring")
+    expected = "Brief (suffix)\n\nGo away\nInstructions\n\nDocstring"
+    # No second line indent
+    self._check("Brief\nDocstring", expected)
+    # 2 space second line indent
+    self._check("Brief\n  Docstring", expected)
+    # No second line indent, first line blank
+    self._check("\nBrief\nDocstring", expected)
+    # 2 space second line indent, first line blank
+    self._check("\n  Brief\n  Docstring", expected)
 
 
-class ValidateCallableTest(tf.test.TestCase):
+class ValidateCallableTest(test.TestCase):
 
   def test_function(self):
     decorator_utils.validate_callable(_test_function, "test")
@@ -83,10 +104,12 @@ class ValidateCallableTest(tf.test.TestCase):
     decorator_utils.validate_callable(self.test_method, "test")
 
   def test_callable(self):
+
     class TestClass(object):
 
       def __call__(self):
         pass
+
     decorator_utils.validate_callable(TestClass(), "test")
 
   def test_partial(self):
@@ -97,5 +120,6 @@ class ValidateCallableTest(tf.test.TestCase):
     x = 0
     self.assertRaises(ValueError, decorator_utils.validate_callable, x, "test")
 
+
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package op
 
@@ -84,6 +86,30 @@ func TestScopeFinalize(t *testing.T) {
 	}
 }
 
+func TestMultipleGeneratedOps(t *testing.T) {
+	s := NewScope()
+	Placeholder(s.SubScope("x"), tf.Float)
+	Placeholder(s.SubScope("y"), tf.Float)
+	if _, err := s.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestScopeWithGraph(t *testing.T) {
+	s1 := NewScope()
+	Const(s1, "hello")
+	graph, err := s1.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s2 := NewScopeWithGraph(graph)
+	Const(s2.SubScope("addition"), "world")
+	if err := s2.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func Example() {
 	// This example creates a Graph that multiplies a constant matrix with
 	// a matrix to be provided during graph execution (via
@@ -99,9 +125,8 @@ func Example() {
 	}
 	// Shape of the product: The number of rows is fixed by m1, but the
 	// number of columns will depend on m2, which is unknown.
-	shape, _ := output.Shape()
-	fmt.Println(shape)
-	// Output: [2 -1]
+	fmt.Println(output.Shape())
+	// Output: [2, ?]
 }
 
 func ExampleScope_SubScope() {

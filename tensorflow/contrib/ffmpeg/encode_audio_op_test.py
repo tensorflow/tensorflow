@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Tests for third_party.tensorflow.contrib.ffmpeg.encode_audio_op."""
 
 from __future__ import absolute_import
@@ -21,13 +20,12 @@ from __future__ import print_function
 
 import os.path
 
-import tensorflow as tf
-
 from tensorflow.contrib import ffmpeg
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import test
 
 
-class EncodeAudioOpTest(tf.test.TestCase):
+class EncodeAudioOpTest(test.TestCase):
 
   def _compareWavFiles(self, original, encoded):
     """Compares the important bits of two WAV files.
@@ -53,13 +51,15 @@ class EncodeAudioOpTest(tf.test.TestCase):
   def testRoundTrip(self):
     """Reads a wav file, writes it, and compares them."""
     with self.test_session():
-      path = os.path.join(
-          resource_loader.get_data_files_path(), 'testdata/mono_10khz.wav')
+      path = os.path.join(resource_loader.get_data_files_path(),
+                          'testdata/mono_10khz.wav')
       with open(path, 'rb') as f:
         original_contents = f.read()
 
       audio_op = ffmpeg.decode_audio(
-          original_contents, file_format='wav', samples_per_second=10000,
+          original_contents,
+          file_format='wav',
+          samples_per_second=10000,
           channel_count=1)
       encode_op = ffmpeg.encode_audio(
           audio_op, file_format='wav', samples_per_second=10000)
@@ -68,4 +68,4 @@ class EncodeAudioOpTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()
