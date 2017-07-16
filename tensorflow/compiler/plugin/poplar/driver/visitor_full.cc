@@ -197,6 +197,18 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
         sequence.add(prog);
         return Status::OK();
       }
+      case HloOpcode::kDynamicSlice:
+      {
+        poplar::program::Program prog;
+        TF_ASSIGN_OR_RETURN(prog,
+                            CreateSliceOp(*graph_,
+                                          resources_,
+                                          inst,
+                                          GetOutputShape(inst),
+                                          tensor_map));
+        sequence.add(prog);
+        return Status::OK();
+      }
       case HloOpcode::kWhile:
       {
         poplar::program::Program prog;
