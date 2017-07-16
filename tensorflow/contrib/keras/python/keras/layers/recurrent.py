@@ -123,6 +123,8 @@ class Recurrent(Layer):
           `[(input_dim, output_dim), (output_dim, output_dim), (output_dim,)]`.
       return_sequences: Boolean. Whether to return the last output
           in the output sequence, or the full sequence.
+      return_state: Boolean. Whether to return the last state
+          in addition to the output.
       go_backwards: Boolean (default False).
           If True, process the input sequence backwards and return the
           reversed sequence.
@@ -166,6 +168,9 @@ class Recurrent(Layer):
       (Optional) 2D tensors with shape `(batch_size, output_dim)`.
 
   Output shape:
+      - if `return_state`: a list of tensors. The first tensor is
+          the output. The remaining tensors are the last states,
+          each with shape `(batch_size, units)`.
       - if `return_sequences`: 3D tensor with shape
           `(batch_size, timesteps, units)`.
       - else, 2D tensor with shape `(batch_size, units)`.
@@ -211,6 +216,7 @@ class Recurrent(Layer):
 
   def __init__(self,
                return_sequences=False,
+               return_state=False,
                go_backwards=False,
                stateful=False,
                unroll=False,
@@ -218,6 +224,7 @@ class Recurrent(Layer):
                **kwargs):
     super(Recurrent, self).__init__(**kwargs)
     self.return_sequences = return_sequences
+    self.return_state = return_state
     self.go_backwards = go_backwards
     self.stateful = stateful
     self.unroll = unroll
@@ -233,18 +240,24 @@ class Recurrent(Layer):
       input_shape = input_shape[0]
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.return_sequences:
-      return tensor_shape.TensorShape(
-          [input_shape[0], input_shape[1], self.units])
+      output_shape = (input_shape[0], input_shape[1], self.units)
     else:
-      return tensor_shape.TensorShape([input_shape[0], self.units])
+      output_shape = (input_shape[0], self.units)
+
+    if self.return_state:
+      state_shape = [tensor_shape.TensorShape(
+          (input_shape[0], self.units)) for _ in self.states]
+      return [tensor_shape.TensorShape(output_shape)] + state_shape
+    return tensor_shape.TensorShape(output_shape)
 
   def compute_mask(self, inputs, mask):
-    if self.return_sequences:
-      if isinstance(mask, list):
-        return mask[0]
-      return mask
-    else:
-      return None
+    if isinstance(mask, list):
+      mask = mask[0]
+    output_mask = mask if self.return_sequences else None
+    if self.return_state:
+      state_mask = [None for _ in self.states]
+      return [output_mask] + state_mask
+    return output_mask
 
   def step(self, inputs, states):
     raise NotImplementedError
@@ -361,10 +374,16 @@ class Recurrent(Layer):
       last_output._uses_learning_phase = True
       outputs._uses_learning_phase = True
 
-    if self.return_sequences:
-      return outputs
-    else:
-      return last_output
+    if not self.return_sequences:
+      outputs = last_output
+
+    if self.return_state:
+      if not isinstance(states, (list, tuple)):
+        states = [states]
+      else:
+        states = list(states)
+      return [outputs] + states
+    return outputs
 
   def reset_states(self, states=None):
     if not self.stateful:
@@ -406,6 +425,7 @@ class Recurrent(Layer):
   def get_config(self):
     config = {
         'return_sequences': self.return_sequences,
+        'return_state': self.return_state,
         'go_backwards': self.go_backwards,
         'stateful': self.stateful,
         'unroll': self.unroll,
@@ -601,36 +621,25 @@ class SimpleRNN(Recurrent):
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
         'recurrent_initializer':
             initializers.serialize(self.recurrent_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
         'recurrent_regularizer':
             regularizers.serialize(self.recurrent_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
         'recurrent_constraint':
             constraints.serialize(self.recurrent_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint),
-        'dropout':
-            self.dropout,
-        'recurrent_dropout':
-            self.recurrent_dropout
+        'bias_constraint': constraints.serialize(self.bias_constraint),
+        'dropout': self.dropout,
+        'recurrent_dropout': self.recurrent_dropout
     }
     base_config = super(SimpleRNN, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -902,38 +911,27 @@ class GRU(Recurrent):
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
         'recurrent_activation':
             activations.serialize(self.recurrent_activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
         'recurrent_initializer':
             initializers.serialize(self.recurrent_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
         'recurrent_regularizer':
             regularizers.serialize(self.recurrent_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
         'recurrent_constraint':
             constraints.serialize(self.recurrent_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint),
-        'dropout':
-            self.dropout,
-        'recurrent_dropout':
-            self.recurrent_dropout
+        'bias_constraint': constraints.serialize(self.bias_constraint),
+        'dropout': self.dropout,
+        'recurrent_dropout': self.recurrent_dropout
     }
     base_config = super(GRU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -985,7 +983,7 @@ class LSTM(Recurrent):
 
   References:
       - [Long short-term
-        memory](http://www.bioinf.jku.at/publications/older/2604.pdf)
+        memory]((http://www.bioinf.jku.at/publications/older/2604.pdf)
         (original 1997 paper)
       - [Supervised sequence labeling with recurrent neural
         networks](http://www.cs.toronto.edu/~graves/preprint.pdf)
@@ -1239,40 +1237,28 @@ class LSTM(Recurrent):
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
         'recurrent_activation':
             activations.serialize(self.recurrent_activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
         'recurrent_initializer':
             initializers.serialize(self.recurrent_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'unit_forget_bias':
-            self.unit_forget_bias,
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'unit_forget_bias': self.unit_forget_bias,
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
         'recurrent_regularizer':
             regularizers.serialize(self.recurrent_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
         'recurrent_constraint':
             constraints.serialize(self.recurrent_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint),
-        'dropout':
-            self.dropout,
-        'recurrent_dropout':
-            self.recurrent_dropout
+        'bias_constraint': constraints.serialize(self.bias_constraint),
+        'dropout': self.dropout,
+        'recurrent_dropout': self.recurrent_dropout
     }
     base_config = super(LSTM, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

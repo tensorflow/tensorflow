@@ -282,6 +282,7 @@ cc_library(
         "platform/env_time.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
+        "platform/grpc_response_reader.h",
         "platform/init_main.h",
         "platform/logging.h",
         "platform/macros.h",
@@ -1221,6 +1222,7 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
         "platform/*.cc",
         "platform/profile_utils/**/*.h",
         "platform/profile_utils/**/*.cc",
+    ] + [
         "framework/resource_handle.h",
         "framework/resource_handle.cc",
     ],

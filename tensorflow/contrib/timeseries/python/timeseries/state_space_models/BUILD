@@ -1,5 +1,6 @@
 # State space components and ensembles
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = [
@@ -36,20 +37,21 @@ py_library(
     ],
 )
 
-tf_py_test(
+py_test(
     name = "state_space_model_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "state_space_model_test.py",
     ],
-    additional_deps = [
+    srcs_version = "PY2AND3",
+    deps = [
         ":kalman_filter",
         ":state_space_model",
-        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
         "//tensorflow/contrib/timeseries/python/timeseries:estimators",
+        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
         "//tensorflow/contrib/timeseries/python/timeseries:saved_model_utils",
         "//tensorflow/contrib/timeseries/python/timeseries:state_management",
         "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
-        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -59,9 +61,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-    ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
+        "//third_party/py/numpy",
     ],
 )
 
@@ -98,9 +98,6 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
     ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
 )
 
 py_library(
@@ -135,9 +132,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
     ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
 )
 
 py_library(
@@ -168,9 +162,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
     ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
 )
 
 py_library(
@@ -188,25 +179,24 @@ py_library(
     ],
 )
 
-tf_py_test(
+py_test(
     name = "structural_ensemble_test",
+    timeout = "long",  # Moderate but for asan/tsan timeouts
     srcs = [
         "structural_ensemble_test.py",
     ],
-    additional_deps = [
-        ":structural_ensemble",
+    srcs_version = "PY2AND3",
+    deps = [
         ":state_space_model",
-        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
-        "//tensorflow/contrib/timeseries/python/timeseries:estimators",
-        "//third_party/py/numpy",
+        ":structural_ensemble",
         "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/timeseries/python/timeseries:estimators",
+        "//tensorflow/contrib/timeseries/python/timeseries:input_pipeline",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-    ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
+        "//third_party/py/numpy",
     ],
 )
 
@@ -243,9 +233,6 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
     ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
 )
 
 py_library(
@@ -275,9 +262,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-    ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
     ],
 )
 

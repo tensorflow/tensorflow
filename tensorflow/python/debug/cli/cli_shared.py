@@ -143,7 +143,8 @@ def format_tensor(tensor,
                   np_printoptions,
                   print_all=False,
                   tensor_slicing=None,
-                  highlight_options=None):
+                  highlight_options=None,
+                  include_numeric_summary=False):
   """Generate formatted str to represent a tensor or its slices.
 
   Args:
@@ -161,6 +162,8 @@ def format_tensor(tensor,
     highlight_options: (tensor_format.HighlightOptions) options to highlight
       elements of the tensor. See the doc of tensor_format.format_tensor()
       for more details.
+    include_numeric_summary: Whether a text summary of the numeric values (if
+      applicable) will be included.
 
   Returns:
     (str) Formatted str representing the (potentially sliced) tensor.
@@ -183,6 +186,7 @@ def format_tensor(tensor,
       value,
       sliced_name,
       include_metadata=True,
+      include_numeric_summary=include_numeric_summary,
       np_printoptions=np_printoptions,
       highlight_options=highlight_options)
 

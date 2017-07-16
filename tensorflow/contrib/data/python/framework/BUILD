@@ -11,7 +11,11 @@ py_library(
     srcs = ["function.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -23,8 +27,10 @@ py_test(
     deps = [
         ":function",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
     ],
 )
 

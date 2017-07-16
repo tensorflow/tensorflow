@@ -78,6 +78,7 @@ py_test(
     srcs = ["python/ops/metric_ops_test.py"],
     shard_count = 3,
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":metrics_py",
         "//tensorflow/python:array_ops",

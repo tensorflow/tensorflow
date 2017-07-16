@@ -15,8 +15,11 @@
 # ==============================================================================
 # Builds protobuf 3 for iOS.
 
-set -x
 set -e
+
+if [[ -n MACOSX_DEPLOYMENT_TARGET ]]; then
+    export MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+fi
 
 SCRIPT_DIR=$(dirname $0)
 source "${SCRIPT_DIR}/build_helper.subr"

@@ -15,7 +15,7 @@ _ = sess.run(r1,
 profiler.add_step(1, run_meta)
 
 # Then Start advise.
-profiler.advise(tf.contrib.tfprof.model_analyzer.ALL_ADVICE)
+profiler.advise()
 
 # For one-shot API
 tf.profiler.advise(

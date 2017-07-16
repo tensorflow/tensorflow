@@ -93,7 +93,7 @@ void DenseQuantizedFeatureColumnHandler::GenerateFeatureSplitCandidates(
       NodeStats left_node_stats(learner_config, left_gradient_stats);
       NodeStats right_node_stats(learner_config, right_gradient_stats);
 
-      // Generate split candiate.
+      // Generate split candidate.
       const float threshold = dense_quantiles_(bucket_id);
       FeatureSplitCandidate split_candidate(
           slot_id_, CreateDenseSplitNode(dense_feature_column_, threshold),

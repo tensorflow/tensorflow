@@ -35,8 +35,8 @@ cc_library(
         ":windows": [],
         ":windows_msvc": [],
         "//conditions:default": [
-          "-Wno-shift-negative-value",
-          "-Wno-implicit-function-declaration",
+            "-Wno-shift-negative-value",
+            "-Wno-implicit-function-declaration",
         ],
     }),
 )

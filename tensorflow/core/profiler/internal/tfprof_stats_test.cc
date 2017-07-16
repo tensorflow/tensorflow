@@ -50,7 +50,7 @@ class TFProfStatsTest : public ::testing::Test {
     TF_CHECK_OK(
         ReadProtoFile(Env::Default(), run_meta_path, run_meta_pb.get(), true));
 
-    std::unique_ptr<OpLog> op_log_pb(new OpLog());
+    std::unique_ptr<OpLogProto> op_log_pb(new OpLogProto());
     string op_log_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/tfprof_log");
@@ -77,9 +77,9 @@ TEST_F(TFProfStatsTest, CustomOpType) {
                {kTrainableVarType},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "", {});
-  const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
+  const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 
-  TFGraphNodeProto expected;
+  GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 5\ntotal_requested_bytes: 1480\ntotal_parameters: "
@@ -140,9 +140,9 @@ TEST_F(TFProfStatsTest, CheckPointOpType) {
                {kCkptVarType},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "", {});
-  const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
+  const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 
-  TFGraphNodeProto expected;
+  GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 5\ntotal_requested_bytes: 1480\ntotal_parameters: "
@@ -203,9 +203,9 @@ TEST_F(TFProfStatsTest, TestGraph) {
                {"cost.*"},  // start_name_regexes
                {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "", {});
-  const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("graph", opts);
+  const GraphNodeProto& root = tf_stats_->ShowGraphNode("graph", opts);
 
-  TFGraphNodeProto expected;
+  GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 97\ntotal_requested_bytes: "
@@ -220,9 +220,9 @@ TEST_F(TFProfStatsTest, TestGraph) {
 TEST_F(TFProfStatsTest, TestFloatOps) {
   Options opts(10, 0, 0, 0, 1, 0, -1, "name", {".*"}, {".*"}, {""}, {".*"},
                {""}, false, {"float_ops"}, "", {});
-  const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
+  const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 
-  TFGraphNodeProto expected;
+  GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 97\ntotal_requested_bytes: "
@@ -279,9 +279,9 @@ TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
                {"unit_2_1.*DW"},  // show_name_regexes.
                {""}, true,        // account_displayed_op_only.
                {"params"}, "", {});
-  const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
+  const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 
-  TFGraphNodeProto expected;
+  GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 0\ntotal_requested_bytes: 0\ntotal_parameters: "
@@ -298,8 +298,8 @@ TEST_F(TFProfStatsTest, TestShowTensorValue) {
                {"unit_1_0.*gamma"}, {""}, false,
                {"tensor_value"},  // Show tensor value from checkpoint.
                "", {});
-  const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
-  TFGraphNodeProto expected;
+  const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
+  GraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 97\ntotal_requested_bytes: "

@@ -300,7 +300,7 @@ class MutableHashTable(LookupInterface):
                                              default_value=-1)
   table.insert(keys, values)
   out = table.lookup(query_keys)
-  print out.eval()
+  print(out.eval())
   ```
   """
 
@@ -502,7 +502,7 @@ class MutableDenseHashTable(LookupInterface):
                                                   empty_key=0)
   table.insert(keys, values)
   out = table.lookup(query_keys)
-  print out.eval()
+  print(out.eval())
   ```
   """
 

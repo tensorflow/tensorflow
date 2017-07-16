@@ -1,4 +1,4 @@
-# Variables: persistent state in TensorFlow
+# Variables
 
 A TensorFlow **variable** is the best way to represent shared, persistent state
 manipulated by your program.

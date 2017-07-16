@@ -578,10 +578,14 @@ eight-bit form.
 
 ### quantize_weights
 
-Args: None \
+Args:
+
+*   minimum_size: Tensors with fewer elements than this won't be quantized
+(defaults to 1024)
+
 Prerequisites: None
 
-Converts any large (more than 15 element) float Const op into an eight-bit
+Converts any large (more than minimum_size) float Const op into an eight-bit
 equivalent, followed by a float conversion op so that the result is usable by
 subsequent nodes. This is mostly useful for [shrinking file
 sizes](#shrinking-file-size), but also helps with the more advanced

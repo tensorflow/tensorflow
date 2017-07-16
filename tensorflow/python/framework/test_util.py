@@ -228,6 +228,19 @@ def NCHWToNHWC(input_tensor):
 
 
 # TODO(skyewm): remove this eventually
+# pylint: disable=protected-access
+def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
+  prev_value = ops._USE_C_API
+  ops._USE_C_API = use_c_api
+  try:
+    with ops.Graph().as_default():
+      fn(*args, **kwargs)
+  finally:
+    ops._USE_C_API = prev_value
+# pylint: disable=protected-access
+
+
+# TODO(skyewm): remove this eventually
 def disable_c_api(fn):
   """Decorator for disabling the C API on a test.
 
@@ -240,16 +253,23 @@ def disable_c_api(fn):
   Returns:
     The wrapped function
   """
-  # pylint: disable=protected-access
-  def disable_c_api_wrapper(*args, **kwargs):
-    prev_value = ops._USE_C_API
-    ops._USE_C_API = False
-    try:
-      fn(*args, **kwargs)
-    finally:
-      ops._USE_C_API = prev_value
-  # pylint: disable=protected-access
-  return disable_c_api_wrapper
+  return lambda *args, **kwargs: _use_c_api_wrapper(fn, False, *args, **kwargs)
+
+
+# TODO(skyewm): remove this eventually
+def enable_c_api(fn):
+  """Decorator for enabling the C API on a test.
+
+  Note this enables the C API after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+  return lambda *args, **kwargs: _use_c_api_wrapper(fn, True, *args, **kwargs)
 
 
 class TensorFlowTestCase(googletest.TestCase):
@@ -266,6 +286,13 @@ class TensorFlowTestCase(googletest.TestCase):
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
+    # Note: The following line is necessary because some test methods may error
+    # out from within nested graph contexts (e.g., via assertRaises and
+    # assertRaisesRegexp), which may leave ops._default_graph_stack non-empty
+    # under certain versions of Python. That would cause
+    # ops.reset_default_graph() to throw an exception if the stack were not
+    # cleared first.
+    ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
     ops.get_default_graph().seed = random_seed.DEFAULT_GRAPH_SEED
 

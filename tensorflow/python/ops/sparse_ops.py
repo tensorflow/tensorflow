@@ -1110,7 +1110,7 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
   Args:
     sp_ids: A single `SparseTensor` with `values` property of type `int32`
       or `int64` or a Python list of such `SparseTensor`s or a list thereof.
-    sp_values: A`SparseTensor` of any type.
+    sp_values: A `SparseTensor` of any type.
     vocab_size: A scalar `int64` Tensor (or Python int) containing the new size
       of the last dimension, `all(0 <= sp_ids.values < vocab_size)`.
       Or a list thereof with `all(0 <= sp_ids[i].values < vocab_size[i])` for

@@ -19,10 +19,9 @@ from __future__ import print_function
 
 from tensorflow.contrib import framework as contrib_framework
 
-from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
-from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
 from tensorflow.contrib.tensor_forest.python import tensor_forest
@@ -30,6 +29,7 @@ from tensorflow.contrib.tensor_forest.python import tensor_forest_v4
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -45,6 +45,7 @@ LOSS_NAME = 'rf_training_loss'
 
 VERSION_BUILDERS = {'v2': tensor_forest.RandomForestGraphs,
                     'v4': tensor_forest_v4.RandomForestGraphsV4}
+EPSILON = 0.000001
 
 
 def _assert_float32(tensors):
@@ -79,8 +80,12 @@ class TensorForestRunOpAtEndHook(session_run_hook.SessionRunHook):
 class TensorForestLossHook(session_run_hook.SessionRunHook):
   """Monitor to request stop when loss stops decreasing."""
 
-  def __init__(self, early_stopping_rounds, loss_op=None):
+  def __init__(self,
+               early_stopping_rounds,
+               early_stopping_loss_threshold=None,
+               loss_op=None):
     self.early_stopping_rounds = early_stopping_rounds
+    self.early_stopping_loss_threshold = early_stopping_loss_threshold
     self.loss_op = loss_op
     self.min_loss = None
     self.last_step = -1
@@ -110,7 +115,8 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
       return
 
     self.last_step = current_step
-    if self.min_loss is None or current_loss < self.min_loss:
+    if (self.min_loss is None or current_loss <
+        (self.min_loss - self.min_loss * self.early_stopping_loss_threshold)):
       self.min_loss = current_loss
       self.steps = 0
     if self.steps > self.early_stopping_rounds:
@@ -134,19 +140,43 @@ class EveryCheckpointPreSaveListener(
     session.run(self._op)
 
 
+def get_default_head(params, weights_name, name=None):
+  if params.regression:
+    return head_lib.regression_head(
+        weight_column_name=weights_name,
+        label_dimension=params.num_outputs,
+        enable_centered_bias=False,
+        head_name=name)
+  else:
+    return head_lib.multi_class_head(
+        params.num_classes,
+        weight_column_name=weights_name,
+        enable_centered_bias=False,
+        head_name=name)
+
+
 def get_model_fn(params,
                  graph_builder_class,
                  device_assigner,
                  weights_name=None,
+                 model_head=None,
                  keys_name=None,
                  early_stopping_rounds=100,
+                 early_stopping_loss_threshold=0.01,
                  num_trainers=1,
                  trainer_id=0,
                  report_feature_importances=False,
-                 local_eval=False):
+                 local_eval=False,
+                 head_scope=None):
   """Return a model function given a way to construct a graph builder."""
+  if model_head is None:
+    model_head = get_default_head(params, weights_name)
+
   def _model_fn(features, labels, mode):
     """Function that returns predictions, training loss, and training op."""
+    if (isinstance(features, ops.Tensor) or
+        isinstance(features, sparse_tensor.SparseTensor)):
+      features = {'features': features}
     weights = None
     if weights_name and weights_name in features:
       weights = features.pop(weights_name)
@@ -164,75 +194,63 @@ def get_model_fn(params,
 
     graph_builder = graph_builder_class(params,
                                         device_assigner=dev_assn)
-    inference = {}
-    output_alternatives = None
-    if (mode == model_fn_lib.ModeKeys.EVAL or
-        mode == model_fn_lib.ModeKeys.INFER):
-      inference[eval_metrics.INFERENCE_PROB_NAME] = (
-          graph_builder.inference_graph(features))
 
-      if params.regression:
-        predictions = {
-            None: inference[eval_metrics.INFERENCE_PROB_NAME]}
-        output_alternatives = {
-            None: (constants.ProblemType.LINEAR_REGRESSION, predictions)}
-      else:
-        inference[eval_metrics.INFERENCE_PRED_NAME] = math_ops.argmax(
-            inference[eval_metrics.INFERENCE_PROB_NAME], 1)
-
-        predictions = {
-            prediction_key.PredictionKey.PROBABILITIES:
-                inference[eval_metrics.INFERENCE_PROB_NAME],
-            prediction_key.PredictionKey.CLASSES:
-                inference[eval_metrics.INFERENCE_PRED_NAME]}
-        output_alternatives = {
-            None: (constants.ProblemType.CLASSIFICATION, predictions)}
-
-      if keys is not None:
-        inference[keys_name] = keys
+    logits = graph_builder.inference_graph(features)
+    # For binary classification problems, convert probabilities to logits.
+    # Includes hack to get around the fact that a probability might be 0 or 1.
+    if not params.regression and params.num_classes == 2:
+      class_1_probs = array_ops.slice(logits, [0, 1], [-1, 1])
+      logits = math_ops.log(
+          math_ops.maximum(class_1_probs / math_ops.maximum(
+              1.0 - class_1_probs, EPSILON), EPSILON))
 
     # labels might be None if we're doing prediction (which brings up the
     # question of why we force everything to adhere to a single model_fn).
-    loss_deps = []
     training_graph = None
     training_hooks = []
-    scaffold = None
     if labels is not None and mode == model_fn_lib.ModeKeys.TRAIN:
-      training_graph = control_flow_ops.group(
-          graph_builder.training_graph(
-              features, labels, input_weights=weights,
-              num_trainers=num_trainers,
-              trainer_id=trainer_id),
-          state_ops.assign_add(contrib_framework.get_global_step(), 1))
-      loss_deps.append(training_graph)
-
-    training_loss = None
-    if (mode == model_fn_lib.ModeKeys.EVAL or
-        mode == model_fn_lib.ModeKeys.TRAIN):
-      with ops.control_dependencies(loss_deps):
-        training_loss = graph_builder.training_loss(
-            features, labels, name=LOSS_NAME)
+      with ops.control_dependencies([logits.op]):
+        training_graph = control_flow_ops.group(
+            graph_builder.training_graph(
+                features, labels, input_weights=weights,
+                num_trainers=num_trainers,
+                trainer_id=trainer_id),
+            state_ops.assign_add(contrib_framework.get_global_step(), 1))
 
     # Put weights back in
     if weights is not None:
       features[weights_name] = weights
 
-    if early_stopping_rounds:
-      training_hooks.append(TensorForestLossHook(early_stopping_rounds,
-                                                 loss_op=training_loss))
+    # TensorForest's training graph isn't calculated directly from the loss
+    # like many other models.
+    def _train_fn(unused_loss):
+      return training_graph
+
+    model_ops = model_head.create_model_fn_ops(
+        features=features,
+        labels=labels,
+        mode=mode,
+        train_op_fn=_train_fn,
+        logits=logits,
+        scope=head_scope)
 
     if report_feature_importances:
       training_hooks.append(TensorForestRunOpAtEndHook(
           {'feature_importances': graph_builder.feature_importances()}))
 
-    return model_fn_lib.ModelFnOps(
-        mode=mode,
-        predictions=inference,
-        loss=training_loss,
-        train_op=training_graph,
-        training_hooks=training_hooks,
-        scaffold=scaffold,
-        output_alternatives=output_alternatives)
+    if early_stopping_rounds:
+      training_hooks.append(
+          TensorForestLossHook(
+              early_stopping_rounds,
+              early_stopping_loss_threshold=early_stopping_loss_threshold,
+              loss_op=model_ops.loss))
+
+    model_ops.training_hooks.extend(training_hooks)
+
+    if keys is not None:
+      model_ops.predictions[keys_name] = keys
+
+    return model_ops
 
   return _model_fn
 
@@ -269,14 +287,23 @@ class TensorForestEstimator(estimator.Estimator):
   ```
   """
 
-  def __init__(self, params, device_assigner=None, model_dir=None,
+  def __init__(self,
+               params,
+               device_assigner=None,
+               model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
-               config=None, weights_name=None, keys_name=None,
+               config=None,
+               weights_name=None,
+               keys_name=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
-               num_trainers=1, trainer_id=0,
+               early_stopping_loss_threshold=0.01,
+               num_trainers=1,
+               trainer_id=0,
                report_feature_importances=False,
-               local_eval=False, version=None):
+               local_eval=False,
+               version=None,
+               head=None):
     """Initializes a TensorForestEstimator instance.
 
     Args:
@@ -305,6 +332,9 @@ class TensorForestEstimator(estimator.Estimator):
       early_stopping_rounds: Allows training to terminate early if the forest is
         no longer growing. 100 by default.  Set to a Falsy value to disable
         the default training hook.
+      early_stopping_loss_threshold: Percentage (as fraction) that loss must
+        improve by within early_stopping_rounds steps, otherwise training will
+        terminate.
       num_trainers: Number of training jobs, which will partition trees
         among them.
       trainer_id: Which trainer this instance is.
@@ -316,6 +346,8 @@ class TensorForestEstimator(estimator.Estimator):
       version: String indicating TensorForest version to use, for backward
         compatibility. Either 'v2', 'v4', or None to let system pick.
         Overrides graph_builder_class.
+      head: A heads_lib.Head object that calculates losses and such. If None,
+        one will be automatically created based on params.
 
     Returns:
       A `TensorForestEstimator` instance.
@@ -326,14 +358,17 @@ class TensorForestEstimator(estimator.Estimator):
       else:
         logging.info('Setting graph_builder_class to %s', version)
         graph_builder_class = VERSION_BUILDERS[version]
+
     super(TensorForestEstimator, self).__init__(
         model_fn=get_model_fn(
             params.fill(),
             graph_builder_class,
             device_assigner,
+            model_head=head,
             weights_name=weights_name,
             keys_name=keys_name,
             early_stopping_rounds=early_stopping_rounds,
+            early_stopping_loss_threshold=early_stopping_loss_threshold,
             num_trainers=num_trainers,
             trainer_id=trainer_id,
             report_feature_importances=report_feature_importances,
@@ -469,21 +504,27 @@ class MultiForestMultiHeadEstimator(estimator.Estimator):
     Returns:
       A `TensorForestEstimator` instance.
     """
-    model_fns = [get_model_fn(
-        params.fill(),
-        graph_builder_class,
-        device_assigner,
-        weights_name=weights_name,
-        keys_name=keys_name,
-        early_stopping_rounds=early_stopping_rounds,
-        num_trainers=num_trainers,
-        trainer_id=trainer_id,
-        report_feature_importances=report_feature_importances,
-        local_eval=local_eval) for params in params_list]
+    model_fns = []
+    for i in range(len(params_list)):
+      params = params_list[i].fill()
+      model_fns.append(
+          get_model_fn(
+              params,
+              graph_builder_class,
+              device_assigner,
+              model_head=get_default_head(
+                  params, weights_name, name='head{0}'.format(i)),
+              weights_name=weights_name,
+              keys_name=keys_name,
+              early_stopping_rounds=early_stopping_rounds,
+              num_trainers=num_trainers,
+              trainer_id=trainer_id,
+              report_feature_importances=report_feature_importances,
+              local_eval=local_eval,
+              head_scope='output{0}'.format(i)))
 
     super(MultiForestMultiHeadEstimator, self).__init__(
         model_fn=get_combined_model_fn(model_fns),
         model_dir=model_dir,
         config=config,
         feature_engineering_fn=feature_engineering_fn)
-

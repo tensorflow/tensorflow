@@ -258,6 +258,9 @@ add_python_module("tensorflow/contrib/cloud/kernels")
 add_python_module("tensorflow/contrib/cloud/ops")
 add_python_module("tensorflow/contrib/cloud/python")
 add_python_module("tensorflow/contrib/cloud/python/ops")
+add_python_module("tensorflow/contrib/cluster_resolver")
+add_python_module("tensorflow/contrib/cluster_resolver/python")
+add_python_module("tensorflow/contrib/cluster_resolver/python/training")
 add_python_module("tensorflow/contrib/compiler")
 add_python_module("tensorflow/contrib/copy_graph")
 add_python_module("tensorflow/contrib/copy_graph/python")
@@ -452,6 +455,7 @@ add_python_module("tensorflow/contrib/pi_examples")
 add_python_module("tensorflow/contrib/pi_examples/camera")
 add_python_module("tensorflow/contrib/pi_examples/label_image")
 add_python_module("tensorflow/contrib/pi_examples/label_image/data")
+add_python_module("tensorflow/contrib/predictor")
 add_python_module("tensorflow/contrib/quantization")
 add_python_module("tensorflow/contrib/quantization/python")
 add_python_module("tensorflow/contrib/remote_fused_graph/pylib")
@@ -688,6 +692,8 @@ GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
 GENERATE_PYTHON_OP_LIB("stateless_random_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/stateless/gen_stateless_random_ops.py)
+GENERATE_PYTHON_OP_LIB("debug_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/debug/ops/gen_debug_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
@@ -757,6 +763,7 @@ if(WIN32)
     add_library(pywrap_tensorflow_internal_static STATIC
         ${pywrap_tensorflow_internal_src}
         $<TARGET_OBJECTS:tf_c>
+        $<TARGET_OBJECTS:tf_c_python_api>
         $<TARGET_OBJECTS:tf_core_lib>
         $<TARGET_OBJECTS:tf_core_cpu>
         $<TARGET_OBJECTS:tf_core_framework>
@@ -805,6 +812,7 @@ endif(WIN32)
 add_library(pywrap_tensorflow_internal SHARED
     ${pywrap_tensorflow_internal_src}
     $<TARGET_OBJECTS:tf_c>
+    $<TARGET_OBJECTS:tf_c_python_api>
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
