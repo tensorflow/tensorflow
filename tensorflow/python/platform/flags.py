@@ -62,19 +62,24 @@ class _FlagValues(object):
     self.__dict__['__flags'][name] = value
 
 
-def _define_helper(flag_name, default_value, docstring, flagtype):
+def _define_helper(flag_name, default_value, docstring, flagtype, required):
   """Registers 'flag_name' with 'default_value' and 'docstring'."""
+  if default_value == None and required:
+    _required = True
+  else:
+    _required = False
   _global_parser.add_argument('--' + flag_name,
                               default=default_value,
                               help=docstring,
-                              type=flagtype)
+                              type=flagtype,
+                              required=_required)
 
 
 # Provides the global object that can be used to access flags.
 FLAGS = _FlagValues()
 
 
-def DEFINE_string(flag_name, default_value, docstring):
+def DEFINE_string(flag_name, default_value, docstring, required = False):
   """Defines a flag of type 'string'.
 
   Args:
@@ -82,10 +87,10 @@ def DEFINE_string(flag_name, default_value, docstring):
     default_value: The default value the flag should take as a string.
     docstring: A helpful message explaining the use of the flag.
   """
-  _define_helper(flag_name, default_value, docstring, str)
+  _define_helper(flag_name, default_value, docstring, str, required)
 
 
-def DEFINE_integer(flag_name, default_value, docstring):
+def DEFINE_integer(flag_name, default_value, docstring, required = False):
   """Defines a flag of type 'int'.
 
   Args:
@@ -93,10 +98,10 @@ def DEFINE_integer(flag_name, default_value, docstring):
     default_value: The default value the flag should take as an int.
     docstring: A helpful message explaining the use of the flag.
   """
-  _define_helper(flag_name, default_value, docstring, int)
+  _define_helper(flag_name, default_value, docstring, int, required)
 
 
-def DEFINE_boolean(flag_name, default_value, docstring):
+def DEFINE_boolean(flag_name, default_value, docstring, required = False):
   """Defines a flag of type 'boolean'.
 
   Args:
@@ -107,7 +112,13 @@ def DEFINE_boolean(flag_name, default_value, docstring):
   # Register a custom function for 'bool' so --flag=True works.
   def str2bool(v):
     return v.lower() in ('true', 't', '1')
-  _global_parser.add_argument('--' + flag_name,
+  if default_value == None and required:
+    _required = True
+  else:
+    _required = False
+
+  group = _global_parser.add_mutually_exclusive_group(required=_required)
+  group.add_argument('--' + flag_name,
                               nargs='?',
                               const=True,
                               help=docstring,
@@ -116,7 +127,7 @@ def DEFINE_boolean(flag_name, default_value, docstring):
 
   # Add negated version, stay consistent with argparse with regard to
   # dashes in flag names.
-  _global_parser.add_argument('--no' + flag_name,
+  group.add_argument('--no' + flag_name,
                               action='store_false',
                               dest=flag_name.replace('-', '_'))
 
@@ -126,7 +137,7 @@ def DEFINE_boolean(flag_name, default_value, docstring):
 DEFINE_bool = DEFINE_boolean  # pylint: disable=invalid-name
 
 
-def DEFINE_float(flag_name, default_value, docstring):
+def DEFINE_float(flag_name, default_value, docstring, required = False):
   """Defines a flag of type 'float'.
 
   Args:
@@ -134,7 +145,7 @@ def DEFINE_float(flag_name, default_value, docstring):
     default_value: The default value the flag should take as a float.
     docstring: A helpful message explaining the use of the flag.
   """
-  _define_helper(flag_name, default_value, docstring, float)
+  _define_helper(flag_name, default_value, docstring, float, required=required)
 
 _allowed_symbols = [
     # We rely on gflags documentation.
