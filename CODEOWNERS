@@ -47,9 +47,6 @@ tensorflow/contrib/stateless/* @girving
 tensorflow/contrib/tensor_forest/* @gilberthendry @thomascolthurst
 tensorflow/contrib/testing/* @dandelionmane
 tensorflow/contrib/timeseries/* @allenlavoie
-<<<<<<< HEAD
-=======
 tensorflow/contrib/tpu/* @frankchn @saeta @jhseu
->>>>>>> tensorflow/master
 tensorflow/contrib/training/* @joel-shor @ebrevdo
 tensorflow/contrib/util/* @sherrym
