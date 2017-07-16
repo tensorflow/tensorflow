@@ -812,7 +812,7 @@ class BinaryGradFunctionTest : public ::testing::Test {
   }
 
   static TheDataType GetRandForValues() {
-    // Range: [-5000.; +5000.]
+    // Range: [-50.; +50.]
     return static_cast<int64>(random::New64() % 100) - 50;
   }
   static int GetRandForSizes() {
