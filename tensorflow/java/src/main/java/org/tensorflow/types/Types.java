@@ -53,4 +53,11 @@ public class Types {
     Types.zeros.put(TFBool.class, false);
     Types.zeros.put(TFString.class, null); // no zero value
   }
+
+  /** Returns the zero value of type described by {@code c}, or null if
+   *  the type (e.g., string) is not numeric and therefore has no zero value.
+   */
+  public static Object zeroValue(Class<? extends TFType> c) {
+    return zeros.get(c);
+  }
 }

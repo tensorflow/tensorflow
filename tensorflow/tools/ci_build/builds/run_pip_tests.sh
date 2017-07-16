@@ -69,9 +69,12 @@ ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
 
 # Do not run tests with "no_pip" tag. If running GPU tests, also do not run
 # tests with no_pip_gpu tag.
-PIP_TEST_FILTER_TAG="-no_pip"
+PIP_TEST_FILTER_TAG="-no_oss,-no_pip"
 if [[ ${IS_GPU} == "1" ]]; then
   PIP_TEST_FILTER_TAG="-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
+fi
+if [[ ${IS_MAC} == "1" ]]; then
+  PIP_TEST_FILTER_TAG="-nomac,${PIP_TEST_FILTER_TAG}"
 fi
 
 # Bazel flags we need for all tests:

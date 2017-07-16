@@ -432,7 +432,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // Emit IR to transfer between a {infeed,outfeed} buffer and an in-program
   // address.
-  Status EmitXfeedTransfer(XfeedKind kind, int64 length,
+  Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                            llvm::Value* program_buffer_address);
 
   const HloModuleConfig& hlo_module_config_;

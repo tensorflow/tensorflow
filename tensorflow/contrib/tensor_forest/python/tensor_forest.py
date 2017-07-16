@@ -19,10 +19,8 @@ from __future__ import print_function
 
 import math
 import random
-import sys
 
 from tensorflow.contrib.framework.python.ops import variables as framework_variables
-from tensorflow.contrib.losses.python.losses import loss_ops
 from tensorflow.contrib.tensor_forest.python import constants
 from tensorflow.contrib.tensor_forest.python.ops import data_ops
 from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
@@ -506,49 +504,6 @@ def one_hot_wrapper(num_classes, loss_fn):
         dtype=dtypes.float32)
     return loss_fn(probs, one_hot_labels)
   return _loss
-
-
-class TrainingLossForest(RandomForestGraphs):
-  """Random Forest that uses training loss as the termination criteria."""
-
-  def __init__(self, params, loss_fn=None, **kwargs):
-    """Initialize.
-
-    Args:
-      params: Like RandomForestGraphs, a ForestHParams object.
-      loss_fn: A function that takes probabilities and targets and returns
-        a loss for each example.
-      **kwargs: Keyword args to pass to superclass (RandomForestGraphs).
-    """
-    self.loss_fn = loss_fn or one_hot_wrapper(params.num_classes,
-                                              loss_ops.log_loss)
-    self._loss = None
-    super(TrainingLossForest, self).__init__(params, **kwargs)
-
-  def _get_loss(self, features, labels):
-    """Constructs, caches, and returns the inference-based loss."""
-    if self._loss is not None:
-      return self._loss
-
-    def _average_loss():
-      probs = self.inference_graph(features)
-      return math_ops.reduce_sum(self.loss_fn(
-          probs, labels)) / math_ops.to_float(array_ops.shape(labels)[0])
-
-    self._loss = control_flow_ops.cond(
-        self.average_size() > 0, _average_loss,
-        lambda: constant_op.constant(sys.maxsize, dtype=dtypes.float32))
-
-    return self._loss
-
-  def training_graph(self, input_data, input_labels, **kwargs):
-    loss = self._get_loss(input_data, input_labels)
-    with ops.control_dependencies([loss.op]):
-      return super(TrainingLossForest, self).training_graph(
-          input_data, input_labels, **kwargs)
-
-  def training_loss(self, features, labels, name='training_loss'):
-    return array_ops.identity(self._get_loss(features, labels), name=name)
 
 
 class RandomTreeGraphs(object):

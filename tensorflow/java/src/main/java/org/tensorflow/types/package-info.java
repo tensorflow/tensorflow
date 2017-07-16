@@ -18,10 +18,10 @@ limitations under the License.
  * that can be used in a tensor, there is a corresponding class in this package that
  * is used to represent it. For example, the TensorFlow int32 type is represented by
  * the type {@link TFInt32} and by the class object {@code TFInt32.class}. The former is used to
- * support compile-time checking of tensor data types and the latter is used for
- * run-time checking of data types. All such classes implement the {@link TFType} interface.
- * TensorFlow data types are also separately represented by the {@link DataType} enum, with
- * one enum value per data type. The enum representation should rarely be needed, but
+ * support compile-time checking of tensor element types and the latter is used for
+ * run-time checking of element types. All such classes implement the {@link TFType} interface.
+ * TensorFlow element types are also separately represented by the {@link DataType} enum, with
+ * one enum value per element type. The enum representation is not usually needed, but
  * the {@link Types} class can be used to obtain it from the class object representation.
  */
 package org.tensorflow.types;

@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -30,25 +32,53 @@ class InfeedManagerTest : public ::testing::Test {};
 
 class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
  public:
-  explicit TestInfeedBuffer(int32 length)
-      : done_called_(false), length_(length) {}
+  explicit TestInfeedBuffer(int32 length, bool expect_shape_match = true)
+      : shape_(ShapeUtil::MakeShape(U8, {length})),
+        done_called_(false),
+        length_(length),
+        expect_shape_match_(expect_shape_match) {}
   ~TestInfeedBuffer() override { EXPECT_TRUE(done_called_); }
 
   int32 length() override { return length_; }
   void* data() override { return nullptr; }
-  void Done() override {
+  void Done(StatusOr<Shape> shape) override {
     CHECK(!done_called_);
     done_called_ = true;
+    TF_ASSERT_OK(shape.status());
+    EXPECT_EQ(expect_shape_match_, ShapeUtil::Equal(shape_, shape.ValueOrDie()))
+        << "want " << ShapeUtil::HumanString(shape_) << " "
+        << (expect_shape_match_ ? "==" : "!=") << " "
+        << ShapeUtil::HumanString(shape.ValueOrDie());
   }
 
+  const Shape& shape() const { return shape_; }
+
  private:
+  Shape shape_;
   bool done_called_;
   int32 length_;
+  bool expect_shape_match_;
 };
 
+// Performs the acquire/release sequence on the infeed, as the generated CPU
+// code would in the process of executing the infeed operation.
 void ProcessNextBuffer(int32 length) {
-  void* buffer = __xla_cpu_runtime_AcquireInfeedBufferForDequeue(length);
-  __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(length, buffer);
+  auto shape = ShapeUtil::MakeShape(U8, {length});
+  string bytes = shape.SerializeAsString();
+  void* buffer = __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
+      length, bytes.data(), bytes.size());
+  __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(length, buffer,
+                                                    bytes.data(), bytes.size());
+}
+
+// Performs the acquire/release sequence on the outfeed, as the generated CPU
+// code would in the process of executing the outfeed operation.
+void ProcessNextOutfeedBuffer(int32 length, const Shape& shape) {
+  string bytes = shape.SerializeAsString();
+  void* buffer = __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
+      length, bytes.data(), bytes.size());
+  __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
+      length, buffer, bytes.data(), bytes.size());
 }
 
 TEST_F(InfeedManagerTest, SingleThreadedSequential) {
@@ -96,6 +126,14 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
   });
 
   ProcessNextBuffer(length);
+}
+
+TEST_F(InfeedManagerTest, OutfeedWrongShape) {
+  TestInfeedBuffer* b = new TestInfeedBuffer(32, /*expect_shape_match=*/false);
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager();
+  xfeed->outfeed()->EnqueueBuffers({b});
+
+  ProcessNextOutfeedBuffer(32, ShapeUtil::MakeShape(U8, {33}));
 }
 
 }  // namespace

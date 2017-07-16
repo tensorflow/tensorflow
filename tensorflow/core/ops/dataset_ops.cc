@@ -393,6 +393,7 @@ filename: A path on the filesystem where we should cache the dataset. Note: this
 
 REGISTER_OP("TextLineDataset")
     .Input("filenames: string")
+    .Input("compression_type: string")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)  // TODO(mrry): validate
                                                // that `filenames` is
@@ -403,6 +404,8 @@ Creates a dataset that emits the lines of one or more text files.
 
 filenames: A scalar or a vector containing the name(s) of the file(s) to be
   read.
+compression_type: A scalar containing either (i) the empty string (no
+  compression), (ii) "ZLIB", or (iii) "GZIP".
 )doc");
 
 REGISTER_OP("FixedLengthRecordDataset")
@@ -531,6 +534,28 @@ REGISTER_OP("IteratorDispose")
     .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 Releases any resources used by the given iterator.
+)doc");
+
+REGISTER_OP("IteratorToStringHandle")
+    .Input("resource_handle: resource")
+    .Output("string_handle: string")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Converts the given `resource_handle` representing an iterator to a string.
+
+resource_handle: A handle to an iterator resource.
+string_handle: A string representation of the given handle.
+)doc");
+
+REGISTER_OP("IteratorFromStringHandle")
+    .Input("string_handle: string")
+    .Output("resource_handle: resource")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Converts the given string representing a handle to an iterator to a resource.
+
+string_handle: A string representation of the given handle.
+resource_handle: A handle to an iterator resource.
 )doc");
 
 }  // namespace tensorflow

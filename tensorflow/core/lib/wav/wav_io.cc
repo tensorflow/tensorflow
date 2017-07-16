@@ -147,8 +147,7 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
     return errors::InvalidArgument("num_frames must be positive.");
   }
 
-  const size_t bytes_per_second =
-    sample_rate * kBytesPerSample * num_channels;
+  const size_t bytes_per_second = sample_rate * kBytesPerSample * num_channels;
   const size_t num_samples = num_frames * num_channels;
   const size_t data_size = num_samples * kBytesPerSample;
   const size_t file_size = kHeaderSize + num_samples * kBytesPerSample;
