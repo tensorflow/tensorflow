@@ -52,6 +52,9 @@ The jobs run by [ci.tensorflow.org](https://ci.tensorflow.org) include following
 # build and run cpu tests
 tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
 
+# build and run cpu tests using python 3 and XLA
+CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3 -e TF_BUILD_ENABLE_XLA=1" tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
+
 # build and run gpu tests (note if you get unstable results you may be running
 # out of gpu memory - if so add "--jobs=1" argument)
 tensorflow/tools/ci_build/ci_build.sh GPU bazel test -c opt --config=cuda //tensorflow/...
