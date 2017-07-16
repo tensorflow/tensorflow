@@ -35,6 +35,10 @@ flags.DEFINE_boolean("bool_a", False, "HelpString")
 flags.DEFINE_boolean("bool_c", False, "HelpString")
 flags.DEFINE_boolean("bool_d", True, "HelpString")
 flags.DEFINE_bool("bool_e", True, "HelpString")
+flags.DEFINE_bool("bool_required", None, "HelpString", required = True)
+flags.DEFINE_bool("bool_required2", None, "HelpString", True)
+flags.DEFINE_bool("bool_required3", None, "HelpString", True)
+flags.DEFINE_bool("bool_required4", None, "HelpString", True)
 
 FLAGS = flags.FLAGS
 
@@ -52,6 +56,30 @@ class FlagsTest(unittest.TestCase):
     self.assertTrue(res)
     FLAGS.bool_foo = False
     self.assertFalse(FLAGS.bool_foo)
+  
+  def testBoolRequiredTrue(self):
+    res = FLAGS.bool_required
+    self.assertTrue(res)
+    FLAGS.bool_required = False
+    self.assertFalse(FLAGS.bool_required)
+  
+  def testBoolRequiredFalse(self):
+    res = FLAGS.bool_required2
+    self.assertFalse(res)
+    FLAGS.bool_required2 = True
+    self.assertTrue(FLAGS.bool_required2)
+  
+  def testBoolRequired3True(self):
+    res = FLAGS.bool_required3
+    self.assertTrue(res)
+    FLAGS.bool_required3 = False
+    self.assertFalse(FLAGS.bool_required3)
+  
+  def testBoolRequired4False(self):
+    res = FLAGS.bool_required4
+    self.assertFalse(res)
+    FLAGS.bool_required4 = True
+    self.assertTrue(FLAGS.bool_required4)
 
   def testBoolCommandLines(self):
     # Specified on command line with no args, sets to True,
@@ -97,7 +125,7 @@ if __name__ == "__main__":
   # Test command lines
   sys.argv.extend([
       "--bool_a", "--nobool_negation", "--bool_c=True", "--bool_d=False",
-      "and_argument"
+      "and_argument", "--bool_required", "--nobool_required2", "--bool_required3", "--nobool_required4"
   ])
 
   app.run()
