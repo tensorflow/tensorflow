@@ -1213,7 +1213,7 @@ class _BinarySvmHead(_SingleHead):
         with ops.control_dependencies((_assert_labels_rank(labels),)):
           labels = array_ops.reshape(labels, shape=(-1, 1))
         loss = losses_lib.hinge_loss(labels=labels, logits=logits,
-                                     scope=name, reduction=None)
+                                     scope=name, reduction="none")
         return _compute_weighted_loss(loss, weights)
 
     super(_BinarySvmHead, self).__init__(
