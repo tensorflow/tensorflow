@@ -1480,7 +1480,7 @@ class _LossOnlyHead(Head):
         loss = self._loss_fn()
         if isinstance(loss, list):
           loss = math_ops.add_n(loss)
-        logging_ops.scalar_summary(
+        summary.scalar(
             _summary_key(self.head_name, mkey.LOSS), loss)
         if mode == model_fn.ModeKeys.TRAIN:
           if train_op_fn is None:
