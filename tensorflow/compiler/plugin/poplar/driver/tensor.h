@@ -27,6 +27,18 @@ PoplarDataType(const xla::Shape& shape);
 std::vector <size_t>
 PoplarShapeFromXlaShape(const xla::Shape &xla_shape);
 
+bool
+PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
+                           const xla::Shape& shape);
+
+port::StatusOr<std::vector<int64>>
+LiteralVectorToInt64Vector(const xla::Literal& lit);
+
+port::StatusOr<poplar::Tensor>
+AddPlainTensor(poplar::Graph& graph,
+               const HloInstruction* inst,
+               const xla::Shape& shape);
+
 port::StatusOr<poplar::Tensor>
 AddTensor(poplar::Graph& graph,
           const HloInstruction* inst,
@@ -58,10 +70,6 @@ port::StatusOr<poplar::Tensor>
 BroadcastTensor(const poplar::Tensor &in,
                 const xla::Shape& out,
                 const std::vector<int64>& dimensions = {});
-
-bool
-PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
-                           const xla::Shape& shape);
 
 }
 }

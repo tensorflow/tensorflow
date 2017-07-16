@@ -68,13 +68,19 @@ XfeedManager* GetXfeedManager();
 
 extern "C" {
 
+// Note: in the runtime entry points below, the shape pointer and shape_length
+// reflect values that can be deserialized via
+// llvm_ir::DecodeSelfDescribingShapeConstant. This is the way we pass reified
+// type information from the generated program to the runtime, which helps check
+// the type safety and contract for the emitted-code/runtime communication.
+
 // Blocks until the next infeed buffer is ready to be dequeued, then
 // returns it. Fails catastrophically if the next enqueued buffer is
 // not of the correct length in bytes. Checking the shape rather than
 // the length would be more exact, but the length check is chosen as a
 // tradeoff between error checking and speed/simplicity.
 extern void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
-    xla::int32 buffer_length);
+    xla::int32 buffer_length, const void* shape, xla::int32 shape_length);
 
 // Relinquishes the next infeed buffer that was returned by
 // __xla_cpu_runtime_AcquireInfeedBufferForDequeue. Once this call
@@ -89,12 +95,13 @@ extern void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
 // implemented we will add support for multiple outstanding buffers
 // that can be returned out of order.
 extern void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
-    xla::int32 buffer_length, void* buffer_ptr);
+    xla::int32 buffer_length, void* buffer_ptr, const void* shape,
+    xla::int32 shape_length);
 
 // Blocks until the next outfeed buffer is available to be populated, then
 // returns it.
 extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
-    xla::int32 buffer_length);
+    xla::int32 buffer_length, const void* shape, xla::int32 shape_length);
 
 // Relinquishes the outfeed buffer after it has been populated.
 // buffer_ptr must have been previously returned by
@@ -106,7 +113,9 @@ extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
 // acquired, i.e., there may only be one outstanding outfeed buffer in
 // use by the runtime.
 extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
-    xla::int32 buffer_length, void* buffer_ptr);
-}
+    xla::int32 buffer_length, void* buffer_ptr, const void* shape,
+    xla::int32 shape_length);
+
+}  // extern "C"
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_H_

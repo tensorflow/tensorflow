@@ -75,7 +75,7 @@ PoplarShapeFromXlaShape(const xla::Shape &xla_shape) {
   return shape;
 }
 
-static port::StatusOr<poplar::Tensor>
+port::StatusOr<poplar::Tensor>
 AddPlainTensor(poplar::Graph& graph,
                const HloInstruction* inst,
                const xla::Shape& shape) {
@@ -380,6 +380,19 @@ PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,
   return true;
 }
 
+port::StatusOr<std::vector<int64>>
+LiteralVectorToInt64Vector(const xla::Literal& lit) {
+  if (lit.shape().dimensions_size() != 1) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Literal rank != 1");
+  }
+
+  std::unique_ptr<Literal> s64_lit;
+  TF_ASSIGN_OR_RETURN(s64_lit, lit.Convert(S64));
+
+  const int64* start = static_cast<const int64*>(s64_lit->InternalData());
+  return std::vector<int64>(start, start + s64_lit->shape().dimensions(0));
+}
 
 }
 }

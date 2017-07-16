@@ -176,9 +176,9 @@ Status GenericTransferManager::TransferLiteralFromOutfeed(
 
 Status GenericTransferManager::ResetDevices(
     tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-        executors) {
+    /*executors*/) {
   return Unimplemented(
-      "Device reset is not yet supported on CPU and GPU (b/30481585)");
+      "Device reset is not yet supported on this platform (b/30481585)");
 }
 
 int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {

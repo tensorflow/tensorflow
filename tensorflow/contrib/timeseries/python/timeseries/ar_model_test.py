@@ -279,14 +279,14 @@ class ARModelTest(test.TestCase):
         variables.global_variables_initializer().run()
         raw_evaluation_evaled, chunked_evaluation_evaled = sess.run(
             [raw_evaluation, chunked_evaluation])
-        self.assertAllEqual(chunked_evaluation_evaled.loss,
+        self.assertAllClose(chunked_evaluation_evaled.loss,
                             raw_evaluation_evaled.loss)
         last_chunk_evaluation_state = [
             state[-1, None] for state in
             chunked_evaluation_evaled.end_state]
         for last_chunk_state_member, raw_state_member in zip(
             last_chunk_evaluation_state, raw_evaluation_evaled.end_state):
-          self.assertAllEqual(last_chunk_state_member, raw_state_member)
+          self.assertAllClose(last_chunk_state_member, raw_state_member)
         self.assertAllEqual([[5, 7, 11]],
                             raw_evaluation_evaled.prediction_times)
         for feature_name in raw_evaluation.predictions:
@@ -294,7 +294,7 @@ class ARModelTest(test.TestCase):
               [1, 3, 1],  # batch, window, num_features. The window size has 2
                           # cut off for the first input_window.
               raw_evaluation_evaled.predictions[feature_name].shape)
-          self.assertAllEqual(
+          self.assertAllClose(
               np.reshape(chunked_evaluation_evaled.predictions[feature_name],
                          [-1]),
               np.reshape(raw_evaluation_evaled.predictions[feature_name],

@@ -4354,8 +4354,15 @@ We specify the size-related attributes as:
 REGISTER_OP("Bitcast")
     .Input("input: T")
     .Output("output: type")
-    .Attr("T: numbertype")
-    .Attr("type: numbertype")
+    // All supported dtypes are listed here to include qint16 and quint16.
+    .Attr(
+        "T: {float, double, int64, int32, uint8, uint16, int8, int16,"
+        " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
+        " half}")
+    .Attr(
+        "type: {float, double, int64, int32, uint8, uint16, int8, int16,"
+        " complex64, complex128, qint8, quint8, qint16, quint16, qint32,"
+        " half}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       if (!c->RankKnown(input)) {

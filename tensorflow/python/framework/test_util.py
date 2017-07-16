@@ -228,6 +228,19 @@ def NCHWToNHWC(input_tensor):
 
 
 # TODO(skyewm): remove this eventually
+# pylint: disable=protected-access
+def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
+  prev_value = ops._USE_C_API
+  ops._USE_C_API = use_c_api
+  try:
+    with ops.Graph().as_default():
+      fn(*args, **kwargs)
+  finally:
+    ops._USE_C_API = prev_value
+# pylint: disable=protected-access
+
+
+# TODO(skyewm): remove this eventually
 def disable_c_api(fn):
   """Decorator for disabling the C API on a test.
 

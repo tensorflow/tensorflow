@@ -172,22 +172,33 @@ class NestTest(test.TestCase):
     nest.assert_same_structure("abc", np.array([0, 1]))
     nest.assert_same_structure("abc", constant_op.constant([0, 1]))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same number of elements"):
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("don't have the same number of elements\\.\n\n"
+         "First structure \\(6 elements\\):.*?"
+         "\n\nSecond structure \\(2 elements\\):")):
       nest.assert_same_structure(structure1, structure_different_num_elements)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same number of elements"):
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("don't have the same number of elements\\.\n\n"
+         "First structure \\(2 elements\\):.*?"
+         "\n\nSecond structure \\(1 elements\\):")):
       nest.assert_same_structure([0, 1], np.array([0, 1]))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same number of elements"):
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("don't have the same number of elements\\.\n\n"
+         "First structure \\(1 elements\\):.*"
+         "\n\nSecond structure \\(2 elements\\):")):
       nest.assert_same_structure(0, [0, 1])
 
     self.assertRaises(TypeError, nest.assert_same_structure, (0, 1), [0, 1])
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("don't have the same nested structure\\.\n\n"
+         "First structure: .*?\n\nSecond structure: ")):
       nest.assert_same_structure(structure1, structure_different_nesting)
 
     named_type_0 = collections.namedtuple("named_0", ("a", "b"))
@@ -200,12 +211,16 @@ class NestTest(test.TestCase):
     self.assertRaises(TypeError, nest.assert_same_structure,
                       named_type_0(3, 4), named_type_1(3, 4))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("don't have the same nested structure\\.\n\n"
+         "First structure: .*?\n\nSecond structure: ")):
       nest.assert_same_structure(named_type_0(3, 4), named_type_0([3], 4))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same nested structure"):
+    with self.assertRaisesRegexp(
+        ValueError,
+        ("don't have the same nested structure\\.\n\n"
+         "First structure: .*?\n\nSecond structure: ")):
       nest.assert_same_structure([[3], 4], [3, [4]])
 
     structure1_list = [[[1, 2], 3], 4, [5, 6]]

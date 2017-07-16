@@ -203,8 +203,6 @@ public:
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("IPU");
   pipeline.AddPass<Inliner>();
-  pipeline.AddPass<Outliner>(1);
-  pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
 
@@ -213,7 +211,8 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<ReshapeMover>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
-
+  pipeline.AddPass<Outliner>(1);
+  pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(hlo_module).status();
 }
@@ -229,6 +228,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
 
   poplar::DeviceInfo dev_info;
+  dev_info.IPUExchangeType =
+      poplar::DeviceInfo::ExchangeType::AGGRESSIVE_MULTICAST;
+
   poplar::DeviceOptions dev_opts;
   dev_opts.convertFloat16 = true;
 
@@ -274,6 +276,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   }
 
   VLOG(1) << "Compiling main computation " << entry->name();
+  XLA_VLOG_LINES(1, entry->ToString());
 
   EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {

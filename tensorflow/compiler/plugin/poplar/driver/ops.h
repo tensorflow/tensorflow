@@ -174,6 +174,13 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
                              TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
+CreateSliceOp(poplar::Graph &graph,
+              CompilerResources& res,
+              const HloInstruction *inst,
+              const xla::Shape& output_shape,
+              TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
 CreateSliceUpdateOp(poplar::Graph &graph,
                     CompilerResources& res,
                     const HloInstruction *inst,
