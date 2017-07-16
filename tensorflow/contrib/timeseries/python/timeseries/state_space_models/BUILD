@@ -44,9 +44,6 @@ py_test(
         "state_space_model_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
     deps = [
         ":kalman_filter",
         ":state_space_model",
@@ -101,9 +98,6 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
     ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
 )
 
 py_library(
@@ -138,9 +132,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
     ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
 )
 
 py_library(
@@ -171,9 +162,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
     ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
 )
 
 py_library(
@@ -198,9 +186,6 @@ py_test(
         "structural_ensemble_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
     deps = [
         ":state_space_model",
         ":structural_ensemble",
@@ -248,9 +233,6 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
     ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
 )
 
 py_library(
@@ -280,9 +262,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-    ],
-    tags = [
-        "no_pip_gpu",  # b/63391119
     ],
 )
 

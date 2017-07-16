@@ -3852,12 +3852,14 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
-        type: DT_INT16
         type: DT_INT8
+        type: DT_INT16
         type: DT_COMPLEX64
         type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_QINT32
         type: DT_HALF
       }
@@ -3874,12 +3876,14 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
-        type: DT_INT16
         type: DT_INT8
+        type: DT_INT16
         type: DT_COMPLEX64
         type: DT_COMPLEX128
         type: DT_QINT8
         type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
         type: DT_QINT32
         type: DT_HALF
       }
@@ -10568,6 +10572,21 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorFromStringHandle"
+  input_arg {
+    name: "string_handle"
+    description: "A string representation of the given handle."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  summary: "Converts the given string representing a handle to an iterator to a resource."
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"
@@ -10590,6 +10609,21 @@ op {
     minimum: 1
   }
   summary: "Gets the next output from the given iterator."
+  is_stateful: true
+}
+op {
+  name: "IteratorToStringHandle"
+  input_arg {
+    name: "resource_handle"
+    description: "A handle to an iterator resource."
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "string_handle"
+    description: "A string representation of the given handle."
+    type: DT_STRING
+  }
+  summary: "Converts the given `resource_handle` representing an iterator to a string."
   is_stateful: true
 }
 op {
@@ -28434,33 +28468,6 @@ op {
   is_stateful: true
 }
 op {
-  name: "LMDBReader"
-  output_arg {
-    name: "reader_handle"
-    description: "The handle to reference the Reader."
-    type: DT_STRING
-    is_ref: true
-  }
-  attr {
-    name: "container"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
-  }
-  summary: "A Reader that outputs the records from a LMDB database."
-  is_stateful: true
-}
-op {
   name: "TakeDataset"
   input_arg {
     name: "input_dataset"
@@ -29744,6 +29751,11 @@ op {
     description: "A scalar or a vector containing the name(s) of the file(s) to be\nread."
     type: DT_STRING
   }
+  input_arg {
+    name: "compression_type"
+    description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
+    type: DT_STRING
+  }
   output_arg {
     name: "handle"
     type: DT_RESOURCE
@@ -30688,7 +30700,8 @@ op {
     description: "scalar. The content to be written to the output file."
     type: DT_STRING
   }
-  summary: "Writes contents to the file at input filename. Creates file if not existing."
+  summary: "Writes contents to the file at input filename. Creates file and recursively"
+  description: "creates directory if not existing."
 }
 op {
   name: "ZerosLike"

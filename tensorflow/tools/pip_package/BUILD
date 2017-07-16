@@ -61,6 +61,7 @@ py_binary(
     data = [
         "//tensorflow:all_opensource_files",
     ],
+    srcs_version = "PY2AND3",
 )
 
 # On Windows, python binary is a zip file of runfiles tree.

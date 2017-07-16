@@ -914,6 +914,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       CHECK_EQ(new_operands.size(), 1);
       return CreateOutfeed(shape, new_operands[0], outfeed_config());
     case HloOpcode::kBatchNormGrad:
+      CHECK_EQ(new_operands.size(), 5);
+      return CreateBatchNormGrad(shape, new_operands[0], new_operands[1],
+                                 new_operands[2], new_operands[3],
+                                 new_operands[4], epsilon(), feature_index());
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:

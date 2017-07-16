@@ -40,24 +40,9 @@ class TensorForestTrainerTests(test.TestCase):
 
     iris = base.load_iris()
     data = iris.data.astype(np.float32)
-    labels = iris.target.astype(np.float32)
+    labels = iris.target.astype(np.int32)
 
     classifier.fit(x=data, y=labels, steps=100, batch_size=50)
-    classifier.evaluate(x=data, y=labels, steps=10)
-
-  def testClassificationTrainingLoss(self):
-    """Tests multi-class classification using matrix data as input."""
-    hparams = tensor_forest.ForestHParams(
-        num_trees=3, max_nodes=1000, num_classes=3, num_features=4)
-    classifier = random_forest.TensorForestEstimator(
-        hparams, graph_builder_class=(tensor_forest.TrainingLossForest))
-
-    iris = base.load_iris()
-    data = iris.data.astype(np.float32)
-    labels = iris.target.astype(np.float32)
-
-    monitors = [random_forest.TensorForestLossHook(10)]
-    classifier.fit(x=data, y=labels, steps=100, monitors=monitors)
     classifier.evaluate(x=data, y=labels, steps=10)
 
   def testRegression(self):
@@ -75,7 +60,7 @@ class TensorForestTrainerTests(test.TestCase):
 
     boston = base.load_boston()
     data = boston.data.astype(np.float32)
-    labels = boston.target.astype(np.float32)
+    labels = boston.target.astype(np.int32)
 
     regressor.fit(x=data, y=labels, steps=100, batch_size=50)
     regressor.evaluate(x=data, y=labels, steps=10)

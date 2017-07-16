@@ -47,7 +47,7 @@ tf_py_test(
 
 tf_py_test(
     name = "barrier_ops_test",
-    size = "small",
+    size = "medium",  # NOTE(ebrevdo): This test is NOT small.
     srcs = ["barrier_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2064,6 +2064,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["noasan"],  # times out b/63680444
 )
 
 cuda_py_test(

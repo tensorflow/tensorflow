@@ -65,7 +65,7 @@ class SymbolicGradientBuilder {
   // gradients for the node associated with `src`.
   Status BackpropAlongEdge(const Output& dst_grad, const Output& src);
 
-  // Adds a node to the graph (returned in`grad`) that sums the in-bound
+  // Adds a node to the graph (returned in `grad`) that sums the in-bound
   // gradients to `src` (if there are more than one).
   Status SumGradients(const Output& src, Output* grad);
 
