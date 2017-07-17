@@ -440,7 +440,7 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 
-template struct CheckValidBoxIndexHelper<GPUDevice>;
+template struct CheckValidBoxIndHelper<GPUDevice>;
 
 }  // namespace functor
 }  // namespace tensorflow

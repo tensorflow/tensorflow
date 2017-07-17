@@ -847,7 +847,7 @@ void *CUDAExecutor::CudaContextHack() { return context_; }
 
 CudaContext* CUDAExecutor::cuda_context() { return context_; }
 
-// Attemps to read the NUMA node corresponding to the GPU device's PCI bus out
+// Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
 // of SysFS. Returns -1 if it cannot.
 //
 // For anything more complicated/prod-focused than this, you'll likely want to

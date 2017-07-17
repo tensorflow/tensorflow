@@ -31,7 +31,7 @@ TensorFlow.
 
 However, most developers will contribute documentation into the master Github
 branch, which is published, occasionally,
-at [tensorflow.org/versions/master](https://tensorflow.org/versions/master).
+at [tensorflow.org/versions/master](https://www.tensorflow.org/versions/master).
 
 If you want documentation changes to appear at root, you will need to also
 contribute that change to the current stable binary branch (and/or
@@ -276,7 +276,7 @@ __init__.py:
     # Otherwise import symbols directly
     from tensorflow.some_module.some_other_file import some_symbol
 
-    from tensorflow.platform.all_util import remove_undocumented
+    from tensorflow.python.util.all_util import remove_undocumented
 
     _allowed_symbols = [‘some_symbol’, ‘some_other_symbol’]
 

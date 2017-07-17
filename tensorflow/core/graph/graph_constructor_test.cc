@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -146,7 +147,7 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     std::vector<string> value;
-    Status s = GetNodeAttr(n->def(), kColocationAttrName, &value);
+    Status s = GetNodeAttr(n->attrs(), kColocationAttrName, &value);
     if (!s.ok()) {
       return "";
     }
@@ -997,7 +998,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_DefaultAttrs) {
   }
   ASSERT_TRUE(a != nullptr);
   int value = 0;
-  s = GetNodeAttr(a->def(), "default_int", &value);
+  s = GetNodeAttr(a->attrs(), "default_int", &value);
   ASSERT_EQ(Status::OK(), s) << s << " -- " << a->def().DebugString();
   EXPECT_EQ(31415, value);
 }
@@ -1201,9 +1202,9 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMap) {
 
   // Check that t1's NodeDef is consistent with graph
   Node* t1 = FindNode("t1");
-  ASSERT_EQ(t1->def().input_size(), 2);
-  ASSERT_EQ(t1->def().input(0), "input:1");
-  ASSERT_EQ(t1->def().input(1), "input:0");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  ASSERT_EQ(t1->requested_inputs()[0], "input:1");
+  ASSERT_EQ(t1->requested_inputs()[1], "input:0");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
@@ -1254,19 +1255,19 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
 
   // Check that NodeDefs are consistent with graph
   Node* t1 = FindNode("import/t1");
-  ASSERT_EQ(t1->def().input_size(), 2);
-  EXPECT_EQ(t1->def().input(0), "input:0");
-  EXPECT_EQ(t1->def().input(1), "input:0");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  EXPECT_EQ(t1->requested_inputs()[0], "input:0");
+  EXPECT_EQ(t1->requested_inputs()[1], "input:0");
 
   Node* t2 = FindNode("import/t2");
-  ASSERT_EQ(t2->def().input_size(), 2);
-  EXPECT_EQ(t2->def().input(0), "import/t1:0");
-  EXPECT_EQ(t2->def().input(1), "import/t1:0");
+  ASSERT_EQ(t2->requested_inputs().size(), 2);
+  EXPECT_EQ(t2->requested_inputs()[0], "import/t1:0");
+  EXPECT_EQ(t2->requested_inputs()[1], "import/t1:0");
 
   Node* t3 = FindNode("import/t3");
-  ASSERT_EQ(t3->def().input_size(), 2);
-  EXPECT_EQ(t3->def().input(0), "import/unmapped_input:0");
-  EXPECT_EQ(t3->def().input(1), "import/unmapped_input:1");
+  ASSERT_EQ(t3->requested_inputs().size(), 2);
+  EXPECT_EQ(t3->requested_inputs()[0], "import/unmapped_input:0");
+  EXPECT_EQ(t3->requested_inputs()[1], "import/unmapped_input:1");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
@@ -1760,24 +1761,37 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
   ImportGraphDefOptions opts;
   opts.control_dependencies = {"W1", "W2"};
   opts.prefix = "import";
-  opts.input_map[TensorId("W1", -1)] = TensorId("W1", -1);
+  // Create two input mappings to the same control dep so we can test adding and
+  // consolidating control deps from the same node
+  opts.input_map[TensorId("W2", -1)] = TensorId("W2", -1);
+  opts.input_map[TensorId("W3", -1)] = TensorId("W2", -1);
   ExpectOK(
       R"EOF(
-      node { name: 'W1' op: 'TestParams' }
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'W3' op: 'TestParams' }
       node { name: 'input' op: 'TestInput' }
-      node { name: 'input2' op: 'TestInput' input: [ '^W1' ] }
+      node { name: 'input2' op: 'TestInput' input: [ '^W2' ] }
+      node { name: 'input3' op: 'TestInput' input: [ '^W2', '^W3' ] }
       node { name: 't1' op: 'TestMul' input: [ 'input:0', 'input:1' ] }
+      node { name: 't2' op: 'TestMul'
+             input: [ 'input:0', 'input:1', '^W2', '^W3' ] }
       )EOF",
       opts, &refiner);
 
   // Sanity checks
-  EXPECT_TRUE(HasNode("import/W1"));
+  EXPECT_TRUE(HasNode("import/W2"));
+  EXPECT_TRUE(HasNode("import/W3"));
   EXPECT_TRUE(HasNode("import/input"));
   EXPECT_TRUE(HasNode("import/input2"));
+  EXPECT_TRUE(HasNode("import/input3"));
   EXPECT_TRUE(HasNode("import/t1"));
+  EXPECT_TRUE(HasNode("import/t2"));
 
-  EXPECT_TRUE(HasControlEdge("W1", "import/W1"));
-  EXPECT_TRUE(HasControlEdge("W2", "import/W1"));
+  EXPECT_TRUE(HasControlEdge("W1", "import/W2"));
+  EXPECT_TRUE(HasControlEdge("W2", "import/W2"));
+
+  EXPECT_TRUE(HasControlEdge("W1", "import/W3"));
+  EXPECT_TRUE(HasControlEdge("W2", "import/W3"));
 
   EXPECT_TRUE(HasControlEdge("W1", "import/input"));
   EXPECT_TRUE(HasControlEdge("W2", "import/input"));
@@ -1788,31 +1802,59 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
   EXPECT_TRUE(HasEdge("import/input", 0, "import/t1", 0));
   EXPECT_TRUE(HasEdge("import/input", 1, "import/t1", 1));
 
+  // Test that t2 has consolidated remapped control edge and not redundant
+  // control edge
+  EXPECT_TRUE(HasControlEdge("W2", "import/t2"));
+  EXPECT_FALSE(HasControlEdge("W1", "import/t2"));
+  EXPECT_TRUE(HasEdge("import/input", 0, "import/t1", 0));
+  EXPECT_TRUE(HasEdge("import/input", 1, "import/t1", 1));
+
   // Test that input2 has control edges since its only input was remapped
   EXPECT_TRUE(HasControlEdge("W1", "import/input2"));
   EXPECT_TRUE(HasControlEdge("W2", "import/input2"));
-  EXPECT_FALSE(HasControlEdge("import/W1", "import/input2"));
+  EXPECT_FALSE(HasControlEdge("import/W2", "import/input2"));
+
+  // Test that input3 has consolidated remapped control edge and added control
+  // edge
+  EXPECT_TRUE(HasControlEdge("W1", "import/input3"));
+  EXPECT_TRUE(HasControlEdge("W2", "import/input3"));
 
   // Test that node defs are consistent with graph
-  Node* w1 = FindNode("import/W1");
-  ASSERT_EQ(w1->def().input_size(), 2);
-  EXPECT_EQ(w1->def().input(0), "^W1");
-  EXPECT_EQ(w1->def().input(1), "^W2");
+  Node* w2 = FindNode("import/W2");
+  ASSERT_EQ(w2->requested_inputs().size(), 2);
+  EXPECT_EQ(w2->requested_inputs()[0], "^W1");
+  EXPECT_EQ(w2->requested_inputs()[1], "^W2");
+
+  Node* w3 = FindNode("import/W3");
+  ASSERT_EQ(w3->requested_inputs().size(), 2);
+  EXPECT_EQ(w3->requested_inputs()[0], "^W1");
+  EXPECT_EQ(w3->requested_inputs()[1], "^W2");
 
   Node* input = FindNode("import/input");
-  ASSERT_EQ(input->def().input_size(), 2);
-  EXPECT_EQ(input->def().input(0), "^W1");
-  EXPECT_EQ(input->def().input(1), "^W2");
+  ASSERT_EQ(input->requested_inputs().size(), 2);
+  EXPECT_EQ(input->requested_inputs()[0], "^W1");
+  EXPECT_EQ(input->requested_inputs()[1], "^W2");
 
   Node* input2 = FindNode("import/input2");
-  ASSERT_EQ(input2->def().input_size(), 2);
-  EXPECT_EQ(input2->def().input(0), "^W1");
-  EXPECT_EQ(input2->def().input(1), "^W2");
+  ASSERT_EQ(input2->requested_inputs().size(), 2);
+  EXPECT_EQ(input2->requested_inputs()[0], "^W2");
+  EXPECT_EQ(input2->requested_inputs()[1], "^W1");
+
+  Node* input3 = FindNode("import/input3");
+  ASSERT_EQ(input3->requested_inputs().size(), 2);
+  EXPECT_EQ(input3->requested_inputs()[0], "^W2");
+  EXPECT_EQ(input3->requested_inputs()[1], "^W1");
 
   Node* t1 = FindNode("import/t1");
-  ASSERT_EQ(t1->def().input_size(), 2);
-  EXPECT_EQ(t1->def().input(0), "import/input:0");
-  EXPECT_EQ(t1->def().input(1), "import/input:1");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  EXPECT_EQ(t1->requested_inputs()[0], "import/input:0");
+  EXPECT_EQ(t1->requested_inputs()[1], "import/input:1");
+
+  Node* t2 = FindNode("import/t2");
+  ASSERT_EQ(t2->requested_inputs().size(), 3);
+  EXPECT_EQ(t2->requested_inputs()[0], "import/input:0");
+  EXPECT_EQ(t2->requested_inputs()[1], "import/input:1");
+  EXPECT_EQ(t2->requested_inputs()[2], "^W2");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsWithCycle) {
@@ -1830,25 +1872,29 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsWithCycle) {
   // new_input
   opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
 
-  // ImportGraphDef only allows backedges into merge nodes (since backedges are
-  // only expected in while loops)
+  // ImportGraphDef only allows backedges into merge nodes that are part of
+  // while loops (since backedges are only expected in while loops)
   ExpectOK(
       R"EOF(
       node { name: 'new_input' op: 'TestInput' }
-      node { name: 'merge' op: 'Merge' input: [ 'new_input:0', 't1:0' ]
+      node { name: 'merge' op: 'Merge' input: [ 'new_input:0', 'next:0' ]
              attr { key: "N" value: { i: 2 } }
              attr { key: "T" value: { type: DT_FLOAT } } }
       node { name: 't1' op: 'TestMul' input: [ 'merge:0', 'merge:0' ] }
+      node { name: 'next' op: 'NextIteration' input: ['t1:0']
+             attr { key: "T" value: { type: DT_FLOAT } } }
       )EOF",
       opts, &refiner);
 
   EXPECT_TRUE(HasNode("new_input"));
   EXPECT_TRUE(HasNode("merge"));
   EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasNode("next"));
 
   // Sanity check we created cycle
   EXPECT_TRUE(HasEdge("merge", 0, "t1", 0));
-  EXPECT_TRUE(HasEdge("t1", 0, "merge", 1));
+  EXPECT_TRUE(HasEdge("t1", 0, "next", 0));
+  EXPECT_TRUE(HasEdge("next", 0, "merge", 1));
 
   // Test that control dep was added to exactly one node of cycle
   EXPECT_TRUE(HasControlEdge("W1", "merge"));
@@ -1856,15 +1902,19 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsWithCycle) {
 
   // Test that node defs are consistent with graph
   Node* merge = FindNode("merge");
-  ASSERT_EQ(merge->def().input_size(), 3);
-  EXPECT_EQ(merge->def().input(0), "input:0");
-  EXPECT_EQ(merge->def().input(1), "t1:0");
-  EXPECT_EQ(merge->def().input(2), "^W1");
+  ASSERT_EQ(merge->requested_inputs().size(), 3);
+  EXPECT_EQ(merge->requested_inputs()[0], "input:0");
+  EXPECT_EQ(merge->requested_inputs()[1], "next:0");
+  EXPECT_EQ(merge->requested_inputs()[2], "^W1");
 
   Node* t1 = FindNode("t1");
-  ASSERT_EQ(t1->def().input_size(), 2);
-  EXPECT_EQ(t1->def().input(0), "merge:0");
-  EXPECT_EQ(t1->def().input(1), "merge:0");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  EXPECT_EQ(t1->requested_inputs()[0], "merge:0");
+  EXPECT_EQ(t1->requested_inputs()[1], "merge:0");
+
+  Node* next = FindNode("next");
+  ASSERT_EQ(next->requested_inputs().size(), 1);
+  EXPECT_EQ(next->requested_inputs()[0], "t1:0");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsErrors) {

@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "remove_training_nodes"
-    argspec: "args=[\'input_graph\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input_graph\', \'protected_nodes\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "tensor_shape_from_node_def_name"

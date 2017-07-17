@@ -28,9 +28,31 @@ namespace tensorflow {
 class RemoteFusedGraphExecuteOpTestUtils {
  public:
   static Output BuildAddOp(const Scope& scope, const Input& x, const Input& y);
-  static GraphDef BuildAddGraph(const string& name0, const float val0,
-                                const string& name1, const float val1,
-                                const string& name_out);
+  static Status BuildAddGraph(const string& name0, const float val0,
+                              const string& name1, const float val1,
+                              const string& name_out, GraphDef* graph_def);
+
+  // BuildMultipleAddGraph builds the following graph
+  //
+  //  A         B         C         D         E
+  //  |         |         |         |         |
+  //  +----+----+         |         +----+----+
+  //       |              |              |
+  //       F             / \             G
+  //       |            |   |           / \
+  //       +-----+------+   +-----+----+   +
+  //             |                |        |
+  //             H                I        |
+  //             |                |        |
+  //             +-------+--------+        |
+  //                     |                 |
+  //                     J                 |
+  //                     |                 |
+  //                     +--------+--------+
+  //                              |
+  //                              K
+  //
+  static Status BuildMultipleAddGraph(GraphDef* graph_def);
 
  private:
   RemoteFusedGraphExecuteOpTestUtils() = delete;

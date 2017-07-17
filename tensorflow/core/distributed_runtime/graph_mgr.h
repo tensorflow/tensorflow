@@ -108,9 +108,9 @@ class GraphMgr {
   };
 
   struct Item : public core::RefCounted {
-    // TOOD(zhifengc): Keeps a copy of the original graph if the need arises.
-    // TOOD(zhifengc): Stats, updated by multiple runs potentially.
-    // TOOD(zhifengc): Dup-detection. Ensure step_id only run once.
+    // TODO(zhifengc): Keeps a copy of the original graph if the need arises.
+    // TODO(zhifengc): Stats, updated by multiple runs potentially.
+    // TODO(zhifengc): Dup-detection. Ensure step_id only run once.
     ~Item() override;
 
     // Session handle.
@@ -126,7 +126,7 @@ class GraphMgr {
     // has a root executor which may call into the runtime library.
     std::vector<ExecutionUnit> units;
 
-    // Used to deresgister a cost model when cost model is requried in graph
+    // Used to deresgister a cost model when cost model is required in graph
     // manager.
     GraphMgr* graph_mgr;
   };
@@ -157,7 +157,7 @@ class GraphMgr {
                               CancellationManager* cancellation_manager,
                               StatusCallback done);
 
-  // Don't attempt to process cost models unless explicitely requested for at
+  // Don't attempt to process cost models unless explicitly requested for at
   // least one of the items.
   bool skip_cost_models_ = true;
 

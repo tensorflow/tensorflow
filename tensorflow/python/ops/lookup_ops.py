@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -239,7 +240,7 @@ class HashTable(InitializableLookupTableBase):
       tf.contrib.lookup.KeyValueTensorInitializer(keys, values), -1)
   out = table.lookup(input_tensor).
   table.init.run()
-  print out.eval()
+  print(out.eval())
   ```
   """
 
@@ -519,7 +520,10 @@ class TextFileInitializer(TableInitializerBase):
           name=scope)
       # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
-    ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
+    # If the filename tensor is anything other than a string constant (e.g., if
+    # it is a placeholder) then it does not make sense to track it as an asset.
+    if constant_op.is_constant(filename):
+      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 
 
@@ -687,8 +691,8 @@ class IdTableWithHashBuckets(LookupInterface):
   - emerson -> 0
   - lake -> 1
   - palmer -> 2
-  - <other term> -> bucket id between 3 and 3 + num_oov_buckets, calculated by:
-    hash(<term>) % num_oov_buckets + vocab_size
+  - <other term> -> bucket id between 3 and 3 + num_oov_buckets - 1, calculated
+    by: hash(<term>) % num_oov_buckets + vocab_size
 
   If input_tensor is ["emerson", "lake", "palmer", "king", "crimson"],
   the lookup result is [0, 1, 2, 4, 7]
@@ -705,7 +709,7 @@ class IdTableWithHashBuckets(LookupInterface):
       num_oov_buckets)
   out = table.lookup(input_tensor).
   table.init.run()
-  print out.eval()
+  print(out.eval())
   ```
 
   The hash function used for generating out-of-vocabulary buckets ID is handled
@@ -866,7 +870,8 @@ def index_table_from_file(vocabulary_file=None,
   Any lookup of an out-of-vocabulary token will return a bucket ID based on its
   hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
   `default_value`.
-  The bucket ID range is `[vocabulary size, vocabulary size + num_oov_buckets]`.
+  The bucket ID range is
+  `[vocabulary size, vocabulary size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
@@ -893,7 +898,7 @@ def index_table_from_file(vocabulary_file=None,
   ```
 
   Args:
-    vocabulary_file: The vocabulary filename.
+    vocabulary_file: The vocabulary filename, may be a constant scalar `Tensor`.
     num_oov_buckets: The number of out-of-vocabulary buckets.
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary feature values.
@@ -911,8 +916,9 @@ def index_table_from_file(vocabulary_file=None,
     ValueError: If `num_oov_buckets` is negative or `vocab_size` is not greater
       than zero.
   """
-  if not vocabulary_file:
-    raise ValueError("vocabulary_file must be specified.")
+  if vocabulary_file is None or (
+      isinstance(vocabulary_file, str) and not vocabulary_file):
+    raise ValueError("vocabulary_file must be specified and must not be empty.")
   if num_oov_buckets < 0:
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
                      % num_oov_buckets)
@@ -972,7 +978,7 @@ def index_table_from_tensor(vocabulary_list,
   Any lookup of an out-of-vocabulary token will return a bucket ID based on its
   hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
   `default_value`.
-  The bucket ID range is `[mapping size, mapping size + num_oov_buckets]`.
+  The bucket ID range is `[mapping size, mapping size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
@@ -983,9 +989,9 @@ def index_table_from_tensor(vocabulary_list,
   Sample Usages:
 
   ```python
-  vocabulary_list = t.constant(["emerson", "lake", "palmer")
+  vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
   table = tf.contrib.lookup.index_table_from_tensor(
-      vocabulary_list=vocabulary_list, num_oov_buckets=1, default_value=-1)
+      mapping=vocabulary_list, num_oov_buckets=1, default_value=-1)
   features = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = table.lookup(features)
   ...
@@ -1155,7 +1161,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
   Sample Usages:
 
   ```python
-  vocabulary_list = t.constant(["emerson", "lake", "palmer")
+  vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
   indices = tf.constant([1, 5], tf.int64)
   table = tf.contrib.lookup.index_to_string_table_from_tensor(
       vocabulary_list, default_value="UNKNOWN")

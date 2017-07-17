@@ -339,7 +339,7 @@ class TransformedDistribution(distribution_lib.Distribution):
             self.distribution.event_shape_tensor()))
 
   def _event_shape(self):
-    # If there's a chance that the event_shape has been overriden, we return
+    # If there's a chance that the event_shape has been overridden, we return
     # what we statically know about the `event_shape_override`. This works
     # because: `_is_maybe_event_override` means `static_override` is `None` or a
     # non-empty list, i.e., we don't statically know the `event_shape` or we do.
@@ -360,7 +360,7 @@ class TransformedDistribution(distribution_lib.Distribution):
         self.distribution.batch_shape_tensor())
 
   def _batch_shape(self):
-    # If there's a chance that the batch_shape has been overriden, we return
+    # If there's a chance that the batch_shape has been overridden, we return
     # what we statically know about the `batch_shape_override`. This works
     # because: `_is_maybe_batch_override` means `static_override` is `None` or a
     # non-empty list, i.e., we don't statically know the `batch_shape` or we do.

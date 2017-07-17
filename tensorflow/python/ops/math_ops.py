@@ -45,6 +45,11 @@ See the @{$python/math_ops} guide.
 @@expm1
 @@log
 @@log1p
+@@sinh
+@@cosh
+@@asinh
+@@acosh
+@@atanh
 @@ceil
 @@floor
 @@maximum
@@ -163,42 +168,58 @@ from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated_args
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
 
+arg_max = deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
+arg_min = deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+
+
+def _set_doc(doc):
+  def _decorator(func):
+    func.__doc__ = doc
+    return func
+  return _decorator
+
 
 # pylint: disable=redefined-builtin
-# TODO(aselle): deprecate arg_max
-def argmax(input, axis=None, name=None, dimension=None):
+@deprecated_args(None, "Use the `axis` argument instead", "dimension")
+@_set_doc(gen_math_ops.arg_max.__doc__
+          .replace("dimensions", "axes")
+          .replace("dimension", "axis"))
+def argmax(input,
+           axis=None,
+           name=None,
+           dimension=None,
+           output_type=dtypes.int64):
   if dimension is not None:
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
   elif axis is None:
     axis = 0
-  return gen_math_ops.arg_max(input, axis, name)
+  return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
-argmax.__doc__ = (gen_math_ops.arg_max.__doc__.replace("dimensions",
-                                                       "axes").replace(
-                                                           "dimension", "axis"))
-
-
-# TODO(aselle:deprecate arg_min)
-def argmin(input, axis=None, name=None, dimension=None):
+@deprecated_args(None, "Use the `axis` argument instead", "dimension")
+@_set_doc(gen_math_ops.arg_min.__doc__
+          .replace("dimensions", "axes")
+          .replace("dimension", "axis"))
+def argmin(input,
+           axis=None,
+           name=None,
+           dimension=None,
+           output_type=dtypes.int64):
   if dimension is not None:
     if axis is not None:
       raise ValueError("Cannot specify both 'axis' and 'dimension'")
     axis = dimension
   elif axis is None:
     axis = 0
-  return gen_math_ops.arg_min(input, axis, name)
+  return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
-
-argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
-                                                       "axes").replace(
-                                                           "dimension", "axis"))
 
 # pylint: enable=redefined-builtin
 
@@ -208,19 +229,25 @@ argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
 def abs(x, name=None):
   r"""Computes the absolute value of a tensor.
 
-  Given a tensor of real numbers `x`, this operation returns a tensor
-  containing the absolute value of each element in `x`. For example, if x is
-  an input element and y is an output element, this operation computes
-  \\\\(y = |x|\\\\).
+  Given a tensor `x` of complex numbers, this operation returns a tensor of type
+  `float32` or `float64` that is the absolute value of each element in `x`. All
+  elements in `x` must be complex numbers of the form \\(a + bj\\). The
+  absolute value is computed as \\( \sqrt{a^2 + b^2}\\).  For example:
+  ```
+  # tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
+  tf.complex_abs(x) ==> [5.25594902, 6.60492229]
+  ```
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
-      `int64`.
+    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`,
+      `int64`, `complex64` or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
       values.
+    Note, for `complex64` or `complex128' input, the returned `Tensor` will be
+      of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -386,7 +413,7 @@ def sign(x, name=None):
     A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
   @compatibility(numpy)
-  Equivalent to numpy.sign except for the behaviour for input values of NaN.
+  Equivalent to numpy.sign except for the behavior for input values of NaN.
   @end_compatibility
   """
   with ops.name_scope(name, "Sign", [x]) as name:
@@ -494,7 +521,7 @@ def scalar_mul(scalar, x):
 def pow(x, y, name=None):
   r"""Computes the power of one value to another.
 
-  Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for
+  Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
   corresponding elements in `x` and `y`. For example:
 
   ```
@@ -1675,8 +1702,9 @@ def matmul(a,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must be matrices (or tensors of rank > 2, representing batches of
-  matrices), with matching inner dimensions, possibly after transposition.
+  The inputs must, following any transpositions, be tensors of rank >= 2
+  where the inner 2 dimensions specify valid matrix multiplication arguments,
+  and any further outer dimensions match.
 
   Both matrices must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
@@ -2048,12 +2076,11 @@ def tanh(x, name=None):
 
   Args:
     x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
-      `complex64`, `int64`, or `qint32`.
+      `complex64`, or `int64`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor or SparseTensor respectively with the same type as `x` if
-    `x.dtype != qint32` otherwise the return type is `quint8`.
+    A Tensor or SparseTensor respectively with the same type as `x`.
   """
   with ops.name_scope(name, "Tanh", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -2113,26 +2140,31 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   By default, this op performs an inclusive cumsum, which means that the first
   element of the input is identical to the first element of the output:
-  ```prettyprint
-  tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+
+  ```python
+  tf.cumsum([a, b, c])  # => [a, a + b, a + b + c]
   ```
 
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
-  ```prettyprint
-  tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+
+  ```python
+  tf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]
   ```
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
-  ```prettyprint
-  tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+
+  ```python
+  tf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]
   ```
+
   This is more efficient than using separate `tf.reverse` ops.
 
   The `reverse` and `exclusive` kwargs can also be combined:
-  ```prettyprint
-  tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
+
+  ```python
+  tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
   ```
 
   Args:
@@ -2157,29 +2189,32 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative product of the tensor `x` along `axis`.
 
   By default, this op performs an inclusive cumprod, which means that the
-  first
-  element of the input is identical to the first element of the output:
-  ```prettyprint
-  tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+  first element of the input is identical to the first element of the output:
+
+  ```python
+  tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
   ```
 
   By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
   performed
   instead:
-  ```prettyprint
-  tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
+
+  ```python
+  tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
   ```
 
   By setting the `reverse` kwarg to `True`, the cumprod is performed in the
   opposite direction:
-  ```prettyprint
-  tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
-  ```
-  This is more efficient than using separate `tf.reverse` ops.
 
+  ```python
+  tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
+  ```
+
+  This is more efficient than using separate `tf.reverse` ops.
   The `reverse` and `exclusive` kwargs can also be combined:
-  ```prettyprint
-  tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
+
+  ```python
+  tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
   ```
 
   Args:

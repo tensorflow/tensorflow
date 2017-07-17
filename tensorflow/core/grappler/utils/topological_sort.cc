@@ -17,6 +17,7 @@ limitations under the License.
 #include <deque>
 #include <unordered_map>
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
@@ -35,7 +36,7 @@ void TopologicalSort(GraphDef* graph) {
     if (node.op() == "Merge") {
       ready_inputs[&node] = 0;
       for (const auto& input : node.input()) {
-        if (node_map.GetNode(input)->op() == "NextIteration") {
+        if (IsNextIteration(*node_map.GetNode(input))) {
           ready_inputs[&node]++;
         }
       }
@@ -56,7 +57,7 @@ void TopologicalSort(GraphDef* graph) {
     ready_nodes.pop_front();
   }
   if (sorted_graph.node_size() == graph->node_size()) {
-    *graph = sorted_graph;
+    graph->mutable_node()->Swap(sorted_graph.mutable_node());
   }
 }
 

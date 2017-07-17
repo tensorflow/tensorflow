@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/remote_fused_graph_execute_op_test_utils.h"
 
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -36,17 +39,57 @@ namespace tensorflow {
   return Output(ret, 0);
 }
 
-/* static */ GraphDef RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+/* static */ Status RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
     const string& name0, const float val0, const string& name1,
-    const float val1, const string& name_out) {
+    const float val1, const string& name_out, GraphDef* graph_def) {
   Scope root = Scope::NewRootScope();
   Output node0 = ops::Const(root.WithOpName(name0), val0);
   Output node1 = ops::Const(root.WithOpName(name1), val1);
   RemoteFusedGraphExecuteOpTestUtils::BuildAddOp(root.WithOpName(name_out),
                                                  node0, node1);
-  GraphDef def;
-  TF_CHECK_OK(root.ToGraphDef(&def));
-  return def;
+  TF_RETURN_IF_ERROR(root.ToGraphDef(graph_def));
+  return Status::OK();
+}
+
+/* static */ Status RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(
+    GraphDef* graph_def) {
+  Scope root = tensorflow::Scope::NewRootScope();
+
+  Tensor a_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillIota<float>(&a_data, 1.0f);
+  Output a_const = ops::Const(root.WithOpName("A"), Input::Initializer(a_data));
+
+  Tensor b_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillIota<float>(&b_data, 1.0f);
+  Output b_const = ops::Const(root.WithOpName("B"), Input::Initializer(b_data));
+
+  Tensor c_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillIota<float>(&c_data, 1.0f);
+  Output c_const = ops::Const(root.WithOpName("C"), Input::Initializer(c_data));
+
+  Tensor d_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillIota<float>(&d_data, 1.0f);
+  Output d_const = ops::Const(root.WithOpName("D"), Input::Initializer(d_data));
+
+  Tensor e_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillIota<float>(&e_data, 1.0f);
+  Output e_const = ops::Const(root.WithOpName("E"), Input::Initializer(e_data));
+
+  Output f_add = ops::Add(root.WithOpName("F"), a_const, b_const);
+
+  Output g_add = ops::Add(root.WithOpName("G"), d_const, e_const);
+
+  Output h_add = ops::Add(root.WithOpName("H"), f_add, c_const);
+
+  Output i_add = ops::Add(root.WithOpName("I"), c_const, g_add);
+
+  Output j_add = ops::Add(root.WithOpName("J"), h_add, i_add);
+
+  Output k_add = ops::Add(root.WithOpName("K"), j_add, g_add);
+
+  TF_RETURN_IF_ERROR(root.ToGraphDef(graph_def));
+
+  return Status::OK();
 }
 
 }  // namespace tensorflow

@@ -24,22 +24,34 @@ from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.utils.conv_utils import convert_kernel
 
 
-def print_summary(model, line_length=None, positions=None):
+def print_summary(model, line_length=None, positions=None, print_fn=None):
   """Prints a summary of a model.
 
   Arguments:
       model: Keras model instance.
-      line_length: total length of printed lines
-      positions: relative or absolute positions of log elements in each line.
+      line_length: Total length of printed lines
+          (e.g. set this to adapt the display to different
+          terminal window sizes).
+      positions: Relative or absolute positions of log elements in each line.
           If not provided, defaults to `[.33, .55, .67, 1.]`.
+      print_fn: Print function to use (defaults to `print`).
+          It will be called on each line of the summary.
+          You can set it to a custom function
+          in order to capture the string summary.
   """
+  if print_fn is None:
+    print_fn = print
+
   if model.__class__.__name__ == 'Sequential':
     sequential_like = True
   else:
     sequential_like = True
     for v in model.nodes_by_depth.values():
-      if len(v) > 1:
+      if (len(v) > 1) or (len(v) == 1 and len(v[0].inbound_layers) > 1):
+        # If the model has multiple nodes or if the nodes have
+        # multiple inbound_layers, the model is no longer sequential.
         sequential_like = False
+        break
 
   if sequential_like:
     line_length = line_length or 65
@@ -67,11 +79,11 @@ def print_summary(model, line_length=None, positions=None):
       line += str(fields[i])
       line = line[:positions[i]]
       line += ' ' * (positions[i] - len(line))
-    print(line)
+    print_fn(line)
 
-  print('_' * line_length)
+  print_fn('_' * line_length)
   print_row(to_display, positions)
-  print('=' * line_length)
+  print_fn('=' * line_length)
 
   def print_layer_summary(layer):
     try:
@@ -94,12 +106,10 @@ def print_summary(model, line_length=None, positions=None):
     except AttributeError:
       output_shape = 'multiple'
     connections = []
-    for node_index, node in enumerate(layer.inbound_nodes):
-      if relevant_nodes:
-        node_key = layer.name + '_ib-' + str(node_index)
-        if node_key not in relevant_nodes:
-          # node is node part of the current network
-          continue
+    for node in layer.inbound_nodes:
+      if relevant_nodes and node not in relevant_nodes:
+        # node is not part of the current network
+        continue
       for i in range(len(node.inbound_layers)):
         inbound_layer = node.inbound_layers[i].name
         inbound_node_index = node.node_indices[i]
@@ -114,8 +124,8 @@ def print_summary(model, line_length=None, positions=None):
     else:
       first_connection = connections[0]
     fields = [
-        name + ' (' + cls_name + ')', output_shape, layer.count_params(),
-        first_connection
+        name + ' (' + cls_name + ')', output_shape,
+        layer.count_params(), first_connection
     ]
     print_row(fields, positions)
     if len(connections) > 1:
@@ -130,48 +140,19 @@ def print_summary(model, line_length=None, positions=None):
     else:
       print_layer_summary_with_connections(layers[i])
     if i == len(layers) - 1:
-      print('=' * line_length)
+      print_fn('=' * line_length)
     else:
-      print('_' * line_length)
+      print_fn('_' * line_length)
 
-  trainable_count, non_trainable_count = count_total_params(
-      layers, layer_set=None)
+  trainable_count = int(
+      np.sum([K.count_params(p) for p in set(model.trainable_weights)]))
+  non_trainable_count = int(
+      np.sum([K.count_params(p) for p in set(model.non_trainable_weights)]))
 
-  print('Total params: {:,}'.format(trainable_count + non_trainable_count))
-  print('Trainable params: {:,}'.format(trainable_count))
-  print('Non-trainable params: {:,}'.format(non_trainable_count))
-  print('_' * line_length)
-
-
-def count_total_params(layers, layer_set=None):
-  """Counts the number of parameters in a list of layers.
-
-  Arguments:
-      layers: list of layers.
-      layer_set: set of layers already seen
-          (so that we don't count their weights twice).
-
-  Returns:
-      A tuple (count of trainable weights, count of non-trainable weights.)
-  """
-  if layer_set is None:
-    layer_set = set()
-  trainable_count = 0
-  non_trainable_count = 0
-  for layer in layers:
-    if layer in layer_set:
-      continue
-    layer_set.add(layer)
-    if hasattr(layer, 'layers'):
-      t, nt = count_total_params(layer.layers, layer_set)
-      trainable_count += t
-      non_trainable_count += nt
-    else:
-      trainable_count += np.sum(
-          [K.count_params(p) for p in layer.trainable_weights])
-      non_trainable_count += np.sum(
-          [K.count_params(p) for p in layer.non_trainable_weights])
-  return int(trainable_count), int(non_trainable_count)
+  print_fn('Total params: {:,}'.format(trainable_count + non_trainable_count))
+  print_fn('Trainable params: {:,}'.format(trainable_count))
+  print_fn('Non-trainable params: {:,}'.format(non_trainable_count))
+  print_fn('_' * line_length)
 
 
 def convert_all_kernels_in_model(model):
@@ -218,7 +199,7 @@ def convert_dense_weights_data_format(dense,
           came before the target `Dense` layer.
       target_data_format: One of "channels_last", "channels_first".
           Set it "channels_last"
-          if converting a "chnnels_first" model to "channels_last",
+          if converting a "channels_first" model to "channels_last",
           or reciprocally.
   """
   assert target_data_format in {'channels_last', 'channels_first'}

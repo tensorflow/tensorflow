@@ -247,7 +247,7 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   return output_graph_def
 
 
-def remove_training_nodes(input_graph):
+def remove_training_nodes(input_graph, protected_nodes=None):
   """Prunes out nodes that aren't needed for inference.
 
   There are nodes like Identity and CheckNumerics that are only useful
@@ -259,17 +259,22 @@ def remove_training_nodes(input_graph):
 
   Args:
     input_graph: Model to analyze and prune.
+    protected_nodes: An optional list of names of nodes to be kept
+      unconditionally. This is for example useful to preserve Identity output
+      nodes.
 
   Returns:
     A list of nodes with the unnecessary ones removed.
   """
+  if not protected_nodes:
+    protected_nodes = []
 
   types_to_remove = {"CheckNumerics": True}
 
   input_nodes = input_graph.node
   names_to_remove = {}
   for node in input_nodes:
-    if node.op in types_to_remove:
+    if node.op in types_to_remove and node.name not in protected_nodes:
       names_to_remove[node.name] = True
 
   nodes_after_removal = []
@@ -290,7 +295,7 @@ def remove_training_nodes(input_graph):
   types_to_splice = {"Identity": True}
   names_to_splice = {}
   for node in nodes_after_removal:
-    if node.op in types_to_splice:
+    if node.op in types_to_splice and node.name not in protected_nodes:
       # We don't want to remove nodes that have control edge inputs, because
       # they might be involved in subtle dependency issues that removing them
       # will jeopardize.

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -251,7 +250,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("box_index has incompatible shape"))
+      StringPiece(s.ToString()).contains("box_ind has incompatible shape"))
       << s;
 }
 
@@ -264,10 +263,8 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("box_index has values outside [0, batch_size)"))
+                  .contains("box_ind has values outside [0, batch)"))
       << s;
 }
-
-// TODO(zhengxq, rmlarsen): Add a benchmark.
 
 }  // namespace tensorflow

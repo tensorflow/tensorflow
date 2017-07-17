@@ -43,17 +43,17 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
           "graph should be available.");
     }
     gtl::InlinedVector<Node*, 2> matches;
-    for (Node* n : g->nodes()) {
+    for (Node* n : g->op_nodes()) {
       if (n->type_string() == "ParallelConcat") {
         matches.push_back(n);
       }
     }
     for (Node* n : matches) {
-      AttrSlice n_attrs(n->def());
+      AttrSlice n_attrs = n->attrs();
       auto base_make_node = [n, g, &n_attrs](const string& op,
                                              const string& name) {
         NodeBuilder node_builder(name, op);
-        node_builder.Device(n->def().device());
+        node_builder.Device(n->requested_device());
         string colo;
         if (GetNodeAttr(n_attrs, "_class", &colo).ok()) {
           node_builder.Attr("_class", colo);

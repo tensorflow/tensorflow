@@ -36,8 +36,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
-
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras import layers
 from tensorflow.contrib.keras.python.keras.applications.imagenet_utils import _obtain_input_shape
@@ -54,6 +52,7 @@ from tensorflow.contrib.keras.python.keras.layers import MaxPooling2D
 from tensorflow.contrib.keras.python.keras.layers import SeparableConv2D
 from tensorflow.contrib.keras.python.keras.models import Model
 from tensorflow.contrib.keras.python.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
 
 
 TF_WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.4/xception_weights_tf_dim_ordering_tf_kernels.h5'
@@ -127,7 +126,7 @@ def Xception(include_top=True,
     raise RuntimeError('The Xception model is only available with '
                        'the TensorFlow backend.')
   if K.image_data_format() != 'channels_last':
-    warnings.warn(
+    logging.warning(
         'The Xception model is only available for the '
         'input data format "channels_last" '
         '(width, height, channels). '

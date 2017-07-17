@@ -825,7 +825,7 @@ class Seq2SeqTest(test.TestCase):
   #     with variable_scope.variable_scope("new"):
   #       _, losses2 = SampleGRUSeq2Seq
   #           inp, out, weights, per_example_loss=True)
-  #       # First loss is scalar, the second one is a 1-dimensinal tensor.
+  #       # First loss is scalar, the second one is a 1-dimensional tensor.
   #       self.assertEqual([], losses1[0].get_shape().as_list())
   #       self.assertEqual([None], losses2[0].get_shape().as_list())
 

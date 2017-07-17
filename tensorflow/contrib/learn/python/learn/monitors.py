@@ -35,6 +35,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 import time
 
@@ -616,6 +617,7 @@ class ValidationMonitor(EveryN):
     self.name = name
     self._best_value_step = None
     self._best_value = None
+    self._best_metrics = None
     self._early_stopped = False
     self._latest_path = None
     self._latest_path_step = None
@@ -634,6 +636,23 @@ class ValidationMonitor(EveryN):
   def best_value(self):
     """Returns the best early stopping metric value found so far."""
     return self._best_value
+
+  @property
+  def best_metrics(self):
+    """Returns all eval metrics computed with the best early stopping metric.
+
+    For instance, if the metrics computed in two successive evals are
+    1. {'loss':40, 'auc':0.5}
+    2. {'loss':50, 'auc':0.6}
+    this function would return the first dict {'loss':40, 'auc':0.5} after both
+    first and second eval (if `early_stopping_metric` is 'loss' and
+    `early_stopping_metric_minimize` is True).
+
+    Returns:
+      The output dict of estimator.evaluate which contains the best value of
+      the early stopping metric seen so far.
+    """
+    return self._best_metrics
 
   def _evaluate_estimator(self):
     if isinstance(self._estimator, core_estimator.Estimator):
@@ -691,6 +710,7 @@ class ValidationMonitor(EveryN):
           (not self.early_stopping_metric_minimize and
            (current_value > self._best_value))):
         self._best_value = current_value
+        self._best_metrics = copy.deepcopy(validation_outputs)
         self._best_value_step = step
       stop_now = (step - self._best_value_step >= self.early_stopping_rounds)
       if stop_now:

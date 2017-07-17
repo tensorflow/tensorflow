@@ -20,7 +20,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/computation.h"
+#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -28,7 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -36,10 +41,12 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::gtl::ArraySlice;
+
+namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace {
@@ -74,14 +81,14 @@ class FusionTest : public HloTestBase {
     }
 
     auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = MakeUnique<HloModule>(TestName());
+    auto hlo_module = CreateNewModule();
 
     auto prim_type = primitive_util::NativeToPrimitiveType<T>();
 
     HloInstruction* hlos[4];
     for (int i = 0; i < Arity; ++i) {
       hlos[i + 1] = builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2FromArray2D(operand_data[i])));
+          Literal::CreateR2FromArray2D(operand_data[i])));
     }
     auto answer_shape =
         ShapeUtil::MakeShape(prim_type, {test_width, test_height});
@@ -107,7 +114,7 @@ class FusionTest : public HloTestBase {
             ArraySlice<HloInstruction*>(hlos, 0, Arity + 1),
             HloInstruction::FusionKind::kLoop);
 
-    auto expected = LiteralUtil::CreateR2FromArray2D(answer_data);
+    auto expected = Literal::CreateR2FromArray2D(answer_data);
     auto actual = ExecuteAndTransfer(std::move(hlo_module), {});
     if (primitive_util::IsFloatingPointType(prim_type)) {
       LiteralTestUtil::ExpectNear(*expected, *actual, ErrorSpec(1e-4));
@@ -176,35 +183,34 @@ XLA_TEST_F(FusionTest, Test) {
   //                     (-{{1.0, 1.0, 1.0}, {0.0, 0.0, 0.0}}),
   //              {{0.5, 0.5, 0.5}, {0.5, 0.5, 0.5}})) = {{0.5}, {2.72}}
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0}, {2.0}, {3.0}})));
+      Literal::CreateR2<float>({{1.0}, {2.0}, {3.0}})));
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{-1.0}, {-1.0}, {-1.0}})));
+      Literal::CreateR2<float>({{-1.0}, {-1.0}, {-1.0}})));
   auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {3, 1}), HloOpcode::kAdd, const0, const1));
   auto reshape3 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(F32, {1, 3}), add2, {1, 0}));
   auto const4 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.62, 2.72, 3.14}})));
+      Literal::CreateR2<float>({{1.62, 2.72, 3.14}})));
   auto concat5 = builder.AddInstruction(HloInstruction::CreateConcatenate(
       ShapeUtil::MakeShape(F32, {2, 3}), {reshape3, const4}, 0));
   auto const6 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 1.0, 1.0}, {0.0, 0.0, 0.0}})));
+      Literal::CreateR2<float>({{1.0, 1.0, 1.0}, {0.0, 0.0, 0.0}})));
   auto negate7 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(F32, {2, 3}), HloOpcode::kNegate, const6));
   auto add8 = builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {2, 3}), HloOpcode::kAdd, concat5, negate7));
   auto const9 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{0.5, 0.5, 0.5}, {0.5, 0.5, 0.5}})));
-  auto const10 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2<bool>(
-          {{true, false, true}, {false, true, false}})));
+      Literal::CreateR2<float>({{0.5, 0.5, 0.5}, {0.5, 0.5, 0.5}})));
+  auto const10 = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<bool>({{true, false, true}, {false, true, false}})));
   auto select11 = builder.AddInstruction(
       HloInstruction::CreateTernary(ShapeUtil::MakeShape(F32, {2, 3}),
                                     HloOpcode::kSelect, const10, add8, const9));
   auto slice12 = builder.AddInstruction(HloInstruction::CreateSlice(
-      ShapeUtil::MakeShape(F32, {2, 1}), select11, {0, 1}, {2, 2}));
+      ShapeUtil::MakeShape(F32, {2, 1}), select11, {0, 1}, {2, 2}, {1, 1}));
   // CreateFusionInstruction needs the `instructions_to_fuse` argument in
   // reverse topological order, so the first element in `instructions_to_fuse`
   // must be the root.
@@ -214,7 +220,7 @@ XLA_TEST_F(FusionTest, Test) {
            const4, reshape3, add2, const1, const0},
           HloInstruction::FusionKind::kLoop);
 
-  LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR2<float>({{0.5}, {2.72}}),
+  LiteralTestUtil::ExpectNear(*Literal::CreateR2<float>({{0.5}, {2.72}}),
                               *ExecuteAndTransfer(std::move(hlo_module), {}),
                               ErrorSpec(1e-4));
 }
@@ -224,13 +230,13 @@ XLA_TEST_F(FusionTest, Parameter) {
   // Build a computation and fuse part of it so the fusion instruction has an
   // operand parameter.
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 2.0, 3.0}})));
+      Literal::CreateR2<float>({{1.0, 2.0, 3.0}})));
   auto copy1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(F32, {1, 3}), HloOpcode::kCopy, const0));
   auto const2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{-2.0, -2.0, -2.0}})));
+      Literal::CreateR2<float>({{-2.0, -2.0, -2.0}})));
   // add3 = copy1 + const2 = const0 + const2 = {1,2,3} + {-2,-2,-2} = {-1,0,+1}
   auto add3 = builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(F32, {1, 3}), HloOpcode::kAdd, copy1, const2));
@@ -240,18 +246,18 @@ XLA_TEST_F(FusionTest, Parameter) {
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{add3, const2},
                                 HloInstruction::FusionKind::kLoop);
 
-  LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR2<float>({{-1.0, 0.0, 1.0}}),
+  LiteralTestUtil::ExpectNear(*Literal::CreateR2<float>({{-1.0, 0.0, 1.0}}),
                               *ExecuteAndTransfer(std::move(hlo_module), {}),
                               ErrorSpec(1e-4));
 }
 
 XLA_TEST_F(FusionTest, BroadcastIntoBinaryOp) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const_vector = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
+      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
   auto const_array = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{-1.0, -2.0, -4.0}, {10.0, 20.0, 30.0}})));
+      Literal::CreateR2<float>({{-1.0, -2.0, -4.0}, {10.0, 20.0, 30.0}})));
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(const_array->shape(), const_vector, {1}));
   // add2 = broadcast(const_vector) + const_array
@@ -265,153 +271,153 @@ XLA_TEST_F(FusionTest, BroadcastIntoBinaryOp) {
                                 HloInstruction::FusionKind::kLoop);
 
   LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR2<float>({{0.0, 0.0, -1.0}, {11.0, 22.0, 33.0}}),
+      *Literal::CreateR2<float>({{0.0, 0.0, -1.0}, {11.0, 22.0, 33.0}}),
       *ExecuteAndTransfer(std::move(hlo_module), {}), ErrorSpec(1e-4));
 }
 
 XLA_TEST_F(FusionTest, ReshapeToScalar) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto single_element_array = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2<int32>({{5}})));
+      HloInstruction::CreateConstant(Literal::CreateR2<int32>({{5}})));
   auto reshape = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(S32, {}), single_element_array));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape},
                                 HloInstruction::FusionKind::kLoop);
-  LiteralTestUtil::ExpectEqual(*LiteralUtil::CreateR0<int32>(5),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR0<int32>(5),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Reshape_3by2_1by2by3) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}})));
+      Literal::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}})));
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(S32, {1, 2, 3}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
   LiteralTestUtil::ExpectEqual(
-      *LiteralUtil::CreateR3<int32>({{{1, 2, 3}, {4, 5, 6}}}),
+      *Literal::CreateR3<int32>({{{1, 2, 3}, {4, 5, 6}}}),
       *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Reshape_1by2by3_3by2) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR3<int32>({{{1, 2, 3}, {4, 5, 6}}})));
+      Literal::CreateR3<int32>({{{1, 2, 3}, {4, 5, 6}}})));
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {3, 2}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
   LiteralTestUtil::ExpectEqual(
-      *LiteralUtil::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}}),
+      *Literal::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}}),
       *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Reshape_1by1by1_) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR3<int32>({{{7}}})));
+      HloInstruction::CreateConstant(Literal::CreateR3<int32>({{{7}}})));
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
-  LiteralTestUtil::ExpectEqual(*LiteralUtil::CreateR0<int32>(7),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR0<int32>(7),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Reshape__1by1by1) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(7)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(7)));
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(S32, {1, 1, 1}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
-  LiteralTestUtil::ExpectEqual(*LiteralUtil::CreateR3<int32>({{{7}}}),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR3<int32>({{{7}}}),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Reshape__) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(7)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(7)));
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
-  LiteralTestUtil::ExpectEqual(*LiteralUtil::CreateR0<int32>(7),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR0<int32>(7),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Reshape_3by3_3by3) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {3, 3}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
   LiteralTestUtil::ExpectEqual(
-      *LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}),
+      *Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}),
       *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Transpose_2by3) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}})));
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}})));
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {3, 2}), const0, {1, 0}));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
   LiteralTestUtil::ExpectEqual(
-      *LiteralUtil::CreateR2<int32>({{1, 4}, {2, 5}, {3, 6}}),
+      *Literal::CreateR2<int32>({{1, 4}, {2, 5}, {3, 6}}),
       *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Transpose_3by3) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
+      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {3, 3}), const0, {1, 0}));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
   LiteralTestUtil::ExpectEqual(
-      *LiteralUtil::CreateR2<int32>({{1, 4, 7}, {2, 5, 8}, {3, 6, 9}}),
+      *Literal::CreateR2<int32>({{1, 4, 7}, {2, 5, 8}, {3, 6, 9}}),
       *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, Reverse) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({1, 2, 3})));
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 3})));
   auto reverse1 = builder.AddInstruction(HloInstruction::CreateReverse(
       ShapeUtil::MakeShape(S32, {3}), const0, {0}));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reverse1},
                                 HloInstruction::FusionKind::kLoop);
 
-  LiteralTestUtil::ExpectEqual(*LiteralUtil::CreateR1<int32>({3, 2, 1}),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({3, 2, 1}),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
@@ -427,13 +433,13 @@ std::unique_ptr<HloComputation> MakeReduceTestComputation() {
 }
 
 XLA_TEST_F(FusionTest, DISABLED_ON_CPU(Reduce)) {
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
 
   auto builder = HloComputation::Builder(TestName());
-  auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<int32>({1, 2, 4, 8})));
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 4, 8})));
   auto const1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(0)));
   auto reduce2 = builder.AddInstruction(HloInstruction::CreateReduce(
       ShapeUtil::MakeShape(S32, {}), const0, const1, {0},
       hlo_module->AddEmbeddedComputation(MakeReduceTestComputation())));
@@ -441,18 +447,18 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(Reduce)) {
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reduce2},
                                 HloInstruction::FusionKind::kLoop);
 
-  LiteralTestUtil::ExpectEqual(*LiteralUtil::CreateR0<int32>(15),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR0<int32>(15),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceImplicitBroadcast)) {
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
 
   auto builder = HloComputation::Builder(TestName());
-  auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<int32>({1, 2, 4, 8})));
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 4, 8})));
   auto const1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(0)));
   auto reduce2 = builder.AddInstruction(HloInstruction::CreateReduce(
       ShapeUtil::MakeShape(S32, {}), const0, const1, {0},
       hlo_module->AddEmbeddedComputation(MakeReduceTestComputation())));
@@ -462,17 +468,17 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceImplicitBroadcast)) {
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate3, reduce2},
                                 HloInstruction::FusionKind::kLoop);
 
-  LiteralTestUtil::ExpectEqual(*LiteralUtil::CreateR1<int32>({-15}),
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({-15}),
                                *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
 XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceWindow)) {
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<int32>({{2, 3, 5}, {7, 11, 13}, {17, 19, 23}})));
+      Literal::CreateR2<int32>({{2, 3, 5}, {7, 11, 13}, {17, 19, 23}})));
   auto const1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
   Window window;
   ASSERT_TRUE(
       tensorflow::protobuf::TextFormat::ParseFromString("dimensions:{\n"
@@ -512,7 +518,7 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceWindow)) {
                                 HloInstruction::FusionKind::kLoop);
 
   LiteralTestUtil::ExpectEqual(
-      *LiteralUtil::CreateR2<int32>({{462, 2145}, {24871, 62491}}),
+      *Literal::CreateR2<int32>({{462, 2145}, {24871, 62491}}),
       *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
@@ -568,12 +574,67 @@ XLA_TEST_F(FusionTest, Clamp2D) {
   TestElementwise2D<float, 3>(HloOpcode::kClamp);
 }
 
+void BM_ParallelFusion(int num_iters) {
+  // Simple element-wise computation to benchmark parallel task partitioning.
+  tensorflow::testing::StopTiming();
+
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
+  auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
+  StreamExecutorMemoryAllocator allocator(platform, executors);
+
+  const int64 intra_op_parallelism_threads = 16;
+  xla::LocalClientOptions client_options;
+  client_options.set_platform(platform);
+  client_options.set_intra_op_parallelism_threads(intra_op_parallelism_threads);
+  auto client =
+      ClientLibrary::GetOrCreateLocalClient(client_options).ValueOrDie();
+
+  const int64 dim_size = 1024;
+  // Create a simple fusable elementwise computation.
+  ComputationBuilder builder(client, "ParallelFusion");
+  Shape input_shape = ShapeUtil::MakeShape(F32, {dim_size, dim_size});
+  auto input0 = builder.Broadcast(builder.ConstantR0<float>(1.5f),
+                                  AsInt64Slice(input_shape.dimensions()));
+  auto input1 = builder.Broadcast(builder.ConstantR0<float>(2.0f),
+                                  AsInt64Slice(input_shape.dimensions()));
+  auto input2 = builder.Broadcast(builder.ConstantR0<float>(3.0f),
+                                  AsInt64Slice(input_shape.dimensions()));
+  auto x = builder.Mul(input0, input1);
+  auto y = builder.Add(x, input2);
+  auto computation = builder.Build().ConsumeValueOrDie();
+
+  std::unique_ptr<LocalExecutable> executable =
+      client->Compile(computation, {}, ExecutableBuildOptions())
+          .ConsumeValueOrDie();
+
+  // Run some warm-up executions.
+  ExecutableRunOptions options;
+  options.set_allocator(&allocator);
+  const int kWarmups = 2;
+  for (int i = 0; i < kWarmups; ++i) {
+    auto result = executable->Run({}, options);
+    ASSERT_TRUE(result.ok());
+  }
+
+  // Run benchmark.
+  tensorflow::testing::BytesProcessed(static_cast<int64>(num_iters) * dim_size *
+                                      dim_size * sizeof(float));
+  tensorflow::testing::UseRealTime();
+  tensorflow::testing::StartTiming();
+  for (int i = 0; i < num_iters; ++i) {
+    auto result = executable->Run({}, options);
+    ASSERT_TRUE(result.ok());
+  }
+}
+
+BENCHMARK(BM_ParallelFusion);
+
 }  // namespace
 }  // namespace xla
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {
@@ -585,5 +646,6 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return 2;
   }
+  tensorflow::testing::RunBenchmarks();
   return RUN_ALL_TESTS();
 }

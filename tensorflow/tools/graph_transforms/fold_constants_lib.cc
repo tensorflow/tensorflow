@@ -61,7 +61,7 @@ Status ReplaceSendRecvs(const GraphDef& original_graph_def,
       }
     }
     NodeDef new_node;
-    new_node.CopyFrom(node);
+    new_node = node;
     new_node.mutable_input()->Clear();
     for (const string& old_input : node.input()) {
       string input_prefix;
@@ -84,12 +84,12 @@ Status ReplaceSendRecvs(const GraphDef& original_graph_def,
     string removed_node_name = entry.second;
     const NodeDef* removed_node = original_map[removed_node_name];
     NodeDef new_node;
-    new_node.CopyFrom(*removed_node);
+    new_node = *removed_node;
     nodes_to_add.push_back(new_node);
   }
 
   for (const NodeDef& node : nodes_to_add) {
-    output_graph_def->mutable_node()->Add()->CopyFrom(node);
+    *output_graph_def->mutable_node()->Add() = node;
   }
   return Status::OK();
 }

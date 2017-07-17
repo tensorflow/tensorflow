@@ -149,6 +149,8 @@ TensorFlow also has a
 to help build support for more client languages.  We invite contributions of new
 language bindings.
 
+Bindings for various other languages (such as [C#](https://github.com/migueldeicaza/TensorFlowSharp), [Julia](https://github.com/malmaud/TensorFlow.jl), [Ruby](https://github.com/somaticio/tensorflow.rb) and [Scala](https://github.com/eaplatanios/tensorflow_scala)) created and supported by the opensource community build on top of the C API supported by the TensorFlow maintainers.
+
 #### Does TensorFlow make use of all the devices (GPUs and CPUs) available on my machine?
 
 TensorFlow supports multiple GPUs and CPUs. See the how-to documentation on
@@ -174,8 +176,7 @@ for more information on how to use them.
 
 ## Variables
 
-See also the how-to documentation on @{$variables$variables}
-and @{$variable_scope$variable scopes}, and
+See also the how-to documentation on @{$variables$variables} and
 @{$python/state_ops$the API documentation for variables}.
 
 #### What is the lifetime of a variable?
@@ -189,7 +190,7 @@ operation for that variable in a session. It is destroyed when that
 
 Variables allow concurrent read and write operations. The value read from a
 variable may change if it is concurrently updated. By default, concurrent
-assigment operations to a variable are allowed to run with no mutual exclusion.
+assignment operations to a variable are allowed to run with no mutual exclusion.
 To acquire a lock when assigning to a variable, pass `use_locking=True` to
 @{tf.Variable.assign}.
 

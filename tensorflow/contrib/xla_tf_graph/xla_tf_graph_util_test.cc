@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -44,10 +46,10 @@ static std::vector<XlaCompiler::Argument> BuildAddGraphArguments() {
   // Difference of dimension will add extra broadcast_dimensions.
   // broadcast_dimension generates an additional HloInstruction
   // in user_computation.cc
-  args[0].shape = TensorShape({2, 2});
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2, 2});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = TensorShape({2});
+  args[1].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
   return args;
 }
 
@@ -93,8 +95,10 @@ static void DumpHloGraphForDebug(const std::vector<XlaCompiler::Argument>& args,
   auto user_computation = user_computation_status.ConsumeValueOrDie();
   xla::VersionedComputationHandle versioned_handle =
       user_computation->GetVersionedHandle();
-  std::unique_ptr<xla::HloModule> hlo_module = std::move(
-      computation_tracker.BuildHloModule(versioned_handle).ValueOrDie());
+  std::unique_ptr<xla::HloModule> hlo_module =
+      std::move(computation_tracker
+                    .BuildHloModule(versioned_handle, xla::HloModuleConfig())
+                    .ValueOrDie());
   VLOG(1) << "--- DUMP HLO ---";
   VLOG(1) << hlo_module->ToString();
 }

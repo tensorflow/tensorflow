@@ -350,6 +350,16 @@ class GraphIOTest(test.TestCase):
       coord.request_stop()
       coord.join(threads)
 
+  def _create_file_from_list_of_features(self, lines):
+    json_lines = [
+        "".join([
+            '{"features": { "feature": { "sequence": {',
+            '"bytes_list": { "value": ["', base64.b64encode(l).decode("ascii"),
+            '"]}}}}}\n'
+        ]) for l in lines
+    ]
+    return self._create_temp_file("".join(json_lines))
+
   def test_read_text_lines_large(self):
     gfile.Glob = self._orig_glob
     sequence_prefix = "abcdefghijklmnopqrstuvwxyz123456789"
@@ -358,14 +368,7 @@ class GraphIOTest(test.TestCase):
         "".join([sequence_prefix, str(l)]).encode("ascii")
         for l in xrange(num_records)
     ]
-    json_lines = [
-        "".join([
-            '{"features": { "feature": { "sequence": {',
-            '"bytes_list": { "value": ["', base64.b64encode(l).decode("ascii"),
-            '"]}}}}}\n'
-        ]) for l in lines
-    ]
-    filename = self._create_temp_file("".join(json_lines))
+    filename = self._create_file_from_list_of_features(lines)
     batch_size = 10000
     queue_capacity = 100000
     name = "my_large_batch"
@@ -409,6 +412,61 @@ class GraphIOTest(test.TestCase):
     # are present.
     self.assertEqual(len(parsed_records), num_records)
     self.assertEqual(set(parsed_records), set(lines))
+
+  def test_read_batch_features_maintains_order(self):
+    """Make sure that examples are read in the right order.
+
+    When randomize_input=False, num_enqueue_threads=1 and reader_num_threads=1
+    read_keyed_batch_features() should read the examples in the same order as
+    they appear in the file.
+    """
+    gfile.Glob = self._orig_glob
+    num_records = 1000
+    lines = ["".join(str(l)).encode("ascii") for l in xrange(num_records)]
+    filename = self._create_file_from_list_of_features(lines)
+    batch_size = 10
+    queue_capacity = 1000
+    name = "my_large_batch"
+
+    features = {"sequence": parsing_ops.FixedLenFeature([], dtypes_lib.string)}
+
+    with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      result = graph_io.read_batch_features(
+          filename,
+          batch_size,
+          features,
+          io_ops.TextLineReader,
+          randomize_input=False,
+          num_epochs=1,
+          queue_capacity=queue_capacity,
+          reader_num_threads=1,
+          num_enqueue_threads=1,
+          parse_fn=parsing_ops.decode_json_example,
+          name=name)
+      self.assertEqual(1, len(result))
+      self.assertAllEqual((None,), result["sequence"].get_shape().as_list())
+      session.run(variables.local_variables_initializer())
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      data = []
+      try:
+        while not coord.should_stop():
+          data.append(session.run(result))
+      except errors.OutOfRangeError:
+        pass
+      finally:
+        coord.request_stop()
+
+      coord.join(threads)
+
+    parsed_records = [
+        item for sublist in [d["sequence"] for d in data] for item in sublist
+    ]
+    # Check that the number of records matches expected and all records
+    # are present in the right order.
+    self.assertEqual(len(parsed_records), num_records)
+    self.assertEqual(parsed_records, lines)
 
   def test_read_text_lines_multifile(self):
     gfile.Glob = self._orig_glob

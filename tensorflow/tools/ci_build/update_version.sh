@@ -130,12 +130,6 @@ if [[ ${OLD_MAJOR} != ${MAJOR} ]] || [[ ${OLD_MINOR} != ${MINOR} ]]; then
   echo "Detected Major.Minor change. "\
 "Updating pattern ${OLD_R_MAJOR_MINOR} to ${R_MAJOR_MINOR} in additional files"
 
-  # Update tensorflow/tensorboard/README.md
-  TENSORBOARD_README_MD="${TF_SRC_DIR}/tensorboard/README.md"
-  check_existence file "${TENSORBOARD_README_MD}"
-  sed -i -r -e "s/${OLD_R_MAJOR_MINOR}/${R_MAJOR_MINOR}/g" \
-      "${TENSORBOARD_README_MD}"
-
   # Update dockerfiles
   DEVEL_DOCKERFILE="${TF_SRC_DIR}/tools/docker/Dockerfile.devel"
   check_existence file "${DEVEL_DOCKERFILE}"

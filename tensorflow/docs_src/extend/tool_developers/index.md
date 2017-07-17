@@ -63,7 +63,7 @@ There are actually two different formats that a ProtoBuf can be saved in.
 TextFormat is a human-readable form, which makes it nice for debugging and
 editing, but can get large when there's numerical data like weights stored in
 it. You can see a small example of that in
-[graph_run_run2.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/components/tf_tensorboard/test/data/graph_run_run2.pbtxt).
+[graph_run_run2.pbtxt](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/demo/data/graph_run_run2.pbtxt).
 
 Binary format files are a lot smaller than their text equivalents, even though
 they're not as readable for us. In this script, we ask the user to supply a

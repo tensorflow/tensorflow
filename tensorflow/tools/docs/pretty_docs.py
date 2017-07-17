@@ -58,12 +58,11 @@ def build_md_page(page_info):
 def _build_function_page(page_info):
   """Given a FunctionPageInfo object Return the page as an md string."""
   parts = [_Metadata(page_info.full_name).build_html()]
-
   parts.append('# %s\n\n' % page_info.full_name)
 
-  if page_info.aliases:
-    parts.extend('### `%s`\n' % name
-                 for name in page_info.aliases)
+  if len(page_info.aliases) > 1:
+    parts.append('### Aliases:\n\n')
+    parts.extend('* `%s`\n' % name for name in page_info.aliases)
     parts.append('\n')
 
   if page_info.signature is not None:
@@ -95,8 +94,19 @@ def _build_class_page(page_info):
 
   parts.append('# {page_info.full_name}\n\n'.format(page_info=page_info))
 
-  if page_info.aliases:
-    parts.extend('### `class %s`\n' % name for name in page_info.aliases)
+  parts.append('## Class `%s`\n\n' % page_info.full_name.split('.')[-1])
+  if page_info.bases:
+    parts.append('Inherits From: ')
+
+    link_template = '[`{short_name}`]({url})'
+    parts.append(', '.join(
+        link_template.format(**base.__dict__) for base in page_info.bases))
+
+  parts.append('\n\n')
+
+  if len(page_info.aliases) > 1:
+    parts.append('### Aliases:\n\n')
+    parts.extend('* Class `%s`\n' % name for name in page_info.aliases)
     parts.append('\n')
 
   if page_info.defined_in is not None:
@@ -185,8 +195,9 @@ def _build_module_page(page_info):
   parts.append(
       '# Module: {full_name}\n\n'.format(full_name=page_info.full_name))
 
-  if page_info.aliases:
-    parts.extend('### Module `%s`\n' % name for name in page_info.aliases)
+  if len(page_info.aliases) > 1:
+    parts.append('### Aliases:\n\n')
+    parts.extend('* Module `%s`\n' % name for name in page_info.aliases)
     parts.append('\n')
 
   if page_info.defined_in is not None:

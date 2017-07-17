@@ -102,11 +102,11 @@ The typical usage of `builder` is as follows:
 ~~~python
 export_dir = ...
 ...
-builder = tf.saved_model_builder.SavedModelBuilder(export_dir)
+builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph_and_variables(sess,
-                                       [tag_constants.TRAINING],
+                                       [tf.saved_model.tag_constants.TRAINING],
                                        signature_def_map=foo_signatures,
                                        assets_collection=foo_assets)
 ...

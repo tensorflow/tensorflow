@@ -21,7 +21,7 @@ limitations under the License.
 // for bit depths or argument combinations that aren't supported by optimized
 // code.
 // It assumes the row-major convention used by TensorFlow, and implements
-// C = A * B, like the standard BLAS GEMM interface. If the tranpose flags are
+// C = A * B, like the standard BLAS GEMM interface. If the transpose flags are
 // true, then the relevant matrix is treated as stored in column-major order.
 
 namespace tensorflow {

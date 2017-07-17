@@ -11,8 +11,8 @@ You must pick the mechanism by which you install TensorFlow. The supported choic
   * virtualenv
   * "native" pip
   * Docker
-  * installing from sources, which is for experts and is documented in
-    a separate guide.
+  * installing from sources, which is documented in
+    [a separate guide](https://www.tensorflow.org/install/install_sources).
 
 **We recommend the virtualenv installation.**
 [Virtualenv](https://virtualenv.pypa.io/en/stable/)
@@ -81,17 +81,17 @@ Take the following steps to install TensorFlow with Virtualenv:
 
      <pre> (tensorflow)$ </pre>
 
-  5. If pip version 8.1 or later is installed on your system, issue one of
-     the following commands to install TensorFlow and all the packages that
-     TensorFlow requires into the active Virtualenv environment:
+  5. Ensure pip ≥8.1 is installed:
 
-     <pre> $ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
-     $ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
+     <pre> (tensorflow)$ <b>easy_install -U pip</b></pre>
 
-     If the preceding command succeed, skip Step 6. If it failed,
-     perform Step 6.
+  6. Issue one of the following commands to install TensorFlow and all the
+     packages that TensorFlow requires into the active Virtualenv environment:
 
-  6. Optional. If Step 5 failed (typically because you invoked a pip version
+     <pre> (tensorflow)$ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
+     (tensorflow)$ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
+
+  7. Optional. If Step 6 failed (typically because you invoked a pip version
      lower than 8.1), install TensorFlow in the active
      virtualenv environment by issuing a command of the following format:
 

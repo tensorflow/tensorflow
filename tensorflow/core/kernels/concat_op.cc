@@ -195,6 +195,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
@@ -232,7 +233,8 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                               .HostMemory("axis"),           \
                           ConcatV2Op<SYCLDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
+
 REGISTER_KERNEL_BUILDER(Name("Concat")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -248,6 +250,7 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                             .HostMemory("axis")
                             .HostMemory("output"),
                         ConcatV2Op<CPUDevice, int32>);
+
 #undef REGISTER_SYCL
 #endif // TENSORFLOW_USE_SYCL
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/user_computation.h"
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -49,7 +50,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
 
   ConstantRequest constant_request;
   *constant_request.mutable_literal() =
-      *LiteralUtil::CreateR1<float>({123.0f, 42.0f});
+      Literal::CreateR1<float>({123.0f, 42.0f})->ToProto();
   TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle constant_handle,
                          computation.AddConstantInstruction(constant_request));
 
@@ -91,7 +92,8 @@ TEST_F(UserComputationTest, SimpleComputation) {
     // Build the HLO computation.
     TF_ASSIGN_OR_ASSERT_OK(
         std::unique_ptr<HloComputation> hlo_computation,
-        computation.BuildHloComputation(latest_version.version, hlo_resolver));
+        computation.BuildHloComputation(latest_version.version, hlo_resolver,
+                                        DebugOptions()));
     // There should be one HloInstruction per UserComputation operation.
     EXPECT_EQ(3, hlo_computation->instruction_count());
     // The root of the instruction should be the parameter instruction (not the
@@ -116,9 +118,10 @@ TEST_F(UserComputationTest, SimpleComputation) {
 
     // There should be two instructions, one for the constant and one for the
     // parameter. The outfeed instruction should not be included.
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<HloComputation> hlo_computation,
-                           computation.BuildHloComputation(
-                               version_at_param.version, hlo_resolver));
+    TF_ASSIGN_OR_ASSERT_OK(
+        std::unique_ptr<HloComputation> hlo_computation,
+        computation.BuildHloComputation(version_at_param.version, hlo_resolver,
+                                        DebugOptions()));
     EXPECT_EQ(2, hlo_computation->instruction_count());
     EXPECT_THAT(hlo_computation->root_instruction(), op::Parameter());
   }
@@ -129,10 +132,11 @@ TEST_F(UserComputationTest, SimpleComputation) {
         computation.GetVersionedHandle();
 
     // Build the HLO computation.
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<HloComputation> hlo_computation,
-                           computation.BuildHloComputation(
-                               latest_version.version, hlo_resolver,
-                               /*include_unreachable_instructions=*/false));
+    TF_ASSIGN_OR_ASSERT_OK(
+        std::unique_ptr<HloComputation> hlo_computation,
+        computation.BuildHloComputation(
+            latest_version.version, hlo_resolver, DebugOptions(),
+            /*include_unreachable_instructions=*/false));
     // There is only one reachable instruction, the parameter.
     EXPECT_EQ(1, hlo_computation->instruction_count());
     // The root of the instruction should be the parameter instruction (not the
@@ -143,5 +147,141 @@ TEST_F(UserComputationTest, SimpleComputation) {
   }
 }
 
+TEST_F(UserComputationTest, EliminateScalarBroadcast) {
+  if (!legacy_flags::GetDebugOptionsFromFlags()
+           .xla_eliminate_hlo_implicit_broadcast()) {
+    return;
+  }
+
+  // Build a binary computation with scalar broadcast.
+  //
+  //  %a = Constant({123, 42})
+  //  %b = Constant(1)
+  //  %add = Add(%a, %b)
+  ComputationHandle handle;
+  handle.set_handle(123);
+  UserComputation computation("TheComputation", handle);
+
+  ConstantRequest a_request;
+  *a_request.mutable_literal() =
+      Literal::CreateR1<float>({123.0f, 42.0f})->ToProto();
+  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle a_handle,
+                         computation.AddConstantInstruction(a_request));
+
+  ConstantRequest b_request;
+  *b_request.mutable_literal() = Literal::CreateR0<float>(1.0f)->ToProto();
+  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle b_handle,
+                         computation.AddConstantInstruction(b_request));
+
+  BinaryOpRequest add;
+  add.set_binop(BINOP_ADD);
+  *add.mutable_lhs() = a_handle;
+  *add.mutable_rhs() = b_handle;
+  TF_ASSERT_OK(computation.AddBinaryInstruction(add).status());
+
+  auto hlo_resolver = [](const VersionedComputationHandle& handle) {
+    return nullptr;
+  };
+  VersionedComputationHandle latest_version = computation.GetVersionedHandle();
+
+  // Build the HLO computation.
+  TF_ASSIGN_OR_ASSERT_OK(
+      std::unique_ptr<HloComputation> hlo_computation,
+      computation.BuildHloComputation(latest_version.version, hlo_resolver,
+                                      DebugOptions()));
+  // The binary operation has implicit scalar broadcast, should be converted
+  // to an explicit broadcast intruction and a binary instruction.
+  EXPECT_EQ(4, hlo_computation->instruction_count());
+  EXPECT_THAT(hlo_computation->root_instruction(), op::Add());
+  const auto& operands = hlo_computation->root_instruction()->operands();
+  ASSERT_EQ(2, operands.size());
+  EXPECT_TRUE(operands[0]->opcode() == HloOpcode::kBroadcast ||
+              operands[1]->opcode() == HloOpcode::kBroadcast);
+}
+
+TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
+  if (!legacy_flags::GetDebugOptionsFromFlags()
+           .xla_eliminate_hlo_implicit_broadcast()) {
+    return;
+  }
+
+  // Build a binary computation with in-dim broadcast and degenerate broadcast.
+  //
+  //  %a = Param({2, 3});
+  //  %b = Param({2, 1, 4});
+  //  %add = Add(%a, %b, {0, 1});
+  ComputationHandle handle;
+  handle.set_handle(123);
+  UserComputation computation("TheComputation", handle);
+
+  ParameterRequest a_request;
+  *a_request.mutable_shape() = ShapeUtil::MakeShape(F32, {2, 3});
+  a_request.set_name("a");
+  a_request.set_parameter(0);
+  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle a_handle,
+                         computation.AddParameterInstruction(a_request));
+
+  ParameterRequest b_request;
+  *b_request.mutable_shape() = ShapeUtil::MakeShape(F32, {2, 1, 4});
+  b_request.set_name("b");
+  b_request.set_parameter(1);
+  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle b_handle,
+                         computation.AddParameterInstruction(b_request));
+
+  BinaryOpRequest add;
+  add.set_binop(BINOP_ADD);
+  *add.mutable_lhs() = a_handle;
+  *add.mutable_rhs() = b_handle;
+  add.add_broadcast_dimensions(0);
+  add.add_broadcast_dimensions(1);
+  TF_ASSERT_OK(computation.AddBinaryInstruction(add).status());
+
+  auto hlo_resolver = [](const VersionedComputationHandle& handle) {
+    return nullptr;
+  };
+  VersionedComputationHandle latest_version = computation.GetVersionedHandle();
+
+  // Build the HLO computation.
+  TF_ASSIGN_OR_ASSERT_OK(
+      std::unique_ptr<HloComputation> hlo_computation,
+      computation.BuildHloComputation(latest_version.version, hlo_resolver,
+                                      DebugOptions()));
+
+  // The binary operation has in-dim broadcast and degenerate broadcast, should
+  // first do the in-dim broadcast then convert the degnerate broadcast into a
+  // reshape and a broadcast.
+  //
+  //    b         a
+  //    |         |
+  // broadcast reshape
+  //    |         |
+  //    |     broadcast
+  //     \        /
+  //        add
+  EXPECT_EQ(6, hlo_computation->instruction_count());
+  EXPECT_THAT(hlo_computation->root_instruction(), op::Add());
+  const auto& operands = hlo_computation->root_instruction()->operands();
+  ASSERT_EQ(2, operands.size());
+  EXPECT_TRUE(operands[0]->opcode() == HloOpcode::kBroadcast &&
+              operands[1]->opcode() == HloOpcode::kBroadcast);
+}
+
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    LOG(ERROR) << "\n" << usage;
+    return 2;
+  }
+  testing::InitGoogleTest(&argc, argv);
+  if (argc > 1) {
+    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
+    return 2;
+  }
+  return RUN_ALL_TESTS();
+}

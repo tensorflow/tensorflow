@@ -32,13 +32,12 @@ from tensorflow.python.platform import test
 
 
 class LBetaTest(test.TestCase):
-  _use_gpu = False
 
   def test_one_dimensional_arg(self):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_one)).eval())
       self.assertAllClose(
           0.5, math_ops.exp(special_math_ops.lbeta(x_one_half)).eval())
@@ -48,7 +47,7 @@ class LBetaTest(test.TestCase):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose(1, beta_ph.eval(feed_dict={ph: x_one}))
@@ -62,7 +61,7 @@ class LBetaTest(test.TestCase):
     #     = Gamma(1) * Gamma(1) * Gamma(1) * Gamma(1) / Gamma(1 + 1 + 1 + 1)
     #     = 1 / 6
     expected_beta_x = 1 / 6 * np.ones((3, 2, 3))
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       x_ph = array_ops.placeholder(dtypes.float32, [3, 2, 3, None])
       beta_ph = math_ops.exp(special_math_ops.lbeta(x_ph))
       self.assertAllClose(expected_beta_x, beta_ph.eval(feed_dict={x_ph: x_}))
@@ -70,7 +69,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_arg(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       self.assertAllClose(
           [0.5, 0.5], math_ops.exp(special_math_ops.lbeta(x_one_half)).eval())
       self.assertEqual((2,), special_math_ops.lbeta(x_one_half).get_shape())
@@ -78,7 +77,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_arg_dynamic(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose([0.5, 0.5], beta_ph.eval(feed_dict={ph: x_one_half}))
@@ -86,7 +85,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_proper_shape(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       self.assertAllClose(
           [0.5, 0.5], math_ops.exp(special_math_ops.lbeta(x_one_half)).eval())
       self.assertEqual(
@@ -96,7 +95,7 @@ class LBetaTest(test.TestCase):
           special_math_ops.lbeta(x_one_half).get_shape())
 
   def test_complicated_shape(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       x = ops.convert_to_tensor(np.random.rand(3, 2, 2))
       self.assertAllEqual(
           (3, 2), array_ops.shape(special_math_ops.lbeta(x)).eval())
@@ -109,13 +108,13 @@ class LBetaTest(test.TestCase):
     # as the answer, always.
     x_a = [5.5]
     x_b = [0.1]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_a)).eval())
       self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_b)).eval())
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())
 
   def test_empty_rank1_returns_negative_infinity(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       x = constant_op.constant([], shape=[0])
       lbeta_x = special_math_ops.lbeta(x)
       expected_result = constant_op.constant(-np.inf, shape=())
@@ -124,7 +123,7 @@ class LBetaTest(test.TestCase):
       self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
   def test_empty_rank2_with_zero_last_dim_returns_negative_infinity(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       event_size = 0
       for batch_size in [0, 1, 2]:
         x = constant_op.constant([], shape=[batch_size, event_size])
@@ -135,7 +134,7 @@ class LBetaTest(test.TestCase):
         self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
   def test_empty_rank2_with_zero_batch_dim_returns_empty(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       batch_size = 0
       for event_size in [0, 1, 2]:
         x = constant_op.constant([], shape=[batch_size, event_size])
@@ -145,10 +144,6 @@ class LBetaTest(test.TestCase):
 
         self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
         self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
-
-
-class LBetaTestGpu(LBetaTest):
-  _use_gpu = True
 
 
 class EinsumTest(test.TestCase):
@@ -269,7 +264,7 @@ class EinsumTest(test.TestCase):
     input_tensors = [constant_op.constant(val) for val in input_vals]
     output_tensor = special_math_ops.einsum(axes, *input_tensors)
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       output_value = output_tensor.eval()
 
     correct_value = np.einsum(axes, *input_vals)

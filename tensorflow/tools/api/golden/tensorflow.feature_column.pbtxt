@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "categorical_column_with_vocabulary_list"
-    argspec: "args=[\'key\', \'vocabulary_list\', \'dtype\', \'default_value\'], varargs=None, keywords=None, defaults=[\'None\', \'-1\'], "
+    argspec: "args=[\'key\', \'vocabulary_list\', \'dtype\', \'default_value\', \'num_oov_buckets\'], varargs=None, keywords=None, defaults=[\'None\', \'-1\', \'0\'], "
   }
   member_method {
     name: "crossed_column"

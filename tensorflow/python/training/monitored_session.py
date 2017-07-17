@@ -44,6 +44,10 @@ from tensorflow.python.training import session_run_hook
 _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
 
 
+# Value that indicates no value was provided.
+USE_DEFAULT = object()
+
+
 # TODO(touts): Share that with the Supervisor.
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
@@ -88,7 +92,7 @@ class Scaffold(object):
 
   * `init_feed_dict`: A session feed dictionary that should be used when
      running the init op.
-  * `init_fn`: A callable to run run after the init op to perform additional
+  * `init_fn`: A callable to run after the init op to perform additional
     initializations.  The callable will be called as
     `init_fn(scaffold, session)`.
 
@@ -269,8 +273,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              hooks=None,
                              chief_only_hooks=None,
                              save_checkpoint_secs=600,
-                             save_summaries_steps=100,
-                             save_summaries_secs=None,
+                             save_summaries_steps=USE_DEFAULT,
+                             save_summaries_secs=USE_DEFAULT,
                              config=None,
                              stop_grace_period_secs=120,
                              log_step_count_steps=100):
@@ -279,7 +283,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   For a chief, this utility sets proper session initializer/restorer. It also
   creates hooks related to checkpoint and summary saving. For workers, this
   utility sets proper session creator which waits for the chief to
-  initialize/restore.
+  initialize/restore. Please check `tf.train.MonitoredSession` for more
+  information.
 
 
   Args:
@@ -300,11 +305,11 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     save_summaries_steps: The frequency, in number of global steps, that the
       summaries are written to disk using a default summary saver. If both
       `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
-      the default summary saver isn't used.
+      the default summary saver isn't used. Default 100.
     save_summaries_secs: The frequency, in secs, that the summaries are written
       to disk using a default summary saver.  If both `save_summaries_steps` and
       `save_summaries_secs` are set to `None`, then the default summary saver
-      isn't used.
+      isn't used. Default not enabled.
     config: an instance of `tf.ConfigProto` proto used to configure the session.
       It's the `config` argument of constructor of `tf.Session`.
     stop_grace_period_secs: Number of seconds given to threads to stop after
@@ -315,6 +320,14 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
   Returns:
     A `MonitoredSession` object.
   """
+  if save_summaries_steps == USE_DEFAULT and save_summaries_secs == USE_DEFAULT:
+    save_summaries_steps = 100
+    save_summaries_secs = None
+  elif save_summaries_secs == USE_DEFAULT:
+    save_summaries_secs = None
+  elif save_summaries_steps == USE_DEFAULT:
+    save_summaries_steps = None
+
   scaffold = scaffold or Scaffold()
   if not is_chief:
     session_creator = WorkerSessionCreator(
@@ -596,6 +609,7 @@ class MonitoredSession(_MonitoredSession):
   * initializes the model via initialization ops provided by `Scaffold`
   * restores variables if a checkpoint exists
   * launches queue runners
+  * calls `hook.after_create_session()`
 
   Run: When `run()` is called, the monitored session does following things:
 
@@ -631,6 +645,12 @@ class MonitoredSession(_MonitoredSession):
   ```
 
   See `MonitoredTrainingSession` for an example usage based on chief or worker.
+
+  Note: This is not a `tf.Session`. For example, it cannot do following:
+
+  * it cannot be set as default session.
+  * it cannot be sent to saver.save.
+  * it cannot be sent to tf.train.start_queue_runners.
 
   Args:
     session_creator: A factory object to create session. Typically a

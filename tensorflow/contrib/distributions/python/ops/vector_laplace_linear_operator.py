@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Vectorized Laplace distribution class, directly using LinearOpeartor."""
+"""Vectorized Laplace distribution class, directly using LinearOperator."""
 
 from __future__ import absolute_import
 from __future__ import division

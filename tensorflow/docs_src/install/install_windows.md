@@ -38,9 +38,10 @@ installed on your system:
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
     list of supported GPU cards.
 
-If you have an earlier version of the preceding packages, please
-upgrade to the specified versions.
-
+If you have a different version of one of the preceding packages, please
+change to the specified versions.  In particular, the cuDNN version
+must match exactly: TensorFlow will not load if it cannot find `cuDNN64_5.dll`.
+To use a different version of cuDNN, you must build from source.
 
 ## Determine how to install TensorFlow
 
@@ -73,7 +74,7 @@ Use that package at your own risk.
 If the following version of Python is not installed on your machine,
 install it now:
 
-  * [Python 3.5.x from python.org](https://www.python.org/downloads/release/python-352/)
+  * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
 
 TensorFlow only supports version 3.5.x of Python on Windows.
 Note that Python 3.5.x comes with the pip3 package manager, which is the

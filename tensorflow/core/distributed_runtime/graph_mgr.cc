@@ -30,7 +30,9 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -99,7 +101,7 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
   TF_RETURN_IF_ERROR(
       DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
   TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
-  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
+  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph, device->name()));
   return Status::OK();
 }
 

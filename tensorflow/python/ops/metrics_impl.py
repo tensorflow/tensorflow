@@ -189,7 +189,7 @@ def _create_local(name, shape, collections=None, validate_shape=True,
   collections = list(collections or [])
   collections += [ops.GraphKeys.LOCAL_VARIABLES]
   return variable_scope.variable(
-      array_ops.zeros(shape, dtype=dtype),
+      lambda: array_ops.zeros(shape, dtype=dtype),
       name=name,
       trainable=False,
       collections=collections,
@@ -1502,9 +1502,10 @@ def false_negatives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'false_negatives', (predictions, labels, weights)):
 
-    labels = math_ops.cast(labels, dtype=dtypes.bool)
-    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
     is_false_negative = math_ops.logical_and(math_ops.equal(labels, True),
                                              math_ops.equal(predictions, False))
     return _count_condition(is_false_negative, weights, metrics_collections,

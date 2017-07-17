@@ -33,7 +33,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
   DimensionHandle channels_dim;
   int32 desired_channels;
   TF_RETURN_IF_ERROR(c->GetAttr("desired_channels", &desired_channels));
-  if (desired_channels == 0) {
+  if (desired_channels == -1) {
     channels_dim = c->UnknownDim();
   } else {
     if (desired_channels < 0) {
@@ -45,7 +45,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
   DimensionHandle samples_dim;
   int32 desired_samples;
   TF_RETURN_IF_ERROR(c->GetAttr("desired_samples", &desired_samples));
-  if (desired_samples == 0) {
+  if (desired_samples == -1) {
     samples_dim = c->UnknownDim();
   } else {
     if (desired_samples < 0) {

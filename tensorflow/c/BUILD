@@ -62,6 +62,7 @@ tf_cuda_library(
             "//tensorflow/cc:scope_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
         ],
     }),
@@ -141,6 +142,20 @@ tf_cc_test(
 tf_custom_op_library(
     name = "test_op.so",
     srcs = ["test_op.cc"],
+)
+
+# -----------------------------------------------------------------------------
+# Python API target
+
+tf_cuda_library(
+    name = "python_api",
+    srcs = ["python_api.cc"],
+    hdrs = ["python_api.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        ":c_api",
+        ":c_api_internal",
+    ],
 )
 
 # -----------------------------------------------------------------------------

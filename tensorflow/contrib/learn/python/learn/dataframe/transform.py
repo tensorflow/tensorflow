@@ -29,6 +29,7 @@ from .series import Series
 from .series import TransformedSeries
 
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _make_list_of_series(x):
@@ -87,7 +88,12 @@ def _make_tuple_of_string(x):
                   "got %s" % type(x).__name__)
 
 
+@deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
 def parameter(func):
+  return _parameter(func)
+
+
+def _parameter(func):
   """Tag functions annotated with `@parameter` for later retrieval.
 
   Note that all `@parameter`s are automatically `@property`s as well.
@@ -110,6 +116,7 @@ class Transform(object):
 
   __metaclass__ = ABCMeta
 
+  @deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
   def __init__(self):
     self._return_type = None
 

@@ -39,7 +39,7 @@ class _ExperimentalFuncGraph(function._FuncGraph):
   _ExperimentalFuncGraph overrides ops.Graph's create_op() so that we can keep
   track of every inputs into every op created inside the function.  If
   any input is from other graphs, we keep track of it in self.capture
-  and substitue the input with a place holder.
+  and substitute the input with a place holder.
 
   Each captured input's corresponding place holder is converted into a
   function argument and the caller passes in the captured tensor.
@@ -71,8 +71,7 @@ class _ExperimentalFuncGraph(function._FuncGraph):
           self.extra_inputs.append(x)
           ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
           # pylint: disable=protected-access
-          ph._handle_shape = x._handle_shape
-          ph._handle_dtype = x._handle_dtype
+          ph._handle_data = x._handle_data
           # pylint: enable=protected-access
           inputs[i] = ph
           self._captured[x] = ph
@@ -87,9 +86,11 @@ class _ExperimentalFuncGraph(function._FuncGraph):
   def _add_op_and_parents(self, op):
     op_def = function._get_op_def(op)
     if op_def.is_stateful:
-      raise ValueError("Cannot capture a stateful node by value.")
+      raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
+                       "by value." % (op.name, op.type))
     elif op.type in ("Placeholder", "PlaceholderV2"):
-      raise ValueError("Cannot capture a placeholder by value.")
+      raise ValueError("Cannot capture a placeholder (name:%s, type:%s) "
+                       "by value." % (op.name, op.type))
 
     captured_inputs = [self._add_tensor_and_parents(x) for x in op.inputs]
 
