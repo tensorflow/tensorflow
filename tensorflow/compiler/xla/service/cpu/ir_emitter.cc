@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
@@ -1484,13 +1485,137 @@ Status IrEmitter::HandleSend(HloInstruction* send) {
 }
 
 Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
-  if (ShapeUtil::IsScalar(slice->shape())) {
-    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
-                        EmitTargetAddressForOp(slice));
-    emitted_value_[slice] = target_address;
-    return EmitMemcpy(*operand, *slice);
+  VLOG(2) << "HandleSlice: " << slice->ToString();
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                      EmitTargetAddressForOp(slice));
+  emitted_value_[slice] = target_address;
+
+  // The code below assumes the layouts are equal.
+  if (!LayoutUtil::Equal(operand->shape().layout(), slice->shape().layout())) {
+    return DefaultAction(slice);
   }
-  return DefaultAction(slice);
+
+  if (ShapeUtil::HasZeroElements(slice->shape())) {
+    return Status::OK();
+  }
+
+  const Layout& layout = operand->shape().layout();
+  const int64 num_dims = operand->shape().dimensions_size();
+
+  // The slice lowering finds maximal contiguous blocks of memory that can be
+  // copied from the source to the target. This is done by looking at the
+  // source/target layout in minor to major order and do the following:
+  //
+  // * Find an initial segment of dimensions along which the slice uses the
+  //   whole dimension. These are the "inner" dimensions and can be folded into
+  //   the memcpy.
+  //
+  // * Of the remaining dimensions decide which ones require loops.
+  //
+  // * Implement the memcpy within the innermost loop.
+
+  tensorflow::gtl::FlatSet<int64> inner_dims;
+  for (int64 dim : layout.minor_to_major()) {
+    if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
+      break;
+    }
+    inner_dims.insert(dim);
+  }
+
+  const bool is_trivial_copy = (inner_dims.size() == num_dims);
+  if (is_trivial_copy) {
+    if (ShapeUtil::IsEffectiveScalar(slice->shape())) {
+      return DefaultAction(slice);
+    } else {
+      return EmitMemcpy(*slice, *operand);
+    }
+  }
+
+  // The memcpy will copy elements that are logically this shape (allowed to be
+  // scalar).
+  const Shape element_shape = ShapeUtil::FilterDimensions(
+      [&inner_dims](int64 dim) -> bool { return inner_dims.count(dim); },
+      operand->shape());
+
+  // memcpy_dim is the innermost (in terms of layout) dimension for which the
+  // slice does *not* just copy all the elements along the dimension.
+  const int64 memcpy_dim = layout.minor_to_major(inner_dims.size());
+
+  const bool memcpy_is_contiguous = slice->slice_strides(memcpy_dim) == 1;
+  // The number of logical elements that can be copied in a single call
+  // to memcpy. We can only copy 1 element at a time if there is a non-trivial
+  // stride.
+  const int64 memcpy_elements =
+      memcpy_is_contiguous
+          ? slice->slice_limits(memcpy_dim) - slice->slice_starts(memcpy_dim)
+          : 1;
+
+  if (memcpy_elements == 1 && ShapeUtil::IsEffectiveScalar(element_shape)) {
+    // Avoid using memcpy for copying element by element at a time. This does
+    // not buy us anything and may actually cause LLVM's load/store optimization
+    // to be less effective.
+    return DefaultAction(slice);
+  }
+
+  // Determine the dimensions that get lowered as loops.
+  std::vector<int64> outer_dims;
+  for (int64 i = 0; i < num_dims - inner_dims.size() - 1; ++i) {
+    outer_dims.push_back(LayoutUtil::Major(layout, i));
+  }
+
+  // Is the slice along the memcpy dimension contiguous? If not, then memcpy_dim
+  // needs to be wrapped around a loop as well.
+  if (!memcpy_is_contiguous) {
+    outer_dims.push_back(memcpy_dim);
+  }
+
+  llvm_ir::IrArray target_array(target_address, slice->shape());
+  AddAliasingInformationToIrArray(*slice, &target_array);
+
+  const int64 num_outer_loops = outer_dims.size();
+  llvm_ir::ForLoopNest loops(&ir_builder_);
+  llvm_ir::IrArray::Index target_index =
+      loops.AddLoopsForShapeOnDimensions(slice->shape(), outer_dims, "slice");
+
+  // Only the indices for the outer dimensions have been initialized in
+  // target_index. The rest of the indices should get initialized to 0, since
+  // for the rest of the dimensions the copy writes to the full dimension.
+  for (llvm::Value*& index : target_index) {
+    if (index == nullptr) {
+      index = ir_builder_.getInt64(0);
+    }
+  }
+
+  if (num_outer_loops > 0) {
+    SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &ir_builder_);
+  }
+
+  llvm_ir::IrArray source_array(GetEmittedValueFor(operand), operand->shape());
+
+  const llvm_ir::IrArray::Index source_index = target_index.SourceIndexOfSlice(
+      /*shape=*/slice->shape(), /*starts=*/slice->slice_starts(),
+      /*strides=*/slice->slice_strides(), /*builder=*/&ir_builder_);
+
+  llvm::Value* memcpy_dest = target_array.EmitArrayElementAddress(
+      target_index, &ir_builder_, "slice.dest");
+  llvm::Value* memcpy_source = source_array.EmitArrayElementAddress(
+      source_index, &ir_builder_, "slice.source");
+  const int64 memcpy_bytes =
+      ShapeUtil::ByteSizeOf(element_shape) * memcpy_elements;
+  // TODO(b/63762267): Be more aggressive with `align` by using the GCD of the
+  // element size and buffer alignment.
+  ir_builder_.CreateMemCpy(memcpy_dest, memcpy_source, memcpy_bytes,
+                           /*align=*/1);
+
+  VLOG(2) << "  emitted memcpy of " << memcpy_bytes << " bytes inside "
+          << num_outer_loops << " loops";
+
+  if (num_outer_loops > 0) {
+    SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &ir_builder_);
+  }
+
+  return Status::OK();
 }
 
 Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
