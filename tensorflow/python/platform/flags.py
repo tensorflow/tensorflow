@@ -21,6 +21,7 @@ from __future__ import print_function
 import argparse as _argparse
 
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.platform import tf_logging as logging
 
 _global_parser = _argparse.ArgumentParser()
 
@@ -40,6 +41,7 @@ class _FlagValues(object):
     for flag_name, val in vars(result).items():
       self.__dict__['__flags'][flag_name] = val
     self.__dict__['__parsed'] = True
+    logging.warning(" Unparsed arguments: " + str(unparsed))
     return unparsed
 
   def __getattr__(self, name):
@@ -62,47 +64,51 @@ class _FlagValues(object):
     self.__dict__['__flags'][name] = value
 
 
-def _define_helper(flag_name, default_value, docstring, flagtype):
+def _define_helper(flag_name, default_value, docstring, flagtype, required=False):
   """Registers 'flag_name' with 'default_value' and 'docstring'."""
   _global_parser.add_argument('--' + flag_name,
                               default=default_value,
                               help=docstring,
-                              type=flagtype)
+                              type=flagtype,
+                              required=required)
 
 
 # Provides the global object that can be used to access flags.
 FLAGS = _FlagValues()
 
 
-def DEFINE_string(flag_name, default_value, docstring):
+def DEFINE_string(flag_name, default_value, docstring, required=False):
   """Defines a flag of type 'string'.
 
   Args:
     flag_name: The name of the flag as a string.
     default_value: The default value the flag should take as a string.
     docstring: A helpful message explaining the use of the flag.
+    required: Whether or not the command-line option may be omitted (optionals only).
   """
-  _define_helper(flag_name, default_value, docstring, str)
+  _define_helper(flag_name, default_value, docstring, str, required)
 
 
-def DEFINE_integer(flag_name, default_value, docstring):
+def DEFINE_integer(flag_name, default_value, docstring, required=False):
   """Defines a flag of type 'int'.
 
   Args:
     flag_name: The name of the flag as a string.
     default_value: The default value the flag should take as an int.
     docstring: A helpful message explaining the use of the flag.
+    required: Whether or not the command-line option may be omitted (optionals only).
   """
-  _define_helper(flag_name, default_value, docstring, int)
+  _define_helper(flag_name, default_value, docstring, int, required)
 
 
-def DEFINE_boolean(flag_name, default_value, docstring):
+def DEFINE_boolean(flag_name, default_value, docstring, required=False):
   """Defines a flag of type 'boolean'.
 
   Args:
     flag_name: The name of the flag as a string.
     default_value: The default value the flag should take as a boolean.
     docstring: A helpful message explaining the use of the flag.
+    required: Whether or not the command-line option may be omitted (optionals only).
   """
   # Register a custom function for 'bool' so --flag=True works.
   def str2bool(v):
@@ -112,13 +118,15 @@ def DEFINE_boolean(flag_name, default_value, docstring):
                               const=True,
                               help=docstring,
                               default=default_value,
-                              type=str2bool)
+                              type=str2bool,
+                              required=required)
 
   # Add negated version, stay consistent with argparse with regard to
   # dashes in flag names.
   _global_parser.add_argument('--no' + flag_name,
                               action='store_false',
-                              dest=flag_name.replace('-', '_'))
+                              dest=flag_name.replace('-', '_'),
+                              required=required)
 
 
 # The internal google library defines the following alias, so we match
@@ -126,15 +134,16 @@ def DEFINE_boolean(flag_name, default_value, docstring):
 DEFINE_bool = DEFINE_boolean  # pylint: disable=invalid-name
 
 
-def DEFINE_float(flag_name, default_value, docstring):
+def DEFINE_float(flag_name, default_value, docstring, required=False):
   """Defines a flag of type 'float'.
 
   Args:
     flag_name: The name of the flag as a string.
     default_value: The default value the flag should take as a float.
     docstring: A helpful message explaining the use of the flag.
+    required: Whether or not the command-line option may be omitted (optionals only).
   """
-  _define_helper(flag_name, default_value, docstring, float)
+  _define_helper(flag_name, default_value, docstring, float, required)
 
 _allowed_symbols = [
     # We rely on gflags documentation.
