@@ -91,7 +91,7 @@ static int TryToReadNumaNode(ibv_device* device) {
     LOG(INFO) << "NUMA node for device: " << device->name << " is " << value;
     return value;
   }
-  return -kUnknownNumaNode;
+  return kUnknownNumaNode;
 }
 
 class BasicCPUAllocator : public SubAllocator {
