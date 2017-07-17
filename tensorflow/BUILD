@@ -289,6 +289,7 @@ filegroup(
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/predictor:all_files",
         "//tensorflow/contrib/remote_fused_graph/pylib:all_files",
+        "//tensorflow/contrib/repeat:all_files",
         "//tensorflow/contrib/resampler:all_files",
         "//tensorflow/contrib/rnn:all_files",
         "//tensorflow/contrib/saved_model:all_files",
