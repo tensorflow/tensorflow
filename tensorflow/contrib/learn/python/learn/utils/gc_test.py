@@ -33,8 +33,13 @@ from tensorflow.python.util import compat
 def _create_parser(base_dir):
   # create a simple parser that pulls the export_version from the directory.
   def parser(path):
-    match = re.match("^" + compat.as_str_any(base_dir) + "/(\\d+)$",
-                     compat.as_str_any(path.path))
+    # Modify the path object for RegEx match for Windows Paths
+    if os.name == 'nt':
+      match = re.match("^" + compat.as_str_any(base_dir).replace('\\','/') + "/(\\d+)$",
+                      compat.as_str_any(path.path).replace('\\','/'))
+    else:
+      match = re.match("^" + compat.as_str_any(base_dir) + "/(\\d+)$",
+                      compat.as_str_any(path.path))
     if not match:
       return None
     return path._replace(export_version=int(match.group(1)))
