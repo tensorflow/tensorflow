@@ -505,7 +505,11 @@ class EstimatorModelFnTest(test.TestCase):
       return input_fn_utils.InputFnOps(
           features, labels, {'examples': serialized_tf_example})
 
-    est.export_savedmodel(est.model_dir + '/export', serving_input_fn)
+    if os.name == 'nt':
+      est.export_savedmodel(est.model_dir + '\export', serving_input_fn)
+    else:
+      est.export_savedmodel(est.model_dir + '/export', serving_input_fn)
+
     self.assertTrue(self.mock_saver.restore.called)
 
 
@@ -955,10 +959,10 @@ class EstimatorTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         self.assertTrue('linear/linear/feature/matmul' in graph_ops)
-        self.assertSameElements(
+        self.assertCountEqual(
             ['bogus_lookup', 'feature'],
-            graph.get_collection(
-                constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS))
+            [x.decode("utf-8") for x in graph.get_collection(
+                constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS)])
 
     # cleanup
     gfile.DeleteRecursively(tmpdir)
