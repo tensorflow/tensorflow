@@ -122,10 +122,9 @@ class S3RandomAccessFile : public RandomAccessFile {
     });
     auto getObjectOutcome = s3Client.GetObject(getObjectRequest);
     if (!getObjectOutcome.IsSuccess()) {
-      std::stringstream ss;
-      ss << getObjectOutcome.GetError().GetExceptionName() << ": "
-         << getObjectOutcome.GetError().GetMessage();
-      return errors::Internal(ss.str());
+      n = 0;
+      *result = StringPiece(scratch, n);
+      return Status::OK();
     }
     n = getObjectOutcome.GetResult().GetContentLength();
     std::stringstream ss;
