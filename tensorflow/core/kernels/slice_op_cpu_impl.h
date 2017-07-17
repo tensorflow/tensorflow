@@ -13,22 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
+
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/slice_op.h"
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/ops_util.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/kernels/slice_op.h"
 
 namespace tensorflow {
 
 using CpuDevice = Eigen::ThreadPoolDevice;
 
-#define DEFINE_CPU_KERNELS(T) template struct functor::Slice<CpuDevice, T>;
+#define DEFINE_CPU_KERNELS(T) \
+  template struct functor::Slice<CpuDevice, T, CPU_PROVIDED_IXDIM>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS);
 DEFINE_CPU_KERNELS(bfloat16);
@@ -38,7 +37,8 @@ DEFINE_CPU_KERNELS(bfloat16);
 #ifdef TENSORFLOW_USE_SYCL
 using SyclDevice = Eigen::SyclDevice;
 
-#define DEFINE_SYCL_KERNELS(T) template struct functor::Slice<SyclDevice, T>;
+#define DEFINE_SYCL_KERNELS(T) \
+  template struct functor::Slice<SyclDevice, T, CPU_PROVIDED_IXDIM>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SYCL_KERNELS);
 DEFINE_SYCL_KERNELS(int32);
@@ -46,4 +46,6 @@ DEFINE_SYCL_KERNELS(int32);
 #undef DEFINE_SYCL_KERNELS
 #endif // TENSORFLOW_USE_SYCL
 
-} // namespace tensorflow
+}  // namespace tensorflow
+
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_

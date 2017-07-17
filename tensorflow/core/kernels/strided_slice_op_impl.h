@@ -91,7 +91,7 @@ void HandleStridedSliceCase(OpKernelContext* context,
     const TensorShape final_shape = result->shape();
     CHECK(result->CopyFrom(*result, processing_shape));
     const Tensor input = context->input(0);
-    functor::Slice<Device, T>()(
+    functor::Slice<Device, T, NDIM>()(
         context->eigen_device<Device>(), result, input, begin, sizes);
     CHECK(result->CopyFrom(*result, final_shape));
   } else {
@@ -195,11 +195,11 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
   extern template struct StridedSlice<GPUDevice, T, NDIM>;         \
   template <>                                                      \
-  void Slice<GPUDevice, T>::operator()(                            \
+  void Slice<GPUDevice, T, NDIM>::operator()(                      \
       const GPUDevice& d, Tensor* output, const Tensor& input,     \
       const gtl::ArraySlice<int64>& slice_indices,                 \
       const gtl::ArraySlice<int64>& slice_sizes);                  \
-  extern template struct Slice<GPUDevice, T>;                      \
+  extern template struct Slice<GPUDevice, T, NDIM>;                \
   template <>                                                      \
   void StridedSliceGrad<GPUDevice, T, NDIM>::operator()(           \
       const GPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \

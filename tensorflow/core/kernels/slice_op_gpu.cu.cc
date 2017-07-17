@@ -83,7 +83,14 @@ void SliceSimpleGpu(const Device& d, Tensor* out, const Tensor& in,
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_KERNELS(T) template struct functor::Slice<GPUDevice, T>;
+#define DEFINE_GPU_KERNELS(T)                      \
+  template struct functor::Slice<GPUDevice, T, 1>; \
+  template struct functor::Slice<GPUDevice, T, 2>; \
+  template struct functor::Slice<GPUDevice, T, 3>; \
+  template struct functor::Slice<GPUDevice, T, 4>; \
+  template struct functor::Slice<GPUDevice, T, 5>; \
+  template struct functor::Slice<GPUDevice, T, 6>; \
+  template struct functor::Slice<GPUDevice, T, 7>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 TF_CALL_complex64(DEFINE_GPU_KERNELS);

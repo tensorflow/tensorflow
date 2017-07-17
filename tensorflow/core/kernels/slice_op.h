@@ -82,40 +82,21 @@ void SliceUsingEigen(const Device& d, Tensor* out, const Tensor& in,
 
 namespace functor {
 
-template <typename Device, typename T>
+// Template parameter NDIM is not neccesary here. The aim of keeping it
+// is to compile struct slice seperately which minimizes the compiling time.
+template <typename Device, typename T, int NDIM>
 struct Slice {
   void operator()(const Device& d, Tensor* out, const Tensor& in,
                   const gtl::ArraySlice<int64>& slice_indices,
                   const gtl::ArraySlice<int64>& slice_sizes) {
-    switch (in.dims()) {
-      case 1:
-        internal::SliceUsingEigen<Device, T, 1>(d, out, in, slice_indices, slice_sizes);
-        break;
-      case 2:
-        internal::SliceUsingEigen<Device, T, 2>(d, out, in, slice_indices, slice_sizes);
-        break;
-      case 3:
-        internal::SliceUsingEigen<Device, T, 3>(d, out, in, slice_indices, slice_sizes);
-        break;
-      case 4:
-        internal::SliceUsingEigen<Device, T, 4>(d, out, in, slice_indices, slice_sizes);
-        break;
-      case 5:
-        internal::SliceUsingEigen<Device, T, 5>(d, out, in, slice_indices, slice_sizes);
-        break;
-      case 6:
-        internal::SliceUsingEigen<Device, T, 6>(d, out, in, slice_indices, slice_sizes);
-        break;
-      case 7:
-        internal::SliceUsingEigen<Device, T, 7>(d, out, in, slice_indices, slice_sizes);
-        break;
-      default:
+    if (in.dims() == NDIM) {
+        internal::SliceUsingEigen<Device, T, NDIM>(d, out, in, slice_indices, slice_sizes);
+    } else {
         if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
           internal::SliceSimpleGpu<Device, T>(d, out, in, slice_indices);
         } else {
           internal::SliceSimple<Device, T>(d, out, in, slice_indices);
         }
-        break;
     }
   }
 };

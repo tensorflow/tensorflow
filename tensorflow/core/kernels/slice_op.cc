@@ -190,7 +190,23 @@ class SliceOp : public OpKernel {
         }
         return;
       }
-      functor::Slice<Device, T>()(
+#define HANDLE_DIM(NDIM)                            \
+  if (input_dims == NDIM) {                         \
+    functor::Slice<Device, T, NDIM>()(         \
+        context->eigen_device<Device>(), result, input, begin, size); \
+    return;                                         \
+  }
+      HANDLE_DIM(1);
+      HANDLE_DIM(2);
+      HANDLE_DIM(3);
+      HANDLE_DIM(4);
+      HANDLE_DIM(5);
+      HANDLE_DIM(6);
+
+#undef HANDLE_DIM
+
+      // handle cases which dim >= 7
+      functor::Slice<Device, T, 7>()(
           context->eigen_device<Device>(), result, input, begin, size);
     }
   }
@@ -236,7 +252,7 @@ class MklSliceOp : public OpKernel {
       if (input_dims == 4) {
         HandleCase4D(context, begin, size, result);
       } else {
-        functor::Slice<Device, T>()(
+        functor::Slice<Device, T, input_dims>()(
             context->eigen_device<Device>(), result, input, begin, size);
       }
     }
@@ -358,7 +374,7 @@ class MklSliceOp : public OpKernel {
         // slice_dim is not 1 or 3, then we fallback to Eigen implementation.
     }
 
-    functor::Slice<Device, T>()(
+    functor::Slice<Device, T, 4>()(
         context->eigen_device<Device>(), result, input, begin, size);
   }
 };
@@ -367,18 +383,28 @@ class MklSliceOp : public OpKernel {
 // Forward declarations of the functor specializations for declared in the
 // sharded source files.
 namespace functor {
-#define DECLARE_CPU_SPEC(T)                              \
+#define DECLARE_CPU_SPEC(T, NDIM)                        \
   template <>                                            \
-  void Slice<CPUDevice, T>::operator()(                  \
+  void Slice<CPUDevice, T, NDIM>::operator()(            \
       const CPUDevice& d, Tensor* output,                \
       const Tensor& input,                               \
       const gtl::ArraySlice<int64>& slice_indices,       \
       const gtl::ArraySlice<int64>& slice_sizes);        \
-  extern template struct Slice<CPUDevice, T>;
+  extern template struct Slice<CPUDevice, T, NDIM>;
 
-TF_CALL_ALL_TYPES(DECLARE_CPU_SPEC);
-DECLARE_CPU_SPEC(bfloat16);
+#define DECLARE_FOR_N(T)  \
+  DECLARE_CPU_SPEC(T, 1); \
+  DECLARE_CPU_SPEC(T, 2); \
+  DECLARE_CPU_SPEC(T, 3); \
+  DECLARE_CPU_SPEC(T, 4); \
+  DECLARE_CPU_SPEC(T, 5); \
+  DECLARE_CPU_SPEC(T, 6); \
+  DECLARE_CPU_SPEC(T, 7);
 
+TF_CALL_ALL_TYPES(DECLARE_FOR_N);
+DECLARE_FOR_N(bfloat16);
+
+#undef DECLARE_FOR_N
 #undef DECLARE_CPU_SPEC
 }  // namespace functor
 
@@ -413,21 +439,31 @@ REGISTER_SLICE(bfloat16);
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                              \
+#define DECLARE_GPU_SPEC(T, NDIM)                        \
   template <>                                            \
-  void Slice<GPUDevice, T>::operator()(                  \
+  void Slice<GPUDevice, T, NDIM>::operator()(                  \
       const GPUDevice& d,                                \
       Tensor* output,                                    \
       const Tensor& input,                               \
       const gtl::ArraySlice<int64>& slice_indices,       \
       const gtl::ArraySlice<int64>& slice_sizes);        \
-  extern template struct Slice<GPUDevice, T>;
+  extern template struct Slice<GPUDevice, T, NDIM>;
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-TF_CALL_complex64(DECLARE_GPU_SPEC);
-TF_CALL_complex128(DECLARE_GPU_SPEC);
-DECLARE_GPU_SPEC(int32);
+#define DECLARE_FOR_N(T)  \
+  DECLARE_GPU_SPEC(T, 1); \
+  DECLARE_GPU_SPEC(T, 2); \
+  DECLARE_GPU_SPEC(T, 3); \
+  DECLARE_GPU_SPEC(T, 4); \
+  DECLARE_GPU_SPEC(T, 5); \
+  DECLARE_GPU_SPEC(T, 6); \
+  DECLARE_GPU_SPEC(T, 7);
 
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
+TF_CALL_complex64(DECLARE_FOR_N);
+TF_CALL_complex128(DECLARE_FOR_N);
+DECLARE_FOR_N(int32);
+
+#undef DECLARE_FOR_N
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -464,20 +500,30 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
 #ifdef TENSORFLOW_USE_SYCL
 // Forward declarations of the functor specializations for SYCL.
 namespace functor {
-#define DECLARE_SYCL_SPEC(T)                             \
+#define DECLARE_SYCL_SPEC(T, NDIM)                       \
   template <>                                            \
-  void Slice<SYCLDevice, T>::operator()(                 \
+  void Slice<SYCLDevice, T, NDIM>::operator()(           \
       const SYCLDevice& d,                               \
       Tensor* output,                                    \
       const Tensor& input,                               \
       const gtl::ArraySlice<int64>& slice_indices,       \
       const gtl::ArraySlice<int64>& slice_sizes);        \
-  extern template struct Slice<SYCLDevice, T>;
+  extern template struct Slice<SYCLDevice, T, NDIM>;
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_SYCL_SPEC);
-DECLARE_SYCL_SPEC(int32);
-DECLARE_SYCL_SPEC(bool);
+#define DECLARE_FOR_N(T)   \
+  DECLARE_SYCL_SPEC(T, 1); \
+  DECLARE_SYCL_SPEC(T, 2); \
+  DECLARE_SYCL_SPEC(T, 3); \
+  DECLARE_SYCL_SPEC(T, 4); \
+  DECLARE_SYCL_SPEC(T, 5); \
+  DECLARE_SYCL_SPEC(T, 6); \
+  DECLARE_SYCL_SPEC(T, 7);
 
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_FOR_N);
+DECLARE_FOR_N(int32);
+DECLARE_FOR_N(bool);
+
+#undef DECLARE_FOR_N
 #undef DECLARE_SYCL_SPEC
 }  // namespace functor
 
