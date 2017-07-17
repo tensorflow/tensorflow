@@ -45,7 +45,8 @@ import java.nio.ByteBuffer;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 
-public abstract class CameraActivity extends Activity implements OnImageAvailableListener, Camera.PreviewCallback {
+public abstract class CameraActivity extends Activity implements OnImageAvailableListener, Camera.
+        PreviewCallback {
   private static final Logger LOGGER = new Logger();
 
   private static final int PERMISSIONS_REQUEST = 1;
@@ -247,7 +248,8 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   private boolean hasPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      return checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_GRANTED && checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_GRANTED;
+      return checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_GRANTED &&
+              checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_GRANTED;
     } else {
       return true;
     }
@@ -255,8 +257,11 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   private void requestPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) || shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
-        Toast.makeText(CameraActivity.this, "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
+      if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) ||
+              shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
+        Toast.makeText(CameraActivity.this,
+                "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG)
+                .show();
       }
       requestPermissions(new String[] {PERMISSION_CAMERA, PERMISSION_STORAGE}, PERMISSIONS_REQUEST);
     }
@@ -291,7 +296,8 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
           continue;
         }
 
-        useCamera2API = isHardwareLevelSupported(characteristics, CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        useCamera2API = isHardwareLevelSupported(characteristics,
+                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
         LOGGER.i("Camera API lv2?: %s", useCamera2API);
         return cameraId;
       }
