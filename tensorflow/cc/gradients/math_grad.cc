@@ -463,6 +463,33 @@ Status BatchMatMulGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
 
+
+
+
+// ReshapeGradientsWRTBroadcasting::ReshapeGradientsWRTBroadcasting(
+//     const ::tensorflow::Scope& scope, const Output& x, const Output& y,
+//     const Output& grad_x, const Output& grad_y) {
+//   const Output sx = Shape(scope, x);
+//   const Output sy = Shape(scope, y);
+//   const BroadcastGradientArgs broadcast_gradient_args(scope, sx, sy);
+//
+//   {
+//
+//   }
+//
+//   reshaped_grad_x = SparseReduceSum(scope, )
+// }
+//
+//
+// class ReshapeGradientsWRTBroadcasting {
+//   ReshapeGradientsWRTBroadcasting(const ::tensorflow::Scope& scope,
+//                                   const Output& x, const Output& y,
+//                                   const Output& grad_x, const Output& grad_y);
+//   Output reshaped_grad_x;
+//   Output reshaped_grad_y;
+// };
+
+
 Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
                              const std::vector<Output>& grad_inputs,
                              std::vector<Output>* grad_outputs) {
