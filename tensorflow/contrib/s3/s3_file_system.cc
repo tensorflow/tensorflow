@@ -26,7 +26,7 @@ limitations under the License.
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadBucketRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
-#include <aws/s3/model/ListObjectsV2Request.h>
+#include <aws/s3/model/ListObjectsRequest.h>
 #include <aws/s3/model/PutObjectRequest.h>
 
 #include <cstdlib>
@@ -321,27 +321,27 @@ class S3FileSystem : public FileSystem {
     }
 
     Aws::S3::S3Client s3Client(GetDefaultClientConfig());
-    Aws::S3::Model::ListObjectsV2Request listObjectsV2Request;
-    listObjectsV2Request.WithBucket(bucket.c_str())
+    Aws::S3::Model::ListObjectsRequest listObjectsRequest;
+    listObjectsRequest.WithBucket(bucket.c_str())
         .WithPrefix(prefix.c_str())
         .WithMaxKeys(S3GetChildrenMaxKeys)
         .WithDelimiter("/");
-    listObjectsV2Request.SetResponseStreamFactory([]() {
+    listObjectsRequest.SetResponseStreamFactory([]() {
       return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
     });
 
-    Aws::S3::Model::ListObjectsV2Result listObjectsV2Result;
+    Aws::S3::Model::ListObjectsResult listObjectsResult;
     do {
-      auto listObjectsV2Outcome = s3Client.ListObjectsV2(listObjectsV2Request);
-      if (!listObjectsV2Outcome.IsSuccess()) {
+      auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+      if (!listObjectsOutcome.IsSuccess()) {
         std::stringstream ss;
-        ss << listObjectsV2Outcome.GetError().GetExceptionName() << ": "
-           << listObjectsV2Outcome.GetError().GetMessage();
+        ss << listObjectsOutcome.GetError().GetExceptionName() << ": "
+           << listObjectsOutcome.GetError().GetMessage();
         return errors::Internal(ss.str());
       }
 
-      listObjectsV2Result = listObjectsV2Outcome.GetResult();
-      for (const auto& object : listObjectsV2Result.GetCommonPrefixes()) {
+      listObjectsResult = listObjectsOutcome.GetResult();
+      for (const auto& object : listObjectsResult.GetCommonPrefixes()) {
         Aws::String s = object.GetPrefix();
         s.erase(s.length() - 1);
         Aws::String entry = s.substr(strlen(prefix.c_str()));
@@ -349,16 +349,16 @@ class S3FileSystem : public FileSystem {
           result->push_back(entry.c_str());
         }
       }
-      for (const auto& object : listObjectsV2Result.GetContents()) {
+      for (const auto& object : listObjectsResult.GetContents()) {
         Aws::String s = object.GetKey();
         Aws::String entry = s.substr(strlen(prefix.c_str()));
         if (entry.length() > 0) {
           result->push_back(entry.c_str());
         }
       }
-      listObjectsV2Request.SetContinuationToken(
-          listObjectsV2Result.GetNextContinuationToken());
-    } while (listObjectsV2Result.GetIsTruncated());
+      listObjectsRequest.SetMarker(
+          listObjectsResult.GetNextMarker());
+    } while (listObjectsResult.GetIsTruncated());
 
     return Status::OK();
   }
@@ -402,16 +402,16 @@ class S3FileSystem : public FileSystem {
     if (prefix.back() != '/') {
       prefix.push_back('/');
     }
-    Aws::S3::Model::ListObjectsV2Request listObjectsV2Request;
-    listObjectsV2Request.WithBucket(bucket.c_str())
+    Aws::S3::Model::ListObjectsRequest listObjectsRequest;
+    listObjectsRequest.WithBucket(bucket.c_str())
         .WithPrefix(prefix.c_str())
         .WithMaxKeys(1);
-    listObjectsV2Request.SetResponseStreamFactory([]() {
+    listObjectsRequest.SetResponseStreamFactory([]() {
       return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
     });
-    auto listObjectsV2Outcome = s3Client.ListObjectsV2(listObjectsV2Request);
-    if (listObjectsV2Outcome.IsSuccess()) {
-      if (listObjectsV2Outcome.GetResult().GetContents().size() > 0) {
+    auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+    if (listObjectsOutcome.IsSuccess()) {
+      if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
         stats->length = 0;
         stats->is_directory = 1;
         found = true;
@@ -474,16 +474,16 @@ class S3FileSystem : public FileSystem {
     if (prefix.back() != '/') {
       prefix.push_back('/');
     }
-    Aws::S3::Model::ListObjectsV2Request listObjectsV2Request;
-    listObjectsV2Request.WithBucket(bucket.c_str())
+    Aws::S3::Model::ListObjectsRequest listObjectsRequest;
+    listObjectsRequest.WithBucket(bucket.c_str())
         .WithPrefix(prefix.c_str())
         .WithMaxKeys(2);
-    listObjectsV2Request.SetResponseStreamFactory([]() {
+    listObjectsRequest.SetResponseStreamFactory([]() {
       return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
     });
-    auto listObjectsV2Outcome = s3Client.ListObjectsV2(listObjectsV2Request);
-    if (listObjectsV2Outcome.IsSuccess()) {
-      auto contents = listObjectsV2Outcome.GetResult().GetContents();
+    auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+    if (listObjectsOutcome.IsSuccess()) {
+      auto contents = listObjectsOutcome.GetResult().GetContents();
       if (contents.size() > 1 ||
           (contents.size() == 1 && contents[0].GetKey() != prefix.c_str())) {
         return errors::FailedPrecondition(
@@ -527,26 +527,26 @@ class S3FileSystem : public FileSystem {
     Aws::S3::Model::CopyObjectRequest copyObjectRequest;
     Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
 
-    Aws::S3::Model::ListObjectsV2Request listObjectsV2Request;
-    listObjectsV2Request.WithBucket(src_bucket.c_str())
+    Aws::S3::Model::ListObjectsRequest listObjectsRequest;
+    listObjectsRequest.WithBucket(src_bucket.c_str())
         .WithPrefix(src_object.c_str())
         .WithMaxKeys(S3GetChildrenMaxKeys);
-    listObjectsV2Request.SetResponseStreamFactory([]() {
+    listObjectsRequest.SetResponseStreamFactory([]() {
       return Aws::New<Aws::StringStream>(S3FileSystemAllocationTag);
     });
 
-    Aws::S3::Model::ListObjectsV2Result listObjectsV2Result;
+    Aws::S3::Model::ListObjectsResult listObjectsResult;
     do {
-      auto listObjectsV2Outcome = s3Client.ListObjectsV2(listObjectsV2Request);
-      if (!listObjectsV2Outcome.IsSuccess()) {
+      auto listObjectsOutcome = s3Client.ListObjects(listObjectsRequest);
+      if (!listObjectsOutcome.IsSuccess()) {
         std::stringstream ss;
-        ss << listObjectsV2Outcome.GetError().GetExceptionName() << ": "
-           << listObjectsV2Outcome.GetError().GetMessage();
+        ss << listObjectsOutcome.GetError().GetExceptionName() << ": "
+           << listObjectsOutcome.GetError().GetMessage();
         return errors::Internal(ss.str());
       }
 
-      listObjectsV2Result = listObjectsV2Outcome.GetResult();
-      for (const auto& object : listObjectsV2Result.GetContents()) {
+      listObjectsResult = listObjectsOutcome.GetResult();
+      for (const auto& object : listObjectsResult.GetContents()) {
         Aws::String src_key = object.GetKey();
         Aws::String target_key = src_key;
         target_key.replace(0, src_object.length(), target_object.c_str());
@@ -575,9 +575,9 @@ class S3FileSystem : public FileSystem {
           return errors::Internal(ss.str());
         }
       }
-      listObjectsV2Request.SetContinuationToken(
-          listObjectsV2Result.GetNextContinuationToken());
-    } while (listObjectsV2Result.GetIsTruncated());
+      listObjectsRequest.SetMarker(
+          listObjectsResult.GetNextMarker());
+    } while (listObjectsResult.GetIsTruncated());
 
     return Status::OK();
   }
