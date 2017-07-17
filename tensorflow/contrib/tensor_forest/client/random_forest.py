@@ -291,7 +291,7 @@ class TensorForestEstimator(estimator.Estimator):
                params,
                device_assigner=None,
                model_dir=None,
-               graph_builder_class=tensor_forest.RandomForestGraphs,
+               graph_builder_class=tensor_forest_v4.RandomForestGraphsV4,
                config=None,
                weights_name=None,
                keys_name=None,
