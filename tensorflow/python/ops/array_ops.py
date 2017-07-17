@@ -1099,7 +1099,7 @@ def concat(values, axis, name="concat"):
   return gen_array_ops._concat_v2(values=values, axis=axis, name=name)
 
 
-def boolean_mask(tensor, mask, name="boolean_mask"):
+def boolean_mask(tensor, mask, axis=None, name="boolean_mask"):
   """Apply boolean mask to tensor.  Numpy equivalent is `tensor[mask]`.
 
   ```python
@@ -1117,6 +1117,7 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   Args:
     tensor:  N-D tensor.
     mask:  K-D boolean tensor, K <= N and K must be known statically.
+    axis: The axis in `tensor` to mask from. Defaults to the first dimension.
     name:  A name for this operation (optional).
 
   Returns:
@@ -1136,10 +1137,10 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
   ```
   """
 
-  def _apply_mask_1d(reshaped_tensor, mask):
+  def _apply_mask_1d(reshaped_tensor, mask, axis=None):
     """Mask tensor along dimension 0 with a 1-D mask."""
     indices = squeeze(where(mask), squeeze_dims=[1])
-    return gather(reshaped_tensor, indices)
+    return gather(reshaped_tensor, indices, axis=axis)
 
   with ops.name_scope(name, values=[tensor, mask]):
     tensor = ops.convert_to_tensor(tensor, name="tensor")
@@ -1154,19 +1155,22 @@ def boolean_mask(tensor, mask, name="boolean_mask"):
       raise ValueError(
           "Number of mask dimensions must be specified, even if some dimensions"
           " are None.  E.g. shape=[None] is ok, but shape=None is not.")
-    shape_tensor[:ndims_mask].assert_is_compatible_with(shape_mask)
+    axis = 0 if axis is None else axis
+    shape_tensor[axis:axis+ndims_mask].assert_is_compatible_with(shape_mask)
 
-    leading_size = gen_math_ops._prod(shape(tensor)[:ndims_mask], [0])
+    leading_size = gen_math_ops._prod(shape(tensor)[axis:axis+ndims_mask], [0])
     tensor = reshape(tensor,
-                     concat([[leading_size],
-                             shape(tensor)[ndims_mask:]], 0))
-    first_dim = shape_tensor[:ndims_mask].num_elements()
+                     concat([shape(tensor)[:axis],
+                             [leading_size],
+                             shape(tensor)[axis+ndims_mask:]], 0))
+    first_dim = shape_tensor[axis:axis+ndims_mask].num_elements()
     tensor.set_shape(
-        tensor_shape.as_shape([first_dim])
-        .concatenate(shape_tensor[ndims_mask:]))
+        tensor_shape.as_shape(shape_tensor[:axis])
+        .concatenate([first_dim])
+        .concatenate(shape_tensor[axis+ndims_mask:]))
 
     mask = reshape(mask, [-1])
-    return _apply_mask_1d(tensor, mask)
+    return _apply_mask_1d(tensor, mask, axis)
 
 
 def sparse_mask(a, mask_indices, name=None):
