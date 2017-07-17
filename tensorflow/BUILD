@@ -423,7 +423,6 @@ cc_binary(
     linkshared = 1,
     linkstatic = 1,
     deps = [
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal_impl",
     ],
 )
@@ -433,7 +432,6 @@ cc_binary(
     linkshared = 1,
     linkstatic = 1,
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal_impl",
     ],
 )

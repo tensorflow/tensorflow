@@ -1587,20 +1587,19 @@ tf_cuda_library(
     ],
     deps = [
         ":framework_internal",
-        ":lib",
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc_impl",
         ":version_lib",
         "//third_party/eigen3",
-    ] + if_mkl(["//third_party/mkl:intel_binary_blob"]) + [
+        "//tensorflow/core/kernels:bounds_check",
+    ] + [
         # TODO(allenlavoie): Split these out into their own shared objects (they
         # are here because they are shared between contrib/ op shared objects
         # and core).
         "//tensorflow/core/kernels:lookup_util",
-        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/util/tensor_bundle",
-    ],
+    ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),
     alwayslink = 1,
 )
 
