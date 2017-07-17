@@ -128,6 +128,7 @@ file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/tpu/profiler/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_PYTHON(
@@ -541,8 +542,10 @@ add_python_module("tensorflow/contrib/timeseries/python/timeseries")
 add_python_module("tensorflow/contrib/timeseries/python/timeseries/state_space_models")
 add_python_module("tensorflow/contrib/tpu")
 add_python_module("tensorflow/contrib/tpu/ops")
+add_python_module("tensorflow/contrib/tpu/profiler")
 add_python_module("tensorflow/contrib/tpu/python")
 add_python_module("tensorflow/contrib/tpu/python/ops")
+add_python_module("tensorflow/contrib/tpu/python/profiler")
 add_python_module("tensorflow/contrib/tpu/python/tpu")
 add_python_module("tensorflow/contrib/training")
 add_python_module("tensorflow/contrib/training/python")

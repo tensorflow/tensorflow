@@ -13,20 +13,18 @@
 # limitations under the License.
 # =============================================================================
 
-"""Ops related to Tensor Processing Units."""
+"""Classes for TPU trace events."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import,unused-import
-from tensorflow.contrib.tpu.python import profiler
-from tensorflow.contrib.tpu.python.ops.tpu_ops import *
-from tensorflow.contrib.tpu.python.tpu import *
+from tensorflow.contrib.tpu.profiler.trace_events_pb2 import *
 # pylint: enable=wildcard-import,unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['profiler']
+_allowed_symbols = ['Trace', 'Resource', 'Device', 'TraceEvent']
 
 remove_undocumented(__name__, _allowed_symbols)
