@@ -69,4 +69,4 @@ $ python
 * [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
 * [TensorFlow course at Stanford](https://web.stanford.edu/class/cs20si)
 
-Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/about/community) for a few ways to participate.
+Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/community/welcome) for a few ways to participate.
