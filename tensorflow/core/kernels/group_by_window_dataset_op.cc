@@ -42,7 +42,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 window_size;
+    int64 window_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "window_size", &window_size));
     OP_REQUIRES(
