@@ -20,7 +20,8 @@ REGISTER5(UnaryOp, CPU, "Round", functor::round, Eigen::half, float, double,
           int32, int64);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Round", functor::round, float, double);
+#define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Round", functor::round, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #endif
 
 #if GOOGLE_CUDA

@@ -64,7 +64,9 @@ BM_UNARY(cpu, Floor, double, DT_DOUBLE);
 BM_UNARY(gpu, Floor, double, DT_DOUBLE);
 #endif // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
+#ifndef TENSORFLOW_SYCL_NO_DOUBLE
 BM_UNARY(sycl, Floor, double, DT_DOUBLE);
+#endif //TENSORFLOW_SYCL_NO_DOUBLE
 #endif // TENSORFLOW_USE_SYCL
 
 BM_UNARY(cpu, Conj, std::complex<float>, DT_COMPLEX64);

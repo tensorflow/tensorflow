@@ -37,7 +37,9 @@ REGISTER4(UnaryOp, GPU, "Reciprocal", functor::inverse, float, Eigen::half,
           double, int64);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER(UnaryOp, SYCL, "Reciprocal", functor::inverse, float);
+#define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Reciprocal", functor::inverse, type);
+TF_CALL_float(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 
 REGISTER5(SimpleBinaryOp, CPU, "ReciprocalGrad", functor::inverse_grad, float,
@@ -47,6 +49,7 @@ REGISTER3(SimpleBinaryOp, GPU, "ReciprocalGrad", functor::inverse_grad, float,
           Eigen::half, double);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER(SimpleBinaryOp, SYCL, "ReciprocalGrad", functor::inverse_grad, float);
+#define REGISTER_KERNEL(type) REGISTER(SimpleBinaryOp, SYCL, "ReciprocalGrad", functor::inverse_grad, type);
+TF_CALL_float(REGISTER_KERNEL);
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

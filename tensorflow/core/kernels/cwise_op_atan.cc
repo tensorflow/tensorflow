@@ -23,6 +23,7 @@ REGISTER2(UnaryOp, GPU, "Atan", functor::atan, float, double);
 #endif
 
 #if TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Atan", functor::atan, float, double);
+#define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Atan", functor::atan, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

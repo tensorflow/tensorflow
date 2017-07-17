@@ -23,6 +23,7 @@ REGISTER2(UnaryOp, GPU, "Acos", functor::acos, float, double);
 #endif
 
 #if TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Acos", functor::acos, float, double);
+#define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Acos", functor::acos, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
