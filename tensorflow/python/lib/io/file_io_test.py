@@ -451,6 +451,12 @@ class FileIoTest(test.TestCase):
     lines = f.readlines()
     self.assertSequenceEqual(lines, data)
 
+  def testUTF8StringPath(self):
+    file_path = os.path.join(self._base_dir, "UTF8测试_file")
+    file_io.write_string_to_file(file_path, "testing")
+    with file_io.FileIO(file_path, mode="rb") as f:
+      self.assertEqual(b"testing", f.read())
+
   def testEof(self):
     """Test that reading past EOF does not raise an exception."""
 

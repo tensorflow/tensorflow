@@ -124,7 +124,10 @@ class WindowsEnv : public Env {
     std::string file_name = library_filename;
     std::replace(file_name.begin(), file_name.end(), '/', '\\');
 
-    HMODULE hModule = LoadLibraryEx(file_name.c_str(), NULL,
+    WindowsFileSystem win_file_system;
+    std::wstring ws_file_name(win_file_system.Utf8ToWideChar(file_name));
+
+    HMODULE hModule = LoadLibraryExW(ws_file_name.c_str(), NULL,
       LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!hModule) {
       return errors::NotFound(file_name + " not found");
