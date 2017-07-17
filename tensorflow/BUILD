@@ -251,6 +251,7 @@ filegroup(
         "//tensorflow/contrib/data/python/kernel_tests:all_files",
         "//tensorflow/contrib/data/python/ops:all_files",
         "//tensorflow/contrib/data/python/util:all_files",
+        "//tensorflow/contrib/decision_trees:all_files",
         "//tensorflow/contrib/decision_trees/proto:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/factorization:all_files",
