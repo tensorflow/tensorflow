@@ -43,7 +43,13 @@ tensorflow/core/kernels/sparse_matmul_op.cc
 tensorflow/core/kernels/softsign_op.cc
 tensorflow/core/kernels/softplus_op.cc
 tensorflow/core/kernels/softmax_op.cc
-tensorflow/core/kernels/slice_op_cpu.cc
+tensorflow/core/kernels/slice_op_cpu_impl_1.cc
+tensorflow/core/kernels/slice_op_cpu_impl_2.cc
+tensorflow/core/kernels/slice_op_cpu_impl_3.cc
+tensorflow/core/kernels/slice_op_cpu_impl_4.cc
+tensorflow/core/kernels/slice_op_cpu_impl_5.cc
+tensorflow/core/kernels/slice_op_cpu_impl_6.cc
+tensorflow/core/kernels/slice_op_cpu_impl_7.cc
 tensorflow/core/kernels/slice_op.cc
 tensorflow/core/kernels/shape_ops.cc
 tensorflow/core/kernels/session_ops.cc
