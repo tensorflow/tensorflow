@@ -170,6 +170,7 @@ class _OrderedDictNumpyFeedFn(object):
         total_epochs=self._num_epochs)
 
     # Get sorted indices and remember how to reorder output.
+    # This allows for the use of h5py databases which require ordered indexing.
     sorted_integer_indexes, reorder_indexes = zip(
         *sorted([(value, index)
                  for index, value in enumerate(integer_indexes)]))
