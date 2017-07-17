@@ -29,11 +29,53 @@ limitations under the License.
 #include <aws/s3/model/ListObjectsV2Request.h>
 #include <aws/s3/model/PutObjectRequest.h>
 
+#include <cstdlib>
+#include <mutex>
+
 namespace tensorflow {
 
 static const char* S3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t S3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int S3GetChildrenMaxKeys = 100;
+
+Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
+  static std::mutex cfg_lock;
+  static bool init(false);
+  static Aws::Client::ClientConfiguration cfg;
+
+  std::lock_guard<std::mutex> lock(cfg_lock);
+
+  if (!init) {
+    const char *endpoint = getenv("TFS3_ENDPOINT");
+    if (endpoint) {
+      cfg.endpointOverride = Aws::String(endpoint);
+    }
+    const char *region = getenv("TFS3_REGION");
+    if (region) {
+      cfg.region = Aws::String(region);
+    }
+    const char *use_https = getenv("TFS3_USE_HTTPS");
+    if (use_https) {
+      if (use_https[0] == '0') {
+        cfg.scheme = Aws::Http::Scheme::HTTP;
+      } else {
+        cfg.scheme = Aws::Http::Scheme::HTTPS;
+      }
+    }
+    const char *verify_ssl = getenv("TFS3_VERIFY_SSL");
+    if (verify_ssl) {
+      if (verify_ssl[0] == '0') {
+        cfg.verifySSL = false;
+      } else {
+        cfg.verifySSL = true;
+      }
+    }
+
+    init = true;
+  }
+
+  return cfg;
+};
 
 Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
                    string* object) {
@@ -67,7 +109,7 @@ class S3RandomAccessFile : public RandomAccessFile {
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    Aws::S3::S3Client s3Client;
+    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
     Aws::S3::Model::GetObjectRequest getObjectRequest;
     getObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
     char buffer[50];
@@ -142,7 +184,7 @@ class S3WritableFile : public WritableFile {
     if (!sync_needed_) {
       return Status::OK();
     }
-    Aws::Client::ClientConfiguration clientConfig;
+    Aws::Client::ClientConfiguration clientConfig = GetDefaultClientConfig();
     clientConfig.connectTimeoutMs = 300000;
     clientConfig.requestTimeoutMs = 600000;
     Aws::S3::S3Client s3Client(clientConfig);
@@ -278,7 +320,7 @@ class S3FileSystem : public FileSystem {
       prefix.push_back('/');
     }
 
-    Aws::S3::S3Client s3Client;
+    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
     Aws::S3::Model::ListObjectsV2Request listObjectsV2Request;
     listObjectsV2Request.WithBucket(bucket.c_str())
         .WithPrefix(prefix.c_str())
@@ -325,7 +367,7 @@ class S3FileSystem : public FileSystem {
     string bucket, object;
     TF_RETURN_IF_ERROR(ParseS3Path(fname, true, &bucket, &object));
 
-    Aws::S3::S3Client s3Client;
+    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
     if (object.empty()) {
       Aws::S3::Model::HeadBucketRequest headBucketRequest;
       headBucketRequest.WithBucket(bucket.c_str());
@@ -385,7 +427,7 @@ class S3FileSystem : public FileSystem {
     string bucket, object;
     TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
 
-    Aws::S3::S3Client s3Client;
+    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
     Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
     deleteObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
 
@@ -404,7 +446,7 @@ class S3FileSystem : public FileSystem {
     TF_RETURN_IF_ERROR(ParseS3Path(dirname, true, &bucket, &object));
 
     if (object.empty()) {
-      Aws::S3::S3Client s3Client;
+      Aws::S3::S3Client s3Client(GetDefaultClientConfig());
       Aws::S3::Model::HeadBucketRequest headBucketRequest;
       headBucketRequest.WithBucket(bucket.c_str());
       auto headBucketOutcome = s3Client.HeadBucket(headBucketRequest);
@@ -427,7 +469,7 @@ class S3FileSystem : public FileSystem {
     string bucket, object;
     TF_RETURN_IF_ERROR(ParseS3Path(dirname, false, &bucket, &object));
 
-    Aws::S3::S3Client s3Client;
+    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
     string prefix = object;
     if (prefix.back() != '/') {
       prefix.push_back('/');
@@ -480,7 +522,7 @@ class S3FileSystem : public FileSystem {
       }
     }
 
-    Aws::S3::S3Client s3Client;
+    Aws::S3::S3Client s3Client(GetDefaultClientConfig());
 
     Aws::S3::Model::CopyObjectRequest copyObjectRequest;
     Aws::S3::Model::DeleteObjectRequest deleteObjectRequest;
