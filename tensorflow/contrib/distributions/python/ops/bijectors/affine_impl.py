@@ -188,10 +188,9 @@ class Affine(bijector.Bijector):
         shift, scale_identity_multiplier, scale_diag, scale_tril,
         scale_perturb_diag, scale_perturb_factor]):
       event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
-      if tensor_util.constant_value(event_ndims) is not None:
-        event_ndims = tensor_util.constant_value(event_ndims)
-        if event_ndims not in (0, 1):
-          raise ValueError("event_ndims({}) was not 0 or 1".format(event_ndims))
+      event_ndims_const = tensor_util.constant_value(event_ndims)
+      if event_ndims_const is not None and event_ndims_const not in (0, 1):
+        raise ValueError("event_ndims(%s) was not 0 or 1" % event_ndims_const)
       else:
         if validate_args:
           # Shape tool will catch if event_ndims is negative.
