@@ -151,16 +151,16 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
       final int uvRowStride = planes[1].getRowStride();
       final int uvPixelStride = planes[1].getPixelStride();
       ImageUtils.convertYUV420ToARGB8888(
-              yuvBytes[0],
-              yuvBytes[1],
-              yuvBytes[2],
-              rgbBytes,
-              previewWidth,
-              previewHeight,
-              yRowStride,
-              uvRowStride,
-              uvPixelStride,
-              false);
+          yuvBytes[0],
+          yuvBytes[1],
+          yuvBytes[2],
+          rgbBytes,
+          previewWidth,
+          previewHeight,
+          yRowStride,
+          uvRowStride,
+          uvPixelStride,
+          false);
       image.close();
 
     } catch (final Exception e) {
@@ -236,8 +236,8 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     switch (requestCode) {
       case PERMISSIONS_REQUEST: {
         if (grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED
-                && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+            && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
           setFragment();
         } else {
           requestPermission();
@@ -249,7 +249,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   private boolean hasPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       return checkSelfPermission(PERMISSION_CAMERA) == PackageManager.PERMISSION_GRANTED &&
-              checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_GRANTED;
+          checkSelfPermission(PERMISSION_STORAGE) == PackageManager.PERMISSION_GRANTED;
     } else {
       return true;
     }
@@ -258,10 +258,9 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   private void requestPermission() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       if (shouldShowRequestPermissionRationale(PERMISSION_CAMERA) ||
-              shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
+          shouldShowRequestPermissionRationale(PERMISSION_STORAGE)) {
         Toast.makeText(CameraActivity.this,
-                "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG)
-                .show();
+            "Camera AND storage permission are required for this demo", Toast.LENGTH_LONG).show();
       }
       requestPermissions(new String[] {PERMISSION_CAMERA, PERMISSION_STORAGE}, PERMISSIONS_REQUEST);
     }
@@ -297,7 +296,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         }
 
         useCamera2API = isHardwareLevelSupported(characteristics,
-                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+            CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
         LOGGER.i("Camera API lv2?: %s", useCamera2API);
         return cameraId;
       }
@@ -321,7 +320,6 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
                   previewHeight = size.getHeight();
                   previewWidth = size.getWidth();
                   CameraActivity.this.onPreviewSizeChosen(size, rotation);
-
                 }
               },
               this,
@@ -331,8 +329,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
       camera2Fragment.setCamera(cameraId);
       fragment = camera2Fragment;
     } else {
-      fragment = new LegacyCameraConnectionFragment(
-          this, getLayoutId());
+      fragment = new LegacyCameraConnectionFragment(this, getLayoutId());
     }
 
     getFragmentManager()
