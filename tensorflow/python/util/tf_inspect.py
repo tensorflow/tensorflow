@@ -31,6 +31,8 @@ def currentframe():
 
 def getargspec(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.getargspec.
+     inspect.getargspec() is deprecated, use inspect.signature() or inspect.getfullargspec()
+    
 
   Args:
     object: A callable, possibly decorated.
@@ -42,7 +44,7 @@ def getargspec(object):  # pylint: disable=redefined-builtin
   """
   decorators, target = tf_decorator.unwrap(object)
   return next((d.decorator_argspec for d in decorators
-               if d.decorator_argspec is not None), _inspect.getargspec(target))
+               if d.decorator_argspec is not None), _inspect.signature(target))
 
 
 def getcallargs(func, *positional, **named):
