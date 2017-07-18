@@ -1857,6 +1857,180 @@ bool CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
       CUDAComplex(CUDAMemoryMutable(c)), ldc);
 }
 
+bool CUDABlas::DoBlasGemvWithProfiling(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n, float alpha,
+    const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &x,
+    int incx, float beta, DeviceMemory<float> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
+                                     incx, beta, y, incy,
+                                     output_profile_result);
+}
+
+bool CUDABlas::DoBlasGemvWithProfiling(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n, double alpha,
+    const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &x,
+    int incx, double beta, DeviceMemory<double> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
+                                     incx, beta, y, incy,
+                                     output_profile_result);
+}
+
+bool CUDABlas::DoBlasGemvWithProfiling(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n,
+    std::complex<float> alpha, const DeviceMemory<std::complex<float>> &a,
+    int lda, const DeviceMemory<std::complex<float>> &x, int incx,
+    std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
+                                     incx, beta, y, incy,
+                                     output_profile_result);
+}
+
+bool CUDABlas::DoBlasGemvWithProfiling(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n,
+    std::complex<double> alpha, const DeviceMemory<std::complex<double>> &a,
+    int lda, const DeviceMemory<std::complex<double>> &x, int incx,
+    std::complex<double> beta, DeviceMemory<std::complex<double>> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemvWithProfilingImpl(stream, trans, m, n, alpha, a, lda, x,
+                                     incx, beta, y, incy,
+                                     output_profile_result);
+}
+
+bool CUDABlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, float alpha, const DeviceMemory<Eigen::half> &a,
+    int lda, const DeviceMemory<Eigen::half> &b, int ldb, float beta,
+    DeviceMemory<Eigen::half> *c, int ldc,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+bool CUDABlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
+    const DeviceMemory<float> &b, int ldb, float beta, DeviceMemory<float> *c,
+    int ldc, blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+bool CUDABlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
+    const DeviceMemory<double> &b, int ldb, double beta,
+    DeviceMemory<double> *c, int ldc,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+bool CUDABlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, std::complex<float> alpha,
+    const DeviceMemory<std::complex<float>> &a, int lda,
+    const DeviceMemory<std::complex<float>> &b, int ldb,
+    std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+bool CUDABlas::DoBlasGemmWithProfiling(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, std::complex<double> alpha,
+    const DeviceMemory<std::complex<double>> &a, int lda,
+    const DeviceMemory<std::complex<double>> &b, int ldb,
+    std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
+    blas::ProfileResult *output_profile_result) {
+  return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
+                                     lda, b, ldb, beta, c, ldc,
+                                     output_profile_result);
+}
+
+template <typename T>
+bool CUDABlas::DoBlasGemvWithProfilingImpl(
+    Stream *stream, blas::Transpose trans, uint64 m, uint64 n, const T &alpha,
+    const DeviceMemory<T> &a, int lda, const DeviceMemory<T> &x, int incx,
+    const T &beta, DeviceMemory<T> *y, int incy,
+    blas::ProfileResult *output_profile_result) {
+  struct TimerDeleter {
+    void operator()(CUDATimer *t) {
+      t->Destroy();
+      delete t;
+    }
+  };
+  std::unique_ptr<CUDATimer, TimerDeleter> timer;
+  if (output_profile_result != nullptr) {
+    timer.reset(new CUDATimer(parent_));
+    if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
+      return false;
+    }
+  }
+
+  // Call blasGemm
+  bool result =
+      DoBlasGemv(stream, trans, m, n, alpha, a, lda, x, incx, beta, y, incy);
+
+  if (timer != nullptr && result) {
+    // CUDATimer will CHECK-fail if we Stop() it while the stream is in an error
+    // state.
+    if (!timer->Stop(AsCUDAStream(stream))) {
+      return false;
+    }
+    output_profile_result->set_is_valid(true);
+    output_profile_result->set_algorithm(blas::kDefaultBlasGemv);
+    output_profile_result->set_elapsed_time_in_ms(
+        timer->GetElapsedMilliseconds());
+  }
+  return result;
+}
+
+template <typename T, typename ParamType>
+bool CUDABlas::DoBlasGemmWithProfilingImpl(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
+    uint64 n, uint64 k, const ParamType &alpha, const DeviceMemory<T> &a,
+    int lda, const DeviceMemory<T> &b, int ldb, const ParamType &beta,
+    DeviceMemory<T> *c, int ldc, blas::ProfileResult *output_profile_result) {
+  struct TimerDeleter {
+    void operator()(CUDATimer *t) {
+      t->Destroy();
+      delete t;
+    }
+  };
+  std::unique_ptr<CUDATimer, TimerDeleter> timer;
+  if (output_profile_result != nullptr) {
+    timer.reset(new CUDATimer(parent_));
+    if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
+      return false;
+    }
+  }
+
+  // Call blasGemm
+  bool result = DoBlasGemm(stream, transa, transb, m, n, k, alpha, a, lda, b,
+                           ldb, beta, c, ldc);
+
+  if (timer != nullptr && result) {
+    // CUDATimer will CHECK-fail if we Stop() it while the stream is in an error
+    // state.
+    if (!timer->Stop(AsCUDAStream(stream))) {
+      return false;
+    }
+    output_profile_result->set_is_valid(true);
+    output_profile_result->set_algorithm(blas::kDefaultBlasGemm);
+    output_profile_result->set_elapsed_time_in_ms(
+        timer->GetElapsedMilliseconds());
+  }
+  return result;
+}
+
 template <typename InT, typename OutT, typename CompT>
 bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
@@ -1920,6 +2094,9 @@ bool CUDABlas::GetBlasGemmAlgorithms(
     std::vector<blas::AlgorithmType> *out_algorithms) {
 // cublasGemmAlgo_t (and the function that accepts this type, cublasGemmEx)
 // were first introduced in CUDA 8.
+// Note that when CUDA version and compute capability is not sufficient, we
+// still return the out_algorithms. Caller needs to make sure that in this case,
+// the returned vector is empty.
 #if CUDA_VERSION >= 8000
   for (cublasGemmAlgo_t algo :
        {CUBLAS_GEMM_DFALT, CUBLAS_GEMM_ALGO0, CUBLAS_GEMM_ALGO1,
@@ -1927,8 +2104,10 @@ bool CUDABlas::GetBlasGemmAlgorithms(
         CUBLAS_GEMM_ALGO5, CUBLAS_GEMM_ALGO6, CUBLAS_GEMM_ALGO7}) {
     out_algorithms->push_back(algo);
   }
-#endif
   return true;
+#else
+  return false;
+#endif
 }
 
 bool CUDABlas::DoBlasGemmWithAlgorithm(

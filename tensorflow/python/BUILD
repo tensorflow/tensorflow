@@ -3851,6 +3851,48 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "matmul_benchmark",
+    size = "medium",
+    srcs = ["ops/matmul_benchmark.py"],
+    additional_deps = [
+        ":math_ops",
+        ":random_ops",
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":platform",
+        ":platform_benchmark",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/matmul_benchmark.py",
+)
+
+cuda_py_test(
+    name = "matmul_benchmark_test",
+    size = "medium",
+    srcs = ["ops/matmul_benchmark_test.py"],
+    additional_deps = [
+        ":math_ops",
+        ":random_ops",
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":platform_benchmark",
+        ":matmul_benchmark",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/matmul_benchmark_test.py",
+)
+
+cuda_py_test(
     name = "session_benchmark",
     srcs = ["client/session_benchmark.py"],
     additional_deps = [
