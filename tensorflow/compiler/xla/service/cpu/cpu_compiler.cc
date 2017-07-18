@@ -169,7 +169,7 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
     fake_argv_storage.push_back("");
     for (const auto& it : options) {
       // Skip options the XLA backend itself consumes.
-      if (it.first != kXlaParallelCpuOption) {
+      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
         if (it.second.empty()) {
           fake_argv_storage.push_back(it.first);
         } else {
@@ -495,7 +495,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
 
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx);
+                         &hlo_to_profile_idx, jit->target_machine());
 
     std::unique_ptr<std::map<HloInstruction*, string>> function_names(
         new std::map<HloInstruction*, string>());
@@ -569,7 +569,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx);
+                         &hlo_to_profile_idx, jit->target_machine());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -733,7 +733,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
-                         /*hlo_to_profile_idx=*/nullptr);
+                         /*hlo_to_profile_idx=*/nullptr, target_machine.get());
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {

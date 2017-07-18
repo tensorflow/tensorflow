@@ -40,6 +40,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:clip_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -677,7 +678,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "affine_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/bijectors/affine_test.py"],
     additional_deps = [
         ":bijectors_py",

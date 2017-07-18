@@ -600,6 +600,7 @@ py_test(
     size = "medium",
     srcs = ["client/random_forest_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":random_forest",
         ":tensor_forest_py",
