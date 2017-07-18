@@ -98,7 +98,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
   private int previewWidth = 0;
   private int previewHeight = 0;
 
-
   private final float[] styleVals = new float[NUM_STYLES];
   private int[] intValues;
   private float[] floatValues;
@@ -106,7 +105,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
   private int frameNum = 0;
 
   private Bitmap textureCopyBitmap;
-
 
   private Matrix frameToCropTransform;
   private Matrix cropToFrameTransform;
@@ -356,9 +354,8 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
-    final float textSizePx =
-        TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
+    final float textSizePx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
@@ -450,11 +447,10 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
   private void resetPreviewBuffers() {
     croppedBitmap = Bitmap.createBitmap(desiredSize, desiredSize, Config.ARGB_8888);
 
-    frameToCropTransform =
-        ImageUtils.getTransformationMatrix(
-            previewWidth, previewHeight,
-            desiredSize, desiredSize,
-            sensorOrientation, true);
+    frameToCropTransform = ImageUtils.getTransformationMatrix(
+        previewWidth, previewHeight,
+        desiredSize, desiredSize,
+        sensorOrientation, true);
 
     cropToFrameTransform = new Matrix();
     frameToCropTransform.invert(cropToFrameTransform);
@@ -471,11 +467,10 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
               previewWidth, previewHeight, desiredSize);
       rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
       croppedBitmap = Bitmap.createBitmap(desiredSize, desiredSize, Config.ARGB_8888);
-      frameToCropTransform =
-              ImageUtils.getTransformationMatrix(
-                      previewWidth, previewHeight,
-                      desiredSize, desiredSize,
-                      sensorOrientation, true);
+      frameToCropTransform = ImageUtils.getTransformationMatrix(
+          previewWidth, previewHeight,
+          desiredSize, desiredSize,
+          sensorOrientation, true);
 
       cropToFrameTransform = new Matrix();
       frameToCropTransform.invert(cropToFrameTransform);
