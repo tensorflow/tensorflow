@@ -21,6 +21,7 @@ py_library(
         "python/training/moving_average_optimizer.py",
         "python/training/nadam_optimizer.py",
         "python/training/variable_clipping_optimizer.py",
+        "python/training/model_average_optimizer.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -163,6 +164,26 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "model_average_optimizer_test",
+    srcs =["python/training/model_average_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/py/portpicker",
+        "//tensorflow/python:variables",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/py/numpy",
     ],
 )
 
