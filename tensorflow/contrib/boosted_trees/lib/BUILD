@@ -11,6 +11,8 @@ package(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -251,6 +253,65 @@ cc_test(
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+# Learner/batch
+
+py_library(
+    name = "base_split_handler",
+    srcs = ["learner/batch/base_split_handler.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+    ],
+)
+
+py_library(
+    name = "categorical_split_handler",
+    srcs = ["learner/batch/categorical_split_handler.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_split_handler",
+        "//tensorflow/contrib/boosted_trees:quantile_ops_py",
+        "//tensorflow/contrib/boosted_trees:split_handler_ops_py",
+        "//tensorflow/contrib/boosted_trees:stats_accumulator_ops_py",
+    ],
+)
+
+py_test(
+    name = "categorical_split_handler_test",
+    srcs = ["learner/batch/categorical_split_handler_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":categorical_split_handler",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_library(
+    name = "ordinal_split_handler",
+    srcs = ["learner/batch/ordinal_split_handler.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_split_handler",
+        "//tensorflow/contrib/boosted_trees:quantile_ops_py",
+        "//tensorflow/contrib/boosted_trees:split_handler_ops_py",
+        "//tensorflow/contrib/boosted_trees:stats_accumulator_ops_py",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
+    ],
+)
+
+py_test(
+    name = "ordinal_split_handler_test",
+    srcs = ["learner/batch/ordinal_split_handler_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ordinal_split_handler",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
