@@ -18,7 +18,7 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
 
   def testTensorArrayWriteRead(self):
     with tf.device("/device:XLA_IPU:0"):
-      with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as session:
+      with tf.Session() as session:
 
         in1 = tf.placeholder(tf.float32, [1, 2])
         in2 = tf.placeholder(tf.float32, [1, 2])
