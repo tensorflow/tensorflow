@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -301,12 +302,33 @@ def prefer_static_broadcast_shape(
       statically), or as a `Tensor`.
   """
   with ops.name_scope(name, values=[shape1, shape2]):
-    if (tensor_util.constant_value(shape1) is not None and
-        tensor_util.constant_value(shape2) is not None):
-      return array_ops.broadcast_static_shape(
-          tensor_shape.TensorShape(tensor_util.constant_value(shape1)),
-          tensor_shape.TensorShape(tensor_util.constant_value(shape2)))
-    return array_ops.broadcast_dynamic_shape(shape1, shape2)
+    def make_shape_tensor(x):
+      return ops.convert_to_tensor(x, name="shape", dtype=dtypes.int32)
+
+    def get_tensor_shape(s):
+      if isinstance(s, tensor_shape.TensorShape):
+        return s
+      s_ = tensor_util.constant_value(make_shape_tensor(s))
+      if s_ is not None:
+        return tensor_shape.TensorShape(s_)
+      return None
+
+    def get_shape_tensor(s):
+      if not isinstance(s, tensor_shape.TensorShape):
+        return make_shape_tensor(s)
+      if s.is_fully_defined():
+        return make_shape_tensor(s.as_list())
+      raise ValueError("Cannot broadcast from partially "
+                       "defined `TensorShape`.")
+
+    shape1_ = get_tensor_shape(shape1)
+    shape2_ = get_tensor_shape(shape2)
+    if shape1_ is not None and shape2_ is not None:
+      return array_ops.broadcast_static_shape(shape1_, shape2_)
+
+    shape1_ = get_shape_tensor(shape1)
+    shape2_ = get_shape_tensor(shape2)
+    return array_ops.broadcast_dynamic_shape(shape1_, shape2_)
 
 
 def is_diagonal_scale(scale):

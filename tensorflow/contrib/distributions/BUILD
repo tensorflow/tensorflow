@@ -573,6 +573,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "vector_diffeomixture_test",
+    size = "large",
+    srcs = ["python/kernel_tests/vector_diffeomixture_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/linalg:linalg_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "conditional_transformed_distribution_test",
     size = "medium",
     srcs = [
