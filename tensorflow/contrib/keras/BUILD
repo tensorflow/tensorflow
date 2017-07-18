@@ -218,6 +218,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
 )
@@ -523,6 +524,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -545,6 +547,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
