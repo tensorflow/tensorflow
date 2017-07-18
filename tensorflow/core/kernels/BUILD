@@ -5057,9 +5057,13 @@ tf_kernel_library(
 
 cc_library(
     name = "remote_fused_graph_execute_utils",
-    srcs = ["remote_fused_graph_execute_utils.cc"],
+    srcs = [
+        "i_remote_fused_graph_ops_definitions.cc",
+        "remote_fused_graph_execute_utils.cc",
+    ],
     hdrs = [
         "i_remote_fused_graph_executor.h",
+        "i_remote_fused_graph_ops_definitions.h",
         "remote_fused_graph_execute_utils.h",
     ],
     deps = [
@@ -5078,6 +5082,7 @@ cc_library(
     srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
     hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
     deps = [
+        ":remote_fused_graph_execute_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",

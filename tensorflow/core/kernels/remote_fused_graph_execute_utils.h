@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -59,6 +60,8 @@ class RemoteFusedGraphExecuteUtils {
       "border_outputs";
   static constexpr const char* const TRANSFORM_ARG_FUSED_OP_TYPES =
       "fused_op_types";
+  static constexpr const char* const TRANSFORM_ARG_FUSE_BY_EXECUTOR =
+      "fuse_by_executor";
   static constexpr const char* const TRANSFORM_ARG_INPUT_TYPES = "input_types";
   static constexpr const char* const TRANSFORM_ARG_INPUT_SHAPES =
       "input_shapes";
@@ -257,6 +260,12 @@ class RemoteFusedGraphExecuteUtils {
       const std::vector<std::pair<string, Tensor>>& input_tensors,
       GraphDef* output_graph_def);
 
+  static Status FuseRemoteGraphByExecutor(const GraphDef& input_graph_def,
+                                          const std::vector<string>& inputs,
+                                          const std::vector<string>& outputs,
+                                          const string& executor_name,
+                                          GraphDef* output_graph_def);
+
   static bool IsFuseReady(
       const GraphDef& input_graph_def,
       const std::vector<std::pair<string, Tensor>>& input_tensors);
@@ -272,6 +281,10 @@ class RemoteFusedGraphExecuteUtils {
 
   static std::unordered_set<string> BuildNodeMapFromOpTypes(
       const GraphDef& graph_def, const std::unordered_set<string>& op_types);
+
+  static std::unordered_set<string> BuildNodeMapFromOpsDefinitions(
+      const GraphDef& graph_def,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions);
 
  private:
   static void EmplaceTensorShapeType(const string& name, const Tensor& tensor,

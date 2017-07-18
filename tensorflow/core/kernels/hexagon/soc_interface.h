@@ -21,6 +21,7 @@ limitations under the License.
 // All functions defined here must have prefix "soc_interface" to avoid
 // naming conflicts.
 #ifdef __cplusplus
+#include <cstdint>
 extern "C" {
 #else
 #include <stdbool.h>

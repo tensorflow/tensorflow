@@ -13,39 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_I_REMOTE_FUSED_GRAPH_OPS_DEFINITIONS_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_I_REMOTE_FUSED_GRAPH_OPS_DEFINITIONS_H_
 
-#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
-// IGraphTransferOpsDefinitions is an interface class which provides interfaces
-// about ops supported by SOC.
+// IRemoteFusedGraphOpsDefinitions is an interface class which provides
+// APIs to provide information about op types supported by SOC.
 // TODO(satok): Provide ways to transfer graph definitions into SOC
-class IGraphTransferOpsDefinitions {
+class IRemoteFusedGraphOpsDefinitions {
  public:
   // op id which is not supported by SOC
   static constexpr int INVALID_OP_ID = -1;
-  // Custom op name for flatten node
-  static constexpr const char* const FLATTEN_OP_NAME = "FLATTEN";
 
-  IGraphTransferOpsDefinitions() = default;
-  virtual ~IGraphTransferOpsDefinitions() = default;
+  IRemoteFusedGraphOpsDefinitions() = default;
+  virtual ~IRemoteFusedGraphOpsDefinitions() = default;
   // Return total ops count supported by SOC
   virtual int GetTotalOpsCount() const = 0;
   // Return op id for given string op name
-  virtual int GetOpIdFor(const string& op_name,
+  virtual int GetOpIdFor(const string& op_type,
                          const DataTypeVector& dt) const = 0;
-  // Return destination of transfer
-  virtual GraphTransferInfo::Destination GetTransferDestination() const = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(IGraphTransferOpsDefinitions);
+  TF_DISALLOW_COPY_AND_ASSIGN(IRemoteFusedGraphOpsDefinitions);
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_I_GRAPH_TRANSFER_OPS_DEFINITIONS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_I_REMOTE_FUSED_GRAPH_OPS_DEFINITIONS_H_

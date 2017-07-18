@@ -13,11 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "i_graph_transfer_ops_definitions.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 
 namespace tensorflow {
-/* static */ constexpr int IGraphTransferOpsDefinitions::INVALID_OP_ID;
-// TODO(satok): Remove
-/* static */ constexpr const char* const
-    IGraphTransferOpsDefinitions::FLATTEN_OP_NAME;
+/* static */ constexpr int IRemoteFusedGraphOpsDefinitions::INVALID_OP_ID;
 }
