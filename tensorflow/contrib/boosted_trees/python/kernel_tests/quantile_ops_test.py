@@ -117,6 +117,49 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(True, are_ready_flush)
       self.assertAllEqual([0, 3335., 6671., 9999.], buckets)
 
+  def testStreamingQuantileBucketsTwoLevel(self):
+    """Sets up the quantile summary op test as follows.
+
+    100 batches of data is added to the accumulator. The batches are in form:
+    [0 1 .. 99]
+    [100 101 .. 200]
+    ...
+    [9900 9901 .. 9999]
+    All the batches have 1 for all the example weights.
+    """
+    with self.test_session() as sess:
+      accumulator = quantile_ops.QuantileAccumulator(
+          init_stamp_token=0, num_quantiles=3, epsilon=0.01, name="q1")
+      accumulator_2 = quantile_ops.QuantileAccumulator(
+          init_stamp_token=0, num_quantiles=3, epsilon=0.01, name="q2")
+      resources.initialize_resources(resources.shared_resources()).run()
+    weight_placeholder = array_ops.placeholder(dtypes.float32)
+    dense_placeholder = array_ops.placeholder(dtypes.float32)
+    update = accumulator.add_summary(
+        stamp_token=0,
+        column=dense_placeholder,
+        example_weights=weight_placeholder)
+    with self.test_session() as sess:
+      for i in range(100):
+        dense_float = np.linspace(
+            i * 100, (i + 1) * 100 - 1, num=100).reshape(-1, 1)
+        sess.run(update, {
+            dense_placeholder: dense_float,
+            weight_placeholder: np.ones(shape=(100, 1), dtype=np.float32)
+        })
+
+    with self.test_session() as sess:
+      summary = sess.run(
+          accumulator.flush_summary(stamp_token=0, next_stamp_token=1))
+      sess.run(
+          accumulator_2.add_prebuilt_summary(
+              stamp_token=0, summary=constant_op.constant(summary)))
+      sess.run(accumulator_2.flush(stamp_token=0, next_stamp_token=1))
+      are_ready_flush, buckets = (accumulator_2.get_buckets(stamp_token=1))
+      buckets, are_ready_flush = (sess.run([buckets, are_ready_flush]))
+      self.assertEqual(True, are_ready_flush)
+      self.assertAllEqual([0, 3337., 6677., 9999.], buckets)
+
   def testSaveRestoreBeforeFlush(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")

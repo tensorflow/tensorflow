@@ -88,21 +88,21 @@ class ReferenceUtil {
   // to apply for each reduction step.
   static std::unique_ptr<std::vector<float>> ReduceToColArray2D(
       const Array2D<float>& matrix, float init,
-      std::function<float(float, float)> reduce_function);
+      const std::function<float(float, float)>& reduce_function);
 
   // Returns the result of reducing a matrix to a row vector. init is the
   // initial value for the reduce operation, and reduce_function is the function
   // to apply for each reduction step.
   static std::unique_ptr<std::vector<float>> ReduceToRowArray2D(
       const Array2D<float>& matrix, float init,
-      std::function<float(float, float)> reduce_function);
+      const std::function<float(float, float)>& reduce_function);
 
   // Performs a R2=>R1 reduction by reducing away the dimension specified in
   // 'dimension_to_reduce'.
   template <typename T>
   static std::vector<T> ReduceR2ToR1(const Array2D<T>& input,
                                      int dimension_to_reduce, T init,
-                                     std::function<T(T, T)> freduce) {
+                                     const std::function<T(T, T)>& freduce) {
     std::vector<T> result(dimension_to_reduce == 0 ? input.n2() : input.n1(),
                           init);
     for (int i0 = 0; i0 < input.n1(); ++i0) {
@@ -119,7 +119,7 @@ class ReferenceUtil {
   static std::vector<float> Reduce4DTo1D(
       const Array4D<float>& array, float init,
       tensorflow::gtl::ArraySlice<int64> dims,
-      std::function<float(float, float)> reduce_function);
+      const std::function<float(float, float)>& reduce_function);
 
   // Broadcast 1D dimension to 4D, from the dimension `broadcast_from_dim`.
   static std::unique_ptr<Array4D<float>> Broadcast1DTo4D(
@@ -131,7 +131,7 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<float>> Reduce3DTo2D(
       const Array3D<float>& array, float init,
       tensorflow::gtl::ArraySlice<int64> dims,
-      std::function<float(float, float)> reduce_function);
+      const std::function<float(float, float)>& reduce_function);
 
   // Applies map_function to each element in the input (2D array) and returns
   // the result.
