@@ -192,6 +192,7 @@ class BaseLayerTest(test.TestCase):
         return math_ops.square(inputs)
 
     layer = MyLayer(name='my_layer')
+    layer._private_tensor = random_ops.random_uniform(())
     inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
@@ -201,6 +202,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer_copy.name, layer.name)
     self.assertEqual(layer_copy._scope.name, layer._scope.name)
     self.assertEqual(layer_copy._graph, layer._graph)
+    self.assertEqual(layer_copy._private_tensor, layer._private_tensor)
 
   def testScopeNaming(self):
 

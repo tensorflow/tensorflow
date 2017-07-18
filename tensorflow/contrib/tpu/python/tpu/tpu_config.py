@@ -24,12 +24,12 @@ import collections
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
 
 
-class TpuConfig(collections.namedtuple(
-    'TpuConfig', ['iterations_per_loop', 'num_shards'])):
+class TPUConfig(collections.namedtuple(
+    'TPUConfig', ['iterations_per_loop', 'num_shards'])):
   """TPU related configuration required by `TPUEstimator`."""
 
   def __new__(cls, iterations_per_loop=2, num_shards=2):
-    return super(TpuConfig, cls).__new__(
+    return super(TPUConfig, cls).__new__(
         cls,
         iterations_per_loop=iterations_per_loop,
         num_shards=num_shards)
@@ -40,7 +40,7 @@ class RunConfig(run_config_lib.RunConfig):
 
   def __init__(self, tpu_config=None, **kwargs):
     super(RunConfig, self).__init__(**kwargs)
-    self._tpu_config = tpu_config or TpuConfig()
+    self._tpu_config = tpu_config or TPUConfig()
 
   @property
   def tpu_config(self):

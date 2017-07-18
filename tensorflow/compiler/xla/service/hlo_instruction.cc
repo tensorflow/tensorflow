@@ -408,6 +408,24 @@ HloInstruction::CreateBatchNormTraining(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBatchNormGrad(const Shape& shape, HloInstruction* operand,
+                                    HloInstruction* scale, HloInstruction* mean,
+                                    HloInstruction* variance,
+                                    HloInstruction* grad_output, float epsilon,
+                                    int64 feature_index) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBatchNormGrad, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(scale);
+  instruction->AppendOperand(mean);
+  instruction->AppendOperand(variance);
+  instruction->AppendOperand(grad_output);
+  instruction->epsilon_ = epsilon;
+  instruction->feature_index_ = feature_index;
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateSelectAndScatter(
     const Shape& shape, HloInstruction* operand, HloComputation* select,
     const Window& window, HloInstruction* source, HloInstruction* init_value,
@@ -889,13 +907,21 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
                                      new_operands[2], epsilon(),
                                      feature_index());
-    // Unsupported ops for cloning.
+    case HloOpcode::kInfeed:
+      CHECK_EQ(new_operands.size(), 0);
+      return CreateInfeed(shape, infeed_config());
+    case HloOpcode::kOutfeed:
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateOutfeed(shape, new_operands[0], outfeed_config());
+    case HloOpcode::kBatchNormGrad:
+      CHECK_EQ(new_operands.size(), 5);
+      return CreateBatchNormGrad(shape, new_operands[0], new_operands[1],
+                                 new_operands[2], new_operands[3],
+                                 new_operands[4], epsilon(), feature_index());
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
@@ -1189,6 +1215,7 @@ bool HloInstruction::Identical(
              ShapeUtil::Compatible(shape(), other.shape());
 
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormGrad:
       return feature_index() == other.feature_index() &&
              epsilon() == other.epsilon();
 
@@ -1788,6 +1815,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleAbs(this, operands_[0]);
     case HloOpcode::kBatchNormTraining:
       return visitor->HandleBatchNormTraining(this);
+    case HloOpcode::kBatchNormGrad:
+      return visitor->HandleBatchNormGrad(this);
     case HloOpcode::kSign:
       return visitor->HandleSign(this, operands_[0]);
     case HloOpcode::kConstant:

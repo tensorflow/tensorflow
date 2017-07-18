@@ -199,6 +199,19 @@ class UnaryDatasetOpKernel : public DatasetOpKernel {
                            DatasetBase** output) = 0;
 };
 
+// Encapsulates the work required to plug binary Datasets into the core
+// TensorFlow graph execution engine.
+class BinaryDatasetOpKernel : public DatasetOpKernel {
+ public:
+  BinaryDatasetOpKernel(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) final;
+  virtual void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                           DatasetBase* another_input,
+                           DatasetBase** output) = 0;
+};
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATASET_H_

@@ -22,7 +22,10 @@ java_library(
 # .aar. At some point, might make sense for a .aar rule here instead.
 filegroup(
     name = "java_sources",
-    srcs = glob(["src/main/java/org/tensorflow/*.java"]),
+    srcs = glob([
+        "src/main/java/org/tensorflow/*.java",
+        "src/main/java/org/tensorflow/types/*.java",
+    ]),
     visibility = [
         "//tensorflow/contrib/android:__pkg__",
         "//tensorflow/java:__pkg__",
@@ -155,6 +158,32 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/op/ScopeTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.op.ScopeTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "PrimitiveOpTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/PrimitiveOpTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.PrimitiveOpTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "OperandsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/OperandsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.OperandsTest",
     deps = [
         ":tensorflow",
         ":testutil",

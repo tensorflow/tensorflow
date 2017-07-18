@@ -107,6 +107,14 @@ class Executable {
     return execution_profile_;
   }
 
+  // Returns Status::ok() if the two executables are equal to each other.
+  //
+  // An error status is returned otherwise.
+  virtual const Status EqualOrFail(const Executable& executable) {
+    return Unimplemented(
+        "Equality test on this executable is not implemented.");
+  }
+
   // Returns whether this executable was compiled with HLO profilings support
   // enabled. If not, the caller should not expect an hlo_execution_profile
   // passed to ExecuteOnStream above to be populated during execution.

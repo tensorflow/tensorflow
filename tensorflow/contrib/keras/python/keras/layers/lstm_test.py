@@ -118,7 +118,7 @@ class LSTMLayerTest(test.TestCase):
       # check that container-level reset_states() works
       model.reset_states()
       out4 = model.predict(np.ones((num_samples, timesteps)))
-      np.testing.assert_allclose(out3, out4, atol=1e-5)
+      self.assertAllClose(out3, out4, atol=1e-5)
 
       # check that the call to `predict` updated the states
       out5 = model.predict(np.ones((num_samples, timesteps)))
@@ -139,7 +139,7 @@ class LSTMLayerTest(test.TestCase):
       right_padded_input[1, -2:] = 0
       out7 = model.predict(right_padded_input)
 
-      np.testing.assert_allclose(out7, out6, atol=1e-5)
+      self.assertAllClose(out7, out6, atol=1e-5)
 
   def test_regularization_LSTM(self):
     embedding_dim = 4
@@ -252,7 +252,7 @@ class LSTMLayerTest(test.TestCase):
       layer.reset_states()
       assert len(layer.states) == num_states
       assert layer.states[0] is not None
-      np.testing.assert_allclose(
+      self.assertAllClose(
           keras.backend.eval(layer.states[0]),
           np.zeros(keras.backend.int_shape(layer.states[0])),
           atol=1e-4)
@@ -261,7 +261,7 @@ class LSTMLayerTest(test.TestCase):
       if len(values) == 1:
         values = values[0]
       layer.reset_states(values)
-      np.testing.assert_allclose(
+      self.assertAllClose(
           keras.backend.eval(layer.states[0]),
           np.ones(keras.backend.int_shape(layer.states[0])),
           atol=1e-4)
@@ -291,6 +291,42 @@ class LSTMLayerTest(test.TestCase):
                        for _ in range(num_states)]
       targets = np.random.random((num_samples, units))
       model.train_on_batch([inputs] + initial_state, targets)
+
+  def test_return_state(self):
+    num_states = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    with self.test_session():
+      inputs = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
+      layer = keras.layers.LSTM(units, return_state=True, stateful=True)
+      outputs = layer(inputs)
+      state = outputs[1:]
+      assert len(state) == num_states
+      model = keras.models.Model(inputs, state[0])
+
+      inputs = np.random.random((num_samples, timesteps, embedding_dim))
+      state = model.predict(inputs)
+      self.assertAllClose(keras.backend.eval(layer.states[0]), state, atol=1e-4)
+
+  def test_state_reuse(self):
+    timesteps = 3
+    embedding_dim = 4
+    units = 3
+    num_samples = 2
+
+    with self.test_session():
+      inputs = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
+      layer = keras.layers.LSTM(units, return_state=True, return_sequences=True)
+      outputs = layer(inputs)
+      output, state = outputs[0], outputs[1:]
+      output = keras.layers.LSTM(units)(output, initial_state=state)
+      model = keras.models.Model(inputs, output)
+
+      inputs = np.random.random((num_samples, timesteps, embedding_dim))
+      outputs = model.predict(inputs)
 
 
 if __name__ == '__main__':

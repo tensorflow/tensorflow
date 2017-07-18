@@ -94,7 +94,7 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   }
 
   // 3. Trim the nodes not matching show/hide/trim_name_regexes.
-  // If account_displayed_name_only=true, redo the accounting.
+  // If account_displayed_op_only=true, redo the accounting.
   visits.clear();
   root_->show_children.assign(roots.begin(), roots.end());
   GraphNode* root = PrintGraph({root_}, opts, 1, 0, &visits)[0];
@@ -141,10 +141,10 @@ std::vector<GraphNode*> TFGraph::SearchRoot(
 }
 
 void TFGraph::Format(const std::vector<GraphNode*> roots, string* display_str,
-                     TFGraphNodeProto* proto) {
+                     GraphNodeProto* proto) {
   for (GraphNode* node : roots) {
     display_str->append(node->formatted_str);
-    TFGraphNodeProto* child = proto->add_children();
+    GraphNodeProto* child = proto->add_children();
     child->MergeFrom(node->proto());
     Format(node->show_children, display_str, child);
   }

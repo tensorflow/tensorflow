@@ -46,13 +46,13 @@ class HloAliasAnalysisTest : public HloTestBase {
     return *analysis_;
   }
 
-  // Return a vector of the buffers in the buffer set at the current location.
+  // Return a vector of the buffers in the buffer set at the current position.
   std::vector<HloBuffer> GetBuffersAt(const HloInstruction* instruction,
                                       const ShapeIndex& index = {}) const {
     std::vector<HloBuffer> buffers;
-    for (HloBuffer::Id buffer_id :
-         analysis_->GetBufferSet(instruction, index).buffer_ids()) {
-      buffers.push_back(analysis_->GetBuffer(buffer_id));
+    for (const HloBuffer* buffer :
+         analysis_->GetBufferSet(instruction, index).buffers()) {
+      buffers.push_back(*buffer);
     }
     return buffers;
   }
@@ -60,21 +60,16 @@ class HloAliasAnalysisTest : public HloTestBase {
   // Return a vector containing all of the HloValues in the given buffer.
   std::vector<HloValue> GetValuesInBuffer(const HloBuffer& buffer) {
     std::vector<HloValue> values;
-    for (HloValue::Id value_id : buffer.value_ids()) {
-      values.push_back(analysis_->dataflow_analysis().GetValue(value_id));
+    for (const HloValue* value : buffer.values()) {
+      values.push_back(*value);
     }
     return values;
   }
 
-  // Return the HloValue defined at the given location.
+  // Return the HloValue defined at the given position.
   const HloValue& GetValueDefinedAt(const HloInstruction* instruction,
                                     const ShapeIndex& index = {}) const {
     return analysis_->dataflow_analysis().GetValueDefinedAt(instruction, index);
-  }
-
-  const HloValue& GetUniqueValueInBuffer(const HloBuffer& buffer) const {
-    CHECK_EQ(buffer.value_ids().size(), 1);
-    return analysis_->dataflow_analysis().GetValue(buffer.value_ids()[0]);
   }
 
   // Returns true if any values held in the same buffer interfere. Generally, in
@@ -84,14 +79,12 @@ class HloAliasAnalysisTest : public HloTestBase {
   bool AnyValuesInSameBufferInterfere() {
     DependencyHloOrdering ordering(module_.get());
     for (const HloBuffer* buffer : analysis_->buffers()) {
-      for (HloValue::Id value_id_a : buffer->value_ids()) {
-        for (HloValue::Id value_id_b : buffer->value_ids()) {
-          if (value_id_a != value_id_b &&
-              analysis_->dataflow_analysis().MayInterfere(
-                  value_id_a, value_id_b, ordering)) {
-            VLOG(1) << analysis_->dataflow_analysis().GetValue(value_id_a)
-                    << " interferes with "
-                    << analysis_->dataflow_analysis().GetValue(value_id_b)
+      for (const HloValue* value_a : buffer->values()) {
+        for (const HloValue* value_b : buffer->values()) {
+          if (*value_a != *value_b &&
+              analysis_->dataflow_analysis().MayInterfere(*value_a, *value_b,
+                                                          ordering)) {
+            VLOG(1) << *value_a << " interferes with " << *value_b
                     << " in buffer: " << *buffer;
             return true;
           }
@@ -125,7 +118,7 @@ TEST_F(HloAliasAnalysisTest, BinaryOperation) {
   // All of the buffer sets should trivially contain a single buffer containing
   // a single value.
   for (const HloInstruction* instruction : {constant1, constant2, add}) {
-    EXPECT_EQ(GetUniqueValueInBuffer(analysis.GetUniqueBufferAt(instruction)),
+    EXPECT_EQ(analysis.GetUniqueBufferAt(instruction).GetUniqueValue(),
               GetValueDefinedAt(instruction));
   }
 
@@ -157,15 +150,12 @@ TEST_F(HloAliasAnalysisTest, TupleAndGtes) {
   EXPECT_EQ(analysis.buffers().size(), 4);
 
   // Verify the expected aliasing of the tuple elements.
-  EXPECT_EQ(
-      GetUniqueValueInBuffer(analysis.GetUniqueBufferAt(tuple, /*index=*/{})),
-      GetValueDefinedAt(tuple, /*index=*/{}));
-  EXPECT_EQ(
-      GetUniqueValueInBuffer(analysis.GetUniqueBufferAt(tuple, /*index=*/{0})),
-      GetValueDefinedAt(param0));
-  EXPECT_EQ(
-      GetUniqueValueInBuffer(analysis.GetUniqueBufferAt(tuple, /*index=*/{1})),
-      GetValueDefinedAt(param1));
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tuple, /*index=*/{}).GetUniqueValue(),
+            GetValueDefinedAt(tuple, /*index=*/{}));
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tuple, /*index=*/{0}).GetUniqueValue(),
+            GetValueDefinedAt(param0));
+  EXPECT_EQ(analysis.GetUniqueBufferAt(tuple, /*index=*/{1}).GetUniqueValue(),
+            GetValueDefinedAt(param1));
 
   // The tuple operand, tuple element, and result of the GTE instruction should
   // all be the same buffer.
@@ -174,11 +164,11 @@ TEST_F(HloAliasAnalysisTest, TupleAndGtes) {
   EXPECT_EQ(analysis.GetUniqueBufferAt(param0),
             analysis.GetUniqueBufferAt(gte0));
 
-  // Verify the locations of an aliased buffer.
+  // Verify the positions of an aliased buffer.
   EXPECT_THAT(
-      analysis.GetUniqueBufferAt(param0).locations(),
-      UnorderedElementsAre(HloLocation{param0, {}}, HloLocation{tuple, {0}},
-                           HloLocation{gte0, {}}));
+      analysis.GetUniqueBufferAt(param0).positions(),
+      UnorderedElementsAre(HloPosition{param0, {}}, HloPosition{tuple, {0}},
+                           HloPosition{gte0, {}}));
 
   EXPECT_FALSE(analysis.GetInstructionBufferSet(tuple).IsAmbiguous());
   EXPECT_TRUE(analysis.GetInstructionBufferSet(tuple).IsDistinct());
@@ -201,9 +191,9 @@ TEST_F(HloAliasAnalysisTest, NondistinctTuple) {
   const HloAliasAnalysis& analysis = RunAnalysis();
 
   EXPECT_THAT(
-      analysis.GetUniqueBufferAt(param0).locations(),
-      UnorderedElementsAre(HloLocation{param0, {}}, HloLocation{tuple, {0}},
-                           HloLocation{tuple, {2}}));
+      analysis.GetUniqueBufferAt(param0).positions(),
+      UnorderedElementsAre(HloPosition{param0, {}}, HloPosition{tuple, {0}},
+                           HloPosition{tuple, {2}}));
 
   EXPECT_FALSE(analysis.GetInstructionBufferSet(tuple).IsAmbiguous());
   EXPECT_FALSE(analysis.GetInstructionBufferSet(tuple).IsDistinct());
@@ -236,17 +226,17 @@ TEST_F(HloAliasAnalysisTest, SingleCall) {
   const HloAliasAnalysis& analysis = RunAnalysis();
 
   // Verify aliasing of the kCall operands and the subcomputation parameters.
-  EXPECT_THAT(analysis.GetUniqueBufferAt(constant1).locations(),
-              UnorderedElementsAre(HloLocation{constant1, {}},
-                                   HloLocation{subparam0, {}}));
-  EXPECT_THAT(analysis.GetUniqueBufferAt(constant2).locations(),
-              UnorderedElementsAre(HloLocation{constant2, {}},
-                                   HloLocation{subparam1, {}}));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(constant1).positions(),
+              UnorderedElementsAre(HloPosition{constant1, {}},
+                                   HloPosition{subparam0, {}}));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(constant2).positions(),
+              UnorderedElementsAre(HloPosition{constant2, {}},
+                                   HloPosition{subparam1, {}}));
 
   // The subcomputation root and the kCall itself should alias.
   EXPECT_THAT(
-      analysis.GetUniqueBufferAt(add).locations(),
-      UnorderedElementsAre(HloLocation{add, {}}, HloLocation{call, {}}));
+      analysis.GetUniqueBufferAt(add).positions(),
+      UnorderedElementsAre(HloPosition{add, {}}, HloPosition{call, {}}));
 
   EXPECT_FALSE(AnyValuesInSameBufferInterfere());
 }
@@ -276,20 +266,20 @@ TEST_F(HloAliasAnalysisTest, ComputationCalledTwice) {
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
-  EXPECT_THAT(analysis.GetUniqueBufferAt(constant1).locations(),
-              UnorderedElementsAre(HloLocation{constant1, {}},
-                                   HloLocation{subparam0, {}}));
-  EXPECT_THAT(analysis.GetUniqueBufferAt(constant2).locations(),
-              UnorderedElementsAre(HloLocation{constant2, {}},
-                                   HloLocation{subparam1, {}}));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(constant1).positions(),
+              UnorderedElementsAre(HloPosition{constant1, {}},
+                                   HloPosition{subparam0, {}}));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(constant2).positions(),
+              UnorderedElementsAre(HloPosition{constant2, {}},
+                                   HloPosition{subparam1, {}}));
 
   // The 'add' (root of the subcomputation) aliases the two call instruction,
   // and the first parameter of the subcomputation because 'call1' it is passed
   // as an argument to the subcomputation in 'call2'.
   EXPECT_THAT(
-      analysis.GetUniqueBufferAt(add).locations(),
-      UnorderedElementsAre(HloLocation{add, {}}, HloLocation{call1, {}},
-                           HloLocation{subparam0, {}}, HloLocation{call2, {}}));
+      analysis.GetUniqueBufferAt(add).positions(),
+      UnorderedElementsAre(HloPosition{add, {}}, HloPosition{call1, {}},
+                           HloPosition{subparam0, {}}, HloPosition{call2, {}}));
 
   EXPECT_THAT(GetBuffersAt(subparam0),
               UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1),
@@ -361,24 +351,24 @@ TEST_F(HloAliasAnalysisTest, SingleWhile) {
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
-  // Verify the locations of the aliased while buffers.
-  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{}).locations(),
+  // Verify the positions of the aliased while buffers.
+  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{}).positions(),
               UnorderedElementsAre(
-                  HloLocation{tuple, {}}, HloLocation{xla_while, {}},
-                  HloLocation{body_param, {}}, HloLocation{body_tuple, {}},
-                  HloLocation{cond_param, {}}));
-  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0}).locations(),
+                  HloPosition{tuple, {}}, HloPosition{xla_while, {}},
+                  HloPosition{body_param, {}}, HloPosition{body_tuple, {}},
+                  HloPosition{cond_param, {}}));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0}).positions(),
               UnorderedElementsAre(
-                  HloLocation{constant1, {}}, HloLocation{tuple, {0}},
-                  HloLocation{xla_while, {0}}, HloLocation{body_param, {0}},
-                  HloLocation{body_element_0, {}}, HloLocation{body_tuple, {0}},
-                  HloLocation{cond_param, {0}}));
-  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1}).locations(),
+                  HloPosition{constant1, {}}, HloPosition{tuple, {0}},
+                  HloPosition{xla_while, {0}}, HloPosition{body_param, {0}},
+                  HloPosition{body_element_0, {}}, HloPosition{body_tuple, {0}},
+                  HloPosition{cond_param, {0}}));
+  EXPECT_THAT(analysis.GetUniqueBufferAt(xla_while, /*index=*/{1}).positions(),
               UnorderedElementsAre(
-                  HloLocation{constant2, {}}, HloLocation{tuple, {1}},
-                  HloLocation{xla_while, {1}}, HloLocation{body_param, {1}},
-                  HloLocation{body_element_1, {}}, HloLocation{add, {}},
-                  HloLocation{body_tuple, {1}}, HloLocation{cond_param, {1}}));
+                  HloPosition{constant2, {}}, HloPosition{tuple, {1}},
+                  HloPosition{xla_while, {1}}, HloPosition{body_param, {1}},
+                  HloPosition{body_element_1, {}}, HloPosition{add, {}},
+                  HloPosition{body_tuple, {1}}, HloPosition{cond_param, {1}}));
 
   EXPECT_THAT(
       GetValuesInBuffer(analysis.GetUniqueBufferAt(xla_while, /*index=*/{0})),
@@ -619,7 +609,7 @@ TEST_F(HloAliasAnalysisTest, SwizzlingWhile) {
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
-  // The swizzling while makes most locations in the module alias leaving only 3
+  // The swizzling while makes most positions in the module alias leaving only 3
   // HloBuffers.
   EXPECT_THAT(
       analysis.buffers(),
@@ -682,19 +672,19 @@ TEST_F(HloAliasAnalysisTest, TupleSelect) {
   const HloAliasAnalysis& analysis = RunAnalysis();
 
   // Verify the buffer sets of each select.
-  EXPECT_THAT(analysis.GetBufferSet(select11, /*index=*/{0}).buffer_ids(),
-              UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1).id()));
-  EXPECT_THAT(analysis.GetBufferSet(select12, /*index=*/{0}).buffer_ids(),
-              UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1).id(),
-                                   analysis.GetUniqueBufferAt(constant2).id()));
-  EXPECT_THAT(analysis.GetBufferSet(select34, /*index=*/{0}).buffer_ids(),
-              UnorderedElementsAre(analysis.GetUniqueBufferAt(constant3).id(),
-                                   analysis.GetUniqueBufferAt(constant4).id()));
-  EXPECT_THAT(analysis.GetBufferSet(select1234, /*index=*/{0}).buffer_ids(),
-              UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1).id(),
-                                   analysis.GetUniqueBufferAt(constant2).id(),
-                                   analysis.GetUniqueBufferAt(constant3).id(),
-                                   analysis.GetUniqueBufferAt(constant4).id()));
+  EXPECT_THAT(GetBuffersAt(select11, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1)));
+  EXPECT_THAT(GetBuffersAt(select12, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1),
+                                   analysis.GetUniqueBufferAt(constant2)));
+  EXPECT_THAT(GetBuffersAt(select34, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetUniqueBufferAt(constant3),
+                                   analysis.GetUniqueBufferAt(constant4)));
+  EXPECT_THAT(GetBuffersAt(select1234, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetUniqueBufferAt(constant1),
+                                   analysis.GetUniqueBufferAt(constant2),
+                                   analysis.GetUniqueBufferAt(constant3),
+                                   analysis.GetUniqueBufferAt(constant4)));
 
   EXPECT_FALSE(analysis.GetInstructionBufferSet(select11).IsAmbiguous());
   EXPECT_TRUE(analysis.GetInstructionBufferSet(select12).IsAmbiguous());

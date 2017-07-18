@@ -17,6 +17,7 @@ limitations under the License.
 
 %{
 
+#include "tensorflow/c/python_api.h"
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -65,6 +66,11 @@ tensorflow::ImportNumpy();
 
 // Convert TF_OperationName output to unicode python string
 %typemap(out) const char* TF_OperationName {
+  $result = PyUnicode_FromString($1);
+}
+
+// Convert TF_OperationOpType output to unicode python string
+%typemap(out) const char* TF_OperationOpType {
   $result = PyUnicode_FromString($1);
 }
 
@@ -264,6 +270,7 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 
 %include "tensorflow/c/c_api.h"
+%include "tensorflow/c/python_api.h"
 
 %ignoreall
 %insert("python") %{

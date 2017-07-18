@@ -31,7 +31,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 batch_size;
+    int64 batch_size = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument<int64>(ctx, "batch_size", &batch_size));
     OP_REQUIRES(

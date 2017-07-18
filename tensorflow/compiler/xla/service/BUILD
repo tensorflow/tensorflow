@@ -855,7 +855,6 @@ cc_library(
         ":heap_simulator",
         ":hlo",
         ":hlo_ordering",
-        ":hlo_proto",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -913,6 +912,46 @@ cc_test(
         ":hlo_matchers",
         ":instruction_fusion",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+cc_library(
+    name = "batchnorm_rewriter",
+    srcs = ["batchnorm_rewriter.cc"],
+    hdrs = ["batchnorm_rewriter.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_query",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "batchnorm_rewriter_test",
+    size = "small",
+    srcs = ["batchnorm_rewriter_test.cc"],
+    deps = [
+        ":batchnorm_rewriter",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -1893,10 +1932,6 @@ cc_library(
         ":buffer_liveness",
         ":hlo",
         ":hlo_pass",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )

@@ -31,6 +31,7 @@ enum class HloOpcode {
   kAbs,
   kAdd,
   kBatchNormTraining,
+  kBatchNormGrad,
   kBitcast,
   kBroadcast,
   kCall,

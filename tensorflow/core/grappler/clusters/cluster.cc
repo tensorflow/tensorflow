@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -49,6 +50,15 @@ void Cluster::DisableOptimizer(bool disable) {
       options_.config.mutable_graph_options()->mutable_optimizer_options();
   if (disable) {
     options->set_opt_level(OptimizerOptions::L0);
+    // Disable Grappler optimizations.
+    auto rewriter_config =
+        options_.config.mutable_graph_options()->mutable_rewrite_options();
+    rewriter_config->set_optimize_tensor_layout(false);
+    rewriter_config->set_disable_model_pruning(true);
+    rewriter_config->set_constant_folding(false);
+    rewriter_config->set_memory_optimization(RewriterConfig::NO_MEM_OPT);
+    rewriter_config->mutable_auto_parallel()->set_enable(false);
+    rewriter_config->clear_optimizers();
   } else {
     options->set_opt_level(OptimizerOptions::L1);
   }

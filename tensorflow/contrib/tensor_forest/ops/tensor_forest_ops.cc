@@ -528,7 +528,8 @@ REGISTER_OP("TreePredictions")
       DimensionHandle num_classes = c->Dim(c->input(6), 1);
       DimensionHandle num_points = c->UnknownDim();
 
-      if (c->RankKnown(c->input(0)) && c->Rank(c->input(0)) > 0) {
+      if (c->RankKnown(c->input(0)) && c->Rank(c->input(0)) > 0 &&
+          c->Value(c->Dim(c->input(0), 0)) > 0) {
         num_points = c->Dim(c->input(0), 0);
       }
 

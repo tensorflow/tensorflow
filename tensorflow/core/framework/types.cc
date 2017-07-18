@@ -313,6 +313,11 @@ int DataTypeSize(DataType dt) {
   switch (dt) {
     TF_CALL_POD_TYPES(CASE);
     TF_CALL_QUANTIZED_TYPES(CASE);
+    // TF_CALL_QUANTIZED_TYPES() macro does no cover quint16 and qint16, since
+    // they are not supported widely, but are explicitly listed here for
+    // bitcast.
+    TF_CALL_qint16(CASE);
+    TF_CALL_quint16(CASE);
     default:
       return 0;
   }

@@ -31,7 +31,7 @@ TensorFlow.
 
 However, most developers will contribute documentation into the master Github
 branch, which is published, occasionally,
-at [tensorflow.org/versions/master](https://tensorflow.org/versions/master).
+at [tensorflow.org/versions/master](https://www.tensorflow.org/versions/master).
 
 If you want documentation changes to appear at root, you will need to also
 contribute that change to the current stable binary branch (and/or

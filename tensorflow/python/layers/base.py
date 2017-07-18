@@ -41,6 +41,14 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
+def _is_tensor_or_tensor_list(v):
+  v = nest.flatten(v)
+  if v and isinstance(v[0], ops.Tensor):
+    return True
+  else:
+    return False
+
+
 class Layer(object):
   """Base layer class.
 
@@ -473,6 +481,8 @@ class Layer(object):
         setattr(result, k, v)
       elif k in shallow_copy:
         setattr(result, k, copy.copy(v))
+      elif _is_tensor_or_tensor_list(v):
+        setattr(result, k, v)
       else:
         setattr(result, k, copy.deepcopy(v, memo))
     return result
@@ -527,7 +537,7 @@ class Layer(object):
         if x.get_shape().ndims is None:
           raise ValueError('Input ' + str(input_index) + ' of layer ' +
                            self.name + ' is incompatible with the layer: '
-                           'its rank is undefined, by the layer requires a '
+                           'its rank is undefined, but the layer requires a '
                            'defined rank.')
 
       # Check ndim.

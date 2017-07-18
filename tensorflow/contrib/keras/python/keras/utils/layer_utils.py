@@ -24,15 +24,24 @@ from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.utils.conv_utils import convert_kernel
 
 
-def print_summary(model, line_length=None, positions=None):
+def print_summary(model, line_length=None, positions=None, print_fn=None):
   """Prints a summary of a model.
 
   Arguments:
       model: Keras model instance.
-      line_length: total length of printed lines
-      positions: relative or absolute positions of log elements in each line.
+      line_length: Total length of printed lines
+          (e.g. set this to adapt the display to different
+          terminal window sizes).
+      positions: Relative or absolute positions of log elements in each line.
           If not provided, defaults to `[.33, .55, .67, 1.]`.
+      print_fn: Print function to use (defaults to `print`).
+          It will be called on each line of the summary.
+          You can set it to a custom function
+          in order to capture the string summary.
   """
+  if print_fn is None:
+    print_fn = print
+
   if model.__class__.__name__ == 'Sequential':
     sequential_like = True
   else:
@@ -70,11 +79,11 @@ def print_summary(model, line_length=None, positions=None):
       line += str(fields[i])
       line = line[:positions[i]]
       line += ' ' * (positions[i] - len(line))
-    print(line)
+    print_fn(line)
 
-  print('_' * line_length)
+  print_fn('_' * line_length)
   print_row(to_display, positions)
-  print('=' * line_length)
+  print_fn('=' * line_length)
 
   def print_layer_summary(layer):
     try:
@@ -131,19 +140,19 @@ def print_summary(model, line_length=None, positions=None):
     else:
       print_layer_summary_with_connections(layers[i])
     if i == len(layers) - 1:
-      print('=' * line_length)
+      print_fn('=' * line_length)
     else:
-      print('_' * line_length)
+      print_fn('_' * line_length)
 
   trainable_count = int(
       np.sum([K.count_params(p) for p in set(model.trainable_weights)]))
   non_trainable_count = int(
       np.sum([K.count_params(p) for p in set(model.non_trainable_weights)]))
 
-  print('Total params: {:,}'.format(trainable_count + non_trainable_count))
-  print('Trainable params: {:,}'.format(trainable_count))
-  print('Non-trainable params: {:,}'.format(non_trainable_count))
-  print('_' * line_length)
+  print_fn('Total params: {:,}'.format(trainable_count + non_trainable_count))
+  print_fn('Trainable params: {:,}'.format(trainable_count))
+  print_fn('Non-trainable params: {:,}'.format(non_trainable_count))
+  print_fn('_' * line_length)
 
 
 def convert_all_kernels_in_model(model):
