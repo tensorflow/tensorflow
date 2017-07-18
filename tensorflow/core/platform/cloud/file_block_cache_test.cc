@@ -23,27 +23,30 @@ namespace tensorflow {
 namespace {
 
 TEST(FileBlockCacheTest, PassThrough) {
-  const uint64 want_offset = 42;
+  const string want_filename = "foo/bar";
+  const size_t want_offset = 42;
   const size_t want_n = 1024;
   int calls = 0;
-  auto fetcher = [&calls, want_offset, want_n](uint64 got_offset, size_t got_n,
-                                               std::vector<char>* out) {
+  auto fetcher = [&calls, want_filename, want_offset, want_n](
+                     const string& got_filename, size_t got_offset,
+                     size_t got_n, std::vector<char>* out) {
+    EXPECT_EQ(got_filename, want_filename);
     EXPECT_EQ(got_offset, want_offset);
     EXPECT_EQ(got_n, want_n);
     calls++;
     out->resize(got_n, 'x');
     return Status::OK();
   };
-  // If block_size, block_count, or both are zero, the cache is a pass-through.
+  // If block_size, max_bytes, or both are zero, the cache is a pass-through.
   FileBlockCache cache1(1, 0, 0, fetcher);
   FileBlockCache cache2(0, 1, 0, fetcher);
   FileBlockCache cache3(0, 0, 0, fetcher);
   std::vector<char> out;
-  TF_EXPECT_OK(cache1.Read(want_offset, want_n, &out));
+  TF_EXPECT_OK(cache1.Read(want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 1);
-  TF_EXPECT_OK(cache2.Read(want_offset, want_n, &out));
+  TF_EXPECT_OK(cache2.Read(want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 2);
-  TF_EXPECT_OK(cache3.Read(want_offset, want_n, &out));
+  TF_EXPECT_OK(cache3.Read(want_filename, want_offset, want_n, &out));
   EXPECT_EQ(calls, 3);
 }
 
@@ -56,7 +59,8 @@ TEST(FileBlockCacheTest, BlockAlignment) {
     buf.push_back(i);
   }
   // The fetcher just fetches slices of the buffer.
-  auto fetcher = [&buf](uint64 offset, size_t n, std::vector<char>* out) {
+  auto fetcher = [&buf](const string& filename, size_t offset, size_t n,
+                        std::vector<char>* out) {
     if (offset < buf.size()) {
       if (offset + n > buf.size()) {
         out->insert(out->end(), buf.begin() + offset, buf.end());
@@ -66,14 +70,14 @@ TEST(FileBlockCacheTest, BlockAlignment) {
     }
     return Status::OK();
   };
-  for (uint64_t block_size = 2; block_size <= 4; block_size++) {
+  for (size_t block_size = 2; block_size <= 4; block_size++) {
     // Make a cache of N-byte block size (1 block) and verify that reads of
     // varying offsets and lengths return correct data.
-    FileBlockCache cache(block_size, 1, 0, fetcher);
-    for (uint64_t offset = 0; offset < 10; offset++) {
+    FileBlockCache cache(block_size, block_size, 0, fetcher);
+    for (size_t offset = 0; offset < 10; offset++) {
       for (size_t n = block_size - 2; n <= block_size + 2; n++) {
         std::vector<char> got;
-        TF_EXPECT_OK(cache.Read(offset, n, &got));
+        TF_EXPECT_OK(cache.Read("", offset, n, &got));
         // Verify the size of the read.
         if (offset + n <= size) {
           // Expect a full read.
@@ -98,10 +102,10 @@ TEST(FileBlockCacheTest, BlockAlignment) {
 }
 
 TEST(FileBlockCacheTest, CacheHits) {
-  const uint64 block_size = 16;
-  std::set<uint64_t> calls;
-  auto fetcher = [&calls, block_size](uint64 offset, size_t n,
-                                      std::vector<char>* out) {
+  const size_t block_size = 16;
+  std::set<size_t> calls;
+  auto fetcher = [&calls, block_size](const string& filename, size_t offset,
+                                      size_t n, std::vector<char>* out) {
     EXPECT_EQ(n, block_size);
     EXPECT_EQ(offset % block_size, 0);
     EXPECT_EQ(calls.find(offset), calls.end()) << "at offset " << offset;
@@ -110,7 +114,7 @@ TEST(FileBlockCacheTest, CacheHits) {
     return Status::OK();
   };
   const uint32 block_count = 256;
-  FileBlockCache cache(block_size, block_count, 0, fetcher);
+  FileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
   std::vector<char> out;
   // The cache has space for `block_count` blocks. The loop with i = 0 should
   // fill the cache, and the loop with i = 1 should be all cache hits. The
@@ -118,19 +122,20 @@ TEST(FileBlockCacheTest, CacheHits) {
   // fetch the corresponding block).
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < block_count; j++) {
-      TF_EXPECT_OK(cache.Read(block_size * j, block_size, &out));
+      TF_EXPECT_OK(cache.Read("", block_size * j, block_size, &out));
     }
   }
 }
 
 TEST(FileBlockCacheTest, OutOfRange) {
   // Tests reads of a 24-byte file with block size 16.
-  const uint64 block_size = 16;
-  const uint64 file_size = 24;
+  const size_t block_size = 16;
+  const size_t file_size = 24;
   bool first_block = false;
   bool second_block = false;
   auto fetcher = [block_size, file_size, &first_block, &second_block](
-                     uint64 offset, size_t n, std::vector<char>* out) {
+                     const string& filename, size_t offset, size_t n,
+                     std::vector<char>* out) {
     EXPECT_EQ(n, block_size);
     EXPECT_EQ(offset % block_size, 0);
     if (offset == 0) {
@@ -144,22 +149,22 @@ TEST(FileBlockCacheTest, OutOfRange) {
     }
     return Status::OK();
   };
-  FileBlockCache cache(block_size, 1, 0, fetcher);
+  FileBlockCache cache(block_size, block_size, 0, fetcher);
   std::vector<char> out;
   // Reading the first 16 bytes should be fine.
-  TF_EXPECT_OK(cache.Read(0, block_size, &out));
+  TF_EXPECT_OK(cache.Read("", 0, block_size, &out));
   EXPECT_TRUE(first_block);
   EXPECT_EQ(out.size(), block_size);
   // Reading at offset file_size + 4 will read the second block (since the read
   // at file_size + 4 = 28 will be aligned to an offset of 16) but will return
   // OutOfRange because the offset is past the end of the 24-byte file.
-  Status status = cache.Read(file_size + 4, 4, &out);
+  Status status = cache.Read("", file_size + 4, 4, &out);
   EXPECT_EQ(status.code(), error::OUT_OF_RANGE);
   EXPECT_TRUE(second_block);
   EXPECT_EQ(out.size(), 0);
   // Reading the second full block will return 8 bytes, from a cache hit.
   second_block = false;
-  TF_EXPECT_OK(cache.Read(block_size, block_size, &out));
+  TF_EXPECT_OK(cache.Read("", block_size, block_size, &out));
   EXPECT_FALSE(second_block);
   EXPECT_EQ(out.size(), file_size - block_size);
 }
@@ -167,30 +172,31 @@ TEST(FileBlockCacheTest, OutOfRange) {
 TEST(FileBlockCacheTest, Inconsistent) {
   // Tests the detection of interrupted reads leading to partially filled blocks
   // where we expected complete blocks.
-  const uint64 block_size = 16;
+  const size_t block_size = 16;
   // This fetcher returns OK but only fills in one byte for any offset.
-  auto fetcher = [block_size](uint64 offset, size_t n, std::vector<char>* out) {
+  auto fetcher = [block_size](const string& filename, size_t offset, size_t n,
+                              std::vector<char>* out) {
     EXPECT_EQ(n, block_size);
     EXPECT_EQ(offset % block_size, 0);
     out->resize(1, 'x');
     return Status::OK();
   };
-  FileBlockCache cache(block_size, 2, 0, fetcher);
+  FileBlockCache cache(block_size, 2 * block_size, 0, fetcher);
   std::vector<char> out;
   // Read the second block; this should yield an OK status and a single byte.
-  TF_EXPECT_OK(cache.Read(block_size, block_size, &out));
+  TF_EXPECT_OK(cache.Read("", block_size, block_size, &out));
   EXPECT_EQ(out.size(), 1);
-  // Now read the first block; this should yield FAILED_PRECONDITION because we
+  // Now read the first block; this should yield an INTERNAL error because we
   // had already cached a partial block at a later position.
-  Status status = cache.Read(0, block_size, &out);
-  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION);
+  Status status = cache.Read("", 0, block_size, &out);
+  EXPECT_EQ(status.code(), error::INTERNAL);
 }
 
 TEST(FileBlockCacheTest, LRU) {
-  const uint64 block_size = 16;
-  std::list<uint64_t> calls;
-  auto fetcher = [&calls, block_size](uint64 offset, size_t n,
-                                      std::vector<char>* out) {
+  const size_t block_size = 16;
+  std::list<size_t> calls;
+  auto fetcher = [&calls, block_size](const string& filename, size_t offset,
+                                      size_t n, std::vector<char>* out) {
     EXPECT_EQ(n, block_size);
     EXPECT_FALSE(calls.empty()) << "at offset = " << offset;
     if (!calls.empty()) {
@@ -201,36 +207,36 @@ TEST(FileBlockCacheTest, LRU) {
     return Status::OK();
   };
   const uint32 block_count = 2;
-  FileBlockCache cache(block_size, block_count, 0, fetcher);
+  FileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
   std::vector<char> out;
   // Read blocks from the cache, and verify the LRU behavior based on the
   // fetcher calls that the cache makes.
   calls.push_back(0);
   // Cache miss - drains an element from `calls`.
-  TF_EXPECT_OK(cache.Read(0, 1, &out));
+  TF_EXPECT_OK(cache.Read("", 0, 1, &out));
   // Cache hit - does not drain an element from `calls`.
-  TF_EXPECT_OK(cache.Read(0, 1, &out));
+  TF_EXPECT_OK(cache.Read("", 0, 1, &out));
   calls.push_back(block_size);
   // Cache miss followed by cache hit.
-  TF_EXPECT_OK(cache.Read(block_size, 1, &out));
-  TF_EXPECT_OK(cache.Read(block_size, 1, &out));
+  TF_EXPECT_OK(cache.Read("", block_size, 1, &out));
+  TF_EXPECT_OK(cache.Read("", block_size, 1, &out));
   calls.push_back(2 * block_size);
   // Cache miss followed by cache hit.  Causes eviction of LRU element.
-  TF_EXPECT_OK(cache.Read(2 * block_size, 1, &out));
-  TF_EXPECT_OK(cache.Read(2 * block_size, 1, &out));
+  TF_EXPECT_OK(cache.Read("", 2 * block_size, 1, &out));
+  TF_EXPECT_OK(cache.Read("", 2 * block_size, 1, &out));
   // LRU element was at offset 0.  Cache miss.
   calls.push_back(0);
-  TF_EXPECT_OK(cache.Read(0, 1, &out));
+  TF_EXPECT_OK(cache.Read("", 0, 1, &out));
   // Element at 2 * block_size is still in cache, and this read should update
   // its position in the LRU list so it doesn't get evicted by the next read.
-  TF_EXPECT_OK(cache.Read(2 * block_size, 1, &out));
+  TF_EXPECT_OK(cache.Read("", 2 * block_size, 1, &out));
   // Element at block_size was evicted.  Reading this element will also cause
   // the LRU element (at 0) to be evicted.
   calls.push_back(block_size);
-  TF_EXPECT_OK(cache.Read(block_size, 1, &out));
+  TF_EXPECT_OK(cache.Read("", block_size, 1, &out));
   // Element at 0 was evicted again.
   calls.push_back(0);
-  TF_EXPECT_OK(cache.Read(0, 1, &out));
+  TF_EXPECT_OK(cache.Read("", 0, 1, &out));
 }
 
 TEST(FileBlockCacheTest, MaxStaleness) {
@@ -242,25 +248,103 @@ TEST(FileBlockCacheTest, MaxStaleness) {
     uint64 now_ = 1;
   };
   int calls = 0;
-  auto fetcher = [&calls](uint64 offset, size_t n, std::vector<char>* out) {
+  auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
+                          std::vector<char>* out) {
     calls++;
     out->resize(n, 'x');
     return Status::OK();
   };
-  std::unique_ptr<FakeEnv> env(new FakeEnv);
-  FileBlockCache cache(8, 1, 2 /* max staleness */, fetcher, env.get());
   std::vector<char> out;
+  std::unique_ptr<FakeEnv> env(new FakeEnv);
+  // Create a cache with max staleness of 2 seconds, and verify that it works as
+  // expected.
+  FileBlockCache cache1(8, 16, 2 /* max staleness */, fetcher, env.get());
   // Execute the first read to load the block.
-  TF_EXPECT_OK(cache.Read(0, 1, &out));
+  TF_EXPECT_OK(cache1.Read("", 0, 1, &out));
   EXPECT_EQ(calls, 1);
   // Now advance the clock one second at a time and redo the read. The call
   // count should advance every 3 seconds (i.e. every time the staleness is
   // greater than 2).
   for (int i = 1; i <= 10; i++) {
     env->now_ = i + 1;
-    TF_EXPECT_OK(cache.Read(0, 1, &out));
+    TF_EXPECT_OK(cache1.Read("", 0, 1, &out));
     EXPECT_EQ(calls, 1 + i / 3);
   }
+  // Now create a cache with max staleness of 0, and verify that it also works
+  // as expected.
+  calls = 0;
+  env->now_ = 0;
+  FileBlockCache cache2(8, 16, 0 /* max staleness */, fetcher, env.get());
+  // Execute the first read to load the block.
+  TF_EXPECT_OK(cache2.Read("", 0, 1, &out));
+  EXPECT_EQ(calls, 1);
+  // Advance the clock by a huge amount and verify that the cached block is
+  // used to satisfy the read.
+  env->now_ = 365 * 24 * 60 * 60;  // ~1 year, just for fun.
+  TF_EXPECT_OK(cache2.Read("", 0, 1, &out));
+  EXPECT_EQ(calls, 1);
+}
+
+TEST(FileBlockCacheTest, RemoveFile) {
+  int calls = 0;
+  auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
+                          std::vector<char>* out) {
+    calls++;
+    char c = (filename == "a") ? 'a' : (filename == "b") ? 'b' : 'x';
+    if (offset > 0) {
+      // The first block is lower case and all subsequent blocks are upper case.
+      c = toupper(c);
+    }
+    out->clear();
+    out->resize(n, c);
+    return Status::OK();
+  };
+  // This cache has space for 4 blocks; we'll read from two files.
+  const size_t n = 3;
+  FileBlockCache cache(8, 32, 0, fetcher);
+  std::vector<char> out;
+  std::vector<char> a(n, 'a');
+  std::vector<char> b(n, 'b');
+  std::vector<char> A(n, 'A');
+  std::vector<char> B(n, 'B');
+  // Fill the cache.
+  TF_EXPECT_OK(cache.Read("a", 0, n, &out));
+  EXPECT_EQ(out, a);
+  EXPECT_EQ(calls, 1);
+  TF_EXPECT_OK(cache.Read("a", 8, n, &out));
+  EXPECT_EQ(out, A);
+  EXPECT_EQ(calls, 2);
+  TF_EXPECT_OK(cache.Read("b", 0, n, &out));
+  EXPECT_EQ(out, b);
+  EXPECT_EQ(calls, 3);
+  TF_EXPECT_OK(cache.Read("b", 8, n, &out));
+  EXPECT_EQ(out, B);
+  EXPECT_EQ(calls, 4);
+  // All four blocks should be in the cache now.
+  TF_EXPECT_OK(cache.Read("a", 0, n, &out));
+  EXPECT_EQ(out, a);
+  TF_EXPECT_OK(cache.Read("a", 8, n, &out));
+  EXPECT_EQ(out, A);
+  TF_EXPECT_OK(cache.Read("b", 0, n, &out));
+  EXPECT_EQ(out, b);
+  TF_EXPECT_OK(cache.Read("b", 8, n, &out));
+  EXPECT_EQ(out, B);
+  EXPECT_EQ(calls, 4);
+  // Remove the blocks from "a".
+  cache.RemoveFile("a");
+  // Both blocks from "b" should still be there.
+  TF_EXPECT_OK(cache.Read("b", 0, n, &out));
+  EXPECT_EQ(out, b);
+  TF_EXPECT_OK(cache.Read("b", 8, n, &out));
+  EXPECT_EQ(out, B);
+  EXPECT_EQ(calls, 4);
+  // The blocks from "a" should not be there.
+  TF_EXPECT_OK(cache.Read("a", 0, n, &out));
+  EXPECT_EQ(out, a);
+  EXPECT_EQ(calls, 5);
+  TF_EXPECT_OK(cache.Read("a", 8, n, &out));
+  EXPECT_EQ(out, A);
+  EXPECT_EQ(calls, 6);
 }
 
 }  // namespace

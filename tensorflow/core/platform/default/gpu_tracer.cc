@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
+#include "tensorflow/core/platform/gpu_tracer.h"
 
 #if GOOGLE_CUDA
 
 #include <stdlib.h>
+#include <memory>
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -255,7 +256,7 @@ CUPTIManager *GetCUPTIManager() {
 }
 
 #ifdef _MSC_VER
-#define __thread __declspec(thread) 
+#define __thread __declspec(thread)
 #endif
 
 // TODO(pbar) Move this to platform specific header file?
@@ -619,7 +620,10 @@ Status GPUTracerImpl::Collect(StepStatsCollector *collector) {
 
 }  // namespace gputracer
 
-GPUTracer *CreateGPUTracer() { return new gputracer::GPUTracerImpl(); }
+std::unique_ptr<GPUTracer> CreateGPUTracer() {
+  std::unique_ptr<GPUTracer> tracer(new gputracer::GPUTracerImpl());
+  return tracer;
+}
 
 }  // namespace tensorflow
 
@@ -627,7 +631,7 @@ GPUTracer *CreateGPUTracer() { return new gputracer::GPUTracerImpl(); }
 
 namespace tensorflow {
 
-GPUTracer *CreateGPUTracer() { return nullptr; }
+std::unique_ptr<GPUTracer> CreateGPUTracer() { return nullptr; }
 
 }  // namespace tensorflow
 

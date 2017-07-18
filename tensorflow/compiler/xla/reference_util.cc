@@ -578,7 +578,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 /* static */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceToColArray2D(
     const Array2D<float>& matrix, float init,
-    std::function<float(float, float)> reduce_function) {
+    const std::function<float(float, float)>& reduce_function) {
   int64 rows = matrix.height();
   int64 cols = matrix.width();
   auto result = MakeUnique<std::vector<float>>();
@@ -595,7 +595,7 @@ ReferenceUtil::ReduceToColArray2D(
 /* static */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceToRowArray2D(
     const Array2D<float>& matrix, float init,
-    std::function<float(float, float)> reduce_function) {
+    const std::function<float(float, float)>& reduce_function) {
   int64 rows = matrix.height();
   int64 cols = matrix.width();
   auto result = MakeUnique<std::vector<float>>();
@@ -612,7 +612,7 @@ ReferenceUtil::ReduceToRowArray2D(
 /*static*/ std::vector<float> ReferenceUtil::Reduce4DTo1D(
     const Array4D<float>& array, float init,
     tensorflow::gtl::ArraySlice<int64> dims,
-    std::function<float(float, float)> reduce_function) {
+    const std::function<float(float, float)>& reduce_function) {
   std::vector<float> result;
   CHECK_EQ(dims.size(), 3);
   const std::set<int64> dim_set(dims.begin(), dims.end());
@@ -682,7 +682,7 @@ ReferenceUtil::ReduceToRowArray2D(
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::Reduce3DTo2D(
     const Array3D<float>& array, float init,
     tensorflow::gtl::ArraySlice<int64> dims,
-    std::function<float(float, float)> reduce_function) {
+    const std::function<float(float, float)>& reduce_function) {
   CHECK_EQ(dims.size(), 1);
   int64 rows = dims[0] == 0 ? array.n2() : array.n1();
   int64 cols = dims[0] == 2 ? array.n2() : array.n3();

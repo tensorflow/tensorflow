@@ -40,12 +40,14 @@ SIZE = 1300
 builder = option_builder.ProfileOptionBuilder
 
 
-def _extract_node(run_meta, node_name):
+def _extract_node(run_meta, node_names):
+  if not isinstance(node_names, list):
+    node_names = [node_names]
   ret = defaultdict(list)
   for dev_stat in run_meta.step_stats.dev_stats:
     dev = dev_stat.device
     for node_stat in dev_stat.node_stats:
-      if node_stat.node_name == node_name:
+      if node_stat.node_name in node_names:
         ret[dev].append(node_stat)
   return ret
 
@@ -101,12 +103,11 @@ class RunMetadataTest(test.TestCase):
       self.assertEqual(tfprof_node.children[0].name, 'MatMul')
       self.assertGreater(tfprof_node.children[0].exec_micros, 10)
 
-    ret = _extract_node(run_meta, 'MatMul')
-    self.assertEqual(len(ret), 1)
+    ret = _extract_node(run_meta, ['MatMul', 'MatMul:MatMul'])
+    self.assertEqual(len(ret), 3)
     self.assertTrue('/job:localhost/replica:0/task:0/gpu:0' in ret)
+    del ret['/job:localhost/replica:0/task:0/gpu:0']
 
-    ret = _extract_node(run_meta, 'MatMul:MatMul')
-    self.assertEqual(len(ret), 2)
     has_all_stream = False
     for k, _ in six.iteritems(ret):
       self.assertTrue('gpu:0/stream' in k)

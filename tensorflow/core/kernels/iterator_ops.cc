@@ -443,7 +443,16 @@ class IteratorToStringHandleOp : public OpKernel {
 class IteratorFromStringHandleOp : public OpKernel {
  public:
   explicit IteratorFromStringHandleOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES(
+        ctx,
+        output_dtypes_.empty() || output_shapes_.empty() ||
+            output_dtypes_.size() == output_shapes_.size(),
+        errors::InvalidArgument("If both 'output_types' and 'output_shapes' "
+                                "are set, they must have the same length."));
+  }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& string_handle_t = ctx->input(0);
@@ -457,13 +466,6 @@ class IteratorFromStringHandleOp : public OpKernel {
         errors::InvalidArgument(
             "Could not parse string_handle as a valid ResourceHandle"));
 
-    // Validate that the handle corresponds to a real resource, and
-    // that it is an IteratorResource.
-    IteratorResource* iterator_resource;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, resource_handle, &iterator_resource));
-    iterator_resource->Unref();
-
     OP_REQUIRES(
         ctx, resource_handle.device() == ctx->device()->attributes().name(),
         errors::InvalidArgument("Attempted create an iterator on device \"",
@@ -471,11 +473,31 @@ class IteratorFromStringHandleOp : public OpKernel {
                                 "\" from handle defined on device \"",
                                 resource_handle.device(), "\""));
 
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, resource_handle, &iterator_resource));
+    core::ScopedUnref unref_iterator(iterator_resource);
+    if (!output_dtypes_.empty()) {
+      OP_REQUIRES_OK(ctx, VerifyTypesMatch(output_dtypes_,
+                                           iterator_resource->output_dtypes()));
+    }
+    if (!output_shapes_.empty()) {
+      OP_REQUIRES_OK(
+          ctx, VerifyShapesCompatible(output_shapes_,
+                                      iterator_resource->output_shapes()));
+    }
+
     Tensor* resource_handle_t;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, TensorShape({}), &resource_handle_t));
     resource_handle_t->scalar<ResourceHandle>()() = resource_handle;
   }
+
+ private:
+  DataTypeVector output_dtypes_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
