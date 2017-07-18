@@ -526,24 +526,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "model_ops_kernel_test",
-    size = "small",
-    srcs = ["python/kernel_tests/model_ops_kernel_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
-    deps = [
-        ":model_ops_py",
-        ":tensor_forest_py",
-        ":tensor_forest_v4_py",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_py",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:resources",
-    ],
-)
-
 py_library(
     name = "tensor_forest_py",
     srcs = ["python/tensor_forest.py"],

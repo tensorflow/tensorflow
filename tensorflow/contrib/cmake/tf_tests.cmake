@@ -178,7 +178,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/internal/run_metadata_test.py"
     # Loading resources in contrib doesn't seem to work on Windows
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/random_forest_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/kernel_tests/model_ops_kernel_test.py"
   )
   if (WIN32)
     set(tf_test_src_py_exclude
