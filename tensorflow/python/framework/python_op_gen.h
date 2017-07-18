@@ -23,14 +23,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-// hidden_ops should be a comma-separated
-// list of Op names that should get a leading _ in the output.
+// hidden_ops should be a comma-separated list of Op names that should 
+// get a leading _ in the output.
+// source_file_name is the name of the original C++ source file, if known;
+// or an empty string otherwise.
 // The Print* version prints the output to stdout, Get* version returns the
 // output as a string.
 void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    bool require_shapes);
+                    const string source_file_name, bool require_shapes);
 string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    bool require_shapes);
+                    const string source_file_name, bool require_shapes);
 string GetPythonOp(const OpDef& op_def, const string& function_name);
 
 // Get the python wrappers for a list of ops in a OpList.
