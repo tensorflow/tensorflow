@@ -32,6 +32,8 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Instructions.h"
 #include "external/llvm/include/llvm/IR/Intrinsics.h"
 #include "external/llvm/include/llvm/IR/LLVMContext.h"
+#include "external/llvm/include/llvm/Target/TargetRegisterInfo.h"
+#include "external/llvm/include/llvm/Target/TargetSubtargetInfo.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -51,10 +53,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+
+namespace {
+const char* kXlaDisableVectorizedReduce = "xla_disable_vectorized_reduce";
+bool VectorizedReduceDisabled(const xla::HloModuleConfig& config) {
+  return config.debug_options().xla_backend_extra_options().count(
+      kXlaDisableVectorizedReduce);
+}
+}  // namespace
 
 namespace xla {
 
@@ -65,14 +76,16 @@ namespace cpu {
 IrEmitter::IrEmitter(
     const HloModule& hlo_module, const BufferAssignment& assignment,
     llvm::Module* llvm_module,
-    const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx)
+    const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx,
+    llvm::TargetMachine* target_machine)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
       ir_builder_(llvm_module->getContext()),
       hlo_to_profile_idx_(hlo_to_profile_idx),
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
-      hlo_module_config_(hlo_module.config()) {
+      hlo_module_config_(hlo_module.config()),
+      target_machine_features_(target_machine) {
   ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
           .xla_enable_fast_math()));
@@ -1417,10 +1430,450 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   return Status::OK();
 }
 
+IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
+    HloComputation* function, string* failure_reason) const {
+  CHECK_EQ(function->num_parameters(), 2);
+
+  auto root_instruction = function->root_instruction();
+  CHECK(ShapeUtil::IsScalar(root_instruction->shape()));
+
+  if (root_instruction->operand_count() != 2) {
+    *failure_reason = "root instruction is not a binary operation";
+    return nullptr;
+  }
+
+  const Shape& root_shape = root_instruction->shape();
+  bool root_is_floating_point = ShapeUtil::ElementIsFloating(root_shape);
+  bool root_is_integral = ShapeUtil::ElementIsIntegral(root_shape);
+  bool root_is_signed = ShapeUtil::ElementIsSigned(root_shape);
+
+  auto lhs = root_instruction->operand(0);
+  auto rhs = root_instruction->operand(1);
+
+  auto param_0 = function->parameter_instruction(0);
+  auto param_1 = function->parameter_instruction(1);
+  if (!(lhs == param_0 && rhs == param_1) &&
+      !(rhs == param_0 && lhs == param_1)) {
+    *failure_reason =
+        "root instruction is not a binary operation on the incoming arguments";
+    return nullptr;
+  }
+
+  CHECK(ShapeUtil::IsScalar(lhs->shape()) && ShapeUtil::IsScalar(rhs->shape()));
+
+  // This is visually similar to ElementalIrEmitter, though conceptually we're
+  // doing something different here.  ElementalIrEmitter emits scalar operations
+  // while these emit scalar or vector operations depending on the type of the
+  // operands.
+  switch (root_instruction->opcode()) {
+    default:
+      *failure_reason = "did not recognize root instruction opcode";
+      return nullptr;
+
+    case HloOpcode::kAdd:
+      return [root_is_integral](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
+                                llvm::Value* rhs) {
+        return root_is_integral ? ir_builder->CreateAdd(lhs, rhs)
+                                : ir_builder->CreateFAdd(lhs, rhs);
+      };
+
+    case HloOpcode::kMultiply:
+      return [root_is_integral](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
+                                llvm::Value* rhs) {
+        return root_is_integral ? ir_builder->CreateMul(lhs, rhs)
+                                : ir_builder->CreateFMul(lhs, rhs);
+      };
+
+    case HloOpcode::kLogicalAnd:
+      return [](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
+                llvm::Value* rhs) { return ir_builder->CreateAnd(lhs, rhs); };
+
+    case HloOpcode::kLogicalOr:
+      return [](llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
+                llvm::Value* rhs) { return ir_builder->CreateOr(lhs, rhs); };
+
+    case HloOpcode::kMaximum:
+      return [root_is_floating_point, root_is_signed](
+                 llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
+                 llvm::Value* rhs) {
+        if (root_is_floating_point) {
+          return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
+                                              {lhs, rhs}, {lhs->getType()},
+                                              ir_builder);
+        }
+
+        return ir_builder->CreateSelect(
+            ir_builder->CreateICmp(root_is_signed ? llvm::ICmpInst::ICMP_SGE
+                                                  : llvm::ICmpInst::ICMP_UGE,
+                                   lhs, rhs),
+            lhs, rhs);
+      };
+
+    case HloOpcode::kMinimum:
+      return [root_is_floating_point, root_is_signed](
+                 llvm::IRBuilder<>* ir_builder, llvm::Value* lhs,
+                 llvm::Value* rhs) {
+        if (root_is_floating_point) {
+          return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
+                                              {lhs, rhs}, {lhs->getType()},
+                                              ir_builder);
+        }
+
+        return ir_builder->CreateSelect(
+            ir_builder->CreateICmp(root_is_signed ? llvm::ICmpInst::ICMP_SLE
+                                                  : llvm::ICmpInst::ICMP_ULE,
+                                   lhs, rhs),
+            lhs, rhs);
+      };
+  }
+}
+
+IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
+    PrimitiveType element_type, unsigned element_count) {
+  // Here we assume that the largest register is a vector register.
+  int max_vector_register_size_in_bytes =
+      target_machine_features_.largest_register_size_in_bytes(
+          compute_function_);
+
+  int vector_register_size_in_elements =
+      max_vector_register_size_in_bytes /
+      ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+
+  ShardedVectorType sharded_vector_type;
+  llvm::Type* element_ir_type =
+      llvm_ir::PrimitiveTypeToIrType(element_type, &ir_builder_);
+
+  for (int i = 0, e = 1 + tensorflow::Log2Ceiling(element_count); i < e; i++) {
+    // For every power of two present in element_count, we generate one or more
+    // vector or scalar types.
+    const unsigned current_size_fragment = 1u << i;
+    if (!(element_count & current_size_fragment)) {
+      // Power of two not present in element_count.
+      continue;
+    }
+
+    if (current_size_fragment == 1) {
+      // Single element, use a scalar type.
+      sharded_vector_type.push_back(element_ir_type);
+      continue;
+    }
+
+    // Lower "current_size_fragment" number of elements using (as few as
+    // possible) vector registers.
+
+    if (current_size_fragment >= vector_register_size_in_elements) {
+      auto vector_type = llvm::VectorType::get(
+          element_ir_type, vector_register_size_in_elements);
+      sharded_vector_type.insert(
+          sharded_vector_type.end(),
+          current_size_fragment / vector_register_size_in_elements,
+          vector_type);
+
+      // Both current_size_fragment and vector_register_size_in_elements are
+      // powers of two.
+      CHECK_EQ(current_size_fragment % vector_register_size_in_elements, 0);
+      continue;
+    }
+
+    // For now we assume that vector_register_size_in_elements and lower powers
+    // of two are all legal vector sizes (or at least can be lowered easily by
+    // LLVM).
+    sharded_vector_type.push_back(
+        llvm::VectorType::get(element_ir_type, current_size_fragment));
+  }
+  return sharded_vector_type;
+}
+
+StatusOr<IrEmitter::ShardedVector>
+IrEmitter::EmitInnerLoopForVectorizedReduction(
+    const ReductionGenerator& reduction_generator,
+    const llvm_ir::IrArray::Index& output_index,
+    const ShardedVectorType& accumulator_type, HloInstruction* init_value,
+    HloInstruction* arg, tensorflow::gtl::ArraySlice<int64> dimensions,
+    unsigned element_alignment) {
+  ShardedVector accumulator;
+  accumulator.reserve(accumulator_type.size());
+  for (auto accumulator_shard_type : accumulator_type) {
+    accumulator.push_back(llvm_ir::EmitAllocaAtFunctionEntry(
+        accumulator_shard_type, "accumulator", &ir_builder_, 0));
+  }
+
+  llvm::Value* init_value_ssa =
+      ir_builder_.CreateLoad(GetEmittedValueFor(init_value));
+
+  for (llvm::Value* accumulator_shard : accumulator) {
+    llvm::Value* initial_value;
+    auto shard_type = accumulator_shard->getType()->getPointerElementType();
+    if (auto vector_type = llvm::dyn_cast<llvm::VectorType>(shard_type)) {
+      initial_value = ir_builder_.CreateVectorSplat(
+          vector_type->getNumElements(), init_value_ssa);
+    } else {
+      initial_value = init_value_ssa;
+    }
+
+    ir_builder_.CreateAlignedStore(initial_value, accumulator_shard,
+                                   element_alignment);
+  }
+
+  llvm_ir::ForLoopNest reduction_loop_nest(&ir_builder_);
+  llvm_ir::IrArray::Index reduced_dims_index =
+      reduction_loop_nest.AddLoopsForShapeOnDimensions(arg->shape(), dimensions,
+                                                       "reduction_dim");
+
+  SetToFirstInsertPoint(reduction_loop_nest.GetInnerLoopBodyBasicBlock(),
+                        &ir_builder_);
+
+  llvm_ir::IrArray arg_array(GetIrArrayForOp(arg));
+  llvm_ir::IrArray::Index input_index = reduced_dims_index;
+  llvm_ir::IrArray::Index::const_iterator it = output_index.begin();
+
+  for (size_t i = 0; i < input_index.size(); ++i) {
+    if (input_index[i] == nullptr) {
+      input_index[i] = *it++;
+    }
+  }
+  CHECK(output_index.end() == it);
+
+  llvm::Value* input_address = ir_builder_.CreateBitCast(
+      arg_array.EmitArrayElementAddress(input_index, &ir_builder_),
+      ir_builder_.getInt8PtrTy());
+
+  for (int i = 0; i < accumulator.size(); i++) {
+    auto input_address_typed =
+        ir_builder_.CreateBitCast(input_address, accumulator[i]->getType());
+    auto current_accumulator_value =
+        ir_builder_.CreateAlignedLoad(accumulator[i], element_alignment);
+    auto addend =
+        ir_builder_.CreateAlignedLoad(input_address_typed, element_alignment);
+    arg_array.AnnotateLoadStoreInstructionWithMetadata(addend);
+
+    auto reduced_result =
+        reduction_generator(&ir_builder_, current_accumulator_value, addend);
+    ir_builder_.CreateAlignedStore(reduced_result, accumulator[i],
+                                   element_alignment);
+
+    if (i != (accumulator.size() - 1)) {
+      input_address = ir_builder_.CreateConstInBoundsGEP1_32(
+          reduced_result->getType(), input_address_typed, 1);
+    }
+  }
+
+  SetToFirstInsertPoint(reduction_loop_nest.GetOuterLoopExitBasicBlock(),
+                        &ir_builder_);
+
+  ShardedVector result_ssa;
+  result_ssa.reserve(accumulator.size());
+  for (auto accumulator_shard : accumulator) {
+    result_ssa.push_back(
+        ir_builder_.CreateAlignedLoad(accumulator_shard, element_alignment));
+  }
+  return result_ssa;
+}
+
+void IrEmitter::EmitShardedVectorStore(
+    llvm::Value* store_address, const std::vector<llvm::Value*>& value_to_store,
+    const int alignment, const llvm_ir::IrArray& containing_array) {
+  for (int i = 0; i < value_to_store.size(); i++) {
+    auto store_address_typed = ir_builder_.CreateBitCast(
+        store_address,
+        llvm::PointerType::getUnqual(value_to_store[i]->getType()));
+
+    auto store_instruction = ir_builder_.CreateAlignedStore(
+        value_to_store[i], store_address_typed, alignment);
+    containing_array.AnnotateLoadStoreInstructionWithMetadata(
+        store_instruction);
+
+    if (i != (value_to_store.size() - 1)) {
+      store_address = ir_builder_.CreateConstInBoundsGEP1_32(
+          value_to_store[i]->getType(), store_address_typed, 1);
+    }
+  }
+}
+
+namespace {
+// TODO(sanjoy): This is duplicated in tensorflow/core/lib/core/arena.cc.
+// Extract out a common implementation to tensorflow/core/lib/math/math_util.h
+uint32 GCD(uint32 x, uint32 y) {
+  while (y != 0) {
+    uint32 r = x % y;
+    x = y;
+    y = r;
+  }
+  return x;
+}
+}  // namespace
+
+StatusOr<bool> IrEmitter::EmitVectorizedReduce(
+    HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
+    tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function,
+    string* failure_reason) {
+  ReductionGenerator reduction_generator =
+      MatchReductionGenerator(function, failure_reason);
+  if (!reduction_generator) {
+    return false;
+  }
+
+  int vectorization_factor_in_bytes =
+      target_machine_features_.vectorization_factor_in_bytes();
+
+  // We try to process vectorization_factor elements at the same time.
+  const int vectorization_factor =
+      vectorization_factor_in_bytes /
+      ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type());
+
+  bool is_reduction_over_minor_dimension =
+      std::find(dimensions.begin(), dimensions.end(),
+                arg->shape().layout().minor_to_major(0)) != dimensions.end();
+
+  unsigned element_alignment =
+      GCD(ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
+          MinimumAlignmentForPrimitiveType(reduce->shape().element_type()));
+
+  if (is_reduction_over_minor_dimension) {
+    // TODO(sanjoy): Implement vectorized reduction over the minor dimension.
+    *failure_reason = "reduction over minor dimension not implemented";
+    return false;
+  }
+
+  CHECK(!ShapeUtil::IsTuple(reduce->shape()));
+
+  // We know we're not reducing over the most minor dimension, which means we
+  // can lower the reduction loop as:
+  //
+  //  1. We're reducing over dimensions R0, R1.
+  //  2. D0 is the most minor dimension.
+  //  3. VS is the vectorization stride (we want to reduce this many elements at
+  //     once)
+  //
+  //  for (d1 in D1) {
+  //    for (d0 in D0 with stride VS) {
+  //      vector_acc = init
+  //      for (r1 in R1) {
+  //        for (r0 in R0) {
+  //          vector_acc = elementwise_reduce(vector_acc, input[d1, d0, r1, r0]
+  //        }
+  //      }
+  //      output[d1, d0] = vector_acc
+  //    }
+  //  }
+
+  llvm_ir::ForLoopNest loop_nest(&ir_builder_);
+  llvm_ir::IrArray::Index array_index(reduce->shape().dimensions_size());
+  for (int i = reduce->shape().layout().minor_to_major_size() - 1; i > 0; --i) {
+    int64 dimension = reduce->shape().layout().minor_to_major(i);
+    int64 start_index = 0;
+    int64 end_index = reduce->shape().dimensions(dimension);
+    std::unique_ptr<llvm_ir::ForLoop> loop =
+        loop_nest.AddLoop(start_index, end_index,
+                          tensorflow::strings::Printf("dim.%lld", dimension));
+    array_index[dimension] = loop->GetIndVarValue();
+  }
+
+  int64 innermost_dimension = reduce->shape().layout().minor_to_major(0);
+  int64 innermost_dimension_size =
+      reduce->shape().dimensions(innermost_dimension);
+
+  if (llvm::BasicBlock* innermost_body_bb =
+          loop_nest.GetInnerLoopBodyBasicBlock()) {
+    SetToFirstInsertPoint(innermost_body_bb, &ir_builder_);
+  }
+
+  auto outermost_loop_exit_block = loop_nest.GetOuterLoopExitBasicBlock();
+
+  if (innermost_dimension_size >= vectorization_factor) {
+    int64 start_index = 0;
+    int64 end_index = (innermost_dimension_size / vectorization_factor) *
+                      vectorization_factor;
+    std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
+        start_index, end_index, vectorization_factor,
+        tensorflow::strings::Printf("dim.%lld", innermost_dimension));
+    array_index[innermost_dimension] = loop->GetIndVarValue();
+
+    SetToFirstInsertPoint(loop->GetBodyBasicBlock(), &ir_builder_);
+
+    ShardedVectorType vector_type = CreateShardedVectorType(
+        reduce->shape().element_type(), vectorization_factor);
+    TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
+                        EmitInnerLoopForVectorizedReduction(
+                            reduction_generator, array_index, vector_type,
+                            init_value, arg, dimensions, element_alignment));
+
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                        EmitTargetAddressForOp(reduce));
+    llvm_ir::IrArray target_array(target_address, reduce->shape());
+    AddAliasingInformationToIrArray(*reduce, &target_array);
+    llvm::Value* output_address =
+        target_array.EmitArrayElementAddress(array_index, &ir_builder_);
+    EmitShardedVectorStore(output_address, accumulator, element_alignment,
+                           target_array);
+
+    if (auto exit_terminator = loop->GetExitBasicBlock()->getTerminator()) {
+      CHECK_GT(reduce->shape().layout().minor_to_major_size(), 1);
+      ir_builder_.SetInsertPoint(exit_terminator);
+    } else {
+      CHECK_EQ(reduce->shape().layout().minor_to_major_size(), 1);
+      ir_builder_.SetInsertPoint(loop->GetExitBasicBlock());
+    }
+  }
+
+  // Since we increment the stride for the inner dimension by more than 1, we
+  // may need to peel out an "epilogue" iteration to get the remaining elements
+  // in the following case:
+  if (innermost_dimension_size % vectorization_factor) {
+    // TODO(b/63775531): Consider using a scalar loop here to save on code size.
+    array_index[innermost_dimension] =
+        ir_builder_.getInt64(innermost_dimension_size -
+                             (innermost_dimension_size % vectorization_factor));
+
+    ShardedVectorType vector_type = CreateShardedVectorType(
+        reduce->shape().element_type(),
+        innermost_dimension_size % vectorization_factor);
+    TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
+                        EmitInnerLoopForVectorizedReduction(
+                            reduction_generator, array_index, vector_type,
+                            init_value, arg, dimensions, element_alignment));
+
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                        EmitTargetAddressForOp(reduce));
+    llvm_ir::IrArray target_array(target_address, reduce->shape());
+    AddAliasingInformationToIrArray(*reduce, &target_array);
+    llvm::Value* output_address =
+        target_array.EmitArrayElementAddress(array_index, &ir_builder_);
+    EmitShardedVectorStore(output_address, accumulator, element_alignment,
+                           target_array);
+  }
+
+  if (outermost_loop_exit_block) {
+    ir_builder_.SetInsertPoint(outermost_loop_exit_block);
+  }
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                      EmitTargetAddressForOp(reduce));
+
+  emitted_value_[reduce] = target_address;
+  return true;
+}
+
 Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
                                HloInstruction* init_value,
                                tensorflow::gtl::ArraySlice<int64> dimensions,
                                HloComputation* function) {
+  if (!VectorizedReduceDisabled(hlo_module_config_)) {
+    string vectorization_failure_reason;
+    TF_ASSIGN_OR_RETURN(
+        bool vectorization_successful,
+        EmitVectorizedReduce(reduce, arg, init_value, dimensions, function,
+                             &vectorization_failure_reason));
+    if (vectorization_successful) {
+      VLOG(1) << "Successfully vectorized reduction " << reduce->ToString()
+              << "\n";
+      return Status::OK();
+    } else {
+      VLOG(1) << "Could not vectorize reduction " << reduce->ToString() << ": "
+              << vectorization_failure_reason;
+    }
+  }
+
   // The called computation should have been emitted previously.
   llvm::Function* reducer_function = FindOrDie(emitted_functions_, function);
   return EmitTargetElementLoop(
@@ -2274,5 +2727,36 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
       hlo, elemental_emitter.MakeElementGenerator(hlo, operand_to_generator));
 }
 
+unsigned TargetMachineFeatures::largest_register_size_in_bytes(
+    llvm::Function* function) {
+  auto itr = largest_register_size_in_bytes_.find(function);
+  if (itr != largest_register_size_in_bytes_.end()) {
+    return itr->second;
+  }
+
+  int result = largest_register_size_in_bytes_impl(function);
+
+  InsertOrDie(&largest_register_size_in_bytes_, function, result);
+  DCHECK_EQ(result, largest_register_size_in_bytes_.begin()->second);
+  return result;
+}
+
+unsigned TargetMachineFeatures::largest_register_size_in_bytes_impl(
+    llvm::Function* function) const {
+  auto register_info =
+      target_machine_->getSubtargetImpl(*function)->getRegisterInfo();
+
+  unsigned largest_register_size = 0;
+  for (const llvm::TargetRegisterClass* register_class :
+       register_info->regclasses()) {
+    if (register_class->isAllocatable()) {
+      largest_register_size =
+          std::max(largest_register_size,
+                   register_info->getRegSizeInBits(*register_class));
+    }
+  }
+
+  return largest_register_size / 8;
+}
 }  // namespace cpu
 }  // namespace xla

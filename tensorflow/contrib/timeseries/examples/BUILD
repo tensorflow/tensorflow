@@ -95,6 +95,34 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "lstm",
+    srcs = [
+        "lstm.py",
+    ],
+    data = [
+        "data/multivariate_periods.csv",
+    ],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "lstm_test",
+    timeout = "long",  # Moderate but for asan
+    srcs = [
+        "lstm_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":lstm",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

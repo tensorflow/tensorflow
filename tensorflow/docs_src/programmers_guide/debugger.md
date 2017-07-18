@@ -346,7 +346,7 @@ line:
 diff = y_ * tf.log(y)
 ```
 
-***tfdbg** has a feature that makes it easy to trace Tensors and ops back to
+**tfdbg** has a feature that makes it easy to trace Tensors and ops back to
 lines in Python source files. It can annotate lines of a Python file with
 the ops or Tensors created by them. To use this feature,
 simply click the underlined line numbers in the stack trace output of the

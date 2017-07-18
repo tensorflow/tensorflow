@@ -62,7 +62,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
+#include "tensorflow/core/platform/gpu_tracer.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -558,7 +558,7 @@ Status DirectSession::Run(const RunOptions& run_options,
 #if GOOGLE_CUDA
   std::unique_ptr<GPUTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer.reset(CreateGPUTracer());
+    tracer = CreateGPUTracer();
     // tracer will be NULL on non-GPU platforms.
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     if (tracer) tracer->Start().IgnoreError();
