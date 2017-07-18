@@ -7,9 +7,9 @@ def xla_proto_library(name, srcs=[], deps=[], visibility=None, testonly=0):
   cc_proto_library(name=name,
                    srcs=srcs,
                    deps=deps,
-                   cc_libs = ["@protobuf//:protobuf"],
+                   cc_libs = ["@protobuf//:protobuf_headers"],
                    protoc="@protobuf//:protoc",
-                   default_runtime="@protobuf//:protobuf",
+                   default_runtime="@protobuf//:protobuf_headers",
                    testonly=testonly,
                    visibility=visibility,)
 
