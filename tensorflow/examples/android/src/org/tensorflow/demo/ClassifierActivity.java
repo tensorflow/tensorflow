@@ -95,9 +95,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
-    final float textSizePx =
-        TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
+    final float textSizePx = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
@@ -126,11 +125,10 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
     croppedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Config.ARGB_8888);
 
-    frameToCropTransform =
-        ImageUtils.getTransformationMatrix(
-            previewWidth, previewHeight,
-            INPUT_SIZE, INPUT_SIZE,
-            sensorOrientation, MAINTAIN_ASPECT);
+    frameToCropTransform = ImageUtils.getTransformationMatrix(
+        previewWidth, previewHeight,
+        INPUT_SIZE, INPUT_SIZE,
+        sensorOrientation, MAINTAIN_ASPECT);
 
     cropToFrameTransform = new Matrix();
     frameToCropTransform.invert(cropToFrameTransform);
@@ -153,7 +151,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
     // For examining the actual TF input.
     if (SAVE_PREVIEW_BITMAP) {
-        ImageUtils.saveBitmap(croppedBitmap);
+      ImageUtils.saveBitmap(croppedBitmap);
     }
     runInBackground(
         new Runnable() {
