@@ -415,6 +415,69 @@ class IteratorDisposeOp : public OpKernel {
   }
 };
 
+class IteratorToStringHandleOp : public OpKernel {
+ public:
+  explicit IteratorToStringHandleOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& resource_handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
+                errors::InvalidArgument("resource_handle must be a scalar"));
+
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator_resource));
+    iterator_resource->Unref();
+
+    Tensor* string_handle_t;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(0, TensorShape({}), &string_handle_t));
+    string_handle_t->scalar<string>()() =
+        resource_handle_t.scalar<ResourceHandle>()().SerializeAsString();
+  }
+};
+
+class IteratorFromStringHandleOp : public OpKernel {
+ public:
+  explicit IteratorFromStringHandleOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& string_handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(string_handle_t.shape()),
+                errors::InvalidArgument("string_handle must be a scalar"));
+
+    ResourceHandle resource_handle;
+    OP_REQUIRES(
+        ctx,
+        resource_handle.ParseFromString(string_handle_t.scalar<string>()()),
+        errors::InvalidArgument(
+            "Could not parse string_handle as a valid ResourceHandle"));
+
+    // Validate that the handle corresponds to a real resource, and
+    // that it is an IteratorResource.
+    IteratorResource* iterator_resource;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, resource_handle, &iterator_resource));
+    iterator_resource->Unref();
+
+    OP_REQUIRES(
+        ctx, resource_handle.device() == ctx->device()->attributes().name(),
+        errors::InvalidArgument("Attempted create an iterator on device \"",
+                                ctx->device()->attributes().name(),
+                                "\" from handle defined on device \"",
+                                resource_handle.device(), "\""));
+
+    Tensor* resource_handle_t;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_output(0, TensorShape({}), &resource_handle_t));
+    resource_handle_t->scalar<ResourceHandle>()() = resource_handle;
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
@@ -424,6 +487,10 @@ REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
                         IteratorGetNextOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorDispose").Device(DEVICE_CPU),
                         IteratorDisposeOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
+                        IteratorToStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),
+                        IteratorFromStringHandleOp);
 
 }  // namespace
 

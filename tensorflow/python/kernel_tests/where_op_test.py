@@ -100,7 +100,7 @@ class WhereOpTest(test.TestCase):
 
 class WhereBenchmark(test.Benchmark):
 
-  def benchmarkWhereCPU(self):
+  def benchmarkWhere(self):
     for (m, n, p, use_gpu) in itertools.product(
         [10],
         [10, 100, 1000, 10000, 100000, 1000000],

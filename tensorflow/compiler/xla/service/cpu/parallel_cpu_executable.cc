@@ -407,8 +407,9 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
     HloInstruction* instruction = entry.first;
     llvm::JITSymbol sym = jit_->FindSymbol(entry.second);
     TF_RET_CHECK(sym);
-    InsertOrDie(&functions, instruction,
-                reinterpret_cast<ComputeFunctionType>(sym.getAddress()));
+    InsertOrDie(
+        &functions, instruction,
+        reinterpret_cast<ComputeFunctionType>(cantFail(sym.getAddress())));
   }
 
   // Map containing pointers to result buffers for each instruction.
@@ -440,7 +441,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
   // TODO(b/27458679) Manage scheduling based on in-flight concurrency limits.
   // For example, if we expect a library conv/matmul call to run at max
   // concurrency, we should not dispatch runnable instructions until the
-  // libary call is finished (to avoid expensive cache invalidation).
+  // library call is finished (to avoid expensive cache invalidation).
   Executor executor(functions, run_options, &pending, &results,
                     buffer_pointers.data(), profile_counters.data(),
                     assignment_.get());

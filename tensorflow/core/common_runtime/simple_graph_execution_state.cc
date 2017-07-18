@@ -117,16 +117,21 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
 Status SimpleGraphExecutionState::Extend(
     const GraphDef& extension_def,
     std::unique_ptr<SimpleGraphExecutionState>* out) const {
+  GraphDef gdef;
+
+  // 1. Copy the function library.
+  TF_RETURN_IF_ERROR(flib_def_->AddLibrary(extension_def.library()));
+  *gdef.mutable_library() = flib_def_->ToProto();
+
+  // 2. Build an index of the new node names.
   std::unordered_set<string> new_names;
-  // 1. Build an index of the new node names.
   for (const NodeDef& node : extension_def.node()) {
     new_names.insert(node.name());
   }
 
-  // 2. Add the non-duplicates from the old graph to the new graph.
+  // 3. Add the non-duplicates from the old graph to the new graph.
   //    Return an error if the same node name appears in both the
   //    old graph and the extension.
-  GraphDef gdef;
   for (const NodeDef& node : original_graph_def_.node()) {
     if (new_names.count(node.name()) == 0) {
       *gdef.add_node() = node;
@@ -138,7 +143,7 @@ Status SimpleGraphExecutionState::Extend(
     }
   }
 
-  // 3. Merge the versions field.
+  // 4. Merge the versions field.
   int old_node_size = gdef.node_size();
   gdef.mutable_node()->MergeFrom(extension_def.node());
   TF_RETURN_IF_ERROR(
@@ -173,12 +178,6 @@ Status SimpleGraphExecutionState::Extend(
   } else {
     gdef.mutable_versions()->CopyFrom(extension_def.versions());
   }
-
-  // 4. Copy the function library from this execution state.
-  // NOTE(mrry): To match the previous behavior, the first GraphDef
-  // passed to a session will contain the function library that is
-  // used for all subsequent execution states.
-  *gdef.mutable_library() = flib_def_->ToProto();
 
   // 5. Validate that the final graphdef is valid.
   if (gdef.versions().producer() >= 5) {

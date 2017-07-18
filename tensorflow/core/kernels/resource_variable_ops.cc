@@ -15,12 +15,16 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/dense_update_ops.h"
+#include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -217,13 +221,6 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 
 #if GOOGLE_CUDA
 #define REGISTER_GPU_KERNELS(type)                             \
-  namespace functor {                                          \
-  template <>                                                  \
-  void DenseUpdate<GPUDevice, type, ASSIGN>::operator()(       \
-      const GPUDevice& d, typename TTypes<type>::Flat lhs,     \
-      typename TTypes<type>::ConstFlat rhs);                   \
-  extern template struct DenseUpdate<GPUDevice, type, ASSIGN>; \
-  }                                                            \
   REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")             \
                               .Device(DEVICE_GPU)              \
                               .TypeConstraint<type>("dtype")   \
@@ -275,20 +272,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_KERNELS);
 
 #if GOOGLE_CUDA
 #define REGISTER_GPU_KERNELS(type)                                       \
-  namespace functor {                                                    \
-  template <>                                                            \
-  void DenseUpdate<GPUDevice, type, ADD>::operator()(                    \
-      const GPUDevice& d, typename TTypes<type>::Flat lhs,               \
-      typename TTypes<type>::ConstFlat rhs);                             \
-  extern template struct DenseUpdate<GPUDevice, type, ADD>;              \
-  }                                                                      \
-  namespace functor {                                                    \
-  template <>                                                            \
-  void DenseUpdate<GPUDevice, type, SUB>::operator()(                    \
-      const GPUDevice& d, typename TTypes<type>::Flat lhs,               \
-      typename TTypes<type>::ConstFlat rhs);                             \
-  extern template struct DenseUpdate<GPUDevice, type, SUB>;              \
-  }                                                                      \
   REGISTER_KERNEL_BUILDER(Name("AssignAddVariableOp")                    \
                               .Device(DEVICE_GPU)                        \
                               .HostMemory("resource")                    \
@@ -348,9 +331,14 @@ class ResourceGatherOp : public OpKernel {
     Tensor* out = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &out));
     if (N > 0) {
-      auto params_flat = params.flat_outer_dims<T>();
+      const int64 gather_dim_size = params.dim_size(0);
+      int64 inner_size = 1;
+      for (int i = 1; i < params.dims(); i++) {
+        inner_size *= params.dim_size(i);
+      }
+      auto params_flat = params.shaped<T, 3>({1, gather_dim_size, inner_size});
       auto indices_flat = indices.flat<Index>();
-      auto out_flat = out->shaped<T, 2>({N, out->NumElements() / N});
+      auto out_flat = out->shaped<T, 3>({1, N, out->NumElements() / N});
 
       functor::GatherFunctor<Device, T, Index> functor;
       int64 bad_i = functor(c->eigen_device<Device>(), params_flat,

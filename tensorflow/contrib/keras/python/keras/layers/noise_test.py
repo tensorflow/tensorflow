@@ -39,6 +39,13 @@ class NoiseLayersTest(test.TestCase):
           kwargs={'rate': 0.5},
           input_shape=(3, 2, 3))
 
+  def test_AlphaDropout(self):
+    with self.test_session():
+      testing_utils.layer_test(
+          keras.layers.AlphaDropout,
+          kwargs={'rate': 0.2},
+          input_shape=(3, 2, 3))
+
 
 if __name__ == '__main__':
   test.main()

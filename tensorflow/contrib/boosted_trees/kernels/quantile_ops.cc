@@ -382,6 +382,11 @@ class MakeQuantileSummariesOp : public OpKernel {
               sparse_float_feature_values_list[sparse_index].flat<float>();
           const auto sparse_indices =
               sparse_float_feature_indices_list[sparse_index].matrix<int64>();
+          const auto dense_shape =
+              sparse_float_feature_shapes_list[sparse_index].flat<int64>();
+          OP_REQUIRES(context, batch_size == dense_shape(0),
+                      errors::InvalidArgument(
+                          "Sparse column shape doesn't match the batch size."));
           QuantileStream stream(epsilon_, batch_size + 1);
           // Run quantile summary generation.
           const int64 num_sparse_rows =

@@ -205,6 +205,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "SummaryMetadata"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
     name: "TFRecordReader"
     mtype: "<type \'type\'>"
   }
@@ -283,6 +287,10 @@ tf_module {
   member {
     name: "contrib"
     mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
+  }
+  member {
+    name: "distributions"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "double"
@@ -379,6 +387,10 @@ tf_module {
   member {
     name: "orthogonal_initializer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "profiler"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "python_io"
@@ -737,6 +749,10 @@ tf_module {
     argspec: "args=[\'t\', \'clip_value_min\', \'clip_value_max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "colocate_with"
+    argspec: "args=[\'op\', \'ignore_existing\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
     name: "complex"
     argspec: "args=[\'real\', \'imag\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -990,7 +1006,7 @@ tf_module {
   }
   member_method {
     name: "gather"
-    argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\'], "
   }
   member_method {
     name: "gather_nd"
@@ -1370,7 +1386,7 @@ tf_module {
   }
   member_method {
     name: "pad"
-    argspec: "args=[\'tensor\', \'paddings\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\'], "
+    argspec: "args=[\'tensor\', \'paddings\', \'mode\', \'name\', \'constant_values\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\', \'0\'], "
   }
   member_method {
     name: "parallel_stack"

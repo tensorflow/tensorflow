@@ -183,7 +183,7 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
         errors::InvalidArgument("hop_bytes must be >= 0 not ", hop_bytes));
     Env* env = context->env();
     string encoding;
-    context->GetAttr("encoding", &encoding);
+    TF_CHECK_OK(context->GetAttr("encoding", &encoding));
     SetReaderFactory([this, header_bytes, record_bytes, footer_bytes, hop_bytes,
                       encoding, env]() {
       return new FixedLengthRecordReader(name(), header_bytes, record_bytes,

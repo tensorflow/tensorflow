@@ -27,6 +27,15 @@ def tf_library(name, graph, config,
                deps=None, tags=None):
   """Runs tfcompile to compile a TensorFlow graph into executable code.
 
+  Given an invocation of tf_library(name="foo", ...), generates the following
+  build targets:
+    foo:           A cc_library containing the generated header and computation.
+    foo_test:      A cc_test with simple tests and benchmarks. Only created if
+                   gen_test=True.
+    foo_benchmark: A cc_binary that runs a minimal-dependency benchmark, useful
+                   for mobile devices or other platforms that can't compile the
+                   full test libraries. Only created if gen_benchmark=True.
+
   Args:
     name: The name of the build rule.
     graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt' it

@@ -205,4 +205,13 @@ Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
   return Status::OK();
 }
 
+xla::ComputationDataHandle XlaHelpers::PadWithZeros(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+    int count) {
+  xla::ComputationDataHandle zero = builder->ConstantR1<int32>({0});
+  std::vector<xla::ComputationDataHandle> xs(count + 1, zero);
+  xs[0] = builder->Reshape(x, {1});
+  return builder->ConcatInDim(xs, 0);
+}
+
 }  // end namespace tensorflow

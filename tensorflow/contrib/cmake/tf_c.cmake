@@ -26,3 +26,9 @@ set(tf_c_srcs
 
 add_library(tf_c OBJECT ${tf_c_srcs})
 add_dependencies(tf_c tf_cc_framework tf_core_lib tf_protos_cc)
+
+add_library(tf_c_python_api OBJECT
+  "${tensorflow_source_dir}/tensorflow/c/python_api.cc"
+  "${tensorflow_source_dir}/tensorflow/c/python_api.h"
+)
+add_dependencies(tf_c_python_api tf_c tf_cc_framework tf_core_lib tf_protos_cc)

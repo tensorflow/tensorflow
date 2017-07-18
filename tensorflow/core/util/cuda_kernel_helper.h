@@ -20,9 +20,11 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
 
 // Usage of GetCudaLaunchConfig, GetCuda2DLaunchConfig, and
 // GetCuda3DLaunchConfig:
@@ -95,7 +97,8 @@ void MyDriverFunc(const GPUDevice &d) {
 }
 
 // See the test for this for more example:
-// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+//
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/cuda_kernel_helper_test.cu.cc
 
 */
 
@@ -107,7 +110,7 @@ void MyDriverFunc(const GPUDevice &d) {
   for (int i = blockIdx.axis * blockDim.axis + threadIdx.axis; i < n.axis; \
        i += blockDim.axis * gridDim.axis)
 
-#define DIV_UP(a, b) (((a) + (b) - 1) / (b))
+#define DIV_UP(a, b) (((a) + (b)-1) / (b))
 
 namespace tensorflow {
 
@@ -277,7 +280,19 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(
                                dynamic_shared_memory_size, block_size_limit);
 }
 
-namespace gpu {
+// Returns a raw reference to the current cuda stream.  Required by a
+// number of kernel calls (for which StreamInterface* does not work), i.e.
+// CUB and certain cublas primitives.
+inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
+  const cudaStream_t* ptr = CHECK_NOTNULL(
+      reinterpret_cast<const cudaStream_t*>(context->op_device_context()
+                                                ->stream()
+                                                ->implementation()
+                                                ->CudaStreamMemberHack()));
+  return *ptr;
+}
+
+namespace cuda_helper {
 
 template <typename IntType>
 __device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
@@ -299,7 +314,7 @@ __device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
   return first - orig;
 }
 
-}  // namespace gpu
+}  // namespace cuda_helper
 
 template <typename T>
 __device__ __host__ inline T ldg(const T* address) {

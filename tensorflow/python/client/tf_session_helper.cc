@@ -766,4 +766,12 @@ void TF_SessionPRun_wrapper(TF_Session* session, const char* handle,
   ClearDecrefCache();
 }
 
+std::vector<TF_Operation*> TF_OperationGetControlInputs_wrapper(
+    TF_Operation* oper) {
+  std::vector<TF_Operation*> control_inputs(TF_OperationNumControlInputs(oper));
+  TF_OperationGetControlInputs(oper, control_inputs.data(),
+                               control_inputs.size());
+  return control_inputs;
+}
+
 }  // namespace tensorflow

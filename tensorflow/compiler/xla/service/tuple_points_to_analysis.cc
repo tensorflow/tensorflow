@@ -33,9 +33,9 @@ limitations under the License.
 namespace xla {
 
 string BufferAlias::ToString() const {
-  return tensorflow::strings::StrCat(
-      "BufferAlias(", instruction_->FullyQualifiedName(), "[",
-      tensorflow::str_util::Join(index_, ","), "])");
+  return tensorflow::strings::StrCat("BufferAlias(", instruction_->name(), "[",
+                                     tensorflow::str_util::Join(index_, ","),
+                                     "])");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {

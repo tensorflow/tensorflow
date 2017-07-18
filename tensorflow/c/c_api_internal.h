@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_C_C_API_INTERNAL_H_
+#define TENSORFLOW_C_C_API_INTERNAL_H_
+
 #include "tensorflow/c/c_api.h"
 
 #include <vector>
@@ -125,3 +128,5 @@ class TensorCApi {
 };
 
 }  // end namespace tensorflow
+
+#endif  // TENSORFLOW_C_C_API_INTERNAL_H_

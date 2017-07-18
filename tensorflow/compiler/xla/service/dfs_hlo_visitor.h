@@ -227,6 +227,8 @@ class DfsHloVisitor {
 
   virtual Status HandleBatchNormTraining(HloInstruction* batchNormTraining) = 0;
 
+  virtual Status HandleBatchNormGrad(HloInstruction* batchNormGrad) = 0;
+
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".
   virtual Status FinishVisit(HloInstruction* root) = 0;

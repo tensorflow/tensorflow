@@ -89,6 +89,7 @@ limitations under the License.
 //     produced at version 22 or later.  (04/10/2016)
 // 23. Remove NonMaxSuppression in favor of NonMaxSuppressionV2.
 // 24. Deprecate lookup ops (v1) ops in favor of v2 (30may2017)
+// 25. Deprecate stack (v1) ops in favor of v2 (2017/6/15).
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0

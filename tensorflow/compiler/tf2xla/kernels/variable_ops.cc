@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
@@ -85,6 +86,70 @@ class AssignSubVariableOp : public XlaOpKernel {
 REGISTER_XLA_OP(
     Name("AssignSubVariableOp").TypeConstraint("dtype", kNumericTypes),
     AssignSubVariableOp);
+
+class ResourceGatherOp : public XlaOpKernel {
+ public:
+  explicit ResourceGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::ComputationBuilder* builder = ctx->builder();
+
+    // Get the shape of the resource tensor.
+    TensorShape resource_shape;
+    DataType resource_dtype;
+    OP_REQUIRES_OK(
+        ctx, ctx->GetVariableTypeAndShape(0, &resource_dtype, &resource_shape));
+
+    DataType expected_output_dtype = ctx->expected_output_dtype(0);
+    OP_REQUIRES(ctx, resource_dtype == expected_output_dtype,
+                errors::InvalidArgument(
+                    "Variable dtype is ", DataTypeString(resource_dtype),
+                    " but expected output dtype is ",
+                    DataTypeString(expected_output_dtype), "."));
+
+    xla::ComputationDataHandle resource_handle;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &resource_handle));
+
+    auto indices = ctx->Input(1);
+    auto indices_shape = ctx->InputShape(1);
+    const int num_indices = indices_shape.num_elements();
+
+    // Flatten the indices into 1-D.
+    auto indices_1d = builder->Reshape(indices, {num_indices});
+
+    // Compute the slice for each of these indices separately.
+    std::vector<xla::ComputationDataHandle> slices(num_indices);
+    for (int i = 0; i < num_indices; ++i) {
+      auto index = builder->Slice(indices_1d, {i}, {i + 1}, {1});
+
+      auto start_indices =
+          XlaHelpers::PadWithZeros(builder, index, resource_shape.dims() - 1);
+
+      auto slice_shape = resource_shape.dim_sizes();
+      slice_shape[0] = 1LL;
+
+      slices[i] =
+          builder->DynamicSlice(resource_handle, start_indices, slice_shape);
+    }
+
+    // Concatenate the slices into one tensor.
+    xla::ComputationDataHandle concat = builder->ConcatInDim(slices, 0);
+
+    // Compute the shape of the result tensor, which is:
+    //    indices.shape + resource.shape[1:]
+    TensorShape gather_shape = indices_shape;
+    gather_shape.AppendShape(resource_shape);
+    gather_shape.RemoveDim(indices_shape.dims());
+
+    // Reshape the concatenated slices into the shape expected of the result
+    // tensor.
+    xla::ComputationDataHandle gather =
+        builder->Reshape(concat, gather_shape.dim_sizes());
+
+    ctx->SetOutput(0, gather);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceGather").TypeConstraint("dtype", kNumericTypes),
+                ResourceGatherOp);
 
 }  // namespace
 }  // namespace tensorflow

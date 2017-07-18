@@ -52,6 +52,7 @@ py_library(
         "python/keras/applications/__init__.py",
         "python/keras/applications/imagenet_utils.py",
         "python/keras/applications/inception_v3.py",
+        "python/keras/applications/mobilenet.py",
         "python/keras/applications/resnet50.py",
         "python/keras/applications/vgg16.py",
         "python/keras/applications/vgg19.py",
@@ -114,24 +115,35 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:ctc_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:tensor_array_grad",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "@six_archive//:six",
     ],
 )
 
@@ -143,8 +155,8 @@ py_test(
     tags = ["notsan"],
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -156,6 +168,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -167,6 +180,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -178,6 +192,8 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -188,7 +204,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -201,8 +216,8 @@ py_test(
     tags = ["notsan"],
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -214,6 +229,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -225,6 +241,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -232,6 +249,17 @@ py_test(
     name = "inception_v3_test",
     size = "medium",
     srcs = ["python/keras/applications/inception_v3_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "mobilenet_test",
+    size = "small",
+    srcs = ["python/keras/applications/mobilenet_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -290,7 +318,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -300,10 +327,11 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/convolutional_recurrent_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["noasan"],  # times out b/63678675
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -314,12 +342,13 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
+        "noasan",  # times out b/63678675
         "notsan",
     ],
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -330,7 +359,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -342,8 +370,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -354,7 +382,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -366,8 +393,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -379,6 +406,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -389,7 +417,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -400,7 +427,7 @@ cuda_py_test(
     srcs = ["python/keras/layers/normalization_test.py"],
     additional_deps = [
         ":keras",
-        ":testing_utils",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -413,8 +440,8 @@ py_test(
     tags = ["notsan"],
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -426,8 +453,8 @@ py_test(
     tags = ["notsan"],  # http://b/62136390
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -436,11 +463,14 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/lstm_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # http://b/62189182
+    tags = [
+        "noasan",  # times out b/63678675
+        "notsan",  # http://b/62189182
+    ],
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -463,6 +493,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -474,7 +505,44 @@ py_test(
     tags = ["notsan"],
     deps = [
         ":keras",
-        ":testing_utils",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "data_utils_test",
+    size = "small",
+    srcs = ["python/keras/utils/data_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "noasan",  # times out
+        "notsan",
+    ],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "generic_utils_test",
+    size = "small",
+    srcs = ["python/keras/utils/generic_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "imagenet_utils_test",
+    size = "small",
+    srcs = ["python/keras/applications/imagenet_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -487,6 +555,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -498,6 +567,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -509,6 +579,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -520,8 +591,8 @@ py_test(
     tags = ["notsan"],
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -533,8 +604,8 @@ py_test(
     tags = ["notsan"],
     deps = [
         ":keras",
-        ":testing_utils",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -545,7 +616,10 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -557,6 +631,7 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -568,6 +643,8 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -579,6 +656,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
+        "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
 )

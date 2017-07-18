@@ -147,23 +147,3 @@ target_link_libraries(${benchmark_model} PUBLIC
   ${tf_core_gpu_kernels_lib}
   ${tensorflow_EXTERNAL_LIBRARIES}
 )
-
-file(GLOB_RECURSE tf_tools_tfprof_srcs
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/*.proto"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/*.h"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/*.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/advisor/*.h"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/advisor/*.cc"
-    "${tensorflow_source_dir}/tensorflow/core/platform/regexp.h"
-)
-
-file(GLOB_RECURSE tf_tools_tfprof_exclude_srcs
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/*test.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/advisor/*test.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/print_model_analysis.cc"
-    "${tensorflow_source_dir}/tensorflow/tools/tfprof/internal/print_model_analysis.h"
-)
-list(REMOVE_ITEM tf_tools_tfprof_srcs ${tf_tools_tfprof_exclude_srcs})
-
-add_library(tf_tools_tfprof OBJECT ${tf_tools_tfprof_srcs})
-add_dependencies(tf_tools_tfprof tf_core_lib)

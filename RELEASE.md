@@ -65,37 +65,6 @@
   integration into apps. See
   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md
   for more details.
-* RNNCells' variable names have been renamed for consistency with Keras layers.
-  Specifically, the previous variable names "weights" and "biases" have
-  been changed to "kernel" and "bias", respectively.
-  This may cause backward incompatibility with regard to your old
-  checkpoints containing such RNN cells, in which case you can use the tool
-  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
-  to convert the variable names in your old checkpoints.
-* Many of the RNN functions and classes that were in the `tf.nn` namespace
-  before the 1.0 release and which were moved to `tf.contrib.rnn` have now
-  been moved back to the core namespace.  This includes
-  `RNNCell`, `LSTMCell`, `GRUCell`, and a number of other cells.  These
-  now reside in `tf.nn.rnn_cell` (with aliases in `tf.contrib.rnn` for backwards
-  compatibility).  The original `tf.nn.rnn` function is now `tf.nn.static_rnn`,
-  and the bidirectional static and state saving static rnn functions are also
-  now back in the `tf.nn` namespace.
-
-  Notable exceptions are the `EmbeddingWrapper`, `InputProjectionWrapper` and
-  `OutputProjectionWrapper`,  which will slowly be moved to deprecation
-  in `tf.contrib.rnn`.  These are inefficient wrappers that should often
-  be replaced by calling `embedding_lookup` or `layers.dense` as pre- or post-
-  processing of the rnn.  For RNN decoding, this functionality has been replaced
-  with an alternative API in `tf.contrib.seq2seq`.
-* Intel MKL Integration (https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture). Intel developed a number of
-  optimized deep learning primitives: In addition to matrix multiplication and
-  convolution, these building blocks include:
-  Direct batched convolution
-  Pooling: maximum, minimum, average
-  Normalization: LRN, batch normalization
-  Activation: rectified linear unit (ReLU)
-  Data manipulation: multi-dimensional transposition (conversion), split,
-  concat, sum and scale.
 
 ## Deprecations
 
