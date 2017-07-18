@@ -171,6 +171,7 @@ sh_binary(
             "//tensorflow/python/debug:debug_pip",
             "//tensorflow/python/saved_model:saved_model",
             "//tensorflow/python/tools:tools_pip",
+            "//tensorflow/python:test_ops",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )
