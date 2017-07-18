@@ -729,13 +729,16 @@ class Estimator(object):
             'already defines a default metric with the same name.')
       eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
 
+      all_hooks = list(hooks or [])
+      all_hooks.extend(list(estimator_spec.evaluation_hooks or []))
+
       eval_results = evaluation._evaluate_once(  # pylint: disable=protected-access
           checkpoint_path=checkpoint_path,
           master=self._config.evaluation_master,
           scaffold=estimator_spec.scaffold,
           eval_ops=update_op,
           final_ops=eval_dict,
-          hooks=hooks,
+          hooks=all_hooks,
           config=self._session_config)
 
       _write_dict_to_summary(

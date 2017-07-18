@@ -1706,5 +1706,6 @@ Convolution2D = Conv2D
 Convolution3D = Conv3D
 SeparableConvolution2D = SeparableConv2D
 Convolution2DTranspose = Conv2DTranspose
+Convolution3DTranspose = Conv3DTranspose
 Deconvolution2D = Deconv2D = Conv2DTranspose
 Deconvolution3D = Deconv3D = Conv3DTranspose

@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_TRACER_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_TRACER_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_GPU_TRACER_H_
+#define TENSORFLOW_CORE_PLATFORM_GPU_TRACER_H_
+
+#include <memory>
 
 #include "tensorflow/core/lib/core/status.h"
 
@@ -70,8 +72,8 @@ class GPUTracer {
 
 // Creates a platform-specific GPUTracer.
 // Returns 'nullptr' on platforms where tracing is not supported.
-GPUTracer* CreateGPUTracer();
+std::unique_ptr<GPUTracer> CreateGPUTracer();
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_GPU_TRACER_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_GPU_TRACER_H_

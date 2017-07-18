@@ -644,15 +644,17 @@ class AffineBijectorTest(test.TestCase):
           # Has zero on the diagonal.
           scale_diag=[0., 1],
           validate_args=True)
-      with self.assertRaisesOpError("Condition x > 0"):
+      with self.assertRaisesOpError("diagonal part must be non-zero"):
         bijector.forward([1., 1.]).eval()
 
   def testEventNdimsLargerThanOneRaises(self):
     with self.test_session():
       mu = [1., -1]
-      # Scale corresponds to 2x2 identity matrix.
-      bijector = Affine(shift=mu, event_ndims=2, validate_args=True)
-      bijector.forward([1., 1.]).eval()
+      with self.assertRaisesRegexp(
+          ValueError, (r"event_ndims\(2\) was not 0 or 1")):
+        # Scale corresponds to 2x2 identity matrix.
+        bijector = Affine(shift=mu, event_ndims=2, validate_args=True)
+        bijector.forward([1., 1.]).eval()
 
   def testScaleZeroScalarRaises(self):
     with self.test_session():
@@ -660,24 +662,23 @@ class AffineBijectorTest(test.TestCase):
       # Check Identity matrix with zero scaling.
       bijector = Affine(
           shift=mu,
-          scale_identity_multiplier=0.0,
+          scale_identity_multiplier=0.,
           event_ndims=0,
           validate_args=True)
-      with self.assertRaisesOpError("Condition x > 0"):
+      with self.assertRaisesOpError("identity_multiplier should be non-zero"):
         bijector.forward(1.).eval()
 
       # Check Diag matrix with zero scaling.
       bijector = Affine(
           shift=mu, scale_diag=[0.0], event_ndims=0, validate_args=True)
-      with self.assertRaisesOpError("Condition x > 0"):
+      with self.assertRaisesOpError("diagonal part must be non-zero"):
         bijector.forward(1.).eval()
 
   def testScalarCongruency(self):
     with self.test_session():
       bijector = Affine(
           shift=3.6, scale_identity_multiplier=0.42, event_ndims=0)
-      assert_scalar_congruency(
-          bijector, lower_x=-2., upper_x=2.)
+      assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
 
   def _makeScale(self,
                  x,
@@ -700,11 +701,7 @@ class AffineBijectorTest(test.TestCase):
     if c is None and d1 is None and tril is None:
       # Special case when no scale args are passed in. This means use an
       # identity matrix.
-      if v is None and d2 is None:
-        c = 1.
-      # No scale.
-      else:
-        return None
+      c = 1.
 
     matrix = np.float32(0.)
     if c is not None:
@@ -832,13 +829,6 @@ class AffineBijectorTest(test.TestCase):
         },
         x=np.array(
             [1., 2], dtype=np.float32))
-
-  def testScalePropertyAssertsCorrectly(self):
-    with self.test_session():
-      with self.assertRaises(NotImplementedError):
-        scale = Affine(  # pylint:disable=unused-variable
-            scale_tril=[[1., 0], [2, 1]],
-            scale_perturb_factor=[2., 1.]).scale
 
 
 if __name__ == "__main__":

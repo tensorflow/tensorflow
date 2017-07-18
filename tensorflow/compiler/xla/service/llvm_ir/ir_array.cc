@@ -250,6 +250,18 @@ llvm::Value* IrArray::EmitArrayElementAddress(
                                        llvm_ir::AsStringRef(name));
 }
 
+void IrArray::AnnotateLoadStoreInstructionWithMetadata(
+    llvm::Instruction* instruction) const {
+  CHECK(llvm::isa<llvm::LoadInst>(instruction) ||
+        llvm::isa<llvm::StoreInst>(instruction));
+
+  for (const auto& kind_md_pair : metadata_) {
+    CHECK(kind_md_pair.first != llvm::LLVMContext::MD_invariant_load ||
+          llvm::isa<llvm::LoadInst>(instruction));
+    instruction->setMetadata(kind_md_pair.first, kind_md_pair.second);
+  }
+}
+
 llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
                                            llvm::IRBuilder<>* ir_builder,
                                            tensorflow::StringPiece name) const {
@@ -258,9 +270,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::LoadInst* load = ir_builder->CreateLoad(element_address);
   llvm_ir::SetTbaaForInstruction(load, GetShape(),
                                  /*is_pointer_to=*/false);
-  for (const auto& kind_md_pair : metadata_) {
-    load->setMetadata(kind_md_pair.first, kind_md_pair.second);
-  }
+  AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
 
@@ -270,10 +280,7 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
   llvm::StoreInst* store = ir_builder->CreateStore(value, element_address);
   llvm_ir::SetTbaaForInstruction(store, GetShape(),
                                  /*is_pointer_to=*/false);
-  for (const auto& kind_md_pair : metadata_) {
-    CHECK_NE(kind_md_pair.first, llvm::LLVMContext::MD_invariant_load);
-    store->setMetadata(kind_md_pair.first, kind_md_pair.second);
-  }
+  AnnotateLoadStoreInstructionWithMetadata(store);
 }
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
