@@ -103,10 +103,6 @@ tf_class {
     mtype: "<type \'str\'>"
   }
   member {
-    name: "TRAINABLE_RESOURCE_VARIABLES"
-    mtype: "<type \'str\'>"
-  }
-  member {
     name: "TRAINABLE_VARIABLES"
     mtype: "<type \'str\'>"
   }

@@ -367,9 +367,7 @@ class Optimizer(object):
     if grad_loss is not None:
       self._assert_valid_dtypes([grad_loss])
     if var_list is None:
-      var_list = (
-          variables.trainable_variables() +
-          ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+      var_list = variables.trainable_variables()
     else:
       var_list = nest.flatten(var_list)
     # pylint: disable=protected-access
