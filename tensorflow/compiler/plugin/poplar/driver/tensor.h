@@ -24,8 +24,12 @@ struct CompilerResources;
 port::StatusOr<std::string>
 PoplarDataType(const xla::Shape& shape);
 
-std::vector <size_t>
+std::vector<size_t>
 PoplarShapeFromXlaShape(const xla::Shape &xla_shape);
+
+xla::Shape
+XlaShapeFromPoplarShape(PrimitiveType element_type,
+                        const std::vector<size_t> &poplar_shape);
 
 bool
 PoplarShapeMatchesXLAShape(const poplar::Tensor& tensor,

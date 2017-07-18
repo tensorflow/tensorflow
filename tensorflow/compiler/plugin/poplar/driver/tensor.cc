@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/util/bcast.h"
@@ -66,12 +68,24 @@ PoplarDataType(const xla::Shape& shape) {
   }
 }
 
-std::vector <size_t>
+std::vector<size_t>
 PoplarShapeFromXlaShape(const xla::Shape &xla_shape) {
   std::vector <size_t> shape;
   for (auto d : xla_shape.dimensions()) {
     shape.push_back(d);
   }
+  return shape;
+}
+
+xla::Shape
+XlaShapeFromPoplarShape(PrimitiveType element_type,
+                        const std::vector<size_t> &poplar_shape) {
+  xla::Shape shape;
+  shape.set_element_type(element_type);
+  for (int64 dimension : poplar_shape) {
+    shape.add_dimensions(dimension);
+  }
+  LayoutUtil::SetToDefaultLayout(&shape);
   return shape;
 }
 
