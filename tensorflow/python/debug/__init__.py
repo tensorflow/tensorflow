@@ -31,9 +31,6 @@ See the @{$python/tfdbg} guide.
 @@LocalCLIDebugHook
 @@LocalCLIDebugWrapperSession
 @@WatchOptions
-
-@@GradientsDebugger
-@@clear_gradient_debuggers
 """
 
 from __future__ import absolute_import
@@ -46,8 +43,6 @@ from tensorflow.python.debug.lib.debug_data import DebugTensorDatum
 from tensorflow.python.debug.lib.debug_data import has_inf_or_nan
 from tensorflow.python.debug.lib.debug_data import load_tensor_from_event
 from tensorflow.python.debug.lib.debug_data import load_tensor_from_event_file
-
-from tensorflow.python.debug.lib.debug_gradients import GradientsDebugger
 
 from tensorflow.python.debug.lib.debug_utils import add_debug_tensor_watch
 from tensorflow.python.debug.lib.debug_utils import watch_graph

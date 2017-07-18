@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // This file registers all TensorFlow Debugger (tfdbg) ops.
 
-#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
@@ -90,7 +88,6 @@ REGISTER_OP("DebugIdentity")
     .Attr("debug_urls: list(string) = []")
     .Attr("gated_grpc: bool = false")
     .SetAllowsUninitializedInput()
-    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Debug Identity Op.
 
