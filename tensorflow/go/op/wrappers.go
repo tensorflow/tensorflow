@@ -22045,7 +22045,7 @@ func Exp(scope *Scope, x tf.Output) (y tf.Output) {
 //  `output[i] = numeric_limits<T>::min()`.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
+// <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
 // </div>
 //
 // Arguments:
