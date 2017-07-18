@@ -50,7 +50,6 @@ ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationSimple(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -66,7 +65,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     output = sess.run(const)
     self.assertEqual(17, output)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationWorker2Placement(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -94,7 +92,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
                          dev_stats.device and 'Const' == node_stats.node_name
                      ]))
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationWorker1Placement(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -111,7 +108,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     output = sess.run(const)
     self.assertEqual(17, output)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testCanonicalDeviceNames(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -243,7 +239,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
                          dev_stats.device and 'Const' == node_stats.node_name
                      ]))
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationThreeServers2Graphs(self):
     """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
 
@@ -305,7 +300,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones, sess2.run(var2))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationThreeServers(self):
     """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
 
@@ -360,7 +354,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones, sess2.run(var))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var))
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationThreeServersOneCluster(self):
     """Boots 3 servers, ensures appropriate communication across workers.
 
