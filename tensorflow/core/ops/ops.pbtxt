@@ -10583,6 +10583,26 @@ op {
     description: "A handle to an iterator resource."
     type: DT_RESOURCE
   }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    description: "If specified, defines the type of each tuple component in an\nelement produced by the resulting iterator."
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "If specified, defines the shape of each tuple component in an\nelement produced by the resulting iterator."
+    has_minimum: true
+  }
   summary: "Converts the given string representing a handle to an iterator to a resource."
   is_stateful: true
 }
