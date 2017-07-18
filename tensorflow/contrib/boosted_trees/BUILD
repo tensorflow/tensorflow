@@ -81,6 +81,9 @@ py_test(
     size = "small",
     srcs = ["python/utils/losses_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":losses",
         "//tensorflow/python:framework_test_lib",
@@ -110,6 +113,9 @@ py_test(
     size = "small",
     srcs = ["python/training/functions/gbdt_batch_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
     deps = [
         ":gbdt_batch",
         ":losses",
