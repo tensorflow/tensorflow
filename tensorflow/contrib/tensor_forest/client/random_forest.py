@@ -33,6 +33,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
@@ -73,8 +74,8 @@ class TensorForestRunOpAtEndHook(session_run_hook.SessionRunHook):
     self._ops = op_dict
 
   def end(self, session):
-    for name, op in self._ops.iteritems():
-      logging.info('{0}: {1}'.format(name, session.run(op)))
+    for name in sorted(self._ops.keys()):
+      logging.info('{0}: {1}'.format(name, session.run(self._ops[name])))
 
 
 class TensorForestLossHook(session_run_hook.SessionRunHook):
@@ -234,9 +235,19 @@ def get_model_fn(params,
         logits=logits,
         scope=head_scope)
 
+    # Ops are run in lexigraphical order of their keys. Run the resource
+    # clean-up op last.
+    all_handles = graph_builder.get_all_resource_handles()
+    ops_at_end = {
+        '9: clean up resources': control_flow_ops.group(
+            *[resource_variable_ops.destroy_resource_op(handle)
+              for handle in all_handles])}
+
     if report_feature_importances:
-      training_hooks.append(TensorForestRunOpAtEndHook(
-          {'feature_importances': graph_builder.feature_importances()}))
+      ops_at_end['1: feature_importances'] = (
+          graph_builder.feature_importances())
+
+    training_hooks.append(TensorForestRunOpAtEndHook(ops_at_end))
 
     if early_stopping_rounds:
       training_hooks.append(
