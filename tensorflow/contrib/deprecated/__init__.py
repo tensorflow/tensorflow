@@ -44,7 +44,7 @@ need to manually pass in a name scope to that function to create deduplicated
 tags, otherwise your program would fail with a runtime error due to tag
 collision.
 
-The new summary APIs under tf.summary throws away the "tag" as an independent
+The new summary APIs under tf.summary throw away the "tag" as an independent
 concept; instead, the first argument is the node name. So summary tags now 
 automatically inherit the surrounding TF name scope, and automatically
 are deduplicated if there is a conflict. Now however, the only allowed
