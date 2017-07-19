@@ -418,20 +418,11 @@ filegroup(
 )
 
 cc_binary(
-    name = "libframework.so",
-    srcs = [":libtflib.so"],
+    name = "libtfframework.so",
     linkshared = 1,
     linkstatic = 1,
     deps = [
         "//tensorflow/core:framework_internal_impl",
-    ],
-)
-
-cc_binary(
-    name = "libtflib.so",
-    linkshared = 1,
-    linkstatic = 1,
-    deps = [
         "//tensorflow/core:lib_internal_impl",
     ],
 )

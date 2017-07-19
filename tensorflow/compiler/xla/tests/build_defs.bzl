@@ -132,8 +132,7 @@ def xla_test(name,
 
     native.cc_test(
         name=test_name,
-        srcs=srcs + ["//tensorflow:libframework.so",
-                     "//tensorflow:libtflib.so"],
+        srcs=srcs + ["//tensorflow:libtfframework.so"],
         tags=tags + backend_tags.get(backend, []) + this_backend_tags,
         copts=copts + ["-DXLA_TEST_BACKEND_%s=1" % backend.upper()] +
         this_backend_copts,

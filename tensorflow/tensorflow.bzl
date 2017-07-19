@@ -49,7 +49,6 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
 def clean_dep(dep):
   return str(Label(dep))
 
-
 def if_android_x86(a):
   return select({
       clean_dep("//tensorflow:android_x86"): a,
@@ -196,8 +195,7 @@ def tf_gen_op_libs(op_lib_names, deps=None):
 def tf_cc_binary(srcs=[],
                  **kwargs):
   native.cc_binary(
-      srcs=srcs + [clean_dep("//tensorflow:libframework.so"),
-                   clean_dep("//tensorflow:libtflib.so")],
+      srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
       **kwargs)
 
 
@@ -406,8 +404,7 @@ def tf_cc_test(name,
                **kwargs):
   native.cc_test(
       name="%s%s" % (name, suffix),
-      srcs=srcs + [clean_dep("//tensorflow:libframework.so"),
-                   clean_dep("//tensorflow:libtflib.so")],
+      srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
       copts=tf_copts() + extra_copts,
       linkopts=["-lpthread", "-lm"] + linkopts,
       deps=deps,
@@ -479,8 +476,7 @@ def tf_cuda_only_cc_test(name,
                     linkopts=[]):
   native.cc_test(
     name="%s%s" % (name, "_gpu"),
-    srcs=srcs + ["//tensorflow:libframework.so",
-                 "//tensorflow:libtflib.so"],
+    srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
     size=size,
     args=args,
     copts= _cuda_copts() + tf_copts(),
@@ -939,8 +935,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
 
   native.cc_binary(
       name=name,
-      srcs=srcs + [clean_dep("//tensorflow:libframework.so"),
-                   clean_dep("//tensorflow:libtflib.so")],
+      srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(),
