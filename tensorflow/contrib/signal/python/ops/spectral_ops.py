@@ -34,7 +34,7 @@ from tensorflow.python.ops import spectral_ops
 
 def stft(signal, frame_length, frame_step, fft_length=None,
          window_fn=functools.partial(window_ops.hann_window, periodic=True),
-         pad_end=True, name=None):
+         pad_end=False, name=None):
   """Computes the Short-time Fourier Transform of a batch of real signals.
 
   https://en.wikipedia.org/wiki/Short-time_Fourier_transform
@@ -51,7 +51,7 @@ def stft(signal, frame_length, frame_step, fft_length=None,
       argument and returns a `[window_length]` `Tensor` of samples in the
       provided datatype. If set to `None`, no windowing is used.
     pad_end: Whether to pad the end of signal with zeros when the provided
-      window length and hop produces a window that lies partially past the end
+      frame length and step produces a frame that lies partially past the end
       of `signal`.
     name: An optional name for the operation.
 
