@@ -78,7 +78,7 @@ class RNNCellTest(test.TestCase):
         cell = rnn_cell_impl.BasicRNNCell(2)
         g, _ = cell(x, m)
         self.assertEqual([
-            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/basic_rnn_cell/%s_batch:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
             "root/basic_rnn_cell/%s:0" % rnn_cell_impl._BIAS_VARIABLE_NAME
         ], [v.name for v in cell.trainable_variables])
         self.assertFalse(cell.non_trainable_variables)
@@ -103,7 +103,7 @@ class RNNCellTest(test.TestCase):
         g, _ = cell(x, m)
         self.assertFalse(cell.trainable_variables)
         self.assertEqual([
-            "root/basic_rnn_cell/%s:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/basic_rnn_cell/%s_batch:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
             "root/basic_rnn_cell/%s:0" % rnn_cell_impl._BIAS_VARIABLE_NAME
         ], [v.name for v in cell.non_trainable_variables])
         sess.run([variables_lib.global_variables_initializer()])
@@ -124,7 +124,7 @@ class RNNCellTest(test.TestCase):
             [g], {x.name: np.array([[1., 1.]]),
                   m.name: np.array([[0.1, 0.1]])})
         # Smoke test
-        self.assertAllClose(res[0], [[0.175991, 0.175991]])
+        self.assertAllClose(res[0], [[0.26522645, 0.09696632]])
       with variable_scope.variable_scope(
           "other", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros(
@@ -153,11 +153,11 @@ class RNNCellTest(test.TestCase):
             state_is_tuple=False)
         g, out_m = cell(x, m)
         expected_variable_names = [
-            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
+            "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s_batch:0" %
             rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
             "root/multi_rnn_cell/cell_0/basic_lstm_cell/%s:0" %
             rnn_cell_impl._BIAS_VARIABLE_NAME,
-            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
+            "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s_batch:0" %
             rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
             "root/multi_rnn_cell/cell_1/basic_lstm_cell/%s:0" %
             rnn_cell_impl._BIAS_VARIABLE_NAME
@@ -174,10 +174,10 @@ class RNNCellTest(test.TestCase):
         variables = variables_lib.global_variables()
         self.assertEqual(expected_variable_names, [v.name for v in variables])
         # The numbers in results were not calculated, this is just a smoke test.
-        self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
+        self.assertAllClose(res[0], [[0.12291578, 0.12291578]])
         expected_mem = np.array([[
-            0.68967271, 0.68967271, 0.44848421, 0.44848421, 0.39897051,
-            0.39897051, 0.24024698, 0.24024698
+            0.631796, 0.631796, 0.29361436, 0.29361436, 0.23855942,
+            0.23855942, 0.12291578, 0.12291578
         ]])
         self.assertAllClose(res[1], expected_mem)
       with variable_scope.variable_scope(
@@ -286,11 +286,11 @@ class RNNCellTest(test.TestCase):
         # The numbers in results were not calculated, this is just a smoke test.
         # Note, however, these values should match the original
         # version having state_is_tuple=False.
-        self.assertAllClose(res[0], [[0.24024698, 0.24024698]])
+        self.assertAllClose(res[0], [[0.12291578, 0.12291578]])
         expected_mem0 = np.array(
-            [[0.68967271, 0.68967271, 0.44848421, 0.44848421]])
+            [[0.63179600, 0.63179600, 0.29361436, 0.29361436]])
         expected_mem1 = np.array(
-            [[0.39897051, 0.39897051, 0.24024698, 0.24024698]])
+            [[0.23855942, 0.23855940, 0.12291570, 0.12291578]])
         self.assertAllClose(res[1], expected_mem0)
         self.assertAllClose(res[2], expected_mem1)
 
@@ -346,9 +346,10 @@ class RNNCellTest(test.TestCase):
             state_is_tuple=False)
         cell(x, m)  # Execute to create variables
       variables = variables_lib.global_variables()
-      self.assertEquals(variables[0].op.name, "root/lstm_cell/kernel")
-      self.assertEquals(variables[1].op.name, "root/lstm_cell/bias")
-      self.assertEquals(variables[2].op.name,
+      self.assertEquals(variables[0].op.name, "root/lstm_cell/kernel_seq0")
+      self.assertEquals(variables[1].op.name, "root/lstm_cell/kernel_seq1")
+      self.assertEquals(variables[2].op.name, "root/lstm_cell/bias")
+      self.assertEquals(variables[3].op.name,
                         "root/lstm_cell/projection/kernel")
 
   def testOutputProjectionWrapper(self):
@@ -366,7 +367,7 @@ class RNNCellTest(test.TestCase):
         })
         self.assertEqual(res[1].shape, (1, 3))
         # The numbers in results were not calculated, this is just a smoke test.
-        self.assertAllClose(res[0], [[0.231907, 0.231907]])
+        self.assertAllClose(res[0], [[0.44842762, 0.44842762]])
 
   def testInputProjectionWrapper(self):
     with self.test_session() as sess:
@@ -384,7 +385,7 @@ class RNNCellTest(test.TestCase):
              m.name: np.array([[0.1, 0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 3))
         # The numbers in results were not calculated, this is just a smoke test.
-        self.assertAllClose(res[0], [[0.154605, 0.154605, 0.154605]])
+        self.assertAllClose(res[0], [[0.29895175, 0.29895175, 0.29895175]])
 
   def testResidualWrapper(self):
     with self.test_session() as sess:
@@ -459,7 +460,7 @@ class RNNCellTest(test.TestCase):
              m.name: np.array([[0.1, 0.1]])})
         self.assertEqual(res[1].shape, (1, 2))
         # The numbers in results were not calculated, this is just a smoke test.
-        self.assertAllClose(res[0], [[0.17139, 0.17139]])
+        self.assertAllClose(res[0], [[0.19043511, 0.09539874]])
 
   def testEmbeddingWrapperWithDynamicRnn(self):
     with self.test_session() as sess:
@@ -494,7 +495,7 @@ class RNNCellTest(test.TestCase):
             m.name: np.array([[0.1, 0.1, 0.1, 0.1]])
         })
         # The numbers in results were not calculated, this is just a smoke test.
-        self.assertAllClose(res, [[0.175991, 0.175991, 0.13248, 0.13248]])
+        self.assertAllClose(res, [[0.26522645, 0.09696632, 0.11976498, 0.09409752]])
 
   def testMultiRNNCellWithStateTuple(self):
     with self.test_session() as sess:
@@ -524,14 +525,19 @@ class RNNCellTest(test.TestCase):
         # The numbers in results were not calculated, this is just a
         # smoke test.  However, these numbers should match those of
         # the test testMultiRNNCell.
-        self.assertAllClose(res[0], [[0.175991, 0.175991]])
-        self.assertAllClose(res[1], [[0.13248, 0.13248]])
+        self.assertAllClose(res[0], [[0.26522645, 0.09696632]])
+        self.assertAllClose(res[1], [[0.11976498, 0.09409752]])
 
 
 class DropoutWrapperTest(test.TestCase):
-
   def _testDropoutWrapper(self, batch_size=None, time_steps=None,
                           parallel_iterations=None, **kwargs):
+    true_full_output = np.array(
+        [[[0.41458178, 0.41458178, 0.41458178]],
+         [[0.59918302, 0.59918302, 0.59918302]]], dtype=np.float32)
+    true_full_final_c = np.array(
+        [[1.594966, 1.594966, 1.594966]], dtype=np.float32)
+
     with self.test_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
@@ -563,30 +569,20 @@ class DropoutWrapperTest(test.TestCase):
         self.assertEqual(res[0].shape, (time_steps, batch_size, 3))
         self.assertEqual(res[1].c.shape, (batch_size, 3))
         self.assertEqual(res[1].h.shape, (batch_size, 3))
-        return res
+        return res, true_full_output, true_full_final_c
 
   def testDropoutWrapperKeepAllConstantInput(self):
     keep = array_ops.ones([])
-    res = self._testDropoutWrapper(
+    res, true_full_output, true_full_final_c = self._testDropoutWrapper(
         input_keep_prob=keep, output_keep_prob=keep, state_keep_prob=keep)
-    true_full_output = np.array(
-        [[[0.751109, 0.751109, 0.751109]],
-         [[0.895509, 0.895509, 0.895509]]], dtype=np.float32)
-    true_full_final_c = np.array(
-        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
     self.assertAllClose(true_full_output, res[0])
     self.assertAllClose(true_full_output[1], res[1].h)
     self.assertAllClose(true_full_final_c, res[1].c)
 
   def testDropoutWrapperKeepAll(self):
     keep = variable_scope.get_variable("all", initializer=1.0)
-    res = self._testDropoutWrapper(
+    res, true_full_output, true_full_final_c  = self._testDropoutWrapper(
         input_keep_prob=keep, output_keep_prob=keep, state_keep_prob=keep)
-    true_full_output = np.array(
-        [[[0.751109, 0.751109, 0.751109]],
-         [[0.895509, 0.895509, 0.895509]]], dtype=np.float32)
-    true_full_final_c = np.array(
-        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
     self.assertAllClose(true_full_output, res[0])
     self.assertAllClose(true_full_output[1], res[1].h)
     self.assertAllClose(true_full_final_c, res[1].c)
@@ -598,7 +594,7 @@ class DropoutWrapperTest(test.TestCase):
     ## _testDropoutWrapper to ensure the (per-time step) dropout is
     ## consistent across both calls.  Otherwise the seed may not end
     ## up being munged consistently across both graphs.
-    res_standard_1 = self._testDropoutWrapper(
+    res_standard_1, _, _  = self._testDropoutWrapper(
         input_keep_prob=keep_some, output_keep_prob=keep_some,
         state_keep_prob=keep_some, seed=10,
         parallel_iterations=1)
@@ -606,7 +602,7 @@ class DropoutWrapperTest(test.TestCase):
     ops.reset_default_graph()
     self._ClearCachedSession()
     random_seed.set_random_seed(2)
-    res_standard_2 = self._testDropoutWrapper(
+    res_standard_2, _, _ = self._testDropoutWrapper(
         input_keep_prob=keep_some, output_keep_prob=keep_some,
         state_keep_prob=keep_some, seed=10,
         parallel_iterations=1)
@@ -617,14 +613,9 @@ class DropoutWrapperTest(test.TestCase):
   def testDropoutWrapperKeepNoOutput(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
     keep_none = variable_scope.get_variable("none", initializer=1e-10)
-    res = self._testDropoutWrapper(
+    res, true_full_output, true_full_final_c  = self._testDropoutWrapper(
         input_keep_prob=keep_all, output_keep_prob=keep_none,
         state_keep_prob=keep_all)
-    true_full_output = np.array(
-        [[[0.751109, 0.751109, 0.751109]],
-         [[0.895509, 0.895509, 0.895509]]], dtype=np.float32)
-    true_full_final_c = np.array(
-        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
     self.assertAllClose(np.zeros(res[0].shape), res[0])
     self.assertAllClose(true_full_output[1], res[1].h)
     self.assertAllClose(true_full_final_c, res[1].c)
@@ -632,12 +623,9 @@ class DropoutWrapperTest(test.TestCase):
   def testDropoutWrapperKeepNoState(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
     keep_none = variable_scope.get_variable("none", initializer=1e-10)
-    res = self._testDropoutWrapper(
+    res, true_full_output, true_full_final_c  = self._testDropoutWrapper(
         input_keep_prob=keep_all, output_keep_prob=keep_all,
         state_keep_prob=keep_none)
-    true_full_output = np.array(
-        [[[0.751109, 0.751109, 0.751109]],
-         [[0.895509, 0.895509, 0.895509]]], dtype=np.float32)
     self.assertAllClose(true_full_output[0], res[0][0])
     # Second output is modified by zero input state
     self.assertGreater(np.linalg.norm(true_full_output[1] - res[0][1]), 1e-4)
@@ -647,13 +635,8 @@ class DropoutWrapperTest(test.TestCase):
   def testDropoutWrapperKeepNoInput(self):
     keep_all = variable_scope.get_variable("all", initializer=1.0)
     keep_none = variable_scope.get_variable("none", initializer=1e-10)
-    true_full_output = np.array(
-        [[[0.751109, 0.751109, 0.751109]],
-         [[0.895509, 0.895509, 0.895509]]], dtype=np.float32)
-    true_full_final_c = np.array(
-        [[1.949385, 1.949385, 1.949385]], dtype=np.float32)
     # All outputs are different because inputs are zeroed out
-    res = self._testDropoutWrapper(
+    res, true_full_output, true_full_final_c  = self._testDropoutWrapper(
         input_keep_prob=keep_none, output_keep_prob=keep_all,
         state_keep_prob=keep_all)
     self.assertGreater(np.linalg.norm(res[0] - true_full_output), 1e-4)
@@ -663,7 +646,7 @@ class DropoutWrapperTest(test.TestCase):
   def testDropoutWrapperRecurrentOutput(self):
     keep_some = 0.8
     keep_all = variable_scope.get_variable("all", initializer=1.0)
-    res = self._testDropoutWrapper(
+    res, true_full_output, true_full_final_c  = self._testDropoutWrapper(
         input_keep_prob=keep_all, output_keep_prob=keep_some,
         state_keep_prob=keep_all, variational_recurrent=True,
         input_size=3, batch_size=5, time_steps=7)
@@ -674,7 +657,7 @@ class DropoutWrapperTest(test.TestCase):
 
   def testDropoutWrapperRecurrentStateInputAndOutput(self):
     keep_some = 0.9
-    res = self._testDropoutWrapper(
+    res, true_full_output, true_full_final_c  = self._testDropoutWrapper(
         input_keep_prob=keep_some, output_keep_prob=keep_some,
         state_keep_prob=keep_some, variational_recurrent=True,
         input_size=3, batch_size=5, time_steps=7)
@@ -700,7 +683,7 @@ class DropoutWrapperTest(test.TestCase):
     keep_some = 0.9
     random_seed.set_random_seed(2347)
     np.random.seed(23487)
-    res0 = self._testDropoutWrapper(
+    res0, _, _ = self._testDropoutWrapper(
         input_keep_prob=keep_some, output_keep_prob=keep_some,
         state_keep_prob=keep_some, variational_recurrent=True,
         input_size=3, batch_size=5, time_steps=7, seed=-234987)
@@ -708,7 +691,7 @@ class DropoutWrapperTest(test.TestCase):
     self._ClearCachedSession()
     random_seed.set_random_seed(2347)
     np.random.seed(23487)
-    res1 = self._testDropoutWrapper(
+    res1, _, _ = self._testDropoutWrapper(
         input_keep_prob=keep_some, output_keep_prob=keep_some,
         state_keep_prob=keep_some, variational_recurrent=True,
         input_size=3, batch_size=5, time_steps=7, seed=-234987)

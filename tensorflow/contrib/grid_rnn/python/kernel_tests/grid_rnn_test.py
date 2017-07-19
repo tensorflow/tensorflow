@@ -63,10 +63,10 @@ class GridRNNCellTest(test.TestCase):
         self.assertEqual(res_s[1].c.shape, (1, 2))
         self.assertEqual(res_s[1].h.shape, (1, 2))
 
-        self.assertAllClose(res_g, ([[0.36617181, 0.36617181]],))
+        self.assertAllClose(res_g, ([[0.27813572, 0.27813572]],))
         self.assertAllClose(
-            res_s, (([[0.71053141, 0.71053141]], [[0.36617181, 0.36617181]]),
-                    ([[0.72320831, 0.80555487]], [[0.39102408, 0.42150158]])))
+            res_s, (([[0.58389962, 0.58389962]], [[0.27813572, 0.27813572]]),
+                    ([[0.52472770, 0.60331118]], [[0.27650252, 0.30985516]])))
 
         # emulate a loop through the input sequence,
         # where we call cell() multiple times
@@ -86,10 +86,10 @@ class GridRNNCellTest(test.TestCase):
         self.assertEqual(res_s2[0].h.shape, (1, 2))
         self.assertEqual(res_s2[1].c.shape, (1, 2))
         self.assertEqual(res_s2[1].h.shape, (1, 2))
-        self.assertAllClose(res_g2[0], [[0.58847463, 0.58847463]])
+        self.assertAllClose(res_g2[0], [[0.44053382, 0.44053382]])
         self.assertAllClose(
-            res_s2, (([[1.40469193, 1.40469193]], [[0.58847463, 0.58847463]]),
-                     ([[0.97726452, 1.04626071]], [[0.4927212, 0.51137757]])))
+            res_s2, (([[1.1822226, 1.18222260]], [[0.44053382, 0.44053382]]),
+                     ([[0.6710391, 0.73025036]], [[0.30998221, 0.32985979]])))
 
   def testGrid2BasicLSTMCellTied(self):
     with self.test_session(use_gpu=False) as sess:
@@ -121,18 +121,18 @@ class GridRNNCellTest(test.TestCase):
         self.assertEqual(res_s[1].c.shape, (1, 2))
         self.assertEqual(res_s[1].h.shape, (1, 2))
 
-        self.assertAllClose(res_g[0], [[0.36617181, 0.36617181]])
+        self.assertAllClose(res_g[0], [[0.27813572, 0.27813572]])
         self.assertAllClose(
-            res_s, (([[0.71053141, 0.71053141]], [[0.36617181, 0.36617181]]),
-                    ([[0.72320831, 0.80555487]], [[0.39102408, 0.42150158]])))
+            res_s, (([[0.58389962, 0.58389962]], [[0.27813572, 0.27813572]]),
+                    ([[0.52472770, 0.60331118]], [[0.27650252, 0.30985516]])))
 
         res_g, res_s = sess.run([g, s], {x: np.array([[1., 1., 1.]]), m: res_s})
         self.assertEqual(res_g[0].shape, (1, 2))
 
-        self.assertAllClose(res_g[0], [[0.36703536, 0.36703536]])
+        self.assertAllClose(res_g[0], [[0.27634764, 0.27634764]])
         self.assertAllClose(
-            res_s, (([[0.71200621, 0.71200621]], [[0.36703536, 0.36703536]]),
-                    ([[0.80941606, 0.87550586]], [[0.40108523, 0.42199609]])))
+            res_s, (([[0.58274859, 0.58274859]], [[0.27634764, 0.27634764]]),
+                    ([[0.52718318, 0.58639443]], [[0.25576338, 0.27909029]])))
 
   def testGrid2BasicLSTMCellWithRelu(self):
     with self.test_session(use_gpu=False) as sess:
@@ -155,9 +155,9 @@ class GridRNNCellTest(test.TestCase):
             m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])),)
         })
         self.assertEqual(res_g[0].shape, (1, 2))
-        self.assertAllClose(res_g[0], [[0.31667367, 0.31667367]])
-        self.assertAllClose(res_s, (([[0.29530135, 0.37520045]],
-                                     [[0.17044567, 0.21292259]]),))
+        self.assertAllClose(res_g[0], [[0.29142371, 0.29142371]])
+        self.assertAllClose(res_s, (([[0.20757815, 0.28334612]],
+                                     [[0.10947458, 0.14764377]]),))
 
   """LSTMCell
   """
@@ -192,10 +192,10 @@ class GridRNNCellTest(test.TestCase):
         self.assertEqual(res_s[1].c.shape, (1, 2))
         self.assertEqual(res_s[1].h.shape, (1, 2))
 
-        self.assertAllClose(res_g[0], [[0.95686918, 0.95686918]])
+        self.assertAllClose(res_g[0], [[0.83462638, 0.83462638]])
         self.assertAllClose(
-            res_s, (([[2.41515064, 2.41515064]], [[0.95686918, 0.95686918]]),
-                    ([[1.38917875, 1.49043763]], [[0.83884692, 0.86036491]])))
+            res_s, (([[2.19742370, 2.19742370]], [[0.83462638, 0.83462638]]),
+                    ([[1.21154201, 1.30832052]], [[0.66558737, 0.69353604]])))
 
   def testGrid2LSTMCellTied(self):
     with self.test_session(use_gpu=False) as sess:
@@ -227,10 +227,10 @@ class GridRNNCellTest(test.TestCase):
         self.assertEqual(res_s[1].c.shape, (1, 2))
         self.assertEqual(res_s[1].h.shape, (1, 2))
 
-        self.assertAllClose(res_g[0], [[0.95686918, 0.95686918]])
+        self.assertAllClose(res_g[0], [[0.83462638, 0.83462638]])
         self.assertAllClose(
-            res_s, (([[2.41515064, 2.41515064]], [[0.95686918, 0.95686918]]),
-                    ([[1.38917875, 1.49043763]], [[0.83884692, 0.86036491]])))
+            res_s, (([[2.19742370, 2.19742370]], [[0.83462638, 0.83462638]]),
+                    ([[1.21154201, 1.30832052]], [[0.66558737, 0.69353604]])))
 
   def testGrid2LSTMCellWithRelu(self):
     with self.test_session() as sess:
@@ -253,9 +253,9 @@ class GridRNNCellTest(test.TestCase):
             m: ((np.array([[0.1, 0.2]]), np.array([[0.3, 0.4]])),)
         })
         self.assertEqual(res_g[0].shape, (1, 2))
-        self.assertAllClose(res_g[0], [[2.1831727, 2.1831727]])
-        self.assertAllClose(res_s, (([[0.92270052, 1.02325559]],
-                                     [[0.66159075, 0.70475441]]),))
+        self.assertAllClose(res_g[0], [[1.98171163, 1.98171163]])
+        self.assertAllClose(res_s, (([[0.82688755, 0.91509962]],
+                                     [[0.46301097, 0.50041234]]),))
 
   """RNNCell
   """
@@ -285,11 +285,11 @@ class GridRNNCellTest(test.TestCase):
         self.assertEqual(res_s[0].shape, (2, 2))
         self.assertEqual(res_s[1].shape, (2, 2))
 
-        self.assertAllClose(res_g, ([[0.94685763, 0.94685763],
-                                     [0.99480951, 0.99480951]],))
+        self.assertAllClose(res_g, ([[0.76159418, 0.40584856],
+                                     [0.96402758, 0.52317500]],))
         self.assertAllClose(
-            res_s, ([[0.94685763, 0.94685763], [0.99480951, 0.99480951]],
-                    [[0.80049908, 0.80049908], [0.97574311, 0.97574311]]))
+            res_s, ([[0.76159418, 0.40584856], [0.96402758, 0.523175]],
+                    [[0.76159418, 0.09966799], [0.96402758, 0.19737528]]))
 
   def testGrid2BasicRNNCellTied(self):
     with self.test_session() as sess:
@@ -316,11 +316,11 @@ class GridRNNCellTest(test.TestCase):
         self.assertEqual(res_s[0].shape, (2, 2))
         self.assertEqual(res_s[1].shape, (2, 2))
 
-        self.assertAllClose(res_g, ([[0.94685763, 0.94685763],
-                                     [0.99480951, 0.99480951]],))
+        self.assertAllClose(res_g, ([[0.76159418, 0.40584856],
+                                     [0.96402758, 0.52317500]],))
         self.assertAllClose(
-            res_s, ([[0.94685763, 0.94685763], [0.99480951, 0.99480951]],
-                    [[0.80049908, 0.80049908], [0.97574311, 0.97574311]]))
+            res_s, ([[0.76159418, 0.40584856], [0.96402758, 0.52317500]],
+                    [[0.76159418, 0.09966799], [0.96402758, 0.19737528]]))
 
   def testGrid2BasicRNNCellWithRelu(self):
     with self.test_session() as sess:
@@ -341,8 +341,8 @@ class GridRNNCellTest(test.TestCase):
                      m: np.array([[0.1, 0.1]])})
         self.assertEqual(res_g[0].shape, (1, 2))
         self.assertEqual(res_s[0].shape, (1, 2))
-        self.assertAllClose(res_g, ([[1.80049896, 1.80049896]],))
-        self.assertAllClose(res_s, ([[0.80049896, 0.80049896]],))
+        self.assertAllClose(res_g, ([[1.43063116, 1.43063116]],))
+        self.assertAllClose(res_s, ([[0.76159418, 0.09966799]],))
 
   """1-LSTM
   """
@@ -735,10 +735,10 @@ class GridRNNCellTest(test.TestCase):
         })
         self.assertEqual(res[0].shape, (1, 2))
         self.assertEqual(res[1].shape, (1, 8))
-        self.assertAllClose(res[0], [[0.95686918, 0.95686918]])
+        self.assertAllClose(res[0], [[0.83462638, 0.83462638]])
         self.assertAllClose(res[1], [[
-            2.41515064, 2.41515064, 0.95686918, 0.95686918, 1.38917875,
-            1.49043763, 0.83884692, 0.86036491
+            2.19742370, 2.19742370, 0.83462638, 0.83462638, 1.21154201,
+            1.30832052, 0.66558737, 0.69353604
         ]])
 
 if __name__ == '__main__':
