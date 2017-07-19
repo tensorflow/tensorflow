@@ -432,6 +432,15 @@ py_library(
 )
 
 py_library(
+    name = "c_api_util",
+    srcs = ["framework/c_api_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+    ],
+)
+
+py_library(
     name = "common_shapes",
     srcs = ["framework/common_shapes.py"],
     srcs_version = "PY2AND3",
@@ -480,7 +489,10 @@ py_library(
         "framework/errors_impl.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":util"],
+    deps = [
+        ":c_api_util",
+        ":util",
+    ],
 )
 
 py_library(
@@ -543,6 +555,7 @@ py_library(
     srcs = ["framework/ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":c_api_util",
         ":device",
         ":dtypes",
         ":op_def_registry",
@@ -2027,6 +2040,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/ops/distributions",
     ],
 )
 
@@ -2378,6 +2392,7 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2487,7 +2502,6 @@ py_library(
     srcs = [
         "client/client_lib.py",
         "client/device_lib.py",
-        "client/session.py",
         "client/timeline.py",
     ],
     srcs_version = "PY2AND3",
@@ -2496,6 +2510,7 @@ py_library(
         ":framework",
         ":framework_for_generated_wrappers",
         ":platform",
+        ":session",
         ":session_ops",
         ":util",
         "//third_party/py/numpy",
@@ -2787,6 +2802,7 @@ tf_py_wrap_cc(
         ":tf_session_helper",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
@@ -2828,6 +2844,7 @@ py_library(
     srcs = ["client/session.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":c_api_util",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",

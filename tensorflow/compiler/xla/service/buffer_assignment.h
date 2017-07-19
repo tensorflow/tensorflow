@@ -320,10 +320,6 @@ class BufferAssignment {
     return liveness_->points_to_analysis();
   }
 
-  TuplePointsToAnalysis& mutable_points_to_analysis() const {
-    return liveness_->mutable_points_to_analysis();
-  }
-
   // Returns the BufferLiveness object used to construct this assignment.
   const BufferLiveness& liveness() const { return *liveness_; }
 
@@ -432,12 +428,11 @@ class BufferAssigner {
       LogicalBuffer::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allow_input_output_aliasing = false,
-      TuplePointsToAnalysis::Colorer colorer =
-          TuplePointsToAnalysis::DefaultColorer());
+      BufferLiveness::Colorer colorer = BufferLiveness::DefaultColorer());
 
  private:
   BufferAssigner(bool allow_input_output_aliasing,
-                 TuplePointsToAnalysis::Colorer colorer)
+                 BufferLiveness::Colorer colorer)
       : allow_input_output_aliasing_(allow_input_output_aliasing),
         colorer_(colorer) {}
   virtual ~BufferAssigner() = default;
@@ -538,7 +533,7 @@ class BufferAssigner {
   bool allow_input_output_aliasing_;
 
   // Functor used to assign colors to newly allocated logical buffers.
-  TuplePointsToAnalysis::Colorer colorer_;
+  BufferLiveness::Colorer colorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

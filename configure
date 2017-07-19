@@ -26,7 +26,7 @@ function is_windows() {
 }
 
 function is_ppc64le() {
-  [[ "${uname -m}" == "ppc64le" ]]
+  [[ "$(uname -m)" == "ppc64le" ]]
 }
 
 function sed_in_place() {
@@ -298,7 +298,7 @@ fi # TF_NEED_MKL
 
 ## Set up architecture-dependent optimization flags.
 if [ -z "$CC_OPT_FLAGS" ]; then
-  if [ is_ppc64le ]; then
+  if is_ppc64le; then
     # gcc on ppc64le does not support -march, use mcpu instead
     default_cc_opt_flags="-mcpu=native"
   else
@@ -492,6 +492,8 @@ while true; do
   if [ -z "$TF_CUDA_VERSION" ]; then
     read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: " TF_CUDA_VERSION
   fi
+  # Set default CUDA version if not set
+  TF_CUDA_VERSION=${TF_CUDA_VERSION:-8.0}
 
   fromuser=""
   if [ -z "$CUDA_TOOLKIT_PATH" ]; then
@@ -545,11 +547,7 @@ while true; do
   CUDA_TOOLKIT_PATH=""
 done
 
-# Set default CUDA version if not set
-if [ -z "$TF_CUDA_VERSION" ]; then
-  TF_CUDA_VERSION="8.0"
-  export TF_CUDA_VERSION
-fi
+export TF_CUDA_VERSION
 write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
 
 # Set up which gcc nvcc should use as the host compiler
@@ -587,6 +585,8 @@ while true; do
   if [ -z "$TF_CUDNN_VERSION" ]; then
     read -p "Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: " TF_CUDNN_VERSION
   fi
+  # Set default CUDNN version if not set
+  TF_CUDNN_VERSION=${TF_CUDNN_VERSION:-6}
 
   fromuser=""
   if [ -z "$CUDNN_INSTALL_PATH" ]; then
@@ -659,11 +659,7 @@ while true; do
   CUDNN_INSTALL_PATH=""
 done
 
-# Set default CUDNN version if not set
-if [ -z "$TF_CUDNN_VERSION" ]; then
-  TF_CUDNN_VERSION="6"
-  export TF_CUDNN_VERSION
-fi
+export TF_CUDNN_VERSION
 write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 
 # Configure the compute capabilities that TensorFlow builds for.

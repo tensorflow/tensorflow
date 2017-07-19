@@ -52,19 +52,8 @@ def load_op_library(library_filename):
   Raises:
     RuntimeError: when unable to load the library or get the python wrappers.
   """
-  status = py_tf.TF_NewStatus()
-
-  lib_handle = py_tf.TF_LoadLibrary(library_filename, status)
-  try:
-    error_code = py_tf.TF_GetCode(status)
-    if error_code != 0:
-      error_msg = compat.as_text(py_tf.TF_Message(status))
-      # pylint: disable=protected-access
-      raise errors_impl._make_specific_exception(
-          None, None, error_msg, error_code)
-      # pylint: enable=protected-access
-  finally:
-    py_tf.TF_DeleteStatus(status)
+  with errors_impl.raise_exception_on_not_ok_status() as status:
+    lib_handle = py_tf.TF_LoadLibrary(library_filename, status)
 
   op_list_str = py_tf.TF_GetOpList(lib_handle)
   op_list = op_def_pb2.OpList()
@@ -107,15 +96,5 @@ def load_file_system_library(library_filename):
   Raises:
     RuntimeError: when unable to load the library.
   """
-  status = py_tf.TF_NewStatus()
-  lib_handle = py_tf.TF_LoadLibrary(library_filename, status)
-  try:
-    error_code = py_tf.TF_GetCode(status)
-    if error_code != 0:
-      error_msg = compat.as_text(py_tf.TF_Message(status))
-      # pylint: disable=protected-access
-      raise errors_impl._make_specific_exception(
-          None, None, error_msg, error_code)
-      # pylint: enable=protected-access
-  finally:
-    py_tf.TF_DeleteStatus(status)
+  with errors_impl.raise_exception_on_not_ok_status() as status:
+    lib_handle = py_tf.TF_LoadLibrary(library_filename, status)

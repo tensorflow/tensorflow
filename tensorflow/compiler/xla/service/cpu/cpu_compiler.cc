@@ -169,7 +169,7 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
     fake_argv_storage.push_back("");
     for (const auto& it : options) {
       // Skip options the XLA backend itself consumes.
-      if (it.first != kXlaParallelCpuOption) {
+      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
         if (it.second.empty()) {
           fake_argv_storage.push_back(it.first);
         } else {
@@ -359,8 +359,8 @@ Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
 
 Status InitializeIRDumpHooks(
     const HloModule& module,
-    SimpleOrcJIT::OptimizationCallback* pre_optimization_ir_dump_hook,
-    SimpleOrcJIT::OptimizationCallback* post_optimization_ir_dump_hook) {
+    CompilerFunctor::ModuleHook* pre_optimization_ir_dump_hook,
+    CompilerFunctor::ModuleHook* post_optimization_ir_dump_hook) {
   const string& dump_ir_to = module.config().debug_options().xla_dump_ir_to();
   if (dump_ir_to.empty()) {
     return Status::OK();
@@ -385,16 +385,14 @@ Status InitializeIRDumpHooks(
 
   *pre_optimization_ir_dump_hook =
       [unoptimized_ir_file_name](const llvm::Module& module) {
-        TF_RETURN_IF_ERROR(AppendIRToFile(unoptimized_ir_file_name,
-                                          llvm_ir::DumpModuleToString(module)));
-        return Status::OK();
+        return AppendIRToFile(unoptimized_ir_file_name,
+                              llvm_ir::DumpModuleToString(module));
       };
 
   *post_optimization_ir_dump_hook =
       [optimized_ir_file_name](const llvm::Module& module) {
-        TF_RETURN_IF_ERROR(AppendIRToFile(optimized_ir_file_name,
-                                          llvm_ir::DumpModuleToString(module)));
-        return Status::OK();
+        return AppendIRToFile(optimized_ir_file_name,
+                              llvm_ir::DumpModuleToString(module));
       };
 
   return Status::OK();
@@ -409,9 +407,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   std::call_once(llvm_command_line_options_initialized,
                  &InitializeLLVMCommandLineOptions, module->config());
 
-  SimpleOrcJIT::OptimizationCallback pre_optimization_ir_dump_hook;
-  SimpleOrcJIT::OptimizationCallback post_optimization_ir_dump_hook;
-
+  CompilerFunctor::ModuleHook pre_optimization_ir_dump_hook;
+  CompilerFunctor::ModuleHook post_optimization_ir_dump_hook;
   TF_RETURN_IF_ERROR(InitializeIRDumpHooks(*module,
                                            &pre_optimization_ir_dump_hook,
                                            &post_optimization_ir_dump_hook));
@@ -498,7 +495,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
 
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx);
+                         &hlo_to_profile_idx, jit->target_machine());
 
     std::unique_ptr<std::map<HloInstruction*, string>> function_names(
         new std::map<HloInstruction*, string>());
@@ -572,7 +569,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx);
+                         &hlo_to_profile_idx, jit->target_machine());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -736,7 +733,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
-                         /*hlo_to_profile_idx=*/nullptr);
+                         /*hlo_to_profile_idx=*/nullptr, target_machine.get());
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -757,10 +754,17 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
 
+    CompilerFunctor::ModuleHook pre_optimization_ir_dump_hook;
+    CompilerFunctor::ModuleHook post_optimization_ir_dump_hook;
+    TF_RETURN_IF_ERROR(InitializeIRDumpHooks(*module,
+                                             &pre_optimization_ir_dump_hook,
+                                             &post_optimization_ir_dump_hook));
+
     Disassembler disassembler(*target_machine);
-    CompilerFunctor compiler_functor(target_machine.get(), &disassembler,
-                                     opt_level,
-                                     CompilerFunctor::AllIntrinsics());
+    CompilerFunctor compiler_functor(
+        target_machine.get(), &disassembler, opt_level,
+        CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
+        post_optimization_ir_dump_hook);
     llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
         compiler_functor(llvm_module);
     llvm::StringRef object_file_data_ref = object_file.getBinary()->getData();

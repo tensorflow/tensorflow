@@ -45,7 +45,7 @@ TEST(StatsOpsTest, GrowTreeV4_ShapeFn) {
 
 TEST(StatsOpsTest, ProcessInputV4_ShapeFn) {
   ShapeInferenceTestOp op("ProcessInputV4");
-  INFER_OK(op, "[1];[1];?;?;?;?;?;?", "[?]");
+  INFER_OK(op, "[1];[1];?;?;?;?;?;?;?", "[?]");
 }
 
 TEST(StatsOpsTest, FinalizeTree_ShapeFn) {

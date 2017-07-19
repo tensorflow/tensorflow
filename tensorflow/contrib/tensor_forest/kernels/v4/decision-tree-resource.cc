@@ -18,6 +18,7 @@ namespace tensorflow {
 namespace tensorforest {
 
 using decision_trees::DecisionTree;
+using decision_trees::Leaf;
 using decision_trees::TreeNode;
 
 int32 DecisionTreeResource::TraverseTree(
@@ -51,13 +52,15 @@ void DecisionTreeResource::SplitNode(int32 node_id, SplitCandidate* best,
   new_children->push_back(newid);
   TreeNode* new_left = tree->add_nodes();
   new_left->mutable_node_id()->set_value(newid++);
-  new_left->mutable_leaf();
+  Leaf* left_leaf = new_left->mutable_leaf();
+  model_op_->ExportModel(best->left_stats(), left_leaf);
 
   // right
   new_children->push_back(newid);
   TreeNode* new_right = tree->add_nodes();
   new_right->mutable_node_id()->set_value(newid);
-  new_right->mutable_leaf();
+  Leaf* right_leaf = new_right->mutable_leaf();
+  model_op_->ExportModel(best->right_stats(), right_leaf);
 
   node->clear_leaf();
   node->mutable_binary_node()->Swap(best->mutable_split());
@@ -72,7 +75,7 @@ void DecisionTreeResource::SplitNode(int32 node_id, SplitCandidate* best,
 void DecisionTreeResource::MaybeInitialize() {
   DecisionTree* tree = decision_tree_->mutable_decision_tree();
   if (tree->nodes_size() == 0) {
-    tree->add_nodes()->mutable_leaf();
+    model_op_->InitModel(tree->add_nodes()->mutable_leaf());
   } else if (node_evaluators_.empty()) {  // reconstruct evaluators
     for (const auto& node : tree->nodes()) {
       if (node.has_leaf()) {

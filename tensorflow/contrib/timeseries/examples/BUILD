@@ -25,6 +25,7 @@ py_binary(
 
 py_test(
     name = "predict_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "predict_test.py",
     ],
@@ -32,9 +33,6 @@ py_test(
         "data/period_trend.csv",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
     deps = [
         ":predict",
     ],
@@ -58,13 +56,11 @@ py_binary(
 
 py_test(
     name = "known_anomaly_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "known_anomaly_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
     deps = [
         ":known_anomaly",
     ],
@@ -89,15 +85,41 @@ py_binary(
 
 py_test(
     name = "multivariate_test",
+    timeout = "long",  # Moderate but for asan
     srcs = [
         "multivariate_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip_gpu",  # b/63391119
-    ],
     deps = [
         ":multivariate",
+    ],
+)
+
+py_binary(
+    name = "lstm",
+    srcs = [
+        "lstm.py",
+    ],
+    data = [
+        "data/multivariate_periods.csv",
+    ],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "lstm_test",
+    timeout = "long",  # Moderate but for asan
+    srcs = [
+        "lstm_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":lstm",
     ],
 )
 

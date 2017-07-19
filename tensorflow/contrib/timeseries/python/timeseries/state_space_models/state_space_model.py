@@ -391,7 +391,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
 
     Args:
       current_times: A [batch size] Tensor for times for each observation.
-      current_values: A [batch size] Tensor of values for each observaiton.
+      current_values: A [batch size] Tensor of values for each observation.
       state: A tuple of (mean, covariance, previous_times) having shapes
           mean; [batch size x state dimension]
           covariance; [batch size x state dimension x state dimension]

@@ -57,6 +57,14 @@ Computation CreateScalarAddComputation(PrimitiveType type,
          const ComputationDataHandle& rhs) { return b->Add(lhs, rhs); });
 }
 
+Computation CreateScalarMultiplyComputation(PrimitiveType type,
+                                            ComputationBuilder* builder) {
+  return CreateScalarComputation(
+      "add", type, builder,
+      [](ComputationBuilder* b, const ComputationDataHandle& lhs,
+         const ComputationDataHandle& rhs) { return b->Mul(lhs, rhs); });
+}
+
 Computation CreateScalarGeComputation(PrimitiveType type,
                                       ComputationBuilder* builder) {
   return CreateScalarComputation(

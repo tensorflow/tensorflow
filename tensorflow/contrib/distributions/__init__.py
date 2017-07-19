@@ -126,6 +126,7 @@ _allowed_symbols = [
     'Dirichlet',
     'DirichletMultinomial',
     'Multinomial',
+    'VectorDiffeomixture',
     'VectorLaplaceDiag',
     'WishartCholesky',
     'WishartFull',

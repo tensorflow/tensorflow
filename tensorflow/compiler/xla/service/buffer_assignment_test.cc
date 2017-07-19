@@ -92,8 +92,7 @@ class BufferAssignmentTest : public HloTestBase {
   }
 
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
-      HloModule* module, TuplePointsToAnalysis::Colorer colorer,
-      int64 alignment = 1) {
+      HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
                backend_->compiler()->BufferSizeBytesFunction(),
@@ -381,9 +380,10 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  auto colorer = [](TuplePointsToAnalysis* points_to_analysis) {
+  auto colorer = [](const BufferLiveness& buffer_liveness) {
     int color = 0;
-    for (auto& buffer : points_to_analysis->logical_buffers()) {
+    for (auto& buffer :
+         buffer_liveness.points_to_analysis().logical_buffers()) {
       buffer->set_color(LogicalBuffer::Color(color++));
     }
     return Status::OK();
@@ -436,9 +436,11 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  auto colorer = [](TuplePointsToAnalysis* points_to_analysis) {
-    for (auto& buffer : points_to_analysis->logical_buffers()) {
-      const auto& aliases = points_to_analysis->GetBufferAliases(*buffer);
+  auto colorer = [](const BufferLiveness& buffer_liveness) {
+    for (auto& buffer :
+         buffer_liveness.points_to_analysis().logical_buffers()) {
+      const auto& aliases =
+          buffer_liveness.points_to_analysis().GetBufferAliases(*buffer);
       for (const auto& alias : aliases) {
         if (alias.instruction()->opcode() == HloOpcode::kAdd ||
             alias.instruction()->opcode() == HloOpcode::kMultiply) {

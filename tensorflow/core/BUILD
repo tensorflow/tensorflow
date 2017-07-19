@@ -65,7 +65,7 @@ load(
     "full_path",
     "if_android",
     "if_ios",
-    "if_x86",
+    "if_linux_x86_64",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -112,6 +112,9 @@ load(
     "tf_lib_proto_parsing_deps",
     "tf_additional_verbs_lib_defines",
     "tf_additional_mpi_lib_defines",
+    "tf_additional_gpu_tracer_srcs",
+    "tf_additional_gpu_tracer_deps",
+    "tf_additional_gpu_tracer_cuda_deps",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -282,6 +285,7 @@ cc_library(
         "platform/env_time.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
+        "platform/grpc_response_reader.h",
         "platform/init_main.h",
         "platform/logging.h",
         "platform/macros.h",
@@ -867,8 +871,6 @@ filegroup(
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/tensor_bundle:android_srcs",
-        "common_runtime/gpu/gpu_tracer.cc",
-        "common_runtime/gpu/gpu_tracer.h",
     ] + glob(
         [
             "client/**/*.cc",
@@ -1267,6 +1269,7 @@ cc_library(
                 "platform/**/cuda.h",
                 "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
+                "platform/**/gpu_tracer.cc",
             ],
         ),
     }) + tf_additional_lib_srcs(
@@ -1276,6 +1279,7 @@ cc_library(
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
+            "platform/**/gpu_tracer.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
         # dependency.
@@ -1350,7 +1354,7 @@ cc_library(
     name = "lib_hash_crc32c_accelerate_internal",
     srcs = ["lib/hash/crc32c_accelerate.cc"],
     # -msse4.2 enables the use of crc32c compiler builtins.
-    copts = tf_copts() + if_x86(["-msse4.2"]),
+    copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
 )
 
 cc_library(
@@ -1768,19 +1772,17 @@ cc_library(
 
 tf_cuda_library(
     name = "gpu_tracer",
-    srcs = [
-        "common_runtime/gpu/gpu_tracer.cc",
-    ],
+    srcs = tf_additional_gpu_tracer_srcs(),
     hdrs = [
-        "common_runtime/gpu/gpu_tracer.h",
+        "platform/gpu_tracer.h",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps(),
+    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_gpu_tracer_cuda_deps(),
     deps = [
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
-    ],
+    ] + tf_additional_gpu_tracer_deps(),
 )
 
 tf_cuda_library(
@@ -2877,7 +2879,7 @@ cc_test(
 tf_cc_test_gpu(
     name = "gpu_tracer_test",
     size = "small",
-    srcs = ["common_runtime/gpu/gpu_tracer_test.cc"],
+    srcs = ["platform/gpu_tracer_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],

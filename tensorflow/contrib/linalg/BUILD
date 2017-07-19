@@ -60,6 +60,7 @@ cuda_py_tests(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["noasan"],  # times out b/63678675
 )
 
 cuda_py_tests(

@@ -27,6 +27,7 @@ from tensorflow.contrib.tensor_forest.python import tensor_forest
 from tensorflow.contrib.tensor_forest.python.ops import model_ops
 from tensorflow.contrib.tensor_forest.python.ops import stats_ops
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
 
@@ -240,6 +241,22 @@ class RandomTreeGraphsV4(tensor_forest.RandomTreeGraphs):
     if input_data is None:
       input_data = []
 
+    leaf_ids = model_ops.traverse_tree_v4(
+        self.variables.tree,
+        input_data,
+        sparse_indices,
+        sparse_values,
+        sparse_shape,
+        input_spec=data_spec.SerializeToString(),
+        params=self.params.serialized_params_proto)
+
+    update_model = model_ops.update_model_v4(
+        self.variables.tree,
+        leaf_ids,
+        input_labels,
+        input_weights,
+        params=self.params.serialized_params_proto)
+
     finished_nodes = stats_ops.process_input_v4(
         self.variables.tree,
         self.variables.stats,
@@ -249,13 +266,17 @@ class RandomTreeGraphsV4(tensor_forest.RandomTreeGraphs):
         sparse_shape,
         input_labels,
         input_weights,
+        leaf_ids,
         input_spec=data_spec.SerializeToString(),
         random_seed=random_seed,
         params=self.params.serialized_params_proto)
 
-    return stats_ops.grow_tree_v4(self.variables.tree, self.variables.stats,
-                                  finished_nodes,
-                                  params=self.params.serialized_params_proto)
+    with ops.control_dependencies([update_model]):
+      return stats_ops.grow_tree_v4(
+          self.variables.tree,
+          self.variables.stats,
+          finished_nodes,
+          params=self.params.serialized_params_proto)
 
   def inference_graph(self, input_data, data_spec, sparse_features=None):
     sparse_indices = []
@@ -294,6 +315,7 @@ class RandomTreeGraphsV4(tensor_forest.RandomTreeGraphs):
 
 
 class RandomForestGraphsV4(tensor_forest.RandomForestGraphs):
+  """Constructs training/inference graphs for TensorForest v4."""
 
   def __init__(self, params, tree_graphs=None, tree_variables_class=None,
                **kwargs):
@@ -303,3 +325,7 @@ class RandomForestGraphsV4(tensor_forest.RandomForestGraphs):
         params, tree_graphs=tree_graphs or RandomTreeGraphsV4,
         tree_variables_class=(tree_variables_class or TreeTrainingVariablesV4),
         **kwargs)
+
+  def get_all_resource_handles(self):
+    return ([self.variables[i].tree for i in range(len(self.trees))] +
+            [self.variables[i].stats for i in range(len(self.trees))])

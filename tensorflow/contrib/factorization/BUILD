@@ -215,7 +215,11 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "noasan",  # times out b/63678675
+        "nomsan",
+    ],
 )
 
 # Kernel tests

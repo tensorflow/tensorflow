@@ -128,6 +128,7 @@ file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/tpu/profiler/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_PYTHON(
@@ -340,6 +341,7 @@ add_python_module("tensorflow/contrib/keras/api/keras")
 add_python_module("tensorflow/contrib/keras/api/keras/activations")
 add_python_module("tensorflow/contrib/keras/api/keras/applications")
 add_python_module("tensorflow/contrib/keras/api/keras/applications/inception_v3")
+add_python_module("tensorflow/contrib/keras/api/keras/applications/mobilenet")
 add_python_module("tensorflow/contrib/keras/api/keras/applications/resnet50")
 add_python_module("tensorflow/contrib/keras/api/keras/applications/vgg16")
 add_python_module("tensorflow/contrib/keras/api/keras/applications/vgg19")
@@ -455,6 +457,7 @@ add_python_module("tensorflow/contrib/pi_examples")
 add_python_module("tensorflow/contrib/pi_examples/camera")
 add_python_module("tensorflow/contrib/pi_examples/label_image")
 add_python_module("tensorflow/contrib/pi_examples/label_image/data")
+add_python_module("tensorflow/contrib/predictor")
 add_python_module("tensorflow/contrib/quantization")
 add_python_module("tensorflow/contrib/quantization/python")
 add_python_module("tensorflow/contrib/remote_fused_graph/pylib")
@@ -539,8 +542,10 @@ add_python_module("tensorflow/contrib/timeseries/python/timeseries")
 add_python_module("tensorflow/contrib/timeseries/python/timeseries/state_space_models")
 add_python_module("tensorflow/contrib/tpu")
 add_python_module("tensorflow/contrib/tpu/ops")
+add_python_module("tensorflow/contrib/tpu/profiler")
 add_python_module("tensorflow/contrib/tpu/python")
 add_python_module("tensorflow/contrib/tpu/python/ops")
+add_python_module("tensorflow/contrib/tpu/python/profiler")
 add_python_module("tensorflow/contrib/tpu/python/tpu")
 add_python_module("tensorflow/contrib/training")
 add_python_module("tensorflow/contrib/training/python")
@@ -691,6 +696,8 @@ GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
 GENERATE_PYTHON_OP_LIB("stateless_random_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/stateless/gen_stateless_random_ops.py)
+GENERATE_PYTHON_OP_LIB("debug_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/debug/ops/gen_debug_ops.py)
 
 add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
@@ -760,6 +767,7 @@ if(WIN32)
     add_library(pywrap_tensorflow_internal_static STATIC
         ${pywrap_tensorflow_internal_src}
         $<TARGET_OBJECTS:tf_c>
+        $<TARGET_OBJECTS:tf_c_python_api>
         $<TARGET_OBJECTS:tf_core_lib>
         $<TARGET_OBJECTS:tf_core_cpu>
         $<TARGET_OBJECTS:tf_core_framework>
@@ -808,6 +816,7 @@ endif(WIN32)
 add_library(pywrap_tensorflow_internal SHARED
     ${pywrap_tensorflow_internal_src}
     $<TARGET_OBJECTS:tf_c>
+    $<TARGET_OBJECTS:tf_c_python_api>
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>

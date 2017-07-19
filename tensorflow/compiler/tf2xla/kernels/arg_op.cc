@@ -60,6 +60,9 @@ class ArgOp : public XlaOpKernel {
         case XlaCompiler::Argument::kTensorArray:
           kind = XlaResource::kTensorArray;
           break;
+        case XlaCompiler::Argument::kStack:
+          kind = XlaResource::kStack;
+          break;
         default:
           CHECK(false);
       }

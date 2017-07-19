@@ -7,6 +7,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//visibility:public"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "nn_py",
     srcs = [
@@ -14,12 +16,31 @@ py_library(
         "python/__init__.py",
         "python/ops/__init__.py",
         "python/ops/cross_entropy.py",
+        "python/ops/sampling_ops.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:util",
+    ],
+)
+
+py_test(
+    name = "sampling_ops_test",
+    size = "small",
+    srcs = ["python/ops/sampling_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":nn_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn",
     ],
 )
 

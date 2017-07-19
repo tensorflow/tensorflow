@@ -63,7 +63,11 @@ class GrpcBufferWriter GRPC_FINAL
           &slice_, GPR_SLICE_LENGTH(slice_) - count);
       g_core_codegen_interface->gpr_slice_buffer_add(slice_buffer_, slice_);
     }
-    have_backup_ = true;
+    // It's dangerous to keep an inlined grpc_slice as the backup slice, since
+    // on a following Next() call, a reference will be returned to this slice
+    // via GRPC_SLICE_START_PTR, which will not be an adddress held by
+    // slice_buffer_.
+    have_backup_ = backup_slice_.refcount != NULL;
     byte_count_ -= count;
   }
 

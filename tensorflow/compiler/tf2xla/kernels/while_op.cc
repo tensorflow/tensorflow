@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -55,6 +56,9 @@ Status MakeXlaCompilerArgumentsFromInputs(
           break;
         case XlaResource::kTensorArray:
           arg.kind = XlaCompiler::Argument::kTensorArray;
+          break;
+        case XlaResource::kStack:
+          arg.kind = XlaCompiler::Argument::kStack;
           break;
         case XlaResource::kInvalid:
           CHECK(false);
@@ -180,7 +184,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   } else {
     CHECK(!body.xla_input_shapes.empty());
     body_input_shape = body.xla_input_shapes[0];
-    CHECK(!body.xla_input_shapes.empty());
+    CHECK(!cond.xla_input_shapes.empty());
     cond_input_shape = cond.xla_input_shapes[0];
   }
 

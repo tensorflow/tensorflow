@@ -47,7 +47,7 @@ tf_py_test(
 
 tf_py_test(
     name = "barrier_ops_test",
-    size = "small",
+    size = "medium",  # NOTE(ebrevdo): This test is NOT small.
     srcs = ["barrier_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -72,6 +72,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
     ],
+    tags = ["nomac"],  # b/35468214
 )
 
 tf_py_test(
@@ -1356,7 +1357,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "gather_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["gather_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2063,6 +2064,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["noasan"],  # times out b/63680444
 )
 
 cuda_py_test(

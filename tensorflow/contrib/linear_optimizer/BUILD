@@ -131,6 +131,7 @@ py_test(
     deps = [
         ":sdca_estimator_py",
         "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_tensor",
