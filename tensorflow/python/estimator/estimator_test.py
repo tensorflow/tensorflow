@@ -1006,6 +1006,24 @@ class EstimatorEvaluateTest(test.TestCase):
     est.train(dummy_input_fn, steps=1)
     est.evaluate(dummy_input_fn, steps=1)
 
+  def test_evaluation_hooks_are_used(self):
+    hook = test.mock.MagicMock(
+        wraps=training.SessionRunHook(), spec=training.SessionRunHook)
+
+    def _model_fn_hooks(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          evaluation_hooks=[hook])
+
+    est = estimator.Estimator(model_fn=_model_fn_hooks)
+    est.train(dummy_input_fn, steps=1)
+    self.assertFalse(hook.begin.called)
+    est.evaluate(dummy_input_fn, steps=1)
+    self.assertTrue(hook.begin.called)
+
 
 class EstimatorPredictTest(test.TestCase):
 

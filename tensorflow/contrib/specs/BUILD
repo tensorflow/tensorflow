@@ -32,6 +32,7 @@ py_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "@six_archive//:six",
     ],
 )
 

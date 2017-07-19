@@ -41,11 +41,54 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace cpu {
+
+// Wraps an llvm::TargetMachine and parses out some information that feeds into
+// code LLVM IR generation decisions.
+//
+// Ideally we'd be able to use llvm::TargetTransformInfo here (since its
+// interface is pretty much a perfect fit for our use case), but obtaining an
+// instance of llvm::TargetTransformInfo outside an LLVM pass pipeline without
+// super-ugly hacks is difficult.
+//
+// TODO(b/27457097): See if the LLVM community will be receptive to exposing an
+// API that lets us directly create and use llvm::TargetTransformInfo instances
+// outside of a pass manager.
+class TargetMachineFeatures {
+ public:
+  TargetMachineFeatures(llvm::TargetMachine* target_machine)
+      : target_machine_(target_machine) {}
+
+  // Return the vectorization factor, which is the number of bytes of data
+  // explicitly vectorized routines will try to process at once.
+  int vectorization_factor_in_bytes() const {
+    // Ideally this should be a function of the cache line size (which we can
+    // get from llvm::TargetTransformInfo::getCacheLineSize) of the target
+    // machine.  Guess a value of 128 bytes for now.
+    return 128;
+  }
+
+  // Return the size of the largest register size in bytes.  We need to pass in
+  // "function" since llvm functions can contain annotations for specializing
+  // them to specific micro-architectures (though currently XLA does not use
+  // this functionality).
+  //
+  // Ideally we should have been able to use
+  // llvm::TargetTransformInfo::getRegisterBitWidth(true) here.
+  unsigned largest_register_size_in_bytes(llvm::Function* function);
+
+ private:
+  unsigned largest_register_size_in_bytes_impl(llvm::Function* function) const;
+
+  tensorflow::gtl::FlatMap<llvm::Function*, int>
+      largest_register_size_in_bytes_;
+  llvm::TargetMachine* target_machine_;
+};
 
 // This class is the top-level API for the XLA HLO --> LLVM IR compiler.  It
 // implements the DfsHloVisitor interface and emits HLO computations as LLVM IR
@@ -63,7 +106,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
             const std::unordered_map<const HloInstruction*, size_t>*
-                hlo_to_profile_idx);
+                hlo_to_profile_idx,
+            llvm::TargetMachine* target_machine);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -298,6 +342,71 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       const std::vector<llvm::Constant*>& array_elements, const Shape& shape,
       int64 dimension_index);
 
+  // Tries to codegen a reduction operation using vectorized instructions.
+  // Returns true if successful, and false on failure.  On failure, sets
+  // "failure_reason" to a string describing why it could not vectorize the
+  // reduction.
+  //
+  // TODO(sanjoy): Some of the things we do here can be abstracted out into
+  // concepts that generalize over other vectorizable operations.  We should
+  // consider pulling out these abstractions into a VectorizingIrEmitter or
+  // something similar.
+  StatusOr<bool> EmitVectorizedReduce(
+      HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
+      tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function,
+      string* failure_reason);
+
+  // We'd like to keep one or two one cache-line's worth of data in registers
+  // without generating IR with illegal (e.g. excessively large or
+  // non-power-of-two) vector types.  We do this by introducing a layer of
+  // abstraction: we introduce a high level vector-like concept called a
+  // "sharded vector" that models data paralleism, and is mapped to a sequence
+  // scalar and vector llvm::Value s.
+  //
+  // For example, we can represent 29 f32 elements by a sharded vector mapped to
+  // a sequence of LLVM values of types [<16 x f32>, <8 x f32>, <4 x f32>, f32].
+  // Note that the last element is scalar.
+  //
+  // There is no requirement on the ordering or the uniqueness of the elements
+  // mapped to sharded vectors -- we allow repeated elements, and we allow
+  // elements to appear in any order.
+  using ShardedVector = std::vector<llvm::Value*>;
+
+  // A sharded vector type is the element-wise llvm::Type's of some
+  // ShardedVector.
+  using ShardedVectorType = std::vector<llvm::Type*>;
+
+  // Create a sharded vector type corresponding to a "element_count" long
+  // sequence of "element_type" values.
+  ShardedVectorType CreateShardedVectorType(PrimitiveType element_type,
+                                            unsigned element_count);
+
+  // Emit LLVM IR to store the sharded vector "value_to_store" to
+  // "store_address".
+  void EmitShardedVectorStore(llvm::Value* store_address,
+                              const ShardedVector& value_to_store,
+                              const int alignment,
+                              const llvm_ir::IrArray& containing_array);
+
+  using ReductionGenerator = std ::function<llvm::Value*(
+      llvm::IRBuilder<>*, llvm::Value*, llvm::Value*)>;
+
+  // Tries to match the reduction function "function" to a known reduction
+  // pattern.  Returns a non-null ReductionGenerator on a successful match,
+  // which can be used to generate the LLVM IR corresponding to said reduction.
+  // On failure, this stores a reason string into "failure_reason".
+  ReductionGenerator MatchReductionGenerator(HloComputation* function,
+                                             string* failure_reason) const;
+
+  // Emits the inner loop nest that runs the reduction.  Helper function for
+  // EmitVectorizedReduce.
+  StatusOr<ShardedVector> EmitInnerLoopForVectorizedReduction(
+      const ReductionGenerator& reduction_generator,
+      const llvm_ir::IrArray::Index& output_index,
+      const ShardedVectorType& accumulator_type, HloInstruction* init_value,
+      HloInstruction* arg, tensorflow::gtl::ArraySlice<int64> dimensions,
+      unsigned element_alignment);
+
   // Name of the computation entry function. This function serves as the
   // top-level "main" of the computation and will be invoked by the JIT.
   string entry_function_name_;
@@ -436,6 +545,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                            llvm::Value* program_buffer_address);
 
   const HloModuleConfig& hlo_module_config_;
+
+  TargetMachineFeatures target_machine_features_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

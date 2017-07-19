@@ -89,3 +89,5 @@ pip3.5 install wheel==0.29.0
 pip3.5 install portpicker
 
 pip3.5 install werkzeug
+
+pip3.5 install grpcio

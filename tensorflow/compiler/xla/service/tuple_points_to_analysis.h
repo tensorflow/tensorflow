@@ -145,9 +145,6 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 // the potential sources of each buffer in each instruction's output.
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
-  using Colorer =
-      std::function<Status(TuplePointsToAnalysis* points_to_analysis)>;
-
   // Runs points-to analysis on 'module'.
   static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
       const HloModule* module);
@@ -212,15 +209,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
                       HloInstruction* on_false) override;
 
   string ToString() const;
-
-  static Colorer DefaultColorer() {
-    return [](TuplePointsToAnalysis* points_to_analysis) {
-      for (auto& buffer : points_to_analysis->logical_buffers()) {
-        buffer->set_color(LogicalBuffer::Color(0));
-      }
-      return Status::OK();
-    };
-  }
 
  private:
   explicit TuplePointsToAnalysis(const HloModule* module) : module_(module) {}

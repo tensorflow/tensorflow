@@ -50,6 +50,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":opt_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework_for_generated_wrappers",

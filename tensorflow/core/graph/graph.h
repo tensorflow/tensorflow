@@ -101,6 +101,10 @@ class Node {
   // use assigned_device_name() below.
   const string& requested_device() const;
 
+  // This changes the user requested device but not necessarily the device that
+  // on which the operation will run.
+  void set_requested_device(const string& device);
+
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
   // TODO(josh11b): Validate that the assigned_device, if not empty:
