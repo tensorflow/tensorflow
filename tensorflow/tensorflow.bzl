@@ -943,6 +943,8 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
       linkopts=select({
           "//conditions:default": [
               "-lm",
+              "-Wl,-rpath=$$ORIGIN/..",
+              "-Wl,-rpath=$$ORIGIN/../..",
           ],
           clean_dep("//tensorflow:darwin"): [],
       }),)
@@ -1005,7 +1007,8 @@ def tf_py_wrap_cc(name,
           "-Wl,--version-script",
           clean_dep("//tensorflow:tf_version_script.lds"),
           # Look for dynamic dependencies in tensorflow/ rather than
-          # tensorflow/python/
+          # tensorflow/python/. This allows _pywrap_tensorflow_internal.so to
+          # find libtfframework.so.
           "-Wl,-rpath=$$ORIGIN/..",
       ]
   })
