@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 
 #include "tensorflow/cc/framework/grad_op_registry.h"
@@ -463,32 +464,24 @@ Status BatchMatMulGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
 
+class ReshapeGradientsWRTBroadcasting {
+ public:
+  ReshapeGradientsWRTBroadcasting(const ::tensorflow::Scope& scope,
+                                  const Output& x, const Output& y,
+                                  const Output& grad_x, const Output& grad_y) {
+    const Output sx = Shape(scope, x);
+    const Output sy = Shape(scope, y);
+    const internal::BroadcastGradientArgs broadcast_gradient_args(scope, sx,
+                                                                  sy);
+    reshaped_grad_x =
+        Reshape(scope, Sum(scope, grad_x, broadcast_gradient_args.r0), sx);
+    reshaped_grad_y =
+        Reshape(scope, Sum(scope, grad_y, broadcast_gradient_args.r1), sy);
+  }
 
-
-
-// ReshapeGradientsWRTBroadcasting::ReshapeGradientsWRTBroadcasting(
-//     const ::tensorflow::Scope& scope, const Output& x, const Output& y,
-//     const Output& grad_x, const Output& grad_y) {
-//   const Output sx = Shape(scope, x);
-//   const Output sy = Shape(scope, y);
-//   const BroadcastGradientArgs broadcast_gradient_args(scope, sx, sy);
-//
-//   {
-//
-//   }
-//
-//   reshaped_grad_x = SparseReduceSum(scope, )
-// }
-//
-//
-// class ReshapeGradientsWRTBroadcasting {
-//   ReshapeGradientsWRTBroadcasting(const ::tensorflow::Scope& scope,
-//                                   const Output& x, const Output& y,
-//                                   const Output& grad_x, const Output& grad_y);
-//   Output reshaped_grad_x;
-//   Output reshaped_grad_y;
-// };
-
+  Output reshaped_grad_x;
+  Output reshaped_grad_y;
+};
 
 Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
                              const std::vector<Output>& grad_inputs,
@@ -496,19 +489,23 @@ Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
   // f = (x - y) * (x - y)
   // df/dx = 2 * (x - y) * (+1)
   // df/dy = 2 * (x - y) * (-1)
-  const auto two = Cast(scope, Const(scope, 2), op.input(0).type());
-  const auto difference = Subtract(scope, op.input(0), op.input(1));
-  const auto interim = Mul(scope, two, difference);
+  const auto x = op.input(0);
+  const auto y = op.input(1);
+  const auto two = Cast(scope, Const(scope, 2), x.type());
+  const auto interim = Mul(scope, two, Subtract(scope, x, y));
   const auto df_dx = interim;
   const auto df_dy = Negate(scope, interim);
 
   // grad(x) = grad(f) * conj(df/dx)
-  grad_outputs->push_back(
-      Mul(scope, grad_inputs[0], ConjugateHelper(scope, df_dx)));
-
+  const auto grad_x = Mul(scope, grad_inputs[0], ConjugateHelper(scope, df_dx));
   // grad(y) = grad(f) * conj(df/dy)
-  grad_outputs->push_back(
-      Mul(scope, grad_inputs[0], ConjugateHelper(scope, df_dy)));
+  const auto grad_y = Mul(scope, grad_inputs[0], ConjugateHelper(scope, df_dy));
+
+  ReshapeGradientsWRTBroadcasting reshaped_gradients(scope, x, y, grad_x,
+                                                     grad_y);
+
+  grad_outputs->push_back(reshaped_gradients.reshaped_grad_x);
+  grad_outputs->push_back(reshaped_gradients.reshaped_grad_y);
 
   return scope.status();
 }
