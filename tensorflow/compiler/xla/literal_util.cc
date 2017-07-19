@@ -653,7 +653,6 @@ void* Literal::MutableInternalData() {
   // created by the accessor functions.
   switch (shape().element_type()) {
     case PRED:
-      return reinterpret_cast<void*>(preds_.data());
     case U8:
       return reinterpret_cast<void*>(u8s_.data());
     case S32:
@@ -721,8 +720,6 @@ tensorflow::Status Literal::ValidateLiteral() const {
   int64 actual = -1;
   switch (shape().element_type()) {
     case PRED:
-      actual = preds_size();
-      break;
     case U8:
       actual = u8s_size();
       break;
@@ -928,8 +925,8 @@ bool Literal::Equal(const Literal& literal2) const {
 template <>
 tensorflow::gtl::MutableArraySlice<bool> Literal::GetMutableArraySlice() {
   auto values = mutable_preds();
-  return tensorflow::gtl::MutableArraySlice<bool>(values->data(),
-                                                  values->size());
+  return tensorflow::gtl::MutableArraySlice<bool>(
+      reinterpret_cast<bool*>(&(*values)[0]), values->size());
 }
 
 template <>
@@ -1021,7 +1018,8 @@ tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice<half>() {
 template <>
 tensorflow::gtl::ArraySlice<bool> Literal::GetArraySlice<bool>() const {
   CHECK_EQ(shape().element_type(), PRED);
-  return tensorflow::gtl::ArraySlice<bool>(preds().data(), preds().size());
+  return tensorflow::gtl::ArraySlice<bool>(
+      reinterpret_cast<const bool*>(preds().data()), preds().size());
 }
 
 template <>
@@ -1236,21 +1234,13 @@ static void CopyToRepeatedField(RepeatedFieldT* dest,
   *dest = RepeatedFieldT(src.begin(), src.end());
 }
 
-template <typename RepeatedFieldT>
-static void CopyToRepeatedBoolField(RepeatedFieldT* dest,
-                                    const BoolVector& src) {
-  *dest = RepeatedFieldT(src.begin(), src.end());
-}
-
 LiteralProto Literal::ToProto() const {
   LiteralProto proto;
   proto.Clear();
   *proto.mutable_shape() = shape();
   switch (shape().element_type()) {
     case PRED:
-      if (preds().begin()) {
-        CopyToRepeatedBoolField(proto.mutable_preds(), preds());
-      }
+      CopyToRepeatedField(proto.mutable_preds(), preds());
       break;
     case U8:
       *proto.mutable_u8s() = u8s_string();
@@ -1304,8 +1294,7 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
   *mutable_shape() = literal_proto.shape();
   switch (shape().element_type()) {
     case PRED:
-      *mutable_preds() = BoolVector(literal_proto.preds().begin(),
-                                    literal_proto.preds().end());
+      CopyFromRepeatedField(mutable_preds(), literal_proto.preds());
       break;
     case U8:
       set_u8s(literal_proto.u8s());
