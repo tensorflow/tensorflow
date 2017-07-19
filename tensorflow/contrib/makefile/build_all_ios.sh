@@ -18,7 +18,7 @@ set -e
 
 # Make sure we're on OS X.
 if [[ $(uname) != "Darwin" ]]; then
-    echo "ERROR: This makefile build requires OS X, which the current system "\
+    echo "ERROR: This makefile build requires macOS, which the current system "\
     "is not."
     exit 1
 fi
@@ -37,7 +37,9 @@ rm -rf tensorflow/contrib/makefile/downloads
 #
 #    ld: -bind_at_load and -bitcode_bundle (Xcode setting ENABLE_BITCODE=YES) cannot be used together
 #
-export MACOSX_DEPLOYMENT_TARGET="10.10"
+if [[ -n MACOSX_DEPLOYMENT_TARGET ]]; then
+    export MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+fi
 
 # Pull down the required versions of the frameworks we need.
 tensorflow/contrib/makefile/download_dependencies.sh
@@ -48,6 +50,5 @@ tensorflow/contrib/makefile/compile_ios_protobuf.sh
 # Build the iOS TensorFlow libraries.
 tensorflow/contrib/makefile/compile_ios_tensorflow.sh "-O3"
 
-# Creates a static universal library in 
+# Creates a static universal library in
 # tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a
-

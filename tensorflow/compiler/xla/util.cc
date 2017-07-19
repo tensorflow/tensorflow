@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
+#include <numeric>
 #include <stdarg.h>
 #include <numeric>
 

@@ -617,7 +617,7 @@ def call_cpp_shape_fn(op, require_shape_fn=True):
 
 def _call_cpp_shape_fn_impl(
     op, input_tensors_needed, input_tensors_as_shapes_needed, require_shape_fn):
-  """Core implementaton of call_cpp_shape_fn."""
+  """Core implementation of call_cpp_shape_fn."""
   graph_def_version = op.graph.graph_def_versions.producer
   node_def_str = op.node_def.SerializeToString()
 

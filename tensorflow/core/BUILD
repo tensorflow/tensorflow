@@ -65,7 +65,7 @@ load(
     "full_path",
     "if_android",
     "if_ios",
-    "if_x86",
+    "if_linux_x86_64",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -1379,7 +1379,7 @@ cc_library(
     name = "lib_hash_crc32c_accelerate_internal",
     srcs = ["lib/hash/crc32c_accelerate.cc"],
     # -msse4.2 enables the use of crc32c compiler builtins.
-    copts = tf_copts() + if_x86(["-msse4.2"]),
+    copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
 )
 
 cc_library(

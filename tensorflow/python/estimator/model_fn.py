@@ -78,7 +78,7 @@ class EstimatorSpec(
 
     Depending on the value of `mode`, different arguments are required. Namely
     * For `mode == ModeKeys.TRAIN`: required fields are `loss` and `train_op`.
-    * For `mode == ModeKeys.EVAL`: required field is`loss`.
+    * For `mode == ModeKeys.EVAL`: required field is `loss`.
     * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
     model_fn can populate all arguments independent of mode. In this case, some

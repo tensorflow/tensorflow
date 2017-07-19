@@ -137,7 +137,7 @@ Once TensorBoard is running, navigate your web browser to `localhost:6006` to vi
 
 The script will log TensorBoard summaries to `/tmp/retrain_logs` by default. You can change the directory with the `--summaries_dir` flag.
 
-The [TensorBoard README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
+The [TensorBoard's GitHub](https://github.com/tensorflow/tensorboard) has a lot more information on TensorBoard usage, including tips & tricks, and debugging information.
 
 ## Using the Retrained Model
 
@@ -337,7 +337,7 @@ the (much larger) training set.
 
 By default the script uses a pretrained version of the Inception v3 model
 architecture. This is a good place to start because it provides high accuracy
-results, but if you intend to deploy your model on mobile devices or other 
+results, but if you intend to deploy your model on mobile devices or other
 resource-constrained environments you may want to trade off a little accuracy
 for much smaller file sizes or faster speeds. To help with that, the
 [retrain.py script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/image_retraining/retrain.py)

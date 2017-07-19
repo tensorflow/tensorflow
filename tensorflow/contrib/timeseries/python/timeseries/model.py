@@ -353,7 +353,7 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
 
     Args:
       current_times: A [batch size] Tensor of times for each observation.
-      current_values: A [batch size] Tensor of values for each observaiton.
+      current_values: A [batch size] Tensor of values for each observation.
       state: Model state, updated to current_times.
       predictions: The outputs of _prediction_step
     Returns:
