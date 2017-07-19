@@ -3824,6 +3824,26 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "conv2d_benchmark",
+    size = "large",
+    srcs = ["ops/conv2d_benchmark.py"],
+    additional_deps = [
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":nn_ops",
+        ":platform",
+        ":platform_benchmark",
+        ":random_ops",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/conv2d_benchmark.py",
+)
+
+cuda_py_test(
     name = "split_benchmark",
     srcs = ["ops/split_benchmark.py"],
     additional_deps = [
