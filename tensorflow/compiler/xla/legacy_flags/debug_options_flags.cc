@@ -207,6 +207,11 @@ void AllocateFlags() {
                         "If true, flush-to-zero semantics are enabled in the "
                         "code generated for GPUs."),
        tensorflow::Flag(
+           "xla_gpu_disable_multi_streaming",
+           bool_setter_for(&DebugOptions::set_xla_gpu_disable_multi_streaming),
+           flag_values->xla_gpu_disable_multi_streaming(),
+           "If true, multi-streaming in the GPU backend is disabled."),
+       tensorflow::Flag(
            "xla_dump_debug_json_to",
            flag_values->mutable_xla_dump_debug_json_to(),
            "Dump compilation artifacts as JSON into this directory."),
