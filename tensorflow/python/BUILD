@@ -1915,6 +1915,16 @@ py_library(
 )
 
 py_library(
+    name = "spectral_ops_test_util",
+    srcs = ["ops/spectral_ops_test_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":framework_ops",
+    ],
+)
+
+py_library(
     name = "confusion_matrix",
     srcs = ["ops/confusion_matrix.py"],
     srcs_version = "PY2AND3",
