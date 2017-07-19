@@ -104,12 +104,8 @@ def block(x, first_stride, internal_filters, final_filters):
 
   with tf.variable_scope('shortcut', use_resource=True):
     # shortcut
-    if (first_stride != 1):
-      shortcut = tf.strided_slice(shortcut, [0,0,0,0], shortcut.get_shape(),
-                                  strides=[1, first_stride, first_stride, 1])
-    pad = int(x.get_shape()[3] - shape_in[3])
-    if (pad != 0):
-      shortcut = tf.pad(shortcut, paddings=[[0,0],[0,0],[0,0],[0,pad]])
+    if shape_in != x.get_shape():
+      shortcut = conv(shortcut, 1, first_stride, final_filters)
 
   return tf.nn.relu(x + shortcut)
 
