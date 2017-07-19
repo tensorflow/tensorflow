@@ -115,6 +115,7 @@ load(
     "tf_additional_gpu_tracer_srcs",
     "tf_additional_gpu_tracer_deps",
     "tf_additional_gpu_tracer_cuda_deps",
+    "tf_pyclif_proto_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -1166,6 +1167,30 @@ cc_library(
     deps = [
         "//tensorflow/core/platform/default/build_config:cuda",
     ],
+)
+
+# -----------------------------------------------------------------------------
+# Clif-related proto libraries.
+
+tf_pyclif_proto_library(
+    name = "example/example_pyclif",
+    proto_lib = ":protos_all",
+    proto_srcfile = "example/example.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "example/feature_pyclif",
+    proto_lib = ":protos_all",
+    proto_srcfile = "example/feature.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/tensor_pyclif",
+    proto_lib = ":protos_all",
+    proto_srcfile = "framework/tensor.proto",
+    visibility = ["//visibility:public"],
 )
 
 # -----------------------------------------------------------------------------

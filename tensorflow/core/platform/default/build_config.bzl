@@ -276,3 +276,7 @@ def tf_additional_mpi_lib_defines():
       "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
       "//conditions:default": [],
   })
+
+def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
+                            **kwargs):
+  pass
