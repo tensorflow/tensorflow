@@ -95,13 +95,13 @@ extern void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
 // implemented we will add support for multiple outstanding buffers
 // that can be returned out of order.
 extern void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
-    xla::int32 buffer_length, void* buffer_ptr, const void* shape,
+    xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
     xla::int32 shape_length);
 
 // Blocks until the next outfeed buffer is available to be populated, then
 // returns it.
 extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
-    xla::int32 buffer_length, const void* shape, xla::int32 shape_length);
+    xla::int32 buffer_length, const void* shape_ptr, xla::int32 shape_length);
 
 // Relinquishes the outfeed buffer after it has been populated.
 // buffer_ptr must have been previously returned by
@@ -113,7 +113,7 @@ extern void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
 // acquired, i.e., there may only be one outstanding outfeed buffer in
 // use by the runtime.
 extern void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
-    xla::int32 buffer_length, void* buffer_ptr, const void* shape,
+    xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
     xla::int32 shape_length);
 
 }  // extern "C"

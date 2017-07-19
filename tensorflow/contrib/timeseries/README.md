@@ -9,10 +9,11 @@ series (using truncated backpropagation).
 
 To get started, take a look at the `examples/` directory, which includes:
 
- - Making probabilistic forecasts
- - Using exogenous features to train on data with known anomalies/changepoints
+ - Making probabilistic forecasts (`examples/predict.py`)
+ - Using exogenous features to train on data with known anomalies/changepoints (`examples/known_anomaly.py`)
  - Learning correlations between series (multivariate forecasting/anomaly
-   detection)
+   detection; `examples/multivariate.py`)
+ - More advanced custom model building (`examples/lstm.py`)
 
 TFTS includes many other modeling tools, including non-linear autoregression
 (see the `hidden_layer_sizes` argument to `ARRegressor` in `estimators.py`) and

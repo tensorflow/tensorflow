@@ -193,6 +193,10 @@ class IrArray {
                                        llvm::IRBuilder<>* ir_builder,
                                        tensorflow::StringPiece name = "") const;
 
+  // Attach metadata this IrArray instance knows about to "instruction".
+  void AnnotateLoadStoreInstructionWithMetadata(
+      llvm::Instruction* instruction) const;
+
   // Emit IR to read an array element at the given index. Returns the read
   // result (effectively, a Value loaded from memory). This method seamlessly
   // handles scalar shapes by broadcasting their value to all indices (index is

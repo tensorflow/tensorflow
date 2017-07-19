@@ -93,6 +93,15 @@ tf_gen_op_wrapper_py(
     ],
 )
 
+py_library(
+    name = "profiler",
+    srcs = ["python/profiler/__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
+    ],
+)
+
 tf_custom_op_py_library(
     name = "tpu_py",
     srcs = glob(["python/ops/*.py"]) + ["__init__.py"],
@@ -102,6 +111,7 @@ tf_custom_op_py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":profiler",
         ":tpu_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:client_testlib",
@@ -146,6 +156,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":profiler",
         ":tpu_function",
         ":tpu_py",
         ":training_loop",
