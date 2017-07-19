@@ -16,7 +16,7 @@
 * Introduces base implementations of ClusterResolvers.
 * Unify memory representations of TensorShape and PartialTensorShape. As a consequence, tensors now have a maximum of 254 dimensions, not 255.
 * Changed references to LIBXSMM to use version 1.8.1.
-* TensorFlow Debugger (tfdbg): Display summaries of numeric tensor values with the -s flag to command print_tensor or pt.
+* TensorFlow Debugger (tfdbg): Display summaries of numeric tensor values with the `-s` flag to command `print_tensor` or `pt`.
 
 ## Breaking Changes to the API
 * `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
@@ -61,6 +61,8 @@
 * Framework now supports armv7, cocoapods.org now displays correct page.
 * Script to create iOS framework for CocoaPods.
 * Android releases of TensorFlow are now pushed to jcenter for easier integration into apps. See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md for more details.
+* Fixed a bug that prevent tfdbg from functioning with multi-GPU setups.
+* Fixed a bug that prevent tfdbg from working with `tf.Session.make_callable`.
 
 ## Thanks to our Contributors
 
