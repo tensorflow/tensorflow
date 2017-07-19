@@ -1084,6 +1084,18 @@ cc_library(
 )
 
 cc_library(
+    name = "human_readable_profile_builder",
+    srcs = ["human_readable_profile_builder.cc"],
+    hdrs = ["human_readable_profile_builder.h"],
+    deps = [
+        "//tensorflow/compiler/xla:metric_table_report",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "generic_transfer_manager",
     srcs = ["generic_transfer_manager.cc"],
     hdrs = ["generic_transfer_manager.h"],
@@ -1211,6 +1223,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_cost_analysis",
+        ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:metric_table_report",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
