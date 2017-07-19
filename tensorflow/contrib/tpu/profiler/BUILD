@@ -1,5 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_cc")
 
@@ -15,7 +16,7 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "capture_tpu_profile",
     srcs = ["capture_tpu_profile.cc"],
     visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
