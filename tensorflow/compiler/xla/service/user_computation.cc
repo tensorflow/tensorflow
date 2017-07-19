@@ -1010,9 +1010,6 @@ StatusOr<ComputationDataHandle> UserComputation::AddInfeedInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   const Shape& shape = infeed_request.shape();
-  if (ShapeUtil::IsNestedTuple(shape)) {
-    return InvalidArgument("Infeed does not support nested tuple shapes");
-  }
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("Given shape to Infeed must have a layout");
   }
