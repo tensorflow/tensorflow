@@ -1154,7 +1154,7 @@ class PartitionedVariable(object):
         "assign() has not been implemented for PartitionedVariable.")
 
 
-def global_variables():
+def global_variables(scope=None):
   """Returns global variables.
 
   Global variables are variables that are shared across machines in a
@@ -1169,7 +1169,7 @@ def global_variables():
   Returns:
     A list of `Variable` objects.
   """
-  return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, scope)
 
 
 @deprecated("2017-03-02", "Please use tf.global_variables instead.")
@@ -1189,7 +1189,7 @@ def _all_saveable_objects():
           ops.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS))
 
 
-def local_variables():
+def local_variables(scope=None):
   """Returns local variables.
 
   Local variables - per process variables, usually not saved/restored to
@@ -1206,19 +1206,19 @@ def local_variables():
   Returns:
     A list of local `Variable` objects.
   """
-  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES, scope)
 
 
-def model_variables():
+def model_variables(scope=None):
   """Returns all variables in the MODEL_VARIABLES collection.
 
   Returns:
     A list of local Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES, scope)
 
 
-def trainable_variables():
+def trainable_variables(scope=None):
   """Returns all variables created with `trainable=True`.
 
   When passed `trainable=True`, the `Variable()` constructor automatically
@@ -1229,10 +1229,10 @@ def trainable_variables():
   Returns:
     A list of Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES, scope)
 
 
-def moving_average_variables():
+def moving_average_variables(scope=None):
   """Returns all variables that maintain their moving averages.
 
   If an `ExponentialMovingAverage` object is created and the `apply()`
@@ -1243,7 +1243,7 @@ def moving_average_variables():
   Returns:
     A list of Variable objects.
   """
-  return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES)
+  return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, scope)
 
 
 def variables_initializer(var_list, name="init"):
