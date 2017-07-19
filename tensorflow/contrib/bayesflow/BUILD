@@ -16,11 +16,13 @@ py_library(
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
