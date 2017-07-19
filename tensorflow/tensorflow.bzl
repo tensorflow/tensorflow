@@ -1008,7 +1008,10 @@ def tf_py_wrap_cc(name,
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
-          clean_dep("//tensorflow:tf_version_script.lds")
+          clean_dep("//tensorflow:tf_version_script.lds"),
+          # Look for dynamic dependencies in tensorflow/ rather than
+          # tensorflow/python/
+          "-Wl,-rpath=$$ORIGIN/..",
       ]
   })
   extra_deps += select({
