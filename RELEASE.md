@@ -1,3 +1,102 @@
+# Release 1.3.0
+
+## Major Features and Improvements
+* Added canned estimators to Tensorflow library. List of added estimators: `DNNClassifier`, `DNNRegressor`, `LinearClassifer`, `LinearRegressor`, `DNNLinearCombinedClassifier`, `DNNLinearCombinedRegressor`.
+* Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
+* Added an axis parameter to `tf.gather`.
+* Added a `constant_values` keyword argument to `tf.pad`.
+* Adds `Dataset.interleave` transformation.
+* Add `ConcatenateDataset` to concatenate two datasets.
+* Added Mobilenet support to TensorFlow for Poets training script.
+* Adds a block cache to the GCS filesystem with configurable block size and count.
+* SinhArcSinh bijector added.
+* Added `Dataset.list_files` API.
+* Introduces new operations and Python bindings for the Cloud TPU.
+* Adding TensorFlow-iOS CocoaPod for symmetry with tensorflow-android.
+* Introduces base implementations of ClusterResolvers.
+* Unify memory representations of TensorShape and PartialTensorShape. As a consequence, tensors now have a maximum of 254 dimensions, not 255.
+* Changed references to LIBXSMM to use version 1.8.1.
+* TensorFlow Debugger (tfdbg): Display summaries of numeric tensor values with the `-s` flag to command `print_tensor` or `pt`.
+
+## Breaking Changes to the API
+* `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
+* Breaking change to `tf.contrib.data.Dataset` APIs that expect a nested structure. Lists are now converted to `tf.Tensor` implicitly. You may need to change uses of lists to tuples in existing code. In addition, dicts are now supported as a nested structure.
+
+## Changes to contrib APIs
+* Adds tf.contrib.nn.rank_sampled_softmax_loss, a sampled-softmax variant that can improve rank loss.
+* `tf.contrib.metrics`.{streaming_covariance,streaming_pearson_correlation} modified to return nan when they have seen less or equal to 1 unit of weight.
+* Adds time series models to contrib. See contrib/timeseries/README.md for details.
+* Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
+
+## Bug Fixes and Other Changes
+* Fixes 'strides' and 'begin' dtype mismatch when slicing using int64 Tensor index in python.
+* Improved convolution padding documentation.
+* Add a tag constant, gpu, to present graph with GPU support.
+* `saved_model.utils` now support SparseTensors transparently.
+* A more efficient implementation of non-max suppression.
+* Add support for the shrinkage-type L2 to FtrlOptimizer in addition to the online L2 it already supports.
+* Fix negative variance in moments calculation.
+* Expand UniqueOp Benchmark Tests to cover more collision cases.
+* Improves stability of GCS filesystem on Mac.
+* Add time estimation to HloCostAnalysis.
+* Fixed the bug in Estimator that params in constructor was not a deepcopy of the user provided one. This bugs inadvertently enabled user to mutate the params after the creation of Estimator, leading to potentially undefined behavior.
+* Added None check for save_path in `saver.restore`.
+* Register devices under their legacy names in device_mgr to ease the transition to clusterspec-propagated configurations.
+* VectorExponential added to distributions.
+* Add a bitwise module with bitwise_and, bitwise_or, bitwise_xor, and invert functions.
+* Add fixed-grid ODE integration routines.
+* Allow passing bounds to ScipyOptimizerInterface.
+* Correctness fixes for fft_length parameter to `tf.spectral.rfft` & `tf.spectral.irfft`.
+* Exported model signatures using the 'predict' method will no longer have their input and output keys silently ignored and rewritten to 'inputs' and 'outputs'. If a model was exported with different names before 1.2, and is now served with tensorflow/serving, it will accept requests using 'inputs' and 'outputs'. Starting at 1.2, such a model will accept the keys specified during export. Therefore, inference requests using 'inputs' and 'outputs' may start to fail. To fix this, either update any inference clients to send requests with the actual input and output keys used by the trainer code, or conversely, update the trainer code to name the input and output Tensors 'inputs' and 'outputs', respectively. Signatures using the 'classify' and 'regress' methods are not affected by this change; they will continue to standardize their input and output keys as before.
+* Add in-memory caching to the Dataset API.
+* Set default end_of_sequence variable in datasets iterators to false.
+* [Performance] Increase performance of `tf.layers.con2d` when setting use_bias=True by 2x by using nn.bias_add.
+* Update iOS examples to use CocoaPods, and moved to tensorflow/examples/ios.
+* Adds a family= attribute in `tf.summary` ops to allow controlling the tab name used in Tensorboard for organizing summaries.
+* When GPU is configured, do not require --config=cuda, instead, automatically build for GPU if this is requested in the configure script.
+* Fix incorrect sampling of small probabilities in CPU/GPU multinomial.
+* Add a list_devices() API on sessions to list devices within a cluster. Additionally, this change augment the ListDevices master API to support specifying a session.
+* Allow uses of over-parameterized separable convolution.
+* TensorForest multi-regression bug fix.
+* Framework now supports armv7, cocoapods.org now displays correct page.
+* Script to create iOS framework for CocoaPods.
+* Android releases of TensorFlow are now pushed to jcenter for easier integration into apps. See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md for more details.
+* Fixed a bug that prevented tfdbg from functioning with multi-GPU setups.
+* Fixed a bug that prevented tfdbg from working with `tf.Session.make_callable`.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4F2E4A2E, Adriano Carmezim, Adrià Arrufat, Alan Yee, Alex Lattas, Alex Rothberg,
+Alexandr Baranezky, Ali Siddiqui, Andreas Solleder, Andrei Costinescu, Andrew Hundt,
+Androbin, Andy Kernahan, Anish Shah, Anthony Platanios, Arvinds-Ds, b1rd, Baptiste
+Arnaud, Ben Mabey, Benedikt Linse, Beomsu Kim, Bo Wang, Boyuan Deng, Brett Koonce,
+Bruno Rosa, Carl Thomé, Changming Sun, Chase Roberts, Chirag Bhatia, Chris Antaki,
+Chris Hoyean Song, Chris Tava, Christos Nikolaou, Croath Liu, cxx, Czxck001, Daniel
+Ylitalo, Danny Goodman, Darren Garvey, David Brailovsky, David Norman, DavidNorman,
+davidpham87, ddurham2, Dhruv, DimanNe, Drew Hintz, Dustin Tran, Earthson Lu, ethiraj,
+Fabian Winnen, Fei Sun, Freedom" Koan-Sin Tan, Fritz Obermeyer, Gao, Xiang, Gautam,
+Guenther Schmuelling, Gyu-Ho Lee, Hauke Brammer, horance, Humanity123, J Alammar,
+Jayeol Chun, Jeroen BéDorf, Jianfei Wang, jiefangxuanyan, Jing Jun Yin, Joan Puigcerver,
+Joel Hestness, Johannes Mayer, John Lawson, Johnson145, Jon Malmaud, Jonathan Alvarez-Gutierrez,
+Juang, Yi-Lin, Julian Viereck, Kaarthik Sivashanmugam, Karl Lessard, karl@kubx.ca, Kevin
+Carbone, Kevin Van Der Burgt, Kongsea, ksellesk, lanhin, Lef Ioannidis, Liangliang He,
+Louis Tiao, Luke Iwanski, LáSzló Csomor, magixsno, Mahmoud Abuzaina, Marcel Hlopko, Mark
+Neumann, Maxwell Paul Brickner, mdfaijul, MichaëL Defferrard, Michał JastrzęBski, Michele
+Colombo, Mike Brodie, Mosnoi Ion, mouradmourafiq, myPrecious, Nayana Thorat,
+Neeraj Kashyap, Nelson Liu, Niranjan Hasabnis, Olivier Moindrot, orome, Pankaj Gupta, Paul
+Van Eck, peeyush18, Peng Yu, Pierre, preciousdp11, qjivy, Raingo, raoqiyu, ribx, Richard S.
+Imaoka, Rishabh Patel, Robert Walecki, Rockford Wei, Ryan Kung, Sahil Dua, Sandip Giri, Sayed
+Hadi Hashemi, sgt101, Shitian Ni, Shuolongbj, Siim PõDer, Simon Perkins, sj6077, SOLARIS,
+Spotlight0xff, Steffen Eberbach, Stephen Fox, superryanguo, Sven Mayer, Tapan Prakash,
+Tiago Morais Morgado, Till Hoffmann, Tj Rana, Vadim Markovtsev, vhasanov, Wei Wu,
+windead, Yan (Asta) Li, Yan Chen, Yann Henon, Yi Wang, Yong Tang, yorkie, Yuan (Terry)
+Tang, Yuxin Wu, zhengjiajin, zhongzyd, 黄璞
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
+
 # Release 1.2.1
 
 ## Bug Fixes and Other Changes
