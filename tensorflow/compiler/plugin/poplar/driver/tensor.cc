@@ -307,7 +307,7 @@ PadTensor(const PaddingConfig& cfg,
   poplar::Tensor p(pad.reshape(std::vector<std::size_t>(in.rank(), 1)));
 
   poplar::Tensor out = in;
-  for (unsigned d = 0; d < in.shape().size(); d++) {
+  for (unsigned d = 0; d < in.rank(); d++) {
     std::vector<std::size_t> shape(out.shape());
 
     if (cfg.dimensions(d).interior_padding() > 0) {

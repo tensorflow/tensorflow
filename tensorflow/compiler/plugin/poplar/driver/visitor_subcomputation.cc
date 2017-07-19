@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_call.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -34,14 +34,14 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-CallVisitor::CallVisitor(poplar::Graph* graph,
-                         CompilerResources& res,
-                         int64 num_parameters)
+SubComputationVisitor::SubComputationVisitor(poplar::Graph* graph,
+                                             CompilerResources& res,
+                                             int64 num_parameters)
         : FullVisitor(graph, res) {
   inputs_.resize(num_parameters);
 }
 
-Status CallVisitor::HandleParameter(HloInstruction* inst) {
+Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out,
                       AddTensor(*graph_, inst, inst->shape(), resources_));
@@ -50,7 +50,7 @@ Status CallVisitor::HandleParameter(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status CallVisitor::FinishVisit(HloInstruction* inst) {
+Status SubComputationVisitor::FinishVisit(HloInstruction* inst) {
   int64 c = 1;
   if (ShapeUtil::IsTuple(inst->shape())) {
     c = ShapeUtil::TupleElementCount(inst->shape());

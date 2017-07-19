@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_CALL_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_CALL_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_SUBCOMPUTATION_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITOR_SUBCOMPUTATION_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
 
@@ -29,11 +29,11 @@ class Tensor;
 namespace xla {
 namespace poplarplugin {
 
-class CallVisitor : public FullVisitor {
+class SubComputationVisitor : public FullVisitor {
 public:
-  CallVisitor(poplar::Graph* graph,
-              CompilerResources& res,
-              int64 num_operands);
+  SubComputationVisitor(poplar::Graph* graph,
+                        CompilerResources& res,
+                        int64 num_operands);
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;

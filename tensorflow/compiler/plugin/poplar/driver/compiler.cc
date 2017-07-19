@@ -264,7 +264,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   for (const auto& comp : call_finder.targets) {
     if (comp != entry) {
-      // If this computation is a target of a 'call' then compile
+      // If this computation is a target of a call or while then compile
       // it and store in compiler resources
       VLOG(1) << "Compiling sub-computation " << comp->name();
       resources.computation_map.emplace(
