@@ -88,6 +88,7 @@ static void CheckRunGraphRequest(const RunGraphRequestWrapper& request) {
   EXPECT_EQ(13, request.step_id());
   EXPECT_FALSE(request.exec_opts().record_costs());
   EXPECT_TRUE(request.exec_opts().record_timeline());
+  EXPECT_FALSE(request.exec_opts().record_partition_graphs());
   EXPECT_EQ(2, request.num_sends());
   Tensor val;
   TF_EXPECT_OK(request.SendValue(0, &val));
@@ -105,6 +106,9 @@ static void BuildRunGraphResponse(
   run_graph_response->mutable_step_stats()->add_dev_stats()->set_device(
       "/cpu:0");
   run_graph_response->mutable_cost_graph()->add_node()->set_name("cost_node");
+  GraphDef graph_def;
+  graph_def.set_version(1234);
+  run_graph_response->AddPartitionGraph(graph_def);
 }
 
 static void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
@@ -120,6 +124,9 @@ static void CheckRunGraphResponse(MutableRunGraphResponseWrapper* response) {
   EXPECT_EQ("/cpu:0", response->mutable_step_stats()->dev_stats(0).device());
   EXPECT_EQ(1, response->mutable_cost_graph()->node_size());
   EXPECT_EQ("cost_node", response->mutable_cost_graph()->node(0).name());
+  EXPECT_EQ(1, response->num_partition_graphs());
+  GraphDef graph_def;
+  EXPECT_EQ(1234, response->mutable_partition_graph(0)->version());
 }
 
 static void BuildRunStepResponse(
@@ -131,6 +138,12 @@ static void BuildRunStepResponse(
       "fetch_y:0", run_graph_response, 1));
   *run_step_response->mutable_metadata()->mutable_step_stats() =
       *run_graph_response->mutable_step_stats();
+  protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
+      run_step_response->mutable_metadata()->mutable_partition_graphs();
+  for (size_t i = 0; i < run_graph_response->num_partition_graphs(); i++) {
+    partition_graph_defs->Add()->Swap(
+        run_graph_response->mutable_partition_graph(i));
+  }
 }
 
 static void CheckRunStepResponse(
@@ -145,6 +158,8 @@ static void CheckRunStepResponse(
   test::ExpectTensorEqual<int32>(TensorB(), val);
   EXPECT_EQ(1, response.metadata().step_stats().dev_stats_size());
   EXPECT_EQ("/cpu:0", response.metadata().step_stats().dev_stats(0).device());
+  EXPECT_EQ(1, response.metadata().partition_graphs_size());
+  EXPECT_EQ(1234, response.metadata().partition_graphs(0).version());
 }
 
 TEST(MessageWrappers, RunStepRequest_Basic) {
