@@ -17,7 +17,8 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
-#include <popnn/MaxPool.hpp>
+#include <popnn/PoolingDef.hpp>
+#include <popnn/Pooling.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -365,9 +366,10 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
   };
 
   poplar::program::Sequence prog;
-  poplar::Tensor out = popnn::maxpool::maxPool(graph, kernel_shape, stride,
-                                               padding_lower, padding_upper,
-                                               to_reduce, prog, inst->name());
+  poplar::Tensor out = popnn::pooling::pool(graph, PoolingType::MAX,
+                                            kernel_shape, stride,
+                                            padding_lower, padding_upper,
+                                            to_reduce, prog, inst->name());
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   return prog;
