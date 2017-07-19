@@ -32,6 +32,7 @@ from tensorflow.contrib.keras.python.keras.metrics import mean_squared_error
 from tensorflow.contrib.keras.python.keras.metrics import mean_squared_logarithmic_error
 from tensorflow.contrib.keras.python.keras.metrics import poisson
 from tensorflow.contrib.keras.python.keras.metrics import sparse_categorical_crossentropy
+from tensorflow.contrib.keras.python.keras.metrics import sparse_top_k_categorical_accuracy
 from tensorflow.contrib.keras.python.keras.metrics import squared_hinge
 from tensorflow.contrib.keras.python.keras.metrics import top_k_categorical_accuracy
 

@@ -1372,8 +1372,10 @@ class ControlFlowContext(object):
       k = ops.prepend_name_scope(k, import_scope)
       self._external_values[k] = g.as_graph_element(
           ops.prepend_name_scope(v, import_scope))
-    op_names = set([op.split(":")[0]
-                    for op in self._values - set(self._external_values)])
+    op_names = set([
+        op.split(":")[0]
+        for op in self._values - set(self._external_values.keys())
+    ])
     for op in op_names:
       # pylint: disable=protected-access
       g.as_graph_element(op)._set_control_flow_context(self)
@@ -1801,7 +1803,7 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   if not callable(false_fn):
     raise TypeError("false_fn must be callable.")
 
-  with ops.name_scope(name, "cond", [pred]) as name:
+  with ops.name_scope(name, "cond", [pred]):
     # Add the Switch to the graph.
     if isinstance(pred, bool):
       raise TypeError("pred must not be a Python bool")
@@ -2757,7 +2759,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   ```
 
   """
-  with ops.name_scope(name, "while", loop_vars) as name:
+  with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
       raise ValueError("No loop variables provided")
     if not callable(cond):
@@ -2770,7 +2772,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     if shape_invariants is not None:
       nest.assert_same_structure(loop_vars, shape_invariants)
 
-    context = WhileContext(parallel_iterations, back_prop, swap_memory, name)
+    context = WhileContext(parallel_iterations, back_prop, swap_memory)
     ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, context)
     result = context.BuildLoop(cond, body, loop_vars, shape_invariants)
     return result
