@@ -82,6 +82,7 @@ py_binary(
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:debug_pip",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/tools:tools_pip",
         # These targets don't build on Windows yet. Exclude them for now.
         # "//tensorflow/contrib/ndlstm",
@@ -170,6 +171,7 @@ sh_binary(
             "//tensorflow/python:util_example_parser_configuration",
             "//tensorflow/python/debug:debug_pip",
             "//tensorflow/python/saved_model:saved_model",
+            "//tensorflow/python:spectral_ops_test_util",
             "//tensorflow/python/tools:tools_pip",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
