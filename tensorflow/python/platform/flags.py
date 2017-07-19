@@ -35,14 +35,14 @@ class _FlagValues(object):
   def __init__(self):
     self.__dict__['__flags'] = {}
     self.__dict__['__parsed'] = False
-    self.__dict__['__required'] = []
+    self.__dict__['__required_flags'] = set()
 
   def _parse_flags(self, args=None):
     result, unparsed = _global_parser.parse_known_args(args=args)
     for flag_name, val in vars(result).items():
       self.__dict__['__flags'][flag_name] = val
-    self._assert_required()
     self.__dict__['__parsed'] = True
+    self._assert_all_required()
     return unparsed
 
   def __getattr__(self, name):
@@ -63,16 +63,18 @@ class _FlagValues(object):
     if not self.__dict__['__parsed']:
       self._parse_flags()
     self.__dict__['__flags'][name] = value
-    self._assert_required()
+    self._assert_required(name)
 
   def _set_required_flag(self, item):
-    if item not in self.__dict__['__required']:
-      self.__dict__['__required'].append(item)
+    self.__dict__['__required_flags'].add(item)
 
-  def _assert_required(self):
-    for name in self.__dict__['__required']:
-      if name not in self.__dict__['__flags'] or self.__dict__['__flags'][name] is None:
-        raise AttributeError('Flag --%s must be specified.' % name)
+  def _assert_required(self, flag_name):
+    if flag_name not in self.__dict__['__flags'] or self.__dict__['__flags'][flag_name] is None:
+      raise AttributeError('Flag --%s must be specified.' % flag_name)
+
+  def _assert_all_required(self):
+    for flag_name in self.__dict__['__required_flags']:
+      self._assert_required(flag_name)
 
 
 

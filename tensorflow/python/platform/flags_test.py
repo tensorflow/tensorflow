@@ -37,10 +37,6 @@ flags.DEFINE_boolean("bool_d", True, "HelpString")
 flags.DEFINE_bool("bool_e", True, "HelpString")
 flags.DEFINE_string("string_foo_required", "default_val", "HelpString")
 flags.DEFINE_string("none_string_foo_required", None, "HelpString")
-flags.DEFINE_integer("int_foo_required", None, "HelpString")
-flags.DEFINE_float("float_foo_required", None, "HelpString")
-flags.DEFINE_bool("bool_foo_required", None, "HelpString")
-flags.DEFINE_bool("bool_negation_required", None, "HelpString")
 
 FLAGS = flags.FLAGS
 
@@ -102,23 +98,6 @@ class FlagsTest(unittest.TestCase):
     FLAGS.none_string_foo_required = "bar"
     self.assertEqual("bar", FLAGS.none_string_foo_required)
 
-  def testIntRequired(self):
-    res = FLAGS.int_foo_required
-    self.assertEquals(res, 42)
-    FLAGS.int_foo_required = -1
-    self.assertEqual(-1, FLAGS.int_foo_required)
-
-  def testFloatRequired(self):
-    res = FLAGS.float_foo_required
-    self.assertEquals(42.0, res)
-    FLAGS.float_foo_required = -1.0
-    self.assertEqual(-1.0, FLAGS.float_foo_required)
-
-  def testBoolRequired(self):
-    self.assertTrue(FLAGS.bool_foo_required)
-    self.assertFalse(FLAGS.bool_negation_required)
-
-
 
 def main(_):
   # unittest.main() tries to interpret the unknown flags, so use the
@@ -133,12 +112,8 @@ if __name__ == "__main__":
   sys.argv.extend([
       "--bool_a", "--nobool_negation", "--bool_c=True", "--bool_d=False",
       "and_argument",
-      "--none_string_foo_required=default_val", "--int_foo_required=42",
-      "--float_foo_required=42.0", "--bool_foo_required", "--nobool_negation_required"
+      "--none_string_foo_required=default_val"
   ])
   flags.mark_flag_as_required('string_foo_required')
-  flags.mark_flag_as_required('none_string_foo_required')
-  flags.mark_flag_as_required('int_foo_required')
-  flags.mark_flag_as_required('float_foo_required')
-  flags.mark_flags_as_required(['bool_foo_required', 'bool_negation_required'])
+  flags.mark_flags_as_required(['none_string_foo_required'])
   app.run()
