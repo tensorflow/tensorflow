@@ -1023,7 +1023,9 @@ def _linear(args,
       batch_size, input_size = shapes[0].as_list()
       weights = vs.get_variable(
         _WEIGHTS_VARIABLE_NAME + '_batch',
-        [num_args, input_size, output_size // num_args], dtype=dtype)
+        [num_args, input_size, output_size // num_args],
+        dtype=dtype,
+        initializer=kernel_initializer)
 
       """
       Below, we'll reshape our output such that:
@@ -1040,7 +1042,9 @@ def _linear(args,
       weights = [
         vs.get_variable(
           _WEIGHTS_VARIABLE_NAME + '_seq' + str(i),
-          [input_size, output_size], dtype=dtype)
+          [input_size, output_size],
+          dtype=dtype,
+          initializer=kernel_initializer)
         for i, (batch_size, input_size) in enumerate(shapes)]
       res = sum(math_ops.matmul(x, w) for x, w in zip(args, weights))
 
