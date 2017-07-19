@@ -976,6 +976,93 @@ def _linear(args,
             bias_initializer=None,
             kernel_initializer=None):
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
+  Args:
+    args: a 2D Tensor or a list of 2D, batch x n, Tensors.
+    output_size: int, second dimension of W[i].
+    bias: boolean, whether to add a bias term or not.
+    bias_initializer: starting value to initialize the bias
+      (default is all zeros).
+    kernel_initializer: starting value to initialize the weight.
+  Returns:
+    A 2D Tensor with shape [batch x output_size] equal to
+    sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
+  Raises:
+    ValueError: if some of the arguments has unspecified or wrong shape.
+  """
+  if args is None or (nest.is_sequence(args) and not args):
+    raise ValueError("`args` must be specified")
+  if not nest.is_sequence(args):
+    args = [args]
+
+  # Calculate the total size of arguments on dimension 1.
+  shapes = [a.get_shape() for a in args]
+  batchwise_eligible = True
+  for shape in shapes:
+    if shape.ndims != 2:
+      raise ValueError("linear is expecting 2D arguments: %s" % shapes)
+    if shape[1].value is None:
+      raise ValueError("linear expects shape[1] to be provided for shape %s, "
+                       "but saw %s" % (shape, shape[1]))
+    if shape != shapes[0] or output_size % len(args):
+      batchwise_eligible = False
+
+  dtype = [a.dtype for a in args][0]
+
+  # Now the computation.
+  scope = vs.get_variable_scope()
+  with vs.variable_scope(scope) as outer_scope:
+    if len(args) == 1:
+      input_size = shapes[0][1].value
+      weights = vs.get_variable(
+        _WEIGHTS_VARIABLE_NAME, [input_size, output_size],
+        dtype=dtype,
+        initializer=kernel_initializer)
+      res = math_ops.matmul(args[0], weights)
+    elif batchwise_eligible:
+      num_args = len(args)
+      batch_size, input_size = shapes[0].as_list()
+      weights = vs.get_variable(
+        _WEIGHTS_VARIABLE_NAME + '_batch',
+        [num_args, input_size, output_size // num_args], dtype=dtype)
+
+      """
+      Below, we'll reshape our output such that:
+      res.shape == (num_args, batch_size, output_size / num_args)           (1)
+                -> (batch_size, num_args, output_size / num_args)           (2)
+                -> (batch_size, output_size)                                (3)
+      In a typical use case of _linear, the output is split into num_args
+      chunks, which is why we need to transpose in the exact order of (2).
+      """
+      res = math_ops.matmul(array_ops.stack(args, axis=0), weights)       # (1)
+      res = array_ops.transpose(res, [1, 0, 2])                           # (2)
+      res = array_ops.reshape(res, [batch_size, output_size])             # (3)
+    else:
+      weights = [
+        vs.get_variable(
+          _WEIGHTS_VARIABLE_NAME + '_seq' + str(i),
+          [input_size, output_size], dtype=dtype)
+        for i, (batch_size, input_size) in enumerate(shapes)]
+      res = sum(math_ops.matmul(x, w) for x, w in zip(args, weights))
+
+    if not bias:
+      return res
+    with vs.variable_scope(outer_scope) as inner_scope:
+      inner_scope.set_partitioner(None)
+      if bias_initializer is None:
+        bias_initializer = init_ops.constant_initializer(0.0, dtype=dtype)
+      biases = vs.get_variable(
+          _BIAS_VARIABLE_NAME, [output_size],
+          dtype=dtype,
+          initializer=bias_initializer)
+    return nn_ops.bias_add(res, biases)
+
+
+def _linear_OLD(args,
+            output_size,
+            bias,
+            bias_initializer=None,
+            kernel_initializer=None):
+  """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
   Args:
     args: a 2D Tensor or a list of 2D, batch x n, Tensors.
@@ -998,6 +1085,7 @@ def _linear(args,
     args = [args]
 
   # Calculate the total size of arguments on dimension 1.
+  total_arg_size = 0
   shapes = [a.get_shape() for a in args]
   for shape in shapes:
     if shape.ndims != 2:
@@ -1005,40 +1093,22 @@ def _linear(args,
     if shape[1].value is None:
       raise ValueError("linear expects shape[1] to be provided for shape %s, "
                        "but saw %s" % (shape, shape[1]))
-    if shape[0] != shapes[0][0] or shape[1] != shapes[0][1]:
-      raise ValueError("all shapes in `args` must be equal (batch x n)")
+    else:
+      total_arg_size += shape[1].value
 
   dtype = [a.dtype for a in args][0]
-  num_args = len(args)
-  if output_size % num_args:
-    raise ValueError("output_size must a multiple of len(args)")
-  batch_size, input_size = shapes[0].as_list()
 
   # Now the computation.
   scope = vs.get_variable_scope()
   with vs.variable_scope(scope) as outer_scope:
-    if num_args == 1:
-      weights = vs.get_variable(
-        _WEIGHTS_VARIABLE_NAME, [input_size, output_size],
+    weights = vs.get_variable(
+        _WEIGHTS_VARIABLE_NAME, [total_arg_size, output_size],
         dtype=dtype,
         initializer=kernel_initializer)
+    if len(args) == 1:
       res = math_ops.matmul(args[0], weights)
     else:
-      weights = vs.get_variable(
-        _WEIGHTS_VARIABLE_NAME,
-        [num_args, input_size, output_size // num_args], dtype=dtype)
-
-      """
-      Below, we'll reshape our output such that:
-      res.shape == (num_args, batch_size, output_size / num_args)           (1)
-                -> (batch_size, num_args, output_size / num_args)           (2)
-                -> (batch_size, output_size)                                (3)
-      In a typical use case of _linear, the output is split into num_args
-      chunks, which is why we need to transpose in the exact order of (2).
-      """
-      res = math_ops.matmul(array_ops.stack(args, axis=0), weights)       # (1)
-      res = array_ops.transpose(res, [1, 0, 2])                           # (2)
-      res = array_ops.reshape(res, [batch_size, output_size])             # (3)
+      res = math_ops.matmul(array_ops.concat(args, 1), weights)
     if not bias:
       return res
     with vs.variable_scope(outer_scope) as inner_scope:
