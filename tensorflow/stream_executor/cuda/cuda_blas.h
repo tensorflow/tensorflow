@@ -127,23 +127,6 @@ class CUDABlas : public blas::BlasSupport {
       blas::AlgorithmType algorithm,
       blas::ProfileResult *output_profile_result);
 
-  // Helper function for implementing DoBlasGemmWithProfiling.
-  template <typename T, typename ParamType>
-  bool DoBlasGemmWithProfilingImpl(
-      Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
-      uint64 n, uint64 k, const ParamType &alpha, const DeviceMemory<T> &a,
-      int lda, const DeviceMemory<T> &b, int ldb, const ParamType &beta,
-      DeviceMemory<T> *c, int ldc, blas::ProfileResult *output_profile_result);
-
-  // Helper function for implementing DoBlasGemvWithProfiling.
-  template <typename T>
-  bool DoBlasGemvWithProfilingImpl(Stream *stream, blas::Transpose trans,
-                                   uint64 m, uint64 n, const T &alpha,
-                                   const DeviceMemory<T> &a, int lda,
-                                   const DeviceMemory<T> &x, int incx,
-                                   const T &beta, DeviceMemory<T> *y, int incy,
-                                   blas::ProfileResult *output_profile_result);
-
   // mutex that guards the cuBLAS handle for this device.
   mutex mu_;
 

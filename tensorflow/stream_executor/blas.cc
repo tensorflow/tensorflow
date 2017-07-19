@@ -67,10 +67,6 @@ string SideString(Side s) {
   }
 }
 
-// -- AlgorithmConfig
-
-string AlgorithmConfig::ToString() const { return port::StrCat(algorithm_); }
-
 string ComputationTypeString(ComputationType ty) {
   switch (ty) {
     case ComputationType::kF16:

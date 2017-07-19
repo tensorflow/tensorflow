@@ -405,7 +405,6 @@ tf_cuda_library(
         "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_writer.h",
         "util/use_cudnn.h",
-        "util/matmul_autotune.h",
         "util/util.h",
         "util/work_sharder.h",
     ] + select({
