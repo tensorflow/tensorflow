@@ -795,6 +795,7 @@ tf_cc_test(
         ":identity_op",
         ":ops_testutil",
         ":ops_util",
+        ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
