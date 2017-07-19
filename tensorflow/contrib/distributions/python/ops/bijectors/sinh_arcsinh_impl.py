@@ -25,9 +25,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
 
-sinh = trig.sinh
-arcsinh = trig.arcsinh
-cosh = trig.cosh
 log_cosh = trig.log_cosh
 
 __all__ = [
@@ -114,10 +111,10 @@ class SinhArcsinh(bijector.Bijector):
     return self._tailweight
 
   def _forward(self, x):
-    return sinh((arcsinh(x) + self.skewness) * self.tailweight)
+    return math_ops.sinh((math_ops.asinh(x) + self.skewness) * self.tailweight)
 
   def _inverse(self, y):
-    return sinh(arcsinh(y) / self.tailweight - self.skewness)
+    return math_ops.sinh(math_ops.asinh(y) / self.tailweight - self.skewness)
 
   def _inverse_log_det_jacobian(self, y):
     # x = sinh(arcsinh(y) / tailweight - skewness)
@@ -127,7 +124,7 @@ class SinhArcsinh(bijector.Bijector):
     #     / (tailweight * sqrt(y**2 + 1))
     event_dims = self._event_dims_tensor(y)
     return math_ops.reduce_sum(
-        log_cosh(arcsinh(y) / self.tailweight - self.skewness) -
+        log_cosh(math_ops.asinh(y) / self.tailweight - self.skewness) -
         math_ops.log(self.tailweight) - 0.5 * math_ops.log1p(y**2),
         axis=event_dims)
 
@@ -138,6 +135,6 @@ class SinhArcsinh(bijector.Bijector):
     # = cosh((arcsinh(x) + skewness) * tailweight) * tailweight / sqrt(x**2 + 1)
     event_dims = self._event_dims_tensor(x)
     return math_ops.reduce_sum(
-        log_cosh((arcsinh(x) + self.skewness) * self.tailweight) +
+        log_cosh((math_ops.asinh(x) + self.skewness) * self.tailweight) +
         math_ops.log(self.tailweight) - 0.5 * math_ops.log1p(x**2),
         axis=event_dims)
