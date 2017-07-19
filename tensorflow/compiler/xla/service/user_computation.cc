@@ -1036,9 +1036,6 @@ Status UserComputation::AddOutfeedInstruction(
   tensorflow::mutex_lock lock(mutex_);
 
   const Shape& shape = outfeed_request.shape();
-  if (ShapeUtil::IsNestedTuple(shape)) {
-    return InvalidArgument("Outfeed does not support nested tuple shapes");
-  }
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("Given shape to Outfeed must have a layout");
   }
