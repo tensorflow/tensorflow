@@ -1,7 +1,7 @@
 # Release 1.3.0
 
 ## Major Features and Improvements
-* Added canned estimators to Tensorflow library. List of added estimators: DNNClassifier, DNNRegressor, LinearClassifer, LinearRegressor, DNNLinearCombinedClassifier, DNNLinearCombinedRegressor.
+* Added canned estimators to Tensorflow library. List of added estimators: `DNNClassifier`, `DNNRegressor`, `LinearClassifer`, `LinearRegressor`, `DNNLinearCombinedClassifier`, `DNNLinearCombinedRegressor`.
 * Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
 * Added an axis parameter to `tf.gather`.
 * Added a `constant_values` keyword argument to `tf.pad`.
@@ -16,6 +16,7 @@
 * Introduces base implementations of ClusterResolvers.
 * Unify memory representations of TensorShape and PartialTensorShape. As a consequence, tensors now have a maximum of 254 dimensions, not 255.
 * Changed references to LIBXSMM to use version 1.8.1.
+* TensorFlow Debugger (tfdbg): Display summaries of numeric tensor values with the -s flag to command print_tensor or pt.
 
 ## Breaking Changes to the API
 * `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
@@ -87,9 +88,9 @@ Van Eck, peeyush18, Peng Yu, Pierre, preciousdp11, qjivy, Raingo, raoqiyu, ribx,
 Imaoka, Rishabh Patel, Robert Walecki, Rockford Wei, Ryan Kung, Sahil Dua, Sandip Giri, Sayed
 Hadi Hashemi, sgt101, Shitian Ni, Shuolongbj, Siim PõDer, Simon Perkins, sj6077, SOLARIS,
 Spotlight0xff, Steffen Eberbach, Stephen Fox, superryanguo, Sven Mayer, Tapan Prakash,
-Tiago Morais Morgado, Till Hoffmann, Tj Rana, Todd Wang, Vadim Markovtsev,
-vhasanov, Wei Wu, windead, Yan (Asta) Li, Yan Chen, Yann Henon, Yi Wang, Yong Tang, yorkie,
-Yuan (Terry) Tang, Yuxin Wu, zhengjiajin, zhongzyd, 黄璞
+Tiago Morais Morgado, Till Hoffmann, Tj Rana, Vadim Markovtsev, vhasanov, Wei Wu,
+windead, Yan (Asta) Li, Yan Chen, Yann Henon, Yi Wang, Yong Tang, yorkie, Yuan (Terry)
+Tang, Yuxin Wu, zhengjiajin, zhongzyd, 黄璞
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
