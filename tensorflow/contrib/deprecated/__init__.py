@@ -19,10 +19,15 @@ submodule, and made some semantic tweaks. The first thing to note is that we
 moved the APIs around as follows:
 
 tf.scalar_summary      -> tf.summary.scalar
+
 tf.histogram_summary   -> tf.summary.histogram
+
 tf.audio_summary       -> tf.summary.audio
+
 tf.image_summary       -> tf.summary.image
+
 tf.merge_summary       -> tf.summary.merge
+
 tf.merge_all_summaries -> tf.summary.merge_all
 
 We think this is a cleaner API and will improve long-term discoverability and
