@@ -463,8 +463,8 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
   protected void processImageRGBbytes(int[] rgbBytes ) {
     if (desiredSize != initializedSize) {
       LOGGER.i(
-              "Initializing at size preview size %dx%d, stylize size %d",
-              previewWidth, previewHeight, desiredSize);
+        "Initializing at size preview size %dx%d, stylize size %d",
+        previewWidth, previewHeight, desiredSize);
       rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
       croppedBitmap = Bitmap.createBitmap(desiredSize, desiredSize, Config.ARGB_8888);
       frameToCropTransform = ImageUtils.getTransformationMatrix(
