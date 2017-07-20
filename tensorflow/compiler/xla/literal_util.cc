@@ -926,25 +926,21 @@ template <>
 tensorflow::gtl::MutableArraySlice<bool> Literal::GetMutableArraySlice() {
   auto values = mutable_preds();
   return tensorflow::gtl::MutableArraySlice<bool>(
-      reinterpret_cast<bool*>(&(*values)[0]), values->size());
+      reinterpret_cast<bool*>(values->data()), values->size());
 }
 
 template <>
 tensorflow::gtl::MutableArraySlice<int8> Literal::GetMutableArraySlice() {
-  // C++11 standard, basic_string 21.4.1.5, values should be stored
-  // contiguously. From C++17 a mutable data() member will be provided.
   auto values = mutable_u8s();
   return tensorflow::gtl::MutableArraySlice<int8>(
-      reinterpret_cast<int8*>(&(*values)[0]), values->size());
+      reinterpret_cast<int8*>(values->data()), values->size());
 }
 
 template <>
 tensorflow::gtl::MutableArraySlice<uint8> Literal::GetMutableArraySlice() {
-  // C++11 standard, basic_string 21.4.1.5, values should be stored
-  // contiguously. From C++17 a mutable data() member will be provided.
   auto values = mutable_u8s();
-  return tensorflow::gtl::MutableArraySlice<uint8>(
-      reinterpret_cast<uint8*>(&(*values)[0]), values->size());
+  return tensorflow::gtl::MutableArraySlice<uint8>(values->data(),
+                                                   values->size());
 }
 
 template <>
@@ -1006,13 +1002,11 @@ tensorflow::gtl::MutableArraySlice<double> Literal::GetMutableArraySlice() {
 
 template <>
 tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice<half>() {
-  // C++11 standard, basic_string 21.4.1.5, values should be stored
-  // contiguously. From C++17 a mutable data() member will be provided.
   // TODO - there is an endianess problem here. fix it, or wait for uint16
   //        support in protobuf
   auto values = mutable_f16s();
-  return tensorflow::gtl::MutableArraySlice<half>(
-      reinterpret_cast<half*>(&(*values)[0]), values->size());
+  return tensorflow::gtl::MutableArraySlice<half>(values->data(),
+                                                  values->size());
 }
 
 template <>
@@ -1069,9 +1063,8 @@ tensorflow::gtl::ArraySlice<double> Literal::GetArraySlice<double>() const {
 template <>
 tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const {
   CHECK_EQ(shape().element_type(), F16);
-  return tensorflow::gtl::ArraySlice<half>(
-      reinterpret_cast<const half*>(f16s().data()),
-      f16s().size() / sizeof(half));
+  return tensorflow::gtl::ArraySlice<half>(f16s().data(),
+                                           f16s().size() / sizeof(half));
 }
 
 template <typename NativeT>
