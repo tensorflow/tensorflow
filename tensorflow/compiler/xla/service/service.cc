@@ -328,7 +328,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
             shape_with_output_layout));
   }
 
-  if (module_config->debug_options().xla_hlo_profile()) {
+  if (execution_options.debug_options().xla_hlo_profile()) {
     module_config->enable_hlo_profiling(true);
   }
 
