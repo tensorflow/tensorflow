@@ -163,7 +163,9 @@ function version {
 
 
 bazel version > bazel.version
+set +e
 curr_bazel_version=$(grep -m 1 'Build label:' bazel.version | cut -d ' ' -f3)
+set -e
 rm -f bazel.version
 
 
