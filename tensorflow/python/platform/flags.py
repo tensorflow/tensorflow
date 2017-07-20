@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import argparse as _argparse
 
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import tf_logging as _logging
 from tensorflow.python.util.all_util import remove_undocumented
 
 _global_parser = _argparse.ArgumentParser()
@@ -170,7 +170,7 @@ def mark_flag_as_required(flag_name):
       NOTE: The exception raised will change in the future. 
   """
   if _global_parser.get_default(flag_name) is not None:
-    logging.warning(
+    _logging.warn(
         'Flag %s has a non-None default value; therefore, '
         'mark_flag_as_required will pass even if flag is not specified in the '
         'command line!' % flag_name)
