@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
 #define EIGEN_USE_THREADS
 
@@ -41,3 +42,5 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenConvF32(
       col_stride, padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation);
 }
+
+REGISTER_XLA_CPU_RUNTIME_BUILTIN(EigenConvF32);

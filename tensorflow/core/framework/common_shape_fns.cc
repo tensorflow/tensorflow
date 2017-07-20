@@ -201,6 +201,30 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+// input, filter, bias, output
+Status FusedConvBiasActivationShape(shape_inference::InferenceContext* c) {
+  TF_RETURN_IF_ERROR(Conv2DShape(c));
+
+  ShapeHandle bias_shape;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &bias_shape));
+  DimensionHandle bias_dim = c->Dim(bias_shape, 0);
+
+  ShapeHandle filter_shape;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &filter_shape));
+  DimensionHandle output_depth_dim = c->Dim(filter_shape, 3);
+
+  int64 output_depth_dim_val = c->Value(output_depth_dim);
+  int64 bias_dim_val = c->Value(bias_dim);
+
+  if (output_depth_dim_val != bias_dim_val) {
+    return errors::InvalidArgument(
+        "Output depth dimension (", output_depth_dim_val,
+        ") and bias dimension (", bias_dim_val, ") do not match.");
+  }
+
+  return Status::OK();
+}
+
 Status DimensionsFromShape(ShapeHandle shape, TensorFormat format,
                            DimensionHandle* batch_dim,
                            gtl::MutableArraySlice<DimensionHandle> spatial_dims,
@@ -425,7 +449,8 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   int32 stride_rows;
   int32 stride_cols;
   if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference
+    // Canonicalize input shape to NHWC so the shape inference code below can
+    // process it.
     input_shape =
         c->MakeShape({{c->Dim(input_shape, 0), c->Dim(input_shape, 2),
                        c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
@@ -505,7 +530,8 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
   int32 kernel_rows, kernel_cols;
 
   if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference.
+    // Canonicalize input shape to NHWC so the shape inference code below can
+    // process it.
     auto dim = [&](char dimension) {
       return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
     };
@@ -580,7 +606,8 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
   int32 kernel_rows, kernel_cols, kernel_depth;
 
   if (s.ok() && data_format == "NCHW") {
-    // Convert input shape to default NHWC for inference.
+    // Canonicalize input shape to NHWC so the shape inference code below can
+    // process it.
     auto dim = [&](char dimension) {
       return c->Dim(input_shape, GetTensorDimIndex<2>(FORMAT_NCHW, dimension));
     };

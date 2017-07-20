@@ -1508,6 +1508,22 @@ class SessionTest(test_util.TensorFlowTestCase):
         else:
           self.assertFalse(run_metadata.HasField('cost_graph'))
 
+  def runTestOutputPartitionGraphs(self, sess):
+    run_options = config_pb2.RunOptions(output_partition_graphs=True)
+    a = constant_op.constant(1)
+    run_metadata = config_pb2.RunMetadata()
+    sess.run(a, options=run_options, run_metadata=run_metadata)
+    self.assertGreater(len(run_metadata.partition_graphs), 0)
+    sess.run(a, run_metadata=run_metadata)
+    self.assertEqual(len(run_metadata.partition_graphs), 0)
+
+  def testOutputPartitionGraphsDirect(self):
+    self.runTestOutputPartitionGraphs(session.Session())
+
+  def testOutputPartitionGraphsDistributed(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestOutputPartitionGraphs(session.Session(server.target))
+
   def testNonInteractiveSessionNesting(self):
     sess1 = session.Session()
     sess1_controller = sess1.as_default()

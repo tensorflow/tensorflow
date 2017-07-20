@@ -163,7 +163,7 @@ function version {
 
 
 bazel version > bazel.version
-curr_bazel_version=$(head -n 1 bazel.version | cut -d ' ' -f3)
+curr_bazel_version=$(grep -m 1 'Build label:' bazel.version | cut -d ' ' -f3)
 rm -f bazel.version
 
 

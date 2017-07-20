@@ -229,6 +229,26 @@ class TransposeTest(test.TestCase):
         self.assertAllEqual(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, y)
 
+  def testLargeSizeGPU(self):
+    # If no GPU available, skip the test
+    if not test.is_gpu_available(cuda_only=True):
+      return
+
+    large_shapes = [[1000000, 31, 3], [3, 1000000, 31], [3, 31, 1000000],
+                    [2, 1000, 1000], [1000, 2, 1000], [1000, 1000, 2]]
+    perms = [[0, 2, 1]] * 6
+
+    for input_shape, perm in zip(large_shapes, perms):
+      total_size = np.prod(input_shape)
+      inp = np.arange(1, total_size + 1, dtype=np.float32).reshape(input_shape)
+      np_ans = self._np_transpose(inp, perm)
+      with self.test_session(use_gpu=True):
+        inx = ops.convert_to_tensor(inp)
+        y = array_ops.transpose(inx, perm)
+        tf_ans = y.eval()
+      self.assertAllEqual(np_ans, tf_ans)
+      self.assertShapeEqual(np_ans, y)
+
   def testNop(self):
     self._compareCpu(np.arange(0, 6).reshape([3, 2]).astype(np.float32), [0, 1])
 
