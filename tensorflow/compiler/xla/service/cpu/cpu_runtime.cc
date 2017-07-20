@@ -32,7 +32,10 @@ tensorflow::gtl::FlatMap<tensorflow::StringPiece, void*>* BuiltinMap() {
   return builtin_map;
 }
 
-tensorflow::mutex builtin_map_mutex(tensorflow::LINKER_INITIALIZED);
+tensorflow::mutex* BuiltinMapMutex() {
+  static tensorflow::mutex* builtin_map_mutex = new tensorflow::mutex;
+  return builtin_map_mutex;
+}
 }  // namespace
 
 namespace xla {
@@ -73,7 +76,7 @@ Registrar::Registrar(tensorflow::StringPiece name, void* function_pointer,
   CHECK_EQ(tensorflow::strings::StrCat(kXlaCpuRuntimeSymbolPrefix, base_name),
            name);
 
-  tensorflow::mutex_lock lock(builtin_map_mutex);
+  tensorflow::mutex_lock lock(*BuiltinMapMutex());
   InsertOrDie(BuiltinMap(), name, function_pointer);
 }
 }  // namespace internal
@@ -81,7 +84,7 @@ Registrar::Registrar(tensorflow::StringPiece name, void* function_pointer,
 void* ResolveSymbol(tensorflow::StringPiece name) {
   CHECK(name.starts_with(kXlaCpuRuntimeSymbolPrefix));
 
-  tensorflow::mutex_lock lock(builtin_map_mutex);
+  tensorflow::mutex_lock lock(*BuiltinMapMutex());
   const auto& builtin_map = *BuiltinMap();
   auto lookup_iterator = builtin_map.find(name);
   return lookup_iterator == builtin_map.end() ? nullptr
