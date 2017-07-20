@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import argparse as _argparse
 
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.all_util import remove_undocumented
 
 _global_parser = _argparse.ArgumentParser()
 
@@ -65,18 +65,17 @@ class _FlagValues(object):
     self.__dict__['__flags'][name] = value
     self._assert_required(name)
 
-  def _set_required_flag(self, item):
+  def _add_required_flag(self, item):
     self.__dict__['__required_flags'].add(item)
 
   def _assert_required(self, flag_name):
-    if flag_name not in self.__dict__['__flags'] or self.__dict__['__flags'][flag_name] is None:
+    if (flag_name not in self.__dict__['__flags'] or
+        self.__dict__['__flags'][flag_name] is None):
       raise AttributeError('Flag --%s must be specified.' % flag_name)
 
   def _assert_all_required(self):
     for flag_name in self.__dict__['__required_flags']:
       self._assert_required(flag_name)
-
-
 
 
 def _define_helper(flag_name, default_value, docstring, flagtype):
@@ -164,17 +163,18 @@ def mark_flag_as_required(flag_name):
       tf.app.run()
   
   Args:
-    flag_name: string, name of the flag
+    flag_name: string, name of the flag to mark as required.
+ 
   Raises:
     AttributeError: if flag_name is not registered as a valid flag name.
-      the exception raised will change in the future. 
+      NOTE: The exception raised will change in the future. 
   """
   if _global_parser.get_default(flag_name) is not None:
     logging.warning(
         'Flag %s has a non-None default value; therefore, '
         'mark_flag_as_required will pass even if flag is not specified in the '
         'command line!' % flag_name)
-  FLAGS._set_required_flag(flag_name)
+  FLAGS._add_required_flag(flag_name)
 
 
 def mark_flags_as_required(flag_names):
@@ -187,10 +187,11 @@ def mark_flags_as_required(flag_names):
       tf.app.run()
   
   Args:
-    flag_names: list/tuple, names of the flags.
+    flag_names: a list/tuple of flag names to mark as required.
+
   Raises:
     AttributeError: If any of flag name has not already been defined as a flag.
-      the exception raised will change in the future. 
+      NOTE: The exception raised will change in the future.
   """
   for flag_name in flag_names:
     mark_flag_as_required(flag_name)
