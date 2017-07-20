@@ -36,10 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
-// These don't work on reduce_window_test.cc, please see the BUILD file.
-#undef DISABLED_ON_CPU
-#undef DISABLED_ON_GPU
-
 namespace xla {
 namespace {
 
