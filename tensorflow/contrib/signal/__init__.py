@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""##Signal ops.
+"""Signal processing operations.
 
 @@frame
 @@hamming_window
@@ -20,6 +20,10 @@
 @@inverse_stft
 @@overlap_and_add
 @@stft
+
+[hamming]: https://en.wikipedia.org/wiki/Window_function#Hamming_window
+[hann]: https://en.wikipedia.org/wiki/Window_function#Hann_window
+[stft]: https://en.wikipedia.org/wiki/Short-time_Fourier_transform
 """
 
 from __future__ import absolute_import
