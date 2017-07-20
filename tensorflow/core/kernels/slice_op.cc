@@ -441,7 +441,7 @@ REGISTER_SLICE(bfloat16);
 namespace functor {
 #define DECLARE_GPU_SPEC(T, NDIM)                        \
   template <>                                            \
-  void Slice<GPUDevice, T, NDIM>::operator()(                  \
+  void Slice<GPUDevice, T, NDIM>::operator()(            \
       const GPUDevice& d,                                \
       Tensor* output,                                    \
       const Tensor& input,                               \

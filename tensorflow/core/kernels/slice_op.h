@@ -39,8 +39,8 @@ void SliceSimple(const Device& d, Tensor* out, const Tensor& in,
                  const gtl::ArraySlice<int64>& slice_indices) {
   const int ndims = in.dims();
   const int64 nelem = out->NumElements();
-  gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
-  gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
+  const gtl::InlinedVector<int64, 8> in_strides = ComputeStride<int64>(in.shape());
+  const gtl::InlinedVector<int64, 8> out_strides = ComputeStride<int64>(out->shape());
   const T* p = in.flat<T>().data();
   T* q = out->flat<T>().data();
 
@@ -69,7 +69,7 @@ void SliceUsingEigen(const Device& d, Tensor* out, const Tensor& in,
   for (int i = 0; i < NDIMS; ++i) {
     sizes[i] = slice_sizes[i];
   }
-  bool use_64bit = (input.size() > Eigen::NumTraits<int>::highest());
+  const bool use_64bit = input.size() > Eigen::NumTraits<int>::highest();
   if (!use_64bit &&
       Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
     To32Bit(output).device(d) = To32Bit(input).slice(indices, sizes);
