@@ -171,9 +171,10 @@ class _OrderedDictNumpyFeedFn(object):
 
     # Get sorted indices and remember how to reorder output.
     # This allows for the use of h5py databases which require ordered indexing.
-    sorted_integer_indexes, reorder_indexes = zip(
-        *sorted([(value, index)
-                 for index, value in enumerate(integer_indexes)]))
+    original_indexes, sorted_integer_indexes = \
+        zip(*sorted(enumerate(integer_indexes), key=lambda x: x[1]))
+    reorder_indexes, _ = \
+        zip(*sorted(enumerate(original_indexes), key=lambda x: x[1]))
     sorted_integer_indexes = list(sorted_integer_indexes)
     reorder_indexes = list(reorder_indexes)
 
