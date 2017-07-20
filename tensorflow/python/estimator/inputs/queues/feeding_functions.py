@@ -169,10 +169,19 @@ class _OrderedDictNumpyFeedFn(object):
         current_epoch=self._epoch,
         total_epochs=self._num_epochs)
 
+    # Get sorted indices and remember how to reorder output.
+    # This allows for the use of h5py databases which require ordered indexing.
+    original_indexes, sorted_integer_indexes = \
+        zip(*sorted(enumerate(integer_indexes), key=lambda x: x[1]))
+    reorder_indexes, _ = \
+        zip(*sorted(enumerate(original_indexes), key=lambda x: x[1]))
+    sorted_integer_indexes = list(sorted_integer_indexes)
+    reorder_indexes = list(reorder_indexes)
+
     self._trav = (integer_indexes[-1] + 1) % self._max
     feed_dict = {self._index_placeholder: integer_indexes}
     cols = [
-        column[integer_indexes]
+        column[sorted_integer_indexes][reorder_indexes]
         for column in self._ordered_dict_of_arrays.values()
     ]
     feed_dict.update(dict(zip(self._col_placeholders, cols)))
