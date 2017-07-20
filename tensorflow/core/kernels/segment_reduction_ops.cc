@@ -16,6 +16,9 @@ limitations under the License.
 // See docs in ../ops/math_ops.cc.
 
 #define EIGEN_USE_THREADS
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include <vector>
@@ -183,6 +186,54 @@ class SegmentReductionOp : public OpKernel {
   }
 };
 
+#ifdef GOOGLE_CUDA
+//  SegmentSumGPUOp is a segment sum operator implemented for GPU only.
+template <class T, class Index>
+class SegmentSumGPUOp : public OpKernel {
+ public:
+  explicit SegmentSumGPUOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    const Tensor& segment_ids = context->input(1);
+
+    if (!SegmentReductionDoValidation(context, input, segment_ids)) {
+      return;
+    }
+
+    const int64 num_indices = segment_ids.NumElements();
+
+    Index output_rows;
+    context->eigen_device<GPUDevice>().memcpyDeviceToHost(
+        (void*)&output_rows,
+        (void*)(segment_ids.template flat<Index>().data() + (num_indices - 1)),
+        sizeof(Index));
+    output_rows++;
+
+    OP_REQUIRES(context, output_rows > 0,
+                errors::InvalidArgument("segment ids must be >= 0"));
+
+    TensorShape output_shape = input.shape();
+    output_shape.set_dim(0, output_rows);
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    auto output_flat = output->flat_outer_dims<T>();
+    auto data_ptr = input.template flat<T>().data();
+    auto segment_flat = segment_ids.flat<Index>();
+
+    functor_(context, context->eigen_device<GPUDevice>(), output_rows,
+             segment_ids.shape(), segment_flat, input.NumElements(), data_ptr,
+             output_flat);
+
+  }
+
+ private:
+  functor::SegmentSumFunctor<T, Index> functor_;
+};
+#endif  // GOOGLE_CUDA
+
 #define REGISTER_CPU_KERNEL_SEGMENT(name, functor, type, index_type, \
                                     default_value)                   \
   REGISTER_KERNEL_BUILDER(                                           \
@@ -226,6 +277,23 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 #undef REGISTER_COMPLEX_CPU_KERNELS
 #undef REGISTER_REAL_CPU_KERNELS_ALL
 #undef REGISTER_COMPLEX_CPU_KERNELS_ALL
+
+#if GOOGLE_CUDA
+#define REGISTER_GPU_SORTED_KERNELS(type, index_type)                  \
+  REGISTER_KERNEL_BUILDER(Name("SegmentSum")                           \
+                              .Device(DEVICE_GPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          SegmentSumGPUOp<type, index_type>)
+
+#define REGISTER_GPU_SORTED_KERNELS_ALL(type) \
+  REGISTER_GPU_SORTED_KERNELS(type, int32);   \
+  REGISTER_GPU_SORTED_KERNELS(type, int64);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SORTED_KERNELS_ALL);
+#undef REGISTER_GPU_SORTED_KERNELS
+#undef REGISTER_GPU_SORTED_KERNELS_ALL
+#endif  // GOOGLE_CUDA
 
 namespace functor {
 
