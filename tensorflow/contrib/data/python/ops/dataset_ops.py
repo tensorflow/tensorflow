@@ -1943,8 +1943,8 @@ class TextLineDataset(Dataset):
 
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: A string, one of: `""` (no compression), `"ZLIB"`, or
-        `"GZIP"`.
+      compression_type: A `tf.string` scalar evaluating to one of `""` (no
+        compression), `"ZLIB"`, or `"GZIP"`.
     """
     super(TextLineDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
