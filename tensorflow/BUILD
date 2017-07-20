@@ -422,6 +422,7 @@ cc_binary(
     name = "libtfframework.so",
     linkshared = 1,
     linkstatic = 1,
+    visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib_internal_impl",

@@ -932,7 +932,17 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
           clean_dep("//tensorflow/core:framework"),
           clean_dep("//tensorflow/core:lib")
       ])
-
+  # Search parent directories up to the TensorFlow root directory for shared
+  # object dependencies, even if this op shared object is nested in a
+  # subdirectory (e.g. tensorflow/contrib/package/python/ops). tensorflow/ is
+  # then the root and tensorflow/libtfframework.so should exist when
+  # deployed. Other shared object dependencies (e.g. shared between contrib/
+  # ops) are picked up as long as they are in either the same or a parent
+  # directory in the tensorflow/ tree.
+  maximum_search_level = PACKAGE_NAME.count("/")
+  search_up_levels = ":".join(
+    ["$$ORIGIN/" + "/".join([".."] * search_level)
+     for search_level in range(maximum_search_level + 1)])
   native.cc_binary(
       name=name,
       srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
@@ -943,8 +953,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
       linkopts=select({
           "//conditions:default": [
               "-lm",
-              "-Wl,-rpath=$$ORIGIN/..",
-              "-Wl,-rpath=$$ORIGIN/../..",
+              "-Wl,-rpath=%s" % (search_up_levels,),
           ],
           clean_dep("//tensorflow:darwin"): [],
       }),)
