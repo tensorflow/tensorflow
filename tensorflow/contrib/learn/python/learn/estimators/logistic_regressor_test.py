@@ -55,8 +55,7 @@ def _logistic_regression_model_fn(features, labels, mode):
       # AUC/precision/recall/etc will change meaningfully even on a toy dataset.
       biases_initializer=init_ops.constant_initializer(-10.0))
   predictions = math_ops.sigmoid(logits)
-  loss = losses.sigmoid_cross_entropy(multi_class_labels=labels, logits=logits,
-                                      reduction=losses.Reduction.NONE)
+  loss = losses.sigmoid_cross_entropy(labels, logits)
   train_op = optimizers.optimize_loss(
       loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
   return predictions, loss, train_op
