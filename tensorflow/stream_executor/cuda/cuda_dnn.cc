@@ -728,6 +728,7 @@ class ScopedActivationDescriptor {
  public:
   ScopedActivationDescriptor(CUDAExecutor* parent,
                              dnn::ActivationMode activation_mode,
+                             cudnnNanPropagation_t nan_propagation,
                              double value_max)
       : parent_(parent), handle_(nullptr) {
     cudnnStatus_t status =
@@ -762,8 +763,6 @@ class ScopedActivationDescriptor {
                    << static_cast<int>(activation_mode);
     }
 
-    // Always propagate nans.
-    cudnnNanPropagation_t nan_propagation = CUDNN_PROPAGATE_NAN;
     status = wrap::cudnnSetActivationDescriptor(parent_, handle_, mode,
                                                 nan_propagation, relu_ceiling);
     if (status != CUDNN_STATUS_SUCCESS) {
@@ -2050,9 +2049,7 @@ bool CudnnSupport::DoConvolveImpl(
   }
   const bool has_biases = (biases != nullptr);
   const bool supported_activation_mode =
-      (activation_mode == dnn::ActivationMode::kRelu6 ||
-       activation_mode == dnn::ActivationMode::kReluX ||
-       activation_mode == dnn::ActivationMode::kRelu);
+      (activation_mode == dnn::ActivationMode::kRelu);
 
   if (has_biases && !supported_activation_mode) {
     LOG(ERROR) << "cudnnConvolutionBiasActivationForward() only "
@@ -2060,11 +2057,11 @@ bool CudnnSupport::DoConvolveImpl(
     return false;
   }
 
-  if (has_biases && activation_mode != dnn::ActivationMode::kNone) {
+  if (has_biases && activation_mode == dnn::ActivationMode::kNone) {
     LOG(ERROR) << "To use cudnnConvolutionBiasActivationForward() "
                   "with a valid biases tensor, need to also provide "
                   "a valid activation mode (currently only supports "
-                  "kRelu6, kReluX, and kRelu).";
+                  "kRelu).";
     return false;
   }
 
@@ -2097,7 +2094,12 @@ bool CudnnSupport::DoConvolveImpl(
         .set_layout(dnn::DataLayout::kBatchYXDepth);
     ScopedTensorDescriptor bias_descriptor{
         parent_, bias_dimensions, static_cast<cudnnDataType_t>(cudnn_type)};
+    // CUDNN v6 only supports CUDNN_NOT_PROPAGATE_NAN as the reluNanOpt for
+    // activation descriptor. Note that this will change the nan propagation
+    // behavior from separate conv, bias, and relu (which by default is
+    // CUDNN_PROPAGATE_NAN.
     ScopedActivationDescriptor activation_desc{parent_, activation_mode,
+                                               CUDNN_NOT_PROPAGATE_NAN,
                                                output_descriptor.value_max()};
     status = wrap::cudnnConvolutionBiasActivationForward(
         parent_, ToHandle(dnn_handle_),
@@ -2106,7 +2108,7 @@ bool CudnnSupport::DoConvolveImpl(
         /*filterData=*/filter_data.opaque(), /*convDesc=*/conv.handle(),
         /*algo=*/algo, /*workSpace=*/scratch.opaque(),
         /*workSpaceSizeInBytes=*/scratch.size(), /*alpha2=*/&beta,
-        /*zDesc=*/output_nd.handle(), /*z=*/nullptr,
+        /*zDesc=*/output_nd.handle(), /*z=*/input_data.opaque(),
         /*biasDesc=*/bias_descriptor.handle(),
         /*bias=*/biases.opaque(), /*activationDesc=*/activation_desc.handle(),
         /*destDesc=*/output_nd.handle(), /*destData=*/output_data->opaque());
@@ -3288,8 +3290,8 @@ bool CudnnSupport::DoActivate(Stream* stream,
   }
 
 #if CUDNN_VERSION >= 5000
-  ScopedActivationDescriptor activation_desc{parent_, activation_mode,
-                                             dimensions.value_max()};
+  ScopedActivationDescriptor activation_desc{
+      parent_, activation_mode, CUDNN_PROPAGATE_NAN, dimensions.value_max()};
 #else
   cudnnActivationMode_t mode;
   switch (activation_mode) {

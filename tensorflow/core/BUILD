@@ -384,6 +384,7 @@ tf_cuda_library(
         "framework/type_traits.h",
         "framework/types.h",
         "public/version.h",
+        "util/activation_mode.h",
         "util/bcast.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",

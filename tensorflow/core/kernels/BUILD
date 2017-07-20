@@ -161,6 +161,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "conv_2d_hdrs",
+    hdrs = ["conv_2d.h"],
+    deps = [
+        ":eigen_helpers",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_kernel_library(
     name = "extract_image_patches_op",
     prefix = "extract_image_patches_op",
@@ -243,6 +252,15 @@ cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
     deps = [
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "conv_ops_gpu_hdrs",
+    hdrs = ["conv_ops_gpu.h"],
+    deps = [
+        ":eigen_helpers",
         "//third_party/eigen3",
     ],
 )

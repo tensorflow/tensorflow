@@ -31,6 +31,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace dnn = ::perftools::gputools::dnn;
+
 // TODO(zhengxq): move this to gpu_util.h. The use of such wrappers is wide
 // spread.
 template <typename T>
@@ -56,12 +58,10 @@ class CudnnScratchAllocator : public perftools::gputools::ScratchAllocator {
   virtual ~CudnnScratchAllocator() {}
   CudnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  virtual int64 GetMemoryLimitInBytes(
-      perftools::gputools::Stream* stream) override {
+  int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override {
     return memory_limit_;
   }
-  virtual perftools::gputools::port::StatusOr<
-      perftools::gputools::DeviceMemory<uint8>>
+  perftools::gputools::port::StatusOr<perftools::gputools::DeviceMemory<uint8>>
   AllocateBytes(perftools::gputools::Stream* stream, int64 byte_size) override {
     Tensor temporary_memory;
     if (byte_size > memory_limit_) {
@@ -218,7 +218,7 @@ class AutoTuneMap {
       params_config_map_.insert(std::make_pair(params, ValueType{config, 1}));
       new_score = 1;
     } else if (iter->second.score < min_score_threshold_) {
-      DCHECK(iter->second.score > 0);
+      DCHECK_GT(iter->second.score, 0);
       if (iter->second.config != config) {
         // If it is different from the current winner, demotes the winner.
         VLOG(1) << GetActionSummary("demotes", params, config);
