@@ -256,6 +256,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
   MklLayoutRewritePass() {
     // NOTE: names are alphabetically sorted.
+    csinfo_.add = "Add";
+    csinfo_.add_n = "AddN";
     csinfo_.avg_pool = "AvgPool";
     csinfo_.avg_pool_grad = "AvgPoolGrad";
     csinfo_.bias_add = "BiasAdd";
@@ -347,6 +349,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.reshape,
                       GetMklOpName(csinfo_.reshape),
                       CopyAttrsReshape, AlwaysRewrite, nullptr});
+    // Rewrite AddN if N = 2 into Add.
+    rinfo_.push_back({csinfo_.add_n, csinfo_.add,
+                      CopyAttrsAddN, BinaryAddRewrite, nullptr});
+
 
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
@@ -429,6 +435,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   /// Structure to store all constant strings
   /// NOTE: names are alphabetically sorted.
   typedef struct {
+    string add;
+    string add_n;
     string avg_pool;
     string avg_pool_grad;
     string bias_add;
@@ -575,6 +583,25 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static bool AlwaysRewrite(const Node* n, const ContextInfo* c = nullptr) {
     return true;
   }
+  
+  static bool BinaryAddRewrite(const Node* n, const ContextInfo* c = nullptr) {
+  CHECK_NOTNULL(n);
+
+  int N = 0;
+  DataType T;
+
+  CHECK_EQ(GetNodeAttr(n->def(), "N", &N).ok(), true);
+  CHECK_EQ(GetNodeAttr(n->def(), "T", &T).ok(), true);
+
+  // If Add operation supports type T and AddN has only 2 input tensors,
+  // then we replace AddN by Add.
+  if (mkl_op_registry::IsMklOp(csinfo_.add, T) && N == 2) {
+    VLOG(1) << "MklLayoutRewritePass: Replacing AddN with Add";
+    return true;
+  }
+  return false;
+  }
+
 
   // Check if we are performing pooling on depth or batch. If it is, then we
   // do not rewrite MaxPool node to Mkl version.
@@ -907,6 +934,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // We need operator-specific function to copy attributes because the framework
   // does not provide any generic function for it.
   // NOTE: names are alphabetically sorted.
+  static void CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsBiasAddGrad(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb);
@@ -1432,6 +1460,16 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
 //////////////////////////////////////////////////////////////////////////
 // Op-specific functions to copy attributes from old node to new node
 //////////////////////////////////////////////////////////////////////////
+
+void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node,
+                                             NodeBuilder* nb) {
+  DataType T;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  // Add attributes to new node.
+  nb->Attr("T", T);
+}
 
 void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
                                            NodeBuilder* nb) {
