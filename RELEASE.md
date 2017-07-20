@@ -2,6 +2,7 @@
 
 ## Major Features and Improvements
 * Added canned estimators to Tensorflow library. List of added estimators: `DNNClassifier`, `DNNRegressor`, `LinearClassifer`, `LinearRegressor`, `DNNLinearCombinedClassifier`, `DNNLinearCombinedRegressor`.
+* All our prebuilt binaries have been built with cuDNN 6.
 * Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
 * Added an axis parameter to `tf.gather`.
 * Added a `constant_values` keyword argument to `tf.pad`.
@@ -17,6 +18,9 @@
 * Unify memory representations of TensorShape and PartialTensorShape. As a consequence, tensors now have a maximum of 254 dimensions, not 255.
 * Changed references to LIBXSMM to use version 1.8.1.
 * TensorFlow Debugger (tfdbg): Display summaries of numeric tensor values with the `-s` flag to command `print_tensor` or `pt`.
+* Initial release of the statistical distribution library `tf.distributions`.
+* GPU kernels and speed improvements for for unary `tf.where` and `tf.nn.top_k`.
+* Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
 
 ## Breaking Changes to the API
 * `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
