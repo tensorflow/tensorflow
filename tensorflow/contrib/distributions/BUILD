@@ -169,6 +169,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "moving_stats_test",
+    size = "small",
+    srcs = ["python/kernel_tests/moving_stats_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+    ],
+    tags = ["nomsan"],  # disable to avoid false positives from scipy.
+)
+
+cuda_py_test(
     name = "mvn_diag_test",
     size = "small",
     srcs = ["python/kernel_tests/mvn_diag_test.py"],
