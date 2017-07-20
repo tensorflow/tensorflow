@@ -35,7 +35,7 @@ cc_library(
     deps = [
         ":stamped_resource",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
-        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
     ],
 )
