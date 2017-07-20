@@ -279,45 +279,9 @@ class DebugAnalyzer(object):
     self._arg_parsers["list_outputs"] = ap
 
     # Parser for print_tensor.
-    ap = argparse.ArgumentParser(
-        description="Print the value of a dumped tensor.",
-        usage=argparse.SUPPRESS)
-    ap.add_argument(
-        "tensor_name",
-        type=str,
-        help="Name of the tensor, followed by any slicing indices, "
-        "e.g., hidden1/Wx_plus_b/MatMul:0, "
-        "hidden1/Wx_plus_b/MatMul:0[1, :]")
-    ap.add_argument(
-        "-n",
-        "--number",
-        dest="number",
-        type=int,
-        default=-1,
-        help="0-based dump number for the specified tensor. "
-        "Required for tensor with multiple dumps.")
-    ap.add_argument(
-        "-r",
-        "--ranges",
-        dest="ranges",
-        type=str,
-        default="",
-        help="Numerical ranges to highlight tensor elements in. "
-        "Examples: -r 0,1e-8, -r [-0.1,0.1], "
-        "-r \"[[-inf, -0.1], [0.1, inf]]\"")
-    ap.add_argument(
-        "-a",
-        "--all",
-        dest="print_all",
-        action="store_true",
-        help="Print the tensor in its entirety, i.e., do not use ellipses.")
-    ap.add_argument(
-        "-s",
-        "--numeric_summary",
-        action="store_true",
-        help="Include summary for non-empty tensors of numeric (int*, float*, "
-        "complex*) and Boolean types.")
-    self._arg_parsers["print_tensor"] = ap
+    self._arg_parsers["print_tensor"] = (
+        command_parser.get_print_tensor_argparser(
+            "Print the value of a dumped tensor."))
 
     # Parser for print_source.
     ap = argparse.ArgumentParser(
@@ -843,10 +807,8 @@ class DebugAnalyzer(object):
 
     parsed = self._arg_parsers["print_tensor"].parse_args(args)
 
-    if screen_info and "cols" in screen_info:
-      np_printoptions = {"linewidth": screen_info["cols"]}
-    else:
-      np_printoptions = {}
+    np_printoptions = cli_shared.numpy_printoptions_from_screen_info(
+        screen_info)
 
     # Determine if any range-highlighting is required.
     highlight_options = cli_shared.parse_ranges_highlight(parsed.ranges)

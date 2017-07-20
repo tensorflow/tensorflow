@@ -295,12 +295,15 @@ py_library(
     deps = [
         ":analyzer_cli",
         ":cli_shared",
+        ":command_parser",
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
         ":profile_analyzer_cli",
         ":stepper_cli",
+        ":tensor_format",
         ":ui_factory",
+        "@six_archive//:six",
     ],
 )
 
