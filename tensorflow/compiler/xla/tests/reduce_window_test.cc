@@ -545,7 +545,8 @@ class R4ReduceWindowTest
             /*window=*/param.window_bounds,
             /*stride=*/param.strides,
             /*padding=*/padding);
-    ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()});
+    ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()},
+                               ErrorSpec(1e-3, 1e-3));
   }
 };
 
@@ -680,9 +681,7 @@ INSTANTIATE_TEST_CASE_P(R4ReduceWindowTestInstantiation, R4ReduceWindowTest,
 
 class R4ReduceWindowLargeTest : public R4ReduceWindowTest {};
 
-// TODO(b/63838758): This test fails due to floating point imprecision justified
-// by fast-math.  We need to change it to use ErrorSpec.
-XLA_TEST_P(R4ReduceWindowLargeTest, DISABLED_DoIt) { DoIt(); }
+XLA_TEST_P(R4ReduceWindowLargeTest, DoIt) { DoIt(); }
 
 // Test cases that are large/slow/failed.
 const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
