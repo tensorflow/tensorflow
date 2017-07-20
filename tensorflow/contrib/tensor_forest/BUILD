@@ -101,9 +101,9 @@ tf_gen_op_wrapper_py(
 tf_custom_op_library(
     name = "python/ops/_tensor_forest_ops.so",
     srcs = [
+        ":libforestprotos.so",
         ":v2_op_defs",
         ":v2_op_sources",
-        "//tensorflow/contrib/tensor_forest:libforestprotos.so",
     ],
     deps = [":tree_utils"],
 )
@@ -247,7 +247,7 @@ tf_custom_op_library(
     name = "python/ops/_model_ops.so",
     srcs = [
         "ops/model_ops.cc",
-        "//tensorflow/contrib/tensor_forest:libforestprotos.so",
+        ":libforestprotos.so",
     ],
     deps = [":model_ops_lib"],
 )

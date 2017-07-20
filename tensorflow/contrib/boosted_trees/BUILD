@@ -288,6 +288,17 @@ py_library(
     ],
 )
 
+cc_binary(
+    name = "libboostedtreeprotos.so",
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/contrib/boosted_trees/proto:proto_impl",
+        "@protobuf//:protobuf",
+    ],
+)
+
 # Model Ops.
 tf_gen_op_libs(
     op_lib_names = ["model_ops"],
@@ -337,7 +348,7 @@ tf_custom_op_library(
     srcs = [
         "kernels/model_ops.cc",
         "ops/model_ops.cc",
-        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
+        ":libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
@@ -380,7 +391,7 @@ tf_custom_op_library(
     srcs = [
         "kernels/split_handler_ops.cc",
         "ops/split_handler_ops.cc",
-        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
+        ":libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:feature-column-handlers",
@@ -442,7 +453,7 @@ tf_custom_op_library(
     srcs = [
         "kernels/training_ops.cc",
         "ops/training_ops.cc",
-        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
+        ":libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
@@ -507,7 +518,7 @@ tf_custom_op_library(
     srcs = [
         "kernels/prediction_ops.cc",
         "ops/prediction_ops.cc",
-        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
+        ":libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:example_partitioner",
@@ -576,7 +587,7 @@ tf_custom_op_library(
     srcs = [
         "kernels/quantile_ops.cc",
         "ops/quantile_ops.cc",
-        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
+        ":libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
@@ -653,7 +664,7 @@ tf_custom_op_library(
     srcs = [
         "kernels/ensemble_optimizer_ops.cc",
         "ops/ensemble_optimizer_ops.cc",
-        "//tensorflow/contrib/boosted_trees/proto:libboostedtreeprotos.so",
+        ":libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
