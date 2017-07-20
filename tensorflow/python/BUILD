@@ -2077,6 +2077,7 @@ py_library(
     srcs = ["ops/summary_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":framework",
         ":framework_for_generated_wrappers",
         ":logging_ops_gen",
         ":summary_op_util",

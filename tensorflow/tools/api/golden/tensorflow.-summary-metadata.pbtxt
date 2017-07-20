@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
   }
   member {
+    name: "DISPLAY_NAME_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "Extensions"
     mtype: "<type \'getset_descriptor\'>"
   }
@@ -17,6 +21,10 @@ tf_class {
   member {
     name: "PluginData"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "SUMMARY_DESCRIPTION_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
   }
   member_method {
     name: "ByteSize"
