@@ -147,8 +147,7 @@ Status Rendezvous::Recv(const ParsedKey& key, const Args& args, Tensor* val,
 
 class LocalRendezvousImpl : public Rendezvous {
  public:
-  explicit LocalRendezvousImpl(bool tolerate_dup_recv)
-      : tolerate_dup_recv_(tolerate_dup_recv) {}
+  explicit LocalRendezvousImpl() {}
 
   Status Send(const ParsedKey& key, const Args& send_args, const Tensor& val,
               const bool is_dead) override {
@@ -202,15 +201,6 @@ class LocalRendezvousImpl : public Rendezvous {
         recv_args.device_context = item->recv_dev_context;
         recv_args.alloc_attrs = item->recv_alloc_attrs;
         item->recv_dev_context = nullptr;
-        if (tolerate_dup_recv_) {
-          item->value = val;
-          item->is_dead = is_dead;
-          if (send_args.device_context) {
-            send_args.device_context->Ref();
-            item->send_dev_context = send_args.device_context;
-          }
-          item->send_alloc_attrs = send_args.alloc_attrs;
-        }
       }
     }  // mutex
     // Notify the waiter by invoking its done closure, outside scope
@@ -235,18 +225,16 @@ class LocalRendezvousImpl : public Rendezvous {
     Table::iterator iter = table_.find(key_hash);
     if (iter != table_.end()) {
       Item* item = iter->second;
-      if (item->has_been_recvd && !tolerate_dup_recv_) {
+      if (item->has_been_recvd) {
         mu_.unlock();
         done(errors::Aborted("Duplicated recv: ", key.FullKey()), Args(),
              recv_args, Tensor(), false);
-      } else if (item->waiter == nullptr || tolerate_dup_recv_) {
+      } else if (item->waiter == nullptr) {
         // A message has already arrived and is stored in the table
         // under this key.  Consumes the message and invokes the done
         // closure.
         Tensor v = item->value;
-        if (!tolerate_dup_recv_) {
-          item->value = Tensor();
-        }
+        item->value = Tensor();
         item->has_been_recvd = true;
         // Before dropping the table lock, capture the item values.
         // DeviceContext is only non-null for non-CPU devices.
@@ -306,7 +294,6 @@ class LocalRendezvousImpl : public Rendezvous {
 
  private:
   typedef LocalRendezvousImpl ME;
-  const bool tolerate_dup_recv_;
 
   struct Item {
     DoneCallback waiter = nullptr;
@@ -348,8 +335,6 @@ class LocalRendezvousImpl : public Rendezvous {
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvousImpl);
 };
 
-Rendezvous* NewLocalRendezvous(bool tolerate_dup_recv) {
-  return new LocalRendezvousImpl(tolerate_dup_recv);
-}
+Rendezvous* NewLocalRendezvous() { return new LocalRendezvousImpl(); }
 
 }  // end namespace tensorflow
