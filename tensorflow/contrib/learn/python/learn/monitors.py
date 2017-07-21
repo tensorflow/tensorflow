@@ -22,9 +22,9 @@
 @@EveryN
 @@ExportMonitor
 @@GraphDump
+@@LoggingTensor
 @@LoggingTrainable
 @@NanLoss
-@@LoggingTensor
 @@StepCounter
 @@StopAtStep
 @@SummarySaver
