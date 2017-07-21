@@ -285,6 +285,52 @@ class TriangularTest(test.TestCase):
           np.square(self._u - 1) / (1 + self._u))
 
 
+class TPowerTest(test.TestCase):
+
+  def setUp(self):
+    self._logu = np.linspace(-10., 10, 100)
+    self._u = np.exp(self._logu)
+
+  def test_at_zero(self):
+    with self.test_session():
+      self.assertAllClose(cd.t_power(0., t=-0.1).eval(), 0.)
+      self.assertAllClose(cd.t_power(0., t=0.5).eval(), 0.)
+      self.assertAllClose(cd.t_power(0., t=1.1).eval(), 0.)
+      self.assertAllClose(
+          cd.t_power(0., t=-0.1, self_normalized=True).eval(), 0.)
+      self.assertAllClose(
+          cd.t_power(0., t=0.5, self_normalized=True).eval(), 0.)
+      self.assertAllClose(
+          cd.t_power(0., t=1.1, self_normalized=True).eval(), 0.)
+
+  def test_correct(self):
+    with self.test_session():
+      self.assertAllClose(
+          cd.t_power(self._logu, t=np.float64(-0.1)).eval(),
+          self._u ** -0.1 - 1.)
+      self.assertAllClose(
+          cd.t_power(self._logu, t=np.float64(0.5)).eval(),
+          -self._u ** 0.5 + 1.)
+      self.assertAllClose(
+          cd.t_power(self._logu, t=np.float64(1.1)).eval(),
+          self._u ** 1.1 - 1.)
+
+  def test_correct_self_normalized(self):
+    with self.test_session():
+      self.assertAllClose(
+          cd.t_power(self._logu, t=np.float64(-0.1),
+                     self_normalized=True).eval(),
+          self._u ** -0.1 - 1. + 0.1 * (self._u - 1.))
+      self.assertAllClose(
+          cd.t_power(self._logu, t=np.float64(0.5),
+                     self_normalized=True).eval(),
+          -self._u ** 0.5 + 1. + 0.5 * (self._u - 1.))
+      self.assertAllClose(
+          cd.t_power(self._logu, t=np.float64(1.1),
+                     self_normalized=True).eval(),
+          self._u ** 1.1 - 1. - 1.1 * (self._u - 1.))
+
+
 class Log1pAbsTest(test.TestCase):
 
   def setUp(self):

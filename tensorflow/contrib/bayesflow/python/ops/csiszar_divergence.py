@@ -43,6 +43,7 @@ _allowed_symbols = [
     'squared_hellinger',
     'symmetrized_csiszar_function',
     'total_variation',
+    't_power',
     'triangular',
 ]
 

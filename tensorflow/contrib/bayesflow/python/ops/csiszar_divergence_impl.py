@@ -42,6 +42,7 @@ import numpy as np
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo_impl as monte_carlo
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import distribution
@@ -76,15 +77,15 @@ def amari_alpha(logu, alpha=1., self_normalized=False, name=None):
     1532-1568, 2010.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
-    alpha: Floating-type Python scalar. (See Mathematical Details for meaning.)
+    logu: `float`-like `Tensor` representing `log(u)` from above.
+    alpha: `float`-like Python scalar. (See Mathematical Details for meaning.)
     self_normalized: Python `bool` indicating whether `f'(u=1)=0`. When
       `f'(u=1)=0` the implied Csiszar f-Divergence remains non-negative even
       when `p, q` are unnormalized measures.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    amari_alpha_of_u: Floating-type `Tensor` of the Csiszar-function evaluated
+    amari_alpha_of_u: `float`-like `Tensor` of the Csiszar-function evaluated
       at `u = exp(logu)`.
 
   Raises:
@@ -147,14 +148,14 @@ def kl_reverse(logu, self_normalized=False, name=None):
   calculations and may therefore be numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     self_normalized: Python `bool` indicating whether `f'(u=1)=0`. When
       `f'(u=1)=0` the implied Csiszar f-Divergence remains non-negative even
       when `p, q` are unnormalized measures.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    kl_reverse_of_u: Floating-type `Tensor` of the Csiszar-function evaluated at
+    kl_reverse_of_u: `float`-like `Tensor` of the Csiszar-function evaluated at
       `u = exp(logu)`.
 
   Raises:
@@ -195,14 +196,14 @@ def kl_forward(logu, self_normalized=False, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     self_normalized: Python `bool` indicating whether `f'(u=1)=0`. When
       `f'(u=1)=0` the implied Csiszar f-Divergence remains non-negative even
       when `p, q` are unnormalized measures.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    kl_forward_of_u: Floating-type `Tensor` of the Csiszar-function evaluated at
+    kl_forward_of_u: `float`-like `Tensor` of the Csiszar-function evaluated at
       `u = exp(logu)`.
 
   Raises:
@@ -251,14 +252,14 @@ def jensen_shannon(logu, self_normalized=False, name=None):
     Inf. Th., 37, 145-151, 1991.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     self_normalized: Python `bool` indicating whether `f'(u=1)=0`. When
       `f'(u=1)=0` the implied Csiszar f-Divergence remains non-negative even
       when `p, q` are unnormalized measures.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    jensen_shannon_of_u: Floating-type `Tensor` of the Csiszar-function
+    jensen_shannon_of_u: `float`-like `Tensor` of the Csiszar-function
       evaluated at `u = exp(logu)`.
   """
 
@@ -305,14 +306,14 @@ def arithmetic_geometric(logu, self_normalized=False, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     self_normalized: Python `bool` indicating whether `f'(u=1)=0`. When
       `f'(u=1)=0` the implied Csiszar f-Divergence remains non-negative even
       when `p, q` are unnormalized measures.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    arithmetic_geometric_of_u: Floating-type `Tensor` of the
+    arithmetic_geometric_of_u: `float`-like `Tensor` of the
       Csiszar-function evaluated at `u = exp(logu)`.
   """
 
@@ -343,11 +344,11 @@ def total_variation(logu, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    total_variation_of_u: Floating-type `Tensor` of the Csiszar-function
+    total_variation_of_u: `float`-like `Tensor` of the Csiszar-function
       evaluated at `u = exp(logu)`.
   """
 
@@ -375,11 +376,11 @@ def pearson(logu, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    pearson_of_u: Floating-type `Tensor` of the Csiszar-function evaluated at
+    pearson_of_u: `float`-like `Tensor` of the Csiszar-function evaluated at
       `u = exp(logu)`.
   """
 
@@ -410,11 +411,11 @@ def squared_hellinger(logu, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    squared_hellinger_of_u: Floating-type `Tensor` of the Csiszar-function
+    squared_hellinger_of_u: `float`-like `Tensor` of the Csiszar-function
       evaluated at `u = exp(logu)`.
   """
 
@@ -445,17 +446,61 @@ def triangular(logu, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    triangular_of_u: Floating-type `Tensor` of the Csiszar-function evaluated
+    triangular_of_u: `float`-like `Tensor` of the Csiszar-function evaluated
       at `u = exp(logu)`.
   """
 
   with ops.name_scope(name, "triangular", [logu]):
     logu = ops.convert_to_tensor(logu, name="logu")
     return pearson(logu) / (1. + math_ops.exp(logu))
+
+
+def t_power(logu, t, self_normalized=False, name=None):
+  """The T-Power Csiszar-function in log-space.
+
+  A Csiszar-function is a member of,
+
+  ```none
+  F = { f:R_+ to R : f convex }.
+  ```
+
+  When `self_normalized = True` the T-Power Csiszar-function is:
+
+  ```none
+  f(u) = s [ u**t - 1 - t(u - 1) ]
+  s = { -1   0 < t < 1
+      { +1   otherwise
+  ```
+
+  When `self_normalized = False` the `- t(u - 1)` term is omitted.
+
+  This is similar to the `amari_alpha` Csiszar-function, with the associated
+  divergence being the same up to factors depending only on `t`.
+
+  Args:
+    logu: `float`-like `Tensor` representing `log(u)` from above.
+    t:  `Tensor` of same `dtype` as `logu` and broadcastable shape.
+    self_normalized: Python `bool` indicating whether `f'(u=1)=0`.
+    name: Python `str` name prefixed to Ops created by this function.
+
+  Returns:
+    t_power_of_u: `float`-like `Tensor` of the Csiszar-function evaluated
+      at `u = exp(logu)`.
+  """
+  with ops.name_scope(name, "t_power", [logu, t]):
+    logu = ops.convert_to_tensor(logu, name="logu")
+    t = ops.convert_to_tensor(t, dtype=logu.dtype.base_dtype, name="t")
+    fu = math_ops.expm1(t * logu)
+    if self_normalized:
+      fu -= t * math_ops.expm1(logu)
+    fu *= array_ops.where(math_ops.logical_and(0. < t, t < 1.),
+                          -array_ops.ones_like(t),
+                          array_ops.ones_like(t))
+    return fu
 
 
 def log1p_abs(logu, name=None):
@@ -489,11 +534,11 @@ def log1p_abs(logu, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    log1p_abs_of_u: Floating-type `Tensor` of the Csiszar-function evaluated
+    log1p_abs_of_u: `float`-like `Tensor` of the Csiszar-function evaluated
       at `u = exp(logu)`.
   """
 
@@ -527,11 +572,11 @@ def jeffreys(logu, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    jeffreys_of_u: Floating-type `Tensor` of the Csiszar-function evaluated
+    jeffreys_of_u: `float`-like `Tensor` of the Csiszar-function evaluated
       at `u = exp(logu)`.
   """
 
@@ -559,11 +604,11 @@ def chi_square(logu, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    chi_square_of_u: Floating-type `Tensor` of the Csiszar-function evaluated
+    chi_square_of_u: `float`-like `Tensor` of the Csiszar-function evaluated
       at `u = exp(logu)`.
   """
 
@@ -597,14 +642,14 @@ def modified_gan(logu, self_normalized=False, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     self_normalized: Python `bool` indicating whether `f'(u=1)=0`. When
       `f'(u=1)=0` the implied Csiszar f-Divergence remains non-negative even
       when `p, q` are unnormalized measures.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    chi_square_of_u: Floating-type `Tensor` of the Csiszar-function evaluated
+    chi_square_of_u: `float`-like `Tensor` of the Csiszar-function evaluated
       at `u = exp(logu)`.
   """
 
@@ -650,13 +695,13 @@ def dual_csiszar_function(logu, csiszar_function, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     csiszar_function: Python callable representing a Csiszar-function over
       log-domain.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    dual_f_of_u: Floating-type `Tensor` of the result of calculating the dual of
+    dual_f_of_u: `float`-like `Tensor` of the result of calculating the dual of
       `f` at `u = exp(logu)`.
   """
 
@@ -719,13 +764,13 @@ def symmetrized_csiszar_function(logu, csiszar_function, name=None):
   numerically unstable for `|logu| >> 0`.
 
   Args:
-    logu: Floating-type `Tensor` representing `log(u)` from above.
+    logu: `float`-like `Tensor` representing `log(u)` from above.
     csiszar_function: Python callable representing a Csiszar-function over
       log-domain.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    symmetrized_g_of_u: Floating-type `Tensor` of the result of applying the
+    symmetrized_g_of_u: `float`-like `Tensor` of the result of applying the
       symmetrization of `g` evaluated at `u = exp(logu)`.
   """
 
@@ -811,7 +856,7 @@ def monte_carlo_csiszar_f_divergence(
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
-    monte_carlo_csiszar_f_divergence: Floating-type `Tensor` Monte Carlo
+    monte_carlo_csiszar_f_divergence: `float`-like `Tensor` Monte Carlo
       approximation of the Csiszar f-Divergence.
 
   Raises:
