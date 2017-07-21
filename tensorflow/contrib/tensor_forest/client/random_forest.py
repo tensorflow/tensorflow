@@ -37,6 +37,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import session_run_hook
 
@@ -163,7 +164,7 @@ def get_model_fn(params,
                  model_head=None,
                  keys_name=None,
                  early_stopping_rounds=100,
-                 early_stopping_loss_threshold=0.01,
+                 early_stopping_loss_threshold=0.001,
                  num_trainers=1,
                  trainer_id=0,
                  report_feature_importances=False,
@@ -197,6 +198,8 @@ def get_model_fn(params,
                                         device_assigner=dev_assn)
 
     logits = graph_builder.inference_graph(features)
+
+    summary.scalar('average_tree_size', graph_builder.average_size())
     # For binary classification problems, convert probabilities to logits.
     # Includes hack to get around the fact that a probability might be 0 or 1.
     if not params.regression and params.num_classes == 2:
@@ -308,7 +311,7 @@ class TensorForestEstimator(estimator.Estimator):
                keys_name=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
-               early_stopping_loss_threshold=0.01,
+               early_stopping_loss_threshold=0.001,
                num_trainers=1,
                trainer_id=0,
                report_feature_importances=False,

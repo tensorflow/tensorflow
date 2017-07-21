@@ -513,6 +513,9 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   if (pss->collect_rpcs) {
     SetRPCLogging(true);
   }
+  if (pss->collect_partition_graphs) {
+    exec_opts.set_record_partition_graphs(true);
+  }
   if (pss->collect_costs || pss->collect_timeline) {
     pss->step_stats.resize(partitions_.size());
   }
@@ -615,28 +618,37 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   if (status.ok()) {
     for (int i = 0; i < num; ++i) {
       const Part& part = partitions_[i];
-      for (size_t j = 0; j < calls.get(i)->resp->num_recvs(); ++j) {
-        auto iter = part.key_fetch.find(calls.get(i)->resp->recv_key(j));
+      MutableRunGraphResponseWrapper* run_graph_resp = calls.get(i)->resp.get();
+      for (size_t j = 0; j < run_graph_resp->num_recvs(); ++j) {
+        auto iter = part.key_fetch.find(run_graph_resp->recv_key(j));
         if (iter == part.key_fetch.end()) {
           status.Update(errors::Internal("Unexpected fetch key: ",
-                                         calls.get(i)->resp->recv_key(j)));
+                                         run_graph_resp->recv_key(j)));
           break;
         }
         const string& fetch = iter->second;
-        status.Update(resp->AddTensorFromRunGraphResponse(
-            fetch, calls.get(i)->resp.get(), j));
+        status.Update(
+            resp->AddTensorFromRunGraphResponse(fetch, run_graph_resp, j));
         if (!status.ok()) {
           break;
         }
       }
       if (pss->collect_timeline) {
-        pss->step_stats[i].Swap(calls.get(i)->resp->mutable_step_stats());
+        pss->step_stats[i].Swap(run_graph_resp->mutable_step_stats());
       }
       if (pss->collect_costs) {
-        CostGraphDef* cost_graph = calls.get(i)->resp->mutable_cost_graph();
+        CostGraphDef* cost_graph = run_graph_resp->mutable_cost_graph();
         for (int j = 0; j < cost_graph->node_size(); ++j) {
           resp->mutable_metadata()->mutable_cost_graph()->add_node()->Swap(
               cost_graph->mutable_node(j));
+        }
+      }
+      if (pss->collect_partition_graphs) {
+        protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
+            resp->mutable_metadata()->mutable_partition_graphs();
+        for (size_t i = 0; i < run_graph_resp->num_partition_graphs(); i++) {
+          partition_graph_defs->Add()->Swap(
+              run_graph_resp->mutable_partition_graph(i));
         }
       }
     }
@@ -1361,6 +1373,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     pss.collect_costs =
         build_cost_model_every > 0 &&
         ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
+    pss.collect_partition_graphs = req.options().output_partition_graphs();
 
     std::unique_ptr<ProfileHandler> ph = run_state->rcg->GetProfileHandler(
         run_state->step_id, count, req.options());
@@ -1517,6 +1530,7 @@ Status MasterSession::DoRunWithLocalExecution(
   pss.collect_costs =
       build_cost_model_every > 0 &&
       ((count + 1 - build_cost_model_after) % build_cost_model_every == 0);
+  pss.collect_partition_graphs = req.options().output_partition_graphs();
 
   std::unique_ptr<ProfileHandler> ph =
       rcg->GetProfileHandler(step_id, count, req.options());

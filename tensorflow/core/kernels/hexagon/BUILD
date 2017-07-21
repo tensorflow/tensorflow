@@ -27,23 +27,6 @@ filegroup(
 )
 
 tf_cc_test(
-    name = "quantized_matmul_op_for_hexagon_test",
-    size = "small",
-    srcs = ["quantized_matmul_op_for_hexagon_test.cc"],
-    tags = ["nomsan"],  # http://b/32242946
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/kernels:quantized_ops",
-    ],
-)
-
-tf_cc_test(
     name = "graph_transferer_test",
     size = "small",
     srcs = [
@@ -79,14 +62,14 @@ tf_kernel_library(
         "graph_transferer.cc",
         "hexagon_control_wrapper.cc",
         "hexagon_ops_definitions.cc",
-        "i_graph_transfer_ops_definitions.cc",
+        "soc_interface.cc",
     ],
     hdrs = [
         "graph_transfer_utils.h",
         "graph_transferer.h",
         "hexagon_control_wrapper.h",
         "hexagon_ops_definitions.h",
-        "i_graph_transfer_ops_definitions.h",
+        "soc_interface.h",
     ],
     deps = [
         "//tensorflow/cc:cc_ops",
@@ -111,6 +94,7 @@ cc_library(
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:remote_fused_graph_ops",
+        "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ],
     alwayslink = 1,
@@ -121,6 +105,7 @@ tf_cc_test(
     size = "small",
     srcs = ["hexagon_rewriter_transform_test.cc"],
     deps = [
+        ":graph_transferer",
         ":hexagon_rewriter_transform",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
@@ -129,6 +114,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ],
 )
