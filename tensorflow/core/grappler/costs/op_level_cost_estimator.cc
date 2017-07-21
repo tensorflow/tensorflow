@@ -31,6 +31,7 @@ constexpr char kConv2dBackPropInput[] = "Conv2DBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kIdentity[] = "Identity";
+constexpr char kRefIdentity[] = "RefIdentity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
 constexpr char kRecv[] = "_Recv";
@@ -40,6 +41,8 @@ constexpr char kVariableV2[] = "VariableV2";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
 constexpr char kSize[] = "Size";
+constexpr char kStopGradient[] = "StopGradient";
+constexpr char kPreventGradient[] = "PreventGradient";
 
 namespace {
 
@@ -155,6 +158,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kStopGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
