@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
 #include <unistd.h>
+#include <deque>
 #include <string>
 
 #include "tensorflow/compiler/xla/layout_util.h"
