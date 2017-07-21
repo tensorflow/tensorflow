@@ -183,27 +183,28 @@ struct BlockingState {
 };
 
 TEST_F(LocalRendezvousTest, RandomSendRecv) {
-  static const int N = 1000;
+  // We are scheduling 2*N closures in the this->threads_, which is
+  // configured with only 16 threads. Furthermore, because the
+  // threadpool may execute the closures in an arbitrary order, we
+  // must use RecvAsync below. Otherwise, blocking Recv() may run
+  // before all all the Send() and deadlock.
+  static const int N = 100;
+  random::PhiloxRandom philox(testing::RandomSeed(), 17);
+  random::SimplePhilox rnd(&philox);
   BlockingState state;
   state.counter = N;
   for (int i = 0; i < N; ++i) {
-    SchedClosure([this, i]() {
-      random::PhiloxRandom philox(testing::RandomSeed() + i, 17);
-      random::SimplePhilox rnd(&philox);
-      Env::Default()->SleepForMicroseconds(1000 + rnd.Uniform(10000));
+    int micros = 100 + rnd.Uniform(1000);
+    SchedClosure([this, i, micros]() {
+      Env::Default()->SleepForMicroseconds(micros);
       Rendezvous::Args args;
       TF_ASSERT_OK(rendez_->Send(MakeKey(strings::StrCat(i)), args,
                                  V(strings::StrCat(i)), false));
     });
-    SchedClosure([this, &state, i]() {
-      random::PhiloxRandom philox(testing::RandomSeed() + N + i, 17);
-      random::SimplePhilox rnd(&philox);
-      Env::Default()->SleepForMicroseconds(1000 + rnd.Uniform(10000));
-      Tensor val(DT_STRING);
-      bool val_dead = false;
-      Rendezvous::Args args;
-      TF_ASSERT_OK(
-          rendez_->Recv(MakeKey(strings::StrCat(i)), args, &val, &val_dead));
+    auto recv_done = [this, &state, i](const Status& status,
+                                       const Rendezvous::Args& sender_args,
+                                       const Rendezvous::Args& recver_args,
+                                       const Tensor& val, const bool val_dead) {
       EXPECT_EQ(strings::StrCat(i), V(val));
       bool done = false;
       {
@@ -216,6 +217,12 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
       if (done) {
         state.done.Notify();
       }
+    };
+    micros = 100 + rnd.Uniform(1000);
+    SchedClosure([this, i, micros, recv_done]() {
+      Env::Default()->SleepForMicroseconds(micros);
+      rendez_->RecvAsync(MakeKey(strings::StrCat(i)), Rendezvous::Args(),
+                         recv_done);
     });
   }
 
@@ -280,15 +287,15 @@ TEST_F(LocalRendezvousTest, TransferDummyDeviceContext) {
   Notification n;
   Rendezvous::Args args1;
   args1.device_context = new DummyDeviceContext(1);
-  rendez_->RecvAsync(KeyFoo(), args1, [&n](const Status& s,
-                                           const Rendezvous::Args& send_args,
-                                           const Rendezvous::Args& recv_args,
-                                           const Tensor& val, bool is_dead) {
-    CHECK_EQ(123,
-             dynamic_cast<const DummyDeviceContext*>(send_args.device_context)
-                 ->stream_id());
-    n.Notify();
-  });
+  rendez_->RecvAsync(
+      KeyFoo(), args1,
+      [&n](const Status& s, const Rendezvous::Args& send_args,
+           const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead) {
+        CHECK_EQ(123, dynamic_cast<const DummyDeviceContext*>(
+                          send_args.device_context)
+                          ->stream_id());
+        n.Notify();
+      });
 
   n.WaitForNotification();
   args.device_context->Unref();
