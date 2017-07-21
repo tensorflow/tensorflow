@@ -156,10 +156,9 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
       return;
     }
   }
-  CostGraphDef* cost_graph = response->mutable_cost_graph();
   session->graph_mgr->ExecuteAsync(
       request->graph_handle(), step_id, session, request->exec_opts(),
-      collector, cost_graph, cm, in,
+      collector, response, cm, in,
       [this, step_id, response, session, cm, out, token, collector, opts,
        done](Status s) {
         if (s.ok()) {
@@ -230,7 +229,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
     }
     session->graph_mgr->ExecuteAsync(
         graph_handle, step_id, session, request->exec_opts(),
-        nullptr /* collector */, nullptr /* cost_graph */, cm, in,
+        nullptr /* collector */, nullptr /* response */, cm, in,
         [this, token, step_id, cm](Status s) {
           {
             mutex_lock l(mu_);

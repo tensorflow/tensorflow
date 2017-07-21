@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
-#include "third_party/mkl/include/mkl_service.h"
-#include "third_party/mkl/include/mkl_trans.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
+#include "mkl_service.h"
+#include "mkl_trans.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/tensor_format.h"

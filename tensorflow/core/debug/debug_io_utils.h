@@ -221,7 +221,7 @@ class DebugFileIO {
 
 // TODO(cais): Support grpc:// debug URLs in open source once Python grpc
 //   genrule becomes available. See b/23796275.
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 
 namespace tensorflow {
@@ -345,6 +345,6 @@ class DebugGrpcIO {
 };
 
 }  // namespace tensorflow
-#endif  // #if defined(PLATFORM_GOOGLE)
+#endif  // #ifndef(PLATFORM_WINDOWS)
 
 #endif  // TENSORFLOW_DEBUG_IO_UTILS_H_

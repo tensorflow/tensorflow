@@ -32,7 +32,6 @@ from tensorflow.python.ops import nn
 
 __all__ = [
     'expectation',
-    'expectation_v2',
     'expectation_importance_sampler',
     'expectation_importance_sampler_logspace',
 ]
@@ -195,65 +194,8 @@ def _logspace_mean(log_values):
   return log_mean_of_values
 
 
-def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
-  r"""Monte Carlo estimate of an expectation:  `E_p[f(Z)]` with sample mean.
-
-  This `Op` returns
-
-  ```
-  n^{-1} sum_{i=1}^n f(z_i),  where z_i ~ p
-  \approx E_p[f(Z)]
-  ```
-
-  User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
-
-  Args:
-    f: Callable mapping samples from `p` to `Tensors`.
-    p:  `tf.contrib.distributions.Distribution`.
-    z:  `Tensor` of samples from `p`, produced by `p.sample` for some `n`.
-    n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
-    seed:  Python integer to seed the random number generator.
-    name:  A name to give this `Op`.
-
-  Returns:
-    A `Tensor` with the same `dtype` as `p`.
-
-  Example:
-
-  ```python
-  N_samples = 10000
-
-  distributions = tf.contrib.distributions
-
-  dist = distributions.Uniform([0.0, 0.0], [1.0, 2.0])
-  elementwise_mean = lambda x: x
-  mean_sum = lambda x: tf.reduce_sum(x, 1)
-
-  estimate_elementwise_mean_tf = monte_carlo.expectation(elementwise_mean,
-                                                         dist,
-                                                         n=N_samples)
-  estimate_mean_sum_tf = monte_carlo.expectation(mean_sum,
-                                                 dist,
-                                                 n=N_samples)
-
-  with tf.Session() as sess:
-    estimate_elementwise_mean, estimate_mean_sum = (
-        sess.run([estimate_elementwise_mean_tf, estimate_mean_sum_tf]))
-  print estimate_elementwise_mean
-  >>> np.array([ 0.50018013  1.00097895], dtype=np.float32)
-  print estimate_mean_sum
-  >>> 1.49571
-
-  ```
-
-  """
-  with ops.name_scope(name, values=[n, z]):
-    z = _get_samples(p, z, n, seed)
-    return _sample_mean(f(z))
-
-
-def expectation_v2(f, samples, log_prob=None, use_reparametrization=True,
-                   axis=0, keep_dims=False, name=None):
+def expectation(f, samples, log_prob=None, use_reparametrization=True,
+                axis=0, keep_dims=False, name=None):
   """Computes the Monte-Carlo approximation of `E_p[f(X)]`.
 
   This function computes the Monte-Carlo approximation of an expectation, i.e.,
@@ -311,7 +253,7 @@ def expectation_v2(f, samples, log_prob=None, use_reparametrization=True,
       dimensions.
     keep_dims: If true, retains averaged dimensions with length 1.
     name: A `name_scope` for operations created by this function (optional).
-      Default value: "expectation_v2".
+      Default value: "expectation".
 
   Returns:
     approx_expectation: `Tensor` corresponding to the Monte-Carlo approximation
@@ -323,7 +265,7 @@ def expectation_v2(f, samples, log_prob=None, use_reparametrization=True,
       `callable`.
   """
 
-  with ops.name_scope(name, 'expectation_v2', [samples]):
+  with ops.name_scope(name, 'expectation', [samples]):
     if not callable(f):
       raise ValueError('`f` must be a callable function.')
     if use_reparametrization:

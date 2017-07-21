@@ -22,6 +22,25 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+// This Env wrapper lets us control the NowSeconds() return value.
+class FakeEnv : public EnvWrapper {
+ public:
+  FakeEnv() : EnvWrapper(Env::Default()) {}
+
+  uint64 NowSeconds() override {
+    mutex_lock lock(mu_);
+    return now_;
+  }
+
+  void SetNowSeconds(uint64 now) {
+    mutex_lock lock(mu_);
+    now_ = now;
+  }
+
+  mutex mu_;
+  uint64 now_ = 1;
+};
+
 TEST(FileBlockCacheTest, PassThrough) {
   const string want_filename = "foo/bar";
   const size_t want_offset = 42;
@@ -240,13 +259,6 @@ TEST(FileBlockCacheTest, LRU) {
 }
 
 TEST(FileBlockCacheTest, MaxStaleness) {
-  // This Env wrapper lets us control the NowSeconds() return value.
-  class FakeEnv : public EnvWrapper {
-   public:
-    FakeEnv() : EnvWrapper(Env::Default()) {}
-    uint64 NowSeconds() override { return now_; };
-    uint64 now_ = 1;
-  };
   int calls = 0;
   auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
                           std::vector<char>* out) {
@@ -266,21 +278,21 @@ TEST(FileBlockCacheTest, MaxStaleness) {
   // count should advance every 3 seconds (i.e. every time the staleness is
   // greater than 2).
   for (int i = 1; i <= 10; i++) {
-    env->now_ = i + 1;
+    env->SetNowSeconds(i + 1);
     TF_EXPECT_OK(cache1.Read("", 0, 1, &out));
     EXPECT_EQ(calls, 1 + i / 3);
   }
   // Now create a cache with max staleness of 0, and verify that it also works
   // as expected.
   calls = 0;
-  env->now_ = 0;
+  env->SetNowSeconds(0);
   FileBlockCache cache2(8, 16, 0 /* max staleness */, fetcher, env.get());
   // Execute the first read to load the block.
   TF_EXPECT_OK(cache2.Read("", 0, 1, &out));
   EXPECT_EQ(calls, 1);
   // Advance the clock by a huge amount and verify that the cached block is
   // used to satisfy the read.
-  env->now_ = 365 * 24 * 60 * 60;  // ~1 year, just for fun.
+  env->SetNowSeconds(365 * 24 * 60 * 60);  // ~1 year, just for fun.
   TF_EXPECT_OK(cache2.Read("", 0, 1, &out));
   EXPECT_EQ(calls, 1);
 }
@@ -345,6 +357,65 @@ TEST(FileBlockCacheTest, RemoveFile) {
   TF_EXPECT_OK(cache.Read("a", 8, n, &out));
   EXPECT_EQ(out, A);
   EXPECT_EQ(calls, 6);
+}
+
+TEST(FileBlockCacheTest, Prune) {
+  int calls = 0;
+  auto fetcher = [&calls](const string& filename, size_t offset, size_t n,
+                          std::vector<char>* out) {
+    calls++;
+    out->clear();
+    out->resize(n, 'x');
+    return Status::OK();
+  };
+  std::vector<char> out;
+  // Our fake environment is initialized with the current timestamp.
+  std::unique_ptr<FakeEnv> env(new FakeEnv);
+  uint64 now = Env::Default()->NowSeconds();
+  env->SetNowSeconds(now);
+  FileBlockCache cache(8, 32, 1 /* max staleness */, fetcher, env.get());
+  // Read three blocks into the cache, and advance the timestamp by one second
+  // with each read. Start with a block of "a" at the current timestamp `now`.
+  TF_EXPECT_OK(cache.Read("a", 0, 1, &out));
+  // Now load a block of a different file "b" at timestamp `now` + 1
+  env->SetNowSeconds(now + 1);
+  TF_EXPECT_OK(cache.Read("b", 0, 1, &out));
+  // Now load a different block of file "a" at timestamp `now` + 1. When the
+  // first block of "a" expires, this block should also be removed because it
+  // also belongs to file "a".
+  TF_EXPECT_OK(cache.Read("a", 8, 1, &out));
+  // Ensure that all blocks are in the cache (i.e. reads are cache hits).
+  EXPECT_EQ(cache.CacheSize(), 24);
+  EXPECT_EQ(calls, 3);
+  TF_EXPECT_OK(cache.Read("a", 0, 1, &out));
+  TF_EXPECT_OK(cache.Read("b", 0, 1, &out));
+  TF_EXPECT_OK(cache.Read("a", 8, 1, &out));
+  EXPECT_EQ(calls, 3);
+  // Advance the fake timestamp so that "a" becomes stale via its first block.
+  env->SetNowSeconds(now + 2);
+  // The pruning thread periodically compares env->NowSeconds() with the oldest
+  // block's timestamp to see if it should evict any files. At the current fake
+  // timestamp of `now` + 2, file "a" is stale because its first block is stale,
+  // but file "b" is not stale yet. Thus, once the pruning thread wakes up (in
+  // one second of wall time), it should remove "a" and leave "b" alone.
+  uint64 start = Env::Default()->NowSeconds();
+  do {
+    Env::Default()->SleepForMicroseconds(100000);
+  } while (cache.CacheSize() == 24 && Env::Default()->NowSeconds() - start < 3);
+  // There should be one block left in the cache, and it should be the first
+  // block of "b".
+  EXPECT_EQ(cache.CacheSize(), 8);
+  TF_EXPECT_OK(cache.Read("b", 0, 1, &out));
+  EXPECT_EQ(calls, 3);
+  // Advance the fake time to `now` + 3, at which point "b" becomes stale.
+  env->SetNowSeconds(now + 3);
+  // Wait for the pruner to remove "b".
+  start = Env::Default()->NowSeconds();
+  do {
+    Env::Default()->SleepForMicroseconds(100000);
+  } while (cache.CacheSize() == 8 && Env::Default()->NowSeconds() - start < 3);
+  // The cache should now be empty.
+  EXPECT_EQ(cache.CacheSize(), 0);
 }
 
 }  // namespace

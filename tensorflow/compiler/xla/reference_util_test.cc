@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -199,6 +200,32 @@ TEST_F(ReferenceUtilTest, SliceStridedArray4D) {
       {{{{60.f, 62.f, 64.f}, {70.f, 72.f, 74.f}},
         {{100.f, 102.f, 104.f}, {110.f, 112.f, 114.f}}}},
       *actual_literal, ErrorSpec(0.0001));
+}
+
+TEST_F(ReferenceUtilTest, ConvArray3DWithSamePadding) {
+  Array3D<float> input = {{{1, 2, 3, 4}}};
+  Array3D<float> weights = {{{5, 6}}};
+  std::unique_ptr<Array3D<float>> actual =
+      ReferenceUtil::ConvArray3D(input, weights, 1, Padding::kSame);
+  Array3D<float> expected = {{{17, 28, 39, 20}}};
+
+  auto actual_literal = Literal::CreateR3FromArray3D(*actual);
+
+  LiteralTestUtil::ExpectR3NearArray3D<float>(expected, *actual_literal,
+                                              ErrorSpec(0.0001));
+}
+
+TEST_F(ReferenceUtilTest, ConvArray3DWithValidPadding) {
+  Array3D<float> input = {{{1, 2, 3, 4}}};
+  Array3D<float> weights = {{{5, 6}}};
+  std::unique_ptr<Array3D<float>> actual =
+      ReferenceUtil::ConvArray3D(input, weights, 1, Padding::kValid);
+  Array3D<float> expected = {{{17, 28, 39}}};
+
+  auto actual_literal = Literal::CreateR3FromArray3D(*actual);
+
+  LiteralTestUtil::ExpectR3NearArray3D<float>(expected, *actual_literal,
+                                              ErrorSpec(0.0001));
 }
 
 TEST_F(ReferenceUtilTest, ConvWithSamePadding) {
