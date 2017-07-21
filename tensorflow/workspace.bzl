@@ -437,12 +437,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # to point to the protobuf's compiler library.
   native.bind(
       name = "protobuf_clib",
-      actual = "@protobuf//:protoc_lib",
+      actual = "@com_google_protobuf//:protoc_lib",
   )
 
   native.bind(
       name = "protobuf_compiler",
-      actual = "@protobuf//:protoc_lib",
+      actual = "@com_google_protobuf//:protoc",
   )
 
   native.new_http_archive(
