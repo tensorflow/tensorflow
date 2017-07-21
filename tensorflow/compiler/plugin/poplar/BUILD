@@ -51,9 +51,10 @@ cc_library(
         "driver/tensor_ops.cc",
         "driver/transfer_manager.cc",
         "driver/visitor_base.cc",
-        "driver/visitor_subcomputation.cc",
         "driver/visitor_full.cc",
+        "driver/visitor_inline_call.cc",
         "driver/visitor_map.cc",
+        "driver/visitor_subcomputation.cc",
     ],
     hdrs = [
         "driver/compiler.h",
@@ -68,9 +69,10 @@ cc_library(
         "driver/transfer_manager.h",
         "driver/vertex_templates.h",
         "driver/visitor_base.h",
-        "driver/visitor_subcomputation.h",
         "driver/visitor_full.h",
+        "driver/visitor_inline_call.h",
         "driver/visitor_map.h",
+        "driver/visitor_subcomputation.h",
     ],
     deps = [
         ":optimizers",
