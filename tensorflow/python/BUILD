@@ -3898,6 +3898,7 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     main = "ops/matmul_benchmark_test.py",
+    tags = ["no_pip"],
 )
 
 cuda_py_test(
