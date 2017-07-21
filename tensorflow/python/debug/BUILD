@@ -832,6 +832,7 @@ cuda_py_test(
     data = ["//tensorflow/tools/dist_test/server:grpc_tensorflow_server"],
     tags = [
         "no_oss",  # b/62956105: port conflicts + Incompatible with bazel_pip.
+        "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
     ],
 )
