@@ -468,8 +468,8 @@ public class TensorFlowInferenceInterface {
     for (Tensor<?> t : fetchTensors) {
       t.close();
     }
-    fetchTensors = null;
-    fetchNames = null;
+    fetchTensors.clear();
+    fetchNames.clear();
   }
 
   // State immutable between initializeTensorFlow calls.
