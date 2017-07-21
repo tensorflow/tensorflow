@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/backend_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -172,12 +171,7 @@ Service::Service(const ServiceOptions& options,
     : options_(options),
       execute_backend_(std::move(execute_backend)),
       compute_constant_backend_(std::move(compute_constant_backend)) {
-  // TODO(b/32648682): this flag / options update dance will go away once we
-  // pass the replica count explicitly to the service.
-  if (options_.number_of_replicas() < 0) {
-    legacy_flags::BackendFlags* flags = legacy_flags::GetBackendFlags();
-    options_.set_number_of_replicas(flags->xla_replicas);
-  }
+  CHECK(options_.number_of_replicas() > 0);
 
   if (execute_backend_) {
     if (execute_backend_->device_count() > 0) {
