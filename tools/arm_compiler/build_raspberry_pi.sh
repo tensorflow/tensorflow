@@ -21,7 +21,7 @@ bazel build -c opt --copt=-march=armv6 --copt=-mfpu=vfp \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
   --verbose_failures \
-  tensorflow/tools/benchmark:benchmark_model \
+  //tensorflow/tools/benchmark:benchmark_model \
   //tensorflow/tools/pip_package:build_pip_package
 
 TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
@@ -33,12 +33,11 @@ BDIST_OPTS="--universal" \
 
 OLD_FN=$(ls "${TMPDIR}" | grep \.whl)
 SUB='s/tensorflow-([^-]+)-([^-]+)-.*/tensorflow-\1-\2-none-any.whl/; print'
-NEW_FN=$(echo "${OLD_FN}" | \
-  perl -ne "${SUB}")
+NEW_FN=$(echo "${OLD_FN}" | perl -ne "${SUB}")
 mv "${TMPDIR}/${OLD_FN}" "${TMPDIR}/${NEW_FN}"
 cp bazel-bin/tensorflow/tools/benchmark/benchmark_model "${TMPDIR}"
 
-echo "Output may be found here:"
+echo "Output can be found here:"
 find "${TMPDIR}"
 
 
