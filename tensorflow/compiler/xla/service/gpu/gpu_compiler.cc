@@ -81,7 +81,7 @@ const char* kTargetTriple = "nvptx64-nvidia-cuda";
 
 // The data layout of the emitted module. Copied from computeDataLayout in
 // NVPTXTargetMachine.cpp.
-const char* kDataLayout = "e-i64:64-v16:16-v32:32-n16:32:64";
+const char* kDataLayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 // Any address of a variable residing in global memory or returned by one of the
 // memory allocation routines from the driver or runtime API is always aligned
