@@ -726,7 +726,8 @@ class SingularMonitoredSession(_MonitoredSession):
                master='',
                config=None,
                checkpoint_dir=None,
-               stop_grace_period_secs=120):
+               stop_grace_period_secs=120,
+               checkpoint_filename_with_path=None):
     """Creates a SingularMonitoredSession.
 
     Args:
@@ -739,12 +740,15 @@ class SingularMonitoredSession(_MonitoredSession):
         variables.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `close()` has been called.
+      checkpoint_filename_with_path: A string. Optional path to a checkpoint
+        file from which to restore variables.
     """
     session_creator = ChiefSessionCreator(
         scaffold=scaffold,
         master=master,
         config=config,
-        checkpoint_dir=checkpoint_dir)
+        checkpoint_dir=checkpoint_dir,
+        checkpoint_filename_with_path=checkpoint_filename_with_path)
     super(SingularMonitoredSession, self).__init__(
         session_creator, hooks, should_recover=False,
         stop_grace_period_secs=stop_grace_period_secs)
