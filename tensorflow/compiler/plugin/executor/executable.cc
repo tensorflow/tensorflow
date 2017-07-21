@@ -47,13 +47,14 @@ static se::DeviceMemoryBase AllocateOutputBuffer(sep::ExecutorExecutor* executor
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     void** buf = reinterpret_cast<void**>(executor->Allocate(size));
+    void** buf_rc = buf;
     for (int64 n = 0; n < xla::ShapeUtil::TupleElementCount(shape); n++) {
       se::DeviceMemoryBase out =
           AllocateSingleOutput(executor, literal.tuple_literals(n));
       *buf++ = out.opaque();
     }
 
-    return se::DeviceMemoryBase(buf, size);
+    return se::DeviceMemoryBase(buf_rc, size);
   }
 }
 
