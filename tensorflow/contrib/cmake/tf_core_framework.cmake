@@ -155,6 +155,10 @@ if (NOT tensorflow_ENABLE_GPU)
       "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
       "${tensorflow_source_dir}/tensorflow/core/platform/default/cuda_libdevice_path.*")
   list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
+else()
+  file(GLOB tf_core_platform_srcs_exclude
+      "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu_tracer.cc")
+  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_srcs_exclude})
 endif()
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
