@@ -885,7 +885,6 @@ cc_library(
 tf_gen_op_wrapper_py(
     name = "test_ops_2",
     out = "framework/test_ops_2.py",
-    require_shape_functions = True,
     deps = [":test_ops_2_kernels"],
 )
 
@@ -1075,7 +1074,6 @@ py_test(
 
 tf_gen_op_wrapper_private_py(
     name = "array_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -1097,13 +1095,11 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
-    require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "control_flow_ops_gen",
-    require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
     deps = [
         "//tensorflow/core:control_flow_ops_op_lib",
@@ -1113,12 +1109,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "ctc_ops_gen",
-    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
     name = "data_flow_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -1127,7 +1121,6 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "dataset_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow:__subpackages__",
@@ -1137,13 +1130,11 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "image_ops_gen",
-    require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "io_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -1152,13 +1143,11 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "linalg_ops_gen",
-    require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "logging_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -1167,7 +1156,6 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "lookup_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/contrib/lookup:__pkg__",
@@ -1177,7 +1165,6 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
@@ -1189,7 +1176,6 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "nn_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -1201,7 +1187,6 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "parsing_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
     ],
@@ -1209,34 +1194,28 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "random_ops_gen",
-    require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "resource_variable_ops_gen",
-    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
     name = "script_ops_gen",
-    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
     name = "sdca_ops_gen",
-    require_shape_functions = True,
     visibility = ["//tensorflow/contrib/linear_optimizer:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
     name = "set_ops_gen",
-    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
-    require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/contrib/framework:__pkg__",
@@ -1246,27 +1225,24 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "sparse_ops_gen",
-    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
     name = "spectral_ops_gen",
-    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
     name = "string_ops_gen",
-    require_shape_functions = True,
 )
 
 tf_gen_op_wrapper_private_py(
     name = "user_ops_gen",
+    require_shape_functions = False,
 )
 
 tf_gen_op_wrapper_private_py(
     name = "training_ops_gen",
     out = "training/gen_training_ops.py",
-    require_shape_functions = True,
 )
 
 py_library(
@@ -1928,6 +1904,16 @@ py_library(
 )
 
 py_library(
+    name = "spectral_ops_test_util",
+    srcs = ["ops/spectral_ops_test_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":framework_ops",
+    ],
+)
+
+py_library(
     name = "confusion_matrix",
     srcs = ["ops/confusion_matrix.py"],
     srcs_version = "PY2AND3",
@@ -2080,6 +2066,7 @@ py_library(
     srcs = ["ops/summary_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":framework",
         ":framework_for_generated_wrappers",
         ":logging_ops_gen",
         ":summary_op_util",
@@ -3087,6 +3074,7 @@ py_test(
     deps = [
         ":array_ops",
         ":client",
+        ":client_testlib",
         ":framework",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -3814,6 +3802,26 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "conv2d_benchmark",
+    size = "large",
+    srcs = ["ops/conv2d_benchmark.py"],
+    additional_deps = [
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":nn_ops",
+        ":platform",
+        ":platform_benchmark",
+        ":random_ops",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/conv2d_benchmark.py",
+)
+
+cuda_py_test(
     name = "split_benchmark",
     srcs = ["ops/split_benchmark.py"],
     additional_deps = [
@@ -3848,6 +3856,49 @@ cuda_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     main = "ops/transpose_benchmark.py",
+)
+
+cuda_py_test(
+    name = "matmul_benchmark",
+    size = "medium",
+    srcs = ["ops/matmul_benchmark.py"],
+    additional_deps = [
+        ":math_ops",
+        ":random_ops",
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":platform",
+        ":platform_benchmark",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/matmul_benchmark.py",
+)
+
+cuda_py_test(
+    name = "matmul_benchmark_test",
+    size = "medium",
+    srcs = ["ops/matmul_benchmark_test.py"],
+    additional_deps = [
+        ":math_ops",
+        ":random_ops",
+        ":client",
+        ":client_testlib",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":platform_benchmark",
+        ":matmul_benchmark",
+        ":variables",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/matmul_benchmark_test.py",
+    tags = ["no_pip"],
 )
 
 cuda_py_test(

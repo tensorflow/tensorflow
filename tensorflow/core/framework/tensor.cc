@@ -376,10 +376,10 @@ Buffer<T>::Buffer(Allocator* a, int64 n,
 
 template <typename T>
 Buffer<T>::~Buffer() {
-  if (LogMemory::IsEnabled()) {
-    RecordDeallocation();
-  }
   if (data_) {
+    if (LogMemory::IsEnabled()) {
+      RecordDeallocation();
+    }
     alloc_->Deallocate<T>(data_, elem_);
   }
 }

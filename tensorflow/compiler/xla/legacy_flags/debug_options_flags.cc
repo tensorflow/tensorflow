@@ -207,6 +207,11 @@ void AllocateFlags() {
                         "If true, flush-to-zero semantics are enabled in the "
                         "code generated for GPUs."),
        tensorflow::Flag(
+           "xla_gpu_disable_multi_streaming",
+           bool_setter_for(&DebugOptions::set_xla_gpu_disable_multi_streaming),
+           flag_values->xla_gpu_disable_multi_streaming(),
+           "If true, multi-streaming in the GPU backend is disabled."),
+       tensorflow::Flag(
            "xla_dump_debug_json_to",
            flag_values->mutable_xla_dump_debug_json_to(),
            "Dump compilation artifacts as JSON into this directory."),
@@ -227,6 +232,19 @@ void AllocateFlags() {
            "2 input arguments with 2D shape and 4D shape, the "
            "computation will run 2! * 4! times for every possible "
            "layouts"),
+       tensorflow::Flag(
+           "xla_hlo_profile",
+           bool_setter_for(&DebugOptions::set_xla_hlo_profile),
+           flag_values->xla_hlo_profile(),
+           "Instrument the computation to collect per-HLO cycle counts"),
+       tensorflow::Flag("xla_dump_computations_to",
+                        flag_values->mutable_xla_dump_computations_to(),
+                        "Dump computations that XLA executes into the provided "
+                        "directory path"),
+       tensorflow::Flag("xla_dump_executions_to",
+                        flag_values->mutable_xla_dump_executions_to(),
+                        "Dump parameters and results of computations that XLA "
+                        "executes into the provided directory path"),
        tensorflow::Flag("xla_backend_extra_options",
                         setter_for_xla_backend_extra_options, "",
                         "Extra options to pass to a backend; "

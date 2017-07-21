@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
@@ -80,7 +82,8 @@ class GraphMgr {
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64 step_id,
                     WorkerSession* session, const ExecutorOpts& opts,
-                    StepStatsCollector* collector, CostGraphDef* cost_graph,
+                    StepStatsCollector* collector,
+                    MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
                     const NamedTensors& in, StatusCallback done);
 

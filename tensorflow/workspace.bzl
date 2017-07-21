@@ -172,6 +172,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   native.new_http_archive(
+      name = "mkl",
+      urls = [
+          "http://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
+          "https://github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
+      ],
+      sha256 = "3cc2501fb209e1fd0960a5f61c919438f9619c68a644dcebf0fdf69b07460c57",
+      strip_prefix = "mklml_lnx_2018.0.20170425",
+      build_file = str(Label("//third_party/mkl:mkl.BUILD")),
+  )
+
+  native.new_http_archive(
       name = "ortools_archive",
       urls = [
           "http://mirror.bazel.build/github.com/google/or-tools/archive/253f7955c6a1fd805408fba2e42ac6d45b312d15.tar.gz",
@@ -484,11 +495,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9889fe2290766430b99a2d4fadbc5ba92f8004b6.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/9889fe2290766430b99a2d4fadbc5ba92f8004b6.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/4d98985c94c36b9eb4396c91fe0a72a0c5f707b2.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/4d98985c94c36b9eb4396c91fe0a72a0c5f707b2.tar.gz",
       ],
-      sha256 = "00fb4a83a4dd1c046b19730a80e2183acc647715b7a8dcc8e808d49ea5530ca8",
-      strip_prefix = "llvm-9889fe2290766430b99a2d4fadbc5ba92f8004b6",
+      sha256 = "1a085c995522fa19900568c03eb595b425df53842c7f281e3ab79aaa04affffa",
+      strip_prefix = "llvm-4d98985c94c36b9eb4396c91fe0a72a0c5f707b2",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )

@@ -442,10 +442,9 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
 }
 
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
-                            WorkerSession* session,
-                            const ExecutorOpts& /*opts*/,
+                            WorkerSession* session, const ExecutorOpts& opts,
                             StepStatsCollector* collector,
-                            CostGraphDef* cost_graph,
+                            MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   // Lookup an item. Holds one ref while executing.
@@ -462,6 +461,18 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   if (item == nullptr) {
     done(errors::Aborted("Graph handle is not found: ", handle));
     return;
+  }
+
+  CostGraphDef* cost_graph = nullptr;
+  if (response != nullptr) {
+    cost_graph = response->mutable_cost_graph();
+    if (opts.record_partition_graphs()) {
+      for (const ExecutionUnit& unit : item->units) {
+        GraphDef graph_def;
+        unit.graph->ToGraphDef(&graph_def);
+        response->AddPartitionGraph(graph_def);
+      }
+    }
   }
 
   RemoteRendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);

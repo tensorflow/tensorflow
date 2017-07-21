@@ -55,6 +55,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

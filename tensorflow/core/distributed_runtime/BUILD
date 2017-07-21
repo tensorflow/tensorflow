@@ -359,6 +359,7 @@ cc_library(
     srcs = ["graph_mgr.cc"],
     hdrs = ["graph_mgr.h"],
     deps = [
+        ":message_wrappers",
         ":rendezvous_mgr_interface",
         ":worker_env",
         "//tensorflow/core:core_cpu_internal",

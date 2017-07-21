@@ -39,6 +39,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":tpu",
+        ":tpu_feed",
         ":tpu_py",
         ":training_loop",
         "//tensorflow/contrib/learn",
@@ -52,6 +53,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:util",
     ],
 )
 
