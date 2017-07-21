@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -110,7 +111,7 @@ static void DumpRemoteFusedGraph(const NodeDef& node_def) {
 static void CheckOpsSupport(const GraphDef& graph_def,
                             const bool dump_all_nodes,
                             const bool dump_shape_and_type) {
-  const IGraphTransferOpsDefinitions& ops_definition =
+  const IRemoteFusedGraphOpsDefinitions& ops_definition =
       HexagonOpsDefinitions::getInstance();
   LOG(INFO) << "Checking " << graph_def.node_size() << " nodes";
   LOG(INFO) << "dump_all_nodes = " << dump_all_nodes
@@ -127,7 +128,7 @@ static void CheckOpsSupport(const GraphDef& graph_def,
     }
     // TODO(satok): Set correct data type if it's given.
     const int op_id = ops_definition.GetOpIdFor(node.op(), {});
-    if (op_id == IGraphTransferOpsDefinitions::INVALID_OP_ID) {
+    if (op_id == IRemoteFusedGraphOpsDefinitions::INVALID_OP_ID) {
       all_supported = false;
       LOG(ERROR) << "OP type: " << node.op() << " is not supported on hvx. "
                  << "Name = " << node.name();

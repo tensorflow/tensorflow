@@ -163,7 +163,9 @@ function version {
 
 
 bazel version > bazel.version
-curr_bazel_version=$(head -n 1 bazel.version | cut -d ' ' -f3)
+set +e
+curr_bazel_version=$(grep -m 1 'Build label:' bazel.version | cut -d ' ' -f3)
+set -e
 rm -f bazel.version
 
 
@@ -215,84 +217,15 @@ done
 OSNAME=`uname -s`
 
 if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
-  while [ "$TF_DOWNLOAD_MKL" == "" ]; do
-    fromuser=""
-    read -p "Do you wish to download MKL LIB from the web? [Y/n] " INPUT
-    fromuser="1"
-    case $INPUT in
-      [Yy]* ) TF_DOWNLOAD_MKL=1;;
-      [Nn]* ) TF_DOWNLOAD_MKL=0;;
-      "" )    TF_DOWNLOAD_MKL=1;;
-      * )     echo "Invalid selection: " $INPUT; exit 1;;
-    esac
-  done
-
-  if [[ "$TF_DOWNLOAD_MKL" == "1" ]]; then
-    DST=`dirname $0`
-    ARCHIVE_BASENAME=mklml_lnx_2018.0.20170425.tgz
-    GITHUB_RELEASE_TAG=v0.7
-    MKLURL="https://github.com/01org/mkl-dnn/releases/download/$GITHUB_RELEASE_TAG/$ARCHIVE_BASENAME"
-    if ! [ -e "${DST}/third_party/mkl/${ARCHIVE_BASENAME}" ]; then
-      curl -fSsL -o "${DST}/third_party/mkl/${ARCHIVE_BASENAME}" "${MKLURL}"
-    fi
-    tar -xzf $DST/third_party/mkl/$ARCHIVE_BASENAME -C $DST/third_party/mkl/
-    extracted_dir_name="${ARCHIVE_BASENAME%.*}"
-    MKL_INSTALL_PATH=$DST/third_party/mkl/$extracted_dir_name
-    MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
-
-  else
-    default_mkl_path=/opt/intel/mklml
-    fromuser=""
-    if [ -z "$MKL_INSTALL_PATH" ]; then
-      read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
-      fromuser="1"
-    fi
-    if [ -z "$MKL_INSTALL_PATH" ]; then
-      MKL_INSTALL_PATH=$default_mkl_path
-    fi
-    # Result returned from "read" will be used unexpanded. That make "~" unusable.
-    # Going through one more level of expansion to handle that.
-    MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
-  fi
-
   if [ "$OSNAME" == "Linux" ]; then
-      # Full MKL configuration
-      MKL_RT_LIB_PATH="lib/intel64/libmkl_rt.so" #${TF_MKL_EXT}#TODO version?
-      MKL_RT_OMP_LIB_PATH="../compiler/lib/intel64/libiomp5.so" #TODO VERSION?
-
-      # MKL-ML configuration
-      MKL_ML_LIB_PATH="lib/libmklml_intel.so" #${TF_MKL_EXT}#TODO version?
-      MKL_ML_OMP_LIB_PATH="lib/libiomp5.so" #TODO VERSION?
+    write_to_bazelrc 'build:mkl --define with_mkl_support=true'
+    write_to_bazelrc 'build:mkl -c opt'
+    write_to_bazelrc 'build:mkl --copt="-DEIGEN_USE_VML"'
+    echo "Add \"--config=mkl\" to your bazel command to build with MKL support."
   elif [ "$OSNAME" == "Darwin" ]; then
       echo "Darwin is unsupported yet";
       exit 1
   fi
-
-  if [ -e "$MKL_INSTALL_PATH/${MKL_ML_LIB_PATH}" ]; then
-      ln -sf $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} third_party/mkl/
-      ln -sf $MKL_INSTALL_PATH/${MKL_ML_OMP_LIB_PATH} third_party/mkl/
-      ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
-      ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
-      loc=$(locate -e libdl.so.2 | sed -n 1p)
-      ln -sf $loc third_party/mkl/libdl.so.2
-  elif [ -e "$MKL_INSTALL_PATH/${MKL_RT_LIB_PATH}" ]; then
-      ln -sf $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} third_party/mkl/
-      ln -sf $MKL_INSTALL_PATH/${MKL_RT_OMP_LIB_PATH} third_party/mkl/
-      ln -sf $MKL_INSTALL_PATH/include third_party/mkl/
-      ln -sf $MKL_INSTALL_PATH/include third_party/eigen3/mkl_include
-      loc=$(locate -e libdl.so.2 | sed -n 1p)
-      ln -sf $loc third_party/mkl/libdl.so.2
-  else
-      echo "ERROR: $MKL_INSTALL_PATH/${MKL_ML_LIB_PATH} nor $MKL_INSTALL_PATH/${MKL_RT_LIB_PATH} exists";
-      exit 1
-  fi
-
-cat > third_party/mkl/mkl.config <<EOF
-# MKL_INSTALL_PATH refers to the location of MKL root folder. The MKL header and library
-# files can be either in this directory, or under include/ and lib64/
-MKL_INSTALL_PATH=$MKL_INSTALL_PATH
-EOF
-
 fi # TF_NEED_MKL
 ## End MKL setup
 

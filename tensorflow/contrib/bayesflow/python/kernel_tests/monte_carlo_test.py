@@ -26,7 +26,6 @@ from tensorflow.contrib.bayesflow.python.ops.monte_carlo_impl import _get_sample
 from tensorflow.contrib.distributions.python.ops import mvn_diag as mvn_diag_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import normal as normal_lib
@@ -122,28 +121,6 @@ class ExpectationImportanceSampleLogspaceTest(test.TestCase):
       self.assertAllClose([1., (2 / 3.)**2], e_x2.eval(), rtol=0.02)
 
 
-class ExpectationTest(test.TestCase):
-
-  def test_mc_estimate_of_normal_mean_and_variance_is_correct_vs_analytic(self):
-    random_seed.set_random_seed(0)
-    n = 20000
-    with self.test_session():
-      p = normal_lib.Normal(loc=[1.0, -1.0], scale=[0.3, 0.5])
-      # Compute E_p[X] and E_p[X^2].
-      z = p.sample(n, seed=42)
-      e_x = mc.expectation(lambda x: x, p, z=z, seed=42)
-      e_x2 = mc.expectation(math_ops.square, p, z=z, seed=0)
-      var = e_x2 - math_ops.square(e_x)
-
-      self.assertEqual(p.batch_shape, e_x.get_shape())
-      self.assertEqual(p.batch_shape, e_x2.get_shape())
-
-      # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
-      # pass.
-      self.assertAllClose(p.mean().eval(), e_x.eval(), rtol=0.01)
-      self.assertAllClose(p.variance().eval(), var.eval(), rtol=0.02)
-
-
 class GetSamplesTest(test.TestCase):
   """Test the private method 'get_samples'."""
 
@@ -184,7 +161,7 @@ class GetSamplesTest(test.TestCase):
       self.assertEqual((10,), z.get_shape())
 
 
-class Expectationv2Test(test.TestCase):
+class ExpectationTest(test.TestCase):
 
   def test_works_correctly(self):
     with self.test_session() as sess:
@@ -195,9 +172,9 @@ class Expectationv2Test(test.TestCase):
       f = lambda u: u
       efx_true = x
       samples = p.sample(int(1e5), seed=1)
-      efx_reparam = mc.expectation_v2(f, samples, p.log_prob)
-      efx_score = mc.expectation_v2(f, samples, p.log_prob,
-                                    use_reparametrization=False)
+      efx_reparam = mc.expectation(f, samples, p.log_prob)
+      efx_score = mc.expectation(f, samples, p.log_prob,
+                                 use_reparametrization=False)
 
       [
           efx_true_,

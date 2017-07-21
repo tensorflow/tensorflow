@@ -16,6 +16,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:spectral_ops",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
@@ -51,6 +52,26 @@ cuda_py_tests(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "spectral_ops_test",
+    size = "large",
+    srcs = ["python/kernel_tests/spectral_ops_test.py"],
+    additional_deps = [
+        ":signal_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:spectral_ops_test_util",
     ],
 )
 

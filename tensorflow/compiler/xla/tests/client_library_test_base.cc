@@ -37,22 +37,35 @@ namespace xla {
 namespace {
 // Wrapper function that creates a nicer error message (than a bare
 // ValueOrDie()) if the platform we intend to test is not available.
-Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
-  StatusOr<Client*> result = ClientLibrary::GetOrCreateLocalClient(platform);
+Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
+  StatusOr<Client*> result =
+      ClientLibrary::GetOrCreateLocalClient(client_options);
   TF_CHECK_OK(result.status()) << "could not create local client for testing";
   return result.ValueOrDie();
 }
 }  // namespace
 
-ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
-    : client_(GetOrCreateLocalClientOrDie(platform)),
+ClientLibraryTestBase::ClientLibraryTestBase(
+    perftools::gputools::Platform* platform,
+    const LocalClientOptions& client_options)
+    : client_(GetOrCreateLocalClientOrDie(client_options)),
       execution_options_(CreateDefaultExecutionOptions()) {
+  CHECK_EQ(platform, client_options.platform());
   // Disabling constant_folding so that tests (usually written using Constants)
   // will exercise the intended code paths, instead of being constant folded.
   //
   // TODO(b/38354253): Constant folding is currently disabled. Change tests to
   // use Parameters instead of Constants, and re-enable constant folding by
   // default.
+  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+      "constant_folding");
+}
+
+ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
+    : execution_options_(CreateDefaultExecutionOptions()) {
+  LocalClientOptions default_options;
+  default_options.set_platform(platform);
+  client_ = GetOrCreateLocalClientOrDie(default_options);
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
 }

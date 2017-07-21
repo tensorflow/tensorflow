@@ -6,7 +6,7 @@
 # ":debug_py": Public Python methods and classes of tfdbg.
 #   For API documentation, see https://www.tensorflow.org/api_docs/python/tfdbg
 #   For a user interface walkthrough, see https://www.tensorflow.org/programmers_guide/debugger
-# (Omitted internal-only public target)
+# ":grpc_debug_server": Server interface for grpc:// debug URLs.
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -34,6 +34,7 @@ py_library(
         ":debug_data",
         ":debug_gradients",
         ":debug_utils",
+        ":grpc_debug_server",
         ":hooks",
         ":local_cli_wrapper",
     ],
@@ -44,6 +45,7 @@ py_library(
     name = "debug_pip",
     deps = [
         ":debug_py",
+        ":grpc_debug_test_server",
         ":offline_analyzer",
         ":session_debug_testlib",
     ] + if_not_windows([
@@ -293,12 +295,15 @@ py_library(
     deps = [
         ":analyzer_cli",
         ":cli_shared",
+        ":command_parser",
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
         ":profile_analyzer_cli",
         ":stepper_cli",
+        ":tensor_format",
         ":ui_factory",
+        "@six_archive//:six",
     ],
 )
 
@@ -577,6 +582,41 @@ py_library(
     ],
 )
 
+py_library(
+    name = "debug_service_pb2_grpc",
+    srcs = ["lib/debug_service_pb2_grpc.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core/debug:debug_service_proto_py",
+    ],
+)
+
+py_library(
+    name = "grpc_debug_server",
+    srcs = ["lib/grpc_debug_server.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":debug_data",
+        ":debug_service_pb2_grpc",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "grpc_debug_test_server",
+    srcs = ["lib/grpc_debug_test_server.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":debug_utils",
+        ":grpc_debug_server",
+        "//tensorflow/python:client",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+    ],
+)
+
 cuda_py_test(
     name = "session_debug_file_test",
     size = "small",
@@ -740,6 +780,60 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "session_debug_grpc_test",
+    size = "medium",
+    srcs = ["lib/session_debug_grpc_test.py"],
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        ":dumping_wrapper",
+        ":grpc_debug_test_server",
+        ":grpc_wrapper",
+        ":hooks",
+        ":session_debug_testlib",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+    tags = [
+        "no_oss",  # b/62956105: port conflicts.
+        "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
+        "notsan",
+    ],
+)
+
+# TODO(cais): Run the test in OSS, perhaps through a sh_test.
+cuda_py_test(
+    name = "dist_session_debug_grpc_test",
+    size = "medium",
+    srcs = ["lib/dist_session_debug_grpc_test.py"],
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        ":dumping_wrapper",
+        ":grpc_debug_test_server",
+        ":grpc_wrapper",
+        ":hooks",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+    ],
+    data = ["//tensorflow/tools/dist_test/server:grpc_tensorflow_server"],
+    tags = [
+        "no_oss",  # b/62956105: port conflicts + Incompatible with bazel_pip.
+        "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
+        "notsan",
     ],
 )
 

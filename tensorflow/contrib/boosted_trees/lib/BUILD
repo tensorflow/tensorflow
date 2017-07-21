@@ -201,7 +201,6 @@ tf_cc_test(
     deps = [
         ":weighted_quantiles",
         "//tensorflow/core",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -215,7 +214,6 @@ tf_cc_test(
     deps = [
         ":weighted_quantiles",
         "//tensorflow/core",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -228,7 +226,6 @@ tf_cc_test(
     srcs = ["quantiles/weighted_quantiles_stream_test.cc"],
     deps = [
         ":weighted_quantiles",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -370,7 +367,6 @@ tf_cc_test(
     deps = [
         ":example_partitioner",
         "//tensorflow/contrib/boosted_trees/proto:proto_impl",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -414,7 +410,6 @@ tf_cc_test(
     deps = [
         ":feature-column-handlers",
         "//tensorflow/contrib/boosted_trees/proto:proto_impl",
-        "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

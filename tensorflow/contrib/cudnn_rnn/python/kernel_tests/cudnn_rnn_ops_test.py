@@ -78,19 +78,20 @@ class CudnnRNNTest(TensorFlowTestCase):
                    num_units,
                    input_size,
                    input_mode="linear_input",
+                   dtype=dtypes.float32,
                    dropout=0.):
     if rnn_mode == cudnn_rnn_ops.CUDNN_LSTM:
       model = cudnn_rnn_ops.CudnnLSTM(
-          num_layers, num_units, input_size, dropout=dropout)
+          num_layers, num_units, input_size, dtype=dtype, dropout=dropout)
     elif rnn_mode == cudnn_rnn_ops.CUDNN_GRU:
       model = cudnn_rnn_ops.CudnnGRU(
-          num_layers, num_units, input_size, dropout=dropout)
+          num_layers, num_units, input_size, dtype=dtype, dropout=dropout)
     elif rnn_mode == cudnn_rnn_ops.CUDNN_RNN_TANH:
       model = cudnn_rnn_ops.CudnnRNNTanh(
-          num_layers, num_units, input_size, dropout=dropout)
+          num_layers, num_units, input_size, dtype=dtype, dropout=dropout)
     elif rnn_mode == cudnn_rnn_ops.CUDNN_RNN_RELU:
       model = cudnn_rnn_ops.CudnnRNNRelu(
-          num_layers, num_units, input_size, dropout=dropout)
+          num_layers, num_units, input_size, dtype=dtype, dropout=dropout)
     else:
       raise ValueError("Invalid rnn_mode: %s" % rnn_mode)
     return model
@@ -107,12 +108,15 @@ class CudnnRNNTest(TensorFlowTestCase):
         "rnn")
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, params_saveable)
 
-  def _testSaveRestoreVariable(self, rnn_mode):
-    model = self._CreateModel(rnn_mode, num_layers=2, num_units=7, input_size=3)
+  def _testSaveRestoreVariable(self, rnn_mode, dtype):
+    model = self._CreateModel(
+        rnn_mode, num_layers=2, num_units=7, input_size=3, dtype=dtype)
     random_seed.set_random_seed(1234)
     params_size_t = model.params_size()
     params = variables.Variable(
-        random_ops.random_uniform([params_size_t]), validate_shape=False)
+        random_ops.random_uniform([params_size_t], dtype=dtype),
+        dtype=dtype,
+        validate_shape=False)
     self._create_params_savable(params, model)
     save_path = os.path.join(self.get_temp_dir(), "save-restore-variable-test")
     saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
@@ -122,7 +126,9 @@ class CudnnRNNTest(TensorFlowTestCase):
       val = saver.save(sess, save_path)
       self.assertEqual(save_path, val)
     with self.test_session(use_gpu=True) as sess:
-      reset_params = state_ops.assign(params, array_ops.zeros([params_size_t]))
+      reset_params = state_ops.assign(params,
+                                      array_ops.zeros(
+                                          [params_size_t], dtype=dtype))
       sess.run(reset_params)
       saver.restore(sess, save_path)
       params_v_restored = sess.run(params)
@@ -308,26 +314,32 @@ class CudnnRNNTest(TensorFlowTestCase):
             self.assertAllClose(
                 cudnn_output[1][i, :], states_v[i], atol=1e-6, rtol=1e-6)
 
-  def _testSaveRestoreOutput(self, rnn_mode):
+  def _testSaveRestoreOutput(self, rnn_mode, dtype):
     num_layers = 2
     num_units = 7
     input_size = 7
     seq_length = 10
     batch_size = 5
     dir_count = 1
-    model = self._CreateModel(rnn_mode, num_layers, num_units, input_size)
+    model = self._CreateModel(
+        rnn_mode, num_layers, num_units, input_size, dtype=dtype)
     params_size_t = model.params_size()
     params = variables.Variable(
-        array_ops.ones([params_size_t]), validate_shape=False)
+        array_ops.ones([params_size_t], dtype=dtype),
+        validate_shape=False,
+        dtype=dtype)
     self._create_params_savable(params, model)
     save_path = os.path.join(self.get_temp_dir(), "save-restore-output-test")
     saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
 
     has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
-    input_data = array_ops.ones([seq_length, batch_size, input_size])
-    input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
+    input_data = array_ops.ones(
+        [seq_length, batch_size, input_size], dtype=dtype)
+    input_h = array_ops.ones(
+        [num_layers * dir_count, batch_size, num_units], dtype=dtype)
     if has_input_c:
-      input_c = array_ops.ones([num_layers * dir_count, batch_size, num_units])
+      input_c = array_ops.ones(
+          [num_layers * dir_count, batch_size, num_units], dtype=dtype)
       outputs = model(
           input_data=input_data,
           input_h=input_h,
@@ -347,7 +359,9 @@ class CudnnRNNTest(TensorFlowTestCase):
       val = saver.save(sess, save_path)
       self.assertEqual(save_path, val)
     with self.test_session(use_gpu=True) as sess:
-      reset_params = state_ops.assign(params, array_ops.zeros([params_size_t]))
+      reset_params = state_ops.assign(params,
+                                      array_ops.zeros(
+                                          [params_size_t], dtype=dtype))
       sess.run(reset_params)
       saver.restore(sess, save_path)
       total_sum_v_restored = sess.run(total_sum)
@@ -360,9 +374,10 @@ class CudnnRNNTest(TensorFlowTestCase):
         cudnn_rnn_ops.CUDNN_LSTM, cudnn_rnn_ops.CUDNN_GRU,
         cudnn_rnn_ops.CUDNN_RNN_TANH, cudnn_rnn_ops.CUDNN_RNN_RELU
     ]
-    for rnn_mode in rnn_modes:
-      self._testSaveRestoreVariable(rnn_mode)
-      self._testSaveRestoreOutput(rnn_mode)
+    dtype_list = [dtypes.float32, dtypes.float64]
+    for rnn_mode, dtype in itertools.product(rnn_modes, dtype_list):
+      self._testSaveRestoreVariable(rnn_mode, dtype)
+      self._testSaveRestoreOutput(rnn_mode, dtype)
 
   def _MinLSTMParamSize(self,
                         num_layers,
@@ -525,8 +540,8 @@ class CudnnRNNTest(TensorFlowTestCase):
               shape["dir_count"], dropout, expected, tolerance)
 
   def _testOneSimpleTraining(self, rnn_mode, num_layers, num_units, input_size,
-                             batch_size, seq_length, dir_count, dropout,
-                             tolerance):
+                             batch_size, seq_length, dir_count, dropout, dtype,
+                             delta, tolerance):
     # Gradient checking runs two forward ops with almost the same input. Need to
     # make sure the drop patterns across the two runs are the same.
     old_env_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE", str(False))
@@ -534,19 +549,30 @@ class CudnnRNNTest(TensorFlowTestCase):
     has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
     random_seed.set_random_seed(1234)
     model = self._CreateModel(
-        rnn_mode, num_layers, num_units, input_size, dropout=dropout)
+        rnn_mode,
+        num_layers,
+        num_units,
+        input_size,
+        dtype=dtype,
+        dropout=dropout)
     params_size_t = model.params_size()
     input_data = variables.Variable(
-        random_ops.random_uniform([seq_length, batch_size, input_size]))
+        random_ops.random_uniform(
+            [seq_length, batch_size, input_size], dtype=dtype),
+        dtype=dtype)
     input_h = variables.Variable(
         random_ops.random_uniform(
-            [num_layers * dir_count, batch_size, num_units]))
+            [num_layers * dir_count, batch_size, num_units], dtype=dtype),
+        dtype=dtype)
     params = variables.Variable(
-        random_ops.random_uniform([params_size_t]), validate_shape=False)
+        random_ops.random_uniform([params_size_t], dtype=dtype),
+        validate_shape=False,
+        dtype=dtype)
     if has_input_c:
       input_c = variables.Variable(
           random_ops.random_uniform(
-              [num_layers * dir_count, batch_size, num_units]))
+              [num_layers * dir_count, batch_size, num_units], dtype=dtype),
+          dtype=dtype)
 
       output, output_h, output_c = model(
           input_data=input_data,
@@ -577,8 +603,8 @@ class CudnnRNNTest(TensorFlowTestCase):
       all_inputs = [entry[0] for entry in inputs_and_shapes]
       all_shapes = [entry[1] for entry in inputs_and_shapes]
 
-      err = gradient_checker.compute_gradient_error(all_inputs, all_shapes,
-                                                    total_sum, [1])
+      err = gradient_checker.compute_gradient_error(
+          all_inputs, all_shapes, total_sum, [1], delta=delta)
 
       self.assertLess(err, tolerance)
       os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = old_env_state
@@ -590,6 +616,67 @@ class CudnnRNNTest(TensorFlowTestCase):
         {
             "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,
             "dropout": [0., 0.5, 1.],
+            "dtype": dtypes.float64,
+            "delta": 1e-4,
+            "tolerance": 5e-6,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+                "dir_count": 1,
+            },
+        },
+        {
+            "rnn_mode": cudnn_rnn_ops.CUDNN_GRU,
+            "dropout": [0., 0.5, 1.],
+            "dtype": dtypes.float64,
+            "delta": 1e-4,
+            "tolerance": 5e-6,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+                "dir_count": 1,
+            },
+        },
+        {
+            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_TANH,
+            "dropout": [0., 0.5, 1.],
+            "dtype": dtypes.float64,
+            "delta": 1e-4,
+            "tolerance": 5e-6,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+                "dir_count": 1,
+            },
+        },
+        {
+            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_RELU,
+            "dropout": [0., 0.5, 1.],
+            "dtype": dtypes.float64,
+            "delta": 1e-4,
+            "tolerance": 5e-6,
+            "shape": {
+                "num_layers": 2,
+                "num_units": 3,
+                "input_size": 4,
+                "batch_size": 3,
+                "seq_length": 4,
+                "dir_count": 1,
+            },
+        },
+        {
+            "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,
+            "dropout": [0., 0.5, 1.],
+            "dtype": dtypes.float32,
             "tolerance": 1e-2,
             "shape": {
                 "num_layers": 2,
@@ -603,6 +690,7 @@ class CudnnRNNTest(TensorFlowTestCase):
         {
             "rnn_mode": cudnn_rnn_ops.CUDNN_GRU,
             "dropout": [0., 0.5, 1.],
+            "dtype": dtypes.float32,
             "tolerance": 4e-3,
             "shape": {
                 "num_layers": 2,
@@ -616,6 +704,7 @@ class CudnnRNNTest(TensorFlowTestCase):
         {
             "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_TANH,
             "dropout": [0., 0.5, 1.],
+            "dtype": dtypes.float32,
             "tolerance": 5e-3,
             "shape": {
                 "num_layers": 2,
@@ -629,6 +718,7 @@ class CudnnRNNTest(TensorFlowTestCase):
         {
             "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_RELU,
             "dropout": [0., 0.5, 1.],
+            "dtype": dtypes.float32,
             "tolerance": 4e-1,
             "shape": {
                 "num_layers": 2,
@@ -645,13 +735,15 @@ class CudnnRNNTest(TensorFlowTestCase):
       for config in test_configs:
         rnn_mode = config["rnn_mode"]
         dropout_list = config.get("dropout", [0.])
+        dtype = config.get("dtype", dtypes.float32)
+        delta = config.get("delta", 1e-3)
         tolerance = config["tolerance"]
         shape = config["shape"]
         for dropout in dropout_list:
-          self._testOneSimpleTraining(rnn_mode, shape["num_layers"],
-                                      shape["num_units"], shape["input_size"],
-                                      shape["batch_size"], shape["seq_length"],
-                                      shape["dir_count"], dropout, tolerance)
+          self._testOneSimpleTraining(
+              rnn_mode, shape["num_layers"], shape["num_units"],
+              shape["input_size"], shape["batch_size"], shape["seq_length"],
+              shape["dir_count"], dropout, dtype, delta, tolerance)
 
 
 if __name__ == "__main__":

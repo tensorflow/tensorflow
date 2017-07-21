@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <memory>
 #include <vector>
+
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
@@ -31,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
@@ -43,21 +44,14 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
-using tensorflow::int32;
-using tensorflow::string;
-using tensorflow::GraphDef;
-using tensorflow::NodeDef;
-using tensorflow::Tensor;
-using tensorflow::TensorShape;
-
 namespace tensorflow {
+
 bool TF_Tensor_DecodeStrings(TF_Tensor* src, Tensor* dst, TF_Status* status);
 TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src);
-}  // namespace tensorflow
 
 namespace {
 
-TEST(CAPI, Version) { EXPECT_NE("", string(TF_Version())); }
+TEST(CAPI, Version) { EXPECT_STRNE("", TF_Version()); }
 
 TEST(CAPI, Status) {
   TF_Status* s = TF_NewStatus();
@@ -69,7 +63,7 @@ TEST(CAPI, Status) {
   TF_DeleteStatus(s);
 }
 
-static void Deallocator(void* data, size_t, void* arg) {
+void Deallocator(void* data, size_t, void* arg) {
   tensorflow::cpu_allocator()->DeallocateRaw(data);
   *reinterpret_cast<bool*>(arg) = true;
 }
@@ -142,7 +136,7 @@ TEST(CAPI, LibraryLoadFunctions) {
   TF_DeleteLibraryHandle(lib);
 }
 
-static void TestEncodeDecode(int line, const std::vector<string>& data) {
+void TestEncodeDecode(int line, const std::vector<string>& data) {
   const tensorflow::int64 n = data.size();
   for (const std::vector<tensorflow::int64>& dims :
        std::vector<std::vector<tensorflow::int64>>{
@@ -1705,12 +1699,14 @@ TEST_F(CApiAttributesTest, Errors) {
   TF_OperationGetAttrString(oper, "v", nullptr, 0, s_);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
 }
+
 #undef EXPECT_TF_META
+
+}  // namespace
+}  // namespace tensorflow
 
 // TODO(josh11b): Test:
 // * TF_SetDevice(desc, "/job:worker");
 // * control inputs / outputs
 // * targets
 // * TF_DeleteGraph() before TF_DeleteSession()
-
-}  // namespace
