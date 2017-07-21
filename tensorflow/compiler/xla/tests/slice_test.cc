@@ -34,6 +34,45 @@ namespace {
 
 class SliceTest : public ClientLibraryTestBase {};
 
+TEST_F(SliceTest, Slice3x3x3_To_3x3x1_F32) {
+  Array3D<float> values(3, 3, 3);
+  values.FillIota(0);
+
+  ComputationBuilder builder(client_, TestName());
+  auto original = builder.ConstantR3FromArray3D<float>(values);
+  builder.Slice(original, {0, 0, 0}, {3, 3, 1}, {1, 1, 1});
+
+  Array3D<float> expected{
+      {{0.0}, {3.0}, {6.0}}, {{9.0}, {12.0}, {15.0}}, {{18.0}, {21.0}, {24.0}}};
+  ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.000001));
+}
+
+TEST_F(SliceTest, Slice3x3x3_To_3x1x3_F32) {
+  Array3D<float> values(3, 3, 3);
+  values.FillIota(0);
+
+  ComputationBuilder builder(client_, TestName());
+  auto original = builder.ConstantR3FromArray3D<float>(values);
+  builder.Slice(original, {0, 0, 0}, {3, 1, 3}, {1, 1, 1});
+
+  Array3D<float> expected{
+      {{0.0, 1.0, 2.0}}, {{9.0, 10.0, 11.0}}, {{18.0, 19.0, 20.0}}};
+  ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.000001));
+}
+
+TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
+  Array3D<float> values(3, 3, 3);
+  values.FillIota(0);
+
+  ComputationBuilder builder(client_, TestName());
+  auto original = builder.ConstantR3FromArray3D<float>(values);
+  builder.Slice(original, {0, 0, 0}, {1, 3, 3}, {1, 1, 1});
+
+  Array3D<float> expected{
+      {{{0.0, 1.0, 2.0}, {3.0, 4.0, 5.0}, {6.0, 7.0, 8.0}}}};
+  ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.000001));
+}
+
 XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
   ComputationBuilder builder(client_, TestName());
   auto original = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 0));

@@ -67,6 +67,8 @@ class BufferLiveness {
   // Returns the underlying hlo ordering used for this liveness analysis.
   const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
 
+  const HloModule& module() const { return *module_; }
+
   string ToString() const;
 
   static Colorer DefaultColorer() {
