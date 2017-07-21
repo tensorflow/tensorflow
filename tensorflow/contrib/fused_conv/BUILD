@@ -68,6 +68,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:bounds_check_lib",
         "//tensorflow/core/kernels:conv_2d_hdrs",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
+        "//tensorflow/core/kernels:gpu_util_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
         "//third_party/eigen3",
     ],
@@ -86,6 +87,7 @@ tf_custom_op_library(
         "//tensorflow/core/kernels:bounds_check_lib",
         "//tensorflow/core/kernels:conv_2d_hdrs",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
+        "//tensorflow/core/kernels:gpu_util_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
     ],
 )
