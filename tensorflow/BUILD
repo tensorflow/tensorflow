@@ -11,7 +11,7 @@ exports_files([
     "ACKNOWLEDGMENTS",
 ])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 
 # Config setting for determining if we are building for Android.
 config_setting(
@@ -418,21 +418,21 @@ filegroup(
     data = glob(["docs_src/**/*.md"]),
 )
 
-cc_binary(
+tf_cc_shared_object(
     name = "libtfframework.so",
-    linkshared = 1,
     linkstatic = 1,
     visibility = [":__subpackages__"],
     deps = [
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib_internal_impl",
     ],
+    framework_so = [],
 )
 
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
-tf_cc_binary(
+tf_cc_shared_object(
     name = "libtensorflow.so",
     linkopts = select({
         "//tensorflow:darwin": [
@@ -448,7 +448,6 @@ tf_cc_binary(
             "//tensorflow/c:version_script.lds",
         ],
     }),
-    linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:exported_symbols.lds",
@@ -457,9 +456,8 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
+tf_cc_shared_object(
     name = "libtensorflow_cc.so",
-    linkshared = 1,
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/cc:cc_ops",

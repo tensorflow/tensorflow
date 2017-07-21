@@ -192,10 +192,59 @@ def tf_gen_op_libs(op_lib_names, deps=None):
         linkstatic=1,)
 
 
-def tf_cc_binary(srcs=[],
+def _rpath_linkopts(name):
+  # Search parent directories up to the TensorFlow root directory for shared
+  # object dependencies, even if this op shared object is deeply nested
+  # (e.g. tensorflow/contrib/package:python/ops/_op_lib.so). tensorflow/ is then
+  # the root and tensorflow/libtfframework.so should exist when deployed. Other
+  # shared object dependencies (e.g. shared between contrib/ ops) are picked up
+  # as long as they are in either the same or a parent directory in the
+  # tensorflow/ tree.
+  maximum_search_level = PACKAGE_NAME.count("/") + name.count("/")
+  search_up_levels_linux = ":".join(
+    ["$$ORIGIN/" + "/".join([".."] * search_level)
+     for search_level in range(maximum_search_level + 1)])
+  search_up_levels_darwin = ",".join(
+    ["-rpath,@loader_path/" + "/".join([".."] * search_level)
+     for search_level in range(maximum_search_level + 1)])
+  return select({
+      "//tensorflow:darwin": [
+          "-Wl,%s" % (search_up_levels_darwin),
+      ],
+      "//conditions:default": [
+          "-Wl,-rpath,%s" % (search_up_levels_linux,),
+      ],
+      })
+
+
+def tf_cc_shared_object(name,
+                        srcs=[],
+                        linkopts=[],
+                        framework_so=["//tensorflow:libtfframework.so"],
+                        **kwargs):
+  native.cc_binary(
+    name=name,
+    srcs=srcs + framework_so,
+    linkshared = 1,
+    linkopts=linkopts + _rpath_linkopts(name) + select({
+      "//tensorflow:darwin": [
+        "-Wl,-install_name,@rpath/" 
+        + "/".join((PACKAGE_NAME + "/" + name).split("/")[1:]),
+      ],
+      "//conditions:default": [
+      ],
+    }),
+    **kwargs)
+
+
+def tf_cc_binary(name,
+                 srcs=[],
+                 linkopts=[],
                  **kwargs):
   native.cc_binary(
+      name=name,
       srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
+      linkopts=linkopts + _rpath_linkopts(name),
       **kwargs)
 
 
@@ -406,7 +455,7 @@ def tf_cc_test(name,
       name="%s%s" % (name, suffix),
       srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
       copts=tf_copts() + extra_copts,
-      linkopts=["-lpthread", "-lm"] + linkopts,
+      linkopts=["-lpthread", "-lm"] + linkopts + _rpath_linkopts(name),
       deps=deps,
       **kwargs)
 
@@ -932,30 +981,17 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
           clean_dep("//tensorflow/core:framework"),
           clean_dep("//tensorflow/core:lib")
       ])
-  # Search parent directories up to the TensorFlow root directory for shared
-  # object dependencies, even if this op shared object is deeply nested
-  # (e.g. tensorflow/contrib/package:python/ops/_op_lib.so). tensorflow/ is then
-  # the root and tensorflow/libtfframework.so should exist when deployed. Other
-  # shared object dependencies (e.g. shared between contrib/ ops) are picked up
-  # as long as they are in either the same or a parent directory in the
-  # tensorflow/ tree.
-  maximum_search_level = PACKAGE_NAME.count("/") + name.count("/")
-  search_up_levels = ":".join(
-    ["$$ORIGIN/" + "/".join([".."] * search_level)
-     for search_level in range(maximum_search_level + 1)])
-  native.cc_binary(
+  tf_cc_shared_object(
       name=name,
-      srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
+      srcs=srcs,
       deps=deps + if_cuda(cuda_deps),
       data=[name + "_check_deps"],
       copts=tf_copts(),
-      linkshared=1,
       linkopts=select({
+          "//tensorflow:darwin": [],
           "//conditions:default": [
               "-lm",
-              "-Wl,-rpath=%s" % (search_up_levels,),
           ],
-          clean_dep("//tensorflow:darwin"): [],
       }),)
 
 
@@ -1008,17 +1044,13 @@ def tf_py_wrap_cc(name,
   extra_linkopts = select({
       "@local_config_cuda//cuda:darwin": [
           "-Wl,-exported_symbols_list",
-          clean_dep("//tensorflow:tf_exported_symbols.lds")
+          clean_dep("//tensorflow:tf_exported_symbols.lds"),
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
           clean_dep("//tensorflow:tf_version_script.lds"),
-          # Look for dynamic dependencies in tensorflow/ rather than
-          # tensorflow/python/. This allows _pywrap_tensorflow_internal.so to
-          # find libtfframework.so.
-          "-Wl,-rpath=$$ORIGIN/..",
       ]
   })
   extra_deps += select({
@@ -1032,7 +1064,7 @@ def tf_py_wrap_cc(name,
       ]
   })
 
-  tf_cc_binary(
+  tf_cc_shared_object(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
       copts=(copts + if_not_windows([
@@ -1040,7 +1072,6 @@ def tf_py_wrap_cc(name,
       ]) + tf_extension_copts()),
       linkopts=tf_extension_linkopts() + extra_linkopts,
       linkstatic=1,
-      linkshared=1,
       deps=deps + extra_deps)
   native.genrule(
       name="gen_" + cc_library_pyd_name,

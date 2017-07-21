@@ -4,6 +4,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
@@ -398,14 +399,15 @@ cc_library(
 
 # Protocol buffer dependencies shared between multiple op shared objects. This
 # avoids attempting to register the same protocol buffer multiple times.
-cc_binary(
+tf_cc_shared_object(
     name = "libforestprotos.so",
-    linkshared = 1,
     linkstatic = 1,
     deps = [
         ":forest_proto_impl",
         "@protobuf//:protobuf",
     ],
+     # This object does not depend on TensorFlow.
+     framework_so = [],
 )
 
 # --------------------------------- Python -------------------------------- #
