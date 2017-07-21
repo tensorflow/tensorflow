@@ -447,6 +447,7 @@ def tf_gen_op_wrapper_py(name,
 def tf_cc_test(name,
                srcs,
                deps,
+               linkstatic=0,
                extra_copts=[],
                suffix="",
                linkopts=[],
@@ -457,6 +458,15 @@ def tf_cc_test(name,
       copts=tf_copts() + extra_copts,
       linkopts=["-lpthread", "-lm"] + linkopts + _rpath_linkopts(name),
       deps=deps,
+      # Nested select() statements seem not to be supported when passed to 
+      # linkstatic, and we already have a cuda select() passed in to this
+      # function.
+      linkstatic=linkstatic or select({
+        # cc_tests with ".so"s in srcs incorrectly link on Darwin
+        # unless linkstatic=1.
+        clean_dep("//tensorflow:darwin"): 1,
+        "//conditions:default": 0,
+        }),
       **kwargs)
 
 
@@ -533,8 +543,13 @@ def tf_cuda_only_cc_test(name,
     deps=deps + if_cuda([
         clean_dep("//tensorflow/core:cuda"),
         clean_dep("//tensorflow/core:gpu_lib")]),
-    linkopts=["-lpthread", "-lm"] + linkopts,
-    linkstatic=linkstatic,
+    linkopts=["-lpthread", "-lm"] + linkopts + _rpath_linkopts(name),
+    linkstatic=linkstatic or select({
+        # cc_tests with ".so"s in srcs incorrectly link on Darwin
+        # unless linkstatic=1.
+        clean_dep("//tensorflow:darwin"): 1,
+        "//conditions:default": 0,
+        }),
     tags=tags)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
