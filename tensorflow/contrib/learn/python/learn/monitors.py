@@ -417,7 +417,7 @@ class StopAtStep(BaseMonitor):
 
 
 class LoggingTensor(EveryN):
-  """Prints given tensors every N steps.
+  """Log given tensors every N steps.
 
   This is an `EveryN` monitor and has consistent semantic for `every_n`
   and `first_n`.
@@ -431,8 +431,8 @@ class LoggingTensor(EveryN):
     Args:
       tensor_names: `dict` of tag to tensor names or
           `iterable` of tensor names (strings).
-      every_n: `int`, print every N steps. See `PrintN.`
-      first_n: `int`, also print the first N steps. See `PrintN.`
+      every_n: `int`, log every N steps. See `PrintN.`
+      first_n: `int`, also log the first N steps. See `PrintN.`
     """
     super(LoggingTensor, self).__init__(every_n, first_n)
     if not isinstance(tensor_names, dict):
@@ -466,8 +466,8 @@ class LoggingTrainable(EveryN):
 
     Args:
       scope: An optional string to match variable names using re.match.
-      every_n: Print every N steps.
-      first_n: Print first N steps.
+      every_n: Log every N steps.
+      first_n: Log first N steps.
     """
     super(LoggingTrainable, self).__init__(every_n, first_n)
     self._scope = scope
