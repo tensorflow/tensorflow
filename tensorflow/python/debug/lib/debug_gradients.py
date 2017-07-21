@@ -303,7 +303,7 @@ class GradientsDebugger(object):
     """Register the gradient tensor for an x-tensor.
 
     Args:
-      x_tensor_name: (`str`) the name of the independent `tf.Tensor`, i.e.,
+      x_tensor_name: (`str`) the name of the the independent `tf.Tensor`, i.e.,
         the tensor on the denominator of the differentiation.
       gradient_tensor: the gradient `tf.Tensor`.
     """
