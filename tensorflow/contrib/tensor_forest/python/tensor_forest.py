@@ -328,6 +328,9 @@ class RandomForestGraphs(object):
     return array_ops.concat(
         [split_data[ind] for ind in self.params.bagged_features[tree_num]], 1)
 
+  def get_all_resource_handles(self):
+    return []
+
   def training_graph(self,
                      input_data,
                      input_labels,

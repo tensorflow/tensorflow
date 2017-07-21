@@ -31,9 +31,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-/// \brief An LRU block cache of file contents.
+/// \brief An LRU block cache of file contents, keyed by {filename, offset}.
 ///
-/// This class should be used by read-only random access files on a remote
+/// This class should be shared by read-only random access files on a remote
 /// filesystem (e.g. GCS).
 class FileBlockCache {
  public:
@@ -42,18 +42,20 @@ class FileBlockCache {
   /// cache is constructed. The returned Status should be OK as long as the
   /// read from the remote filesystem succeeded (similar to the semantics of the
   /// read(2) system call).
-  typedef std::function<Status(uint64, size_t, std::vector<char>*)>
+  typedef std::function<Status(const string&, size_t, size_t,
+                               std::vector<char>*)>
       BlockFetcher;
 
-  FileBlockCache(uint64 block_size, uint32 block_count, uint64 max_staleness,
+  FileBlockCache(size_t block_size, size_t max_bytes, uint64 max_staleness,
                  BlockFetcher block_fetcher, Env* env = Env::Default())
       : block_size_(block_size),
-        block_count_(block_count),
+        max_bytes_(max_bytes),
         max_staleness_(max_staleness),
         block_fetcher_(block_fetcher),
         env_(env) {}
 
-  /// Read `n` bytes starting at `offset` into `out`. This method will return:
+  /// Read `n` bytes from `filename` starting at `offset` into `out`. This
+  /// method will return:
   ///
   /// 1) The error from the remote filesystem, if the read from the remote
   ///    filesystem failed.
@@ -66,17 +68,23 @@ class FileBlockCache {
   ///    placed in `out`.
   /// 4) OK otherwise (i.e. the read succeeded, and at least one byte was placed
   ///    in `out`).
-  Status Read(uint64 offset, size_t n, std::vector<char>* out);
+  Status Read(const string& filename, size_t offset, size_t n,
+              std::vector<char>* out);
+
+  /// Remove all cached blocks for `filename`.
+  void RemoveFile(const string& filename) LOCKS_EXCLUDED(mu_);
+
+  /// Accessors for cache parameters.
+  size_t block_size() const { return block_size_; }
+  size_t max_bytes() const { return max_bytes_; }
+  uint64 max_staleness() const { return max_staleness_; }
 
  private:
-  /// Trim the LRU cache until its size is at most `size` blocks.
-  void TrimCache(size_t size) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   /// The size of the blocks stored in the LRU cache, as well as the size of the
   /// reads from the underlying filesystem.
-  const uint64 block_size_;
-  /// The maximum number of blocks allowed in the LRU cache.
-  const uint32 block_count_;
+  const size_t block_size_;
+  /// The maximum number of bytes (sum of block sizes) allowed in the LRU cache.
+  const size_t max_bytes_;
   /// The maximum staleness of any block in the LRU cache, in seconds.
   const uint64 max_staleness_;
   /// The callback to read a block from the underlying filesystem.
@@ -84,31 +92,49 @@ class FileBlockCache {
   /// The Env from which we read timestamps.
   Env* const env_;  // not owned
 
+  /// \brief The key type for the file block cache.
+  ///
+  /// The file block cache key is a {filename, offset} pair.
+  typedef std::pair<string, size_t> Key;
+
   /// \brief A block of a file.
   ///
-  /// A file block consists of the block data and the block's current position
-  /// in the LRU cache.
+  /// A file block consists of the block data, the block's current position in
+  /// the LRU cache, and the timestamp (seconds since epoch) at which the block
+  /// was cached.
   struct Block {
     /// The block data.
     std::vector<char> data;
     /// A list iterator pointing to the block's position in the LRU list.
-    std::list<uint64>::iterator lru_iterator;
+    std::list<Key>::iterator lru_iterator;
+    /// The timestamp (seconds since epoch) at which the block was cached.
+    uint64 timestamp;
   };
 
-  /// Guards access to the block map, LRU list, and cache timestamp.
+  /// \brief The block map type for the file block cache.
+  ///
+  /// The block map is an ordered map from Key to Block.
+  typedef std::map<Key, std::unique_ptr<Block>> BlockMap;
+
+  /// Remove all blocks of a file, with mu_ already held.
+  void RemoveFile_Locked(const string& filename) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Remove the block `entry` from the block map and LRU list, and update the
+  /// cache size accordingly.
+  void RemoveBlock(BlockMap::iterator entry) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Guards access to the block map, LRU list, and cached byte count.
   mutex mu_;
 
-  /// The block map (map from offset in the file to Block object).
-  std::map<uint64, std::unique_ptr<Block>> block_map_ GUARDED_BY(mu_);
+  /// The block map (map from Key to Block).
+  BlockMap block_map_ GUARDED_BY(mu_);
 
-  /// The LRU list of offsets in the file. The front of the list is the position
-  /// of the most recently accessed block.
-  std::list<uint64> lru_list_ GUARDED_BY(mu_);
+  /// The LRU list of block keys. The front of the list identifies the most
+  /// recently accessed block.
+  std::list<Key> lru_list_ GUARDED_BY(mu_);
 
-  /// The most recent timestamp (in seconds since epoch) at which the block map
-  /// transitioned from empty to non-empty.  A value of 0 means the block map is
-  /// currently empty.
-  uint64 timestamp_ GUARDED_BY(mu_) = 0;
+  /// The combined number of bytes in all of the cached blocks.
+  size_t cache_size_ GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

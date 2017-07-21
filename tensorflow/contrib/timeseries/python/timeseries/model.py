@@ -84,7 +84,6 @@ class TimeSeriesModel(object):
   # TODO(allenl): Move more of the generic machinery for generating and
   # predicting into TimeSeriesModel, and possibly share it between generate()
   # and predict()
-  @abc.abstractmethod
   def generate(self, number_of_series, series_length,
                model_parameters=None, seed=None):
     """Sample synthetic data from model parameters, with optional substitutions.
@@ -109,7 +108,7 @@ class TimeSeriesModel(object):
       (mapping to an array with shape [number_of_series, series_length,
       num_features]).
     """
-    pass
+    raise NotImplementedError("This model does not support generation.")
 
   def initialize_graph(self, input_statistics=None):
     """Define ops for the model, not depending on any previously defined ops.
@@ -354,7 +353,7 @@ class SequentialTimeSeriesModel(TimeSeriesModel):
 
     Args:
       current_times: A [batch size] Tensor of times for each observation.
-      current_values: A [batch size] Tensor of values for each observaiton.
+      current_values: A [batch size] Tensor of values for each observation.
       state: Model state, updated to current_times.
       predictions: The outputs of _prediction_step
     Returns:

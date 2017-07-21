@@ -93,7 +93,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(read.eval(), 2)
 
   def testScatterAdd(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1, 1])
       resource_variable_ops.assign_variable_op(

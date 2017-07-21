@@ -547,7 +547,7 @@ REGISTER_KERNEL_BUILDER(
     Name("QuantileAccumulatorDeserialize").Device(DEVICE_CPU),
     QuantileAccumulatorDeserializeOp);
 
-// Adds a summary to the quantile summary stream.
+// Flushes the quantile summary stream resource.
 class QuantileAccumulatorFlushOp : public OpKernel {
  public:
   explicit QuantileAccumulatorFlushOp(OpKernelConstruction* const context)
@@ -585,6 +585,56 @@ class QuantileAccumulatorFlushOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("QuantileAccumulatorFlush").Device(DEVICE_CPU),
                         QuantileAccumulatorFlushOp);
+
+// Flushes the quantile summary stream resource. This version computes the
+// summary.
+class QuantileAccumulatorFlushSummaryOp : public OpKernel {
+ public:
+  explicit QuantileAccumulatorFlushSummaryOp(
+      OpKernelConstruction* const context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    QuantileStreamResource* streams_resource;
+    // Create a reference to the underlying resource using the handle.
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
+                                           &streams_resource));
+    // Remove the reference at the end of this scope.
+    mutex_lock l(*streams_resource->mutex());
+    core::ScopedUnref unref_me(streams_resource);
+
+    const Tensor* next_stamp_token_t;
+    OP_REQUIRES_OK(context,
+                   context->input(kNextStampTokenName, &next_stamp_token_t));
+    int64 next_stamp_token = next_stamp_token_t->scalar<int64>()();
+
+    const Tensor* stamp_token_t;
+    OP_REQUIRES_OK(context, context->input(kStampTokenName, &stamp_token_t));
+    int64 stamp_token = stamp_token_t->scalar<int64>()();
+    CHECK(streams_resource->is_stamp_valid(stamp_token))
+        << "Invalid stamp token in QuantileAccumulatorFlushSummaryOp. "
+        << "Passed stamp token: " << stamp_token << " "
+        << "Current token: " << streams_resource->stamp();
+    QuantileStream* stream = streams_resource->stream(stamp_token);
+    stream->Finalize();
+    protobuf::Arena arena;
+    ::boosted_trees::QuantileSummaryState* summary_proto =
+        protobuf::Arena::CreateMessage<::boosted_trees::QuantileSummaryState>(
+            &arena);
+    const auto& summary = stream->GetFinalSummary();
+    CopySummaryToProto(summary, summary_proto);
+    // Output to tensor.
+    Tensor* output_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}), &output_t));
+    summary_proto->SerializeToString(&output_t->scalar<string>()());
+    streams_resource->Reset(next_stamp_token);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("QuantileAccumulatorFlushSummary").Device(DEVICE_CPU),
+    QuantileAccumulatorFlushSummaryOp);
 
 // Get bucket boundaries from summaries.
 class QuantileAccumulatorGetBucketsOp : public OpKernel {

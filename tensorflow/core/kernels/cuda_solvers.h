@@ -116,9 +116,10 @@ class CudaSolver {
   // Launches a memcpy of solver status data specified by dev_lapack_info from
   // device to the host, and asynchronously invokes the given callback when the
   // copy is complete. The first Status argument to the callback will be
-  // Status::OK if all lapack infos retrieved are zero, otherwise an error status
-  // is given. The second argument contains a host-side copy of the entire set
-  // of infos retrieved, and can be used for generating detailed error messages.
+  // Status::OK if all lapack infos retrieved are zero, otherwise an error
+  // status is given. The second argument contains a host-side copy of the
+  // entire set of infos retrieved, and can be used for generating detailed
+  // error messages.
   Status CopyLapackInfoToHostAsync(
       const std::vector<DeviceLapackInfo>& dev_lapack_info,
       std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
@@ -131,8 +132,20 @@ class CudaSolver {
   // to those in cuSolverDN and cuBlas, which follow the naming convention in
   // LAPACK see, e.g., http://docs.nvidia.com/cuda/cusolver/#naming-convention
 
+  // This function performs the matrix-matrix addition/transposition
+  //   C = alpha * op(A) + beta * op(B).
+  // Returns Status::OK() if the kernel was launched successfully.  See:
+  // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-geam
+  // NOTE(ebrevdo): Does not support in-place transpose of non-square matrices.
+  template <typename Scalar>
+  Status Geam(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
+              const Scalar* alpha, /* host or device pointer */
+              const Scalar* A, int lda,
+              const Scalar* beta, /* host or device pointer */
+              const Scalar* B, int ldb, Scalar* C, int ldc) const;
+
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
-  // Returns Status::OK(), if the kernel was launched successfully. See:
+  // Returns Status::OK() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   template <typename Scalar>
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
