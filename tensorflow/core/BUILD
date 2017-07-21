@@ -94,6 +94,8 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
+    "tf_additional_framework_hdrs",
+    "tf_additional_framework_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
@@ -343,6 +345,8 @@ tf_cuda_library(
     hdrs = [
         "example/feature_util.h",
         "framework/allocator.h",
+        "framework/variant.h",
+        "framework/variant_encode_decode.h",
         "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
@@ -1266,6 +1270,8 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
         "platform/**/cuda_libdevice_path.cc",
         "platform/**/stream_executor.h",
         "platform/load_library.cc",
+        "platform/variant_coding.cc",
+        "platform/**/variant_cord_coding.cc",
     ],
 )
 
@@ -1287,6 +1293,8 @@ cc_library(
             ],
             exclude = [
                 "**/*test*",
+                "framework/variant.cc",
+                "platform/variant_coding.cc",
                 "lib/hash/crc32c_accelerate.cc",
                 "lib/gif/**/*",
                 "lib/jpeg/**/*",
@@ -1297,6 +1305,8 @@ cc_library(
                 "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
                 "platform/**/gpu_tracer.cc",
+                "platform/variant_coding.cc",
+                "platform/**/variant_cord_coding.cc",
             ],
         ),
     }) + tf_additional_lib_srcs(
@@ -1307,6 +1317,8 @@ cc_library(
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/gpu_tracer.cc",
+            "platform/variant_coding.cc",
+            "platform/**/variant_cord_coding.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
         # dependency.
@@ -1463,6 +1475,8 @@ tf_cuda_library(
             "util/**/*.h",
             "util/**/*.cc",
         ] + [
+            "platform/variant_coding.cc",
+            "platform/variant_coding.h",
             "graph/edgeset.h",
             "graph/edgeset.cc",
             "graph/graph.h",
@@ -1491,20 +1505,22 @@ tf_cuda_library(
             "util/memmapped_file_system_writer.h",
             "util/memmapped_file_system_writer.cc",
         ],
-    }),
+    }) + tf_additional_framework_srcs(),
     hdrs = [
+        "framework/variant.h",
         "framework/op_segment.h",
         "framework/rendezvous.h",  # only needed for tests
         "framework/tensor_reference.h",
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
+        "platform/variant_coding.h",
         "util/command_line_flags.h",
         "util/env_var.h",
         "util/equal_graph_def.h",
         "util/presized_cuckoo_map.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
-    ],
+    ] + tf_additional_framework_hdrs(),
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
@@ -1518,6 +1534,7 @@ tf_cuda_library(
         ":proto_text",
         ":protos_all_cc",
         ":version_lib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),
@@ -2184,6 +2201,7 @@ tf_cc_tests(
         "common_runtime/simple_placer_test.cc",
         "example/feature_util_test.cc",
         "framework/allocator_test.cc",
+        "framework/variant_test.cc",
         "framework/attr_value_util_test.cc",
         "framework/bfloat16_test.cc",
         "framework/cancellation_test.cc",
