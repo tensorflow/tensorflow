@@ -268,6 +268,9 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                           Eigen::internal::scalar_quotient_op<float>>::Cost},
       {"TruncateMod", Eigen::internal::functor_traits<
                           Eigen::internal::scalar_mod_op<float>>::Cost}};
+
+  // By default, use sum of memory_time and compute_time for execution_time.
+  compute_memory_overlap_ = false;
 }
 
 Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {
@@ -395,7 +398,11 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   Costs costs;
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
-  costs.execution_time = compute_cost + memory_cost;
+  if (compute_memory_overlap_) {
+    costs.execution_time = std::max(compute_cost, memory_cost);
+  } else {
+    costs.execution_time = compute_cost + memory_cost;
+  }
   costs.inaccurate = found_unknown_shapes;
   return costs;
 }
