@@ -5,6 +5,7 @@ load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
+load("//tools/arm_compiler:arm_compiler_configure.bzl", "arm_compiler_configure")
 
 
 def _is_windows(repository_ctx):
@@ -83,6 +84,49 @@ temp_workaround_http_archive = repository_rule(
 )
 
 
+def _run_cmd(repo_ctx, cmd, check=True):
+  if _is_windows(repo_ctx):
+    bazel_sh = _get_env_var(repo_ctx, "BAZEL_SH")
+    if not bazel_sh:
+      fail("BAZEL_SH environment variable is not set")
+    cmd = [bazel_sh, "-c", " ".join(cmd)]
+  if check:
+    _execute_and_check_ret_code(repo_ctx, cmd)
+  else:
+    return repo_ctx.execute(cmd, timeout=10)
+
+def _unzip(repo_ctx, zip_file, strip_prefix):
+  _run_cmd(repo_ctx,
+           ["unzip", repo_ctx.path(zip_file),
+            "-d", repo_ctx.path("_archive")])
+  if strip_prefix:
+    p = repo_ctx.path("_archive/" + strip_prefix)
+    for f in p.readdir():
+      _run_cmd(repo_ctx, ["mv", f, repo_ctx.path(".")])
+    _run_cmd(repo_ctx, ["rm", "-rf", repo_ctx.path("_archive")])
+
+def _unsafe_unzip_http_archive_impl(repo_ctx):
+  repo_ctx.symlink(repo_ctx.attr.build_file, "BUILD")
+  repo_ctx.download(repo_ctx.attr.urls, "_archive.zip", repo_ctx.attr.sha256)
+  _unzip(repo_ctx, "_archive.zip", repo_ctx.attr.strip_prefix)
+  _run_cmd(repo_ctx, ["rm", repo_ctx.path("_archive.zip")])
+  repo_ctx.symlink("/usr/include", "local_include/")
+
+
+# This performs an unsafe unzip operation - since zip files may have
+# relative and absolute paths, it should only be executed on trusted files.
+unsafe_unzip_http_archive = repository_rule(
+    implementation = _unsafe_unzip_http_archive_impl,
+    attrs = {
+        "build_file": attr.label(),
+        "repository": attr.string(),
+        "urls": attr.string_list(default = []),
+        "sha256": attr.string(default = ""),
+        "strip_prefix": attr.string(default = ""),
+    },
+)
+
+
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
 def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
@@ -140,6 +184,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   cuda_configure(name="local_config_cuda")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
+
+  # Point //external/local_config_arm_compiler to //external/arm_compiler
+  arm_compiler_configure(name="local_config_arm_compiler",
+                         remote_config_repo="../arm_compiler",
+                         build_file = str(Label("//tools/arm_compiler:BUILD")))
+
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
@@ -153,6 +203,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "ca7beac153d4059c02c8fc59816c82d54ea47fe58365e8aded4082ded0b820c4",
       strip_prefix = "eigen-eigen-f3a22f35b044",
       build_file = str(Label("//third_party:eigen.BUILD")),
+  )
+
+  unsafe_unzip_http_archive(
+    name = "arm_compiler",
+    build_file = str(Label("//:arm_compiler.BUILD")),
+    sha256 = "1f155f73a612f63315075d12af51f879ba02f953dbe9deba0574501e803ab189",
+    strip_prefix = "tools-0e906ebc527eab1cdbf7adabff5b474da9562e9f/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf",
+    urls = [
+        "http://mirror.bazel.build/github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.zip",
+        "https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.zip",
+    ],
   )
 
   native.new_http_archive(
