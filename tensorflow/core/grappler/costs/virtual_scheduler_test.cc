@@ -36,7 +36,6 @@ class TestVirtualScheduler : public VirtualScheduler {
   FRIEND_TEST(VirtualSchedulerTest, ControlDependency);
   FRIEND_TEST(VirtualSchedulerTest, ComplexDependency);
   FRIEND_TEST(VirtualSchedulerTest, Variable);
-  FRIEND_TEST(VirtualSchedulerTest, InterDeviceTransfer);
 };
 
 class VirtualSchedulerTest : public ::testing::Test {
@@ -44,7 +43,6 @@ class VirtualSchedulerTest : public ::testing::Test {
   NodeDef node1_, node2_, node3_, node4_, node5_, node6_;
 
   const string kCPU0 = "/job:localhost/replica:0/task:0/cpu:0";
-  const string kCPU1 = "/job:localhost/replica:0/task:0/cpu:1";
 
   DeviceProperties GetDummyCPUDevice() {
     // Create CPU with 2 cores, 4 Ghz freq, 2 GB/s mem bandwidth.
@@ -76,7 +74,6 @@ class VirtualSchedulerTest : public ::testing::Test {
     // IMPORTANT: Device is not actually ever used in the test case since
     // force_cpu_type is defaulted to "Haswell"
     devices[kCPU0] = cpu_device;
-    devices[kCPU1] = cpu_device;
     cluster_.reset(new VirtualCluster(devices));
     placer_.reset(new VirtualPlacer(cluster_.get()));
   }
@@ -247,60 +244,6 @@ class VirtualSchedulerTest : public ::testing::Test {
     dependency_["z2"] = {"bn"};
     dependency_["z3"] = {"bn"};
     dependency_["z4"] = {"bn"};
-  }
-
-  // Create a fused bathcnorm on one device, and send the outputs to another
-  // device.
-  void CreateGrapplerItemWithInterDeviceTransfers() {
-    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
-
-    // Create a FusedBatchNorm op that has multiple output ports.
-    auto x = ops::RandomUniform(
-        s.WithOpName("x"), {batch_size_, width_, height_, depth_in_}, DT_FLOAT);
-    auto scale =
-        ops::RandomUniform(s.WithOpName("scale"), {depth_in_}, DT_FLOAT);
-    auto offset =
-        ops::RandomUniform(s.WithOpName("offset"), {depth_in_}, DT_FLOAT);
-    auto mean = ops::RandomUniform(s.WithOpName("mean"), {0}, DT_FLOAT);
-    auto var = ops::RandomUniform(s.WithOpName("var"), {0}, DT_FLOAT);
-
-    auto batch_norm = ops::FusedBatchNorm(
-        s.WithOpName("bn"), x, scale, offset, mean, var,
-        ops::FusedBatchNorm::IsTraining(true).Epsilon(0.1f));
-    auto y = batch_norm.y;
-    auto batch_mean = batch_norm.batch_mean;
-    auto batch_var = batch_norm.batch_variance;
-
-    // Copy FusedBatchNorm's outputs to CPU1.
-    // y1 and y2 take the same tensor, so there should be only 1 Send and Recv.
-    auto y1 = ops::Identity(s.WithOpName("y1").WithDevice(kCPU1), y);
-    auto y2 = ops::Identity(s.WithOpName("y2").WithDevice(kCPU1), y);
-    // batch_mean1 and batch_var1 take different output ports, so each will
-    // initiate Send/Recv.
-    auto batch_mean1 = ops::Identity(
-        s.WithOpName("batch_mean1").WithDevice(kCPU1), batch_mean);
-    auto batch_var1 =
-        ops::Identity(s.WithOpName("batch_var1").WithDevice(kCPU1), batch_var);
-    // This is control dependency.
-    auto control_dep = ops::NoOp(s.WithOpName("control_dep")
-                                     .WithControlDependencies(y)
-                                     .WithDevice(kCPU1));
-
-    GraphDef def;
-    TF_CHECK_OK(s.ToGraphDef(&def));
-
-    grappler_item_.reset(new GrapplerItem);
-    grappler_item_->id = "test_conv2d_graph";
-    grappler_item_->graph = def;
-    grappler_item_->fetch = {"y1", "y2", "batch_mean1", "batch_var1",
-                             "control_dep"};
-
-    dependency_["bn"] = {"x", "mean", "var"};
-    dependency_["y1"] = {"bn"};
-    dependency_["y2"] = {"bn"};
-    dependency_["batch_mean1"] = {"bn"};
-    dependency_["batch_var1"] = {"bn"};
-    dependency_["control_dep"] = {"bn"};
   }
 
   // A simple while loop
@@ -1248,77 +1191,6 @@ TEST_F(VirtualSchedulerTest, Variable) {
   // Only x in peak memory usage snapshot.
   ValidateMemoryUsageSnapshot({"x"}, 0 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
-}
-
-TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
-  // Init.
-  CreateGrapplerItemWithInterDeviceTransfers();
-  InitScheduler();
-
-  // Run the scheduler.
-  auto ops_executed = RunScheduler("");
-
-  // Helper lambda to extract port num from _Send and _Recv op name.
-  auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn:0") != std::string::npos) {
-      return 0;
-    } else if (name.find("bn:1") != std::string::npos) {
-      return 1;
-    } else if (name.find("bn:2") != std::string::npos) {
-      return 2;
-    } else if (name.find("bn:minus1") != std::string::npos) {
-      return -1;
-    }
-    return -999;
-  };
-
-  // Reorganize ops_executed for further testing.
-  std::unordered_map<string, int> op_count;
-  std::unordered_map<int, string> recv_op_names;
-  std::unordered_map<int, string> send_op_names;
-  for (const auto& x : ops_executed) {
-    const auto& name = x.first;
-    const auto& node_info = x.second;
-    const auto& op = node_info.op_info.op();
-    if (op == "_Recv") {
-      recv_op_names[get_port_num(name)] = name;
-    } else if (op == "_Send") {
-      send_op_names[get_port_num(name)] = name;
-    }
-    op_count[op]++;
-  }
-
-  // Same number of _Send and _Recv.
-  EXPECT_EQ(op_count.at("_Send"), op_count.at("_Recv"));
-
-  // Expect 4 Send and Recvs each: port 0, 1, and, 2, and control dependency.
-  EXPECT_EQ(op_count.at("_Recv"), 4);
-  EXPECT_EQ(op_count.at("_Send"), 4);
-
-  // Helper lambda for extracting output Tensor size.
-  auto get_output_size = [this, ops_executed](const string& name) -> int64 {
-    const auto& output_properties_ = ops_executed.at(name).op_info.outputs();
-    std::vector<OpInfo::TensorProperties> output_properties;
-    for (const auto& output_property : output_properties_) {
-      output_properties.push_back(output_property);
-    }
-    return scheduler_->CalculateOutputSize(output_properties, 0);
-
-  };
-
-  // Validate transfer size.
-  // Batchnorm output y is 4D vector: batch x width x width x depth.
-  int input_size = 4 * batch_size_ * width_ * height_ * depth_in_;
-  EXPECT_EQ(get_output_size(recv_op_names[0]), input_size);
-  EXPECT_EQ(get_output_size(send_op_names[0]), input_size);
-  // Mean and vars are 1-D vector with size depth_in_.
-  EXPECT_EQ(get_output_size(recv_op_names[1]), 4 * depth_in_);
-  EXPECT_EQ(get_output_size(send_op_names[1]), 4 * depth_in_);
-  EXPECT_EQ(get_output_size(recv_op_names[2]), 4 * depth_in_);
-  EXPECT_EQ(get_output_size(send_op_names[2]), 4 * depth_in_);
-  // Control dependency size is 4B.
-  EXPECT_EQ(get_output_size(recv_op_names[-1]), 4);
-  EXPECT_EQ(get_output_size(send_op_names[-1]), 4);
 }
 
 TEST_F(VirtualSchedulerTest, WhileLoop) {
