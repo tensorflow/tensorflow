@@ -42,19 +42,6 @@ cc_test(
 )
 
 cc_library(
-    name = "layout_util_flags",
-    srcs = ["layout_util_flags.cc"],
-    hdrs = ["layout_util_flags.h"],
-    deps =
-        [
-            ":parse_flags_from_env",
-            "//tensorflow/compiler/xla:types",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-        ],
-)
-
-cc_library(
     name = "util_flags",
     srcs = ["util_flags.cc"],
     hdrs = ["util_flags.h"],
