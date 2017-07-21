@@ -417,12 +417,12 @@ class StopAtStep(BaseMonitor):
 
 
 class LoggingTensor(EveryN):
-  """Log given tensors every N steps.
+  """Logs given tensors every N steps.
 
   This is an `EveryN` monitor and has consistent semantic for `every_n`
   and `first_n`.
 
-  The tensors will be printed to the log, with `INFO` severity.
+  The tensors are logged with `INFO` severity.
   """
 
   def __init__(self, tensor_names, every_n=100, first_n=1):
