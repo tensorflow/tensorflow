@@ -62,4 +62,5 @@ cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:cwise_op",
     ],
+    tags = ["nomac"],  # b/63908145
 )

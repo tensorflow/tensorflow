@@ -223,8 +223,8 @@ class SpectralOpsTest(test.TestCase):
           (512, 64, 32, 64, 2e-3, 3e-5),
           (512, 64, 64, 64, 2e-3, 3e-5),
           (512, 64, 25, 64, 2e-3, 3e-5),
-          (512, 25, 15, 36, 8e-4, 3e-5),
-          (123, 23, 5, 42, 8e-4, 4e-5),
+          (512, 25, 15, 36, 2e-3, 3e-5),
+          (123, 23, 5, 42, 2e-3, 4e-5),
       ]
 
       for (signal_length, frame_length, frame_step, fft_length,
