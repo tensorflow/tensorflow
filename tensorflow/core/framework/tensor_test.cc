@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -36,35 +35,6 @@ inline bool operator==(const ResourceHandle& a, const ResourceHandle& b) {
   return a.device() == b.device() && a.container() == b.container() &&
          a.name() == b.name() && a.hash_code() == b.hash_code() &&
          a.maybe_type_name() == b.maybe_type_name();
-}
-
-inline bool operator==(const Variant& a, const Variant& b) {
-  if (a.is_empty()) {
-    return b.is_empty();
-  }
-
-  if (a.TypeId() != b.TypeId()) return false;
-  if (a.TypeName() != b.TypeName()) return false;
-
-  VariantTensorData a_data, b_data;
-  a.Encode(&a_data);
-  b.Encode(&b_data);
-
-  if (a_data.metadata != b_data.metadata) return false;
-
-  if (a_data.tensors.size() != b_data.tensors.size()) return false;
-
-  for (int i = 0; i < a_data.tensors.size(); ++i) {
-    TensorProto a_proto, b_proto;
-    a_data.tensors[i].AsProtoTensorContent(&a_proto);
-    b_data.tensors[i].AsProtoTensorContent(&b_proto);
-    string a_str, b_str;
-    a_proto.SerializeToString(&a_str);
-    b_proto.SerializeToString(&b_str);
-    if (a_str != b_str) return false;
-  }
-
-  return true;
 }
 
 TEST(TensorTest, Default) {
@@ -187,74 +157,6 @@ TEST(Tensor_ResourceHandle, Simple) {
   tmp.set_name("a");
   t.flat<ResourceHandle>()(0) = tmp;
   TestCopies<ResourceHandle>(t);
-}
-
-TEST(Tensor_Variant, Simple) {
-  Tensor t(DT_VARIANT, TensorShape({}));
-  Tensor value(DT_FLOAT, TensorShape({}));
-  value.flat<float>()(0) = 42.0f;
-  t.flat<Variant>()(0) = value;
-  // All the tests in TestCopies except the ones that serialize and deserialize
-  // the tensor. The consumer of a serialized Variant Tensor should know what
-  // type is stored in the Tensor, so not testing the generic
-  // serialize/deserialize case here.
-  {
-    LOG(INFO) << "CopyFrom()";
-    Tensor t2(t.dtype());
-    EXPECT_TRUE(t2.CopyFrom(t, t.shape()));
-    test::ExpectTensorEqual<Variant>(t, t2);
-  }
-  {
-    LOG(INFO) << "operator=()";
-    Tensor t2(t.dtype());
-    t2 = t;
-    test::ExpectTensorEqual<Variant>(t, t2);
-  }
-  {
-    LOG(INFO) << "deep copy";
-    Tensor t2(t.dtype(), t.shape());
-    t2.flat<Variant>() = t.flat<Variant>();
-    test::ExpectTensorEqual<Variant>(t, t2);
-  }
-  {
-    LOG(INFO) << "AsTensor";
-    gtl::ArraySlice<Variant> values(t.flat<Variant>().data(), t.NumElements());
-    Tensor t2 = test::AsTensor(values, t.shape());
-    test::ExpectTensorEqual<Variant>(t, t2);
-  }
-  {
-    LOG(INFO) << "Move constructor";
-    Tensor t2 = t;
-    Tensor t3(std::move(t2));
-    test::ExpectTensorEqual<Variant>(t, t3);
-    EXPECT_TRUE(t3.IsInitialized());
-    EXPECT_FALSE(t2.IsInitialized());
-  }
-  {
-    LOG(INFO) << "Move assignment";
-    Tensor t2 = t;
-    Tensor t3 = std::move(t2);
-    Tensor* t4 = &t3;
-    *t4 = std::move(t3);
-    test::ExpectTensorEqual<Variant>(t, t3);
-    EXPECT_TRUE(t3.IsInitialized());
-    EXPECT_FALSE(t2.IsInitialized());
-  }
-}
-
-TEST(Tensor_Variant, Marshal) {
-  Tensor t(DT_VARIANT, TensorShape({}));
-
-  Tensor internal(DT_FLOAT, TensorShape({}));
-  internal.flat<float>()(0) = 42.0f;
-  t.flat<Variant>()(0) = internal;
-
-  LOG(INFO) << "AsProtoField()";
-  TensorProto proto;
-  t.AsProtoField(&proto);
-
-  Tensor t2(t.dtype());
-  EXPECT_TRUE(t2.FromProto(proto));
 }
 
 TEST(Tensor_UInt16, Simple) {

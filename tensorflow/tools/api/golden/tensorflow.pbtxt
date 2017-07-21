@@ -493,10 +493,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "variant"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
-  }
-  member {
     name: "zeros_initializer"
     mtype: "<type \'type\'>"
   }

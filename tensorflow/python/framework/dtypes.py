@@ -48,7 +48,6 @@ class DType(object):
   * `tf.quint16`: Quantized 16-bit unsigned integer.
   * `tf.qint32`: Quantized 32-bit signed integer.
   * `tf.resource`: Handle to a mutable resource.
-  * `tf.variant`: Values of arbitrary types.
 
   In addition, variants of these types with the `_ref` suffix are
   defined for reference-typed tensors.
@@ -114,11 +113,8 @@ class DType(object):
 
   @property
   def is_numpy_compatible(self):
-    numpy_incompatible = [types_pb2.DT_VARIANT,
-                          types_pb2.DT_VARIANT_REF,
-                          types_pb2.DT_RESOURCE,
-                          types_pb2.DT_RESOURCE_REF]
-    return self._type_enum not in numpy_incompatible
+    return (self._type_enum != types_pb2.DT_RESOURCE and
+            self._type_enum != types_pb2.DT_RESOURCE_REF)
 
   @property
   def as_numpy_dtype(self):
@@ -288,8 +284,7 @@ class DType(object):
 
   @property
   def size(self):
-    if (self._type_enum == types_pb2.DT_VARIANT or
-        self._type_enum == types_pb2.DT_RESOURCE):
+    if self._type_enum == types_pb2.DT_RESOURCE:
       return 1
     return np.dtype(self.as_numpy_dtype).itemsize
 
@@ -309,7 +304,6 @@ dtype_range = {np.bool_: (False, True),
 
 # Define standard wrappers for the types_pb2.DataType enum.
 resource = DType(types_pb2.DT_RESOURCE)
-variant = DType(types_pb2.DT_VARIANT)
 float16 = DType(types_pb2.DT_HALF)
 half = float16
 float32 = DType(types_pb2.DT_FLOAT)
@@ -331,7 +325,6 @@ qint16 = DType(types_pb2.DT_QINT16)
 quint16 = DType(types_pb2.DT_QUINT16)
 qint32 = DType(types_pb2.DT_QINT32)
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
-variant_ref = DType(types_pb2.DT_VARIANT_REF)
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
 float16_ref = DType(types_pb2.DT_HALF_REF)
 half_ref = float16_ref
@@ -379,7 +372,6 @@ _INTERN_TABLE = {
     types_pb2.DT_QINT32: qint32,
     types_pb2.DT_BFLOAT16: bfloat16,
     types_pb2.DT_RESOURCE: resource,
-    types_pb2.DT_VARIANT: variant,
     types_pb2.DT_HALF_REF: float16_ref,
     types_pb2.DT_FLOAT_REF: float32_ref,
     types_pb2.DT_DOUBLE_REF: float64_ref,
@@ -400,7 +392,6 @@ _INTERN_TABLE = {
     types_pb2.DT_QINT32_REF: qint32_ref,
     types_pb2.DT_BFLOAT16_REF: bfloat16_ref,
     types_pb2.DT_RESOURCE_REF: resource_ref,
-    types_pb2.DT_VARIANT_REF: variant_ref,
 }
 
 
@@ -426,7 +417,6 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QINT32: "qint32",
     types_pb2.DT_BFLOAT16: "bfloat16",
     types_pb2.DT_RESOURCE: "resource",
-    types_pb2.DT_VARIANT: "variant",
     types_pb2.DT_HALF_REF: "float16_ref",
     types_pb2.DT_FLOAT_REF: "float32_ref",
     types_pb2.DT_DOUBLE_REF: "float64_ref",
@@ -447,7 +437,6 @@ _TYPE_TO_STRING = {
     types_pb2.DT_QINT32_REF: "qint32_ref",
     types_pb2.DT_BFLOAT16_REF: "bfloat16_ref",
     types_pb2.DT_RESOURCE_REF: "resource_ref",
-    types_pb2.DT_VARIANT_REF: "variant_ref",
 }
 _STRING_TO_TF = {value: _INTERN_TABLE[key]
                  for key, value in _TYPE_TO_STRING.items()}

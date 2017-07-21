@@ -130,14 +130,6 @@ def tf_additional_lib_srcs(exclude = []):
       ], exclude = exclude),
   })
 
-# pylint: disable=unused-argument
-def tf_additional_framework_hdrs(exclude = []):
-  return []
-
-def tf_additional_framework_srcs(exclude = []):
-  return []
-# pylint: enable=unused-argument
-
 def tf_additional_minimal_lib_srcs():
   return [
       "platform/default/integral_types.h",
