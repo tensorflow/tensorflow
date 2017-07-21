@@ -35,6 +35,8 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
  public:
   using ByteArray =
       std::tuple<uint8* /* data */, uint64 /* size */, DataType /* type */>;
+  static constexpr const char* const REMOTE_FUSED_GRAPH_EXECUTOR_NAME =
+      "build_hexagon_remote_fused_graph_executor";
 
   HexagonControlWrapper() = default;
   int GetVersion() final;
@@ -46,6 +48,11 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
   bool FillInputNode(const string& node_name, const Tensor& tensor) final;
   bool ReadOutputNode(const string& node_name,
                       TensorAllocatorFunc tensor_allocator) final;
+  Status FuseRemoteGraph(const GraphDef& original_graph_def,
+                         const std::vector<string>& inputs,
+                         const std::vector<string>& outputs,
+                         GraphDef* fused_graph_def) final;
+  bool IsEnabled() const final;
   bool ReadOutputNode(const string& node_name, std::vector<ByteArray>* outputs);
 
  private:

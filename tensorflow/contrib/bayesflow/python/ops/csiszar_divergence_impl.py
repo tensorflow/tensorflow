@@ -831,7 +831,7 @@ def monte_carlo_csiszar_f_divergence(
           "Distribution `q` must be reparameterized, i.e., a diffeomorphic "
           "transformation of a parameterless distribution. (Otherwise this "
           "function has a biased gradient.)")
-    return monte_carlo.expectation_v2(
+    return monte_carlo.expectation(
         f=lambda x: f(p.log_prob(x) - q.log_prob(x)),
         samples=q.sample(num_draws, seed=seed),
         log_prob=q.log_prob,

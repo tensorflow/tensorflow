@@ -128,7 +128,6 @@ cc_library(
         ":tfcompile_lib",
         ":tfcompile_proto",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/legacy_flags:service_flags",
         "//tensorflow/compiler/xla/legacy_flags:util_flags",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:core_cpu",

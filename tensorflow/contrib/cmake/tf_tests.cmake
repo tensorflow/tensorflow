@@ -162,6 +162,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/profile_analyzer_cli_test.py"
     # Windows does not have the curses library and uses readline.
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
+    # TFDBG grpc:// mode is not yet available on Windows.
+    "${tensorflow_source_dir}/tensorflow/python/debug/lib/dist_session_debug_grpc_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
     # generally not working
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/__init__.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"

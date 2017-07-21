@@ -34,6 +34,7 @@ from tensorflow.contrib.distributions.python.ops.geometric import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
+from tensorflow.contrib.distributions.python.ops.moving_stats import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
 from tensorflow.contrib.distributions.python.ops.mvn_full_covariance import *
@@ -143,7 +144,9 @@ _allowed_symbols = [
     'normal_conjugates_known_scale_posterior',
     'normal_conjugates_known_scale_predictive',
     'softplus_inverse',
-    'percentile'
+    'percentile',
+    'assign_exponential_moving_mean_variance',
+    'exponential_moving_mean_variance',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

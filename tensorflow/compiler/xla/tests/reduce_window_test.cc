@@ -74,7 +74,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
   ComputationBuilder builder_;
 };
 
-TEST_F(ReduceWindowTest, DISABLED_ON_CPU(DISABLED_ON_GPU(Min3In5Stride2))) {
+TEST_F(ReduceWindowTest, Min3In5Stride2) {
   const auto input = builder_.ConstantR1<float>({10000, 1000, 100, 10, 1});
   ReduceWindowMin(input, {3}, {2}, Padding::kValid);
   ComputeAndCompareR1<float>(&builder_, {100, 1}, {}, ErrorSpec(0.0001));
@@ -541,7 +541,8 @@ class R4ReduceWindowTest
             /*window=*/param.window_bounds,
             /*stride=*/param.strides,
             /*padding=*/padding);
-    ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()});
+    ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()},
+                               ErrorSpec(1e-3, 1e-3));
   }
 };
 

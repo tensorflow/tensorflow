@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/executable.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -57,8 +57,8 @@ Executable::ExecuteOnStreams(
 
 Status Executable::DumpSessionModule() {
   TF_RET_CHECK(dumping());
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  const string& directory_path = flags->xla_dump_executions_to;
+  const string& directory_path =
+      module_config().debug_options().xla_dump_executions_to();
   VersionedComputationHandle versioned_handle = entry_computation_handle();
   // This filename does not include the version number because the computation
   // is only ever executed at one version.

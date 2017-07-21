@@ -122,6 +122,7 @@ py_library(
         ":stats_ops_py",
         ":tensor_forest_ops_py",
         ":tensor_forest_py",
+        ":tensor_forest_v4_py",
     ],
 )
 
@@ -554,13 +555,14 @@ py_library(
     srcs = ["python/tensor_forest_v4.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":tensor_forest_py",
         ":tensor_forest_v4_ops_py",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_py",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -586,12 +588,14 @@ py_library(
         ":client_lib",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
     ],
 )
 

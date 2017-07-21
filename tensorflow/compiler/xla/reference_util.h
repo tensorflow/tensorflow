@@ -74,6 +74,20 @@ class ReferenceUtil {
       std::pair<int64, int64> lhs_dilation,
       std::pair<int64, int64> rhs_dilation, ConvolutionDimensionNumbers dnums);
 
+  // Returns the result of a convolution `lhs <conv> rhs`, with the default
+  // convolution dimension numbers returned from
+  // ComputationBuilder::CreateDefaultConvDimensionNumbers().
+  static std::unique_ptr<Array3D<float>> ConvArray3D(const Array3D<float>& lhs,
+                                                     const Array3D<float>& rhs,
+                                                     int64 kernel_stride,
+                                                     Padding padding);
+
+  // Returns the result of a convolution `lhs <conv> rhs`.
+  static std::unique_ptr<Array3D<float>> ConvArray3DGeneralDimensionsDilated(
+      const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
+      Padding padding, int64 lhs_dilation, int64 rhs_dilation,
+      const ConvolutionDimensionNumbers& dnums);
+
   // Returns the result of a separable  convolution with the given parameters.
   // kernel_stride and padding applies to the depthwise convolution during
   // the separable convolution. pointwise_weights.depth() must be equal to
@@ -475,6 +489,11 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<float>> PadArray2D(
       const Array2D<float>& operand, const PaddingConfig& padding,
       const float pad);
+
+  // Returns the result of a 3D pad on an input matrix.
+  static Array3D<float> PadArray3D(const Array3D<float>& operand,
+                                   const PaddingConfig& padding,
+                                   const float pad);
 
   // Returns the result of a 4D pad on an input array.
   static Array4D<float> PadArray4D(const Array4D<float>& operand,

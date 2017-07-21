@@ -208,6 +208,7 @@ _allowed_symbols.extend([
     'uint16',
     'uint8',
     'resource',
+    'variant',
 ])
 
 # Export modules and constants.
