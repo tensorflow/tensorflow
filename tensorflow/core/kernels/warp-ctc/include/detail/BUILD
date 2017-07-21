@@ -13,11 +13,17 @@ load(
 cc_library(
     name = "libcpu",
     srcs = ["cpu_ctc.h", "ctc_helper.h", "hostdevice.h"],
-    linkopts = ["-lgomp"],
+    linkopts = select({
+        "//tensorflow:darwin": [],
+        "//conditions:default": ["-lgomp"]
+    }),
 )
 
 cc_library(
     name = "libgpu",
     srcs = glob(["*.h"]),
-    linkopts = ["-lgomp"],
+    linkopts = select({
+        "//tensorflow:darwin": [],
+        "//conditions:default": ["-lgomp"]
+    }),
 )

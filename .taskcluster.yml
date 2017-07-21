@@ -264,3 +264,111 @@ tasks:
       description: "Building TensorFlow with ARM CPU only support"
       owner: "{{ event.head.user.email }}"
       source: "{{ event.head.repo.url }}"
+
+  ## PULL REQUEST FOR OSX SIERRA CPU BUILDS
+  - provisionerId: "localprovisioner"
+    workerType: "deepspeech-macos"
+    extra:
+      github:
+        # This must be set in order access GitHub info from inside your environment
+        env: true
+        # Events that will trigger this task
+        events:
+          - pull_request.opened
+          - pull_request.synchronize
+          - pull_request.reopened
+    payload:
+      maxRunTime: 14400
+      # There is no VM yet running tasks on OSX
+      # so one should install by hand:
+      # - brew
+      # - xcode (brew would install)
+      # - brew install git
+      # - brew install pixz
+      # - brew cask install java
+      # - sudo easy_install pip
+      command:
+        - - "/bin/bash"
+          - "--login"
+          - "-cxe"
+          - >
+            export TASKCLUSTER_ARTIFACTS="$(pwd)/public/" &&
+            export TASKCLUSTER_TASK_ROOT="$(pwd)" &&
+            export TASKCLUSTER_TASK_DIR="$(dirname `pwd`)/task-${GITHUB_HEAD_SHA}" &&
+            mkdir -p ${TASKCLUSTER_TASK_DIR}/DeepSpeech/ &&
+            env &&
+            git clone --quiet {{event.head.repo.url}} ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/ &&
+            cd ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && cd ${TASKCLUSTER_TASK_DIR} &&
+            ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/tc-brew.sh &&
+            ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/tc-setup.sh &&
+            ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/tc-build.sh &&
+            ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/tc-package.sh;
+            cd ${TASKCLUSTER_TASK_ROOT} && rm -fr ${TASKCLUSTER_TASK_DIR}
+      artifacts:
+        - type: "directory"
+          path: "public/"
+          expires: "{{ '7 days' | $fromNow }}"
+    # Each task also requires explicit metadata
+    metadata:
+      name: "TaskCluster TensorFlow CPU for OSX 10.12"
+      description: "Building TensorFlow with CPU only support for OSX 10.12"
+      owner: "{{ event.head.user.email }}"
+      source: "{{ event.head.repo.url }}"
+
+
+  ## PUSH TO MAIN REPO FOR OSX SIERRA CPU BUILDS
+  - provisionerId: "localprovisioner"
+    # Be careful with spacing under the lines with dashes. Next line should begin under the word, not under the dash.
+    # Worker types correspond to particular machine types (aws size, etc...)
+    # worker types may be added by priveleged taskcluster users at https://tools.taskcluster.net/aws-provisioner
+    workerType: "deepspeech-macos"
+    extra:
+      github:
+        # This must be set in order access GitHub info from inside your environment
+        env: true
+        # Events that will trigger this task
+        events:
+          - push
+        branches:
+          - master
+    routes:
+      - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.osx"
+      - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.{{ event.head.sha }}.osx"
+      - "index.project.deepspeech.tensorflow.pip.osx.{{ event.head.sha }}"
+    payload:
+      maxRunTime: 14400
+      # There is no VM yet running tasks on OSX
+      # so one should install by hand:
+      # - brew
+      # - xcode (brew would install)
+      # - brew install git
+      # - brew install pixz
+      # - brew cask install java
+      # - sudo easy_install pip
+      command:
+        - - "/bin/bash"
+          - "--login"
+          - "-cxe"
+          - >
+            export TASKCLUSTER_ARTIFACTS="$(pwd)/public/" &&
+            export TASKCLUSTER_TASK_ROOT="$(pwd)" &&
+            export TASKCLUSTER_TASK_DIR="$(dirname `pwd`)/task-${GITHUB_HEAD_SHA}" &&
+            mkdir -p ${TASKCLUSTER_TASK_DIR}/DeepSpeech/ &&
+            env &&
+            git clone --quiet {{event.head.repo.url}} ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/ &&
+            cd ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && cd ${TASKCLUSTER_TASK_DIR} &&
+            ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/tc-brew.sh &&
+            ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/tc-setup.sh &&
+            ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/tc-build.sh &&
+            ${TASKCLUSTER_TASK_DIR}/DeepSpeech/tf/tc-package.sh;
+            cd ${TASKCLUSTER_TASK_ROOT} && rm -fr ${TASKCLUSTER_TASK_DIR}
+      artifacts:
+        - type: "directory"
+          path: "public/"
+          expires: "{{ '6 months' | $fromNow }}"
+    # Each task also requires explicit metadata
+    metadata:
+      name: "TaskCluster TensorFlow CPU for OSX 10.12"
+      description: "Building TensorFlow with CPU only support for OSX 10.12"
+      owner: "{{ event.head.user.email }}"
+      source: "{{ event.head.repo.url }}"
