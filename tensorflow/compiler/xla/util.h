@@ -344,18 +344,19 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 
 }  // namespace xla
 
-#define XLA_LOG_LINES(SEV, STRING) LogLines(SEV, STRING, __FILE__, __LINE__)
+#define XLA_LOG_LINES(SEV, STRING) \
+  ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
 
-#define XLA_VLOG_LINES(LEVEL, STRING)                               \
-  do {                                                              \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(tensorflow::INFO, STRING); \
+#define XLA_VLOG_LINES(LEVEL, STRING)                                 \
+  do {                                                                \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tensorflow::INFO, STRING); \
   } while (false);
 
 // Utility macro that performs the equivalent of what one would expect
 // LOG_LINES(FATAL, X) to do but can be used at the end of a function that
 // returns a value without getting a compiler warning that no value is returned.
-#define XLA_FATAL_LOG(X)               \
-  XLA_LOG_LINES(tensorflow::ERROR, X); \
+#define XLA_FATAL_LOG(X)                 \
+  XLA_LOG_LINES(::tensorflow::ERROR, X); \
   LOG(FATAL) << "Aborting in " << __FUNCTION__ << " due to previous errors.";
 
 #endif  // TENSORFLOW_COMPILER_XLA_UTIL_H_

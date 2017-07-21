@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
 #define EIGEN_USE_THREADS
 
@@ -72,6 +73,8 @@ void __xla_cpu_runtime_EigenMatMulF32(const void* run_options_ptr, float* out,
                 transpose_rhs);
 }
 
+REGISTER_XLA_CPU_RUNTIME_BUILTIN(EigenMatMulF32);
+
 void __xla_cpu_runtime_EigenMatMulF64(const void* run_options_ptr, double* out,
                                       double* lhs, double* rhs, int64 m,
                                       int64 n, int64 k, int32 transpose_lhs,
@@ -79,3 +82,5 @@ void __xla_cpu_runtime_EigenMatMulF64(const void* run_options_ptr, double* out,
   MatMul<double>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
                  transpose_rhs);
 }
+
+REGISTER_XLA_CPU_RUNTIME_BUILTIN(EigenMatMulF64);

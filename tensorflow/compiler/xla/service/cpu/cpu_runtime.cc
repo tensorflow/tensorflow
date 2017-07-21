@@ -17,20 +17,79 @@ limitations under the License.
 
 #include <functional>
 
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+
+namespace {
+tensorflow::gtl::FlatMap<tensorflow::StringPiece, void*>* BuiltinMap() {
+  static auto* builtin_map =
+      new tensorflow::gtl::FlatMap<tensorflow::StringPiece, void*>;
+  return builtin_map;
+}
+
+tensorflow::mutex* BuiltinMapMutex() {
+  static tensorflow::mutex* builtin_map_mutex = new tensorflow::mutex;
+  return builtin_map_mutex;
+}
+}  // namespace
 
 namespace xla {
 namespace cpu {
 namespace runtime {
+
+const char* const kEigenMatMulF32SymbolName =
+    "__xla_cpu_runtime_EigenMatMulF32";
+const char* const kEigenMatMulF64SymbolName =
+    "__xla_cpu_runtime_EigenMatMulF64";
+const char* const kEigenConvF32SymbolName = "__xla_cpu_runtime_EigenConvF32";
+const char* const kEigenSingleThreadedMatMulF32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF32";
+const char* const kEigenSingleThreadedMatMulF64SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedMatMulF64";
+const char* const kEigenSingleThreadedConvF32SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConvF32";
+const char* const kAcquireInfeedBufferForDequeueSymbolName =
+    "__xla_cpu_runtime_AcquireInfeedBufferForDequeue";
+const char* const kReleaseInfeedBufferAfterDequeueSymbolName =
+    "__xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue";
+const char* const kAcquireOutfeedBufferForPopulationSymbolName =
+    "__xla_cpu_runtime_AcquireOutfeedBufferForPopulation";
+const char* const kReleaseOutfeedBufferAfterPopulationSymbolName =
+    "__xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation";
+
+const char* const kXlaCpuRuntimeSymbolPrefix = "__xla_cpu_runtime_";
 
 XfeedManager* GetXfeedManager() {
   static XfeedManager* manager = new XfeedManager;
   return manager;
 }
 
+namespace internal {
+Registrar::Registrar(tensorflow::StringPiece name, void* function_pointer,
+                     tensorflow::StringPiece base_name) {
+  CHECK(function_pointer);
+  CHECK_EQ(tensorflow::strings::StrCat(kXlaCpuRuntimeSymbolPrefix, base_name),
+           name);
+
+  tensorflow::mutex_lock lock(*BuiltinMapMutex());
+  InsertOrDie(BuiltinMap(), name, function_pointer);
+}
+}  // namespace internal
+
+void* ResolveSymbol(tensorflow::StringPiece name) {
+  CHECK(name.starts_with(kXlaCpuRuntimeSymbolPrefix));
+
+  tensorflow::mutex_lock lock(*BuiltinMapMutex());
+  const auto& builtin_map = *BuiltinMap();
+  auto lookup_iterator = builtin_map.find(name);
+  return lookup_iterator == builtin_map.end() ? nullptr
+                                              : lookup_iterator->second;
+}
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla
@@ -67,6 +126,8 @@ void* __xla_cpu_runtime_AcquireInfeedBufferForDequeue(xla::int32 buffer_length,
   return buffer->data();
 }
 
+REGISTER_XLA_CPU_RUNTIME_BUILTIN(AcquireInfeedBufferForDequeue);
+
 void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
     xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
     xla::int32 shape_length) {
@@ -80,6 +141,8 @@ void __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
   xfeed->infeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
                                         std::move(shape));
 }
+
+REGISTER_XLA_CPU_RUNTIME_BUILTIN(ReleaseInfeedBufferAfterDequeue);
 
 void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
     xla::int32 buffer_length, const void* shape_ptr, xla::int32 shape_length) {
@@ -99,6 +162,8 @@ void* __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
   return buffer->data();
 }
 
+REGISTER_XLA_CPU_RUNTIME_BUILTIN(AcquireOutfeedBufferForPopulation);
+
 void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
     xla::int32 buffer_length, void* buffer_ptr, const void* shape_ptr,
     xla::int32 shape_length) {
@@ -111,3 +176,5 @@ void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
       xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
   xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr, shape);
 }
+
+REGISTER_XLA_CPU_RUNTIME_BUILTIN(ReleaseOutfeedBufferAfterPopulation);

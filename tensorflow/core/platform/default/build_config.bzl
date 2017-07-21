@@ -75,7 +75,8 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
 def tf_proto_library(name, srcs = [], has_services = None,
                      protodeps = [], visibility = [], testonly = 0,
                      cc_libs = [],
-                     cc_api_version = 2, go_api_version = 2,
+                     cc_api_version = 2, cc_grpc_version = None,
+                     go_api_version = 2,
                      j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
                      js_api_version = 2, js_codegen = "jspb"):
@@ -84,6 +85,7 @@ def tf_proto_library(name, srcs = [], has_services = None,
       name = name,
       srcs = srcs,
       protodeps = protodeps,
+      cc_grpc_version = cc_grpc_version,
       cc_libs = cc_libs,
       testonly = testonly,
       visibility = visibility,
@@ -127,6 +129,14 @@ def tf_additional_lib_srcs(exclude = []):
         "platform/posix/*.cc",
       ], exclude = exclude),
   })
+
+# pylint: disable=unused-argument
+def tf_additional_framework_hdrs(exclude = []):
+  return []
+
+def tf_additional_framework_srcs(exclude = []):
+  return []
+# pylint: enable=unused-argument
 
 def tf_additional_minimal_lib_srcs():
   return [
@@ -276,3 +286,7 @@ def tf_additional_mpi_lib_defines():
       "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
       "//conditions:default": [],
   })
+
+def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
+                            **kwargs):
+  pass

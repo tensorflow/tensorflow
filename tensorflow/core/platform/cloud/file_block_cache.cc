@@ -76,6 +76,8 @@ Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
       // Record the block timestamp, update the cache size, and add the block to
       // the cache.
       block->timestamp = env_->NowSeconds();
+      lra_list_.push_front(key);
+      block->lra_iterator = lra_list_.begin();
       cache_size_ += block->data.size();
       entry = block_map_.emplace(std::make_pair(key, std::move(block))).first;
     } else {
@@ -114,6 +116,28 @@ Status FileBlockCache::Read(const string& filename, size_t offset, size_t n,
   return Status::OK();
 }
 
+size_t FileBlockCache::CacheSize() const {
+  mutex_lock lock(mu_);
+  return cache_size_;
+}
+
+void FileBlockCache::Prune() {
+  while (!WaitForNotificationWithTimeout(&stop_pruning_thread_, 1000000)) {
+    mutex_lock lock(mu_);
+    uint64 now = env_->NowSeconds();
+    while (!lra_list_.empty()) {
+      auto it = block_map_.find(lra_list_.back());
+      if (now - it->second->timestamp <= max_staleness_) {
+        // The oldest block is not yet expired. Come back later.
+        break;
+      }
+      // We need to make a copy of the filename here, since it could otherwise
+      // be used within RemoveFile_Locked after `it` is deleted.
+      RemoveFile_Locked(std::string(it->first.first));
+    }
+  }
+}
+
 void FileBlockCache::RemoveFile(const string& filename) {
   mutex_lock lock(mu_);
   RemoveFile_Locked(filename);
@@ -131,6 +155,7 @@ void FileBlockCache::RemoveFile_Locked(const string& filename) {
 
 void FileBlockCache::RemoveBlock(BlockMap::iterator entry) {
   lru_list_.erase(entry->second->lru_iterator);
+  lra_list_.erase(entry->second->lra_iterator);
   cache_size_ -= entry->second->data.size();
   block_map_.erase(entry);
 }
