@@ -369,10 +369,10 @@ class BatchNormalization(base.Layer):
       # but not a constant. However, this makes the code simpler.
       mean, variance = nn.moments(inputs, reduction_axes)
       mean = _smart_select(training,
-                           lambda: mean,
+                           lambda: self.mean,
                            lambda: self.moving_mean)
       variance = _smart_select(training,
-                               lambda: variance,
+                               lambda: self.variance,
                                lambda: self.moving_variance)
 
       if self.renorm:
