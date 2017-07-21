@@ -24,7 +24,7 @@
 @@GraphDump
 @@LoggingTrainable
 @@NanLoss
-@@PrintTensor
+@@LoggingTensor
 @@StepCounter
 @@StopAtStep
 @@SummarySaver
@@ -416,8 +416,7 @@ class StopAtStep(BaseMonitor):
     return step >= self._last_step
 
 
-# TODO(ptucker): Rename to LoggingTensor since it's not writing to stdout.
-class PrintTensor(EveryN):
+class LoggingTensor(EveryN):
   """Prints given tensors every N steps.
 
   This is an `EveryN` monitor and has consistent semantic for `every_n`
@@ -427,7 +426,7 @@ class PrintTensor(EveryN):
   """
 
   def __init__(self, tensor_names, every_n=100, first_n=1):
-    """Initializes a PrintTensor monitor.
+    """Initializes a LoggingTensor monitor.
 
     Args:
       tensor_names: `dict` of tag to tensor names or
@@ -435,17 +434,17 @@ class PrintTensor(EveryN):
       every_n: `int`, print every N steps. See `PrintN.`
       first_n: `int`, also print the first N steps. See `PrintN.`
     """
-    super(PrintTensor, self).__init__(every_n, first_n)
+    super(LoggingTensor, self).__init__(every_n, first_n)
     if not isinstance(tensor_names, dict):
       tensor_names = {item: item for item in tensor_names}
     self._tensor_names = tensor_names
 
   def every_n_step_begin(self, step):
-    super(PrintTensor, self).every_n_step_begin(step)
+    super(LoggingTensor, self).every_n_step_begin(step)
     return list(self._tensor_names.values())
 
   def every_n_step_end(self, step, outputs):
-    super(PrintTensor, self).every_n_step_end(step, outputs)
+    super(LoggingTensor, self).every_n_step_end(step, outputs)
     stats = []
     for tag, tensor_name in six.iteritems(self._tensor_names):
       if tensor_name in outputs:
@@ -770,7 +769,7 @@ def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
   """Returns a default set of typically-used monitors.
 
   Args:
-    loss_op: `Tensor`, the loss tensor. This will be printed using `PrintTensor`
+    loss_op: `Tensor`, the loss tensor. This will be printed using `LoggingTensor`
         at the default interval.
     summary_op: See `SummarySaver`.
     save_summary_steps: See `SummarySaver`.
@@ -782,7 +781,7 @@ def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
 
   monitors = []
   if loss_op is not None:
-    monitors.append(PrintTensor(tensor_names={"loss": loss_op.name}))
+    monitors.append(LoggingTensor(tensor_names={"loss": loss_op.name}))
   if summary_op is not None:
     monitors.append(SummarySaver(summary_op, save_steps=save_summary_steps,
                                  output_dir=output_dir,
@@ -793,7 +792,7 @@ def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
 class GraphDump(BaseMonitor):
   """Dumps almost all tensors in the graph at every step.
 
-  Note, this is very expensive, prefer `PrintTensor` in production.
+  Note, this is very expensive, prefer `LoggingTensor` in production.
   """
 
   IGNORE_OPS = ["Const", "Assign", "Identity", "Placeholder",
