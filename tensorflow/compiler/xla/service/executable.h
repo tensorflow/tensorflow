@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
@@ -196,10 +196,11 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
   // If the profiling flag isn't enabled, we pass nullptr as the profile to
   // indicate profiling is not requested.
   HloExecutionProfile hlo_execution_profile;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
   HloExecutionProfile* profile_ptr =
-      flags->xla_hlo_profile && hlo_profiling_enabled() ? &hlo_execution_profile
-                                                        : nullptr;
+      module_config().debug_options().xla_hlo_profile() &&
+              hlo_profiling_enabled()
+          ? &hlo_execution_profile
+          : nullptr;
 
   auto return_value = ExecuteOnStream(run_options, arguments, profile_ptr);
 

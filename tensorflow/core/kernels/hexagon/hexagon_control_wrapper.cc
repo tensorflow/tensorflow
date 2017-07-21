@@ -16,18 +16,19 @@ limitations under the License.
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
-
-#ifdef USE_HEXAGON_LIBS
-#include "tensorflow/core/platform/hexagon/soc_interface.h"
+#include "tensorflow/core/kernels/hexagon/soc_interface.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
-#endif
 
 namespace tensorflow {
 
-constexpr const char* const INPUT_OP_NAME = "INPUT";
 constexpr const char* const OUTPUT_OP_NAME = "OUTPUT";
+constexpr const char* const REMOTE_FUSED_GRAPH_NODE_NAME_PREFIX =
+    "hexagon_remote_fused_graph";
+/* static */ constexpr const char* const
+    HexagonControlWrapper::REMOTE_FUSED_GRAPH_EXECUTOR_NAME;
 
 constexpr int ALIGNMENT_BYTES = 16;
+constexpr int MAX_IN_OUT_COUNT = 128;
 
 const bool DBG_DUMP_VERIFICATION_STRING = false;
 const int DBG_LEVEL = 0;  // -2: verbose, -1: debug, 0: info
@@ -63,7 +64,6 @@ static uint8* FindAlignedPointer(uint8* ptr) {
   return nullptr;
 }
 
-#ifdef USE_HEXAGON_LIBS
 int HexagonControlWrapper::GetVersion() {
   return soc_interface_GetSocControllerVersion();
 }
@@ -95,7 +95,6 @@ bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo& info) {
     LOG(ERROR) << "Hexagon initialization was failed.  See log output.";
     return false;
   }
-  const GraphTransferInfo& gt_info = graph_transferer_.GetGraphTransferInfo();
   std::vector<int> input_sizes;
   std::vector<int> output_sizes;
   CHECK_NOTNULL(execute_info_);
@@ -207,8 +206,9 @@ bool HexagonControlWrapper::SetupGraph() {
   for (const GraphTransferInfo::NodeInputInfo& input_params :
        graph_transfer_info.node_input_info()) {
     const int count = input_params.node_input_size();
-    int node_ids[count];
-    int ports[count];
+    CHECK(count <= MAX_IN_OUT_COUNT);
+    int node_ids[MAX_IN_OUT_COUNT];
+    int ports[MAX_IN_OUT_COUNT];
     for (int i = 0; i < count; ++i) {
       const GraphTransferInfo::NodeInput& node_input =
           input_params.node_input(i);
@@ -226,7 +226,8 @@ bool HexagonControlWrapper::SetupGraph() {
   for (const GraphTransferInfo::NodeOutputInfo& output_params :
        graph_transfer_info.node_output_info()) {
     const int count = output_params.max_byte_size_size();
-    int sizes[count];
+    CHECK(count <= MAX_IN_OUT_COUNT);
+    int sizes[MAX_IN_OUT_COUNT];
     for (int i = 0; i < count; ++i) {
       const int size = output_params.max_byte_size(i);
       sizes[i] = size;
@@ -373,6 +374,7 @@ bool HexagonControlWrapper::ReadOutputNode(
       << output_tensor->TotalBytes() << ", " << std::get<1>(output);
   TF_CHECK_OK(RemoteFusedGraphExecuteUtils::CopyByteArrayToTensor(
       std::get<0>(output), std::get<1>(output), output_tensor));
+  return true;
 }
 
 bool HexagonControlWrapper::ReadOutputNode(
@@ -382,12 +384,28 @@ bool HexagonControlWrapper::ReadOutputNode(
   const string tensor_name = AddPort(node_name);
   CHECK(output_port_map_.count(tensor_name) > 0);
   const int port = output_port_map_.at(tensor_name);
-  soc_interface_ReadOutputNodeWithPort(port, &std::get<0>(output),
-                                       &std::get<1>(output));
+  soc_interface_ReadOutputNodeWithPort(
+      port, &std::get<0>(output),
+      reinterpret_cast<uint64_t*>(&std::get<1>(output)));
   // TODO: Accept all results
   // std::get<2>(output) = DT_FLOAT;
   outputs->emplace_back(output);
   return true;
+}
+
+Status HexagonControlWrapper::FuseRemoteGraph(
+    const GraphDef& original_graph_def, const std::vector<string>& inputs,
+    const std::vector<string>& outputs, GraphDef* fused_graph_def) {
+  const std::unordered_set<string> fused_node_names =
+      RemoteFusedGraphExecuteUtils::BuildNodeMapFromOpsDefinitions(
+          original_graph_def, HexagonOpsDefinitions::getInstance());
+  // TODO(satok): We may want to place shape and type inside this function
+  // if they are not placed in the given graph.
+  TF_RETURN_IF_ERROR(RemoteFusedGraphExecuteUtils::FuseRemoteGraphByNodeNames(
+      original_graph_def, inputs, outputs, REMOTE_FUSED_GRAPH_NODE_NAME_PREFIX,
+      fused_node_names, REMOTE_FUSED_GRAPH_EXECUTOR_NAME,
+      /*require_shape_type=*/true, fused_graph_def));
+  return Status::OK();
 }
 
 bool HexagonControlWrapper::FillInputNode(const string& node_name,
@@ -415,31 +433,5 @@ bool HexagonControlWrapper::FillInputNode(const string& node_name,
   return true;
 }
 
-#else
-int HexagonControlWrapper::GetVersion() { return -1; }
-bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo&) {
-  return false;
-}
-bool HexagonControlWrapper::Finalize() { return false; }
-bool HexagonControlWrapper::SetupGraph() { return false; }
-bool HexagonControlWrapper::ExecuteGraph() { return false; }
-bool HexagonControlWrapper::TeardownGraph() { return false; }
-bool HexagonControlWrapper::FillInputNode(
-    const string&, const std::array<int64, GraphTransferer::SHAPE_ARRAY_SIZE>&,
-    const ConstByteArray) {
-  return false;
-}
-bool HexagonControlWrapper::FillInputNode(const string&, const Tensor&) {
-  return false;
-}
-bool HexagonControlWrapper::ReadOutputNode(
-    const string& node_name, TensorAllocatorFunc tensor_allocator) {
-  return false;
-}
-bool HexagonControlWrapper::ReadOutputNode(const string&,
-                                           std::vector<ByteArray>* const) {
-  return false;
-}
-#endif
-
+bool HexagonControlWrapper::IsEnabled() const { return true; };
 }  // namespace tensorflow

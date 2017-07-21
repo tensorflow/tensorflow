@@ -688,6 +688,11 @@ class Dataset(object):
     else:
       dataset = reader(filenames)
     dataset = dataset.repeat(num_epochs)
+    if dataset.output_types == (dtypes.string, dtypes.string):
+      dataset = dataset.map(lambda unused_k, v: v)
+    elif dataset.output_types != dtypes.string:
+      raise TypeError("`reader` must be a dataset of `tf.string` values, "
+                      "or `(tf.string, tf.string)` key-value pairs.")
     if randomize_input:
       dataset = dataset.shuffle(capacity)
     dataset = dataset.map(lambda x: _parse_example(nest.flatten(x), features))
@@ -1938,8 +1943,8 @@ class TextLineDataset(Dataset):
 
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
-      compression_type: A string, one of: `""` (no compression), `"ZLIB"`, or
-        `"GZIP"`.
+      compression_type: A `tf.string` scalar evaluating to one of `""` (no
+        compression), `"ZLIB"`, or `"GZIP"`.
     """
     super(TextLineDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(

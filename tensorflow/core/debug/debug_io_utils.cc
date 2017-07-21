@@ -17,14 +17,12 @@ limitations under the License.
 
 #include <vector>
 
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
 #include "grpc++/create_channel.h"
-#endif
-
-#if defined(PLATFORM_WINDOWS)
+#else
 // winsock2.h is used in grpc, so Ws2_32.lib is needed
 #pragma comment(lib,"Ws2_32.lib")
-#endif
+#endif  // #ifndef PLATFORM_WINDOWS
 
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -37,10 +35,9 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/event.pb.h"
 
-#define GRPC_OSS_UNIMPLEMENTED_ERROR \
-  return errors::Unimplemented(      \
-      kGrpcURLScheme,                \
-      " debug URL scheme is not implemented in open source yet.")
+#define GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR \
+  return errors::Unimplemented(              \
+      kGrpcURLScheme, " debug URL scheme is not implemented on Windows yet.")
 
 namespace tensorflow {
 
@@ -234,7 +231,7 @@ string AppendTimestampToFilePath(const string& in, const uint64 timestamp) {
   return out;
 }
 
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
 // Publishes encoded GraphDef through a gRPC debugger stream, in chunks,
 // conforming to the gRPC message size limit.
 Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
@@ -268,7 +265,7 @@ Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
   }
   return Status::OK();
 }
-#endif
+#endif  // #ifndef PLATFORM_WINDOWS
 
 }  // namespace
 
@@ -393,7 +390,7 @@ Status DebugIO::PublishDebugMetadata(
   Status status;
   for (const string& url : debug_urls) {
     if (str_util::Lowercase(url).find(kGrpcURLScheme) == 0) {
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
       Event grpc_event;
 
       // Determine the path (if any) in the grpc:// URL, and add it as a field
@@ -411,7 +408,7 @@ Status DebugIO::PublishDebugMetadata(
       status.Update(
           DebugGrpcIO::SendEventProtoThroughGrpcStream(grpc_event, url));
 #else
-      GRPC_OSS_UNIMPLEMENTED_ERROR;
+      GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR;
 #endif
     } else if (str_util::Lowercase(url).find(kFileURLScheme) == 0) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
@@ -450,7 +447,7 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
         fail_statuses.push_back(s);
       }
     } else if (str_util::Lowercase(url).find(kGrpcURLScheme) == 0) {
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
       Status s = DebugGrpcIO::SendTensorThroughGrpcStream(
           debug_node_key, tensor, wall_time_us, url, gated_grpc);
 
@@ -459,7 +456,7 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
         fail_statuses.push_back(s);
       }
 #else
-      GRPC_OSS_UNIMPLEMENTED_ERROR;
+      GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR;
 #endif
     } else {
       return Status(error::UNAVAILABLE,
@@ -519,11 +516,11 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
       status.Update(
           DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
     } else if (debug_url.find(kGrpcURLScheme) == 0) {
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
       status.Update(PublishEncodedGraphDefInChunks(buf, device_name, now_micros,
                                                    debug_url));
 #else
-      GRPC_OSS_UNIMPLEMENTED_ERROR;
+      GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR;
 #endif
     }
   }
@@ -534,7 +531,7 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
 // static
 bool DebugIO::IsCopyNodeGateOpen(
     const std::vector<DebugWatchAndURLSpec>& specs) {
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
   for (const DebugWatchAndURLSpec& spec : specs) {
     if (!spec.gated_grpc || spec.url.compare(0, strlen(DebugIO::kGrpcURLScheme),
                                              DebugIO::kGrpcURLScheme)) {
@@ -554,7 +551,7 @@ bool DebugIO::IsCopyNodeGateOpen(
 // static
 bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
                                   const std::vector<string>& debug_urls) {
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
   for (const string& debug_url : debug_urls) {
     if (debug_url.compare(0, strlen(DebugIO::kGrpcURLScheme),
                           DebugIO::kGrpcURLScheme)) {
@@ -574,7 +571,7 @@ bool DebugIO::IsDebugNodeGateOpen(const string& watch_key,
 // static
 bool DebugIO::IsDebugURLGateOpen(const string& watch_key,
                                  const string& debug_url) {
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
   if (debug_url.find(kGrpcURLScheme) != 0) {
     return true;
   } else {
@@ -588,10 +585,10 @@ bool DebugIO::IsDebugURLGateOpen(const string& watch_key,
 // static
 Status DebugIO::CloseDebugURL(const string& debug_url) {
   if (debug_url.find(DebugIO::kGrpcURLScheme) == 0) {
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
     return DebugGrpcIO::CloseGrpcStream(debug_url);
 #else
-    GRPC_OSS_UNIMPLEMENTED_ERROR;
+    GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR;
 #endif
   } else {
     // No-op for non-gRPC URLs.
@@ -703,7 +700,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   }
 }
 
-#if defined(PLATFORM_GOOGLE)
+#ifndef PLATFORM_WINDOWS
 DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)
     : server_stream_addr_(server_stream_addr),
       url_(strings::StrCat(DebugIO::kGrpcURLScheme, server_stream_addr)) {}
@@ -926,6 +923,6 @@ void DebugGrpcIO::CreateEmptyEnabledSet(const string& grpc_debug_url) {
   }
 }
 
-#endif  // #if defined(PLATFORM_GOOGLE)
+#endif  // #ifndef PLATFORM_WINDOWS
 
 }  // namespace tensorflow

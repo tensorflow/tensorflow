@@ -48,13 +48,12 @@ const char* kRecomputationTargetNamePrefix = "gradients/";
 // TODO(allenl): Replace this list with a cost model.
 std::unordered_set<string> GetCheapToRecomputeOps() {
   std::unordered_set<string> cheap_ops = {
-      "Add",      "AddN",           "BiasAdd",
-      "Cast",     "Fill",           "FloorDiv",
-      "FloorMod", "FusedBatchNorm", "Mul",
-      "Neg",      "RealDiv",        "Reciprocal",
-      "Relu",     "Reshape",        "Rsqrt",
-      "Sqrt",     "Square",         "SquaredDifference",
-      "Sub",      "Tile",           "Transpose"};
+      "Add",  "AddN",     "BiasAdd",           "Cast",
+      "Fill", "FloorDiv", "FloorMod",          "FusedBatchNorm",
+      "Mul",  "Neg",      "RealDiv",           "Reciprocal",
+      "Relu", "Relu6",    "Reshape",           "Rsqrt",
+      "Sqrt", "Square",   "SquaredDifference", "Sub",
+      "Tile", "Transpose"};
   return cheap_ops;
 }
 

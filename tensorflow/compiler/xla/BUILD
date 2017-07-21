@@ -574,6 +574,7 @@ cc_test(
     srcs = ["reference_util_test.cc"],
     deps = [
         ":array2d",
+        ":array3d",
         ":array4d",
         ":literal_util",
         ":reference_util",

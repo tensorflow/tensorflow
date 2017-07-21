@@ -260,6 +260,42 @@ TEST_F(GradientsTest, StackUnstack_StopBackprop) {
   CompareTestAndExpectedGraphs();
 }
 
+TEST_F(GradientsTest, StackUnstack_SubsetOfUnstackOutputs) {
+  // Constructs an unstack with three outputs, and takes the gradient with
+  // respect to only two of the outputs. Tests that the output gradients are
+  // computed.
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
+    // Construct forward graph.
+    auto c = Const(scope, 1, {3, 4, 2});
+    auto unpack = Unstack(scope, c, 3);
+    auto x = Identity(scope, unpack.output[0]);
+    auto y = Identity(scope, unpack.output[1]);
+    auto z = Identity(scope, unpack.output[2]);
+    TF_ASSERT_OK(scope.status());
+
+    // Construct grad inputs.
+    auto dy = Const(scope, 4, {4, 2});
+    auto dz = Const(scope, 5, {4, 2});
+
+    if (expected) {
+      // Construct backward graph.
+      auto g1 = Identity(scope, dy);
+      auto g2 = Identity(scope, dz);
+    } else {
+      // Call AddSymbolicGradients.
+      std::vector<Output> grad_outputs;
+      TF_ASSERT_OK(AddSymbolicGradients(scope, {y, z},
+                                        {unpack.output[1], unpack.output[2]},
+                                        {dy, dz}, &grad_outputs));
+      ASSERT_EQ(grad_outputs.size(), 2);
+      EXPECT_TRUE(grad_outputs[0].node() != nullptr);
+      EXPECT_TRUE(grad_outputs[1].node() != nullptr);
+    }
+  }
+  CompareTestAndExpectedGraphs();
+}
+
 TEST_F(GradientsTest, DependentGradOutputs) {
   // Tests that dependent gradients (in this case the gradients w.r.t to the
   // output and one input of MatMul) are computed properly.
