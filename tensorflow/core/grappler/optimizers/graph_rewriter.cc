@@ -69,6 +69,10 @@ bool GraphRewriter::IsConnectedToFunction(const NodeDef& node) const {
   return function_neighbors_.find(&node) != function_neighbors_.end();
 }
 
+bool GraphRewriter::IsDrivenByAnotherDevice(const NodeDef& node) const {
+  return cross_device_receivers_.find(&node) != cross_device_receivers_.end();
+}
+
 void GraphRewriter::RecordConnectivity(
     const NodeDef& node, const std::unordered_set<string>& function_names) {
   const bool is_function =
@@ -93,6 +97,9 @@ void GraphRewriter::RecordConnectivity(
       if (is_function) {
         function_neighbors_.insert(fanin);
       }
+    }
+    if (fanin->device() != node.device()) {
+      cross_device_receivers_.insert(&node);
     }
   }
 }
@@ -119,9 +126,7 @@ void GraphRewriter::ForwardInputsInternal(
       continue;
     }
     const NodeDef* input_node = itr->second;
-    if ((input_node->device().empty() || node.device().empty() ||
-         input_node->device() == node.device()) &&
-        nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
+    if (nodes_to_delete.find(input_node) != nodes_to_delete.end()) {
       ForwardInputsInternal(*input_node, nodes_to_delete, new_node);
     } else {
       *new_node->add_input() = input;

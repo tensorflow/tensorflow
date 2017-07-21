@@ -51,6 +51,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
     }
+
     // Don't remove nodes that drive control dependencies.
     // Don't remove nodes that are driven by control dependencies either since
     // we can't ensure (yet) that we won't increase the number of control
@@ -59,9 +60,12 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     // creation of 100 edges).
     // Don't modify nodes that are connected to functions since that can result
     // in inlining failures later on.
+    // Don't prune nodes that are driven by another device since these could be
+    // used to reduce cross device communication.
     if (!rewriter.DrivesControlDependency(node) &&
         !rewriter.IsDrivenByControlDependency(node) &&
-        !rewriter.IsConnectedToFunction(node)) {
+        !rewriter.IsConnectedToFunction(node) &&
+        !rewriter.IsDrivenByAnotherDevice(node)) {
       nodes_to_delete.insert(&node);
     }
   }
