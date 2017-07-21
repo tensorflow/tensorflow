@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
 #define EIGEN_USE_THREADS
 
@@ -25,22 +24,12 @@ namespace cpu {
 namespace runtime {
 
 #ifdef __AVX__
-V8F32 __xla_cpu_runtime_ExpV8F32(V8F32 x) { return Eigen::internal::pexp(x); }
+V8F32 ExpV8F32(V8F32 x) { return Eigen::internal::pexp(x); }
 
-REGISTER_XLA_CPU_RUNTIME_BUILTIN(ExpV8F32);
+V8F32 LogV8F32(V8F32 x) { return Eigen::internal::plog(x); }
 
-V8F32 __xla_cpu_runtime_LogV8F32(V8F32 x) { return Eigen::internal::plog(x); }
-
-REGISTER_XLA_CPU_RUNTIME_BUILTIN(LogV8F32);
-
-V8F32 __xla_cpu_runtime_TanhV8F32(V8F32 x) { return Eigen::internal::ptanh(x); }
-
-REGISTER_XLA_CPU_RUNTIME_BUILTIN(TanhV8F32);
+V8F32 TanhV8F32(V8F32 x) { return Eigen::internal::ptanh(x); }
 #endif  // __AVX__
-
-const char *const kExpV8F32SymbolName = "__xla_cpu_runtime_ExpV8F32";
-const char *const kLogV8F32SymbolName = "__xla_cpu_runtime_LogV8F32";
-const char *const kTanhV8F32SymbolName = "__xla_cpu_runtime_TanhV8F32";
 
 }  // namespace runtime
 }  // namespace cpu

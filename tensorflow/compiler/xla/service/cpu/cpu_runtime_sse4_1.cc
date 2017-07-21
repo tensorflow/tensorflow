@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
 #define EIGEN_USE_THREADS
 
@@ -26,32 +25,22 @@ namespace runtime {
 
 #ifdef __SSE4_1__
 
-V4F32 __xla_cpu_runtime_ExpV4F32(V4F32 x) {
+V4F32 ExpV4F32(V4F32 x) {
   Eigen::internal::Packet4f p = x;
   return Eigen::internal::pexp(p);
 }
 
-REGISTER_XLA_CPU_RUNTIME_BUILTIN(ExpV4F32);
-
-V4F32 __xla_cpu_runtime_LogV4F32(V4F32 x) {
+V4F32 LogV4F32(V4F32 x) {
   Eigen::internal::Packet4f p = x;
   return Eigen::internal::plog(p);
 }
 
-REGISTER_XLA_CPU_RUNTIME_BUILTIN(LogV4F32);
-
-V4F32 __xla_cpu_runtime_TanhV4F32(V4F32 x) {
+V4F32 TanhV4F32(V4F32 x) {
   Eigen::internal::Packet4f p = x;
   return Eigen::internal::ptanh(p);
 }
 
-REGISTER_XLA_CPU_RUNTIME_BUILTIN(TanhV4F32);
-
 #endif  // __SSE4_1__
-
-const char *const kExpV4F32SymbolName = "__xla_cpu_runtime_ExpV4F32";
-const char *const kLogV4F32SymbolName = "__xla_cpu_runtime_LogV4F32";
-const char *const kTanhV4F32SymbolName = "__xla_cpu_runtime_TanhV4F32";
 
 }  // namespace runtime
 }  // namespace cpu

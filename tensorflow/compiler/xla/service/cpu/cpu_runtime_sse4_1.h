@@ -28,23 +28,20 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-extern const char *const kExpV4F32SymbolName;
-extern const char *const kLogV4F32SymbolName;
-extern const char *const kTanhV4F32SymbolName;
+constexpr char kExpV4F32[] = "__xla_cpu_runtime_ExpV4F32";
+constexpr char kLogV4F32[] = "__xla_cpu_runtime_LogV4F32";
+constexpr char kTanhV4F32[] = "__xla_cpu_runtime_TanhV4F32";
 
 typedef float V4F32 __attribute__((__vector_size__(16)));
-
-extern "C" {
 
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
-V4F32 __xla_cpu_runtime_ExpV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
+V4F32 ExpV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
 
-V4F32 __xla_cpu_runtime_LogV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
+V4F32 LogV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
 
-V4F32 __xla_cpu_runtime_TanhV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
-}
+V4F32 TanhV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
 
 }  // namespace runtime
 }  // namespace cpu
