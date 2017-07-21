@@ -64,17 +64,37 @@ class WindowsFileSystem : public FileSystem {
   Status RenameFile(const string& src, const string& target) override;
 
   string TranslateName(const string& name) const override {
-    return name;
+    return ToMBCS(ToUtf16(name));
+  }
+ private:
+ 	std::wstring ToUtf16(std::string str) {
+ 	  std::wstring ret;
+    int len = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), str.length(), NULL, 0);
+    if (len > 0) {
+      ret.resize(len);
+      MultiByteToWideChar(CP_UTF8, 0, str.c_str(), str.length(), &ret[0], len);
+    }
+    return ret;
+  }
+  
+  std::string ToMBCS(std::wstring str) {
+    std::string ret;
+    int len = WideCharToMultiByte(CP_ACP, 0, str.c_str(), str.length(), NULL, 0, NULL, NULL);
+    if (len > 0) {
+      ret.resize(len);
+      WideCharToMultiByte(CP_ACP, 0, str.c_str(), str.length(), &ret[0], len, NULL, NULL);
+    }
+    return ret;
   }
 };
 
 class LocalWinFileSystem : public WindowsFileSystem {
-public:
-    string TranslateName(const string& name) const override {
-      StringPiece scheme, host, path;
-      io::ParseURI(name, &scheme, &host, &path);
-      return path.ToString();
-    }
+ public:
+  string TranslateName(const string& name) const override {
+    StringPiece scheme, host, path;
+    io::ParseURI(name, &scheme, &host, &path);
+    return WindowsFileSystem::TranslateName(path.ToString());
+  }
 };
 
 }  // namespace tensorflow
