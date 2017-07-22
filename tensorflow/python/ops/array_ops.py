@@ -1099,7 +1099,7 @@ def concat(values, axis, name="concat"):
   return gen_array_ops._concat_v2(values=values, axis=axis, name=name)
 
 
-def boolean_mask(tensor, mask, axis=None, name="boolean_mask"):
+def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   """Apply boolean mask to tensor.  Numpy equivalent is `tensor[mask]`.
 
   ```python
@@ -1117,8 +1117,8 @@ def boolean_mask(tensor, mask, axis=None, name="boolean_mask"):
   Args:
     tensor:  N-D tensor.
     mask:  K-D boolean tensor, K <= N and K must be known statically.
-    axis: The axis in `tensor` to mask from. Defaults to the first dimension.
     name:  A name for this operation (optional).
+    axis: The axis in `tensor` to mask from. Defaults to the first dimension.
 
   Returns:
     (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding

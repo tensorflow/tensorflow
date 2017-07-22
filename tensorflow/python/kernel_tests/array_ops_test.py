@@ -128,6 +128,11 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     for arr_shape in [(1, 1), (2, 2), (2, 5)]:
       self.CheckVersusNumpy(ndims_mask, arr_shape, axis=1)
 
+  def testMaskDim2ArrDim2Axis1(self):
+    ndims_mask = 2
+    for arr_shape in [(1, 1), (2, 2), (2, 5)]:
+      self.CheckVersusNumpy(ndims_mask, arr_shape, axis=1)
+
   def testMaskDim1ArrDim1(self):
     ndims_mask = 1
     for arr_shape in [(1,), (2,), (3,), (10,)]:
