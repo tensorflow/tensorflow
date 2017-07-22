@@ -108,8 +108,15 @@ Rendezvous::ParsedKey MakeKey(const string& name) {
   return k;
 }
 
-Rendezvous::ParsedKey KeyFoo() { return MakeKey("foo"); }
-Rendezvous::ParsedKey KeyBar() { return MakeKey("bar"); }
+const Rendezvous::ParsedKey& KeyFoo() {
+  static auto key = MakeKey("foo");
+  return key;
+}
+
+const Rendezvous::ParsedKey& KeyBar() {
+  static auto key = MakeKey("bar");
+  return key;
+}
 
 TEST_F(LocalRendezvousTest, SendRecv) {
   Rendezvous::Args args;
@@ -169,8 +176,6 @@ TEST_F(LocalRendezvousTest, DuplicateSerialRecv) {
   TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("secret msg"), val_dead));
   TF_ASSERT_OK(rendez_->Recv(KeyBar(), args, &val, &val_dead));
   EXPECT_EQ("secret msg", V(val));
-  EXPECT_TRUE(
-      errors::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
 }
 
 // A simple structure that behaves a bit like a blocking counter.  The
@@ -311,8 +316,8 @@ static void BM_SendRecv(int iters) {
   Status s;
   if (iters > 0) {
     while (iters--) {
-      s = rendez->Send(KeyFoo(), args, orig, is_dead);
-      s = rendez->Recv(KeyFoo(), args, &val, &is_dead);
+      TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
+      TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &val, &is_dead));
     }
     CHECK_EQ(V(val), V(orig));
   }
@@ -320,12 +325,12 @@ static void BM_SendRecv(int iters) {
 }
 BENCHMARK(BM_SendRecv);
 
-static void BM_RecvSend(int iters) {
+static void BM_PingPong(int iters) {
   thread::ThreadPool* pool = new thread::ThreadPool(Env::Default(), "test", 1);
 
-  // The main thread sends "foo" for iters/2 times and receives "bar"
-  // for iters/2 times.  The other thread sends "bar" for iters/2
-  // times and receives "foo" for iters/2 times.
+  // The main thread sends "foo" for iters times and receives "bar"
+  // for iters times.  The other thread sends "bar" for iters times
+  // and receives "foo" for iters times.
   Rendezvous* rendez = NewLocalRendezvous();
   pool->Schedule([rendez, iters]() {
     Tensor bar = V("bar");
@@ -333,9 +338,9 @@ static void BM_RecvSend(int iters) {
     bool is_dead = false;
     Rendezvous::Args args;
     Status s;
-    for (int i = 0; i < iters / 2; ++i) {
-      s = rendez->Recv(KeyFoo(), args, &foo, &is_dead);
-      s = rendez->Send(KeyBar(), args, bar, is_dead);
+    for (int i = 0; i < iters; ++i) {
+      TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &foo, &is_dead));
+      TF_CHECK_OK(rendez->Send(KeyBar(), args, bar, is_dead));
     }
     CHECK_EQ("foo", V(foo));
   });
@@ -344,13 +349,13 @@ static void BM_RecvSend(int iters) {
   bool is_dead = false;
   Rendezvous::Args args;
   Status s;
-  for (int i = 0; i < iters / 2; ++i) {
-    s = rendez->Send(KeyFoo(), args, foo, is_dead);
-    s = rendez->Recv(KeyBar(), args, &bar, &is_dead);
+  for (int i = 0; i < iters; ++i) {
+    TF_CHECK_OK(rendez->Send(KeyFoo(), args, foo, is_dead));
+    TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));
   }
   CHECK_EQ("bar", V(bar));
   delete pool;
 }
-BENCHMARK(BM_RecvSend);
+BENCHMARK(BM_PingPong);
 
 }  // namespace tensorflow
