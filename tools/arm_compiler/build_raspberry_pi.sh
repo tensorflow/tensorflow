@@ -10,8 +10,9 @@ set -e
 #  echo "deb [arch=armhf] http://ports.ubuntu.com/ trusty main universe" \
 #    sudo tee -a /etc/apt/sources.list.d/armhf.list
 #  # Ignore errors about missing armhf packages in other repos.
-#  sudo apt-get update
-#  sudo apt-get install libpython-all-dev:armhf
+#  sudo aptitude update
+#  # Use aptitude; apt-get sometimes runs into errors on this command.
+#  sudo aptitude install libpython-all-dev:armhf
 #
 
 yes '' | ./configure
