@@ -2,10 +2,12 @@
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
-load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
+load("@io_bazel_rules_closure//closure/private:java_import_external.bzl",
+     "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
-load("//tools/arm_compiler:arm_compiler_configure.bzl", "arm_compiler_configure")
+load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl",
+     "arm_compiler_configure")
 
 
 def _is_windows(repository_ctx):
@@ -142,9 +144,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   python_configure(name="local_config_python")
 
   # Point //external/local_config_arm_compiler to //external/arm_compiler
-  arm_compiler_configure(name="local_config_arm_compiler",
-                         remote_config_repo="../arm_compiler",
-                         build_file = str(Label("//tools/arm_compiler:BUILD")))
+  arm_compiler_configure(
+      name="local_config_arm_compiler",
+      remote_config_repo="../arm_compiler",
+      build_file = str(Label("//third_party/toolchains/cpus/arm:BUILD")))
 
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
