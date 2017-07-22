@@ -18,6 +18,7 @@
 * Unify memory representations of TensorShape and PartialTensorShape. As a consequence, tensors now have a maximum of 254 dimensions, not 255.
 * Changed references to LIBXSMM to use version 1.8.1.
 * TensorFlow Debugger (tfdbg): Display summaries of numeric tensor values with the `-s` flag to command `print_tensor` or `pt`.
+* TensorFlow Debugger (tfdbg): Runtime profiler at the op level and the Python source line level with the `run -p` command.
 * Initial release of the statistical distribution library `tf.distributions`.
 * GPU kernels and speed improvements for for unary `tf.where` and `tf.nn.top_k`.
 * Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
