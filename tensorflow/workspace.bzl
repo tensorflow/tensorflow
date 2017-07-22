@@ -83,50 +83,6 @@ temp_workaround_http_archive = repository_rule(
     },
 )
 
-
-def _run_cmd(repo_ctx, cmd, check=True):
-  if _is_windows(repo_ctx):
-    bazel_sh = _get_env_var(repo_ctx, "BAZEL_SH")
-    if not bazel_sh:
-      fail("BAZEL_SH environment variable is not set")
-    cmd = [bazel_sh, "-c", " ".join(cmd)]
-  if check:
-    _execute_and_check_ret_code(repo_ctx, cmd)
-  else:
-    return repo_ctx.execute(cmd, timeout=10)
-
-def _unzip(repo_ctx, zip_file, strip_prefix):
-  _run_cmd(repo_ctx,
-           ["unzip", repo_ctx.path(zip_file),
-            "-d", repo_ctx.path("_archive")])
-  if strip_prefix:
-    p = repo_ctx.path("_archive/" + strip_prefix)
-    for f in p.readdir():
-      _run_cmd(repo_ctx, ["mv", f, repo_ctx.path(".")])
-    _run_cmd(repo_ctx, ["rm", "-rf", repo_ctx.path("_archive")])
-
-def _unsafe_unzip_http_archive_impl(repo_ctx):
-  repo_ctx.symlink(repo_ctx.attr.build_file, "BUILD")
-  repo_ctx.download(repo_ctx.attr.urls, "_archive.zip", repo_ctx.attr.sha256)
-  _unzip(repo_ctx, "_archive.zip", repo_ctx.attr.strip_prefix)
-  _run_cmd(repo_ctx, ["rm", repo_ctx.path("_archive.zip")])
-  repo_ctx.symlink("/usr/include", "local_include/")
-
-
-# This performs an unsafe unzip operation - since zip files may have
-# relative and absolute paths, it should only be executed on trusted files.
-unsafe_unzip_http_archive = repository_rule(
-    implementation = _unsafe_unzip_http_archive_impl,
-    attrs = {
-        "build_file": attr.label(),
-        "repository": attr.string(),
-        "urls": attr.string_list(default = []),
-        "sha256": attr.string(default = ""),
-        "strip_prefix": attr.string(default = ""),
-    },
-)
-
-
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
 def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
@@ -205,14 +161,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
-  unsafe_unzip_http_archive(
+  native.new_http_archive(
     name = "arm_compiler",
     build_file = str(Label("//:arm_compiler.BUILD")),
-    sha256 = "1f155f73a612f63315075d12af51f879ba02f953dbe9deba0574501e803ab189",
+    sha256 = "970285762565c7890c6c087d262b0a18286e7d0384f13a37786d8521773bc969",
     strip_prefix = "tools-0e906ebc527eab1cdbf7adabff5b474da9562e9f/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf",
     urls = [
-        "http://mirror.bazel.build/github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.zip",
-        "https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.zip",
+        "http://mirror.bazel.build/github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz",
+        "https://github.com/raspberrypi/tools/archive/0e906ebc527eab1cdbf7adabff5b474da9562e9f.tar.gz",
     ],
   )
 
