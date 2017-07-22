@@ -21,6 +21,7 @@
 * Initial release of the statistical distribution library `tf.distributions`.
 * GPU kernels and speed improvements for for unary `tf.where` and `tf.nn.top_k`.
 * Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
+* Added `tf.contrib.signal`, a library for signal processing primitives.
 
 ## Breaking Changes to the API
 * `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
