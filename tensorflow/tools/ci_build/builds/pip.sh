@@ -372,6 +372,25 @@ do_virtualenv_pip_test() {
 }
 
 ################################################################################
+# Run tests tagged with oss_serial against the virtualenv install.
+################################################################################
+do_virtualenv_oss_serial_pip_test() {
+  if [[ -n "${NO_TEST_ON_INSTALL}" ]] &&
+     [[ "${NO_TEST_ON_INSTALL}" != "0" ]]; then
+    echo "NO_TEST_ON_INSTALL=${NO_TEST_ON_INSTALL}:"
+    echo "  Skipping Python unit tests on install tagged with oss_serial"
+  else
+    # Call run_pip_tests.sh to perform test-on-install
+    "${SCRIPT_DIR}/run_pip_tests.sh" \
+      --virtualenv ${GPU_FLAG} ${MAC_FLAG} --oss_serial
+    if [[ $? != 0 ]]; then
+      echo "PIP tests-on-install (oss_serial) FAILED"
+      return 1
+    fi
+  fi
+}
+
+################################################################################
 # Test user ops (optional).
 ################################################################################
 do_test_user_ops() {
@@ -441,8 +460,8 @@ do_ffmpeg_integration_test() {
 
 
 # List of all PIP test tasks and their descriptions.
-PIP_TASKS=("do_clean_virtualenv_smoke_test" "do_virtualenv_pip_test" "do_test_user_ops" "do_test_tfdbg_binaries" "do_test_tutorials" "do_ffmpeg_integration_test")
-PIP_TASKS_DESC=("Smoke test of pip install in clean virtualenv" "Pip tests in virtualenv" "User ops test" "TensorFlow Debugger (tfdbg) binaries test" "Tutorials test" "ffmpeg integration test")
+PIP_TASKS=("do_clean_virtualenv_smoke_test" "do_virtualenv_pip_test" "do_virtualenv_oss_serial_pip_test" "do_test_user_ops" "do_test_tfdbg_binaries" "do_test_tutorials" "do_ffmpeg_integration_test")
+PIP_TASKS_DESC=("Smoke test of pip install in clean virtualenv" "PIP tests in virtualenv" "PIP test in virtualenv (tag: oss_serial)" "User ops test" "TensorFlow Debugger (tfdbg) binaries test" "Tutorials test" "ffmpeg integration test")
 
 
 # Execute all the PIP test steps.
