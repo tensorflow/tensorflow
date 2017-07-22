@@ -12,7 +12,7 @@ set -e
 #  # Ignore errors about missing armhf packages in other repos.
 #  sudo aptitude update
 #  # Use aptitude; apt-get sometimes runs into errors on this command.
-#  sudo aptitude install libpython-all-dev:armhf
+#  sudo aptitude install libpython-all-dev:armhf python-numpy
 #
 
 yes '' | ./configure
