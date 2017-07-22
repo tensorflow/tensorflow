@@ -17,6 +17,7 @@
 @@amari_alpha
 @@arithmetic_geometric
 @@chi_square
+@@csiszar_vimco
 @@dual_csiszar_function
 @@jeffreys
 @@jensen_shannon
@@ -46,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 def amari_alpha(logu, alpha=1., self_normalized=False, name=None):
@@ -696,7 +698,7 @@ def dual_csiszar_function(logu, csiszar_function, name=None):
 
   Args:
     logu: `float`-like `Tensor` representing `log(u)` from above.
-    csiszar_function: Python callable representing a Csiszar-function over
+    csiszar_function: Python `callable` representing a Csiszar-function over
       log-domain.
     name: Python `str` name prefixed to Ops created by this function.
 
@@ -765,7 +767,7 @@ def symmetrized_csiszar_function(logu, csiszar_function, name=None):
 
   Args:
     logu: `float`-like `Tensor` representing `log(u)` from above.
-    csiszar_function: Python callable representing a Csiszar-function over
+    csiszar_function: Python `callable` representing a Csiszar-function over
       log-domain.
     name: Python `str` name prefixed to Ops created by this function.
 
@@ -781,7 +783,13 @@ def symmetrized_csiszar_function(logu, csiszar_function, name=None):
 
 
 def monte_carlo_csiszar_f_divergence(
-    f, p, q, num_draws, use_reparametrization=True, seed=None, name=None):
+    f,
+    p_log_prob,
+    q,
+    num_draws,
+    use_reparametrization=None,
+    seed=None,
+    name=None):
   """Monte-Carlo approximation of the Csiszar f-Divergence.
 
   A Csiszar-function is a member of,
@@ -843,15 +851,22 @@ def monte_carlo_csiszar_f_divergence(
   "Evidence Divergence Bound Optimization" (EDBO).
 
   Args:
-    f: Python callable representing a Csiszar-function in log-space.
-    p: `tf.Distribution`-like instance; must implement `log_prob(x)`.
+    f: Python `callable` representing a Csiszar-function in log-space, i.e.,
+      takes `p_log_prob(q_samples) - q.log_prob(q_samples)`.
+    p_log_prob: Python `callable` taking (a batch of) samples from `q` and
+      returning the the natural-log of the probability under distribution `p`.
+      (In variational inference `p` is the joint distribution.)
     q: `tf.Distribution`-like instance; must implement:
-      `reparameterization_type`, `sample(n)`, and `log_prob(x)`.
+      `reparameterization_type`, `sample(n, seed)`, and `log_prob(x)`.
+      (In variational inference `q` is the approximate posterior distribution.)
     num_draws: Integer scalar number of draws used to approximate the
       f-Divergence expectation.
-    use_reparametrization: Python `bool`. When `True` uses the standard
-      Monte-Carlo average. When `False` uses the score-gradient trick. (See
-      above for details.)
+    use_reparametrization: Python `bool`. When `None` (the default),
+      automatically set to:
+      `q.reparameterization_type == distribution.FULLY_REPARAMETERIZED`.
+      When `True` uses the standard Monte-Carlo average. When `False` uses the
+      score-gradient trick. (See above for details.)  When `False`, consider
+      using `csiszar_vimco`.
     seed: Python `int` seed for `q.sample`.
     name: Python `str` name prefixed to Ops created by this function.
 
@@ -866,18 +881,179 @@ def monte_carlo_csiszar_f_divergence(
       samples of another distribution which does not depend on the
       parameterization of `q`. This property ensures the gradient (with respect
       to parameters) is valid.
+    TypeError: if `p_log_prob` is not a Python `callable`.
   """
   with ops.name_scope(name, "monte_carlo_csiszar_f_divergence", [num_draws]):
-    if (use_reparametrization and
-        q.reparameterization_type != distribution.FULLY_REPARAMETERIZED):
+    if use_reparametrization is None:
+      use_reparametrization = (q.reparameterization_type
+                               == distribution.FULLY_REPARAMETERIZED)
+    elif (use_reparametrization and
+          q.reparameterization_type != distribution.FULLY_REPARAMETERIZED):
       # TODO(jvdillon): Consider only raising an exception if the gradient is
       # requested.
       raise ValueError(
           "Distribution `q` must be reparameterized, i.e., a diffeomorphic "
           "transformation of a parameterless distribution. (Otherwise this "
           "function has a biased gradient.)")
+    if not callable(p_log_prob):
+      raise TypeError("`p_log_prob` must be a Python `callable` function.")
     return monte_carlo.expectation(
-        f=lambda x: f(p.log_prob(x) - q.log_prob(x)),
+        f=lambda q_samples: f(p_log_prob(q_samples) - q.log_prob(q_samples)),
         samples=q.sample(num_draws, seed=seed),
-        log_prob=q.log_prob,
+        log_prob=q.log_prob,  # Only used if use_reparametrization=False.
         use_reparametrization=use_reparametrization)
+
+
+def csiszar_vimco(f,
+                  p_log_prob,
+                  q,
+                  num_draws,
+                  num_batch_draws=1,
+                  seed=None,
+                  name=None):
+  """Use VIMCO to lower the variance of gradient[csiszar_function(Avg(logu))].
+
+  This function generalizes "Variational Inference for Monte Carlo Objectives"
+  (VIMCO), i.e., https://arxiv.org/abs/1602.06725, to Csiszar f-Divergences.
+
+  Note: if `q.reparameterization_type = distribution.FULLY_REPARAMETERIZED`,
+  consider using `monte_carlo_csiszar_f_divergence`.
+
+  The VIMCO loss is:
+
+  ```none
+  vimco = f(Avg{logu[i] : i=0,...,m-1})
+  where,
+    logu[i] = log( p(x, h[i]) / q(h[i] | x) )
+    h[i] iid~ q(H | x)
+  ```
+
+  Interestingly, the VIMCO gradient is not the naive gradient of `vimco`.
+  Rather, it is characterized by:
+
+  ```none
+  grad[vimco] - variance_reducing_term
+  where,
+    variance_reducing_term = Sum{ grad[log q(h[i] | x)] *
+                                    (vimco - f(log Avg{h[j;i] : j=0,...,m-1}))
+                                 : i=0, ..., m-1 }
+    h[j;i] = { u[j]                             j!=i
+             { GeometricAverage{ u[k] : k!=i}   j==i
+  ```
+
+  (We omitted `stop_gradient` for brevity. See implementation for more details.)
+
+  The `Avg{h[j;i] : j}` term is a kind of "swap-out average" where the `i`-th
+  element has been replaced by the leave-`i`-out Geometric-average.
+
+  Args:
+    f: Python `callable` representing a Csiszar-function in log-space.
+    p_log_prob: Python `callable` representing the natural-log of the
+      probability under distribution `p`. (In variational inference `p` is the
+      joint distribution.)
+    q: `tf.Distribution`-like instance; must implement: `sample(n, seed)`, and
+      `log_prob(x)`. (In variational inference `q` is the approximate posterior
+      distribution.)
+    num_draws: Integer scalar number of draws used to approximate the
+      f-Divergence expectation.
+    num_batch_draws: Integer scalar number of draws used to approximate the
+      f-Divergence expectation.
+    seed: Python `int` seed for `q.sample`.
+    name: Python `str` name prefixed to Ops created by this function.
+
+  Returns:
+    vimco: The Csiszar f-Divergence generalized VIMCO objective.
+
+  Raises:
+    ValueError: if `num_draws < 2`.
+  """
+  with ops.name_scope(name, "csiszar_vimco", [num_draws, num_batch_draws]):
+    if num_draws < 2:
+      raise ValueError("Must specify num_draws > 1.")
+    stop = array_ops.stop_gradient  # For readability.
+    x = stop(q.sample(sample_shape=[num_draws, num_batch_draws],
+                      seed=seed))
+    logqx = q.log_prob(x)
+    logu = p_log_prob(x) - logqx
+    f_log_avg_u, f_log_sooavg_u = [f(r) for r in csiszar_vimco_helper(logu)]
+    dotprod = math_ops.reduce_sum(
+        logqx * stop(f_log_avg_u - f_log_sooavg_u),
+        axis=0)  # Sum over iid samples.
+    # We now rewrite f_log_avg_u so that:
+    #   `grad[f_log_avg_u] := grad[f_log_avg_u + dotprod]`.
+    # To achieve this, we use a trick that
+    #   `f(x) - stop(f(x)) == zeros_like(f(x))`
+    # but its gradient is grad[f(x)].
+    # Note that IEEE754 specifies that `x - x == 0.` and `x + 0. == x`, hence
+    # this trick loses no precision. For more discussion regarding the relevant
+    # portions of the IEEE754 standard, see the StackOverflow question,
+    # "Is there a floating point value of x, for which x-x == 0 is false?"
+    # http://stackoverflow.com/q/2686644
+    f_log_avg_u += dotprod - stop(dotprod)  # Add zeros_like(dot_prod).
+    return math_ops.reduce_mean(f_log_avg_u, axis=0)  # Avg over batches.
+
+
+def csiszar_vimco_helper(logu, name=None):
+  """Helper to `csiszar_vimco`; computes `log_avg_u`, `log_sooavg_u`.
+
+  `axis = 0` of `logu` is presumed to correspond to iid samples from `q`, i.e.,
+
+  ```none
+  logu[j] = log(u[j])
+  u[j] = p(x, h[j]) / q(h[j] | x)
+  h[j] iid~ q(H | x)
+  ```
+
+  Args:
+    logu: Floating-type `Tensor` representing `log(p(x, h) / q(h | x))`.
+    name: Python `str` name prefixed to Ops created by this function.
+
+  Returns:
+    log_avg_u: `logu.dtype` `Tensor` corresponding to the natural-log of the
+      average of `u`.
+    log_sooavg_u: `logu.dtype` `Tensor` characterized by the natural-log of the
+      average of `u`` except that the average swaps-out `u[i]` for the
+      leave-`i`-out Geometric-average, i.e.,
+
+      ```none
+      log_sooavg_u[i] = log(Avg{h[j ; i] : j=0, ..., m-1})
+      h[j ; i] = { u[j]                              j!=i
+                 { GeometricAverage{u[k] : k != i}   j==i
+      ```
+
+  """
+  with ops.name_scope(name, "csiszar_vimco_helper", [logu]):
+    logu = ops.convert_to_tensor(logu, name="logu")
+
+    n = logu.shape.with_rank_at_least(1)[0].value
+    if n is None:
+      n = array_ops.shape(logu)[0]
+      log_n = math_ops.log(math_ops.cast(n, dtype=logu.dtype))
+      nm1 = math_ops.cast(n - 1, dtype=logu.dtype)
+    else:
+      log_n = np.log(n).astype(logu.dtype.as_numpy_dtype)
+      nm1 = np.asarray(n - 1, dtype=logu.dtype.as_numpy_dtype)
+
+    # Throughout we reduce across axis=0 since this is presumed to be iid
+    # samples.
+
+    log_sum_u = math_ops.reduce_logsumexp(logu, axis=0)
+
+    # log_loosum_u[i] =
+    # = logsumexp(logu[j] : j != i)
+    # = log( exp(logsumexp(logu)) - exp(logu[i]) )
+    # = log( exp(logsumexp(logu - logu[i])) exp(logu[i])  - exp(logu[i]))
+    # = logu[i] + log(exp(logsumexp(logu - logu[i])) - 1)
+    # = logu[i] + softplus_inverse(logsumexp(logu - logu[i]))
+    log_loosum_u = logu + distribution_util.softplus_inverse(log_sum_u - logu)
+
+    # The swap-one-out-sum ("soosum") is n different sums, each of which
+    # replaces the i-th item with the i-th-left-out average, i.e.,
+    # soo_sum_u[i] = [exp(logu) - exp(logu[i])] + exp(mean(logu[!=i]))
+    #              =  exp(log_loosum_u[i])      + exp(looavg_logu[i])
+    looavg_logu = (math_ops.reduce_sum(logu, axis=0) - logu) / nm1
+    log_soosum_u = math_ops.reduce_logsumexp(
+        array_ops.stack([log_loosum_u, looavg_logu]),
+        axis=0)
+
+    return log_sum_u - log_n, log_soosum_u - log_n
