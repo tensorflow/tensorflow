@@ -83,6 +83,8 @@ toolchain {
   # explicitly set them as flags. There's a query to the Bazel team outstanding about
   # why this is necessary.
   cxx_flag: "-isystem"
+  cxx_flag: "/usr/include/arm-linux-gnueabihf"
+  cxx_flag: "-isystem"
   cxx_flag: "/usr/include/python2.7"
   cxx_flag: "-isystem"
   cxx_flag: "/usr/include/"
