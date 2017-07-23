@@ -61,7 +61,9 @@ py_test(
     deps = [
         ":repeat_py",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:gradient_checker",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
