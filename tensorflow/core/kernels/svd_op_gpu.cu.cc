@@ -59,7 +59,7 @@ class SvdOpGpu : public AsyncOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
   }
 
-  void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) final {    
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
     const int64 m = input.dim_size(ndims - 2);
@@ -76,26 +76,22 @@ class SvdOpGpu : public AsyncOpKernel {
         errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
         done);
 
-    // Allocate output.
-    Tensor* outputU;
-    Tensor* outputS;
+    // output tensors.
+    Tensor* outputU = NULL;
+    Tensor* outputS = NULL;
     Tensor outputVT;
-    Tensor* outputV;
+    Tensor* outputV = NULL;
     
-    //modify shapes
+    //compute  shapes
     TensorShape shapeRaw = input.shape();
     shapeRaw.RemoveDim(shapeRaw.dims()-1);
     shapeRaw.RemoveDim(shapeRaw.dims()-1);
     TensorShape shapeS = shapeRaw;
+    TensorShape shapeU = shapeRaw;
+    TensorShape shapeVT = shapeRaw;
+    TensorShape shapeV = shapeRaw;
     shapeS.AddDim(p);
-    OP_REQUIRES_OK_ASYNC(context,
-                         context->allocate_output(
-                             0, shapeS, &outputS),
-                         done);
     if (compute_uv_) {
-        TensorShape shapeU = shapeRaw;
-        TensorShape shapeVT = shapeRaw;
-        TensorShape shapeV = shapeRaw;
         if (full_matrices_) {
             shapeU.AddDim(m);
             shapeU.AddDim(m);
@@ -111,30 +107,30 @@ class SvdOpGpu : public AsyncOpKernel {
             shapeV.AddDim(n);
             shapeV.AddDim(p);
         }
-        OP_REQUIRES_OK_ASYNC(context,
+    } else {
+        shapeU = TensorShape({0});
+        shapeV = TensorShape({0});
+    }
+    
+    //allocate output
+    OP_REQUIRES_OK_ASYNC(context,
+                         context->allocate_output(
+                             0, shapeS, &outputS),
+                         done);
+    OP_REQUIRES_OK_ASYNC(context,
                          context->allocate_output(
                              1, shapeU, &outputU),
                          done);
-        OP_REQUIRES_OK_ASYNC(context,
+    OP_REQUIRES_OK_ASYNC(context,
                          context->allocate_output(
                              2, shapeV, &outputV),
                          done);
+    if (compute_uv_) {
         OP_REQUIRES_OK_ASYNC(context,
                          context->allocate_temp(
-                             outputV->dtype(), shapeVT, &outputVT),
+                             input.dtype(), shapeVT, &outputVT),
                          done);
-    } else {
-        //allocate dummy shapes
-        OP_REQUIRES_OK_ASYNC(context,
-                         context->allocate_output(
-                             1, TensorShape({0}), &outputU),
-                         done);
-        OP_REQUIRES_OK_ASYNC(context,
-                         context->allocate_output(
-                             2, TensorShape({0}), &outputV),
-                         done);
-    }                    
-    
+    }
 
     if (n == 0 || m == 0) {
       // If X is an empty matrix (0 rows, 0 col), X * X' == X.
@@ -150,9 +146,12 @@ class SvdOpGpu : public AsyncOpKernel {
                          context->allocate_temp(
                              input.dtype(), input.shape(), &inputCopy),
                          done);
+                         
     cudaMemcpy(inputCopy.flat<Scalar>().data(), input.flat<Scalar>().data(), 
         input.NumElements() * sizeof(Scalar), cudaMemcpyDeviceToDevice);
+        
     auto input_reshaped = inputCopy.template flat_inner_dims<Scalar, 3>();
+
     
     // Reshape output tensors
     auto outputS_reshaped = outputS->template flat_inner_dims<Scalar, 2>();
@@ -167,11 +166,11 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // Launch a SVD kernel for each matrix in the batch.
     const int64 batch_size = input_reshaped.dimension(0);
-    std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "gesvd");
+    DeviceLapackInfo dev_info(context, batch_size, "gesvd");
+    
     // TODO(rmlarsen): Parallelize over batches if it turns out to be
     // an important use case.
-    CudaSolver solver(context);
+    CudaSolver solver(context);    
     for (int64 i = 0; i < batch_size; ++i) {
       Scalar* input_ptr = input_reshaped.data() + i * m * n;
       Scalar* outputS_ptr = outputS_reshaped.data() + i * p;
@@ -196,10 +195,8 @@ class SvdOpGpu : public AsyncOpKernel {
             jobvt = 'S';
         }
       }
-      
-      int* dev_info_ptr = dev_info.back().mutable_data() + i;
-      //printf(" gesvd: m=%d, n=%d, jobu=%c, jobvt=%c, lda=%d, ldu=%d, ldvt=%d\n",
-      //  m, n, jobu, jobvt, lda, ldu, ldvt);
+
+      int* dev_info_ptr = dev_info.mutable_data() + i;
       OP_REQUIRES_OK_ASYNC(
           context,
           solver.Gesvd(jobu, jobvt, m, n, 
@@ -207,23 +204,29 @@ class SvdOpGpu : public AsyncOpKernel {
           done);
     }
 
-    // Register callback to check info after kernels finish.
-    auto info_checker = [context, dev_info, done](
-                            const Status& status,
-                            const std::vector<HostLapackInfo>& /* unused */) {
-      Status full_status = status;
-      if (!full_status.ok()) {
-        full_status.Update(errors::InvalidArgument(kErrMsg));
-      }
-      OP_REQUIRES_OK_ASYNC(context, full_status, done);
-      done();
-    };
-
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
-        done);
-        
+    // Test if it was successfull.
+    // I'm not using solver.CopyLapackInfoToHostAsync
+    // because it resulted in a memory corruption on the host
+    // (because I have some operations afterwards, so I can't use done())
+    HostLapackInfo host_info(context, batch_size, "gesvd");
+    cudaMemcpy(host_info.mutable_data(), dev_info.data(), sizeof(int) * batch_size, cudaMemcpyDeviceToHost);
+    Status status;
+    for (int i = 0; i < batch_size && status.ok(); ++i) {
+        const int info_value = host_info.data()[i];
+        if (info_value != 0) {
+          status = errors::InvalidArgument(
+              "Got info = ", info_value, " for batch index ", i,
+              ", expected info = 0. Debug_info =",
+              host_info.debug_info());
+        }
+    }
+    if (!status.ok()) {
+        status.Update(errors::InvalidArgument(kErrMsg));
+    }
+    OP_REQUIRES_OK_ASYNC(context, status, done);
+    // TODO: Maybe switch to solver.CopyLapackInfoToHostAsync again
+    // but call this after the transposing below.
+    
     if (compute_uv_) {
         // Transpose VT and copy to output tensor V
         std::vector<int32> perm;
@@ -231,8 +234,12 @@ class SvdOpGpu : public AsyncOpKernel {
         perm.push_back(ndims-1); //transpose last two dimensions
         perm.push_back(ndims-2);
         gtl::ArraySlice<int32> permAS(perm);
-        DoTranspose(context->eigen_device<GPUDevice>(), outputVT, permAS, outputV);
+            outputV->shape().DebugString().c_str(), (int) outputV->shape().num_elements(), outputV);
+        auto device = context->eigen_device<GPUDevice>();
+        DoTranspose(device, outputVT, permAS, outputV);
     }
+
+    done();
   }
   
 private:
