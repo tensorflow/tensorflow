@@ -79,6 +79,13 @@ toolchain {
   cxx_builtin_include_directory: "/usr/include"
 
   cxx_flag: "-std=c++11"	
+  # The cxx_builtin_include_directory directives don't seem to be adding these, so
+  # explicitly set them as flags. There's a query to the Bazel team outstanding about
+  # why this is necessary.
+  cxx_flag: "-isystem"
+  cxx_flag: "/usr/include/python2.7"
+  cxx_flag: "-isystem"
+  cxx_flag: "/usr/include/"
   linker_flag: "-lstdc++"
 
   unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
