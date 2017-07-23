@@ -35,7 +35,7 @@ at [tensorflow.org/versions/master](https://www.tensorflow.org/versions/master).
 
 If you want documentation changes to appear at root, you will need to also
 contribute that change to the current stable binary branch (and/or
-[cherrypick](https://www.google.com/url?sa=D&q=http%3A%2F%2Fstackoverflow.com%2Fquestions%2F9339429%2Fwhat-does-cherry-picking-a-commit-with-git-mean)).
+[cherrypick](https://stackoverflow.com/questions/9339429/what-does-cherry-picking-a-commit-with-git-mean)).
 
 ## Reference vs. non-reference documentation
 
