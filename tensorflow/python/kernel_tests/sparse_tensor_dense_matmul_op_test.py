@@ -52,7 +52,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
                   adjoint_a=False,
                   adjoint_b=False,
                   indices_dtype=np.int64):
-    adjoint_ind = range(len(x.shape))
+    adjoint_ind = list(range(len(x.shape)))
     adjoint_ind[-1] = -2
     adjoint_ind[-2] = -1
     x_tensor = np.array(x)
