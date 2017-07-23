@@ -525,6 +525,16 @@ class _MonitoredSession(object):
   def close(self):
     self._close_internal()
 
+  def as_default(self):
+    """Returns a context manager that makes this object the default session.
+
+    Use with the `with` keyword to specify that calls to @{tf.Operation.run}
+    or @{tf.Tensor.eval} should be executed in this session.
+
+    Equivalent to @{tf.Session.as_default}.
+    """
+    return ops.default_session(self)
+
   def __enter__(self):
     return self
 
