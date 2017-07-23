@@ -26,7 +26,8 @@ load(
 
 tf_custom_op_py_library(
     name = "rnn_py",
-    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
+    srcs = ["__init__.py"] + glob(["python/ops/*.py"]) 
+                           + glob(["python/tools/*.py"]),
     dso = [
         ":python/ops/_gru_ops.so",
         ":python/ops/_lstm_ops.so",
@@ -375,7 +376,7 @@ py_binary(
 py_test(
     name = "checkpoint_convert_test",
     size = "small",
-    srcs = ["python/tools/checkpoint_convert_test.py"],
+    srcs = ["python/tool_tests/checkpoint_convert_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
