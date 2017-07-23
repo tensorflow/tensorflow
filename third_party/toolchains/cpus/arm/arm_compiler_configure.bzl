@@ -6,7 +6,7 @@ def _tpl(repository_ctx, tpl, substitutions={}, out=None):
     out = tpl
   repository_ctx.template(
       out,
-      Label("//tools/arm_compiler:%s.tpl" % tpl),
+      Label("//third_party/toolchains/cpus/arm:%s.tpl" % tpl),
       substitutions)
 
 

@@ -7,7 +7,7 @@ set -e
 # To install the architecture includes for python on ubuntu trusty;
 # run:
 #  sudo dpkg --add-architecture armhf
-#  echo "deb [arch=armhf] http://ports.ubuntu.com/ trusty main universe" \
+#  echo "deb [arch=armhf] http://ports.ubuntu.com/ $(lsb_release -s -c) main universe" | \
 #    sudo tee -a /etc/apt/sources.list.d/armhf.list
 #  # Ignore errors about missing armhf packages in other repos.
 #  sudo aptitude update
@@ -40,5 +40,3 @@ cp bazel-bin/tensorflow/tools/benchmark/benchmark_model "${TMPDIR}"
 
 echo "Output can be found here:"
 find "${TMPDIR}"
-
-
