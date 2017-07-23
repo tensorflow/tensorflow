@@ -75,7 +75,7 @@ class MatmulBenchmarkTest(googletest.TestCase):
                                    dtype)
       gd = graph.as_graph_def()
       dev=googletest.gpu_device_name()
-      proto_exprected = """
+      proto_expected = """
       node { name: "random_uniform/shape" op: "Const" device: \""""+ dev +"""\" }
       node { name: "random_uniform/min" op: "Const" device: \""""+ dev +"""\" }
       node { name: "random_uniform/max" op: "Const" device: \""""+ dev +"""\" }
@@ -98,8 +98,8 @@ class MatmulBenchmarkTest(googletest.TestCase):
       node { name: "Variable_1/read" op: "Identity" input: "Variable_1" device: \""""+ dev +"""\" }
       node { name: "MatMul" op: "MatMul" input: "Variable/read" input: "Variable_1/read" device: \""""+ dev +"""\" }
       node { name: "group_deps" op: "NoOp" input: "^MatMul" device: \""""+ dev +"""\" }
-                        """
-      self.assertProtoEquals(str(proto_exprected), self._StripGraph(gd))
+                       """
+      self.assertProtoEquals(str(proto_expected), self._StripGraph(gd))
 
   def _VerifyRunGraph(self, n, m, k, transpose_a, transpose_b, dtype):
     benchmark_instance = matmul_benchmark.MatmulBenchmark()
