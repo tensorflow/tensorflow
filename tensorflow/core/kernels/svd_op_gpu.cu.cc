@@ -234,7 +234,6 @@ class SvdOpGpu : public AsyncOpKernel {
         perm.push_back(ndims-1); //transpose last two dimensions
         perm.push_back(ndims-2);
         gtl::ArraySlice<int32> permAS(perm);
-            outputV->shape().DebugString().c_str(), (int) outputV->shape().num_elements(), outputV);
         auto device = context->eigen_device<GPUDevice>();
         DoTranspose(device, outputVT, permAS, outputV);
     }
