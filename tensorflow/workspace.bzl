@@ -442,7 +442,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   native.bind(
       name = "protobuf_compiler",
-      actual = "@com_google_protobuf//:protoc",
+      actual = "@com_google_protobuf//:protoc_lib",
   )
 
   native.new_http_archive(
