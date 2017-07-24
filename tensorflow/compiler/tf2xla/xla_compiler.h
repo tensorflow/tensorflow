@@ -301,7 +301,12 @@ class XlaCompiler {
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   DeviceMgr device_mgr_;
 
-  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+  // To avoid copying the client's function library, use a local function
+  // library and runtime for functions created as part of the functionalize
+  // control flow transformation.
+  std::unique_ptr<FunctionLibraryDefinition> local_flib_def_;
+  std::unique_ptr<FunctionLibraryRuntime> local_flib_runtime_;
+
   std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
 
   struct SignatureHash {

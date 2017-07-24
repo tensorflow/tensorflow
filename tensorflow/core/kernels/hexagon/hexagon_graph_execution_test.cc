@@ -35,8 +35,8 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 #include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
-#include "tensorflow/core/kernels/hexagon/i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -389,9 +389,6 @@ static void CompareGraphTransferInfo(const GraphTransferInfo& gfi0,
     EXPECT_EQ(goni0.ByteSizeLong(), goni1.ByteSizeLong());
     EXPECT_EQ(goni0.DebugString(), goni1.DebugString());
   }
-
-  // 7. check destination
-  EXPECT_EQ(gfi0.destination(), gfi1.destination());
 }
 
 // CAVEAT: This test only runs when you specify hexagon library using
@@ -407,7 +404,7 @@ TEST(GraphTransferer,
   LOG(INFO) << "Run inception v3 on hexagon with hexagon controller";
   CheckHexagonControllerVersion();
 
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
   std::vector<std::pair<string, Tensor>> inputs;
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
@@ -474,7 +471,7 @@ TEST(GraphTransferer,
   LOG(INFO) << "Run inception v3 on hexagon with hexagon controller";
   CheckHexagonControllerVersion();
 
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
   std::vector<std::pair<string, Tensor>> inputs;
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
@@ -505,7 +502,7 @@ TEST(GraphTransferer, RunInceptionV3OnHexagonExampleWithTfRuntime) {
   LOG(INFO) << "Fuse and run inception v3 on hexagon with tf runtime";
   CheckHexagonControllerVersion();
 
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
   std::vector<std::pair<string, Tensor>> inputs;
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
@@ -543,7 +540,7 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   CheckHexagonControllerVersion();
   profile_utils::CpuUtils::EnableClockCycleProfiling(true);
 
-  const IGraphTransferOpsDefinitions* ops_definitions =
+  const IRemoteFusedGraphOpsDefinitions* ops_definitions =
       &HexagonOpsDefinitions::getInstance();
   std::vector<std::pair<string, Tensor>> inputs;
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));

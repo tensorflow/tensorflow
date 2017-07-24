@@ -381,7 +381,7 @@ class Im2ColConvFunctor {
       if (meta::IsSupportedAndEnabled() && std::is_same<T1, quint8>() &&
           std::is_same<T2, quint8>() && std::is_same<T3, qint32>() &&
           (output_offset == 0) && (output_mult == 1) && (output_shift == 0) &&
-          (transpose_c == false)) {
+          (transpose_c == false) && (k <= 2048)) {
         meta::QuantizedGemm(context, transpose_a, transpose_b, im2col_buffer,
                             filter_data, chunk_output_data, m, n, k,
                             -input_offset, -filter_offset, lda, ldb, ldc);

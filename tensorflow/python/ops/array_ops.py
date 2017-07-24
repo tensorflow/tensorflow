@@ -1550,13 +1550,12 @@ def placeholder(dtype, shape=None, name=None):
 
 # pylint: disable=redefined-outer-name
 def _normalize_sparse_shape(shape, name):
-  """Takes numpy array or Tensor or None and returns either None or Tensor."""
-  if shape is None: return None
-  if not isinstance(shape, ops.Tensor):
-    for el in shape:
-      if el is None:
-        return None
-  return ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name)
+  """Returns a tuple of (Tensor or None, rank or None)."""
+  if shape is None: return (None, None)
+  rank = shape.get_shape()[0] if isinstance(shape, ops.Tensor) else len(shape)
+  if not isinstance(shape, ops.Tensor) and None in shape:
+    return (None, rank)
+  return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
 def sparse_placeholder(dtype, shape=None, name=None):
@@ -1599,9 +1598,9 @@ def sparse_placeholder(dtype, shape=None, name=None):
     evaluated directly.
   """
   shape_name = (name + "/shape") if name is not None else None
-  shape = _normalize_sparse_shape(shape, shape_name)
+  shape, rank = _normalize_sparse_shape(shape, shape_name)
   if shape is None:
-    shape = placeholder(dtypes.int64, shape=[None], name=shape_name)
+    shape = placeholder(dtypes.int64, shape=[rank], name=shape_name)
   return sparse_tensor.SparseTensor(
       values=placeholder(
           dtype, shape=[None],

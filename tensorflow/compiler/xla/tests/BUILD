@@ -26,6 +26,7 @@ filegroup(
 
 load("//tensorflow/compiler/xla:xla.bzl", "export_dynamic_linkopts")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
+load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test_library")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites")
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_test_macros")
 
@@ -876,11 +877,11 @@ xla_test(
     ],
 )
 
-# Note that the backend-specific macros (e.g. DISABLED_ON_CPU) would not work here, because the
-# library does not get recompiled for each backend.
-cc_library(
+# External xla_test targets can add "reduce_window_test_library" to xla_test_library_deps, in order
+# to refer to the cc_library compiled with the correct backend macros. The following test target
+# "reduce_window_test" is an example.
+xla_test_library(
     name = "reduce_window_test_library",
-    testonly = 1,
     srcs = ["reduce_window_test.cc"],
     deps = [
         ":test_macros_header",
@@ -906,9 +907,8 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
-    deps = [
-        ":reduce_window_test_library",
-    ],
+    xla_test_library_deps = [":reduce_window_test_library"],
+    deps = [],
 )
 
 xla_test(

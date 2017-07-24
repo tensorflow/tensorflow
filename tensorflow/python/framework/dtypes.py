@@ -135,13 +135,13 @@ class DType(object):
   def is_integer(self):
     """Returns whether this is a (non-quantized) integer type."""
     return (self.is_numpy_compatible and not self.is_quantized and
-            issubclass(self.as_numpy_dtype, np.integer))
+            np.issubdtype(self.as_numpy_dtype, np.integer))
 
   @property
   def is_floating(self):
     """Returns whether this is a (non-quantized, real) floating point type."""
-    return self.is_numpy_compatible and issubclass(self.as_numpy_dtype,
-                                                   np.floating)
+    return self.is_numpy_compatible and np.issubdtype(self.as_numpy_dtype,
+                                                      np.floating)
 
   @property
   def is_complex(self):

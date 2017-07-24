@@ -124,10 +124,12 @@ file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
     "${tensorflow_source_dir}/tensorflow/core/profiler/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/decision_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/tpu/profiler/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_PYTHON(
@@ -140,6 +142,7 @@ RELATIVE_PROTOBUF_GENERATE_PYTHON(
 file(GLOB_RECURSE tf_python_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/profiler/*.proto"
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
+    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/session_bundle/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/training/*.proto"
@@ -252,7 +255,12 @@ add_python_module("tensorflow/contrib/bayesflow/python")
 add_python_module("tensorflow/contrib/bayesflow/python/kernel_tests")
 add_python_module("tensorflow/contrib/bayesflow/python/ops")
 add_python_module("tensorflow/contrib/boosted_trees")
+add_python_module("tensorflow/contrib/boosted_trees/estimator_batch")
+add_python_module("tensorflow/contrib/boosted_trees/ops")
 add_python_module("tensorflow/contrib/boosted_trees/proto")
+add_python_module("tensorflow/contrib/boosted_trees/python")
+add_python_module("tensorflow/contrib/boosted_trees/python/kernel_tests")
+add_python_module("tensorflow/contrib/boosted_trees/python/ops")
 add_python_module("tensorflow/contrib/cloud")
 add_python_module("tensorflow/contrib/cloud/kernels")
 add_python_module("tensorflow/contrib/cloud/ops")
@@ -340,6 +348,7 @@ add_python_module("tensorflow/contrib/keras/api/keras")
 add_python_module("tensorflow/contrib/keras/api/keras/activations")
 add_python_module("tensorflow/contrib/keras/api/keras/applications")
 add_python_module("tensorflow/contrib/keras/api/keras/applications/inception_v3")
+add_python_module("tensorflow/contrib/keras/api/keras/applications/mobilenet")
 add_python_module("tensorflow/contrib/keras/api/keras/applications/resnet50")
 add_python_module("tensorflow/contrib/keras/api/keras/applications/vgg16")
 add_python_module("tensorflow/contrib/keras/api/keras/applications/vgg19")
@@ -540,8 +549,10 @@ add_python_module("tensorflow/contrib/timeseries/python/timeseries")
 add_python_module("tensorflow/contrib/timeseries/python/timeseries/state_space_models")
 add_python_module("tensorflow/contrib/tpu")
 add_python_module("tensorflow/contrib/tpu/ops")
+add_python_module("tensorflow/contrib/tpu/profiler")
 add_python_module("tensorflow/contrib/tpu/python")
 add_python_module("tensorflow/contrib/tpu/python/ops")
+add_python_module("tensorflow/contrib/tpu/python/profiler")
 add_python_module("tensorflow/contrib/tpu/python/tpu")
 add_python_module("tensorflow/contrib/training")
 add_python_module("tensorflow/contrib/training/python")
@@ -650,6 +661,20 @@ GENERATE_PYTHON_OP_LIB("user_ops")
 GENERATE_PYTHON_OP_LIB("training_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/training/gen_training_ops.py)
 
+GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_model_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_model_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_split_handler_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_split_handler_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_training_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_training_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_prediction_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_prediction_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_quantiles_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_quantile_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_ensemble_optimzier_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_ensemble_optimizer_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_cudnn_rnn_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cudnn_rnn/ops/gen_cudnn_rnn_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"

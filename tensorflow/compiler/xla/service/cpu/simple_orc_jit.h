@@ -83,6 +83,8 @@ class SimpleOrcJIT {
   // nullptr if the symbol cannot be found.
   llvm::JITSymbol FindSymbol(const std::string& name);
 
+  llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
+
  private:
   std::vector<ModuleHandleT> module_handles_;
   std::unique_ptr<llvm::TargetMachine> target_machine_;

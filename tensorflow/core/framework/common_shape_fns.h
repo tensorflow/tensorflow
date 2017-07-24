@@ -167,6 +167,9 @@ Status Conv2DShape(shape_inference::InferenceContext* c);
 // Shape function for Conv3D-like operations.
 Status Conv3DShape(shape_inference::InferenceContext* c);
 
+// Shape function for FusedConvBiasActivation operation.
+Status FusedConvBiasActivationShape(shape_inference::InferenceContext* c);
+
 // Shape function for DepthwiseConv2D-like operations.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 

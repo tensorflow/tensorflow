@@ -33,9 +33,11 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import session_run_hook
 
@@ -73,8 +75,8 @@ class TensorForestRunOpAtEndHook(session_run_hook.SessionRunHook):
     self._ops = op_dict
 
   def end(self, session):
-    for name, op in self._ops.iteritems():
-      logging.info('{0}: {1}'.format(name, session.run(op)))
+    for name in sorted(self._ops.keys()):
+      logging.info('{0}: {1}'.format(name, session.run(self._ops[name])))
 
 
 class TensorForestLossHook(session_run_hook.SessionRunHook):
@@ -162,7 +164,7 @@ def get_model_fn(params,
                  model_head=None,
                  keys_name=None,
                  early_stopping_rounds=100,
-                 early_stopping_loss_threshold=0.01,
+                 early_stopping_loss_threshold=0.001,
                  num_trainers=1,
                  trainer_id=0,
                  report_feature_importances=False,
@@ -196,6 +198,8 @@ def get_model_fn(params,
                                         device_assigner=dev_assn)
 
     logits = graph_builder.inference_graph(features)
+
+    summary.scalar('average_tree_size', graph_builder.average_size())
     # For binary classification problems, convert probabilities to logits.
     # Includes hack to get around the fact that a probability might be 0 or 1.
     if not params.regression and params.num_classes == 2:
@@ -234,9 +238,19 @@ def get_model_fn(params,
         logits=logits,
         scope=head_scope)
 
+    # Ops are run in lexigraphical order of their keys. Run the resource
+    # clean-up op last.
+    all_handles = graph_builder.get_all_resource_handles()
+    ops_at_end = {
+        '9: clean up resources': control_flow_ops.group(
+            *[resource_variable_ops.destroy_resource_op(handle)
+              for handle in all_handles])}
+
     if report_feature_importances:
-      training_hooks.append(TensorForestRunOpAtEndHook(
-          {'feature_importances': graph_builder.feature_importances()}))
+      ops_at_end['1: feature_importances'] = (
+          graph_builder.feature_importances())
+
+    training_hooks.append(TensorForestRunOpAtEndHook(ops_at_end))
 
     if early_stopping_rounds:
       training_hooks.append(
@@ -291,13 +305,13 @@ class TensorForestEstimator(estimator.Estimator):
                params,
                device_assigner=None,
                model_dir=None,
-               graph_builder_class=tensor_forest.RandomForestGraphs,
+               graph_builder_class=tensor_forest_v4.RandomForestGraphsV4,
                config=None,
                weights_name=None,
                keys_name=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
-               early_stopping_loss_threshold=0.01,
+               early_stopping_loss_threshold=0.001,
                num_trainers=1,
                trainer_id=0,
                report_feature_importances=False,
