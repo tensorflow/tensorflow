@@ -559,10 +559,11 @@ class ScopedFilterDescriptor {
 // A helper function to decide whether to enable the TENSOR_OP_MATH math type
 static bool TensorOpMathEnabled() {
   static bool is_enabled = [] {
-    bool ret;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DISABLE_TENSOR_OP_MATH",
-                                               /*default_val=*/false, &ret));
-    return !ret;
+    bool is_disabled;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_TENSOR_OP_MATH",
+                                       /*default_val=*/false, &is_disabled));
+    return !is_disabled;
   }();
   return is_enabled;
 }
