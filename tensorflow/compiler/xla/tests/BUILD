@@ -519,7 +519,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
@@ -542,7 +541,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
@@ -572,36 +570,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-    ],
-)
-
-xla_test(
-    name = "dot_operation_rowmajor_runtime_test",
-    srcs = ["dot_operation_test.cc"],
-    backend_args = {
-        "cpu": [
-            "--xla_default_layout=major2minor",
-        ],
-        "cpu_parallel": [
-            "--xla_default_layout=major2minor",
-        ],
-    },
-    deps = [
-        "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:array3d",
-        "//tensorflow/compiler/xla:reference_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/client:computation_builder",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",

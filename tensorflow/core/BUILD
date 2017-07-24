@@ -94,6 +94,8 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
+    "tf_additional_framework_hdrs",
+    "tf_additional_framework_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
@@ -344,6 +346,8 @@ tf_cuda_library(
     hdrs = [
         "example/feature_util.h",
         "framework/allocator.h",
+        "framework/variant.h",
+        "framework/variant_encode_decode.h",
         "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
@@ -1305,12 +1309,18 @@ LIB_INTERNAL_DEFAULT_CC_DEPS = glob(
     ],
     exclude = [
         "**/*test*",
+        "framework/variant.cc",
+        "platform/variant_coding.cc",
         "lib/hash/crc32c_accelerate.cc",
         "lib/gif/**/*",
         "lib/jpeg/**/*",
         "platform/**/env_time.cc",
+        "platform/**/cuda.h",
         "platform/**/cuda_libdevice_path.cc",
+        "platform/**/stream_executor.h",
         "platform/**/gpu_tracer.cc",
+        "platform/variant_coding.cc",
+        "platform/**/variant_cord_coding.cc",
     ],
 )
 
@@ -1389,6 +1399,8 @@ cc_library(
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/gpu_tracer.cc",
+            "platform/variant_coding.cc",
+            "platform/**/variant_cord_coding.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
         # dependency.
@@ -1505,11 +1517,13 @@ cc_library(
 )
 
 FRAMEWORK_INTERNAL_HEADERS = [
+    "framework/variant.h",
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
+    "platform/variant_coding.h",
     "util/command_line_flags.h",
     "util/env_var.h",
     "util/equal_graph_def.h",
@@ -1526,6 +1540,8 @@ tf_cuda_library(
             "framework/**/*.h",
             "util/**/*.h",
         ] + [
+            "platform/variant_coding.cc",
+            "platform/variant_coding.h",
             "graph/edgeset.h",
             "graph/graph.h",
         ],
@@ -1572,6 +1588,7 @@ cc_header_only_library(
         ":lib_internal",
         ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/platform/default/build_config:platformlib",
     ],
 )
 
@@ -2286,8 +2303,8 @@ tf_cc_tests(
     srcs = [
         "common_runtime/device_set_test.cc",
         "common_runtime/optimization_registry_test.cc",
-        "common_runtime/resource_variable_read_optimizer_test.cc",
         "common_runtime/pending_counts_test.cc",
+        "common_runtime/resource_variable_read_optimizer_test.cc",
         "common_runtime/session_test.cc",
         "common_runtime/simple_placer_test.cc",
         "example/feature_util_test.cc",
@@ -2308,7 +2325,7 @@ tf_cc_tests(
         "framework/op_kernel_test.cc",
         "framework/op_registration_test.cc",
         "framework/partial_tensor_shape_test.cc",
-        # "framework/rendezvous_test.cc",  # flaky b/30476344
+        "framework/rendezvous_test.cc",
         "framework/resource_mgr_test.cc",
         "framework/resource_op_kernel_test.cc",
         "framework/shape_inference_test.cc",
@@ -2320,6 +2337,7 @@ tf_cc_tests(
         "framework/tracking_allocator_test.cc",
         "framework/types_test.cc",
         "framework/unique_tensor_references_test.cc",
+        "framework/variant_test.cc",
         "graph/algorithm_test.cc",
         "graph/edgeset_test.cc",
         "graph/graph_def_builder_test.cc",
@@ -2341,8 +2359,8 @@ tf_cc_tests(
         "util/presized_cuckoo_map_test.cc",
         "util/reporter_test.cc",
         "util/saved_tensor_slice_util_test.cc",
-        "util/sparse/sparse_tensor_test.cc",
         "util/semver_test.cc",
+        "util/sparse/sparse_tensor_test.cc",
         "util/stat_summarizer_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",

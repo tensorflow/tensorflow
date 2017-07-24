@@ -1058,8 +1058,12 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
-    return self.flat_map(
-        map_func=lambda *args: Dataset.from_tensor_slices(args))
+    def unbatch_map(arg, *rest):
+      if rest:
+        return Dataset.from_tensor_slices((arg,) + rest)
+      else:
+        return Dataset.from_tensor_slices(arg)
+    return self.flat_map(map_func=unbatch_map)
 
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
@@ -1744,7 +1748,7 @@ class MapDataset(Dataset):
             output_buffer_size, dtype=dtypes.int64, name="output_buffer_size")
       else:
         self._output_buffer_size = ops.convert_to_tensor(
-            self._num_threads, dtype=dtypes.int64, name="output_buffer_size")
+            num_threads, dtype=dtypes.int64, name="output_buffer_size")
     else:
       self._num_threads = None
       self._output_buffer_size = None
