@@ -22,9 +22,9 @@
 @@EveryN
 @@ExportMonitor
 @@GraphDump
+@@LoggingTensor
 @@LoggingTrainable
 @@NanLoss
-@@PrintTensor
 @@StepCounter
 @@StopAtStep
 @@SummarySaver
@@ -416,36 +416,35 @@ class StopAtStep(BaseMonitor):
     return step >= self._last_step
 
 
-# TODO(ptucker): Rename to LoggingTensor since it's not writing to stdout.
-class PrintTensor(EveryN):
-  """Prints given tensors every N steps.
+class LoggingTensor(EveryN):
+  """Logs given tensors every N steps.
 
   This is an `EveryN` monitor and has consistent semantic for `every_n`
   and `first_n`.
 
-  The tensors will be printed to the log, with `INFO` severity.
+  The tensors are logged with `INFO` severity.
   """
 
   def __init__(self, tensor_names, every_n=100, first_n=1):
-    """Initializes a PrintTensor monitor.
+    """Initializes a LoggingTensor monitor.
 
     Args:
       tensor_names: `dict` of tag to tensor names or
           `iterable` of tensor names (strings).
-      every_n: `int`, print every N steps. See `PrintN.`
-      first_n: `int`, also print the first N steps. See `PrintN.`
+      every_n: `int`, log every N steps. See `PrintN.`
+      first_n: `int`, also log the first N steps. See `PrintN.`
     """
-    super(PrintTensor, self).__init__(every_n, first_n)
+    super(LoggingTensor, self).__init__(every_n, first_n)
     if not isinstance(tensor_names, dict):
       tensor_names = {item: item for item in tensor_names}
     self._tensor_names = tensor_names
 
   def every_n_step_begin(self, step):
-    super(PrintTensor, self).every_n_step_begin(step)
+    super(LoggingTensor, self).every_n_step_begin(step)
     return list(self._tensor_names.values())
 
   def every_n_step_end(self, step, outputs):
-    super(PrintTensor, self).every_n_step_end(step, outputs)
+    super(LoggingTensor, self).every_n_step_end(step, outputs)
     stats = []
     for tag, tensor_name in six.iteritems(self._tensor_names):
       if tensor_name in outputs:
@@ -467,8 +466,8 @@ class LoggingTrainable(EveryN):
 
     Args:
       scope: An optional string to match variable names using re.match.
-      every_n: Print every N steps.
-      first_n: Print first N steps.
+      every_n: Log every N steps.
+      first_n: Log first N steps.
     """
     super(LoggingTrainable, self).__init__(every_n, first_n)
     self._scope = scope
@@ -770,7 +769,7 @@ def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
   """Returns a default set of typically-used monitors.
 
   Args:
-    loss_op: `Tensor`, the loss tensor. This will be printed using `PrintTensor`
+    loss_op: `Tensor`, the loss tensor. This will be printed using `LoggingTensor`
         at the default interval.
     summary_op: See `SummarySaver`.
     save_summary_steps: See `SummarySaver`.
@@ -782,7 +781,7 @@ def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
 
   monitors = []
   if loss_op is not None:
-    monitors.append(PrintTensor(tensor_names={"loss": loss_op.name}))
+    monitors.append(LoggingTensor(tensor_names={"loss": loss_op.name}))
   if summary_op is not None:
     monitors.append(SummarySaver(summary_op, save_steps=save_summary_steps,
                                  output_dir=output_dir,
@@ -793,7 +792,7 @@ def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
 class GraphDump(BaseMonitor):
   """Dumps almost all tensors in the graph at every step.
 
-  Note, this is very expensive, prefer `PrintTensor` in production.
+  Note, this is very expensive, prefer `LoggingTensor` in production.
   """
 
   IGNORE_OPS = ["Const", "Assign", "Identity", "Placeholder",

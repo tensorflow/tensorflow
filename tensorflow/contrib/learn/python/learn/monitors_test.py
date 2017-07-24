@@ -239,10 +239,10 @@ class MonitorsTest(test.TestCase):
       self.assertEqual([8, 16], monitor.steps_ended)
       self.assertEqual([8, 16], monitor.post_steps)
 
-  def test_print(self):
+  def test_log(self):
     with ops.Graph().as_default() as g, self.test_session(g):
       t = constant_op.constant(42.0, name='foo')
-      self._run_monitor(learn.monitors.PrintTensor(tensor_names=[t.name]))
+      self._run_monitor(learn.monitors.LoggingTensor(tensor_names=[t.name]))
       self.assertRegexpMatches(str(self.logged_message), t.name)
 
   def test_logging_trainable(self):
