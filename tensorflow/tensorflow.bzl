@@ -228,8 +228,7 @@ def tf_cc_shared_object(name,
     linkshared = 1,
     linkopts=linkopts + _rpath_linkopts(name) + select({
       "//tensorflow:darwin": [
-        "-Wl,-install_name,@rpath/" 
-        + "/".join((PACKAGE_NAME + "/" + name).split("/")[1:]),
+        "-Wl,-install_name,@rpath/" + name.split("/")[-1],
       ],
       "//conditions:default": [
       ],

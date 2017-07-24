@@ -106,7 +106,9 @@ tf_custom_op_library(
         ":v2_op_defs",
         ":v2_op_sources",
     ],
-    deps = [":tree_utils"],
+    deps = [
+      ":tree_utils",
+    ],
 )
 
 py_library(
@@ -405,6 +407,7 @@ tf_cc_shared_object(
     deps = [
         ":forest_proto_impl",
         "@protobuf//:protobuf",
+	"//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
     ],
      # This object does not depend on TensorFlow.
      framework_so = [],

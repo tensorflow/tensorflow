@@ -26,7 +26,7 @@ namespace boosted_trees {
 // be checked to verify that the update is not stale.
 class StampedResource : public ResourceBase {
  public:
-  StampedResource() : stamp_(-1) {}
+  StampedResource();
 
   bool is_stamp_valid(int64 stamp) const { return stamp_ == stamp; }
 

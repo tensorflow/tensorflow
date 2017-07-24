@@ -9,6 +9,7 @@ package(default_visibility = [
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
@@ -288,15 +289,16 @@ py_library(
     ],
 )
 
-cc_binary(
+tf_cc_shared_object(
     name = "libboostedtreeprotos.so",
-    linkshared = 1,
     linkstatic = 1,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "@protobuf//:protobuf",
+	"//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource_impl",
     ],
+    framework_so=[],
 )
 
 # Model Ops.
@@ -712,6 +714,7 @@ tf_custom_op_library(
     srcs = [
         "kernels/stats_accumulator_ops.cc",
         "ops/stats_accumulator_ops.cc",
+        ":libboostedtreeprotos.so",
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",

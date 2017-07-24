@@ -18,7 +18,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "decision-tree-resource",
-    srcs = ["decision-tree-resource.cc"],
     hdrs = ["decision-tree-resource.h"],
     deps = [
         ":decision_node_evaluator",
@@ -27,6 +26,14 @@ cc_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
+    ],
+)
+
+cc_library(
+    name = "decision-tree-resource_impl",
+    srcs = ["decision-tree-resource.cc"],
+    deps = [
+      ":decision-tree-resource",
     ],
 )
 
