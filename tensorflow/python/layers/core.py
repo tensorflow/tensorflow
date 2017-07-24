@@ -56,10 +56,9 @@ class Dense(base.Layer):
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    kernel_initializer: Initializer function for the weight matrix.
-      If `None` (default), weights are initialized using the global default
-      initializer which uses the `glorot_uniform_initializer` defined in
-      `tensorflow.python.ops.init_ops`.
+    kernel_initializer:  Initializer function for the weight matrix.
+      If `None` (default), weights are initialized using the default
+      initializer used by `tf.get_variable`.
     bias_initializer: Initializer function for the bias.
     kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
@@ -194,9 +193,8 @@ def dense(
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: Initializer function for the weight matrix.
-      If `None` (default), weights are initialized using the global default
-      initializer which uses the `glorot_uniform_initializer` defined in
-      `tensorflow.python.ops.init_ops`.
+      If `None` (default), weights are initialized using the default
+      initializer used by `tf.get_variable`.
     bias_initializer: Initializer function for the bias.
     kernel_regularizer: Regularizer function for the weight matrix.
     bias_regularizer: Regularizer function for the bias.
