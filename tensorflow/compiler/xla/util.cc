@@ -19,7 +19,6 @@ limitations under the License.
 #include <stdarg.h>
 #include <numeric>
 
-#include "tensorflow/compiler/xla/legacy_flags/util_flags.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -32,18 +31,12 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Adds a backtrace to the provided status iff the xla_status_add_backtrace flag
-// is set. This is useful for quickly tracing status errors observed coming out
-// of the service.
-Status MaybeAddBacktrace(const Status& prior) {
-  DCHECK(!prior.ok());
-  if (legacy_flags::GetUtilFlags()->xla_status_add_backtrace) {
-    return Status{prior.code(),
-                  tensorflow::strings::StrCat(prior.error_message(), " :: ",
-                                              tensorflow::CurrentStackTrace())};
-  } else {
-    return prior;
-  }
+// Logs the provided status message with a backtrace.
+Status WithLogBacktrace(const Status& status) {
+  CHECK(!status.ok());
+  LOG(WARNING) << status.ToString();
+  LOG(WARNING) << tensorflow::CurrentStackTrace();
+  return status;
 }
 
 }  // namespace
@@ -86,7 +79,7 @@ Status InvalidArgument(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::InvalidArgument(message));
+  return WithLogBacktrace(tensorflow::errors::InvalidArgument(message));
 }
 
 Status Unimplemented(const char* format, ...) {
@@ -95,7 +88,7 @@ Status Unimplemented(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::Unimplemented(message));
+  return WithLogBacktrace(tensorflow::errors::Unimplemented(message));
 }
 
 Status InternalError(const char* format, ...) {
@@ -104,7 +97,7 @@ Status InternalError(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::Internal(message));
+  return WithLogBacktrace(tensorflow::errors::Internal(message));
 }
 
 Status FailedPrecondition(const char* format, ...) {
@@ -113,7 +106,7 @@ Status FailedPrecondition(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::FailedPrecondition(message));
+  return WithLogBacktrace(tensorflow::errors::FailedPrecondition(message));
 }
 
 Status ResourceExhausted(const char* format, ...) {
@@ -122,7 +115,7 @@ Status ResourceExhausted(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::ResourceExhausted(message));
+  return WithLogBacktrace(tensorflow::errors::ResourceExhausted(message));
 }
 
 Status NotFound(const char* format, ...) {
@@ -131,7 +124,7 @@ Status NotFound(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::NotFound(message));
+  return WithLogBacktrace(tensorflow::errors::NotFound(message));
 }
 
 Status Unavailable(const char* format, ...) {
@@ -140,7 +133,7 @@ Status Unavailable(const char* format, ...) {
   va_start(args, format);
   tensorflow::strings::Appendv(&message, format, args);
   va_end(args);
-  return MaybeAddBacktrace(tensorflow::errors::Unavailable(message));
+  return WithLogBacktrace(tensorflow::errors::Unavailable(message));
 }
 
 string Reindent(tensorflow::StringPiece original,
