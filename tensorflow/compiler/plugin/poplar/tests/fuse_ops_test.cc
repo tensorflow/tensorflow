@@ -24,8 +24,6 @@ namespace {
 
 using FuseOpsTest = HloTestBase;
 
-
-// Test that `map` with `max` is transformed to `max`
 TEST_F(FuseOpsTest, DynamicUpdateSlice) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {10, 10});
   Shape update_shape = ShapeUtil::MakeShape(F32, {2, 3});
@@ -36,7 +34,7 @@ TEST_F(FuseOpsTest, DynamicUpdateSlice) {
   auto update = builder.AddInstruction(
           HloInstruction::CreateParameter(1, update_shape, "update"));
   auto indices = builder.AddInstruction(
-          HloInstruction::CreateConstant(LiteralUtil::CreateR1<int64>({1, 2})));
+          HloInstruction::CreateConstant(Literal::CreateR1<int64>({1, 2})));
   auto slice = builder.AddInstruction(
           HloInstruction::CreateDynamicUpdateSlice(
                   input_shape, operand, update, indices));
@@ -55,7 +53,33 @@ TEST_F(FuseOpsTest, DynamicUpdateSlice) {
   EXPECT_TRUE(fuser.Run(hlo_module.get()).ValueOrDie());
 
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 4);
+}
 
+TEST_F(FuseOpsTest, Relu) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto i1 = builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "operand"));
+  auto c1 = builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR1<float>({0, 0})));
+  auto m1 = builder.AddInstruction(
+          HloInstruction::CreateBinary(shape, HloOpcode::kMaximum, i1, c1));
+
+  builder.AddInstruction(
+          HloInstruction::CreateTuple({m1}));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 4);
+
+  FuseOps fuser;
+  EXPECT_TRUE(fuser.Run(hlo_module.get()).ValueOrDie());
+
+  EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 3);
 }
 
 

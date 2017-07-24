@@ -31,11 +31,10 @@ HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
 bool HloMatcher::MatchPattern(HloInstruction* root,
                               const HloMatcherPattern& pattern,
                               HloMatcherMatched& match) {
-
   match.instructions[0] = root;
 
   for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
-    const HloInstruction* inst = match.instructions[node_num];
+    HloInstruction* inst = match.instructions[node_num];
     if (inst == nullptr) {
       return false;
     }
@@ -50,7 +49,8 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       return false;
     }
 
-    if (inst->operand_count() != node.operands.size()) {
+    if ((node.operands.size() > 0) &&
+        (inst->operand_count() != node.operands.size())) {
       return false;
     }
 
@@ -59,7 +59,7 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       if (n == -1) continue;
       if (n <= node_num) continue;
 
-      match.instructions[n] = inst->operand(i);
+      match.instructions[n] = inst->mutable_operand(i);
     }
   }
 
@@ -75,26 +75,28 @@ void HloMatcher::AddMatch(unsigned pattern, const HloMatcherMatched& match) {
 }
 
 // TODO - make this non-recursive
-void HloMatcher::MatchPatternStart(HloInstruction* inst) {
-  visited_.insert(inst);
+void HloMatcher::MatchPatternStart(HloComputation* computation,
+                                   HloInstruction* instruction) {
+
+  visited_.insert(instruction);
 
   for (unsigned i=0; i<patterns_.size(); i++) {
-    if (inst->opcode() == patterns_[i][0].opcode) {
+    if (instruction->opcode() == patterns_[i][0].opcode) {
       // Try matching the whole pattern
       HloMatcherMatched match;
       match.ok = true;
+      match.computation = computation;
       match.instructions.resize(patterns_[i].size());
 
-      if (MatchPattern(inst, patterns_[i], match)) {
-        VLOG(3) << "Matched pattern " << i << " against " << inst->ToString();
+      if (MatchPattern(instruction, patterns_[i], match)) {
         AddMatch(i, match);
       }
     }
   }
 
-  for (HloInstruction* operand : inst->operands()) {
+  for (HloInstruction* operand : instruction->operands()) {
     if (visited_.count(operand) == 0) {
-      MatchPatternStart(operand);
+      MatchPatternStart(computation, operand);
     }
   }
 }
@@ -106,13 +108,13 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
   if (root_computation_only_) {
     HloComputation* comp = module->entry_computation();
     visited_.clear();
-    MatchPatternStart(comp->root_instruction());
+    MatchPatternStart(comp, comp->root_instruction());
 
   } else {
     // loop over computations to get list of replacements
-    for (const auto& comp : module->computations()) {
+    for (auto& comp : module->computations()) {
       visited_.clear();
-      MatchPatternStart(comp->root_instruction());
+      MatchPatternStart(comp.get(), comp->root_instruction());
     }
   }
 
@@ -120,12 +122,11 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
   for (unsigned int pattern=0; pattern<matches_.size(); pattern++) {
     for (HloMatcherMatched& match :  matches_[pattern]) {
       if (match.ok) {
-        if (ReplaceNodes(pattern, match)) {
-          for (auto i : match.instructions) {
-            auto range = match_map_.equal_range(i);
-            for (auto m = range.first; m != range.second; ++m) {
-              m->second->ok = false;
-            }
+        const ReplacedInstructions& replaced = ReplaceNodes(pattern, match);
+        for (auto i : replaced) {
+          auto range = match_map_.equal_range(i);
+          for (auto m = range.first; m != range.second; ++m) {
+            m->second->ok = false;
           }
 
           replacement_count++;

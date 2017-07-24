@@ -16,27 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_H_
 
-#include "tensorflow/compiler/xla/service/instruction_fusion.h"
+#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 
 namespace xla {
 
-class HloModule;
-
 namespace poplarplugin {
 
-class FuseOps : public InstructionFusion {
+class FuseOps : public HloMatcher {
 public:
-  FuseOps() : InstructionFusion(InstructionFusion::IsExpensive, true) {}
+  FuseOps();
 
   ~FuseOps() override = default;
 
   tensorflow::StringPiece name() const override { return "poplar-fuse"; }
 
-protected:
-  bool ShouldFuse(HloInstruction*, int64) override;
+  ReplacedInstructions ReplaceNodes(unsigned int pattern,
+                                    const HloMatcherMatched& match) override;
 
-  HloInstruction::FusionKind ChooseKind(const HloInstruction*,
-                                        const HloInstruction*) override;
 };
 
 }

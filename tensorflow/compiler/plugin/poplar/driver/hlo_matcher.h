@@ -26,17 +26,18 @@ namespace poplarplugin {
 
 struct HloMatcherNode {
   HloOpcode opcode;
-  std::function<bool(const HloInstruction*)> verification_fn;
+  std::function<bool(HloInstruction*)> verification_fn;
   std::vector<int> operands;
 };
 
 struct HloMatcherMatched {
+  HloComputation* computation;
   bool ok;
-  std::vector<const HloInstruction*> instructions;
+  std::vector<HloInstruction*> instructions;
 };
 
 using HloMatcherPattern = std::vector<HloMatcherNode>;
-
+using ReplacedInstructions = std::vector<HloInstruction*>;
 
 class HloMatcher : public HloPassInterface {
 public:
@@ -48,12 +49,11 @@ public:
 
   StatusOr<bool> Run(HloModule *module) override;
 
-  virtual bool ReplaceNodes(unsigned int pattern,
-                            const HloMatcherMatched& match) = 0;
-
-
 private:
-  void MatchPatternStart(HloInstruction* inst);
+  virtual ReplacedInstructions ReplaceNodes(unsigned int pattern,
+                                            const HloMatcherMatched&) = 0;
+
+  void MatchPatternStart(HloComputation*, HloInstruction* inst);
   bool MatchPattern(HloInstruction* inst, const HloMatcherPattern& pattern,
                     HloMatcherMatched& match);
   void AddMatch(unsigned pattern, const HloMatcherMatched& match);

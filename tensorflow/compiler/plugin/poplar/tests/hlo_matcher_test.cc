@@ -29,12 +29,14 @@ public:
   TestMatcher(const std::vector<HloMatcherPattern>& patterns, bool root_only)
           : HloMatcher(patterns, root_only) {}
 
-  bool ReplaceNodes(unsigned int pattern,
-                    const HloMatcherMatched& match) override {
+private:
+  ReplacedInstructions ReplaceNodes(unsigned int pattern,
+                                    const HloMatcherMatched& match) override {
     replace_count++;
-    return true;
+    return match.instructions;
   }
 
+public:
   int replace_count=0;
 };
 
