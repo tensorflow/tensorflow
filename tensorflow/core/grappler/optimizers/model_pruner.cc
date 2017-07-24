@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include "tensorflow/core/grappler/utils.h"
 
@@ -44,7 +45,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (auto& node : item.graph.node()) {
     // Remove the stop gradient nodes since they serve no purpose once the graph
     // is built. Also remove Identity ops.
-    if (node.op() != "StopGradient" && node.op() != "Identity") {
+    if (!IsStopGradient(node) && !IsIdentity(node)) {
       continue;
     }
     // Don't remove nodes that must be preserved.

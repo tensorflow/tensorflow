@@ -121,12 +121,7 @@ class Rendezvous : public core::RefCounted {
 // Returns a Rendezvous instance that is limited to use only by
 // producers and consumers in the local process.  The caller assumes
 // ownership of one Ref() on the returned object.
-//
-// If "tolerate_dup_recv" is true, then the Rendezvous will retain
-// already Recv'd values and make them available to duplicate Recv
-// calls.  This may be useful if the RPC layer is not reliable, but
-// comes at the cost of higher memory consumption.
-Rendezvous* NewLocalRendezvous(bool tolerate_dup_recv = false);
+Rendezvous* NewLocalRendezvous();
 
 }  // end namespace tensorflow
 

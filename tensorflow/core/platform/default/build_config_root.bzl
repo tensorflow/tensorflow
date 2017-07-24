@@ -3,10 +3,10 @@
 # be separate to avoid cyclic references.
 
 def tf_cuda_tests_tags():
-  return ["local"]
+  return []
 
 def tf_sycl_tests_tags():
-  return ["local"]
+  return []
 
 def tf_additional_plugin_deps():
   return select({
@@ -28,7 +28,7 @@ def tf_additional_verbs_deps():
       "//tensorflow:with_verbs_support": [
           "//tensorflow/contrib/verbs:verbs_server_lib",
           "//tensorflow/contrib/verbs:grpc_verbs_client",
-      ], 
+      ],
       "//conditions:default": [],
   })
 

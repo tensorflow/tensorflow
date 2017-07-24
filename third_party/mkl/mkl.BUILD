@@ -1,6 +1,14 @@
 licenses(["notice"])  # 3-Clause BSD
 
-exports_files(["LICENSE"])
+exports_files(["license.txt"])
+
+filegroup(
+    name = "LICENSE",
+    srcs = [
+        "license.txt",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 cc_library(
     name = "mkl_headers",
