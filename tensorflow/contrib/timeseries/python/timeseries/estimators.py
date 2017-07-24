@@ -36,7 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.training import training as train
 
 
-class _TimeSeriesRegressor(estimator_lib.Estimator):
+class TimeSeriesRegressor(estimator_lib.Estimator):
   """An Estimator to fit and evaluate a time series model."""
 
   def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
@@ -62,7 +62,7 @@ class _TimeSeriesRegressor(estimator_lib.Estimator):
     model_fn = model_utils.make_model_fn(
         model, state_manager, optimizer,
         input_statistics_generator=input_statistics_generator)
-    super(_TimeSeriesRegressor, self).__init__(
+    super(TimeSeriesRegressor, self).__init__(
         model_fn=model_fn,
         model_dir=model_dir,
         config=config)
@@ -145,7 +145,7 @@ class _TimeSeriesRegressor(estimator_lib.Estimator):
     return _serving_input_receiver_fn
 
 
-class ARRegressor(_TimeSeriesRegressor):
+class ARRegressor(TimeSeriesRegressor):
   """An Estimator for an (optionally non-linear) autoregressive model.
 
   ARRegressor is a window-based model, inputting fixed windows of length
@@ -236,12 +236,12 @@ class ARRegressor(_TimeSeriesRegressor):
         config=config)
 
 
-class StateSpaceRegressor(_TimeSeriesRegressor):
+class StateSpaceRegressor(TimeSeriesRegressor):
   """An Estimator for general state space models."""
 
   def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
                config=None):
-    """See _TimeSeriesRegressor. Uses the ChainingStateManager by default."""
+    """See TimeSeriesRegressor. Uses the ChainingStateManager by default."""
     if not isinstance(model, state_space_model.StateSpaceModel):
       raise ValueError(
           "StateSpaceRegressor only supports state space models (children of "

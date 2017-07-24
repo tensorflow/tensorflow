@@ -87,7 +87,7 @@ education = tf.feature_column.categorical_column_with_vocabulary_list(
         "Doctorate", "Prof-school", "5th-6th", "10th", "1st-4th",
         "Preschool", "12th"
     ])
-tf.feature_column.categorical_column_with_vocabulary_list(
+marital_status = tf.feature_column.categorical_column_with_vocabulary_list(
     "marital_status", [
         "Married-civ-spouse", "Divorced", "Married-spouse-absent",
         "Never-married", "Separated", "Married-AF-spouse", "Widowed"

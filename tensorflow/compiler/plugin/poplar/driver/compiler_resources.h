@@ -20,14 +20,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_call.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
 
 #include <popconv/Convolution.hpp>
 
 namespace xla {
 namespace poplarplugin {
 
-using ComputationMap = std::map<const HloComputation*, CallVisitor>;
+using ComputationMap = std::map<const HloComputation*, SubComputationVisitor>;
 
 struct CompilerResources {
   ComputationMap computation_map;

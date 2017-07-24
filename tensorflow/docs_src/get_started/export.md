@@ -168,7 +168,7 @@ and so determine which request types will be honored.
 > the corresponding `ExportOutput` entry.  The inputs are always those provided
 > by the `serving_input_receiver_fn`.
 > An inference request may specify the head by name.  One head must be named
-> using [`signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`](https://www.tensorflow.org/code/saved_model/signature_constants.py)
+> using [`signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`](https://www.tensorflow.org/code/tensorflow/python/saved_model/signature_constants.py)
 > indicating which signature will be served when an inference request does not
 > specify one.
 
@@ -295,4 +295,3 @@ the different Tensorflow Serving APIs, selecting the signature by key, etc. -->
 
 <!-- TODO(soergel): document ExportStrategy here once Experiment moves
 from contrib to core. -->
-

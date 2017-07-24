@@ -4,8 +4,8 @@
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_call.h"
 
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -91,28 +91,50 @@ CreateCallOp(poplar::Graph &graph,
   HloComputation* comp = inst->to_apply();
   poplar::program::Sequence seq;
 
-  auto visitor(res.computation_map.find(comp));
-  if (visitor == res.computation_map.end()) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "Couldn't find sub-computation for Call op");
-  }
+  auto subcomp_visitor(res.computation_map.find(comp));
+  if (subcomp_visitor == res.computation_map.end()) {
+    // Inline the sub-computation
 
-  for (int64 i = 0; i < op_count; i++) {
-    poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
-    seq.add(poplar::program::Copy(t, visitor->second.inputs()[i]));
-  }
+    int64 op_count(inst->operand_count());
+    std::vector <poplar::Tensor> inputs;
 
-  seq.add(visitor->second.sequence);
+    for (int64 i = 0; i < op_count; i++) {
+      poplar::Tensor t;
+      TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
+      inputs.push_back(t);
+    }
 
-  for (size_t i=0; i<visitor->second.outputs().size(); i++) {
-    poplar::Tensor o = graph.clone(visitor->second.outputs()[i]);
-    seq.add(poplar::program::Copy(visitor->second.outputs()[i], o));
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
+    InlineCallVisitor inline_visitor(&graph, res, inputs);
+    TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&inline_visitor));
+
+    seq.add(inline_visitor.sequence);
+
+    for (size_t i = 0; i < inline_visitor.outputs().size(); i++) {
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
+                                         inline_visitor.outputs()[i]));
+    }
+
+  } else {
+    // Pre-compiled callable sub-computation exists
+
+    for (int64 i = 0; i < op_count; i++) {
+      poplar::Tensor t;
+      TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
+      seq.add(poplar::program::Copy(t, subcomp_visitor->second.inputs()[i]));
+    }
+
+    seq.add(subcomp_visitor->second.sequence);
+
+    for (size_t i=0; i<subcomp_visitor->second.outputs().size(); i++) {
+      poplar::Tensor o = graph.clone(subcomp_visitor->second.outputs()[i]);
+      seq.add(poplar::program::Copy(subcomp_visitor->second.outputs()[i], o));
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
+    }
   }
 
   return seq;
 }
+
 
 port::StatusOr<poplar::program::Program>
 CreateWhileOp(poplar::Graph &graph,

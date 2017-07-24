@@ -60,6 +60,7 @@ cc_library(
     srcs = [
         "add_default_attributes.cc",
         "backports.cc",
+        "fake_quantize_training.cc",
         "fold_batch_norms.cc",
         "fold_constants_lib.cc",
         "fold_old_batch_norms.cc",
@@ -109,6 +110,7 @@ tf_cc_test(
     srcs = [
         "add_default_attributes_test.cc",
         "backports_test.cc",
+        "fake_quantize_training_test.cc",
         "fold_batch_norms_test.cc",
         "fold_constants_test.cc",
         "fold_old_batch_norms_test.cc",

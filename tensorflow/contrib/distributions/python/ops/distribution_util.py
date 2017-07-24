@@ -19,22 +19,153 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops.distributions import util
 from tensorflow.python.ops.distributions.util import *  # pylint: disable=wildcard-import
 
 
-# TODO(b/35290280): Add unit-tests.
-def make_diag_scale(loc, scale_diag, scale_identity_multiplier,
-                    validate_args, assert_positive, name=None):
-  """Creates a LinOp from `scale_diag`, `scale_identity_multiplier` kwargs."""
-  def _convert_to_tensor(x, name):
-    return None if x is None else ops.convert_to_tensor(x, name=name)
+def _convert_to_tensor(x, name):
+  return None if x is None else ops.convert_to_tensor(x, name=name)
+
+
+def make_tril_scale(
+    loc=None,
+    scale_tril=None,
+    scale_diag=None,
+    scale_identity_multiplier=None,
+    shape_hint=None,
+    validate_args=False,
+    assert_positive=False,
+    name=None):
+  """Creates a LinOp representing a lower triangular matrix.
+
+  Args:
+    loc: Floating-point `Tensor`. This is used for inferring shape in the case
+      where only `scale_identity_multiplier` is set.
+    scale_tril: Floating-point `Tensor` representing the diagonal matrix.
+      `scale_diag` has shape [N1, N2, ...  k, k], which represents a k x k
+      lower triangular matrix.
+      When `None` no `scale_tril` term is added to the LinOp.
+      The upper triangular elements above the diagonal are ignored.
+    scale_diag: Floating-point `Tensor` representing the diagonal matrix.
+      `scale_diag` has shape [N1, N2, ...  k], which represents a k x k
+      diagonal matrix.
+      When `None` no diagonal term is added to the LinOp.
+    scale_identity_multiplier: floating point rank 0 `Tensor` representing a
+      scaling done to the identity matrix.
+      When `scale_identity_multiplier = scale_diag = scale_tril = None` then
+      `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
+      to `scale`.
+    shape_hint: scalar integer `Tensor` representing a hint at the dimension of
+      the identity matrix when only `scale_identity_multiplier` is set.
+    validate_args: Python `bool` indicating whether arguments should be
+      checked for correctness.
+    assert_positive: Python `bool` indicating whether LinOp should be checked
+      for being positive definite.
+    name: Python `str` name given to ops managed by this object.
+
+  Returns:
+    `LinearOperator` representing a lower triangular matrix.
+
+  Raises:
+    ValueError:  If only `scale_identity_multiplier` is set and `loc` and
+      `shape_hint` are both None.
+  """
+
+  def _maybe_attach_assertion(x):
+    if not validate_args:
+      return x
+    if assert_positive:
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_positive(
+              array_ops.matrix_diag_part(x),
+              message="diagonal part must be positive"),
+      ], x)
+    return control_flow_ops.with_dependencies([
+        check_ops.assert_none_equal(
+            array_ops.matrix_diag_part(x),
+            array_ops.zeros([], x.dtype),
+            message="diagonal part must be non-zero"),
+    ], x)
+
+  with ops.name_scope(name, "make_tril_scale",
+                      values=[loc, scale_diag, scale_identity_multiplier]):
+
+    loc = _convert_to_tensor(loc, name="loc")
+    scale_tril = _convert_to_tensor(scale_tril, name="scale_tril")
+    scale_diag = _convert_to_tensor(scale_diag, name="scale_diag")
+    scale_identity_multiplier = _convert_to_tensor(
+        scale_identity_multiplier,
+        name="scale_identity_multiplier")
+
+  if scale_tril is not None:
+    scale_tril = array_ops.matrix_band_part(scale_tril, -1, 0)  # Zero out TriU.
+    tril_diag = array_ops.matrix_diag_part(scale_tril)
+    if scale_diag is not None:
+      tril_diag += scale_diag
+    if scale_identity_multiplier is not None:
+      tril_diag += scale_identity_multiplier[..., array_ops.newaxis]
+
+    scale_tril = array_ops.matrix_set_diag(scale_tril, tril_diag)
+
+    return linalg.LinearOperatorTriL(
+        tril=_maybe_attach_assertion(scale_tril),
+        is_non_singular=True,
+        is_self_adjoint=False,
+        is_positive_definite=assert_positive)
+
+  return make_diag_scale(
+      loc=loc,
+      scale_diag=scale_diag,
+      scale_identity_multiplier=scale_identity_multiplier,
+      shape_hint=shape_hint,
+      validate_args=validate_args,
+      assert_positive=assert_positive,
+      name=name)
+
+
+def make_diag_scale(
+    loc=None,
+    scale_diag=None,
+    scale_identity_multiplier=None,
+    shape_hint=None,
+    validate_args=False,
+    assert_positive=False,
+    name=None):
+  """Creates a LinOp representing a diagonal matrix.
+
+  Args:
+    loc: Floating-point `Tensor`. This is used for inferring shape in the case
+      where only `scale_identity_multiplier` is set.
+    scale_diag: Floating-point `Tensor` representing the diagonal matrix.
+      `scale_diag` has shape [N1, N2, ...  k], which represents a k x k
+      diagonal matrix.
+      When `None` no diagonal term is added to the LinOp.
+    scale_identity_multiplier: floating point rank 0 `Tensor` representing a
+      scaling done to the identity matrix.
+      When `scale_identity_multiplier = scale_diag = scale_tril = None` then
+      `scale += IdentityMatrix`. Otherwise no scaled-identity-matrix is added
+      to `scale`.
+    shape_hint: scalar integer `Tensor` representing a hint at the dimension of
+      the identity matrix when only `scale_identity_multiplier` is set.
+    validate_args: Python `bool` indicating whether arguments should be
+      checked for correctness.
+    assert_positive: Python `bool` indicating whether LinOp should be checked
+      for being positive definite.
+    name: Python `str` name given to ops managed by this object.
+
+  Returns:
+    `LinearOperator` representing a lower triangular matrix.
+
+  Raises:
+    ValueError:  If only `scale_identity_multiplier` is set and `loc` and
+      `shape_hint` are both None.
+  """
 
   def _maybe_attach_assertion(x):
     if not validate_args:
@@ -67,23 +198,24 @@ def make_diag_scale(loc, scale_diag, scale_identity_multiplier,
           is_self_adjoint=True,
           is_positive_definite=assert_positive)
 
-    # TODO(b/35290280): Consider inferring shape from scale_perturb_factor.
-    if loc is None:
+    if loc is None and shape_hint is None:
       raise ValueError(
-          "Cannot infer `event_shape` unless `loc` is specified.")
+          "Cannot infer `event_shape` unless `loc` or "
+          "`shape_hint` is specified.")
 
-    num_rows = util.dimension_size(loc, -1)
+    if shape_hint is None:
+      shape_hint = loc.shape[-1]
 
     if scale_identity_multiplier is None:
       return linalg.LinearOperatorIdentity(
-          num_rows=num_rows,
+          num_rows=shape_hint,
           dtype=loc.dtype.base_dtype,
           is_self_adjoint=True,
           is_positive_definite=True,
           assert_proper_shapes=validate_args)
 
     return linalg.LinearOperatorScaledIdentity(
-        num_rows=num_rows,
+        num_rows=shape_hint,
         multiplier=_maybe_attach_assertion(scale_identity_multiplier),
         is_non_singular=True,
         is_self_adjoint=True,
@@ -170,12 +302,33 @@ def prefer_static_broadcast_shape(
       statically), or as a `Tensor`.
   """
   with ops.name_scope(name, values=[shape1, shape2]):
-    if (tensor_util.constant_value(shape1) is not None and
-        tensor_util.constant_value(shape2) is not None):
-      return array_ops.broadcast_static_shape(
-          tensor_shape.TensorShape(tensor_util.constant_value(shape1)),
-          tensor_shape.TensorShape(tensor_util.constant_value(shape2)))
-    return array_ops.broadcast_dynamic_shape(shape1, shape2)
+    def make_shape_tensor(x):
+      return ops.convert_to_tensor(x, name="shape", dtype=dtypes.int32)
+
+    def get_tensor_shape(s):
+      if isinstance(s, tensor_shape.TensorShape):
+        return s
+      s_ = tensor_util.constant_value(make_shape_tensor(s))
+      if s_ is not None:
+        return tensor_shape.TensorShape(s_)
+      return None
+
+    def get_shape_tensor(s):
+      if not isinstance(s, tensor_shape.TensorShape):
+        return make_shape_tensor(s)
+      if s.is_fully_defined():
+        return make_shape_tensor(s.as_list())
+      raise ValueError("Cannot broadcast from partially "
+                       "defined `TensorShape`.")
+
+    shape1_ = get_tensor_shape(shape1)
+    shape2_ = get_tensor_shape(shape2)
+    if shape1_ is not None and shape2_ is not None:
+      return array_ops.broadcast_static_shape(shape1_, shape2_)
+
+    shape1_ = get_shape_tensor(shape1)
+    shape2_ = get_shape_tensor(shape2)
+    return array_ops.broadcast_dynamic_shape(shape1_, shape2_)
 
 
 def is_diagonal_scale(scale):

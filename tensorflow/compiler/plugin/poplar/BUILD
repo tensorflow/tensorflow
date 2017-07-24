@@ -18,11 +18,13 @@ cc_library(
     srcs = [
         "driver/allocation_finder.cc",
         "driver/fuse_ops.cc",
+        "driver/hlo_matcher.cc",
         "driver/outliner.cc",
     ],
     hdrs = [
         "driver/allocation_finder.h",
         "driver/fuse_ops.h",
+        "driver/hlo_matcher.h",
         "driver/outliner.h",
     ],
     deps = [
@@ -51,9 +53,10 @@ cc_library(
         "driver/tensor_ops.cc",
         "driver/transfer_manager.cc",
         "driver/visitor_base.cc",
-        "driver/visitor_call.cc",
         "driver/visitor_full.cc",
+        "driver/visitor_inline_call.cc",
         "driver/visitor_map.cc",
+        "driver/visitor_subcomputation.cc",
     ],
     hdrs = [
         "driver/compiler.h",
@@ -68,9 +71,10 @@ cc_library(
         "driver/transfer_manager.h",
         "driver/vertex_templates.h",
         "driver/visitor_base.h",
-        "driver/visitor_call.h",
         "driver/visitor_full.h",
+        "driver/visitor_inline_call.h",
         "driver/visitor_map.h",
+        "driver/visitor_subcomputation.h",
     ],
     deps = [
         ":optimizers",
@@ -128,6 +132,17 @@ cc_test(
 cc_test(
     name = "outliner_test",
     srcs = ["tests/outliner_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "hlo_matcher_test",
+    srcs = ["tests/hlo_matcher_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -274,6 +289,8 @@ test_suite(
         "allocation_finder_test",
         "batch_norm_test",
         "tensor_array_test",
+        "fuse_ops_test",
+        "hlo_matcher_test",
     ],
 )
 
@@ -291,6 +308,8 @@ test_suite(
         "64_bit_test",
         "allocation_finder_test",
         "batch_norm_test",
+        "fuse_ops_test",
+        "hlo_matcher_test",
     ],
 )
 

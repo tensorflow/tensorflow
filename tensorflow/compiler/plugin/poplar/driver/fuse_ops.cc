@@ -21,38 +21,63 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-bool FuseOps::ShouldFuse(HloInstruction* consumer, int64 operand_index) {
-  HloInstruction* producer = consumer->mutable_operand(operand_index);
-  if (producer->IsConstant() &&
-      consumer->opcode() == HloOpcode::kDynamicUpdateSlice &&
-      operand_index == 2) {
-    return true;
-  }
-
-  if (producer->IsConstant() &&
-      consumer->opcode() == HloOpcode::kDynamicSlice &&
-      operand_index == 1) {
-    return true;
-  }
-
-  if (producer->opcode() == HloOpcode::kRng &&
-      consumer->opcode() == HloOpcode::kWhile &&
-      consumer->while_condition()->name().substr(0, 16) == "truncated_normal") {
-    return true;
-  }
-
-  if (producer->opcode() == HloOpcode::kConstant &&
-      consumer->opcode() == HloOpcode::kMaximum &&
-      producer->literal().IsAll(0)) {
-    return true;
-  }
-  return false;
+static bool IsTruncatedNormalWhile(HloInstruction* inst) {
+  return inst->while_condition()->name().substr(0, 16) == "truncated_normal";
 }
 
-HloInstruction::FusionKind
-FuseOps::ChooseKind(const HloInstruction* producer,
-                    const HloInstruction* consumer) {
-  return HloInstruction::FusionKind::kCustom;
+static bool IsConstantZero(HloInstruction* inst) {
+  return inst->literal().IsAll(0);
+}
+
+static const std::vector<HloMatcherPattern> patterns = {
+  // dynamic update slice with constant coordinate
+  {{HloOpcode::kDynamicUpdateSlice, nullptr, {-1, -1, 1}},
+   {HloOpcode::kConstant, nullptr, {}}},
+
+  // dynamic slice with constant coordinate
+  {{HloOpcode::kDynamicSlice, nullptr, {-1, 1}},
+   {HloOpcode::kConstant, nullptr, {}}},
+
+  // Truncated normal
+  {{HloOpcode::kWhile, IsTruncatedNormalWhile, {1}},
+   {HloOpcode::kRng, nullptr, {}}},
+
+  // Relu
+  {{HloOpcode::kMaximum, nullptr, {-1, 1}},
+   {HloOpcode::kConstant, IsConstantZero, {}}},
+};
+
+FuseOps::FuseOps() : HloMatcher(patterns, false) {}
+
+ReplacedInstructions FuseOps::ReplaceNodes(unsigned int pattern,
+                                           const HloMatcherMatched& match) {
+  ReplacedInstructions replaced;
+
+  HloInstruction* inst = match.instructions[0];
+
+  HloInstruction* fusion_instruction =
+      match.computation->AddInstruction(
+          HloInstruction::CreateFusion(inst->shape(),
+                                       HloInstruction::FusionKind::kCustom,
+                                       inst));
+
+  if (!match.computation->ReplaceInstruction(inst, fusion_instruction).ok()) {
+    return replaced;
+  }
+
+  replaced.push_back(inst);
+
+  for (unsigned int i=1; i<match.instructions.size(); i++) {
+    fusion_instruction->FuseInstruction(match.instructions[i]);
+    if (match.instructions[i]->user_count() == 0) {
+      if (!match.computation->RemoveInstruction(match.instructions[i]).ok()) {
+        return replaced;
+      }
+      replaced.push_back(match.instructions[i]);
+    }
+  }
+
+  return replaced;
 }
 
 }

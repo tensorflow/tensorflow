@@ -29,7 +29,6 @@ CreateSliceUpdateOp(poplar::Graph &graph,
   poplar::Tensor update;
   TF_ASSIGN_OR_RETURN(update,
                       FindInstructionInput(tensor_map, inst, 1, 0));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, input));
 
   const HloInstruction* root = inst->fused_expression_root();
 
@@ -42,6 +41,22 @@ CreateSliceUpdateOp(poplar::Graph &graph,
                         "Invalid update slice start");
   }
 
+  /* We update in place.  If the tensor isn't acceptable for update in place
+   * then make a copy first */
+  poplar::program::Sequence seq;
+  if (!input.isParallelWriteable()) {
+    poplar::Tensor copy;
+    TF_ASSIGN_OR_RETURN(copy,
+                        AddTensor(graph,
+                                  inst,
+                                  XlaShapeFromPoplarShape(
+                                          output_shape.element_type(),
+                                          input.shape()),
+                                  res));
+    seq.add(poplar::program::Copy(input, copy));
+    input = copy;
+  }
+
   std::vector<std::size_t> s_begin =
           convert_array<std::vector<std::size_t>>(begin);
   std::vector<std::size_t> s_end = s_begin;
@@ -49,8 +64,11 @@ CreateSliceUpdateOp(poplar::Graph &graph,
     s_end[i] += update.dim(i);
   }
   poplar::Tensor slice = input.slice(s_begin, s_end);
+  seq.add(poplar::program::Copy(update, slice));
 
-  return poplar::program::Copy(update, slice);
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, input));
+
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>

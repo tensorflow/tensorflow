@@ -154,6 +154,11 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("string").is_integer, False)
     self.assertEqual(dtypes.as_dtype("bool").is_integer, False)
     self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("qint8").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("qint16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("qint32").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("quint8").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("quint16").is_integer, False)
 
   def testIsFloating(self):
     self.assertEqual(dtypes.as_dtype("int8").is_floating, False)
@@ -169,6 +174,11 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("string").is_floating, False)
     self.assertEqual(dtypes.as_dtype("bool").is_floating, False)
     self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("qint8").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("qint16").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("qint32").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("quint8").is_floating, False)
+    self.assertEqual(dtypes.as_dtype("quint16").is_floating, False)
 
   def testIsComplex(self):
     self.assertEqual(dtypes.as_dtype("int8").is_complex, False)
@@ -183,7 +193,12 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("float64").is_complex, False)
     self.assertEqual(dtypes.as_dtype("string").is_complex, False)
     self.assertEqual(dtypes.as_dtype("bool").is_complex, False)
-    self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("bfloat16").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("qint8").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("qint16").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("qint32").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("quint8").is_complex, False)
+    self.assertEqual(dtypes.as_dtype("quint16").is_complex, False)
 
   def testIsUnsigned(self):
     self.assertEqual(dtypes.as_dtype("int8").is_unsigned, False)
@@ -198,7 +213,12 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.as_dtype("string").is_unsigned, False)
     self.assertEqual(dtypes.as_dtype("complex64").is_unsigned, False)
     self.assertEqual(dtypes.as_dtype("complex128").is_unsigned, False)
-    self.assertEqual(dtypes.as_dtype("bfloat16").is_integer, False)
+    self.assertEqual(dtypes.as_dtype("bfloat16").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("qint8").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("qint16").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("qint32").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("quint8").is_unsigned, False)
+    self.assertEqual(dtypes.as_dtype("quint16").is_unsigned, False)
 
   def testMinMax(self):
     # make sure min/max evaluates for all data types that have min/max

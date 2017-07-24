@@ -188,22 +188,24 @@ public:
   Status DefaultAction(HloInstruction*) override { return Status::OK(); }
 
   Status HandleCall(HloInstruction* inst) override {
-    targets.insert(inst->to_apply());
+    targets[inst->to_apply()]++;
     return Status::OK();
   }
 
   Status HandleWhile(HloInstruction* inst) override {
-    targets.insert(inst->while_condition());
-    targets.insert(inst->while_body());
+    // While targets should always be compiled outlined - so we
+    // add 2 to ensure that they will be.
+    targets[inst->while_condition()] += 2;
+    targets[inst->while_body()] += 2;
     return Status::OK();
   }
-  std::set<HloComputation*> targets;
+
+  std::map<HloComputation*,int> targets;
 };
 
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("IPU");
   pipeline.AddPass<Inliner>();
-  pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
 
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
@@ -212,6 +214,7 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
   pipeline.AddPass<Outliner>(1);
+  pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(hlo_module).status();
@@ -262,9 +265,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   TF_RETURN_IF_ERROR(finder.CreateAllocationMap(hlo_module.get()));
   resources.tensor_allocation_map = std::move(finder.tensor_allocation_map);
 
-  for (const auto& comp : call_finder.targets) {
-    if (comp != entry) {
-      // If this computation is a target of a 'call' then compile
+  for (const auto& it : call_finder.targets) {
+    auto& comp = it.first;
+
+    if (comp != entry && it.second > 1) {
+      // If this computation is a target of a call or while then compile
       // it and store in compiler resources
       VLOG(1) << "Compiling sub-computation " << comp->name();
       resources.computation_map.emplace(
