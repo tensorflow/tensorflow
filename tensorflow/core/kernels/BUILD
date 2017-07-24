@@ -4309,6 +4309,7 @@ filegroup(
         "batchtospace_op.cc",
         "ctc_decoder_ops.cc",
         "decode_bmp_op.cc",
+        "decode_image_op.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
         "in_topk_op.cc",
@@ -4487,6 +4488,9 @@ cc_library(
         "//tensorflow/core:protos_cc",
         "//third_party/eigen3",
         "@gemmlowp//:gemmlowp",
+        "//tensorflow/core:android_jpeg_internal",
+        "//tensorflow/core:android_gif_internal",
+        "//tensorflow/core:android_png_internal",
     ],
     alwayslink = 1,
 )
