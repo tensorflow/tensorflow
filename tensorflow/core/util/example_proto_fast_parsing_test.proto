@@ -1,0 +1,21 @@
+// Protocol message for the fast Example parse unit test.
+syntax = "proto3";
+
+import "tensorflow/core/example/feature.proto";
+option cc_enable_arenas = true;
+
+package tensorflow;
+
+// This message is parallel to Example, but with additional fields to test
+// unknown fields handling in example_proto_fast_parsing_test.cc.
+message ExampleWithExtras {
+  Features features = 1;
+
+  string extra1 = 1337;
+  int64 extra2 = 1338;
+  fixed32 extra3 = 1339;
+  fixed64 extra4 = 1340;
+  double extra5 = 1341;
+  repeated float extra6 = 1342;
+  Features extra7 = 1343;
+};

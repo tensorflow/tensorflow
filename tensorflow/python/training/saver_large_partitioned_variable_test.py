@@ -13,16 +13,24 @@
 # limitations under the License.
 # =============================================================================
 """Tests for tensorflow.python.training.saver.py."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os
 
-import tensorflow as tf
+from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
+from tensorflow.python.training import saver
 
 
-class SaverLargePartitionedVariableTest(tf.test.TestCase):
+class SaverLargePartitionedVariableTest(test.TestCase):
 
   # Need to do this in a separate test because of the amount of memory needed
   # to run this test.
@@ -30,19 +38,19 @@ class SaverLargePartitionedVariableTest(tf.test.TestCase):
     save_path = os.path.join(self.get_temp_dir(), "large_variable")
     var_name = "my_var"
     # Saving large partition variable.
-    with tf.Session("", graph=tf.Graph()) as sess:
-      with tf.device("/cpu:0"):
+    with session.Session("", graph=ops.Graph()) as sess:
+      with ops.device("/cpu:0"):
         # Create a partitioned variable which is larger than int32 size but
         # split into smaller sized variables.
-        init = lambda shape, dtype, partition_info: tf.constant(
+        init = lambda shape, dtype, partition_info: constant_op.constant(
             True, dtype, shape)
-        partitioned_var = tf.create_partitioned_variables(
-            [1 << 31], [4], init, dtype=tf.bool, name=var_name)
-        tf.global_variables_initializer().run()
-        save = tf.train.Saver(partitioned_var)
+        partitioned_var = partitioned_variables.create_partitioned_variables(
+            [1 << 31], [4], init, dtype=dtypes.bool, name=var_name)
+        variables.global_variables_initializer().run()
+        save = saver.Saver(partitioned_var)
         val = save.save(sess, save_path)
         self.assertEqual(save_path, val)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

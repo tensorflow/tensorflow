@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Non-linear estimator tests."""
 
 from __future__ import absolute_import
@@ -21,39 +20,58 @@ from __future__ import print_function
 
 import random
 
-import tensorflow as tf
+from tensorflow.contrib.layers.python.layers import feature_column
+from tensorflow.contrib.learn.python.learn.datasets import base
+from tensorflow.contrib.learn.python.learn.estimators import dnn
+from tensorflow.contrib.learn.python.learn.estimators import run_config
+from tensorflow.python.framework import random_seed
+from tensorflow.python.platform import test
 
 
-class NonLinearTest(tf.test.TestCase):
+class NonLinearTest(test.TestCase):
   """Non-linear estimator tests."""
 
   def setUp(self):
     random.seed(42)
-    tf.set_random_seed(42)
+    random_seed.set_random_seed(42)
 
   def testIrisDNN(self):
-    iris = tf.contrib.learn.datasets.load_iris()
-    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = tf.contrib.learn.DNNClassifier(
-        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
-        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    iris = base.load_iris()
+    feature_columns = [feature_column.real_valued_column("", dimension=4)]
+    classifier = dnn.DNNClassifier(
+        feature_columns=feature_columns,
+        hidden_units=[10, 20, 10],
+        n_classes=3,
+        config=run_config.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
-    weights = classifier.weights_
-    self.assertEqual(weights[0].shape, (4, 10))
-    self.assertEqual(weights[1].shape, (10, 20))
-    self.assertEqual(weights[2].shape, (20, 10))
-    self.assertEqual(weights[3].shape, (10, 3))
-    biases = classifier.bias_
-    self.assertEqual(len(biases), 4)
+    variable_names = classifier.get_variable_names()
+    self.assertEqual(
+        classifier.get_variable_value("dnn/hiddenlayer_0/weights").shape,
+        (4, 10))
+    self.assertEqual(
+        classifier.get_variable_value("dnn/hiddenlayer_1/weights").shape,
+        (10, 20))
+    self.assertEqual(
+        classifier.get_variable_value("dnn/hiddenlayer_2/weights").shape,
+        (20, 10))
+    self.assertEqual(
+        classifier.get_variable_value("dnn/logits/weights").shape, (10, 3))
+    self.assertIn("dnn/hiddenlayer_0/biases", variable_names)
+    self.assertIn("dnn/hiddenlayer_1/biases", variable_names)
+    self.assertIn("dnn/hiddenlayer_2/biases", variable_names)
+    self.assertIn("dnn/logits/biases", variable_names)
 
   def testBostonDNN(self):
-    boston = tf.contrib.learn.datasets.load_boston()
-    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=13)]
-    regressor = tf.contrib.learn.DNNRegressor(
-        feature_columns=feature_columns, hidden_units=[10, 20, 10],
-        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
-    regressor.fit(
-        boston.data, boston.target, steps=300, batch_size=boston.data.shape[0])
+    boston = base.load_boston()
+    feature_columns = [feature_column.real_valued_column("", dimension=13)]
+    regressor = dnn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[10, 20, 10],
+        config=run_config.RunConfig(tf_random_seed=1))
+    regressor.fit(boston.data,
+                  boston.target,
+                  steps=300,
+                  batch_size=boston.data.shape[0])
     weights = ([regressor.get_variable_value("dnn/hiddenlayer_0/weights")] +
                [regressor.get_variable_value("dnn/hiddenlayer_1/weights")] +
                [regressor.get_variable_value("dnn/hiddenlayer_2/weights")] +
@@ -74,31 +92,40 @@ class NonLinearTest(tf.test.TestCase):
 
   def testDNNDropout0(self):
     # Dropout prob == 0.
-    iris = tf.contrib.learn.datasets.load_iris()
-    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = tf.contrib.learn.DNNClassifier(
-        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
-        dropout=0.0, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    iris = base.load_iris()
+    feature_columns = [feature_column.real_valued_column("", dimension=4)]
+    classifier = dnn.DNNClassifier(
+        feature_columns=feature_columns,
+        hidden_units=[10, 20, 10],
+        n_classes=3,
+        dropout=0.0,
+        config=run_config.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
 
   def testDNNDropout0_1(self):
     # Dropping only a little.
-    iris = tf.contrib.learn.datasets.load_iris()
-    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = tf.contrib.learn.DNNClassifier(
-        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
-        dropout=0.1, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    iris = base.load_iris()
+    feature_columns = [feature_column.real_valued_column("", dimension=4)]
+    classifier = dnn.DNNClassifier(
+        feature_columns=feature_columns,
+        hidden_units=[10, 20, 10],
+        n_classes=3,
+        dropout=0.1,
+        config=run_config.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
 
   def testDNNDropout0_9(self):
     # Dropping out most of it.
-    iris = tf.contrib.learn.datasets.load_iris()
-    feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = tf.contrib.learn.DNNClassifier(
-        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
-        dropout=0.9, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    iris = base.load_iris()
+    feature_columns = [feature_column.real_valued_column("", dimension=4)]
+    classifier = dnn.DNNClassifier(
+        feature_columns=feature_columns,
+        hidden_units=[10, 20, 10],
+        n_classes=3,
+        dropout=0.9,
+        config=run_config.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

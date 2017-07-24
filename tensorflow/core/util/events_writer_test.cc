@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/events_writer.h"
 
 #include <math.h>
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -140,7 +141,7 @@ TEST(EventWriter, FailFlush) {
   string filename = writer.FileName();
   WriteFile(&writer);
   TF_EXPECT_OK(env()->FileExists(filename));
-  env()->DeleteFile(filename);
+  TF_ASSERT_OK(env()->DeleteFile(filename));
   EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
   EXPECT_FALSE(writer.Flush());
   EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
@@ -152,7 +153,7 @@ TEST(EventWriter, FailClose) {
   string filename = writer.FileName();
   WriteFile(&writer);
   TF_EXPECT_OK(env()->FileExists(filename));
-  env()->DeleteFile(filename);
+  TF_ASSERT_OK(env()->DeleteFile(filename));
   EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
   EXPECT_FALSE(writer.Close());
   EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
@@ -187,7 +188,7 @@ TEST(EventWriter, NameClose) {
   string filename = writer.FileName();
   EXPECT_TRUE(writer.Close());
   TF_EXPECT_OK(env()->FileExists(filename));
-  env()->DeleteFile(filename);
+  TF_ASSERT_OK(env()->DeleteFile(filename));
 }
 
 TEST(EventWriter, FileDeletionBeforeWriting) {
@@ -197,7 +198,7 @@ TEST(EventWriter, FileDeletionBeforeWriting) {
   TF_EXPECT_OK(env()->FileExists(filename0));
   env()->SleepForMicroseconds(
       2000000);  // To make sure timestamp part of filename will differ.
-  env()->DeleteFile(filename0);
+  TF_ASSERT_OK(env()->DeleteFile(filename0));
   EXPECT_TRUE(writer.Init());  // Init should reopen file.
   WriteFile(&writer);
   EXPECT_TRUE(writer.Flush());

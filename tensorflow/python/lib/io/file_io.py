@@ -24,9 +24,13 @@ from __future__ import print_function
 import os
 import uuid
 
+import six
+
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 
 
 class FileIO(object):
@@ -34,7 +38,7 @@ class FileIO(object):
 
   The constructor takes the following arguments:
   name: name of the file
-  mode: one of 'r', 'w', 'a', 'r+', 'w+', 'a+'.
+  mode: one of 'r', 'w', 'a', 'r+', 'w+', 'a+'. Append 'b' for bytes mode.
 
   Can be used as an iterator to iterate over lines in the file.
 
@@ -47,6 +51,8 @@ class FileIO(object):
     self.__mode = mode
     self._read_buf = None
     self._writable_file = None
+    self._binary_mode = "b" in mode
+    mode = mode.replace("b", "")
     if mode not in ("r", "w", "a", "r+", "w+", "a+"):
       raise errors.InvalidArgumentError(
           None, None, "mode is not 'r' or 'w' or 'a' or 'r+' or 'w+' or 'a+'")
@@ -81,6 +87,12 @@ class FileIO(object):
         self._writable_file = pywrap_tensorflow.CreateWritableFile(
             compat.as_bytes(self.__name), compat.as_bytes(self.__mode), status)
 
+  def _prepare_value(self, val):
+    if self._binary_mode:
+      return compat.as_bytes(val)
+    else:
+      return compat.as_str_any(val)
+
   def size(self):
     """Returns the size of the file."""
     return stat(self.__name).length
@@ -101,7 +113,8 @@ class FileIO(object):
       n: Read 'n' bytes if n != -1. If n = -1, reads to end of file.
 
     Returns:
-      'n' bytes of the file (or whole file) requested as a string.
+      'n' bytes of the file (or whole file) in bytes mode or 'n' bytes of the
+      string if in string (regular) mode.
     """
     self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
@@ -109,19 +122,60 @@ class FileIO(object):
         length = self.size() - self.tell()
       else:
         length = n
-      return pywrap_tensorflow.ReadFromStream(self._read_buf, length, status)
+      return self._prepare_value(
+          pywrap_tensorflow.ReadFromStream(self._read_buf, length, status))
 
-  def seek(self, position):
-    """Seeks to the position in the file."""
+  @deprecation.deprecated_args(
+      None,
+      "position is deprecated in favor of the offset argument.",
+      "position")
+  def seek(self, offset=None, whence=0, position=None):
+    # TODO(jhseu): Delete later. Used to omit `position` from docs.
+    # pylint: disable=g-doc-args
+    """Seeks to the offset in the file.
+
+    Args:
+      offset: The byte count relative to the whence argument.
+      whence: Valid values for whence are:
+        0: start of the file (default)
+        1: relative to the current position of the file
+        2: relative to the end of file. offset is usually negative.
+    """
+    # pylint: enable=g-doc-args
     self._preread_check()
+    # We needed to make offset a keyword argument for backwards-compatibility.
+    # This check exists so that we can convert back to having offset be a
+    # positional argument.
+    # TODO(jhseu): Make `offset` a positional argument after `position` is
+    # deleted.
+    if offset is None and position is None:
+      raise TypeError("seek(): offset argument required")
+    if offset is not None and position is not None:
+      raise TypeError("seek(): offset and position may not be set "
+                      "simultaneously.")
+
+    if position is not None:
+      offset = position
+
     with errors.raise_exception_on_not_ok_status() as status:
-      ret_status = self._read_buf.Seek(position)
+      if whence == 0:
+        pass
+      elif whence == 1:
+        offset += self.tell()
+      elif whence == 2:
+        offset += self.size()
+      else:
+        raise errors.InvalidArgumentError(
+            None, None,
+            "Invalid whence argument: {}. Valid values are 0, 1, or 2."
+            .format(whence))
+      ret_status = self._read_buf.Seek(offset)
       pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""
     self._preread_check()
-    return compat.as_str_any(self._read_buf.ReadLineAsString())
+    return self._prepare_value(self._read_buf.ReadLineAsString())
 
   def readlines(self):
     """Returns all lines from the file in a list."""
@@ -136,9 +190,7 @@ class FileIO(object):
 
   def tell(self):
     """Returns the current position in the file."""
-    if not self._read_check_passed:
-      raise errors.PermissionDeniedError(None, None,
-                                         "File isn't open for reading")
+    self._preread_check()
     return self._read_buf.Tell()
 
   def __enter__(self):
@@ -218,20 +270,25 @@ def delete_file(filename):
     pywrap_tensorflow.DeleteFile(compat.as_bytes(filename), status)
 
 
-def read_file_to_string(filename):
+def read_file_to_string(filename, binary_mode=False):
   """Reads the entire contents of a file to a string.
 
   Args:
     filename: string, path to a file
+    binary_mode: whether to open the file in binary mode or not. This changes
+        the type of the object returned.
 
   Returns:
-    contents of the file as a string
+    contents of the file as a string or bytes.
 
   Raises:
     errors.OpError: Raises variety of errors that are subtypes e.g.
     NotFoundError etc.
   """
-  f = FileIO(filename, mode="r")
+  if binary_mode:
+    f = FileIO(filename, mode="rb")
+  else:
+    f = FileIO(filename, mode="r")
   return f.read()
 
 
@@ -250,23 +307,33 @@ def write_string_to_file(filename, file_content):
 
 
 def get_matching_files(filename):
-  """Returns a list of files that match the given pattern.
+  """Returns a list of files that match the given pattern(s).
 
   Args:
-    filename: string, the pattern
+    filename: string or iterable of strings. The glob pattern(s).
 
   Returns:
-    Returns a list of strings containing filenames that match the given pattern.
+    A list of strings containing filenames that match the given pattern(s).
 
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
   """
   with errors.raise_exception_on_not_ok_status() as status:
-    # Convert each element to string, since the return values of the
-    # vector of string should be interpreted as strings, not bytes.
-    return [compat.as_str_any(matching_filename)
-            for matching_filename in pywrap_tensorflow.GetMatchingFiles(
-                compat.as_bytes(filename), status)]
+    if isinstance(filename, six.string_types):
+      return [
+          # Convert the filenames to string from bytes.
+          compat.as_str_any(matching_filename)
+          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+              compat.as_bytes(filename), status)
+      ]
+    else:
+      return [
+          # Convert the filenames to string from bytes.
+          compat.as_str_any(matching_filename)
+          for single_filename in filename
+          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+              compat.as_bytes(single_filename), status)
+      ]
 
 
 def create_dir(dirname):
@@ -375,11 +442,8 @@ def is_directory(dirname):
   Returns:
     True, if the path is a directory; False otherwise
   """
-  try:
-    status = pywrap_tensorflow.TF_NewStatus()
-    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
-  finally:
-    pywrap_tensorflow.TF_DeleteStatus(status)
+  status = c_api_util.ScopedTFStatus()
+  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
 
 
 def list_directory(dirname):

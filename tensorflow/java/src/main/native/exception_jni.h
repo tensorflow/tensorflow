@@ -22,7 +22,7 @@ limitations under the License.
 extern "C" {
 #endif
 
-class TF_Status;
+struct TF_Status;
 
 extern const char kIllegalArgumentException[];
 extern const char kIllegalStateException[];

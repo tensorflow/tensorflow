@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "libxsmm/include/libxsmm.h"
-#include "libxsmm/include/libxsmm_dnn.h"
+#include "include/libxsmm.h"
+#include "include/libxsmm_dnn.h"
 
 namespace tensorflow {
 
@@ -36,9 +36,21 @@ bool CanUseXsmmConv2D(const libxsmm_dnn_conv_desc& desc,
 namespace functor {
 
 template <typename Device, typename T>
-struct XsmmConv2D {
-  void operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+struct XsmmFwdConv2D {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
                   const T* input, const T* filter, T* output);
+};
+
+template <typename Device, typename T>
+struct XsmmBkwInputConv2D {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+                  T* input, const T* filter, const T* output);
+};
+
+template <typename Device, typename T>
+struct XsmmBkwFilterConv2D {
+  bool operator()(OpKernelContext* ctx, const libxsmm_dnn_conv_desc& desc,
+                  const T* input, T* filter, const T* output);
 };
 
 }  // namespace functor

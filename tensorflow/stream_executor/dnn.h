@@ -33,11 +33,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-#include "third_party/eigen3/Eigen/Core"
+namespace Eigen {
+struct half;
+}  // namespace Eigen
 
 namespace perftools {
 namespace gputools {
 
+class HostBuffer;
 class Stream;
 class ScratchAllocator;
 
@@ -49,8 +52,11 @@ enum class DataLayout : int64 {
   kYXDepthBatch = 0,  // Same as dist_belief::DF_DEPTH_MAJOR.
   kYXBatchDepth,      // Same as dist_belief::DF_BATCH_MAJOR.
   kBatchYXDepth,      // Same as run_brain output, and tensorflow's layout.
-  kBatchDepthYX,      // cuDNN's NCHW layout, data laid out as image, feature,
+  kBatchDepthYX,      // cuDNN's NCHW layout, data laid out as image, feature
                       // maps, rows, columns.
+  kBatchDepthYX4,     // cuDNN's NCHW_VECT_C layout, data laid out the same as
+                      // kBatchDepthYX but each element is a vector of 4 feature
+                      // maps.
 };
 
 // Specifies an index to use when accessing specific spatial dimensions.
@@ -84,6 +90,7 @@ enum class DataType {
   kFloat = 0,
   kDouble = 1,
   kHalf = 2,
+  kInt8 = 3,
 };
 
 // A helper class to convert C/C++ types to the proper enums.
@@ -100,6 +107,10 @@ struct ToDataType<double> {
 template <>
 struct ToDataType<Eigen::half> {
   static constexpr DataType value = DataType::kHalf;
+};
+template <>
+struct ToDataType<int8> {
+  static constexpr DataType value = DataType::kInt8;
 };
 
 // Specifies the types of a RNN model.
@@ -124,6 +135,15 @@ enum class RnnDirectionMode {
   kRnnUnidirectional = 0,
   kRnnBidirectional = 1,
 };
+
+// Relevant to DepthToSpace and SpaceToDepth. This is the write layout when
+// performing depth to space and the read layout when performing space to depth.
+// It's specified with most-major dimension first and most-minor dimension last.
+// In DepthToSpace, the D*M² values are read in and then, for DepthHeightWidth,
+// written out to the output patch, by varying first width, then height, then
+// depth. In C array format, it looks like [depth][height][width]. See
+// DepthToSpace comment for more information.
+enum class DepthToSpaceLayout { DepthHeightWidth };
 
 // Specifies the descriptor for a RNN model.
 //
@@ -329,8 +349,10 @@ enum class FilterLayout : int64 {
   kOutputInputYX = 0,  // cuDNN's default filter layout, laid out as:
                        // (major) output feature maps >> input feature maps >>
                        // rows >> columns (minor).
-  kInputYXOutput,      // Same as dist_belief's default filter layout.
-  kYXInputOutput,      // Same as tensorflow's default filter layout.
+  kOutputInputYX4,  // laid out the same as kOutputInputYX but each element is a
+                    // vector of 4 feature maps.
+  kInputYXOutput,   // Same as dist_belief's default filter layout.
+  kYXInputOutput,   // Same as tensorflow's default filter layout.
 };
 
 // Returns a string representation of the given filter layout.
@@ -434,6 +456,17 @@ class FilterDescriptor {
   FilterLayout layout_;
 };
 
+// Describes how padding should be aligned when the total number of pad
+// elements is odd.
+enum class PadAlignment : int64 {
+  kDefault = 0,        // default padding for the device.
+  kCudnnPadding,       // cuDNN padding - prefer to pad at the start.
+  kTensorFlowPadding,  // TensorFlow padding - prefer to pad at the end.
+};
+
+// Returns a string representation of the given padding alignment.
+string PadAlignmentString(PadAlignment alignment);
+
 // Describes a convolution.
 //
 // Uses the named argument construction form:
@@ -490,7 +523,10 @@ class ConvolutionDescriptor {
     SetDim(&filter_strides_, dim, value);
     return *this;
   }
-
+  ConvolutionDescriptor& set_pad_alignment(PadAlignment pad_alignment) {
+    pad_alignment_ = pad_alignment;
+    return *this;
+  }
   int64 zero_padding_height() const {
     return GetDim(zero_padding_, DimIndex::Y);
   }
@@ -506,6 +542,7 @@ class ConvolutionDescriptor {
 
   int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
+  PadAlignment pad_alignment() const { return pad_alignment_; }
   int ndims() const { return ndims_; }
 
   std::vector<int64> strides() const { return filter_strides_; }
@@ -515,6 +552,7 @@ class ConvolutionDescriptor {
   // Stored as: .. y, x.
   std::vector<int64> zero_padding_;
   std::vector<int64> filter_strides_;
+  PadAlignment pad_alignment_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.
@@ -528,6 +566,13 @@ class ConvolutionDescriptor {
 enum class PoolingMode : int64 {
   kMaximum,
   kAverage,
+};
+
+// Specify the dimension in which to concatenate inputs in space.
+// Specify int64 so there's no padding in SpaceConcatenateMode.
+enum class SpaceConcatenateMode : int64 {
+  XDirection,
+  YDirection,
 };
 
 // Returns a short name for the pooling mode, e.g. "Avg".
@@ -646,7 +691,7 @@ class ProfileResult {
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
 
-// Describe the configuration for the algorithms that will used.
+// Describes the configuration for the algorithms that will used.
 //
 // Arguments:
 //  algorithm: the primary algorithm that should be used.
@@ -667,6 +712,14 @@ class AlgorithmConfig {
   void set_algorithm_no_scratch(AlgorithmType val) {
     algorithm_no_scratch_ = val;
   }
+  bool operator==(const AlgorithmConfig& other) const {
+    return this->algorithm_ == other.algorithm_ &&
+           this->algorithm_no_scratch_ == other.algorithm_no_scratch_;
+  }
+  bool operator!=(const AlgorithmConfig& other) const {
+    return !(*this == other);
+  }
+  string ToString() const;
 
  private:
   AlgorithmType algorithm_;
@@ -753,6 +806,7 @@ class NormalizeDescriptor {
 
 // Describes a kind of non-linearity (threshold-like mathematical function).
 enum class ActivationMode {
+  kNone,
   kSigmoid,
   // Rectified linear activation: f(x) = x < 0 ? 0 : x
   kRelu,
@@ -867,9 +921,11 @@ class DnnSupport {
   //  input_data: un-owned device memory region which contains the
   //    convolution input.
   //  filter_descriptor: dimensions of the convolution filter.
-  //  weights: coefficients for the convolution filter, these are multiplied
-  //    against values in the input that the filter convolves over.
   //  convolution_descriptor: stride of the convolution filter.
+  //  biases: un-owned device memory region containing biases to add to the
+  //  input. This can be DeviceMemory pointing to NULL only when activation_mode
+  //  is kNone.
+  //  activation_mode: Type of activation to perform.
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
@@ -902,16 +958,62 @@ class DnnSupport {
       const dnn::FilterDescriptor& filter_descriptor,
       const DeviceMemory<float>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a double-precision fused convolution, bias add, and activation
+  // operation onto the stream. See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<double>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<double>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<double>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<double>* output_data) {
+    return false;
+  }
+
+  // Enqueues a half-precision fused convolution, bias add, and activation
+  // operation onto the stream. See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<Eigen::half>& biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a single-precision convolution operation (without bias add
+  // or activation) onto the stream.
+  // See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<float>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
-  // Return a list of algorithms supported by the forward convolution pass.
-  virtual bool GetConvolveAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
-
-  // Enqueues a double-precision convolution operation onto the stream.
+  // Enqueues a double-precision convolution operation (without bias add
+  // or activation) onto the stream.
   // See DoConvolve above for argument details.
   virtual bool DoConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -922,7 +1024,8 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<double>* output_data) = 0;
 
-  // Enqueues a half-precision convolution operation onto the stream.
+  // Enqueues a half-precision convolution operation (without bias add
+  // or activation) onto the stream.
   // See DoConvolve above for argument details.
   virtual bool DoConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -935,6 +1038,36 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the forward convolution pass.
+  virtual bool GetConvolveAlgorithms(
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
+
+  // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
+  // coefficient_scales specifies the scaling of each column of coefficients:
+  // original float coefficient[row * num_columns + column] =
+  //     quantized coefficient[row * num_columns + column] *
+  //     coefficient_scales[column].
+  virtual bool DoConvolveQuantized(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int8>& filter_coefficients,
+      const DeviceMemory<float>& coefficient_scales,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data) = 0;
+
+  // Same as DoConvolveQuantized above, but int8 filter coefficients.
+  virtual bool DoConvolveQuantized(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<int16>& filter_coefficients,
+      const DeviceMemory<float>& coefficient_scales,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data) = 0;
 
   // Variation of the above with the weight matrix split into two matrices.
   // first_weights: Coefficients of the first matrix.
@@ -987,7 +1120,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   virtual bool DoConvolveBackwardData(
       Stream* stream, const FilterDescriptor& filter_descriptor,
@@ -1035,7 +1168,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   virtual bool DoConvolveBackwardFilter(
       Stream* stream, const BatchDescriptor& input_descriptor,
@@ -1214,11 +1347,36 @@ class DnnSupport {
   virtual bool DoPoolForward(Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
+                             const DeviceMemory<double>& input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemory<double>* output_data) {
+    LOG(FATAL) << "DoPoolForward not implemented for double.";
+    return false;
+  }
+
+  virtual bool DoPoolForward(Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<Eigen::half>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<Eigen::half>* output_data) = 0;
+                             DeviceMemory<Eigen::half>* output_data) {
+    LOG(FATAL) << "DoPoolForward not implemented for float16.";
+    return false;
+  }
 
   // Performs differentiation of the pooling operation.
+  virtual bool DoPoolBackward(Stream* stream,
+                              const dnn::PoolingDescriptor& pooling_dimensions,
+                              const dnn::BatchDescriptor& input_dimensions,
+                              const DeviceMemory<double>& input_data,
+                              const dnn::BatchDescriptor& output_dimensions,
+                              const DeviceMemory<double>& output_data,
+                              const DeviceMemory<double>& input_diff_data,
+                              DeviceMemory<double>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
+
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
                               const dnn::BatchDescriptor& input_dimensions,
@@ -1226,7 +1384,10 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<float>& output_data,
                               const DeviceMemory<float>& input_diff_data,
-                              DeviceMemory<float>* output_diff_data) = 0;
+                              DeviceMemory<float>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
 
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
@@ -1235,7 +1396,10 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<Eigen::half>& output_data,
                               const DeviceMemory<Eigen::half>& input_diff_data,
-                              DeviceMemory<Eigen::half>* output_diff_data) = 0;
+                              DeviceMemory<Eigen::half>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
 
   // Applies local response normalization to the values from
   // input_data and writes the result to output_data. See comments on
@@ -1298,7 +1462,9 @@ class DnnSupport {
   virtual bool DoActivate(Stream* stream, ActivationMode activation_mode,
                           const BatchDescriptor& dimensions,
                           const DeviceMemory<float>& input_data,
-                          DeviceMemory<float>* output_data) = 0;
+                          DeviceMemory<float>* output_data, uint64 options) {
+    return false;
+  }
 
   // Concatenates several layers into one, by concatenating the depth of each
   // layer at matching x and y coordinates.
@@ -1318,6 +1484,129 @@ class DnnSupport {
       Stream* stream, port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
       port::ArraySlice<const DeviceMemory<float>*> input_data,
       DeviceMemory<float>* output_data) = 0;
+
+  // Concatenates several layers into one, by concatenating each in the
+  // x-dimension or y-dimension, based on a user-specified flag.
+  // For x-concatenation, layers are aligned at matching y and depth
+  // coordinates, and for y-concatenation, they are aligned at matching x and
+  // depth coordinates. The inputs must all have the same depth and batch size.
+  // For x-concatenation, the inputs must have the same height (y-size), and the
+  // output will have the same depth and height as the inputs and its width (x-
+  // size) will be the sum of the input widths.  For y-concatenation, the inputs
+  // must have the same width, and the output will have the same depth and width
+  // as the inputs, and its height will be the sum of the input heights.
+  //
+  // Arguments:
+  //  stream: borrowed pointer to the stream that the 'space concatenate'
+  //    operation should be enqueued onto.
+  //  input_dimensions: the dimensions of each input.
+  //  input_data: un-owned device memory region which contains the input data
+  //    for each input layer.
+  //  output_data: un-owned device memory region in which to place the space
+  //    concatenate result.
+  //  concat_direction:  either dnn:SpaceConcatenateMode::XDirection or
+  //    dnn::SpaceConcatenateMode::YDirection.
+  virtual bool DoSpaceConcatenate(
+      Stream* stream, port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
+      port::ArraySlice<const DeviceMemory<float>*> input_data,
+      DeviceMemory<float>* output_data,
+      dnn::SpaceConcatenateMode concat_direction) {
+    return false;
+  }
+
+  // Change the layout of the data by shrinking one dimension (or set of
+  // dimensions) and growing another dimension (or set of dimensions), while
+  // keeping the total number of data elements constant, and maintaining the
+  // current data ordering.
+  //
+  // Currently, the only supported operation is depth into space by a power of
+  // 2. E.g. (y, x, z) -> (y*2, x*2, z/4)
+  //
+  // Note that Reshape may not be a no-op, depending on the platform and which
+  // dimensions are being changed.
+  //
+  // Example: forgetting about batch for the moment, let's take a tensor that's
+  // 2x1x8 (y by x by z) and reshape to a tensor that's 4x2x2. The memory layout
+  // is row-major order: y,x,z. I.e. z changes the fastest, then x, then y. The
+  // elements of the tensor range from 0 to 15. The x,y,z indices are below each
+  // element.
+  //
+  //  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15
+  // y0 y0 y0 y0 y0 y0 y0 y0 y1 y1 y1 y1 y1 y1 y1 y1
+  // x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0
+  // z0 z1 z2 z3 z4 z5 z6 z7 z0 z1 z2 z3 z4 z5 z6 z7
+  //
+  // reshape to 4x2x2
+  //
+  //  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15
+  // y0 y0 y0 y0 y1 y1 y1 y1 y2 y2 y2 y2 y3 y3 y3 y3
+  // x0 x0 x1 x1 x0 x0 x1 x1 x0 x0 x1 x1 x0 x0 x1 x1
+  // z0 z1 z0 z1 z0 z1 z0 z1 z0 z1 z0 z1 z0 z1 z0 z1
+  virtual bool DoReshape(Stream* stream,
+                         const dnn::BatchDescriptor& input_dimensions,
+                         const DeviceMemory<float>& input_data,
+                         const dnn::BatchDescriptor& output_dimensions,
+                         DeviceMemory<float>* output_data) {
+    return false;
+  }
+
+  // Depth to space takes an X by Y image with depth D*M² and changes it to an
+  // MX x MY image with depth D. Each input location (x,y) with depth D*M² in
+  // the input image is changed to an MxM contiguous area in the output image,
+  // with the values being laid out in the raster order by DepthToSpaceLayout,
+  // and will have a new depth of D.
+  //
+  // Example.
+  // M=2, Din =8, Xin=2, Yin=2. Xout=4, Yout=4,  Dout=2
+  // DepthHeightWidth layout
+  // Values within a 'cell' are at different depths and same x & y.
+  // Input:
+  // abcdefgh  ijklmnop
+  // qrstuvwx  yz012345
+  // Output:
+  // ae bf im jn
+  // cg dh ko lp
+  // qu rv y2 z3
+  // sw tx 04 15
+  //
+  // sqrt_depth_reduction: 'M' in the comment above
+  virtual bool DoDepthToSpace(Stream* stream,
+                              const dnn::BatchDescriptor& input_dimensions,
+                              const DeviceMemory<float>& input_data,
+                              const DepthToSpaceLayout& depth_to_space_layout,
+                              const int& sqrt_depth_reduction,
+                              DeviceMemory<float>* output_data) {
+    return false;
+  }
+
+  // Space to depth is the inverse of depth to space. Space to depth takes each
+  // non-overlapping M by M patch (in the X and Y dimensions) with depth D of
+  // the input, and transforms it to a 1 by 1 patch with depth D*M². If the
+  // input has size (MX, MY, D), the output has size (X, Y, D*M²). The number of
+  // data elements is not changed.
+  //
+  // Example.
+  // M=2, Din =2, Xin=4, Yin=4,  Dout=8
+  // DepthHeightWidth layout
+  // Values within a 'cell' are at different depths and same x & y.
+  // Input:
+  // ae bf im jn
+  // cg dh ko lp
+  // qu rv y2 z3
+  // sw tx 04 15
+  // Output:
+  // abcdefgh  ijklmnop
+  // qrstuvwx  yz012345
+  //
+  // sqrt_depth_increase: 'M' in the comment above
+  virtual bool DoSpaceToDepth(Stream* stream,
+                              const dnn::BatchDescriptor& input_dimensions,
+                              const DeviceMemory<float>& input_data,
+                              const DepthToSpaceLayout& space_to_depth_layout,
+                              const int& sqrt_depth_increase,
+                              DeviceMemory<float>* output_data) {
+    return false;
+  }
 
   // Computes the specified operation (e.g. addition or multiplication)
   // between corresponding elements in the inputs and stores the result in the
@@ -1341,6 +1630,37 @@ class DnnSupport {
       port::ArraySlice<const DeviceMemory<float>*> input_data,
       const dnn::BatchDescriptor& output_dimensions,
       DeviceMemory<float>* output_data) = 0;
+
+  // Computes the specified operation (e.g. addition or multiplication)
+  // between corresponding elements in the inputs and stores the result in the
+  // output element. Each input is multiplied by a scalar constant and the
+  // result is divided by a scalar constant.
+  // e.g. To perform Z = 0.9*X + 1.1*Y, set the input multiplicands to 9 and 11
+  // and the output divisor to 10.
+  // The inputs and output must all have the same dimensions, but may have
+  // different quantization parameters (min_value and max_value).
+  //
+  // Arguments (all borrowed):
+  //  stream: borrowed pointer to the stream that the 'elementwise operation'
+  // should be enqueued onto.
+  //  operation: The operation to perform.
+  //  input_multiplicands: Amount to scale each input.
+  //  output_divisor: Amount to divide the output.
+  //  input_dimensions: The dimensions of each input.
+  //  input_data: un-owned device memory region which contains the
+  //    input data for each input layer.
+  //  output_dimensions: The dimensions of the output.
+  //  output_data: un-owned device memory region in which to place the
+  //    operation result.
+  virtual bool DoElementwiseOperateScaledQuantized(
+      Stream* stream, ElementwiseOperation operation,
+      port::ArraySlice<int> input_multiplicands, int output_divisor,
+      port::ArraySlice<dnn::BatchDescriptor> input_dimensions,
+      port::ArraySlice<const DeviceMemory<float>*> input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemory<float>* output_data) {
+    return false;
+  }
 
   // Pads the input with zeros in the X and Y dimensions. The feature_map
   // dimension is unchanged.
@@ -1381,6 +1701,43 @@ class DnnSupport {
                     const DeviceMemory<float> &input_data,
                     int64 left_trim, int64 right_trim, int64 top_trim,
                     int64 bottom_trim, DeviceMemory<float> *output_data) = 0;
+
+  // Grows the input tensor by replicating the X and Y dimensions. The batch and
+  // depth/feature_map dimensions are unchanged. Currently, the input tensor is
+  // limited to X=1 and Y=1.
+  //
+  // For example, the input has dimensions x=2, y=3, and replicate_x=3,
+  // replicate_y=2. The diagonal elements of the output would be: [x0y0, x1y1,
+  // x0y2, x1y0, x0y1, x1y2].
+  // Here is the example as a picture. input:
+  // AB
+  // CD
+  // EF
+  // broadcast result:
+  // ABABAB
+  // CDCDCD
+  // EFEFEF
+  // ABABAB
+  // CDCDCD
+  // EFEFEF
+  //
+  // Arguments (all borrowed):
+  //  stream: borrowed pointer to the stream that the 'elementwise operation'
+  // should be enqueued onto.
+  //  dimensions: The dimensions of the input.
+  //  input_data: un-owned device memory region which contains the
+  //    input data for the input layer.
+  //  replicate_x: Amount to replicate the input's X dimension.
+  //  replicate_y: Amount to replicate the input's Y dimension.
+  //  output_data: un-owned device memory region in which to place the
+  //    padded result.
+  virtual bool DoXYBroadcast(Stream* stream,
+                             const dnn::BatchDescriptor& dimensions,
+                             const DeviceMemory<float>& input_data,
+                             int64 replicate_x, int64 replicate_y,
+                             DeviceMemory<float>* output_data) {
+    return false;
+  }
 
   // Enqueues an asynchronous memcpy of the *quantized* output of a layer (that
   // is, bytes instead of scaled floats) into 'host_dst' if they are available
@@ -1425,6 +1782,21 @@ class DnnSupport {
       QuantizedActivationMode mode,
       DeviceMemory<float>* gpu_unquantized_dst) = 0;
 
+  // Enqueues an asynchronous copy of the contents of buffer_src to
+  // gpu_unquantized_dst.
+  virtual bool DoCopyHostBuffer2Device(
+      Stream* stream, HostBuffer* buffer_src,
+      DeviceMemory<float>* gpu_unquantized_dst) {
+    return false;
+  }
+
+  // Enqueues an asynchronous copy of the contents of gpu_unquantized_src to
+  // buffer_dst.
+  virtual bool DoCopyDevice2HostBuffer(
+      Stream* stream, const DeviceMemory<float>& gpu_unquantized_src,
+      HostBuffer* buffer_dst) {
+    return false;
+  }
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
@@ -1530,6 +1902,25 @@ class DnnSupport {
     return false;
   }
 
+  virtual bool DoRnnForward(Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+                            const dnn::RnnSequenceTensorDescriptor& input_desc,
+                            const DeviceMemory<double>& input_data,
+                            const dnn::RnnStateTensorDescriptor& input_h_desc,
+                            const DeviceMemory<double>& input_h_data,
+                            const dnn::RnnStateTensorDescriptor& input_c_desc,
+                            const DeviceMemory<double>& input_c_data,
+                            const DeviceMemory<double>& params,
+                            const dnn::RnnSequenceTensorDescriptor& output_desc,
+                            DeviceMemory<double>* output_data,
+                            const dnn::RnnStateTensorDescriptor& output_h_desc,
+                            DeviceMemory<double>* output_h_data,
+                            const dnn::RnnStateTensorDescriptor& output_c_desc,
+                            DeviceMemory<double>* output_c_data,
+                            bool is_training,
+                            ScratchAllocator* reserve_space_allocator,
+                            ScratchAllocator* workspace_allocator) {
+    return false;
+  }
   // Enqueue a backward operation of the RNN model onto the stream.
   //
   // Arguments:
@@ -1598,6 +1989,55 @@ class DnnSupport {
     return false;
   }
 
+  virtual bool DoRnnBackward(
+      Stream* stream, const dnn::RnnDescriptor& rnn_desc,
+      const dnn::RnnSequenceTensorDescriptor& input_desc,
+      const DeviceMemory<double>& input_data,
+      const dnn::RnnStateTensorDescriptor& input_h_desc,
+      const DeviceMemory<double>& input_h_data,
+      const dnn::RnnStateTensorDescriptor& input_c_desc,
+      const DeviceMemory<double>& input_c_data,
+      const DeviceMemory<double>& params,
+      const dnn::RnnSequenceTensorDescriptor& output_desc,
+      const DeviceMemory<double>& output_data,
+      const dnn::RnnStateTensorDescriptor& output_h_desc,
+      const DeviceMemory<double>& output_h_data,
+      const dnn::RnnStateTensorDescriptor& output_c_desc,
+      const DeviceMemory<double>& output_c_data,
+      const DeviceMemory<double>& output_backprop_data,
+      const DeviceMemory<double>& output_h_backprop_data,
+      const DeviceMemory<double>& output_c_backprop_data,
+      DeviceMemory<double>* input_backprop_data,
+      DeviceMemory<double>* input_h_backprop_data,
+      DeviceMemory<double>* input_c_backprop_data,
+      DeviceMemory<double>* params_backprop_data,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) {
+    return false;
+  }
+
+  // Transforms a tensor into another tensor with a different layout and/or data
+  // type.
+  //
+  // Arguments:
+  //  stream: pointer to the stream where this operation should be enqueued to.
+  //  input_desc: specifies the shape and the data layout of the input tensor.
+  //  input_type: the data type of the input tensor.
+  //  input_data: the device memory region that contains the input tensor.
+  //  output_desc: specifies the shape and the data layout of the output tensor.
+  //  output_type: the data type of the output tensor.
+  //  scale: an element-wise scaling factor to apply.
+  //  output_data: the device memory region that contains the output tensor.
+  virtual bool DoTransformTensor(Stream* stream,
+                                 const dnn::BatchDescriptor& input_desc,
+                                 dnn::DataType input_type,
+                                 const DeviceMemoryBase& input_data,
+                                 const dnn::BatchDescriptor& output_desc,
+                                 dnn::DataType output_type, float scale,
+                                 DeviceMemoryBase* output_data) {
+    return false;
+  }
+
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
 };
@@ -1607,4 +2047,3 @@ class DnnSupport {
 }  // namespace perftools
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DNN_H_
-

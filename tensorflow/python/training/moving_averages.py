@@ -51,13 +51,13 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
     variable: A Variable.
     value: A tensor with the same shape as 'variable'.
     decay: A float Tensor or float value.  The moving average decay.
-    zero_debias: A python bool. If true, assume the variable is 0-intialized and
+    zero_debias: A python bool. If true, assume the variable is 0-initialized and
       unbias it, as in https://arxiv.org/abs/1412.6980. See docstring in
       `_zero_debias` for more details.
     name: Optional name of the returned operation.
 
   Returns:
-    An Operation that updates 'variable' with the newly computed
+    A reference to the input 'variable' tensor with the newly computed
     moving average.
   """
   with ops.name_scope(name, "AssignMovingAvg",
@@ -175,11 +175,9 @@ def _zero_debias(unbiased_var, value, decay):
       with ops.control_dependencies(None):
         biased_initializer = init_ops.zeros_initializer(
             dtype=unbiased_var.dtype)(unbiased_var.get_shape())
-        local_step_initializer = init_ops.ones_initializer()
+        local_step_initializer = init_ops.zeros_initializer()
       biased_var = variable_scope.get_variable(
           "biased", initializer=biased_initializer, trainable=False)
-      # Initializing the local_step to `0` would cause problems with the
-      # debiasing equation, so we instead initialize to `1`.
       local_step = variable_scope.get_variable(
           "local_step",
           shape=[],
@@ -271,7 +269,7 @@ class ExponentialMovingAverage(object):
      for a given variable.
   *  Build a model normally but load the checkpoint files to evaluate by using
      the shadow variable names.  For this use the `average_name()` method.  See
-     the [Saver class](../../api_docs/python/train.md#Saver) for more
+     the @{tf.train.Saver} for more
      information on restoring saved variables.
 
   Example of restoring the shadow variable values:
@@ -284,12 +282,6 @@ class ExponentialMovingAverage(object):
   saver.restore(...checkpoint filename...)
   # var0 and var1 now hold the moving average values
   ```
-
-  @@__init__
-  @@apply
-  @@average_name
-  @@average
-  @@variables_to_restore
   """
 
   def __init__(self, decay, num_updates=None, zero_debias=False,

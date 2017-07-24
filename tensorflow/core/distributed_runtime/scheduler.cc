@@ -264,7 +264,7 @@ Microseconds GreedyScheduler::ComputeSchedule(
     for (auto& x : device_states_) {
       Sim* sim = x.second;
       while (sim->num_running < sim->degree_parallelism &&
-             sim->ready_nodes.size() > 0) {
+             !sim->ready_nodes.empty()) {
         Event e;
         e.node = GetNodeWithHighestPriority(sim->ready_nodes);
         e.time = event.time + cost_model_->TimeEstimate(e.node);

@@ -22,13 +22,13 @@ from __future__ import print_function
 
 import os
 
-import tensorflow as tf
-
 from tensorflow.contrib.session_bundle import constants as legacy_constants
 from tensorflow.contrib.session_bundle import manifest_pb2
 from tensorflow.contrib.session_bundle import session_bundle
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import meta_graph
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import signature_constants
 
@@ -76,8 +76,9 @@ def _convert_default_signature_to_signature_def(signatures):
     object of type SignatureDef which contains a converted version of default
     signature from input signatures object
 
-  Raises:
-    RuntimeError: if default signature type is not classification or regression.
+    Returns None if signature is of generic type because it cannot be converted
+    to SignatureDef.
+
   """
   default_signature = signatures.default_signature
   signature_def = meta_graph_pb2.SignatureDef()
@@ -103,9 +104,10 @@ def _convert_default_signature_to_signature_def(signatures):
                                  signature_constants.CLASSIFY_OUTPUT_SCORES,
                                  signature_def)
   else:
-    raise RuntimeError("Only classification and regression default signatures "
-                       "are supported for up-conversion. %s is not "
-                       "supported" % default_signature.WhichOneof("type"))
+    logging.error("Only classification and regression default signatures "
+                  "are supported for up-conversion. %s is not "
+                  "supported" % default_signature.WhichOneof("type"))
+    return None
   return signature_def
 
 
@@ -259,7 +261,7 @@ def load_session_bundle_or_saved_model_bundle_from_path(export_dir,
   metagraph_def = None
   sess = None
   if loader.maybe_saved_model_directory(export_dir):
-    sess = tf.Session(target, graph=None, config=config)
+    sess = session.Session(target, graph=None, config=config)
     metagraph_def = loader.load(sess, tags, export_dir)
   elif session_bundle.maybe_session_bundle_dir(export_dir):
     sess, metagraph_def = _load_saved_model_from_session_bundle_path(export_dir,

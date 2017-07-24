@@ -17,9 +17,18 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_OP_GEN_LIB_H_
 
 #include <string>
+#include <unordered_map>
+#include "tensorflow/core/framework/op_def.pb.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/op_gen_overrides.pb.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
+
+// Forward declare protos so their symbols can be removed from .so exports
+class OpDef;
+class OpGenOverride;
 
 inline string Spaces(int n) { return string(n, ' '); }
 
@@ -33,6 +42,39 @@ string WordWrap(StringPiece prefix, StringPiece str, int width);
 // (and any following spaces) from *description and return true.  Otherwise
 // returns false.
 bool ConsumeEquals(StringPiece* description);
+
+// Convert text-serialized protobufs to/from multiline format.
+string PBTxtToMultiline(StringPiece pbtxt,
+                        const std::vector<string>& multi_line_fields);
+string PBTxtFromMultiline(StringPiece multiline_pbtxt);
+
+// Takes a list of files with OpGenOverrides text protos, and allows you to
+// look up the specific override for any given op.
+class OpGenOverrideMap {
+ public:
+  OpGenOverrideMap();
+  ~OpGenOverrideMap();
+
+  // `filenames` is a comma-separated list of file names.  If an op
+  // is mentioned in more than one file, the last one takes priority.
+  Status LoadFileList(Env* env, const string& filenames);
+
+  // Load a single file.  If more than one file is loaded, later ones
+  // take priority for any ops in common.
+  Status LoadFile(Env* env, const string& filename);
+
+  // Look up the override for `*op_def` from the loaded files, and
+  // mutate `*op_def` to reflect the requested changes. Does not apply
+  // 'skip', 'hide', or 'alias' overrides. Caller has to deal with
+  // those since they can't be simulated by mutating `*op_def`.
+  // Returns nullptr if op is not in any loaded file. Otherwise, the
+  // pointer must not be referenced beyond the lifetime of *this or
+  // the next file load.
+  const OpGenOverride* ApplyOverride(OpDef* op_def) const;
+
+ private:
+  std::unordered_map<string, std::unique_ptr<OpGenOverride>> map_;
+};
 
 }  // namespace tensorflow
 

@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -162,6 +163,10 @@ def _assert_local_variables(test_case, expected):
       set(expected), set(v.name for v in variables.local_variables()))
 
 
+def _test_values(shape):
+  return np.reshape(np.cumsum(np.ones(shape)), newshape=shape)
+
+
 class MeanTest(test.TestCase):
 
   def setUp(self):
@@ -221,106 +226,114 @@ class MeanTest(test.TestCase):
 
       self.assertAlmostEqual(1.65, sess.run(mean), 5)
 
-  def test1dWeightedValues(self):
-    with self.test_session() as sess:
-      # Create the queue that populates the values.
-      values_queue = data_flow_ops.FIFOQueue(
-          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
-      _enqueue_vector(sess, values_queue, [0, 1])
-      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
-      _enqueue_vector(sess, values_queue, [6.5, 0])
-      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
-      values = values_queue.dequeue()
-
-      # Create the queue that populates the weighted labels.
-      weights_queue = data_flow_ops.FIFOQueue(
-          4, dtypes=dtypes_lib.float32, shapes=(1, 1))
-      _enqueue_vector(sess, weights_queue, [1])
-      _enqueue_vector(sess, weights_queue, [0])
-      _enqueue_vector(sess, weights_queue, [0])
-      _enqueue_vector(sess, weights_queue, [1])
-      weights = weights_queue.dequeue()
-
-      mean, update_op = metrics.mean(values, weights)
-
+  def testUnweighted(self):
+    values = _test_values((3, 2, 4, 1))
+    mean_results = (
+        metrics.mean(values),
+        metrics.mean(values, weights=1.0),
+        metrics.mean(values, weights=np.ones((1, 1, 1))),
+        metrics.mean(values, weights=np.ones((1, 1, 1, 1))),
+        metrics.mean(values, weights=np.ones((1, 1, 1, 1, 1))),
+        metrics.mean(values, weights=np.ones((1, 1, 4))),
+        metrics.mean(values, weights=np.ones((1, 1, 4, 1))),
+        metrics.mean(values, weights=np.ones((1, 2, 1))),
+        metrics.mean(values, weights=np.ones((1, 2, 1, 1))),
+        metrics.mean(values, weights=np.ones((1, 2, 4))),
+        metrics.mean(values, weights=np.ones((1, 2, 4, 1))),
+        metrics.mean(values, weights=np.ones((3, 1, 1))),
+        metrics.mean(values, weights=np.ones((3, 1, 1, 1))),
+        metrics.mean(values, weights=np.ones((3, 1, 4))),
+        metrics.mean(values, weights=np.ones((3, 1, 4, 1))),
+        metrics.mean(values, weights=np.ones((3, 2, 1))),
+        metrics.mean(values, weights=np.ones((3, 2, 1, 1))),
+        metrics.mean(values, weights=np.ones((3, 2, 4))),
+        metrics.mean(values, weights=np.ones((3, 2, 4, 1))),
+        metrics.mean(values, weights=np.ones((3, 2, 4, 1, 1))),)
+    expected = np.mean(values)
+    with self.test_session():
       variables.local_variables_initializer().run()
-      for _ in range(4):
-        update_op.eval()
-      self.assertAlmostEqual((0 + 1 - 3.2 + 4.0) / 4.0, mean.eval(), 5)
+      for mean_result in mean_results:
+        mean, update_op = mean_result
+        self.assertAlmostEqual(expected, update_op.eval())
+        self.assertAlmostEqual(expected, mean.eval())
 
-  def test1dWeightedValues_placeholders(self):
-    with self.test_session() as sess:
-      # Create the queue that populates the values.
-      feed_values = ((0, 1), (-4.2, 9.1), (6.5, 0), (-3.2, 4.0))
-      values = array_ops.placeholder(dtype=dtypes_lib.float32)
-
-      # Create the queue that populates the weighted labels.
-      weights_queue = data_flow_ops.FIFOQueue(
-          4, dtypes=dtypes_lib.float32, shapes=(1, 1))
-      _enqueue_vector(sess, weights_queue, [1])
-      _enqueue_vector(sess, weights_queue, [0])
-      _enqueue_vector(sess, weights_queue, [0])
-      _enqueue_vector(sess, weights_queue, [1])
-      weights = weights_queue.dequeue()
-
-      mean, update_op = metrics.mean(values, weights)
-
+  def _test_3d_weighted(self, values, weights):
+    expected = (
+        np.sum(np.multiply(weights, values)) /
+        np.sum(np.multiply(weights, np.ones_like(values)))
+    )
+    mean, update_op = metrics.mean(values, weights=weights)
+    with self.test_session():
       variables.local_variables_initializer().run()
-      for i in range(4):
-        update_op.eval(feed_dict={values: feed_values[i]})
-      self.assertAlmostEqual((0 + 1 - 3.2 + 4.0) / 4.0, mean.eval(), 5)
+      self.assertAlmostEqual(expected, update_op.eval(), places=5)
+      self.assertAlmostEqual(expected, mean.eval(), places=5)
 
-  def test2dWeightedValues(self):
-    with self.test_session() as sess:
-      # Create the queue that populates the values.
-      values_queue = data_flow_ops.FIFOQueue(
-          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
-      _enqueue_vector(sess, values_queue, [0, 1])
-      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
-      _enqueue_vector(sess, values_queue, [6.5, 0])
-      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
-      values = values_queue.dequeue()
+  def test1x1x1Weighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5,)).reshape((1, 1, 1)))
 
-      # Create the queue that populates the weighted labels.
-      weights_queue = data_flow_ops.FIFOQueue(
-          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
-      _enqueue_vector(sess, weights_queue, [1, 1])
-      _enqueue_vector(sess, weights_queue, [1, 0])
-      _enqueue_vector(sess, weights_queue, [0, 1])
-      _enqueue_vector(sess, weights_queue, [0, 0])
-      weights = weights_queue.dequeue()
+  def test1x1xNWeighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5, 7, 11, 3)).reshape((1, 1, 4)))
 
-      mean, update_op = metrics.mean(values, weights)
+  def test1xNx1Weighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5, 11)).reshape((1, 2, 1)))
 
-      variables.local_variables_initializer().run()
-      for _ in range(4):
-        update_op.eval()
-      self.assertAlmostEqual((0 + 1 - 4.2 + 0) / 4.0, mean.eval(), 5)
+  def test1xNxNWeighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5, 7, 11, 3, 2, 13, 7, 5)).reshape((1, 2, 4)))
 
-  def test2dWeightedValues_placeholders(self):
-    with self.test_session() as sess:
-      # Create the queue that populates the values.
-      feed_values = ((0, 1), (-4.2, 9.1), (6.5, 0), (-3.2, 4.0))
-      values = array_ops.placeholder(dtype=dtypes_lib.float32)
+  def testNx1x1Weighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((5, 7, 11)).reshape((3, 1, 1)))
 
-      # Create the queue that populates the weighted labels.
-      weights_queue = data_flow_ops.FIFOQueue(
-          4, dtypes=dtypes_lib.float32, shapes=(1, 2))
-      _enqueue_vector(sess, weights_queue, [1, 1])
-      _enqueue_vector(sess, weights_queue, [1, 0])
-      _enqueue_vector(sess, weights_queue, [0, 1])
-      _enqueue_vector(sess, weights_queue, [0, 0])
-      weights = weights_queue.dequeue()
+  def testNx1xNWeighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((
+            5, 7, 11, 3, 2, 12, 7, 5, 2, 17, 11, 3)).reshape((3, 1, 4)))
 
-      mean, update_op = metrics.mean(values, weights)
+  def testNxNxNWeighted(self):
+    self._test_3d_weighted(
+        _test_values((3, 2, 4)),
+        weights=np.asarray((
+            5, 7, 11, 3, 2, 12, 7, 5, 2, 17, 11, 3,
+            2, 17, 11, 3, 5, 7, 11, 3, 2, 12, 7, 5)).reshape((3, 2, 4)))
 
-      variables.local_variables_initializer().run()
-      for i in range(4):
-        update_op.eval(feed_dict={values: feed_values[i]})
-      self.assertAlmostEqual((0 + 1 - 4.2 + 0) / 4.0, mean.eval(), 5)
+  def testInvalidWeights(self):
+    values_placeholder = array_ops.placeholder(dtype=dtypes_lib.float32)
+    values = _test_values((3, 2, 4, 1))
+    invalid_weights = (
+        (1,),
+        (1, 1),
+        (3, 2),
+        (2, 4, 1),
+        (4, 2, 4, 1),
+        (3, 3, 4, 1),
+        (3, 2, 5, 1),
+        (3, 2, 4, 2),
+        (1, 1, 1, 1, 1))
+    expected_error_msg = 'weights can not be broadcast to values'
+    for invalid_weight in invalid_weights:
+      # Static shapes.
+      with self.assertRaisesRegexp(ValueError, expected_error_msg):
+        metrics.mean(values, invalid_weight)
+
+      # Dynamic shapes.
+      with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
+        with self.test_session():
+          _, update_op = metrics.mean(values_placeholder, invalid_weight)
+          variables.local_variables_initializer().run()
+          update_op.eval(feed_dict={values_placeholder: values})
 
 
-class StreamingMeanTensorTest(test.TestCase):
+class MeanTensorTest(test.TestCase):
 
   def setUp(self):
     ops.reset_default_graph()
@@ -582,7 +595,17 @@ class AccuracyTest(test.TestCase):
       self.assertEqual(1.0, update_op.eval())
       self.assertEqual(1.0, accuracy.eval())
 
-  def testEffectivelyEquivalentSizesWithStaicShapedWeight(self):
+  def testEffectivelyEquivalentSizesWithScalarWeight(self):
+    predictions = array_ops.ones((40, 1))
+    labels = array_ops.ones((40,))
+    with self.test_session() as sess:
+      accuracy, update_op = metrics.accuracy(labels, predictions, weights=2.0)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertEqual(1.0, update_op.eval())
+      self.assertEqual(1.0, accuracy.eval())
+
+  def testEffectivelyEquivalentSizesWithStaticShapedWeight(self):
     predictions = ops.convert_to_tensor([1, 1, 1])  # shape 3,
     labels = array_ops.expand_dims(ops.convert_to_tensor([1, 0, 0]),
                                    1)  # shape 3, 1
@@ -717,15 +740,18 @@ class PrecisionTest(test.TestCase):
       self.assertAlmostEqual(1, sess.run(update_op))
       self.assertAlmostEqual(1, precision.eval())
 
-  def testSomeCorrect(self):
-    predictions = constant_op.constant([1, 0, 1, 0], shape=(1, 4))
-    labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-    precision, update_op = metrics.precision(labels, predictions)
+  def testSomeCorrect_multipleInputDtypes(self):
+    for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions = math_ops.cast(
+          constant_op.constant([1, 0, 1, 0], shape=(1, 4)), dtype=dtype)
+      labels = math_ops.cast(
+          constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=dtype)
+      precision, update_op = metrics.precision(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.5, update_op.eval())
-      self.assertAlmostEqual(0.5, precision.eval())
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.5, update_op.eval())
+        self.assertAlmostEqual(0.5, precision.eval())
 
   def testWeighted1d(self):
     predictions = constant_op.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
@@ -740,6 +766,25 @@ class PrecisionTest(test.TestCase):
       expected_precision = weighted_tp / weighted_positives
       self.assertAlmostEqual(expected_precision, update_op.eval())
       self.assertAlmostEqual(expected_precision, precision.eval())
+
+  def testWeightedScalar_placeholders(self):
+    predictions = array_ops.placeholder(dtype=dtypes_lib.float32)
+    labels = array_ops.placeholder(dtype=dtypes_lib.float32)
+    feed_dict = {
+        predictions: ((1, 0, 1, 0), (1, 0, 1, 0)),
+        labels: ((0, 1, 1, 0), (1, 0, 0, 1))
+    }
+    precision, update_op = metrics.precision(labels, predictions, weights=2)
+
+    with self.test_session():
+      variables.local_variables_initializer().run()
+      weighted_tp = 2.0 + 2.0
+      weighted_positives = (2.0 + 2.0) + (2.0 + 2.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(
+          expected_precision, update_op.eval(feed_dict=feed_dict))
+      self.assertAlmostEqual(
+          expected_precision, precision.eval(feed_dict=feed_dict))
 
   def testWeighted1d_placeholders(self):
     predictions = array_ops.placeholder(dtype=dtypes_lib.float32)
@@ -822,7 +867,7 @@ class PrecisionTest(test.TestCase):
       self.assertEqual(0.0, precision.eval())
 
 
-class StreamingRecallTest(test.TestCase):
+class RecallTest(test.TestCase):
 
   def setUp(self):
     np.random.seed(1)
@@ -881,15 +926,18 @@ class StreamingRecallTest(test.TestCase):
       sess.run(update_op)
       self.assertEqual(1, recall.eval())
 
-  def testSomeCorrect(self):
-    predictions = constant_op.constant([1, 0, 1, 0], shape=(1, 4))
-    labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-    recall, update_op = metrics.recall(labels, predictions)
+  def testSomeCorrect_multipleInputDtypes(self):
+    for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions = math_ops.cast(
+          constant_op.constant([1, 0, 1, 0], shape=(1, 4)), dtype=dtype)
+      labels = math_ops.cast(
+          constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=dtype)
+      recall, update_op = metrics.recall(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.5, update_op.eval())
-      self.assertAlmostEqual(0.5, recall.eval())
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.5, update_op.eval())
+        self.assertAlmostEqual(0.5, recall.eval())
 
   def testWeighted1d(self):
     predictions = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
@@ -942,7 +990,7 @@ class StreamingRecallTest(test.TestCase):
       self.assertEqual(0, recall.eval())
 
 
-class StreamingAUCTest(test.TestCase):
+class AUCTest(test.TestCase):
 
   def setUp(self):
     np.random.seed(1)
@@ -1004,17 +1052,20 @@ class StreamingAUCTest(test.TestCase):
 
       self.assertEqual(1, auc.eval())
 
-  def testSomeCorrect(self):
+  def testSomeCorrect_multipleLabelDtypes(self):
     with self.test_session() as sess:
-      predictions = constant_op.constant(
-          [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
-      labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-      auc, update_op = metrics.auc(labels, predictions)
+      for label_dtype in (
+          dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+        predictions = constant_op.constant(
+            [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
+        labels = math_ops.cast(
+            constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=label_dtype)
+        auc, update_op = metrics.auc(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.5, sess.run(update_op))
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.5, sess.run(update_op))
 
-      self.assertAlmostEqual(0.5, auc.eval())
+        self.assertAlmostEqual(0.5, auc.eval())
 
   def testWeighted1d(self):
     with self.test_session() as sess:
@@ -1118,7 +1169,7 @@ class StreamingAUCTest(test.TestCase):
       self.assertAlmostEqual(1, auc.eval(), 6)
 
   def np_auc(self, predictions, labels, weights):
-    """Computes the AUC explicitely using Numpy.
+    """Computes the AUC explicitly using Numpy.
 
     Args:
       predictions: an ndarray with shape [N].
@@ -1293,23 +1344,24 @@ class SpecificityAtSensitivityTest(test.TestCase):
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
-  def testWeighted1d(self):
-    predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
-    labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
-    weights_values = [3]
+  def testWeighted1d_multipleLabelDtypes(self):
+    for label_dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
+      labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+      weights_values = [3]
 
-    predictions = constant_op.constant(
-        predictions_values, dtype=dtypes_lib.float32)
-    labels = constant_op.constant(labels_values)
-    weights = constant_op.constant(weights_values)
-    specificity, update_op = metrics.specificity_at_sensitivity(
-        labels, predictions, weights=weights, sensitivity=0.4)
+      predictions = constant_op.constant(
+          predictions_values, dtype=dtypes_lib.float32)
+      labels = math_ops.cast(labels_values, dtype=label_dtype)
+      weights = constant_op.constant(weights_values)
+      specificity, update_op = metrics.specificity_at_sensitivity(
+          labels, predictions, weights=weights, sensitivity=0.4)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
 
-      self.assertAlmostEqual(0.6, sess.run(update_op))
-      self.assertAlmostEqual(0.6, specificity.eval())
+        self.assertAlmostEqual(0.6, sess.run(update_op))
+        self.assertAlmostEqual(0.6, specificity.eval())
 
   def testWeighted2d(self):
     predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
@@ -1330,7 +1382,7 @@ class SpecificityAtSensitivityTest(test.TestCase):
       self.assertAlmostEqual(8.0 / 15.0, specificity.eval())
 
 
-class StreamingSensitivityAtSpecificityTest(test.TestCase):
+class SensitivityAtSpecificityTest(test.TestCase):
 
   def setUp(self):
     np.random.seed(1)
@@ -1428,26 +1480,28 @@ class StreamingSensitivityAtSpecificityTest(test.TestCase):
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
-  def testWeighted(self):
-    predictions_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
-    labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
-    weights_values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  def testWeighted_multipleLabelDtypes(self):
+    for label_dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+      predictions_values = [
+          0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+      labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+      weights_values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
-    predictions = constant_op.constant(
-        predictions_values, dtype=dtypes_lib.float32)
-    labels = constant_op.constant(labels_values)
-    weights = constant_op.constant(weights_values)
-    specificity, update_op = metrics.sensitivity_at_specificity(
-        labels, predictions, weights=weights, specificity=0.4)
+      predictions = constant_op.constant(
+          predictions_values, dtype=dtypes_lib.float32)
+      labels = math_ops.cast(labels_values, dtype=label_dtype)
+      weights = constant_op.constant(weights_values)
+      specificity, update_op = metrics.sensitivity_at_specificity(
+          labels, predictions, weights=weights, specificity=0.4)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.675, sess.run(update_op))
-      self.assertAlmostEqual(0.675, specificity.eval())
+      with self.test_session() as sess:
+        sess.run(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.675, sess.run(update_op))
+        self.assertAlmostEqual(0.675, specificity.eval())
 
 
 # TODO(nsilberman): Break this up into two sets of tests.
-class StreamingPrecisionRecallThresholdsTest(test.TestCase):
+class PrecisionRecallThresholdsTest(test.TestCase):
 
   def setUp(self):
     np.random.seed(1)
@@ -1532,22 +1586,25 @@ class StreamingPrecisionRecallThresholdsTest(test.TestCase):
       self.assertEqual(1, prec.eval())
       self.assertEqual(1, rec.eval())
 
-  def testSomeCorrect(self):
+  def testSomeCorrect_multipleLabelDtypes(self):
     with self.test_session() as sess:
-      predictions = constant_op.constant(
-          [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
-      labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-      thresholds = [0.5]
-      prec, prec_op = metrics.precision_at_thresholds(labels, predictions,
-                                                      thresholds)
-      rec, rec_op = metrics.recall_at_thresholds(labels, predictions,
-                                                 thresholds)
+      for label_dtype in (
+          dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
+        predictions = constant_op.constant(
+            [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
+        labels = math_ops.cast(
+            constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=label_dtype)
+        thresholds = [0.5]
+        prec, prec_op = metrics.precision_at_thresholds(labels, predictions,
+                                                        thresholds)
+        rec, rec_op = metrics.recall_at_thresholds(labels, predictions,
+                                                   thresholds)
 
-      sess.run(variables.local_variables_initializer())
-      sess.run([prec_op, rec_op])
+        sess.run(variables.local_variables_initializer())
+        sess.run([prec_op, rec_op])
 
-      self.assertAlmostEqual(0.5, prec.eval())
-      self.assertAlmostEqual(0.5, rec.eval())
+        self.assertAlmostEqual(0.5, prec.eval())
+        self.assertAlmostEqual(0.5, rec.eval())
 
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
@@ -3150,7 +3207,7 @@ class MeanIOUTest(test.TestCase):
         [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=1)
     labels = random_ops.random_uniform(
         [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=1)
-    miou, update_op = metrics.mean_iou(
+    mean_iou, update_op = metrics.mean_iou(
         labels, predictions, num_classes=num_classes)
 
     with self.test_session() as sess:
@@ -3161,9 +3218,9 @@ class MeanIOUTest(test.TestCase):
         sess.run(update_op)
 
       # Then verify idempotency.
-      initial_miou = miou.eval()
+      initial_mean_iou = mean_iou.eval()
       for _ in range(10):
-        self.assertEqual(initial_miou, miou.eval())
+        self.assertEqual(initial_mean_iou, mean_iou.eval())
 
   def testMultipleUpdates(self):
     num_classes = 3
@@ -3232,14 +3289,14 @@ class MeanIOUTest(test.TestCase):
       _enqueue_vector(sess, weights_queue, [0.0])
       weights = weights_queue.dequeue()
 
-      miou, update_op = metrics.mean_iou(
+      mean_iou, update_op = metrics.mean_iou(
           labels, predictions, num_classes, weights=weights)
 
-      sess.run(variables.local_variables_initializer())
+      variables.local_variables_initializer().run()
       for _ in range(6):
         sess.run(update_op)
       desired_output = np.mean([2.0 / 3.0, 1.0 / 2.0])
-      self.assertAlmostEqual(desired_output, miou.eval())
+      self.assertAlmostEqual(desired_output, mean_iou.eval())
 
   def testMultipleUpdatesWithMissingClass(self):
     # Test the case where there are no predicions and labels for
@@ -3278,14 +3335,14 @@ class MeanIOUTest(test.TestCase):
       self.assertAlmostEqual(desired_output, miou.eval())
 
   def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
-    predictions = array_ops.concat_v2(
+    predictions = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[5]), constant_op.constant(
                     1, shape=[5])
         ],
         0)
-    labels = array_ops.concat_v2(
+    labels = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[3]), constant_op.constant(
@@ -3297,7 +3354,7 @@ class MeanIOUTest(test.TestCase):
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
       confusion_matrix = update_op.eval()
-      self.assertAllEqual([[3, 2], [0, 5]], confusion_matrix)
+      self.assertAllEqual([[3, 0], [2, 5]], confusion_matrix)
       desired_miou = np.mean([3. / 5., 5. / 7.])
       self.assertAlmostEqual(desired_miou, miou.eval())
 
@@ -3318,18 +3375,18 @@ class MeanIOUTest(test.TestCase):
     with self.test_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[0, 40], [0, 0]], update_op.eval())
+      self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
       self.assertEqual(0., miou.eval())
 
   def testResultsWithSomeMissing(self):
-    predictions = array_ops.concat_v2(
+    predictions = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[5]), constant_op.constant(
                     1, shape=[5])
         ],
         0)
-    labels = array_ops.concat_v2(
+    labels = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[3]), constant_op.constant(
@@ -3337,7 +3394,7 @@ class MeanIOUTest(test.TestCase):
         ],
         0)
     num_classes = 2
-    weights = array_ops.concat_v2(
+    weights = array_ops.concat(
         [
             constant_op.constant(
                 0, shape=[1]), constant_op.constant(
@@ -3349,9 +3406,249 @@ class MeanIOUTest(test.TestCase):
       miou, update_op = metrics.mean_iou(
           labels, predictions, num_classes, weights=weights)
       sess.run(variables.local_variables_initializer())
-      self.assertAllEqual([[2, 2], [0, 4]], update_op.eval())
+      self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
       desired_miou = np.mean([2. / 4., 4. / 6.])
       self.assertAlmostEqual(desired_miou, miou.eval())
+
+
+class MeanPerClassAccuracyTest(test.TestCase):
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.mean_per_class_accuracy(
+        predictions=array_ops.ones([10, 1]),
+        labels=array_ops.ones([10, 1]),
+        num_classes=2)
+    _assert_local_variables(self, ('mean_accuracy/total_confusion_matrix:0',))
+
+  def testMetricsCollections(self):
+    my_collection_name = '__metrics__'
+    mean_accuracy, _ = metrics.mean_per_class_accuracy(
+        predictions=array_ops.ones([10, 1]),
+        labels=array_ops.ones([10, 1]),
+        num_classes=2,
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(
+        ops.get_collection(my_collection_name), [mean_accuracy])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.mean_per_class_accuracy(
+        predictions=array_ops.ones([10, 1]),
+        labels=array_ops.ones([10, 1]),
+        num_classes=2,
+        updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testPredictionsAndLabelsOfDifferentSizeRaisesValueError(self):
+    predictions = array_ops.ones([10, 3])
+    labels = array_ops.ones([10, 4])
+    with self.assertRaises(ValueError):
+      metrics.mean_per_class_accuracy(labels, predictions, num_classes=2)
+
+  def testLabelsAndWeightsOfDifferentSizeRaisesValueError(self):
+    predictions = array_ops.ones([10])
+    labels = array_ops.ones([10])
+    weights = array_ops.zeros([9])
+    with self.assertRaises(ValueError):
+      metrics.mean_per_class_accuracy(
+          labels, predictions, num_classes=2, weights=weights)
+
+  def testValueTensorIsIdempotent(self):
+    num_classes = 3
+    predictions = random_ops.random_uniform(
+        [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=1)
+    labels = random_ops.random_uniform(
+        [10], maxval=num_classes, dtype=dtypes_lib.int64, seed=1)
+    mean_accuracy, update_op = metrics.mean_per_class_accuracy(
+        labels, predictions, num_classes=num_classes)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_mean_accuracy = mean_accuracy.eval()
+      for _ in range(10):
+        self.assertEqual(initial_mean_accuracy, mean_accuracy.eval())
+
+    num_classes = 3
+    with self.test_session() as sess:
+      # Create the queue that populates the predictions.
+      preds_queue = data_flow_ops.FIFOQueue(
+          5, dtypes=dtypes_lib.int32, shapes=(1, 1))
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [2])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [0])
+      predictions = preds_queue.dequeue()
+
+      # Create the queue that populates the labels.
+      labels_queue = data_flow_ops.FIFOQueue(
+          5, dtypes=dtypes_lib.int32, shapes=(1, 1))
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [2])
+      _enqueue_vector(sess, labels_queue, [1])
+      labels = labels_queue.dequeue()
+
+      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
+          labels, predictions, num_classes)
+
+      sess.run(variables.local_variables_initializer())
+      for _ in range(5):
+        sess.run(update_op)
+      desired_output = np.mean([1.0, 1.0 / 3.0, 0.0])
+      self.assertAlmostEqual(desired_output, mean_accuracy.eval())
+
+  def testMultipleUpdatesWithWeights(self):
+    num_classes = 2
+    with self.test_session() as sess:
+      # Create the queue that populates the predictions.
+      preds_queue = data_flow_ops.FIFOQueue(
+          6, dtypes=dtypes_lib.int32, shapes=(1, 1))
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      predictions = preds_queue.dequeue()
+
+      # Create the queue that populates the labels.
+      labels_queue = data_flow_ops.FIFOQueue(
+          6, dtypes=dtypes_lib.int32, shapes=(1, 1))
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      labels = labels_queue.dequeue()
+
+      # Create the queue that populates the weights.
+      weights_queue = data_flow_ops.FIFOQueue(
+          6, dtypes=dtypes_lib.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [1.0])
+      _enqueue_vector(sess, weights_queue, [1.0])
+      _enqueue_vector(sess, weights_queue, [1.0])
+      _enqueue_vector(sess, weights_queue, [0.0])
+      _enqueue_vector(sess, weights_queue, [1.0])
+      _enqueue_vector(sess, weights_queue, [0.0])
+      weights = weights_queue.dequeue()
+
+      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
+          labels, predictions, num_classes, weights=weights)
+
+      variables.local_variables_initializer().run()
+      for _ in range(6):
+        sess.run(update_op)
+      desired_output = np.mean([2.0 / 2.0, 1.0 / 2.0])
+      self.assertAlmostEqual(desired_output, mean_accuracy.eval())
+
+  def testMultipleUpdatesWithMissingClass(self):
+    # Test the case where there are no predicions and labels for
+    # one class, and thus there is one row and one column with
+    # zero entries in the confusion matrix.
+    num_classes = 3
+    with self.test_session() as sess:
+      # Create the queue that populates the predictions.
+      # There is no prediction for class 2.
+      preds_queue = data_flow_ops.FIFOQueue(
+          5, dtypes=dtypes_lib.int32, shapes=(1, 1))
+      _enqueue_vector(sess, preds_queue, [0])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [1])
+      _enqueue_vector(sess, preds_queue, [0])
+      predictions = preds_queue.dequeue()
+
+      # Create the queue that populates the labels.
+      # There is label for class 2.
+      labels_queue = data_flow_ops.FIFOQueue(
+          5, dtypes=dtypes_lib.int32, shapes=(1, 1))
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [1])
+      _enqueue_vector(sess, labels_queue, [0])
+      _enqueue_vector(sess, labels_queue, [1])
+      labels = labels_queue.dequeue()
+
+      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
+          labels, predictions, num_classes)
+
+      sess.run(variables.local_variables_initializer())
+      for _ in range(5):
+        sess.run(update_op)
+      desired_output = np.mean([1.0 / 2.0, 2.0 / 3.0, 0.])
+      self.assertAlmostEqual(desired_output, mean_accuracy.eval())
+
+  def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
+    predictions = array_ops.concat([
+        constant_op.constant(0, shape=[5]), constant_op.constant(1, shape=[5])
+    ], 0)
+    labels = array_ops.concat([
+        constant_op.constant(0, shape=[3]), constant_op.constant(1, shape=[7])
+    ], 0)
+    num_classes = 2
+    with self.test_session() as sess:
+      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
+          labels, predictions, num_classes)
+      sess.run(variables.local_variables_initializer())
+      confusion_matrix = update_op.eval()
+      self.assertAllEqual([[3, 0], [2, 5]], confusion_matrix)
+      desired_mean_accuracy = np.mean([3. / 3., 5. / 7.])
+      self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
+
+  def testAllCorrect(self):
+    predictions = array_ops.zeros([40])
+    labels = array_ops.zeros([40])
+    num_classes = 1
+    with self.test_session() as sess:
+      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
+          labels, predictions, num_classes)
+      sess.run(variables.local_variables_initializer())
+      self.assertEqual(40, update_op.eval()[0])
+      self.assertEqual(1.0, mean_accuracy.eval())
+
+  def testAllWrong(self):
+    predictions = array_ops.zeros([40])
+    labels = array_ops.ones([40])
+    num_classes = 2
+    with self.test_session() as sess:
+      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
+          labels, predictions, num_classes)
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
+      self.assertEqual(0., mean_accuracy.eval())
+
+  def testResultsWithSomeMissing(self):
+    predictions = array_ops.concat([
+        constant_op.constant(0, shape=[5]), constant_op.constant(1, shape=[5])
+    ], 0)
+    labels = array_ops.concat([
+        constant_op.constant(0, shape=[3]), constant_op.constant(1, shape=[7])
+    ], 0)
+    num_classes = 2
+    weights = array_ops.concat([
+        constant_op.constant(0, shape=[1]), constant_op.constant(1, shape=[8]),
+        constant_op.constant(0, shape=[1])
+    ], 0)
+    with self.test_session() as sess:
+      mean_accuracy, update_op = metrics.mean_per_class_accuracy(
+          labels, predictions, num_classes, weights=weights)
+      sess.run(variables.local_variables_initializer())
+      self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
+      desired_mean_accuracy = np.mean([2. / 2., 4. / 6.])
+      self.assertAlmostEqual(desired_mean_accuracy, mean_accuracy.eval())
 
 
 if __name__ == '__main__':

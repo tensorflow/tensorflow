@@ -49,8 +49,8 @@ class Master {
   void PartialRunSetup(const PartialRunSetupRequest* req,
                        PartialRunSetupResponse* resp, MyClosure done);
 
-  void RunStep(CallOptions* opts, const RunStepRequest* req,
-               RunStepResponse* resp, MyClosure done);
+  void RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
+               MutableRunStepResponseWrapper* resp, MyClosure done);
 
   void CloseSession(const CloseSessionRequest* req, CloseSessionResponse* resp,
                     MyClosure done);
@@ -58,6 +58,7 @@ class Master {
   void ListDevices(const ListDevicesRequest* req, ListDevicesResponse* resp,
                    MyClosure done);
 
+  // See tensorflow::Reset() and the comment on ResetRequest.
   void Reset(const ResetRequest* req, ResetResponse* resp, MyClosure done);
 
  private:

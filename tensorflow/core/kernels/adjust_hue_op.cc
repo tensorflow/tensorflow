@@ -1,5 +1,4 @@
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -12,12 +11,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#define EIGEN_USE_THREADS
+
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif
+
 #include <memory>
+
+#include "tensorflow/core/kernels/adjust_hue_op.h"
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -30,7 +39,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 class AdjustHueOpBase : public OpKernel {
  protected:
-  AdjustHueOpBase(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit AdjustHueOpBase(OpKernelConstruction* context) : OpKernel(context) {}
 
   struct ComputeOptions {
     const Tensor* input;
@@ -58,8 +67,8 @@ class AdjustHueOpBase : public OpKernel {
                                 channels, " channels."));
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input.shape(), &output));
 
     if (input.NumElements() > 0) {
       const int64 channel_count = input.NumElements() / channels;
@@ -77,6 +86,7 @@ template <class Device>
 class AdjustHueOp;
 
 namespace internal {
+
 // Helper function to convert a RGB color to H-and-V-range. H is in the range
 // of [0, 6] instead of the normal [0, 1]
 static void rgb_to_hv_range(float r, float g, float b, float* h, float* v_min,
@@ -205,8 +215,9 @@ class AdjustHueOp<CPUDevice> : public AdjustHueOpBase {
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, channel_count,
-          kCostPerChannel, [channel_count, &input_data, &output_data, delta_h](
-                               int64 start_channel, int64 end_channel) {
+          kCostPerChannel,
+          [channel_count, &input_data, &output_data, delta_h](
+              int64 start_channel, int64 end_channel) {
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
             for (int i = start_channel; i < end_channel; i++) {
@@ -237,4 +248,36 @@ class AdjustHueOp<CPUDevice> : public AdjustHueOpBase {
 REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_CPU),
                         AdjustHueOp<CPUDevice>);
 
+#if GOOGLE_CUDA
+template <>
+class AdjustHueOp<GPUDevice> : public AdjustHueOpBase {
+ public:
+  explicit AdjustHueOp(OpKernelConstruction* context)
+      : AdjustHueOpBase(context) {}
+
+  void DoCompute(OpKernelContext* context,
+                 const ComputeOptions& options) override {
+    const Tensor* input = options.input;
+    const Tensor* delta = options.delta;
+    Tensor* output = options.output;
+    const int64 number_of_elements = input->NumElements();
+    GPUDevice device = context->eigen_gpu_device();
+    const auto stream = device.stream();
+    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    if (number_of_elements > 0) {
+      const float* input_data = input->flat<float>().data();
+      const float* delta_h = delta->flat<float>().data();
+      float* const output_data = output->flat<float>().data();
+      functor::AdjustHueGPU()(&device, number_of_elements, input_data, delta_h,
+                              output_data);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("AdjustHue").Device(DEVICE_GPU),
+                        AdjustHueOp<GPUDevice>);
+
+#endif
+
+//} // namespace functor
 }  // namespace tensorflow

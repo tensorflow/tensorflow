@@ -20,8 +20,6 @@ limitations under the License.
 #include <string.h>
 #include <cstdint>
 
-#include "tensorflow/core/platform/types.h"
-
 #include "tensorflow/examples/android/jni/object_tracking/image-inl.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
 #include "tensorflow/examples/android/jni/object_tracking/jni_utils.h"
@@ -30,14 +28,12 @@ limitations under the License.
 #include "tensorflow/examples/android/jni/object_tracking/config.h"
 #include "tensorflow/examples/android/jni/object_tracking/object_tracker.h"
 
-using namespace tensorflow;
-
 namespace tf_tracking {
 
 #define OBJECT_TRACKER_METHOD(METHOD_NAME) \
   Java_org_tensorflow_demo_tracking_ObjectTracker_##METHOD_NAME  // NOLINT
 
-JniIntField object_tracker_field("nativeObjectTracker");
+JniLongField object_tracker_field("nativeObjectTracker");
 
 ObjectTracker* get_object_tracker(JNIEnv* env, jobject thiz) {
   ObjectTracker* const object_tracker =
@@ -186,7 +182,7 @@ void JNICALL OBJECT_TRACKER_METHOD(registerNewObjectWithAppearanceNative)(
 
   BoundingBox bounding_box(x1, y1, x2, y2);
   get_object_tracker(env, thiz)->RegisterNewObjectWithAppearance(
-      id_str, reinterpret_cast<const uint8*>(pixels), bounding_box);
+      id_str, reinterpret_cast<const uint8_t*>(pixels), bounding_box);
 
   env->ReleaseByteArrayElements(frame_data, pixels, JNI_ABORT);
 
@@ -202,7 +198,7 @@ void JNICALL OBJECT_TRACKER_METHOD(setPreviousPositionNative)(
   LOGI(
       "Registering the position of %s at %.2f,%.2f,%.2f,%.2f"
       " at time %lld",
-      id_str, x1, y1, x2, y2, static_cast<int64>(timestamp));
+      id_str, x1, y1, x2, y2, static_cast<int64_t>(timestamp));
 
   get_object_tracker(env, thiz)->SetPreviousPositionOfObject(
       id_str, BoundingBox(x1, y1, x2, y2), timestamp);
@@ -325,7 +321,7 @@ void JNICALL OBJECT_TRACKER_METHOD(nextFrameNative)(JNIEnv* env, jobject thiz,
 
   // Add the frame to the object tracker object.
   get_object_tracker(env, thiz)->NextFrame(
-      reinterpret_cast<uint8*>(pixels), reinterpret_cast<uint8*>(uv_pixels),
+      reinterpret_cast<uint8_t*>(pixels), reinterpret_cast<uint8_t*>(uv_pixels),
       timestamp, vg_matrix_2x3 != NULL ? vision_gyro_matrix_array : NULL);
 
   env->ReleaseByteArrayElements(y_data, pixels, JNI_ABORT);
@@ -378,13 +374,13 @@ jfloatArray JNICALL OBJECT_TRACKER_METHOD(getKeypointsNative)(
 JNIEXPORT
 jbyteArray JNICALL OBJECT_TRACKER_METHOD(getKeypointsPacked)(
     JNIEnv* env, jobject thiz, jfloat scale_factor) {
-  // 2 bytes to a uint16 and two pairs of xy coordinates per keypoint.
-  const int bytes_per_keypoint = sizeof(uint16) * 2 * 2;
+  // 2 bytes to a uint16_t and two pairs of xy coordinates per keypoint.
+  const int bytes_per_keypoint = sizeof(uint16_t) * 2 * 2;
   jbyte keypoint_arr[kMaxKeypoints * bytes_per_keypoint];
 
   const int number_of_keypoints =
       get_object_tracker(env, thiz)->GetKeypointsPacked(
-          reinterpret_cast<uint16*>(keypoint_arr), scale_factor);
+          reinterpret_cast<uint16_t*>(keypoint_arr), scale_factor);
 
   // Create and return the array that will be passed back to Java.
   jbyteArray keypoints =
@@ -443,17 +439,17 @@ JNIEXPORT void JNICALL OBJECT_TRACKER_METHOD(downsampleImageNative)(
   jbyte* const output_array = env->GetByteArrayElements(output, 0);
 
   {
-    tf_tracking::Image<uint8> full_image(
-        width, height, reinterpret_cast<uint8*>(input_array), false);
+    tf_tracking::Image<uint8_t> full_image(
+        width, height, reinterpret_cast<uint8_t*>(input_array), false);
 
     const int new_width = (width + factor - 1) / factor;
     const int new_height = (height + factor - 1) / factor;
 
-    tf_tracking::Image<uint8> downsampled_image(
-        new_width, new_height, reinterpret_cast<uint8*>(output_array), false);
+    tf_tracking::Image<uint8_t> downsampled_image(
+        new_width, new_height, reinterpret_cast<uint8_t*>(output_array), false);
 
-    downsampled_image.DownsampleAveraged(reinterpret_cast<uint8*>(input_array),
-                                         row_stride, factor);
+    downsampled_image.DownsampleAveraged(
+        reinterpret_cast<uint8_t*>(input_array), row_stride, factor);
   }
 
   env->ReleaseByteArrayElements(input, input_array, JNI_ABORT);

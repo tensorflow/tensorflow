@@ -244,6 +244,22 @@ class CTCLossTest(test.TestCase):
       (tf_loss, tf_loss_transposed) = sess.run([loss, loss_transposed])
       self.assertAllEqual(tf_loss, tf_loss_transposed)
 
+  def testInvalidSecondGradient(self):
+    inputs = np.random.randn(2, 2, 3).astype(np.float32)
+    inputs_t = constant_op.constant(inputs)
+    labels = SimpleSparseTensorFrom([[0, 1], [1, 0]])
+    seq_lens = np.array([2, 2], dtype=np.int32)
+    v = [1.0]
+
+    with self.test_session(use_gpu=False):
+      loss = ctc_ops.ctc_loss(
+          inputs=inputs_t, labels=labels, sequence_length=seq_lens)
+      # Taking ths second gradient should fail, since it is not
+      # yet supported.
+      with self.assertRaisesRegexp(LookupError,
+                                   "explicitly disabled"):
+        _ = gradients_impl._hessian_vector_product(loss, [inputs_t], v)
+
 
 if __name__ == "__main__":
   test.main()

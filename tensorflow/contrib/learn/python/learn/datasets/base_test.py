@@ -17,29 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.contrib.learn.python.learn.datasets import base
+from tensorflow.python.platform import test
 
-mock = tf.test.mock
-
+mock = test.mock
 
 _TIMEOUT = IOError(110, "timeout")
 
 
-class BaseTest(tf.test.TestCase):
+class BaseTest(test.TestCase):
   """Test load csv functions."""
 
   def testUrlretrieveRetriesOnIOError(self):
     with mock.patch.object(base, "time") as mock_time:
       with mock.patch.object(base, "urllib") as mock_urllib:
         mock_urllib.request.urlretrieve.side_effect = [
-            _TIMEOUT,
-            _TIMEOUT,
-            _TIMEOUT,
-            _TIMEOUT,
-            _TIMEOUT,
-            None
+            _TIMEOUT, _TIMEOUT, _TIMEOUT, _TIMEOUT, _TIMEOUT, None
         ]
         base.urlretrieve_with_retry("http://dummy.com", "/tmp/dummy")
 
@@ -85,4 +78,4 @@ class BaseTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

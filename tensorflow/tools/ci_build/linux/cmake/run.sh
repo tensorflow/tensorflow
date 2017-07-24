@@ -18,12 +18,6 @@
 set -e
 set -x
 
-N_JOBS=$(grep -c ^processor /proc/cpuinfo)
-
-echo ""
-echo "make will use ${N_JOBS} concurrent job(s)."
-echo ""
-
 # Run TensorFlow cmake build.
 # Clean up, because certain modules, e.g., highwayhash, seem to be sensitive
 # to state.
@@ -33,16 +27,24 @@ mkdir -p build
 pushd build
 
 cmake -DCMAKE_BUILD_TYPE=Release ../tensorflow/contrib/cmake
-make --jobs=${N_JOBS} all
+# When building do not use all CPUs due to jobs running out of memory.
+# TODO(gunan): Figure out why we run out of memory in large GCE instances.
+make --jobs 20 tf_python_build_pip_package
 
 virtualenv cmake_test --system-site-packages
 source cmake_test/bin/activate
 
+# For older versions of PIP, remove the ABI tag.
+# TODO(gunan) get rid of this part once pip is upgraded on all test machines.
+WHEEL_FILE_PATH=`ls tf_python/dist/*tensorflow*.whl`
+FIXED_WHEEL_PATH=`echo $WHEEL_FILE_PATH | sed -e s/cp27mu/none/`
+mv $WHEEL_FILE_PATH $FIXED_WHEEL_PATH
+
 # Install the pip package we just built.
-pip install --upgrade tf_python/dist/*tensorflow*.whl
+pip install --upgrade $FIXED_WHEEL_PATH
 
 # Run all tests.
-ctest -C Release --output-on-failure -j ${N_JOBS}
+ctest -C Release --output-on-failure -j
 
 # Finalize and go back to the initial directory.
 deactivate

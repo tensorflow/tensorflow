@@ -19,12 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn.learn_io import numpy_io
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
+from tensorflow.python.training import queue_runner_impl
 
 
-class NumpyIoTest(tf.test.TestCase):
+class NumpyIoTest(test.TestCase):
 
   def testNumpyInputFn(self):
     a = np.arange(4) * 1.0
@@ -37,8 +40,8 @@ class NumpyIoTest(tf.test.TestCase):
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       features, target = input_fn()
 
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(session, coord=coord)
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
 
       res = session.run([features, target])
       self.assertAllEqual(res[0]['a'], [0, 1])
@@ -48,6 +51,181 @@ class NumpyIoTest(tf.test.TestCase):
       session.run([features, target])
       with self.assertRaises(errors.OutOfRangeError):
         session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithVeryLargeBatchSizeAndMultipleEpochs(self):
+    a = np.arange(2) * 1.0
+    b = np.arange(32, 34)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -30)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=128, shuffle=False, num_epochs=2)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1, 0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33, 32, 33])
+      self.assertAllEqual(res[1], [-32, -31, -32, -31])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithZeroEpochs(self):
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -28)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=0)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeNotDividedByDataSize(self):
+    batch_size = 2
+    a = np.arange(5) * 1.0
+    b = np.arange(32, 37)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -27)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2, 3])
+      self.assertAllEqual(res[0]['b'], [34, 35])
+      self.assertAllEqual(res[1], [-30, -29])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [4])
+      self.assertAllEqual(res[0]['b'], [36])
+      self.assertAllEqual(res[1], [-28])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeNotDividedByDataSizeAndMultipleEpochs(self):
+    batch_size = 2
+    a = np.arange(3) * 1.0
+    b = np.arange(32, 35)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -29)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=3)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2, 0])
+      self.assertAllEqual(res[0]['b'], [34, 32])
+      self.assertAllEqual(res[1], [-30, -32])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [1, 2])
+      self.assertAllEqual(res[0]['b'], [33, 34])
+      self.assertAllEqual(res[1], [-31, -30])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1])
+      self.assertAllEqual(res[0]['b'], [32, 33])
+      self.assertAllEqual(res[1], [-32, -31])
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [2])
+      self.assertAllEqual(res[0]['b'], [34])
+      self.assertAllEqual(res[1], [-30])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithBatchSizeLargerThanDataSize(self):
+    batch_size = 10
+    a = np.arange(4) * 1.0
+    b = np.arange(32, 36)
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -28)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=batch_size, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [0, 1, 2, 3])
+      self.assertAllEqual(res[0]['b'], [32, 33, 34, 35])
+      self.assertAllEqual(res[1], [-32, -31, -30, -29])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run([features, target])
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testNumpyInputFnWithDifferentDimensionsOfFeatures(self):
+    a = np.array([[1, 2], [3, 4]])
+    b = np.array([5, 6])
+    x = {'a': a, 'b': b}
+    y = np.arange(-32, -30)
+
+    with self.test_session() as session:
+      input_fn = numpy_io.numpy_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
+      features, target = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      res = session.run([features, target])
+      self.assertAllEqual(res[0]['a'], [[1, 2], [3, 4]])
+      self.assertAllEqual(res[0]['b'], [5, 6])
+      self.assertAllEqual(res[1], [-32, -31])
 
       coord.request_stop()
       coord.join(threads)
@@ -71,7 +249,7 @@ class NumpyIoTest(tf.test.TestCase):
           x, y, batch_size=2, shuffle=False, num_epochs=1)
       input_fn()
       self.assertAllEqual(x['__target_key__'], array)
-      self.assertAllEqual(x['__target_key___n'], y)
+      self.assertItemsEqual(x.keys(), ['__target_key__'])
 
   def testNumpyInputFnWithMismatchLengthOfInputs(self):
     a = np.arange(4) * 1.0
@@ -81,12 +259,14 @@ class NumpyIoTest(tf.test.TestCase):
     y_longer_length = np.arange(10)
 
     with self.test_session():
-      with self.assertRaisesRegexp(ValueError, 'Shape of x and y are mismatch'):
+      with self.assertRaisesRegexp(
+          ValueError, 'Length of tensors in x and y is mismatched.'):
         failing_input_fn = numpy_io.numpy_input_fn(
             x, y_longer_length, batch_size=2, shuffle=False, num_epochs=1)
         failing_input_fn()
 
-      with self.assertRaisesRegexp(ValueError, 'Shape of x and y are mismatch'):
+      with self.assertRaisesRegexp(
+          ValueError, 'Length of tensors in x and y is mismatched.'):
         failing_input_fn = numpy_io.numpy_input_fn(
             x=x_mismatch_length,
             y=None,
@@ -97,4 +277,4 @@ class NumpyIoTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

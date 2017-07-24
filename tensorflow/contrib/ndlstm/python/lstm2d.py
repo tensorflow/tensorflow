@@ -21,9 +21,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
-import tensorflow as tf
 from tensorflow.contrib.ndlstm.python import lstm1d
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variable_scope
 
 
 def _shape(tensor):
@@ -42,8 +42,9 @@ def images_to_sequence(tensor):
   """
 
   num_image_batches, height, width, depth = _shape(tensor)
-  transposed = tf.transpose(tensor, [2, 0, 1, 3])
-  return tf.reshape(transposed, [width, num_image_batches * height, depth])
+  transposed = array_ops.transpose(tensor, [2, 0, 1, 3])
+  return array_ops.reshape(transposed,
+                           [width, num_image_batches * height, depth])
 
 
 def sequence_to_images(tensor, num_image_batches):
@@ -59,8 +60,9 @@ def sequence_to_images(tensor, num_image_batches):
 
   width, num_batches, depth = _shape(tensor)
   height = num_batches // num_image_batches
-  reshaped = tf.reshape(tensor, [width, num_image_batches, height, depth])
-  return tf.transpose(reshaped, [1, 2, 0, 3])
+  reshaped = array_ops.reshape(tensor,
+                               [width, num_image_batches, height, depth])
+  return array_ops.transpose(reshaped, [1, 2, 0, 3])
 
 
 def horizontal_lstm(images, num_filters_out, scope=None):
@@ -75,41 +77,90 @@ def horizontal_lstm(images, num_filters_out, scope=None):
     (num_images, height, width, num_filters_out) tensor, where
     num_steps is width and new num_batches is num_image_batches * height
   """
-  with tf.variable_scope(scope, "HorizontalLstm", [images]):
+  with variable_scope.variable_scope(scope, "HorizontalLstm", [images]):
     batch_size, _, _, _ = _shape(images)
     sequence = images_to_sequence(images)
-    with tf.variable_scope("lr"):
+    with variable_scope.variable_scope("lr"):
       hidden_sequence_lr = lstm1d.ndlstm_base(sequence, num_filters_out // 2)
-    with tf.variable_scope("rl"):
-      hidden_sequence_rl = (
-          lstm1d.ndlstm_base(sequence,
-                             num_filters_out - num_filters_out // 2,
-                             reverse=1))
-    output_sequence = tf.concat_v2([hidden_sequence_lr, hidden_sequence_rl], 2)
+    with variable_scope.variable_scope("rl"):
+      hidden_sequence_rl = (lstm1d.ndlstm_base(
+          sequence, num_filters_out - num_filters_out // 2, reverse=1))
+    output_sequence = array_ops.concat([hidden_sequence_lr, hidden_sequence_rl],
+                                       2)
     output = sequence_to_images(output_sequence, batch_size)
     return output
 
 
-def separable_lstm(images, num_filters_out, nhidden=None, scope=None):
+def get_blocks(images, kernel_size):
+  """Split images in blocks
+
+  Args:
+    images: (num_images, height, width, depth) tensor
+    kernel_size: A list of length 2 holding the [kernel_height, kernel_width] of
+      of the pooling. Can be an int if both values are the same.
+
+  Returns:
+    (num_images, height/kernel_height, width/kernel_width,
+    depth*kernel_height*kernel_width) tensor
+  """
+  with variable_scope.variable_scope("image_blocks"):
+    batch_size, height, width, chanels = _shape(images)
+
+    if height % kernel_size[0] != 0:
+      offset = array_ops.zeros([batch_size,
+                                kernel_size[0] - (height % kernel_size[0]),
+                                width,
+                                chanels])
+      images = array_ops.concat([images, offset], 1)
+      batch_size, height, width, chanels = _shape(images)
+    if width % kernel_size[1] != 0:
+      offset = array_ops.zeros([batch_size,
+                                height,
+                                kernel_size[1] - (width % kernel_size[1]),
+                                chanels])
+      images = array_ops.concat([images, offset], 2)
+      batch_size, height, width, chanels = _shape(images)
+
+    h, w = int(height / kernel_size[0]), int(width / kernel_size[1])
+    features = kernel_size[1] * kernel_size[0] * chanels
+
+    lines = array_ops.split(images, h, axis=1)
+    line_blocks = []
+    for line in lines:
+      line = array_ops.transpose(line, [0, 2, 3, 1])
+      line = array_ops.reshape(line, [batch_size, w, features])
+      line_blocks.append(line)
+
+    return array_ops.stack(line_blocks, axis=1)
+
+
+def separable_lstm(images, num_filters_out,
+                   kernel_size=None, nhidden=None, scope=None):
   """Run bidirectional LSTMs first horizontally then vertically.
 
   Args:
     images: (num_images, height, width, depth) tensor
     num_filters_out: output layer depth
+    kernel_size: A list of length 2 holding the [kernel_height, kernel_width] of
+      of the pooling. Can be an int if both values are the same. Set to None for
+      not using blocks
     nhidden: hidden layer depth
     scope: optional scope name
 
   Returns:
-    (num_images, height, width, num_filters_out) tensor
+    (num_images, height/kernel_height, width/kernel_width,
+    num_filters_out) tensor
   """
-  with tf.variable_scope(scope, "SeparableLstm", [images]):
+  with variable_scope.variable_scope(scope, "SeparableLstm", [images]):
     if nhidden is None:
       nhidden = num_filters_out
+    if kernel_size is not None:
+      images = get_blocks(images, kernel_size)
     hidden = horizontal_lstm(images, nhidden)
-    with tf.variable_scope("vertical"):
-      transposed = tf.transpose(hidden, [0, 2, 1, 3])
+    with variable_scope.variable_scope("vertical"):
+      transposed = array_ops.transpose(hidden, [0, 2, 1, 3])
       output_transposed = horizontal_lstm(transposed, num_filters_out)
-    output = tf.transpose(output_transposed, [0, 2, 1, 3])
+    output = array_ops.transpose(output_transposed, [0, 2, 1, 3])
     return output
 
 
@@ -124,12 +175,13 @@ def reduce_to_sequence(images, num_filters_out, scope=None):
   Returns:
     A (width, num_images, num_filters_out) sequence.
   """
-  with tf.variable_scope(scope, "ReduceToSequence", [images]):
+  with variable_scope.variable_scope(scope, "ReduceToSequence", [images]):
     batch_size, height, width, depth = _shape(images)
-    transposed = tf.transpose(images, [1, 0, 2, 3])
-    reshaped = tf.reshape(transposed, [height, batch_size * width, depth])
+    transposed = array_ops.transpose(images, [1, 0, 2, 3])
+    reshaped = array_ops.reshape(transposed,
+                                 [height, batch_size * width, depth])
     reduced = lstm1d.sequence_to_final(reshaped, num_filters_out)
-    output = tf.reshape(reduced, [batch_size, width, num_filters_out])
+    output = array_ops.reshape(reduced, [batch_size, width, num_filters_out])
     return output
 
 
@@ -145,15 +197,17 @@ def reduce_to_final(images, num_filters_out, nhidden=None, scope=None):
   Returns:
     A (num_images, num_filters_out) batch.
   """
-  with tf.variable_scope(scope, "ReduceToFinal", [images]):
+  with variable_scope.variable_scope(scope, "ReduceToFinal", [images]):
     nhidden = nhidden or num_filters_out
     batch_size, height, width, depth = _shape(images)
-    transposed = tf.transpose(images, [1, 0, 2, 3])
-    reshaped = tf.reshape(transposed, [height, batch_size * width, depth])
-    with tf.variable_scope("reduce1"):
+    transposed = array_ops.transpose(images, [1, 0, 2, 3])
+    reshaped = array_ops.reshape(transposed,
+                                 [height, batch_size * width, depth])
+    with variable_scope.variable_scope("reduce1"):
       reduced = lstm1d.sequence_to_final(reshaped, nhidden)
-      transposed_hidden = tf.reshape(reduced, [batch_size, width, nhidden])
-      hidden = tf.transpose(transposed_hidden, [1, 0, 2])
-    with tf.variable_scope("reduce2"):
+      transposed_hidden = array_ops.reshape(reduced,
+                                            [batch_size, width, nhidden])
+      hidden = array_ops.transpose(transposed_hidden, [1, 0, 2])
+    with variable_scope.variable_scope("reduce2"):
       output = lstm1d.sequence_to_final(hidden, num_filters_out)
     return output

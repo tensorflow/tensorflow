@@ -166,7 +166,7 @@ char* DoubleToBuffer(double value, char* buffer) {
     DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
 
     full_precision_needed =
-        locale_independent_strtonum<double>(buffer, NULL) != value;
+        locale_independent_strtonum<double>(buffer, nullptr) != value;
   }
 
   if (full_precision_needed) {

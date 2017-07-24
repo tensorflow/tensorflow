@@ -228,7 +228,7 @@ class VariableOpTest(test.TestCase):
           # GPU. The test ensures that the dependency on 'increment' is still
           # honored, i.e., the Send and Recv from GPU to CPU should take place
           # only after the increment.
-          result = math_ops.mul(var, var)
+          result = math_ops.multiply(var, var)
       self.assertAllClose([4.0], result.eval())
 
   def testIsVariableInitialized(self):

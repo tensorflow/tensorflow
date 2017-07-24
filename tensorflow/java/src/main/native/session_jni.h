@@ -32,6 +32,15 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate(JNIEnv *, jclass,
 
 /*
  * Class:     org_tensorflow_Session
+ * Method:    allocate2
+ * Signature: (JLjava/lang/String;[B)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate2(JNIEnv *, jclass,
+                                                              jlong, jstring,
+                                                              jbyteArray);
+
+/*
+ * Class:     org_tensorflow_Session
  * Method:    delete
  * Signature: (J)V
  */

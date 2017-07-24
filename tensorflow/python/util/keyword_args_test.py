@@ -18,15 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+from tensorflow.python.platform import test
 from tensorflow.python.util import keyword_args
 
 
-class KeywordArgsTest(tf.test.TestCase):
+class KeywordArgsTest(test.TestCase):
 
   def test_keyword_args_only(self):
+
     def func_without_decorator(a, b):
-      return a+b
+      return a + b
 
     @keyword_args.keyword_args_only
     def func_with_decorator(a, b):
@@ -48,4 +49,4 @@ class KeywordArgsTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

@@ -21,6 +21,7 @@ import traceback
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import template
@@ -31,12 +32,12 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
 
-def var_scoped_function():
+def variable_scoped_function():
   return variable_scope.get_variable(
       "dummy", shape=[1], initializer=init_ops.zeros_initializer())
 
 
-def internally_var_scoped_function(scope_name):
+def internally_variable_scoped_function(scope_name):
   with variable_scope.variable_scope(scope_name):
     return variable_scope.get_variable(
         "dummy", shape=[1], initializer=init_ops.zeros_initializer())
@@ -99,8 +100,8 @@ class TemplateTest(test.TestCase):
     self.assertNotEqual(len(first), len(result))
 
   def test_template_with_name(self):
-    tmpl1 = template.make_template("s1", var_scoped_function)
-    tmpl2 = template.make_template("s1", var_scoped_function)
+    tmpl1 = template.make_template("s1", variable_scoped_function)
+    tmpl2 = template.make_template("s1", variable_scoped_function)
 
     v1 = tmpl1()
     v2 = tmpl1()
@@ -111,19 +112,23 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1_1/dummy:0", v3.name)
 
   def test_unique_name_raise_error(self):
-    tmpl1 = template.make_template("_", var_scoped_function, unique_name_="s1")
+    tmpl1 = template.make_template(
+        "_", variable_scoped_function, unique_name_="s1")
     tmpl1()
-    tmpl2 = template.make_template("_", var_scoped_function, unique_name_="s1")
+    tmpl2 = template.make_template(
+        "_", variable_scoped_function, unique_name_="s1")
     with self.assertRaises(ValueError):
       tmpl2()
 
   def test_unique_name_and_reuse(self):
-    tmpl1 = template.make_template("_", var_scoped_function, unique_name_="s1")
+    tmpl1 = template.make_template(
+        "_", variable_scoped_function, unique_name_="s1")
     v1 = tmpl1()
     v2 = tmpl1()
 
     variable_scope.get_variable_scope().reuse_variables()
-    tmpl2 = template.make_template("_", var_scoped_function, unique_name_="s1")
+    tmpl2 = template.make_template(
+        "_", variable_scoped_function, unique_name_="s1")
     v3 = tmpl2()
 
     self.assertEqual(v1, v2)
@@ -131,8 +136,8 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1/dummy:0", v1.name)
 
   def test_template_in_scope(self):
-    tmpl1 = template.make_template("s1", var_scoped_function)
-    tmpl2 = template.make_template("s1", var_scoped_function)
+    tmpl1 = template.make_template("s1", variable_scoped_function)
+    tmpl2 = template.make_template("s1", variable_scoped_function)
 
     with variable_scope.variable_scope("scope"):
       v1 = tmpl1()
@@ -147,8 +152,8 @@ class TemplateTest(test.TestCase):
     self.assertEqual("scope/s1_1/dummy:0", v3.name)
 
   def test_template_with_internal_reuse(self):
-    tmpl1 = template.make_template("s1", internally_var_scoped_function)
-    tmpl2 = template.make_template("s1", internally_var_scoped_function)
+    tmpl1 = template.make_template("s1", internally_variable_scoped_function)
+    tmpl2 = template.make_template("s1", internally_variable_scoped_function)
 
     v1 = tmpl1("test")
     v2 = tmpl1("test")
@@ -163,14 +168,14 @@ class TemplateTest(test.TestCase):
 
   def test_template_without_name(self):
     with self.assertRaises(ValueError):
-      template.make_template(None, var_scoped_function)
+      template.make_template(None, variable_scoped_function)
 
   def test_make_template(self):
     # Test both that we can call it with positional and keywords.
     tmpl1 = template.make_template(
-        "s1", internally_var_scoped_function, scope_name="test")
+        "s1", internally_variable_scoped_function, scope_name="test")
     tmpl2 = template.make_template(
-        "s1", internally_var_scoped_function, scope_name="test")
+        "s1", internally_variable_scoped_function, scope_name="test")
 
     v1 = tmpl1()
     v2 = tmpl1()
@@ -216,8 +221,8 @@ class TemplateTest(test.TestCase):
   def test_nested_templates(self):
 
     def nested_template():
-      nested1 = template.make_template("nested", var_scoped_function)
-      nested2 = template.make_template("nested", var_scoped_function)
+      nested1 = template.make_template("nested", variable_scoped_function)
+      nested2 = template.make_template("nested", variable_scoped_function)
       v1 = nested1()
       v2 = nested2()
       self.assertNotEqual(v1, v2)
@@ -239,10 +244,12 @@ class TemplateTest(test.TestCase):
     # capture the scope the first time it is called, and make_immediate_template
     # should capture the scope at construction time.
     with variable_scope.variable_scope("ctor_scope"):
-      tmpl_immed = template.make_template("a", var_scoped_function,
-                                          True)  # create scope here
+      # Create scope here:
+      tmpl_immed = template.make_template("a", variable_scoped_function,
+                                          True)
+      # default: create scope at __call__
       tmpl_defer = template.make_template(
-          "b", var_scoped_function, False)  # default: create scope at __call__
+          "b", variable_scoped_function, False)
     with variable_scope.variable_scope("call_scope"):
       inner_imm_var = tmpl_immed()
       inner_defer_var = tmpl_defer()
@@ -262,23 +269,23 @@ class TemplateTest(test.TestCase):
     # to having been made unique by variable_scope.
     with variable_scope.variable_scope("foo"):
       # Create two templates with the same name, ensure scopes are made unique.
-      ta = template.make_template("bar", var_scoped_function, True)
-      tb = template.make_template("bar", var_scoped_function, True)
+      ta = template.make_template("bar", variable_scoped_function, True)
+      tb = template.make_template("bar", variable_scoped_function, True)
 
     # Ensure we can get the scopes before either template is actually called.
-    self.assertEqual(ta.var_scope.name, "foo/bar")
-    self.assertEqual(tb.var_scope.name, "foo/bar_1")
+    self.assertEqual(ta.variable_scope.name, "foo/bar")
+    self.assertEqual(tb.variable_scope.name, "foo/bar_1")
 
     with variable_scope.variable_scope("foo_2"):
       # Create a template which defers scope creation.
-      tc = template.make_template("blah", var_scoped_function, False)
+      tc = template.make_template("blah", variable_scoped_function, False)
 
     # Before we call the template, the scope property will be set to None.
-    self.assertEqual(tc.var_scope, None)
+    self.assertEqual(tc.variable_scope, None)
     tc()
 
     # Template is called at the top level, so there is no preceding "foo_2".
-    self.assertEqual(tc.var_scope.name, "blah")
+    self.assertEqual(tc.variable_scope.name, "blah")
 
   def test_custom_getter(self):
     # Custom getter that maintains call count and forwards to true getter
@@ -291,7 +298,7 @@ class TemplateTest(test.TestCase):
     # Test that custom getter is called both when variables are created and
     # subsequently accessed
     tmpl1 = template.make_template(
-        "s1", var_scoped_function, custom_getter_=custom_getter)
+        "s1", variable_scoped_function, custom_getter_=custom_getter)
     self.assertEqual(custom_getter_count[0], 0)
     tmpl1()
     self.assertEqual(custom_getter_count[0], 1)
@@ -299,11 +306,11 @@ class TemplateTest(test.TestCase):
     self.assertEqual(custom_getter_count[0], 2)
 
     # Test that custom getter is called when the variable scope is created
-    # during construction
+  # during construction
     custom_getter_count[0] = 0
     tmpl2 = template.make_template(
         "s2",
-        var_scoped_function,
+        variable_scoped_function,
         custom_getter_=custom_getter,
         create_scope_now_=True)
     self.assertEqual(custom_getter_count[0], 0)
@@ -311,6 +318,76 @@ class TemplateTest(test.TestCase):
     self.assertEqual(custom_getter_count[0], 1)
     tmpl2()
     self.assertEqual(custom_getter_count[0], 2)
+
+  def test_fails_gracefully(self):
+    for create_scope_now in [True, False]:
+      def module_function_with_one_arg(inputs):
+        w = variable_scope.get_variable(
+            "w", shape=[1], initializer=init_ops.zeros_initializer())
+        return inputs * w
+
+      templatized_function = template.make_template(
+          "f1", module_function_with_one_arg,
+          create_scope_now_=create_scope_now)
+      data = array_ops.zeros(1)
+      try:
+        # Try to connect with a kwarg which is unsupported.
+        templatized_function(data, is_training=True)
+      except TypeError:
+        pass
+
+      # The failed __call__ hasn't modified the inner state.
+      self.assertFalse(templatized_function._variables_created)
+      templatized_function(data)
+      self.assertTrue(templatized_function._variables_created)
+
+  def test_name_scopes_for_variable_scopes(self):
+    # Test that name scopes are not unnecessarily uniquified (but are
+    # still uniquified when necessary).
+    def linear_module(x, output_size):
+      w = variable_scope.get_variable(
+          "w", shape=[x.get_shape()[1], output_size],
+          initializer=init_ops.zeros_initializer())
+      b = variable_scope.get_variable(
+          "b", shape=[output_size],
+          initializer=init_ops.zeros_initializer())
+      return (math_ops.matmul(x, w) + b), w
+
+    def make_linear_module(output_size, name):
+      return template.make_template(
+          name,
+          linear_module,
+          output_size=output_size,
+          create_scope_now_=True)
+
+    inputs = array_ops.ones((3, 4))
+
+    linear1 = make_linear_module(output_size=2, name="foo")
+    outputs_a, w1 = linear1(inputs)
+    outputs_b, _ = linear1(inputs)
+    self.assertEquals("foo", linear1.variable_scope.name)
+    self.assertEquals("foo/w:0", w1.name)
+    self.assertEquals("foo/add:0", outputs_a.name,
+                      "First application of template should get "
+                      "same name scope as variables.")
+    self.assertEquals("foo_1/add:0", outputs_b.name,
+                      "Second application of template should get "
+                      "a freshly uniquified name scope.")
+
+    linear2 = make_linear_module(output_size=2, name="foo")
+    outputs_c, w2 = linear2(inputs)
+    outputs_d, _ = linear2(inputs)
+    self.assertEquals("foo_1", linear2.variable_scope.name,
+                      "New template gets a freshly uniquified variable scope "
+                      "because 'foo' is already taken.")
+    self.assertEquals("foo_1/w:0", w2.name)
+    self.assertEquals("foo_1_1/add:0", outputs_c.name,
+                      "First application of template would get "
+                      "same name scope as variables, but 'foo_1' is already "
+                      "a name scope.")
+    self.assertEquals("foo_1_2/add:0", outputs_d.name,
+                      "Second application of template should also get "
+                      "a freshly uniquified name scope.")
 
 
 if __name__ == "__main__":

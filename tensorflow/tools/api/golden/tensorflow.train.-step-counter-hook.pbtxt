@@ -1,0 +1,30 @@
+path: "tensorflow.train.StepCounterHook"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.StepCounterHook\'>"
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunHook\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'every_n_steps\', \'every_n_secs\', \'output_dir\', \'summary_writer\'], varargs=None, keywords=None, defaults=[\'100\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "after_create_session"
+    argspec: "args=[\'self\', \'session\', \'coord\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "after_run"
+    argspec: "args=[\'self\', \'run_context\', \'run_values\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "before_run"
+    argspec: "args=[\'self\', \'run_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "begin"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "end"
+    argspec: "args=[\'self\', \'session\'], varargs=None, keywords=None, defaults=None"
+  }
+}

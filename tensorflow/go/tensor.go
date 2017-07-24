@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package tensorflow
 
@@ -268,7 +270,7 @@ func typeOf(dt DataType, shape []int64) reflect.Type {
 	if ret == nil {
 		panic(bug("DataType %v is not supported", dt))
 	}
-	for _ = range shape {
+	for range shape {
 		ret = reflect.SliceOf(ret)
 	}
 	return ret
@@ -299,8 +301,16 @@ func byteSizeOfEncodedStrings(val interface{}) uintptr {
 
 // encodeTensor writes v to the specified buffer using the format specified in
 // c_api.h. Use stringEncoder for String tensors.
-func encodeTensor(w io.Writer, v reflect.Value) error {
+func encodeTensor(w *bytes.Buffer, v reflect.Value) error {
 	switch v.Kind() {
+	case reflect.Bool:
+		b := byte(0)
+		if v.Bool() {
+			b = 1
+		}
+		if err := w.WriteByte(b); err != nil {
+			return err
+		}
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Write(w, nativeEndian, v.Interface()); err != nil {
 			return err
@@ -333,8 +343,14 @@ func encodeTensor(w io.Writer, v reflect.Value) error {
 
 // decodeTensor decodes the Tensor from the buffer to ptr using the format
 // specified in c_api.h. Use stringDecoder for String tensors.
-func decodeTensor(r io.Reader, shape []int64, typ reflect.Type, ptr reflect.Value) error {
+func decodeTensor(r *bytes.Reader, shape []int64, typ reflect.Type, ptr reflect.Value) error {
 	switch typ.Kind() {
+	case reflect.Bool:
+		b, err := r.ReadByte()
+		if err != nil {
+			return err
+		}
+		ptr.Elem().SetBool(b == 1)
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
 		if err := binary.Read(r, nativeEndian, ptr.Interface()); err != nil {
 			return err

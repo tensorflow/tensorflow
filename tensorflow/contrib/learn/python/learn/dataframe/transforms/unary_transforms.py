@@ -27,7 +27,7 @@ from tensorflow.python.ops import math_ops
 # Each entry is a mapping from registered_name to operation. Each operation is
 # wrapped in a transform and then registered as a member function
 # `Series`.registered_name().
-UNARY_TRANSFORMS = [("__neg__", math_ops.neg),
+UNARY_TRANSFORMS = [("__neg__", math_ops.negative),
                     ("sign", math_ops.sign),
                     ("reciprocal", math_ops.reciprocal),
                     ("square", math_ops.square),

@@ -43,7 +43,7 @@ def simple_scoped_fn(a, x):
         "two", [],
         dtype=dtypes.int32,
         initializer=init_ops.constant_initializer(2))
-    return math_ops.mul(math_ops.add(a, x), two)
+    return math_ops.multiply(math_ops.add(a, x), two)
 
 
 class FunctionalOpsTest(test.TestCase):
@@ -52,12 +52,13 @@ class FunctionalOpsTest(test.TestCase):
     with self.test_session():
       elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
 
-      r = functional_ops.foldl(lambda a, x: math_ops.mul(math_ops.add(a, x), 2),
-                               elems)
+      r = functional_ops.foldl(
+          lambda a, x: math_ops.multiply(math_ops.add(a, x), 2),
+          elems)
       self.assertAllEqual(208, r.eval())
 
       r = functional_ops.foldl(
-          lambda a, x: math_ops.mul(math_ops.add(a, x), 2),
+          lambda a, x: math_ops.multiply(math_ops.add(a, x), 2),
           elems,
           initializer=10)
       self.assertAllEqual(880, r.eval())
@@ -85,12 +86,13 @@ class FunctionalOpsTest(test.TestCase):
     with self.test_session():
       elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
 
-      r = functional_ops.foldr(lambda a, x: math_ops.mul(math_ops.add(a, x), 2),
-                               elems)
+      r = functional_ops.foldr(
+          lambda a, x: math_ops.multiply(math_ops.add(a, x), 2),
+          elems)
       self.assertAllEqual(450, r.eval())
 
       r = functional_ops.foldr(
-          lambda a, x: math_ops.mul(math_ops.add(a, x), 2),
+          lambda a, x: math_ops.multiply(math_ops.add(a, x), 2),
           elems,
           initializer=10)
       self.assertAllEqual(1282, r.eval())
@@ -114,27 +116,28 @@ class FunctionalOpsTest(test.TestCase):
         self.assertEqual(len(variables.trainable_variables()), 1)
         self.assertAllEqual(1282, r.eval())
 
+  # pylint: disable=unnecessary-lambda
   def testFold_Grad(self):
     with self.test_session():
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
       v = constant_op.constant(2.0, name="v")
-
       r = functional_ops.foldl(
-          lambda a, x: math_ops.mul(a, x), elems, initializer=v)
+          lambda a, x: math_ops.multiply(a, x), elems, initializer=v)
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllEqual(720.0, r.eval())
 
       r = functional_ops.foldr(
-          lambda a, x: math_ops.mul(a, x), elems, initializer=v)
+          lambda a, x: math_ops.multiply(a, x), elems, initializer=v)
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllEqual(720.0, r.eval())
+  # pylint: enable=unnecessary-lambda
 
   def testMap_Simple(self):
     with self.test_session():
       nums = [1, 2, 3, 4, 5, 6]
       elems = constant_op.constant(nums, name="data")
-      r = functional_ops.map_fn(lambda x: math_ops.mul(math_ops.add(x, 3), 2),
-                                elems)
+      r = functional_ops.map_fn(
+          lambda x: math_ops.multiply(math_ops.add(x, 3), 2), elems)
       self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
 
   def testMapSparseTensor(self):
@@ -158,7 +161,7 @@ class FunctionalOpsTest(test.TestCase):
               "two", [],
               dtype=dtypes.int32,
               initializer=init_ops.constant_initializer(2))
-          return math_ops.mul(x, two)
+          return math_ops.multiply(x, two)
 
       with variable_scope.variable_scope("root") as varscope:
         elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -183,7 +186,7 @@ class FunctionalOpsTest(test.TestCase):
       param = constant_op.constant(2.0)
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
       y = functional_ops.map_fn(
-          lambda x: math_ops.mul(math_ops.square(x), param), elems)
+          lambda x: math_ops.multiply(math_ops.square(x), param), elems)
       r = gradients_impl.gradients(y, param)[0]
       self.assertAllEqual(91.0, r.eval())
       r = gradients_impl.gradients(y, elems)[0]
@@ -192,8 +195,8 @@ class FunctionalOpsTest(test.TestCase):
   def testMap_SimpleNotTensor(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
-      r = functional_ops.map_fn(lambda x: math_ops.mul(math_ops.add(x, 3), 2),
-                                nums)
+      r = functional_ops.map_fn(
+          lambda x: math_ops.multiply(math_ops.add(x, 3), 2), nums)
       self.assertAllEqual(np.array([(x + 3) * 2 for x in nums]), r.eval())
 
   def testMap_SingleInputMultiOutput(self):
@@ -250,12 +253,14 @@ class FunctionalOpsTest(test.TestCase):
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
       v = constant_op.constant(2.0, name="v")
 
-      r = functional_ops.scan(lambda a, x: math_ops.mul(a, x), elems)
+      # pylint: disable=unnecessary-lambda
+      r = functional_ops.scan(lambda a, x: math_ops.multiply(a, x), elems)
       self.assertAllEqual([1., 2., 6., 24., 120., 720.], r.eval())
 
       r = functional_ops.scan(
-          lambda a, x: math_ops.mul(a, x), elems, initializer=v)
+          lambda a, x: math_ops.multiply(a, x), elems, initializer=v)
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], r.eval())
+      # pylint: enable=unnecessary-lambda
 
   def testScan_SingleInputMultiOutput(self):
     with self.test_session() as sess:
@@ -355,8 +360,10 @@ class FunctionalOpsTest(test.TestCase):
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
       v = constant_op.constant(2.0, name="v")
 
+      # pylint: disable=unnecessary-lambda
       r = functional_ops.scan(
-          lambda a, x: math_ops.mul(a, x), elems, initializer=v)
+          lambda a, x: math_ops.multiply(a, x), elems, initializer=v)
+      # pylint: enable=unnecessary-lambda
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllEqual(873.0, r.eval())
 

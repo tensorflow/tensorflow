@@ -26,13 +26,12 @@ TensorId ParseTensorName(const string& name) {
 }
 
 TensorId ParseTensorName(StringPiece name) {
-  // Parse either a name, or a name:digits.  To do so, we go backwards
-  // from the end of the string, skipping over a run of digits.  If
-  // we hit a ':' character, then we know we are in the 'name:digits'
-  // regime.  Otherwise, the output index is implicitly 0, and the whole
-  // name string forms the first part of the tensor name.
-  //
-  // Equivalent to matching with this regexp: ([^:]+):(\\d+)
+  // Parse either a name, ^name, or name:digits.  To do so, we go backwards from
+  // the end of the string, skipping over a run of digits.  If we hit a ':'
+  // character, then we know we are in the 'name:digits' regime.  Otherwise, we
+  // see if the name starts with '^', indicating a control edge. If we find
+  // neither ':' nor '^' characters, the output index is implicitly 0, and the
+  // whole name string forms the first part of the tensor name.
   const char* base = name.data();
   const char* p = base + name.size() - 1;
   int index = 0;
@@ -46,6 +45,10 @@ TensorId ParseTensorName(StringPiece name) {
   if (p > base && *p == ':' && mul > 1) {
     id.first = StringPiece(base, p - base);
     id.second = index;
+  } else if (name.starts_with("^")) {
+    // Control edge
+    id.first = StringPiece(base + 1);
+    id.second = Graph::kControlSlot;
   } else {
     id.first = name;
     id.second = 0;

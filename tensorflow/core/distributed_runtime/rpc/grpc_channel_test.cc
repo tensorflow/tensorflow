@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -56,9 +57,12 @@ TEST(GrpcChannelTest, IsSameAddressSpace) {
 
 TEST(GrpcChannelTest, HostPorts) {
   GrpcChannelSpec spec;
-  spec.AddHostPortsJob("mnist", {"a:1", "b:2", "c:3", "d:4", "e:5", "f:6"});
-  std::unique_ptr<GrpcChannelCache> cc(
-      NewGrpcChannelCache(spec, NewHostPortGrpcChannel));
+  TF_EXPECT_OK(spec.AddHostPortsJob(
+      "mnist", {"a:1", "b:2", "c:3", "d:4", "e:5", "f:6"}));
+  ChannelCreationFunction channel_func =
+      ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
+  std::unique_ptr<GrpcChannelCache> cc(NewGrpcChannelCache(spec, channel_func));
+
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:6"));
@@ -96,9 +100,12 @@ TEST(GrpcChannelTest, HostPorts) {
 
 TEST(GrpcChannelTest, SparseHostPorts) {
   GrpcChannelSpec spec;
-  spec.AddHostPortsJob("mnist", {{0, "a:1"}, {3, "d:4"}, {4, "e:5"}});
-  std::unique_ptr<GrpcChannelCache> cc(
-      NewGrpcChannelCache(spec, NewHostPortGrpcChannel));
+  TF_EXPECT_OK(
+      spec.AddHostPortsJob("mnist", {{0, "a:1"}, {3, "d:4"}, {4, "e:5"}}));
+  ChannelCreationFunction channel_func =
+      ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
+  std::unique_ptr<GrpcChannelCache> cc(NewGrpcChannelCache(spec, channel_func));
+
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:1"));
@@ -135,6 +142,18 @@ TEST(GrpcChannelTest, SparseHostPorts) {
                                  "/job:mnist/replica:0/task:3",
                                  "/job:mnist/replica:0/task:4"}),
             workers);
+}
+
+TEST(GrpcChannelTest, NewHostPortGrpcChannelValidation) {
+  SharedGrpcChannelPtr mock_ptr;
+
+  EXPECT_TRUE(NewHostPortGrpcChannel("127.0.0.1:2222", &mock_ptr).ok());
+  EXPECT_TRUE(NewHostPortGrpcChannel("example.com:2222", &mock_ptr).ok());
+  EXPECT_TRUE(NewHostPortGrpcChannel("fqdn.example.com.:2222", &mock_ptr).ok());
+
+  EXPECT_FALSE(NewHostPortGrpcChannel("example.com/abc:2222", &mock_ptr).ok());
+  EXPECT_FALSE(NewHostPortGrpcChannel("127.0.0.1:2222/", &mock_ptr).ok());
+  EXPECT_FALSE(NewHostPortGrpcChannel("example.com/abc:", &mock_ptr).ok());
 }
 
 }  // namespace tensorflow

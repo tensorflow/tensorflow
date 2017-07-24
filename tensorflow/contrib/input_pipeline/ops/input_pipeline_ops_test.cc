@@ -29,10 +29,10 @@ TEST(InputPipelineOpsTest, ObtainNext_InvalidNumberOfInputs) {
 
 TEST(InputPipelineOpsTest, ObtainNext) {
   ShapeInferenceTestOp op("ObtainNext");
-  INFER_OK(op, "[100];[1]", "[1]");
+  INFER_OK(op, "[100];[]", "[]");
 
-  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[1,1];[1]");
-  INFER_ERROR("Dimension must be 1 but is 2", op, "[1000];[2]");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[1,1];[]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1000];[1]");
 }
 
 }  // end namespace tensorflow

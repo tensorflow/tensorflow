@@ -2,26 +2,49 @@
 # Java Native Interface (JNI) library intended for implementing the
 # TensorFlow Java API using the TensorFlow C library.
 
-package(default_visibility = ["//tensorflow/java:__pkg__"])
+package(default_visibility = [
+    "//tensorflow/java:__pkg__",
+    # TODO(ashankar): Temporary hack for the Java API and
+    # //third_party/tensorflow/contrib/android:android_tensorflow_inference_jni
+    # to co-exist in a single shared library. However, the hope is that
+    # //third_party/tensorflow/contrib/android:android_tensorflow_jni can be
+    # removed once the Java API provides feature parity with it.
+    "//tensorflow/contrib/android:__pkg__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library", "tf_copts")
 
 tf_cuda_library(
     name = "native",
-    srcs = glob(["*.cc"]) + [
-        ":jni.h",
-        ":jni_md.h",
-    ],
+    srcs = glob(["*.cc"]) + select({
+        # The Android toolchain makes "jni.h" available in the include path.
+        # For non-Android toolchains, generate jni.h and jni_md.h.
+        "//tensorflow:android": [],
+        "//conditions:default": [
+            ":jni.h",
+            ":jni_md.h",
+        ],
+    }),
     hdrs = glob(["*.h"]),
-    includes = ["."],
+    copts = tf_copts(),
+    includes = select({
+        "//tensorflow:android": [],
+        "//conditions:default": ["."],
+    }),
     deps = [
         "//tensorflow/c:c_api",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:ops",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:all_kernels",
+            "//tensorflow/core:direct_session",
+            "//tensorflow/core:ops",
+        ],
+    }),
     alwayslink = 1,
 )
 
@@ -29,15 +52,11 @@ tf_cuda_library(
 # #include <jni.h>
 # in the source headers work
 # (in combination with the "includes" attribute of the tf_cuda_library rule
-# above).
+# above. Not needed when using the Android toolchain).
 #
 # Inspired from:
 # https://github.com/bazelbuild/bazel/blob/f99a0543f8d97339d32075c7176b79f35be84606/src/main/native/BUILD
 # but hopefully there is a simpler alternative to this.
-#
-# TODO(ashankar): This should not be necessary for Android builds as the
-# toolchain makes <jni.h> available. Perhaps remove ":jni.h" and ":jni_md.h"
-# from "srcs" and make these genrules a no-op when building for Android?
 genrule(
     name = "copy_jni_h",
     srcs = ["@bazel_tools//tools/jdk:jni_header"],

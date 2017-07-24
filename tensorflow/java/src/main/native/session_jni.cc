@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string.h>
 #include <memory>
 
 #include "tensorflow/c/c_api.h"
@@ -56,6 +57,7 @@ void resolveHandles(JNIEnv* env, const char* type, jlongArray src_array,
 
 void resolveOutputs(JNIEnv* env, const char* type, jlongArray src_op,
                     jintArray src_index, TF_Output* dst, jint n) {
+  if (env->ExceptionCheck()) return;
   jint len = env->GetArrayLength(src_op);
   if (len != n) {
     throwException(env, kIllegalArgumentException,
@@ -83,10 +85,30 @@ void resolveOutputs(JNIEnv* env, const char* type, jlongArray src_op,
   env->ReleaseIntArrayElements(src_index, indices, JNI_ABORT);
   env->ReleaseLongArrayElements(src_op, op_handles, JNI_ABORT);
 }
+
+void TF_MaybeDeleteBuffer(TF_Buffer* buf) {
+  if (buf == nullptr) return;
+  TF_DeleteBuffer(buf);
+}
+
+typedef std::unique_ptr<TF_Buffer, decltype(&TF_MaybeDeleteBuffer)>
+    unique_tf_buffer;
+
+unique_tf_buffer MakeUniqueBuffer(TF_Buffer* buf) {
+  return unique_tf_buffer(buf, TF_MaybeDeleteBuffer);
+}
+
 }  // namespace
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate(
     JNIEnv* env, jclass clazz, jlong graph_handle) {
+  return Java_org_tensorflow_Session_allocate2(env, clazz, graph_handle,
+                                               nullptr, nullptr);
+}
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate2(
+    JNIEnv* env, jclass clazz, jlong graph_handle, jstring target,
+    jbyteArray config) {
   if (graph_handle == 0) {
     throwException(env, kNullPointerException, "Graph has been close()d");
     return 0;
@@ -94,7 +116,27 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate(
   TF_Graph* graph = reinterpret_cast<TF_Graph*>(graph_handle);
   TF_Status* status = TF_NewStatus();
   TF_SessionOptions* opts = TF_NewSessionOptions();
+  const char* ctarget = nullptr;
+  jbyte* cconfig = nullptr;
+  if (target != nullptr) {
+    ctarget = env->GetStringUTFChars(target, nullptr);
+  }
+  if (config != nullptr) {
+    cconfig = env->GetByteArrayElements(config, nullptr);
+    TF_SetConfig(opts, cconfig,
+                 static_cast<size_t>(env->GetArrayLength(config)), status);
+    if (!throwExceptionIfNotOK(env, status)) {
+      env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
+      return 0;
+    }
+  }
   TF_Session* session = TF_NewSession(graph, opts, status);
+  if (config != nullptr) {
+    env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
+  }
+  if (target != nullptr) {
+    env->ReleaseStringUTFChars(target, ctarget);
+  }
   TF_DeleteSessionOptions(opts);
   bool ok = throwExceptionIfNotOK(env, status);
   TF_DeleteStatus(status);
@@ -116,7 +158,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Session_delete(JNIEnv* env,
 }
 
 JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
-    JNIEnv* env, jclass clazz, jlong handle, jbyteArray run_options,
+    JNIEnv* env, jclass clazz, jlong handle, jbyteArray jrun_options,
     jlongArray input_tensor_handles, jlongArray input_op_handles,
     jintArray input_op_indices, jlongArray output_op_handles,
     jintArray output_op_indices, jlongArray target_op_handles,
@@ -124,29 +166,17 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
   TF_Session* session = requireHandle(env, handle);
   if (session == nullptr) return nullptr;
 
-  // Some limitations of this function implementation that should be addressed.
-  if (run_options != nullptr && env->GetArrayLength(run_options) != 0) {
-    throwException(env, kUnsupportedOperationException,
-                   "runOptions not supported");
-    return nullptr;
-  }
-  if (want_run_metadata) {
-    throwException(env, kUnsupportedOperationException,
-                   "run metadata collection not supported");
-    return nullptr;
-  }
-
   const jint ninputs = env->GetArrayLength(input_tensor_handles);
   const jint noutputs = env->GetArrayLength(output_tensor_handles);
   const jint ntargets = env->GetArrayLength(target_op_handles);
 
-  const TF_Buffer* crun_options = nullptr;
   std::unique_ptr<TF_Output[]> inputs(new TF_Output[ninputs]);
   std::unique_ptr<TF_Tensor* []> input_values(new TF_Tensor*[ninputs]);
   std::unique_ptr<TF_Output[]> outputs(new TF_Output[noutputs]);
   std::unique_ptr<TF_Tensor* []> output_values(new TF_Tensor*[noutputs]);
   std::unique_ptr<TF_Operation* []> targets(new TF_Operation*[ntargets]);
-  TF_Buffer* run_metadata = nullptr;
+  unique_tf_buffer run_metadata(
+      MakeUniqueBuffer(want_run_metadata ? TF_NewBuffer() : nullptr));
 
   resolveHandles(env, "input Tensors", input_tensor_handles, input_values.get(),
                  ninputs);
@@ -159,11 +189,29 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
   if (env->ExceptionCheck()) return nullptr;
 
   TF_Status* status = TF_NewStatus();
-  TF_SessionRun(session, crun_options, inputs.get(), input_values.get(),
+
+  unique_tf_buffer run_options(MakeUniqueBuffer(nullptr));
+  jbyte* jrun_options_data = nullptr;
+  if (jrun_options != nullptr) {
+    size_t sz = env->GetArrayLength(jrun_options);
+    if (sz > 0) {
+      jrun_options_data = env->GetByteArrayElements(jrun_options, nullptr);
+      run_options.reset(
+          TF_NewBufferFromString(static_cast<void*>(jrun_options_data), sz));
+    }
+  }
+
+  TF_SessionRun(session, run_options.get(), inputs.get(), input_values.get(),
                 static_cast<int>(ninputs), outputs.get(), output_values.get(),
                 static_cast<int>(noutputs), targets.get(),
-                static_cast<int>(ntargets), run_metadata, status);
+                static_cast<int>(ntargets), run_metadata.get(), status);
+
+  if (jrun_options_data != nullptr) {
+    env->ReleaseByteArrayElements(jrun_options, jrun_options_data, JNI_ABORT);
+  }
+
   if (!throwExceptionIfNotOK(env, status)) {
+    TF_DeleteStatus(status);
     return nullptr;
   }
   jlong* t = env->GetLongArrayElements(output_tensor_handles, nullptr);
@@ -171,5 +219,14 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
     t[i] = reinterpret_cast<jlong>(output_values[i]);
   }
   env->ReleaseLongArrayElements(output_tensor_handles, t, 0);
-  return nullptr;
+
+  jbyteArray ret = nullptr;
+  if (run_metadata != nullptr) {
+    ret = env->NewByteArray(run_metadata->length);
+    jbyte* elems = env->GetByteArrayElements(ret, nullptr);
+    memcpy(elems, run_metadata->data, run_metadata->length);
+    env->ReleaseByteArrayElements(ret, elems, JNI_COMMIT);
+  }
+  TF_DeleteStatus(status);
+  return ret;
 }

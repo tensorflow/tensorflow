@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {

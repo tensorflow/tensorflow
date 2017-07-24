@@ -19,20 +19,24 @@ set -e
 DOWNLOADS_DIR=tensorflow/contrib/makefile/downloads
 BZL_FILE_PATH=tensorflow/workspace.bzl
 
-EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
-GEMMLOWP_URL="$(grep -o 'http.*github.com/google/gemmlowp/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
+EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
+GEMMLOWP_URL="$(grep -o 'http.*github.com/google/gemmlowp/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
-PROTOBUF_URL="$(grep -o 'http.*github.com/google/protobuf/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
-RE2_URL="$(grep -o 'http.*github.com/google/re2/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
+PROTOBUF_URL="$(grep -o 'http.*github.com/google/protobuf/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
+RE2_URL="$(grep -o 'http.*github.com/google/re2/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
 
 # TODO(petewarden): Some new code in Eigen triggers a clang bug with iOS arm64,
 #                   so work around it by patching the source.
 replace_by_sed() {
   local regex="${1}"
   shift
-  if echo "${OSTYPE}" | grep -q darwin; then
+  # Detect the version of sed by the return value of "--version" flag. GNU-sed
+  # supports "--version" while BSD-sed doesn't.
+  if ! sed --version >/dev/null 2>&1; then
+    # BSD-sed.
     sed -i '' -e "${regex}" "$@"
   else
+    # GNU-sed.
     sed -i -e "${regex}" "$@"
   fi
 }
@@ -44,6 +48,9 @@ download_and_extract() {
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   curl -Ls "${url}" | tar -C "${dir}" --strip-components=1 -xz
+
+  # Delete any potential BUILD files, which would interfere with Bazel builds.
+  find "${dir}" -type f -name '*BUILD' -delete
 }
 
 download_and_extract "${EIGEN_URL}" "${DOWNLOADS_DIR}/eigen"

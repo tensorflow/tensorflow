@@ -44,7 +44,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 using random::PhiloxRandom;
-using random::SingleSampleAdapter;
 
 template <typename T>
 struct TruncatedNormalFunctor<CPUDevice, T> {

@@ -18,10 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib.solvers.python.ops import lanczos
 from tensorflow.contrib.solvers.python.ops import util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test as test_lib
 
 
 def _add_test(test, test_name, fn):
@@ -31,7 +34,7 @@ def _add_test(test, test_name, fn):
   setattr(test, test_name, fn)
 
 
-class LanczosBidiagTest(tf.test.TestCase):
+class LanczosBidiagTest(test_lib.TestCase):
   pass  # Filled in below.
 
 
@@ -46,9 +49,9 @@ def _get_lanczos_tests(dtype_, use_static_shape_, shape_, orthogonalize_,
 
     with self.test_session() as sess:
       if use_static_shape_:
-        a = tf.constant(a_np)
+        a = constant_op.constant(a_np)
       else:
-        a = tf.placeholder(dtype_)
+        a = array_ops.placeholder(dtype_)
       operator = util.create_operator(a)
       lbd = lanczos.lanczos_bidiag(
           operator, steps_, orthogonalize=orthogonalize_)
@@ -56,9 +59,9 @@ def _get_lanczos_tests(dtype_, use_static_shape_, shape_, orthogonalize_,
       # The computed factorization should satisfy the equations
       #  A * V = U * B
       #  A' * U[:, :-1] = V * B[:-1, :]'
-      av = tf.matmul(a, lbd.v)
+      av = math_ops.matmul(a, lbd.v)
       ub = lanczos.bidiag_matmul(lbd.u, lbd.alpha, lbd.beta, adjoint_b=False)
-      atu = tf.matmul(a, lbd.u[:, :-1], adjoint_a=True)
+      atu = math_ops.matmul(a, lbd.u[:, :-1], adjoint_a=True)
       vbt = lanczos.bidiag_matmul(lbd.v, lbd.alpha, lbd.beta, adjoint_b=True)
 
       if use_static_shape_:
@@ -86,4 +89,4 @@ if __name__ == "__main__":
               name = "_".join(["Lanczos", test_fn.__name__, arg_string])
               _add_test(LanczosBidiagTest, name, test_fn)
 
-  tf.test.main()
+  test_lib.main()

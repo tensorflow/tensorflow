@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -37,7 +38,7 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
 #else
     options.zlib_options = io::ZlibCompressionOptions::DEFAULT();
 #endif  // IS_SLIM_BUILD
-  } else if (compression_type == "GZIP") {
+  } else if (compression_type == compression::kGzip) {
     options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
 #if defined(IS_SLIM_BUILD)
     LOG(ERROR) << "Compression is not supported but compression_type is set."
@@ -45,7 +46,7 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
 #else
     options.zlib_options = io::ZlibCompressionOptions::GZIP();
 #endif  // IS_SLIM_BUILD
-  } else if (compression_type != "") {
+  } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
                << ". No comprression will be used.";
   }
@@ -101,7 +102,7 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
     TF_RETURN_IF_ERROR(zlib_input_stream_->ReadNBytes(expected, storage));
 
     if (storage->size() != expected) {
-      if (storage->size() == 0) {
+      if (storage->empty()) {
         return errors::OutOfRange("eof");
       } else {
         return errors::DataLoss("truncated record at ", offset);
@@ -120,7 +121,7 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
     StringPiece data;
     TF_RETURN_IF_ERROR(src_->Read(offset, expected, &data, &(*storage)[0]));
     if (data.size() != expected) {
-      if (data.size() == 0) {
+      if (data.empty()) {
         return errors::OutOfRange("eof");
       } else {
         return errors::DataLoss("truncated record at ", offset);

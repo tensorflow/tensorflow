@@ -119,11 +119,9 @@ class DeviceMemory final : public DeviceMemoryBase {
       : DeviceMemoryBase(const_cast<DeviceMemoryBase &>(other).opaque(),
                          other.size(), other.is_sub_buffer()) {}
 
-  static constexpr size_t kElemSize = sizeof(ElemT);
-
   // Returns the number of elements of type ElemT that constitute this
   // allocation.
-  uint64 ElementCount() const { return size() / kElemSize; }
+  uint64 ElementCount() const { return size() / sizeof(ElemT); }
 
   // Returns whether this is a single-element allocation.
   bool IsScalar() const { return ElementCount() == 1; }
@@ -140,7 +138,7 @@ class DeviceMemory final : public DeviceMemoryBase {
   void ResetFromByteSize(void *opaque, uint64 bytes) {
     // TODO(leary) when NVCC is eliminated we can add this check (and the
     // logging include it requires).
-    // CHECK_EQ(0, bytes % kElemSize);
+    // CHECK_EQ(0, bytes % sizeof(ElemT));
     DeviceMemoryBase::Reset(opaque, bytes);
   }
 
@@ -182,6 +180,11 @@ class SharedDeviceMemory final : public DeviceMemoryBase {
 template <typename ElemT>
 class ScopedDeviceMemory {
  public:
+  // Default construction initializes the internal state to nullptr.  This
+  // mirrors the std::unique_ptr<> functionality, where default construction
+  // produces a nullptr unique_ptr, which can be assigned later.
+  ScopedDeviceMemory();
+
   // Parameters:
   //  parent: Executor used to deallocate memory when this instance goes
   //          out of scope.

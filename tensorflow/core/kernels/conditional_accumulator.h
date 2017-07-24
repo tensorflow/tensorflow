@@ -85,8 +85,10 @@ class ConditionalAccumulator
 
   void AllocateAndAssignToAccumGradFunction(OpKernelContext* ctx,
                                             const Tensor* grad) override {
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     ctx->allocate_persistent(dtype_, grad->shape(), &accum_grad_persistent_,
-                             &accum_grad_);
+                             &accum_grad_)
+        .IgnoreError();
     accum_grad_->flat<T>().device(ctx->template eigen_device<Device>()) =
         grad->flat<T>();
   }

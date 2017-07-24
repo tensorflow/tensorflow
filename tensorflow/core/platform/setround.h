@@ -16,23 +16,30 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_SETROUND_H_
 #define TENSORFLOW_PLATFORM_SETROUND_H_
 
+#include <cfenv>
+
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace port {
 
-// While this class is active, floating point numbers are rounded to NEAREST
-// to zero.  The destructor restores the original flags.
+// While this class is active, floating point rounding mode is set to the given
+// mode. The mode can be one of the modes defined in <cfenv>, i.e. FE_DOWNWARD,
+// FE_TONEAREST, FE_TOWARDZERO, or FE_UPWARD. The destructor restores the
+// original rounding mode if it could be determined. If the original rounding
+// mode could not be determined, the destructor sets it to FE_TONEAREST.
 class ScopedSetRound {
  public:
-  ScopedSetRound();
+  ScopedSetRound(int mode);
   ~ScopedSetRound();
 
  private:
+  int original_mode_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(ScopedSetRound);
 };
 
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_SETROUN_H_
+#endif  // TENSORFLOW_PLATFORM_SETROUND_H_

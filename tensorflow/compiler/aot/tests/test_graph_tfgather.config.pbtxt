@@ -1,0 +1,16 @@
+# Text form of tensorflow.tfcompile.Config proto.
+feed {
+  id { node_name: "params" }
+  shape {
+    dim { size: 4 }
+  }
+}
+feed {
+  id { node_name: "indices" }
+  shape {
+    dim { size: 2 }
+  }
+}
+fetch {
+  id { node_name: "gather_output" }
+}

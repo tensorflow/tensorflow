@@ -31,7 +31,7 @@ class Densify(transform.TensorFlowTransform):
     super(Densify, self).__init__()
     self._default_value = default_value
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def default_value(self):
     return self._default_value
 

@@ -80,23 +80,35 @@ class AssertEqualTest(test.TestCase):
 
   def test_raises_when_greater(self):
     with self.test_session():
-      small = constant_op.constant([1, 2], name="small")
-      big = constant_op.constant([3, 4], name="big")
+      # Static check
+      static_small = constant_op.constant([1, 2], name="small")
+      static_big = constant_op.constant([3, 4], name="big")
+      with self.assertRaisesRegexp(ValueError, "fail"):
+        check_ops.assert_equal(static_big, static_small, message="fail")
+      # Dynamic check
+      small = array_ops.placeholder(dtypes.int32, name="small")
+      big = array_ops.placeholder(dtypes.int32, name="big")
       with ops.control_dependencies(
           [check_ops.assert_equal(
               big, small, message="fail")]):
         out = array_ops.identity(small)
       with self.assertRaisesOpError("fail.*big.*small"):
-        out.eval()
+        out.eval(feed_dict={small: [1, 2], big: [3, 4]})
 
   def test_raises_when_less(self):
     with self.test_session():
-      small = constant_op.constant([3, 1], name="small")
-      big = constant_op.constant([4, 2], name="big")
+      # Static check
+      static_small = constant_op.constant([3, 1], name="small")
+      static_big = constant_op.constant([4, 2], name="big")
+      with self.assertRaisesRegexp(ValueError, "fail"):
+        check_ops.assert_equal(static_big, static_small, message="fail")
+      # Dynamic check
+      small = array_ops.placeholder(dtypes.int32, name="small")
+      big = array_ops.placeholder(dtypes.int32, name="big")
       with ops.control_dependencies([check_ops.assert_equal(small, big)]):
         out = array_ops.identity(small)
       with self.assertRaisesOpError("small.*big"):
-        out.eval()
+        out.eval(feed_dict={small: [3, 1], big: [4, 2]})
 
   def test_doesnt_raise_when_equal_and_broadcastable_shapes(self):
     with self.test_session():
@@ -120,6 +132,55 @@ class AssertEqualTest(test.TestCase):
       larry = constant_op.constant([])
       curly = constant_op.constant([])
       with ops.control_dependencies([check_ops.assert_equal(larry, curly)]):
+        out = array_ops.identity(larry)
+      out.eval()
+
+
+class AssertNoneEqualTest(test.TestCase):
+
+  def test_doesnt_raise_when_not_equal(self):
+    with self.test_session():
+      small = constant_op.constant([1, 2], name="small")
+      big = constant_op.constant([10, 20], name="small")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(big, small)]):
+        out = array_ops.identity(small)
+      out.eval()
+
+  def test_raises_when_equal(self):
+    with self.test_session():
+      small = constant_op.constant([3, 1], name="small")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(small, small)]):
+        out = array_ops.identity(small)
+      with self.assertRaisesOpError("x != y did not hold"):
+        out.eval()
+
+  def test_doesnt_raise_when_not_equal_and_broadcastable_shapes(self):
+    with self.test_session():
+      small = constant_op.constant([1, 2], name="small")
+      big = constant_op.constant([3], name="big")
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(small, big)]):
+        out = array_ops.identity(small)
+      out.eval()
+
+  def test_raises_when_not_equal_but_non_broadcastable_shapes(self):
+    with self.test_session():
+      small = constant_op.constant([1, 1, 1], name="small")
+      big = constant_op.constant([10, 10], name="big")
+      with self.assertRaisesRegexp(ValueError, "must be"):
+        with ops.control_dependencies(
+            [check_ops.assert_none_equal(small, big)]):
+          out = array_ops.identity(small)
+        out.eval()
+
+  def test_doesnt_raise_when_both_empty(self):
+    with self.test_session():
+      larry = constant_op.constant([])
+      curly = constant_op.constant([])
+      with ops.control_dependencies(
+          [check_ops.assert_none_equal(larry, curly)]):
         out = array_ops.identity(larry)
       out.eval()
 
@@ -554,6 +615,120 @@ class AssertRankTest(test.TestCase):
           array_ops.identity(tensor).eval(feed_dict={rank_tensor: .5})
 
 
+class AssertRankInTest(test.TestCase):
+
+  def test_rank_zero_tensor_raises_if_rank_mismatch_static_rank(self):
+    with self.test_session():
+      tensor_rank0 = constant_op.constant(42, name="my_tensor")
+      with self.assertRaisesRegexp(
+          ValueError, "fail.*my_tensor.*must have rank.*in.*1.*2"):
+        with ops.control_dependencies([
+            check_ops.assert_rank_in(tensor_rank0, (1, 2), message="fail")]):
+          array_ops.identity(tensor_rank0).eval()
+
+  def test_rank_zero_tensor_raises_if_rank_mismatch_dynamic_rank(self):
+    with self.test_session():
+      tensor_rank0 = array_ops.placeholder(dtypes.float32, name="my_tensor")
+      with ops.control_dependencies([
+          check_ops.assert_rank_in(tensor_rank0, (1, 2), message="fail")]):
+        with self.assertRaisesOpError("fail.*my_tensor.*rank"):
+          array_ops.identity(tensor_rank0).eval(feed_dict={tensor_rank0: 42.0})
+
+  def test_rank_zero_tensor_doesnt_raise_if_rank_matches_static_rank(self):
+    with self.test_session():
+      tensor_rank0 = constant_op.constant(42, name="my_tensor")
+      for desired_ranks in ((0, 1, 2), (1, 0, 2), (1, 2, 0)):
+        with ops.control_dependencies([
+            check_ops.assert_rank_in(tensor_rank0, desired_ranks)]):
+          array_ops.identity(tensor_rank0).eval()
+
+  def test_rank_zero_tensor_doesnt_raise_if_rank_matches_dynamic_rank(self):
+    with self.test_session():
+      tensor_rank0 = array_ops.placeholder(dtypes.float32, name="my_tensor")
+      for desired_ranks in ((0, 1, 2), (1, 0, 2), (1, 2, 0)):
+        with ops.control_dependencies([
+            check_ops.assert_rank_in(tensor_rank0, desired_ranks)]):
+          array_ops.identity(tensor_rank0).eval(feed_dict={tensor_rank0: 42.0})
+
+  def test_rank_one_tensor_doesnt_raise_if_rank_matches_static_rank(self):
+    with self.test_session():
+      tensor_rank1 = constant_op.constant([42, 43], name="my_tensor")
+      for desired_ranks in ((0, 1, 2), (1, 0, 2), (1, 2, 0)):
+        with ops.control_dependencies([
+            check_ops.assert_rank_in(tensor_rank1, desired_ranks)]):
+          array_ops.identity(tensor_rank1).eval()
+
+  def test_rank_one_tensor_doesnt_raise_if_rank_matches_dynamic_rank(self):
+    with self.test_session():
+      tensor_rank1 = array_ops.placeholder(dtypes.float32, name="my_tensor")
+      for desired_ranks in ((0, 1, 2), (1, 0, 2), (1, 2, 0)):
+        with ops.control_dependencies([
+            check_ops.assert_rank_in(tensor_rank1, desired_ranks)]):
+          array_ops.identity(tensor_rank1).eval(feed_dict={
+              tensor_rank1: (42.0, 43.0)
+          })
+
+  def test_rank_one_tensor_raises_if_rank_mismatches_static_rank(self):
+    with self.test_session():
+      tensor_rank1 = constant_op.constant((42, 43), name="my_tensor")
+      with self.assertRaisesRegexp(ValueError, "my_tensor.*rank"):
+        with ops.control_dependencies([
+            check_ops.assert_rank_in(tensor_rank1, (0, 2))]):
+          array_ops.identity(tensor_rank1).eval()
+
+  def test_rank_one_tensor_raises_if_rank_mismatches_dynamic_rank(self):
+    with self.test_session():
+      tensor_rank1 = array_ops.placeholder(dtypes.float32, name="my_tensor")
+      with ops.control_dependencies([
+          check_ops.assert_rank_in(tensor_rank1, (0, 2))]):
+        with self.assertRaisesOpError("my_tensor.*rank"):
+          array_ops.identity(tensor_rank1).eval(feed_dict={
+              tensor_rank1: (42.0, 43.0)
+          })
+
+  def test_raises_if_rank_is_not_scalar_static(self):
+    with self.test_session():
+      tensor = constant_op.constant((42, 43), name="my_tensor")
+      desired_ranks = (
+          np.array(1, dtype=np.int32),
+          np.array((2, 1), dtype=np.int32))
+      with self.assertRaisesRegexp(ValueError, "Rank must be a scalar"):
+        check_ops.assert_rank_in(tensor, desired_ranks)
+
+  def test_raises_if_rank_is_not_scalar_dynamic(self):
+    with self.test_session():
+      tensor = constant_op.constant(
+          (42, 43), dtype=dtypes.float32, name="my_tensor")
+      desired_ranks = (
+          array_ops.placeholder(dtypes.int32, name="rank0_tensor"),
+          array_ops.placeholder(dtypes.int32, name="rank1_tensor"))
+      with self.assertRaisesOpError("Rank must be a scalar"):
+        with ops.control_dependencies(
+            (check_ops.assert_rank_in(tensor, desired_ranks),)):
+          array_ops.identity(tensor).eval(feed_dict={
+              desired_ranks[0]: 1,
+              desired_ranks[1]: [2, 1],
+          })
+
+  def test_raises_if_rank_is_not_integer_static(self):
+    with self.test_session():
+      tensor = constant_op.constant((42, 43), name="my_tensor")
+      with self.assertRaisesRegexp(TypeError,
+                                   "must be of type <dtype: 'int32'>"):
+        check_ops.assert_rank_in(tensor, (1, .5,))
+
+  def test_raises_if_rank_is_not_integer_dynamic(self):
+    with self.test_session():
+      tensor = constant_op.constant(
+          (42, 43), dtype=dtypes.float32, name="my_tensor")
+      rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
+      with self.assertRaisesRegexp(TypeError,
+                                   "must be of type <dtype: 'int32'>"):
+        with ops.control_dependencies(
+            [check_ops.assert_rank_in(tensor, (1, rank_tensor))]):
+          array_ops.identity(tensor).eval(feed_dict={rank_tensor: .5})
+
+
 class AssertRankAtLeastTest(test.TestCase):
 
   def test_rank_zero_tensor_raises_if_rank_too_small_static_rank(self):
@@ -777,6 +952,70 @@ class IsNonDecreasingTest(test.TestCase):
   def test_empty_tensor_is_non_decreasing(self):
     with self.test_session():
       self.assertTrue(check_ops.is_non_decreasing([]).eval())
+
+
+class FloatDTypeTest(test.TestCase):
+
+  def test_assert_same_float_dtype(self):
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype(None, None))
+    self.assertIs(dtypes.float32, check_ops.assert_same_float_dtype([], None))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype([], dtypes.float32))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype(None, dtypes.float32))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype([None, None], None))
+    self.assertIs(
+        dtypes.float32,
+        check_ops.assert_same_float_dtype([None, None], dtypes.float32))
+
+    const_float = constant_op.constant(3.0, dtype=dtypes.float32)
+    self.assertIs(
+        dtypes.float32,
+        check_ops.assert_same_float_dtype([const_float], dtypes.float32))
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [const_float], dtypes.int32)
+
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype([sparse_float],
+                                                    dtypes.float32))
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [sparse_float], dtypes.int32)
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [const_float, None, sparse_float], dtypes.float64)
+
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype(
+                      [const_float, sparse_float]))
+    self.assertIs(dtypes.float32,
+                  check_ops.assert_same_float_dtype(
+                      [const_float, sparse_float], dtypes.float32))
+
+    const_int = constant_op.constant(3, dtype=dtypes.int32)
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [sparse_float, const_int])
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [sparse_float, const_int], dtypes.int32)
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [sparse_float, const_int], dtypes.float32)
+    self.assertRaises(ValueError, check_ops.assert_same_float_dtype,
+                      [const_int])
+
+
+class AssertScalarTest(test.TestCase):
+
+  def test_assert_scalar(self):
+    check_ops.assert_scalar(constant_op.constant(3))
+    check_ops.assert_scalar(constant_op.constant("foo"))
+    check_ops.assert_scalar(3)
+    check_ops.assert_scalar("foo")
+    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+      check_ops.assert_scalar(constant_op.constant([3, 4]))
 
 
 if __name__ == "__main__":

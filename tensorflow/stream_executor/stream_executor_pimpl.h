@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
 #include <atomic>
+#include <memory>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -71,8 +72,10 @@ class StreamExecutor {
  public:
   explicit StreamExecutor(PlatformKind kind,
                           const PluginConfig &plugin_config = PluginConfig());
-  StreamExecutor(const Platform *platform,
-                 internal::StreamExecutorInterface *implementation);
+
+  StreamExecutor(
+      const Platform *platform,
+      std::unique_ptr<internal::StreamExecutorInterface> implementation);
 
   ~StreamExecutor();
 
@@ -202,7 +205,7 @@ class StreamExecutor {
   // This should be done before deallocating the region with delete[]/free/etc.
   bool HostMemoryUnregister(void *location) SE_MUST_USE_RESULT;
 
-  // Synchronizes all activity occuring in the StreamExecutor's context (most
+  // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
   bool SynchronizeAllActivity() SE_MUST_USE_RESULT;
 
@@ -235,7 +238,7 @@ class StreamExecutor {
                                     DeviceMemoryBase *gpu_dst);
 
   // Alternative interface for memcpying from host to device that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <class T>
   port::Status SynchronousMemcpyH2D(port::ArraySlice<T> host_src,
@@ -250,7 +253,7 @@ class StreamExecutor {
                                     void *host_dst);
 
   // Alternative interface for memcpying from device to host that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
   port::Status SynchronousMemcpyD2H(const DeviceMemory<T> &gpu_src,
@@ -339,16 +342,22 @@ class StreamExecutor {
   bool SupportsDnn() const;
 
   // Get the list of supported algorithms for the forward convolution opeartion.
-  bool GetConvolveAlgorithms(std::vector<dnn::AlgorithmType> *out_algorithms);
+  bool GetConvolveAlgorithms(bool with_winograd_nonfused,
+                             std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on data.
   bool GetConvolveBackwardDataAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on the
   // filter.
   bool GetConvolveBackwardFilterAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType> *out_algorithms);
+
+  // Get the list of supported algorithms for BLAS gemm.
+  bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
@@ -670,6 +679,10 @@ inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
 }
 
 template <typename ElemT>
+ScopedDeviceMemory<ElemT>::ScopedDeviceMemory()
+    : wrapped_(DeviceMemoryBase()), parent_(nullptr) {}
+
+template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(StreamExecutor *parent,
                                               DeviceMemoryBase value)
     : wrapped_(value), parent_(parent) {}
@@ -689,18 +702,26 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
 
 template <typename ElemT>
 ScopedDeviceMemory<ElemT>::~ScopedDeviceMemory() {
+  if (wrapped_ == nullptr) return;
+  DCHECK(parent_ != nullptr);
   parent_->Deallocate(&wrapped_);
 }
 
 template <typename ElemT>
 void ScopedDeviceMemory<ElemT>::Reset(DeviceMemory<ElemT> updated) {
-  parent_->Deallocate(&wrapped_);
+  if (wrapped_ != nullptr) {
+    DCHECK(parent_ != nullptr);
+    parent_->Deallocate(&wrapped_);
+  }
   wrapped_ = updated;
 }
 
 template <typename ElemT>
 void ScopedDeviceMemory<ElemT>::Reset(std::nullptr_t) {
-  parent_->Deallocate(&wrapped_);
+  if (wrapped_ != nullptr) {
+    DCHECK(parent_ != nullptr);
+    parent_->Deallocate(&wrapped_);
+  }
   wrapped_ = DeviceMemory<ElemT>{};
 }
 

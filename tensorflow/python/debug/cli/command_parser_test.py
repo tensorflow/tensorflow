@@ -132,6 +132,63 @@ class ExtractOutputFilePathTest(test_util.TensorFlowTestCase):
     self.assertEqual(["pt", "a:0"], args)
     self.assertEqual(output_path, "/tmp/foo.txt")
 
+  def testFlagWithEqualGreaterThanShouldIgnoreIntervalFlags(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time=>100ms"])
+    self.assertEqual(["lp", "--execution_time=>100ms"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time", ">1.2s"])
+    self.assertEqual(["lp", "--execution_time", ">1.2s"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "-e", ">1200"])
+    self.assertEqual(["lp", "-e", ">1200"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--foo_value", ">-.2MB"])
+    self.assertEqual(["lp", "--foo_value", ">-.2MB"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--bar_value", ">-42e3GB"])
+    self.assertEqual(["lp", "--bar_value", ">-42e3GB"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time", ">=100ms"])
+    self.assertEqual(["lp", "--execution_time", ">=100ms"], args)
+    self.assertIsNone(output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time=>=100ms"])
+    self.assertEqual(["lp", "--execution_time=>=100ms"], args)
+    self.assertIsNone(output_path)
+
+  def testFlagWithEqualGreaterThanShouldRecognizeFilePaths(self):
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", ">1.2s"])
+    self.assertEqual(["lp"], args)
+    self.assertEqual("1.2s", output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--execution_time", ">x.yms"])
+    self.assertEqual(["lp", "--execution_time"], args)
+    self.assertEqual("x.yms", output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--memory", ">a.1kB"])
+    self.assertEqual(["lp", "--memory"], args)
+    self.assertEqual("a.1kB", output_path)
+
+    args, output_path = command_parser.extract_output_file_path(
+        ["lp", "--memory", ">e002MB"])
+    self.assertEqual(["lp", "--memory"], args)
+    self.assertEqual("e002MB", output_path)
+
   def testOneArgumentIsHandledCorrectly(self):
     args, output_path = command_parser.extract_output_file_path(["lt"])
     self.assertEqual(["lt"], args)
@@ -249,6 +306,208 @@ class ParseRangesTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "Incorrect type in the 2nd element of range"):
       command_parser.parse_ranges("[1, 1j]")
+
+
+class ParseReadableSizeStrTest(test_util.TensorFlowTestCase):
+
+  def testParseNoUnitWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0"))
+    self.assertEqual(1024, command_parser.parse_readable_size_str("1024 "))
+    self.assertEqual(2000, command_parser.parse_readable_size_str(" 2000 "))
+
+  def testParseKiloBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0kB"))
+    self.assertEqual(1024**2, command_parser.parse_readable_size_str("1024 kB"))
+    self.assertEqual(1024**2 * 2,
+                     command_parser.parse_readable_size_str("2048k"))
+    self.assertEqual(1024**2 * 2,
+                     command_parser.parse_readable_size_str("2048kB"))
+    self.assertEqual(1024 / 4, command_parser.parse_readable_size_str("0.25k"))
+
+  def testParseMegaBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0MB"))
+    self.assertEqual(1024**3, command_parser.parse_readable_size_str("1024 MB"))
+    self.assertEqual(1024**3 * 2,
+                     command_parser.parse_readable_size_str("2048M"))
+    self.assertEqual(1024**3 * 2,
+                     command_parser.parse_readable_size_str("2048MB"))
+    self.assertEqual(1024**2 / 4,
+                     command_parser.parse_readable_size_str("0.25M"))
+
+  def testParseGigaBytesWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_size_str("0GB"))
+    self.assertEqual(1024**4, command_parser.parse_readable_size_str("1024 GB"))
+    self.assertEqual(1024**4 * 2,
+                     command_parser.parse_readable_size_str("2048G"))
+    self.assertEqual(1024**4 * 2,
+                     command_parser.parse_readable_size_str("2048GB"))
+    self.assertEqual(1024**3 / 4,
+                     command_parser.parse_readable_size_str("0.25G"))
+
+  def testParseUnsupportedUnitRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError, "Failed to parsed human-readable byte size str: \"0foo\""):
+      command_parser.parse_readable_size_str("0foo")
+
+    with self.assertRaisesRegexp(
+        ValueError, "Failed to parsed human-readable byte size str: \"2E\""):
+      command_parser.parse_readable_size_str("2EB")
+
+
+class ParseReadableTimeStrTest(test_util.TensorFlowTestCase):
+
+  def testParseNoUnitWorks(self):
+    self.assertEqual(0, command_parser.parse_readable_time_str("0"))
+    self.assertEqual(100, command_parser.parse_readable_time_str("100 "))
+    self.assertEqual(25, command_parser.parse_readable_time_str(" 25 "))
+
+  def testParseSeconds(self):
+    self.assertEqual(1e6, command_parser.parse_readable_time_str("1 s"))
+    self.assertEqual(2e6, command_parser.parse_readable_time_str("2s"))
+
+  def testParseMicros(self):
+    self.assertEqual(2, command_parser.parse_readable_time_str("2us"))
+
+  def testParseMillis(self):
+    self.assertEqual(2e3, command_parser.parse_readable_time_str("2ms"))
+
+  def testParseUnsupportedUnitRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError, r".*float.*2us.*"):
+      command_parser.parse_readable_time_str("2uss")
+
+    with self.assertRaisesRegexp(
+        ValueError, r".*float.*2m.*"):
+      command_parser.parse_readable_time_str("2m")
+
+    with self.assertRaisesRegexp(
+        ValueError, r"Invalid time -1. Time value must be positive."):
+      command_parser.parse_readable_time_str("-1s")
+
+
+class ParseInterval(test_util.TensorFlowTestCase):
+
+  def testParseTimeInterval(self):
+    self.assertEquals(
+        command_parser.Interval(10, True, 1e3, True),
+        command_parser.parse_time_interval("[10us, 1ms]"))
+    self.assertEquals(
+        command_parser.Interval(10, False, 1e3, False),
+        command_parser.parse_time_interval("(10us, 1ms)"))
+    self.assertEquals(
+        command_parser.Interval(10, False, 1e3, True),
+        command_parser.parse_time_interval("(10us, 1ms]"))
+    self.assertEquals(
+        command_parser.Interval(10, True, 1e3, False),
+        command_parser.parse_time_interval("[10us, 1ms)"))
+    self.assertEquals(command_parser.Interval(0, False, 1e3, True),
+                      command_parser.parse_time_interval("<=1ms"))
+    self.assertEquals(
+        command_parser.Interval(1e3, True, float("inf"), False),
+        command_parser.parse_time_interval(">=1ms"))
+    self.assertEquals(command_parser.Interval(0, False, 1e3, False),
+                      command_parser.parse_time_interval("<1ms"))
+    self.assertEquals(
+        command_parser.Interval(1e3, False, float("inf"), False),
+        command_parser.parse_time_interval(">1ms"))
+
+  def testParseTimeGreaterLessThanWithInvalidValueStrings(self):
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after >= "):
+      command_parser.parse_time_interval(">=wms")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after > "):
+      command_parser.parse_time_interval(">Yms")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after <= "):
+      command_parser.parse_time_interval("<= _ms")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after < "):
+      command_parser.parse_time_interval("<-ms")
+
+  def testParseTimeIntervalsWithInvalidValueStrings(self):
+    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+      command_parser.parse_time_interval("[wms, 10ms]")
+    with self.assertRaisesRegexp(ValueError,
+                                 "Invalid second item in interval:"):
+      command_parser.parse_time_interval("[ 0ms, _ms]")
+    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+      command_parser.parse_time_interval("(xms, _ms]")
+    with self.assertRaisesRegexp(ValueError, "Invalid first item in interval:"):
+      command_parser.parse_time_interval("((3ms, _ms)")
+
+  def testInvalidTimeIntervalRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Invalid interval format: \[10us, 1ms. Valid formats are: "
+        r"\[min, max\], \(min, max\), <max, >min"):
+      command_parser.parse_time_interval("[10us, 1ms")
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Incorrect interval format: \[10us, 1ms, 2ms\]. Interval should "
+        r"specify two values: \[min, max\] or \(min, max\)"):
+      command_parser.parse_time_interval("[10us, 1ms, 2ms]")
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Invalid interval \[1s, 1ms\]. Start must be before end of interval."):
+      command_parser.parse_time_interval("[1s, 1ms]")
+
+  def testParseMemoryInterval(self):
+    self.assertEquals(
+        command_parser.Interval(1024, True, 2048, True),
+        command_parser.parse_memory_interval("[1k, 2k]"))
+    self.assertEquals(
+        command_parser.Interval(1024, False, 2048, False),
+        command_parser.parse_memory_interval("(1kB, 2kB)"))
+    self.assertEquals(
+        command_parser.Interval(1024, False, 2048, True),
+        command_parser.parse_memory_interval("(1k, 2k]"))
+    self.assertEquals(
+        command_parser.Interval(1024, True, 2048, False),
+        command_parser.parse_memory_interval("[1k, 2k)"))
+    self.assertEquals(
+        command_parser.Interval(0, False, 2048, True),
+        command_parser.parse_memory_interval("<=2k"))
+    self.assertEquals(
+        command_parser.Interval(11, True, float("inf"), False),
+        command_parser.parse_memory_interval(">=11"))
+    self.assertEquals(command_parser.Interval(0, False, 2048, False),
+                      command_parser.parse_memory_interval("<2k"))
+    self.assertEquals(
+        command_parser.Interval(11, False, float("inf"), False),
+        command_parser.parse_memory_interval(">11"))
+
+  def testParseMemoryIntervalsWithInvalidValueStrings(self):
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after >= "):
+      command_parser.parse_time_interval(">=wM")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after > "):
+      command_parser.parse_time_interval(">YM")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after <= "):
+      command_parser.parse_time_interval("<= _MB")
+    with self.assertRaisesRegexp(ValueError, "Invalid value string after < "):
+      command_parser.parse_time_interval("<-MB")
+
+  def testInvalidMemoryIntervalRaisesException(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r"Invalid interval \[5k, 3k\]. Start of interval must be less than or "
+        "equal to end of interval."):
+      command_parser.parse_memory_interval("[5k, 3k]")
+
+  def testIntervalContains(self):
+    interval = command_parser.Interval(
+        start=1, start_included=True, end=10, end_included=True)
+    self.assertTrue(interval.contains(1))
+    self.assertTrue(interval.contains(10))
+    self.assertTrue(interval.contains(5))
+
+    interval.start_included = False
+    self.assertFalse(interval.contains(1))
+    self.assertTrue(interval.contains(10))
+
+    interval.end_included = False
+    self.assertFalse(interval.contains(1))
+    self.assertFalse(interval.contains(10))
+
+    interval.start_included = True
+    self.assertTrue(interval.contains(1))
+    self.assertFalse(interval.contains(10))
 
 
 if __name__ == "__main__":

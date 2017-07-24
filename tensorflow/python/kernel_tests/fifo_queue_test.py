@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -45,7 +46,7 @@ class FIFOQueueTest(test.TestCase):
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueue'
+      name:'Q' op:'FIFOQueueV2'
       attr { key: 'component_types' value { list { type: DT_FLOAT } } }
       attr { key: 'shapes' value { list {} } }
       attr { key: 'capacity' value { i: 10 } }
@@ -61,7 +62,7 @@ class FIFOQueueTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueue'
+      name:'Q' op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }
@@ -80,7 +81,7 @@ class FIFOQueueTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueue'
+      name:'Q' op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }
@@ -124,6 +125,13 @@ class FIFOQueueTest(test.TestCase):
           10, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
       self.assertEqual(4, q.size().eval())
+
+  def testMultipleDequeues(self):
+    with self.test_session() as session:
+      q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+      q.enqueue_many([[1, 2, 3]]).run()
+      a, b, c = session.run([q.dequeue(), q.dequeue(), q.dequeue()])
+      self.assertAllEqual(set([1, 2, 3]), set([a, b, c]))
 
   def testEnqueueDictWithoutNames(self):
     with self.test_session():
@@ -1184,44 +1192,44 @@ class FIFOQueueTest(test.TestCase):
     with self.test_session():
       q_a_1 = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shared_name="q_a")
       q_a_2 = data_flow_ops.FIFOQueue(15, dtypes_lib.float32, shared_name="q_a")
-      q_a_1.queue_ref.eval()
+      q_a_1.queue_ref.op.run()
       with self.assertRaisesOpError("capacity"):
-        q_a_2.queue_ref.eval()
+        q_a_2.queue_ref.op.run()
 
       q_b_1 = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shared_name="q_b")
       q_b_2 = data_flow_ops.FIFOQueue(10, dtypes_lib.int32, shared_name="q_b")
-      q_b_1.queue_ref.eval()
+      q_b_1.queue_ref.op.run()
       with self.assertRaisesOpError("component types"):
-        q_b_2.queue_ref.eval()
+        q_b_2.queue_ref.op.run()
 
       q_c_1 = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shared_name="q_c")
       q_c_2 = data_flow_ops.FIFOQueue(
           10, dtypes_lib.float32, shapes=[(1, 1, 2, 3)], shared_name="q_c")
-      q_c_1.queue_ref.eval()
+      q_c_1.queue_ref.op.run()
       with self.assertRaisesOpError("component shapes"):
-        q_c_2.queue_ref.eval()
+        q_c_2.queue_ref.op.run()
 
       q_d_1 = data_flow_ops.FIFOQueue(
           10, dtypes_lib.float32, shapes=[(1, 1, 2, 3)], shared_name="q_d")
       q_d_2 = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shared_name="q_d")
-      q_d_1.queue_ref.eval()
+      q_d_1.queue_ref.op.run()
       with self.assertRaisesOpError("component shapes"):
-        q_d_2.queue_ref.eval()
+        q_d_2.queue_ref.op.run()
 
       q_e_1 = data_flow_ops.FIFOQueue(
           10, dtypes_lib.float32, shapes=[(1, 1, 2, 3)], shared_name="q_e")
       q_e_2 = data_flow_ops.FIFOQueue(
           10, dtypes_lib.float32, shapes=[(1, 1, 2, 4)], shared_name="q_e")
-      q_e_1.queue_ref.eval()
+      q_e_1.queue_ref.op.run()
       with self.assertRaisesOpError("component shapes"):
-        q_e_2.queue_ref.eval()
+        q_e_2.queue_ref.op.run()
 
       q_f_1 = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, shared_name="q_f")
       q_f_2 = data_flow_ops.FIFOQueue(
           10, (dtypes_lib.float32, dtypes_lib.int32), shared_name="q_f")
-      q_f_1.queue_ref.eval()
+      q_f_1.queue_ref.op.run()
       with self.assertRaisesOpError("component types"):
-        q_f_2.queue_ref.eval()
+        q_f_2.queue_ref.op.run()
 
   def testSelectQueue(self):
     with self.test_session():
@@ -1241,7 +1249,7 @@ class FIFOQueueTest(test.TestCase):
       q1 = data_flow_ops.FIFOQueue(10, dtypes_lib.float32)
       q2 = data_flow_ops.FIFOQueue(15, dtypes_lib.float32)
       enq_q = data_flow_ops.FIFOQueue.from_list(3, [q1, q2])
-      with self.assertRaisesOpError("Index must be in the range"):
+      with self.assertRaisesOpError("is not in"):
         enq_q.dequeue().eval()
 
   def _blockingDequeue(self, sess, dequeue_op):
@@ -1364,7 +1372,8 @@ class FIFOQueueTest(test.TestCase):
       dtypes = [
           dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
           dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8, dtypes_lib.int64,
-          dtypes_lib.bool, dtypes_lib.complex64, dtypes_lib.complex128
+          dtypes_lib.uint16, dtypes_lib.bool, dtypes_lib.complex64,
+          dtypes_lib.complex128
       ]
       shape = (32, 4, 128)
       q = data_flow_ops.FIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))
@@ -1389,15 +1398,17 @@ class FIFOQueueTest(test.TestCase):
       for (input_elem, output_elem) in zip(input_tuple, output_tuple):
         self.assertAllEqual(input_elem, output_elem)
 
-  def testDeviceColocation(self):
-    with ops.device("/job:ps"):
-      q = data_flow_ops.FIFOQueue(32, [dtypes_lib.int32], name="q")
-
-    with ops.device("/job:worker/task:7"):
-      dequeued_t = q.dequeue()
-
-    self.assertDeviceEqual("/job:ps", dequeued_t.device)
-    self.assertEqual([b"loc:@q"], dequeued_t.op.colocation_groups())
+  def testDequeueEnqueueFail(self):
+    with self.test_session() as session:
+      q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
+      a = q.dequeue()
+      b = control_flow_ops.Assert(False, ["Before enqueue"])
+      with ops.control_dependencies([b]):
+        c = q.enqueue(33)
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError,
+          lambda e: "Before enqueue" in str(e)):
+        session.run([a, c])
 
 
 class FIFOQueueDictTest(test.TestCase):
@@ -1411,7 +1422,7 @@ class FIFOQueueDictTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueue'
+      name:'Q' op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }
@@ -1432,7 +1443,7 @@ class FIFOQueueDictTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueue'
+      name:'Q' op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }

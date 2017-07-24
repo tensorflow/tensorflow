@@ -1,4 +1,4 @@
-# TensorFlow Go API
+# TensorFlow in Go
 
 Construct and execute TensorFlow graphs in Go.
 
@@ -8,39 +8,42 @@ Construct and execute TensorFlow graphs in Go.
 > without notice. The same goes for the awkward package path
 > (`github.com/tensorflow/tensorflow/tensorflow/go`).
 
-## Requirements
+## Quickstart
 
--   Go version 1.7+
+Refer to [Installing TensorFlow for Go](https://www.tensorflow.org/install/install_go)
+
+## Building the TensorFlow C library from source
+
+If the "Quickstart" instructions above do not work (perhaps the release archives
+are not available for your operating system or architecture, or you're using a
+different version of CUDA/cuDNN), then the TensorFlow C library must be built
+from source.
+
+### Prerequisites
+
 -   [bazel](https://www.bazel.build/versions/master/docs/install.html)
 -   Environment to build TensorFlow from source code
     ([Linux](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-linux)
-    or [Mac OS
+    or [OS
     X](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-mac-os-x)).
-    If you'd like to skip reading those details and do not care about GPU
-    support, try the following:
+    If you don't need GPU support, then try the following: `sh # Linux sudo
+    apt-get install python swig python-numpy # OS X with homebrew brew install
+    swig`
 
-    ```sh
-    # On Linux
-    sudo apt-get install python swig python-numpy
+### Build
 
-    # On Mac OS X with homebrew
-    brew install swig
-    ```
-
-## Installation
-
-1.  Download the TensorFlow source code:
+1.  Download the source code
 
     ```sh
     go get -d github.com/tensorflow/tensorflow/tensorflow/go
     ```
 
-2.  Build the TensorFlow library (`libtensorflow.so`):
+2.  Build the TensorFlow C library:
 
     ```sh
     cd ${GOPATH}/src/github.com/tensorflow/tensorflow
     ./configure
-    bazel build -c opt //tensorflow:libtensorflow.so
+    bazel build --config opt //tensorflow:libtensorflow.so
     ```
 
     This can take a while (tens of minutes, more if also building for GPU).
@@ -50,30 +53,46 @@ Construct and execute TensorFlow graphs in Go.
     a. Copying it to a system location, e.g.,
 
     ```sh
-    cp ${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow.so /usr/local/lib
+    sudo cp ${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow.so /usr/local/lib
     ```
 
     OR
 
-    b. Setting the
-    `LD_LIBRARY_PATH=${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow`
-    environment variable (`DYLD_LIBRARY_PATH` on Mac OS X).
-
-4.  Generate wrapper functions for TensorFlow ops:
+    b. Setting environment variables:
 
     ```sh
-    go generate github.com/tensorflow/tensorflow/tensorflow/go/op
+    export LIBRARY_PATH=${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow
+    # Linux
+    export LD_LIBRARY_PATH=${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow
+    # OS X
+    export DYLD_LIBRARY_PATH=${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow
     ```
 
-After this, the `go` tool should be usable as normal. For example:
+4.  Build and test:
+
+    ```sh
+    go test github.com/tensorflow/tensorflow/tensorflow/go
+    ```
+
+### Generate wrapper functions for ops
+
+Go functions corresponding to TensorFlow operations are generated in `op/wrappers.go`. To regenerate them:
+
+Prerequisites:
+- [Protocol buffer compiler (protoc) 3.x](https://github.com/google/protobuf/releases/)
+- The TensorFlow repository under GOPATH
 
 ```sh
-go test -v github.com/tensorflow/tensorflow/tensorflow/go
+go generate github.com/tensorflow/tensorflow/tensorflow/go/op
 ```
+
+## Support
+
+Use [stackoverflow](http://stackoverflow.com/questions/tagged/tensorflow) and/or
+[Github issues](https://github.com/tensorflow/tensorflow/issues).
 
 ## Contributions
 
-This API has been built on top of the [C
-API](https://www.tensorflow.org/code/tensorflow/c/c_api.h),
-which is intended for building language bindings for TensorFlow functionality.
-However, this is far from complete. Contributions are welcome.
+Contributions are welcome. If making any signification changes, probably best to
+discuss on a [Github issue](https://github.com/tensorflow/tensorflow/issues)
+before investing too much time. Github pull requests are used for contributions.

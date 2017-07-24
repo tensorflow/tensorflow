@@ -17,11 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.contrib.labeled_tensor.python.ops import core
 from tensorflow.contrib.labeled_tensor.python.ops import nn
 from tensorflow.contrib.labeled_tensor.python.ops import test_util
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
 
 
 class NNTests(test_util.Base):
@@ -34,14 +34,14 @@ class NNTests(test_util.Base):
 
   def test_unary_ops(self):
     ops = [
-        ('relu', tf.nn.relu, nn.relu),
-        ('relu6', tf.nn.relu6, nn.relu6),
-        ('crelu', tf.nn.crelu, nn.crelu),
-        ('elu', tf.nn.elu, nn.elu),
-        ('softplus', tf.nn.softplus, nn.softplus),
-        ('l2_loss', tf.nn.l2_loss, nn.l2_loss),
-        ('softmax', tf.nn.softmax, nn.softmax),
-        ('log_softmax', tf.nn.log_softmax, nn.log_softmax),
+        ('relu', nn_ops.relu, nn.relu),
+        ('relu6', nn_ops.relu6, nn.relu6),
+        ('crelu', nn_ops.crelu, nn.crelu),
+        ('elu', nn_ops.elu, nn.elu),
+        ('softplus', nn_ops.softplus, nn.softplus),
+        ('l2_loss', nn_ops.l2_loss, nn.l2_loss),
+        ('softmax', nn_ops.softmax, nn.softmax),
+        ('log_softmax', nn_ops.log_softmax, nn.log_softmax),
     ]
     for op_name, tf_op, lt_op in ops:
       golden_tensor = tf_op(self.original_lt.tensor)
@@ -53,13 +53,13 @@ class NNTests(test_util.Base):
   def test_binary_ops(self):
     ops = [
         ('sigmoid_cross_entropy_with_logits',
-         tf.nn.sigmoid_cross_entropy_with_logits,
+         nn_impl.sigmoid_cross_entropy_with_logits,
          nn.sigmoid_cross_entropy_with_logits),
         ('softmax_cross_entropy_with_logits',
-         tf.nn.softmax_cross_entropy_with_logits,
+         nn_ops.softmax_cross_entropy_with_logits,
          nn.softmax_cross_entropy_with_logits),
         ('sparse_softmax_cross_entropy_with_logits',
-         tf.nn.sparse_softmax_cross_entropy_with_logits,
+         nn_ops.sparse_softmax_cross_entropy_with_logits,
          nn.sparse_softmax_cross_entropy_with_logits),
     ]
     for op_name, tf_op, lt_op in ops:

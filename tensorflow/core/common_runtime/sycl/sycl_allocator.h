@@ -27,20 +27,23 @@ limitations under the License.
 namespace tensorflow {
 
 class SYCLAllocator : public Allocator {
-public:
-  SYCLAllocator(Eigen::QueueInterface* device) : device_(device) {}
+ public:
+  SYCLAllocator(Eigen::QueueInterface *queue) : sycl_device_(new Eigen::SyclDevice(queue)) {}
   virtual ~SYCLAllocator() override;
   string Name() override;
   void *AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void *ptr) override;
 
-  void EnterLameDuckMode();
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
-private:
-  Eigen::QueueInterface *device_;  // not owned
+  void Synchronize() { sycl_device_->synchronize(); }
+  bool Ok() { return sycl_device_->ok(); }
+  Eigen::SyclDevice* getSyclDevice() { return sycl_device_; }
+ private:
+  Eigen::SyclDevice *sycl_device_;  // owned
+
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);
 };
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
-#endif // TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_ALLOCATOR_H_
+#endif  // TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_ALLOCATOR_H_

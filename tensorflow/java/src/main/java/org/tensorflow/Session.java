@@ -40,7 +40,7 @@ import java.util.List;
  * }
  * }</pre>
  *
- * <p><b>WARNING:</b>A {@code Session} ownes resources that <b>must</b> be explicitly freed by
+ * <p><b>WARNING:</b>A {@code Session} owns resources that <b>must</b> be explicitly freed by
  * invoking {@link #close()}.
  *
  * <p>Instances of a Session are thread-safe.
@@ -49,11 +49,36 @@ public final class Session implements AutoCloseable {
 
   /** Construct a new session with the associated {@link Graph}. */
   public Session(Graph g) {
+    this(g, null);
+  }
+
+  /**
+   * Construct a new session with the associated {@link Graph} and configuration options.
+   *
+   * @param g The {@link Graph} the created Session will operate on.
+   * @param config Configuration parameters for the session specified as a serialized <a
+   *     href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">ConfigProto</a>
+   *     protocol buffer.
+   * @throws IllegalArgumentException if the config is not a valid serialization of the ConfigProto
+   *     protocol buffer.
+   */
+  public Session(Graph g, byte[] config) {
     graph = g;
-    try (Graph.Reference r = g.ref()) {
-      nativeHandle = allocate(r.nativeHandle());
+    Graph.Reference r = g.ref();
+    try {
+      nativeHandle =
+          (config == null) ? allocate(r.nativeHandle()) : allocate2(r.nativeHandle(), null, config);
       graphRef = g.ref();
+    } finally {
+      r.close();
     }
+  }
+
+  /** Wrap an existing session with the associated {@link Graph}. */
+  Session(Graph g, long nativeHandle) {
+    graph = g;
+    this.nativeHandle = nativeHandle;
+    graphRef = g.ref();
   }
 
   /**
@@ -88,17 +113,22 @@ public final class Session implements AutoCloseable {
    *
    * <p>A Runner runs the necessary graph fragments to execute every {@link Operation} required to
    * evaluate the {@link Tensor}s to fetch. The {@link #feed(String,int,Tensor)} call allows callers
-   * to override the value of {@link Tensor}s in the graph by substituing the provided {@link
+   * to override the value of {@link Tensor}s in the graph by substituting the provided {@link
    * Tensor}s for the outputs of the operations provided to {@link #feed(String,int,Tensor)}.
    */
   public final class Runner {
     /**
      * Avoid evaluating {@code operation} and substitute {@code t} for the value it produces.
      *
-     * <p>This method is a shorthand for {@code feed(operation, 0, t)}.
+     * @param operation Is either the string name of the operation, in which case this method is a
+     *     shorthand for {@code feed(operation, 0)}, or it is a string of the form
+     *     <tt>operation_name:output_index</tt> , in which case this method acts like {@code
+     *     feed(operation_name, output_index)}. These colon-separated names are commonly used in the
+     *     {@code SignatureDef} protocol buffer messages that are included in {@link
+     *     SavedModelBundle#metaGraphDef()}.
      */
     public Runner feed(String operation, Tensor t) {
-      return feed(operation, 0, t);
+      return feed(parseOutput(operation), t);
     }
 
     /**
@@ -118,12 +148,27 @@ public final class Session implements AutoCloseable {
     }
 
     /**
+     * Use {@code t} instead of the Tensor referred to by executing the operation referred to by
+     * {@code output}.
+     */
+    public Runner feed(Output o, Tensor t) {
+      inputs.add(o);
+      inputTensors.add(t);
+      return this;
+    }
+
+    /**
      * Make {@link #run()} return the output of {@code operation}.
      *
-     * <p>This method is a shorthand for {@code fetch(operation, 0)}
+     * @param operation Is either the string name of the operation, in which case this method is a
+     *     shorthand for {@code fetch(operation, 0)}, or it is a string of the form
+     *     <tt>operation_name:output_index</tt> , in which case this method acts like {@code
+     *     fetch(operation_name, output_index)}. These colon-separated names are commonly used in
+     *     the {@code SignatureDef} protocol buffer messages that are included in {@link
+     *     SavedModelBundle#metaGraphDef()}.
      */
     public Runner fetch(String operation) {
-      return fetch(operation, 0);
+      return fetch(parseOutput(operation));
     }
 
     /**
@@ -140,14 +185,47 @@ public final class Session implements AutoCloseable {
       return this;
     }
 
+    /** Makes {@link #run()} return the Tensor referred to by {@code output}. */
+    public Runner fetch(Output output) {
+      outputs.add(output);
+      return this;
+    }
+
     /**
-     * Make {@link #run()} execute {@code operation}, but not return the evaluated {@link Tensor}.
+     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
      */
     public Runner addTarget(String operation) {
       Operation op = operationByName(operation);
       if (op != null) {
         targets.add(op);
       }
+      return this;
+    }
+
+    /**
+     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
+     */
+    public Runner addTarget(Operation operation) {
+      targets.add(operation);
+      return this;
+    }
+
+    /**
+     * (Experimental method): set options (typically for debugging) for this run.
+     *
+     * <p>The options are presented as a serialized <a
+     * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">RunOptions
+     * protocol buffer</a>.
+     *
+     * <p>The org.tensorflow package is free of any protocol buffer dependencies in order to remain
+     * friendly to resource constrained systems (where something like <a
+     * href="https://github.com/google/protobuf/tree/master/javanano#nano-version">nanoproto</a> may
+     * be more appropriate). A cost of that is this lack of type-safety in this API function. This
+     * choice is under review and this function may be replaced by more type-safe equivalents at any
+     * time.
+     */
+    public Runner setOptions(byte[] options) {
+      this.runOptions = options;
       return this;
     }
 
@@ -164,6 +242,22 @@ public final class Session implements AutoCloseable {
      * {@code Map<Output, Tensor>}?
      */
     public List<Tensor> run() {
+      return runHelper(false).outputs;
+    }
+
+    /**
+     * Execute graph fragments to compute requested fetches and return metadata about the run.
+     *
+     * <p>This is exactly like {@link #run()}, but in addition to the requested Tensors, also
+     * returns metadata about the graph execution in the form of a serialized <a
+     * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">RunMetadata
+     * protocol buffer</a>.
+     */
+    public Run runAndFetchMetadata() {
+      return runHelper(true);
+    }
+
+    private Run runHelper(boolean wantMetadata) {
       long[] inputTensorHandles = new long[inputTensors.size()];
       long[] inputOpHandles = new long[inputs.size()];
       int[] inputOpIndices = new int[inputs.size()];
@@ -188,36 +282,45 @@ public final class Session implements AutoCloseable {
       for (Output o : outputs) {
         outputOpHandles[idx] = o.op().getUnsafeNativeHandle();
         outputOpIndices[idx] = o.index();
+        idx++;
       }
       idx = 0;
       for (Operation op : targets) {
         targetOpHandles[idx++] = op.getUnsafeNativeHandle();
       }
-      try (Reference runref = new Reference()) {
-        Session.run(
-            nativeHandle,
-            null, /* runOptions */
-            inputTensorHandles,
-            inputOpHandles,
-            inputOpIndices,
-            outputOpHandles,
-            outputOpIndices,
-            targetOpHandles,
-            false, /* wantRunMetadata */
-            outputTensorHandles);
+      Reference runRef = new Reference();
+      byte[] metadata = null;
+      try {
+        metadata =
+            Session.run(
+                nativeHandle,
+                runOptions,
+                inputTensorHandles,
+                inputOpHandles,
+                inputOpIndices,
+                outputOpHandles,
+                outputOpIndices,
+                targetOpHandles,
+                wantMetadata,
+                outputTensorHandles);
+      } finally {
+        runRef.close();
       }
-      List<Tensor> ret = new ArrayList<Tensor>();
+      List<Tensor> outputs = new ArrayList<Tensor>();
       for (long h : outputTensorHandles) {
         try {
-          ret.add(Tensor.fromHandle(h));
+          outputs.add(Tensor.fromHandle(h));
         } catch (Exception e) {
-          for (Tensor t : ret) {
+          for (Tensor t : outputs) {
             t.close();
           }
-          ret.clear();
+          outputs.clear();
           throw e;
         }
       }
+      Run ret = new Run();
+      ret.outputs = outputs;
+      ret.metadata = metadata;
       return ret;
     }
 
@@ -225,7 +328,7 @@ public final class Session implements AutoCloseable {
       public Reference() {
         synchronized (nativeHandleLock) {
           if (nativeHandle == 0) {
-            throw new IllegalStateException("run() called after the Session was close()d");
+            throw new IllegalStateException("run() cannot be called on the Session after close()");
           }
           ++numActiveRuns;
         }
@@ -252,15 +355,53 @@ public final class Session implements AutoCloseable {
       return op;
     }
 
+    private Output parseOutput(String opName) {
+      int colon = opName.lastIndexOf(':');
+      if (colon == -1 || colon == opName.length() - 1) {
+        return new Output(operationByName(opName), 0);
+      }
+      try {
+        String op = opName.substring(0, colon);
+        int index = Integer.parseInt(opName.substring(colon + 1));
+        return new Output(operationByName(op), index);
+      } catch (NumberFormatException e) {
+        return new Output(operationByName(opName), 0);
+      }
+    }
+
     private ArrayList<Output> inputs = new ArrayList<Output>();
     private ArrayList<Tensor> inputTensors = new ArrayList<Tensor>();
     private ArrayList<Output> outputs = new ArrayList<Output>();
     private ArrayList<Operation> targets = new ArrayList<Operation>();
+    private byte[] runOptions = null;
   }
 
   /** Create a Runner to execute graph operations and evaluate Tensors. */
   public Runner runner() {
     return new Runner();
+  }
+
+  /**
+   * Output tensors and metadata obtained when executing a session.
+   *
+   * <p>See {@link Runner#runAndFetchMetadata()}
+   */
+  public static final class Run {
+    /** Tensors from requested fetches. */
+    public List<Tensor> outputs;
+
+    /**
+     * (Experimental): Metadata about the run.
+     *
+     * <p>A serialized <a
+     * href="https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto">RunMetadata
+     * protocol buffer</a>. The org.tensorflow package is free of any protocol buffer dependencies
+     * in order to remain friendly to resource constrained systems (where something like <a
+     * href="https://github.com/google/protobuf/tree/master/javanano#nano-version">nanoproto</a> may
+     * be more appropriate). A cost of that is this opaque blob. This choice is under review and
+     * this field may be replaced by more type-safe equivalents at any time.
+     */
+    public byte[] metadata;
   }
 
   private final Graph graph;
@@ -270,7 +411,10 @@ public final class Session implements AutoCloseable {
   private long nativeHandle;
   private int numActiveRuns;
 
+  // TODO(ashankar): Remove after TensorFlow 1.2 has been released with allocate2().
   private static native long allocate(long graphHandle);
+
+  private static native long allocate2(long graphHandle, String target, byte[] config);
 
   private static native void delete(long handle);
 

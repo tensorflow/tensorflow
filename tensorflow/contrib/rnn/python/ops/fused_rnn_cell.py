@@ -111,16 +111,17 @@ class FusedRNNCellAdaptor(FusedRNNCell):
           scope=scope)
       if is_list:
         # Convert outputs back to list
-        outputs = array_ops.unpack(outputs)
+        outputs = array_ops.unstack(outputs)
     else:  # non-dynamic rnn
       if not is_list:
-        inputs = array_ops.unpack(inputs)
-      outputs, state = rnn.rnn(self._cell,
-                               inputs,
-                               initial_state=initial_state,
-                               dtype=dtype,
-                               sequence_length=sequence_length,
-                               scope=scope)
+        inputs = array_ops.unstack(inputs)
+      outputs, state = rnn.static_rnn(
+          self._cell,
+          inputs,
+          initial_state=initial_state,
+          dtype=dtype,
+          sequence_length=sequence_length,
+          scope=scope)
       if not is_list:
         # Convert outputs back to tensor
         outputs = array_ops.stack(outputs)

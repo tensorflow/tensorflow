@@ -12,20 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests of the Series class."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.tests.dataframe import mocks
+from tensorflow.python.framework import dtypes
+from tensorflow.python.platform import test
 
 
-class TransformedSeriesTest(tf.test.TestCase):
+class TransformedSeriesTest(test.TestCase):
   """Test of `TransformedSeries`."""
 
   def test_repr(self):
@@ -40,6 +39,7 @@ class TransformedSeriesTest(tf.test.TestCase):
     self.assertEqual(expected, repr(col))
 
   def test_build_no_output(self):
+
     def create_no_output_series():
       return learn.TransformedSeries(
           [mocks.MockSeries("foobar", [])],
@@ -48,12 +48,12 @@ class TransformedSeriesTest(tf.test.TestCase):
     self.assertRaises(ValueError, create_no_output_series)
 
   def test_build_single_output(self):
-    col = learn.TransformedSeries(
-        [mocks.MockSeries("foobar", [])],
-        mocks.MockOneOutputTransform("thb", "nth"), "out1")
+    col = learn.TransformedSeries([mocks.MockSeries("foobar", [])],
+                                  mocks.MockOneOutputTransform("thb", "nth"),
+                                  "out1")
 
     result = col.build()
-    expected = mocks.MockTensor("Mock Tensor 1", tf.int32)
+    expected = mocks.MockTensor("Mock Tensor 1", dtypes.int32)
     self.assertEqual(expected, result)
 
   def test_build_multiple_output(self):
@@ -62,9 +62,9 @@ class TransformedSeriesTest(tf.test.TestCase):
         mocks.MockTwoOutputTransform("thb", "nth", "snt"), "out2")
 
     result = col.build()
-    expected = mocks.MockTensor("Mock Tensor 2", tf.int32)
+    expected = mocks.MockTensor("Mock Tensor 2", dtypes.int32)
     self.assertEqual(expected, result)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

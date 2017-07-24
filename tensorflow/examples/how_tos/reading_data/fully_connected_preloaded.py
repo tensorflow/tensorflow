@@ -17,7 +17,7 @@
 
 Run using bazel:
 
-bazel run -c opt \
+bazel run --config opt \
     <...>/tensorflow/examples/how_tos/reading_data:fully_connected_preloaded
 
 or, if installed via pip:

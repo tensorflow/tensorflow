@@ -20,7 +20,7 @@ package org.tensorflow;
  *
  * <p>Instances of a Graph are thread-safe.
  *
- * <p><b>WARNING:</b> Resources consumed by the Graph object msut be explicitly freed by invoking
+ * <p><b>WARNING:</b> Resources consumed by the Graph object must be explicitly freed by invoking
  * the {@link #close()} method then the Graph object is no longer needed.
  */
 public final class Graph implements AutoCloseable {
@@ -28,6 +28,11 @@ public final class Graph implements AutoCloseable {
   /** Create an empty Graph. */
   public Graph() {
     nativeHandle = allocate();
+  }
+
+  /** Create a Graph from an existing handle (takes ownership). */
+  Graph(long nativeHandle) {
+    this.nativeHandle = nativeHandle;
   }
 
   /**

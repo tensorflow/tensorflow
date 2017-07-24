@@ -34,8 +34,9 @@ class ObtainNextOp : public OpKernel {
 
     // Allocate output.
     Tensor* output_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output("out_element", TensorShape({1}),
-                                             &output_tensor));
+    OP_REQUIRES_OK(
+        ctx,
+        ctx->allocate_output("out_element", TensorShape({}), &output_tensor));
 
     // Obtain mutex for the "counter" tensor.
     mutex* mu;
@@ -44,13 +45,11 @@ class ObtainNextOp : public OpKernel {
     // Increment "counter" tensor by 1.
     Tensor counter_tensor;
     OP_REQUIRES_OK(ctx, ctx->mutable_input("counter", &counter_tensor, true));
-    auto counter_tensor_flat = counter_tensor.flat<int64>();
-    int64& pos = counter_tensor_flat(0);
-    pos = (pos + 1) % num_elements;
+    int64* pos = &counter_tensor.scalar<int64>()();
+    *pos = (*pos + 1) % num_elements;
 
     // Assign value to output.
-    auto output_tensor_flat = output_tensor->flat<string>();
-    output_tensor_flat(0) = list_flat(pos);
+    output_tensor->scalar<string>()() = list_flat(*pos);
   }
 };
 

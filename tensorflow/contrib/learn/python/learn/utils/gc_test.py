@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for learn.utils.gc."""
 
 from __future__ import absolute_import
@@ -24,15 +23,23 @@ import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-import tensorflow as tf
-
 from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
-def tearDownModule():
-  gfile.DeleteRecursively(tf.test.get_temp_dir())
+def _create_parser(base_dir):
+  # create a simple parser that pulls the export_version from the directory.
+  def parser(path):
+    match = re.match("^" + compat.as_str_any(base_dir) + "/(\\d+)$",
+                     compat.as_str_any(path.path))
+    if not match:
+      return None
+    return path._replace(export_version=int(match.group(1)))
+
+  return parser
 
 
 class GcTest(test_util.TensorFlowTestCase):
@@ -50,29 +57,34 @@ class GcTest(test_util.TensorFlowTestCase):
     self.assertEquals(n, [gc.Path("/foo", 0), gc.Path("/foo", 3)])
 
   def testModExportVersion(self):
-    paths = [gc.Path("/foo", 4), gc.Path("/foo", 5), gc.Path("/foo", 6),
-             gc.Path("/foo", 9)]
+    paths = [
+        gc.Path("/foo", 4), gc.Path("/foo", 5), gc.Path("/foo", 6),
+        gc.Path("/foo", 9)
+    ]
     mod = gc.mod_export_version(2)
     self.assertEquals(mod(paths), [gc.Path("/foo", 4), gc.Path("/foo", 6)])
     mod = gc.mod_export_version(3)
     self.assertEquals(mod(paths), [gc.Path("/foo", 6), gc.Path("/foo", 9)])
 
   def testOneOfEveryNExportVersions(self):
-    paths = [gc.Path("/foo", 0), gc.Path("/foo", 1), gc.Path("/foo", 3),
-             gc.Path("/foo", 5), gc.Path("/foo", 6), gc.Path("/foo", 7),
-             gc.Path("/foo", 8), gc.Path("/foo", 33)]
+    paths = [
+        gc.Path("/foo", 0), gc.Path("/foo", 1), gc.Path("/foo", 3),
+        gc.Path("/foo", 5), gc.Path("/foo", 6), gc.Path("/foo", 7),
+        gc.Path("/foo", 8), gc.Path("/foo", 33)
+    ]
     one_of = gc.one_of_every_n_export_versions(3)
-    self.assertEquals(one_of(paths),
-                      [gc.Path("/foo", 3), gc.Path("/foo", 6),
-                       gc.Path("/foo", 8), gc.Path("/foo", 33)])
+    self.assertEquals(
+        one_of(paths), [
+            gc.Path("/foo", 3), gc.Path("/foo", 6), gc.Path("/foo", 8),
+            gc.Path("/foo", 33)
+        ])
 
   def testOneOfEveryNExportVersionsZero(self):
     # Zero is a special case since it gets rolled into the first interval.
     # Test that here.
     paths = [gc.Path("/foo", 0), gc.Path("/foo", 4), gc.Path("/foo", 5)]
     one_of = gc.one_of_every_n_export_versions(3)
-    self.assertEquals(one_of(paths),
-                      [gc.Path("/foo", 0), gc.Path("/foo", 5)])
+    self.assertEquals(one_of(paths), [gc.Path("/foo", 0), gc.Path("/foo", 5)])
 
   def testUnion(self):
     paths = []
@@ -80,41 +92,48 @@ class GcTest(test_util.TensorFlowTestCase):
       paths.append(gc.Path("/foo", i))
     f = gc.union(gc.largest_export_versions(3), gc.mod_export_version(3))
     self.assertEquals(
-        f(paths), [gc.Path("/foo", 0), gc.Path("/foo", 3),
-                   gc.Path("/foo", 6), gc.Path("/foo", 7),
-                   gc.Path("/foo", 8), gc.Path("/foo", 9)])
+        f(paths), [
+            gc.Path("/foo", 0), gc.Path("/foo", 3), gc.Path("/foo", 6),
+            gc.Path("/foo", 7), gc.Path("/foo", 8), gc.Path("/foo", 9)
+        ])
 
   def testNegation(self):
-    paths = [gc.Path("/foo", 4), gc.Path("/foo", 5), gc.Path("/foo", 6),
-             gc.Path("/foo", 9)]
+    paths = [
+        gc.Path("/foo", 4), gc.Path("/foo", 5), gc.Path("/foo", 6),
+        gc.Path("/foo", 9)
+    ]
     mod = gc.negation(gc.mod_export_version(2))
-    self.assertEquals(
-        mod(paths), [gc.Path("/foo", 5), gc.Path("/foo", 9)])
+    self.assertEquals(mod(paths), [gc.Path("/foo", 5), gc.Path("/foo", 9)])
     mod = gc.negation(gc.mod_export_version(3))
-    self.assertEquals(
-        mod(paths), [gc.Path("/foo", 4), gc.Path("/foo", 5)])
+    self.assertEquals(mod(paths), [gc.Path("/foo", 4), gc.Path("/foo", 5)])
 
   def testPathsWithParse(self):
-    base_dir = os.path.join(tf.test.get_temp_dir(), "paths_parse")
+    base_dir = os.path.join(test.get_temp_dir(), "paths_parse")
     self.assertFalse(gfile.Exists(base_dir))
     for p in xrange(3):
       gfile.MakeDirs(os.path.join(base_dir, "%d" % p))
     # add a base_directory to ignore
     gfile.MakeDirs(os.path.join(base_dir, "ignore"))
 
-    # create a simple parser that pulls the export_version from the directory.
-    def parser(path):
-      match = re.match("^" + base_dir + "/(\\d+)$", path.path)
-      if not match:
-        return None
-      return path._replace(export_version=int(match.group(1)))
-
     self.assertEquals(
-        gc.get_paths(base_dir, parser=parser),
-        [gc.Path(os.path.join(base_dir, "0"), 0),
-         gc.Path(os.path.join(base_dir, "1"), 1),
-         gc.Path(os.path.join(base_dir, "2"), 2)])
+        gc.get_paths(base_dir, _create_parser(base_dir)),
+        [
+            gc.Path(os.path.join(base_dir, "0"), 0),
+            gc.Path(os.path.join(base_dir, "1"), 1),
+            gc.Path(os.path.join(base_dir, "2"), 2)
+        ])
+
+  def testMixedStrTypes(self):
+    temp_dir = compat.as_bytes(test.get_temp_dir())
+
+    for sub_dir in ['str', b'bytes', u'unicode']:
+      base_dir = os.path.join(
+          (temp_dir if isinstance(sub_dir, bytes) else temp_dir.decode()),
+          sub_dir)
+      self.assertFalse(gfile.Exists(base_dir))
+      gfile.MakeDirs(os.path.join(compat.as_str_any(base_dir), "42"))
+      gc.get_paths(base_dir, _create_parser(base_dir))
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

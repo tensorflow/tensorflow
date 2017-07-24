@@ -57,6 +57,14 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInputList(
 
 /*
  * Class:     org_tensorflow_OperationBuilder
+ * Method:    addControlInput
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addControlInput(
+    JNIEnv *, jclass, jlong, jlong);
+
+/*
+ * Class:     org_tensorflow_OperationBuilder
  * Method:    setDevice
  * Signature: (JLjava/lang/String;)V
  */
@@ -152,6 +160,22 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensor(
  */
 JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensorList(
     JNIEnv *, jclass, jlong, jstring, jlongArray);
+
+/*
+ * Class:     org_tensorflow_OperationBuilder
+ * Method:    setAttrShape
+ * Signature: (JLjava/lang/String;[JI)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShape(
+    JNIEnv *, jclass, jlong, jstring, jlongArray, jint);
+
+/*
+ * Class:     org_tensorflow_OperationBuilder
+ * Method:    setAttrStringList
+ * Signature: (JLjava/lang/String;[L)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
+    JNIEnv *, jclass, jlong, jstring, jobjectArray);
 
 #ifdef __cplusplus
 }  // extern "C"

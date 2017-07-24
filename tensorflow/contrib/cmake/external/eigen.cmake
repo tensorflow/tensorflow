@@ -1,6 +1,20 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 #new_http_archive(
 #  name = "eigen_archive",
-#  url = "https://bitbucket.org/eigen/eigen/get/...",
+#  urls = ["https://bitbucket.org/eigen/eigen/get/..."],
 #  sha256 = "...",
 #  build_file = "eigen.BUILD",
 #)
@@ -10,7 +24,7 @@ include (ExternalProject)
 # We parse the current Eigen version and archive hash from the bazel configuration
 file(STRINGS ${PROJECT_SOURCE_DIR}/../../workspace.bzl workspace_contents)
 foreach(line ${workspace_contents})
-    string(REGEX MATCH ".*\"(http.*bitbucket.org/eigen/eigen/get/.*tar.gz)\"" has_url ${line})
+    string(REGEX MATCH ".*\"(https://bitbucket.org/eigen/eigen/get/[^\"]*tar.gz)\"" has_url ${line})
     if(has_url)
         set(eigen_url ${CMAKE_MATCH_1})
         break()
@@ -36,4 +50,5 @@ ExternalProject_Add(eigen
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${eigen_INSTALL}
         -DINCLUDE_INSTALL_DIR:STRING=${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive
+        -DBUILD_TESTING:BOOL=OFF
 )

@@ -75,35 +75,6 @@ class WindowsEnv : public Env {
     return PathMatchSpec(path.c_str(), pattern.c_str()) == TRUE;
   }
 
-  uint64 NowMicros() override {
-    if (GetSystemTimePreciseAsFileTime_ != NULL) {
-      // GetSystemTimePreciseAsFileTime function is only available in latest
-      // versions of Windows, so we need to check for its existence here.
-      // All std::chrono clocks on Windows proved to return
-      // values that may repeat, which is not good enough for some uses.
-      constexpr int64_t kUnixEpochStartTicks = 116444736000000000i64;
-      constexpr int64_t kFtToMicroSec = 10;
-
-      // This interface needs to return system time and not
-      // just any microseconds because it is often used as an argument
-      // to TimedWait() on condition variable
-      FILETIME system_time;
-      GetSystemTimePreciseAsFileTime_(&system_time);
-
-      LARGE_INTEGER li;
-      li.LowPart = system_time.dwLowDateTime;
-      li.HighPart = system_time.dwHighDateTime;
-      // Subtract unix epoch start
-      li.QuadPart -= kUnixEpochStartTicks;
-      // Convert to microsecs
-      li.QuadPart /= kFtToMicroSec;
-      return li.QuadPart;
-    }
-    using namespace std::chrono;
-    return duration_cast<microseconds>(
-        system_clock::now().time_since_epoch()).count();
-  }
-
   void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
@@ -111,22 +82,42 @@ class WindowsEnv : public Env {
     return new StdThread(thread_options, name, fn);
   }
 
+  static VOID CALLBACK SchedClosureCallback(PTP_CALLBACK_INSTANCE Instance,
+                                            PVOID Context, PTP_WORK Work) {
+    CloseThreadpoolWork(Work);
+    std::function<void()>* f = (std::function<void()>*)Context;
+    (*f)();
+    delete f;
+  }
   void SchedClosure(std::function<void()> closure) override {
-    // TODO(b/27290852): Spawning a new thread here is wasteful, but
-    // needed to deal with the fact that many `closure` functions are
-    // blocking in the current codebase.
-    std::thread closure_thread(closure);
-    closure_thread.detach();
+    PTP_WORK work = CreateThreadpoolWork(
+        SchedClosureCallback, new std::function<void()>(std::move(closure)),
+        nullptr);
+    SubmitThreadpoolWork(work);
+  }
+
+  static VOID CALLBACK SchedClosureAfterCallback(PTP_CALLBACK_INSTANCE Instance,
+                                                 PVOID Context,
+                                                 PTP_TIMER Timer) {
+    CloseThreadpoolTimer(Timer);
+    std::function<void()>* f = (std::function<void()>*)Context;
+    (*f)();
+    delete f;
   }
 
   void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
-    // TODO(b/27290852): Consuming a thread here is wasteful, but this
-    // code is (currently) only used in the case where a step fails
-    // (AbortStep). This could be replaced by a timer thread
-    SchedClosure([this, micros, closure]() {
-      SleepForMicroseconds(micros);
-      closure();
-    });
+    PTP_TIMER timer = CreateThreadpoolTimer(
+        SchedClosureAfterCallback,
+        new std::function<void()>(std::move(closure)), nullptr);
+    // in 100 nanosecond units
+    FILETIME FileDueTime;
+    ULARGE_INTEGER ulDueTime;
+    // Negative indicates the amount of time to wait is relative to the current
+    // time.
+    ulDueTime.QuadPart = (ULONGLONG) - (10 * micros);
+    FileDueTime.dwHighDateTime = ulDueTime.HighPart;
+    FileDueTime.dwLowDateTime = ulDueTime.LowPart;
+    SetThreadpoolTimer(timer, &FileDueTime, 0, 0);
   }
 
   Status LoadLibrary(const char *library_filename, void** handle) override {

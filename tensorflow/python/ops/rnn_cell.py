@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Module for constructing RNN Cells.
 
 ## Base interface for all RNN Cells
@@ -34,9 +33,8 @@
 
 @@MultiRNNCell
 @@DropoutWrapper
-@@EmbeddingWrapper
-@@InputProjectionWrapper
-@@OutputProjectionWrapper
+@@DeviceWrapper
+@@ResidualWrapper
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -46,12 +44,7 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.rnn_cell_impl import *
 # pylint: enable=wildcard-import
-# TODO(drpng): remove this once internal use has been eradicated.
-# pylint: disable=unused-import
-from tensorflow.python.ops.rnn_cell_impl import _linear
-# pylint: enable=unused-import
 from tensorflow.python.util.all_util import remove_undocumented
-
 
 _allowed_symbols = []
 

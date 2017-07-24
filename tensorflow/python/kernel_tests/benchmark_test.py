@@ -190,6 +190,11 @@ class BenchmarkTest(test.TestCase):
       json_trace = json.loads(full_trace.string_value)
       self.assertTrue(isinstance(json_trace, dict))
       self.assertTrue("traceEvents" in json_trace.keys())
+      allocator_keys = [k for k in read_benchmark_3.extras.keys()
+                        if k.startswith("allocator_maximum_num_bytes_")]
+      self.assertGreater(len(allocator_keys), 0)
+      for k in allocator_keys:
+        self.assertGreater(read_benchmark_3.extras[k].double_value, 0)
 
     finally:
       gfile.DeleteRecursively(tempdir)

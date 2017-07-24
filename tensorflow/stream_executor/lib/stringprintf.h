@@ -24,7 +24,6 @@ namespace port {
 
 using tensorflow::strings::Printf;
 using tensorflow::strings::Appendf;
-using tensorflow::strings::Appendv;
 
 }  // namespace port
 }  // namespace gputools

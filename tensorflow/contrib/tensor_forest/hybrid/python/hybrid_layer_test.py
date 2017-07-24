@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-import tensorflow as tf
 
 from tensorflow.contrib.tensor_forest.hybrid.python import hybrid_model
 from tensorflow.contrib.tensor_forest.hybrid.python.layers import fully_connected
@@ -30,17 +29,18 @@ from tensorflow.python.platform import googletest
 class HybridLayerTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.params = tensor_forest.ForestHParams(num_classes=3,
-                                              num_features=7,
-                                              layer_size=11,
-                                              num_layers=13,
-                                              num_trees=17,
-                                              connection_probability=0.1,
-                                              hybrid_tree_depth=4,
-                                              regularization_strength=0.01,
-                                              regularization="",
-                                              weight_init_mean=0.0,
-                                              weight_init_std=0.1)
+    self.params = tensor_forest.ForestHParams(
+        num_classes=3,
+        num_features=7,
+        layer_size=11,
+        num_layers=13,
+        num_trees=17,
+        connection_probability=0.1,
+        hybrid_tree_depth=4,
+        regularization_strength=0.01,
+        regularization="",
+        weight_init_mean=0.0,
+        weight_init_std=0.1)
     self.params.num_nodes = 2**self.params.hybrid_tree_depth - 1
     self.params.num_leaves = 2**(self.params.hybrid_tree_depth - 1)
 

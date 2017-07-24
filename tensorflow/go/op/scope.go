@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package op
 
@@ -47,6 +49,11 @@ func NewScope() *Scope {
 	return &Scope{graph: tf.NewGraph(), namemap: make(map[string]int), err: new(scopeErr)}
 }
 
+// NewScopeWithGraph creates a Scope initialized with the Graph thats passed in
+func NewScopeWithGraph(g *tf.Graph) *Scope {
+	return &Scope{graph: g, namemap: make(map[string]int), err: new(scopeErr)}
+}
+
 // Finalize returns the Graph on which this scope operates on and renders s
 // unusable. If there was an error during graph construction, that error is
 // returned instead.
@@ -60,10 +67,18 @@ func (s *Scope) Finalize() (*tf.Graph, error) {
 
 // AddOperation adds the operation to the Graph managed by s.
 //
-// See Graph.AddOperation.
+// If there is a name prefix associated with s (such as if s was created
+// by a call to SubScope), then this prefix will be applied to the name
+// of the operation being added. See also Graph.AddOperation.
 func (s *Scope) AddOperation(args tf.OpSpec) *tf.Operation {
 	if s.Err() != nil {
 		return nil
+	}
+	if args.Name == "" {
+		args.Name = args.Type
+	}
+	if s.namespace != "" {
+		args.Name = s.namespace + "/" + args.Name
 	}
 	op, err := s.graph.AddOperation(args)
 	if err != nil {

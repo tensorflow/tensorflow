@@ -23,6 +23,7 @@ import itertools
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
@@ -138,8 +139,6 @@ class ReduceJoinTest(UnicodeTestCase):
       reduction_indices: The indices to reduce.
       separator: The separator to use when joining.
     """
-    num_dims = len(input_array.shape)
-    truth_red_indices = reduction_indices or list(reversed(xrange(num_dims)))
     with self.test_session():
       output = string_ops.reduce_join(
           inputs=input_array,
@@ -153,13 +152,15 @@ class ReduceJoinTest(UnicodeTestCase):
           separator=separator)
 
       truth = input_array
-      for index in truth_red_indices:
+      for index in reduction_indices:
         truth = string_ops.reduce_join(
             inputs=truth,
             reduction_indices=index,
             keep_dims=True,
             separator=separator)
-      truth_squeezed = array_ops.squeeze(truth, squeeze_dims=truth_red_indices)
+      if not reduction_indices:
+        truth = constant_op.constant(truth)
+      truth_squeezed = array_ops.squeeze(truth, squeeze_dims=reduction_indices)
       output_array = output.eval()
       output_keep_dims_array = output_keep_dims.eval()
       truth_array = truth.eval()
@@ -186,6 +187,24 @@ class ReduceJoinTest(UnicodeTestCase):
         input_array, truth_dim_zero, truth_shape_dim_zero, reduction_indices=0)
     self._testReduceJoin(
         input_array, truth_dim_one, truth_shape_dim_one, reduction_indices=1)
+
+    expected_val = "thisisatestpleasedonotpanic"
+    expected_shape = None
+    self._testReduceJoin(
+        input_array, expected_val, expected_shape, reduction_indices=None)
+
+    # When using Tensor for input with reduction_indices=None, shape is known.
+    expected_val = "thisisatestpleasedonotpanic"
+    expected_shape = []
+    self._testReduceJoin(
+        constant_op.constant(input_array), expected_val,
+        expected_shape, reduction_indices=None)
+
+    # Using [] reduction_indices is a no-op.
+    expected_val = input_array
+    expected_shape = [2, 4]
+    self._testReduceJoin(
+        input_array, expected_val, expected_shape, reduction_indices=[])
 
   def testRankFive(self):
     input_array = _input_array(num_dims=5)
@@ -283,6 +302,19 @@ class ReduceJoinTest(UnicodeTestCase):
         reduction_indices=1,
         keep_dims=True)
 
+    expected_val = [["thisisatestpleasedonotpanic"]]
+    expected_shape = [1, 1]
+    self._testReduceJoin(
+        constant_op.constant(input_array), expected_val, expected_shape,
+        keep_dims=True, reduction_indices=None)
+
+    # Using [] reduction_indices is a no-op.
+    expected_val = input_array
+    expected_shape = [2, 4]
+    self._testReduceJoin(
+        input_array, expected_val, expected_shape,
+        keep_dims=True, reduction_indices=[])
+
   def testMultiIndex(self):
     num_dims = 3
     input_array = _input_array(num_dims=num_dims)
@@ -305,18 +337,19 @@ class ReduceJoinTest(UnicodeTestCase):
         string_ops.reduce_join(inputs=[[""]], reduction_indices=[0, -3])
       with self.assertRaisesRegexp(ValueError, "Invalid reduction dimension 2"):
         string_ops.reduce_join(inputs=[[""]], reduction_indices=[0, 2])
-      with self.assertRaisesRegexp(ValueError, "Duplicate reduction index 0"):
-        string_ops.reduce_join(inputs=[[""]], reduction_indices=[0, 0])
 
   def testZeroDims(self):
-    valid_truth_shape = [0]
     with self.test_session():
       inputs = np.zeros([0, 1], dtype=str)
-      with self.assertRaisesRegexp(ValueError, "dimension 0 with size 0"):
-        string_ops.reduce_join(inputs=inputs, reduction_indices=0)
-      valid = string_ops.reduce_join(inputs=inputs, reduction_indices=1)
-      valid_array_shape = valid.eval().shape
-      self.assertAllEqualUnicode(valid_truth_shape, valid_array_shape)
+
+      # Reduction that drops the dim of size 0.
+      output = string_ops.reduce_join(inputs=inputs, reduction_indices=0)
+      self.assertAllEqualUnicode([""], output.eval())
+
+      # Reduction that keeps the dim of size 0.
+      output = string_ops.reduce_join(inputs=inputs, reduction_indices=1)
+      output_shape = output.eval().shape
+      self.assertAllEqual([0], output_shape)
 
   def testInvalidArgsUnknownShape(self):
     with self.test_session():

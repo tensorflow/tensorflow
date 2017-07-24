@@ -129,10 +129,10 @@ class ReshapeTest(test.TestCase):
     y = array_ops.reshape(x, [array_ops.placeholder(dtypes.int32), 37])
     self.assertEqual([None, 37], y.get_shape().as_list())
 
-    # Unknown input shape, partial new shape using `tf.concat_v2()`.
+    # Unknown input shape, partial new shape using `tf.concat()`.
     y = array_ops.reshape(
         x,
-        array_ops.concat_v2(
+        array_ops.concat(
             [array_ops.placeholder(
                 dtypes.int32, shape=(2,)), [37, 42]], 0))
     self.assertEqual([None, None, 37, 42], y.get_shape().as_list())

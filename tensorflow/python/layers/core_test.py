@@ -22,8 +22,10 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
@@ -38,53 +40,51 @@ class DenseTest(test.TestCase):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')
     self.assertEqual(dense.units, 2)
     self.assertEqual(dense.activation, nn_ops.relu)
-    self.assertEqual(dense.weights_regularizer, None)
+    self.assertEqual(dense.kernel_regularizer, None)
     self.assertEqual(dense.bias_regularizer, None)
     self.assertEqual(dense.activity_regularizer, None)
     self.assertEqual(dense.use_bias, True)
-    self.assertEqual(dense.name, 'my_dense')
 
     # Test auto-naming
     dense = core_layers.Dense(2, activation=nn_ops.relu)
-    self.assertEqual(dense.name, 'dense')
-    dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_1')
+    dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(random_ops.random_uniform((5, 2)))
+    self.assertEqual(dense.name, 'dense_2')
 
   def testCall(self):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')
     inputs = random_ops.random_uniform((5, 2), seed=1)
     _ = dense(inputs)
-    self.assertListEqual(dense.variables, [dense.w, dense.bias])
-    self.assertListEqual(dense.trainable_variables, [dense.w, dense.bias])
+    self.assertListEqual(dense.variables, [dense.kernel, dense.bias])
+    self.assertListEqual(dense.trainable_variables, [dense.kernel, dense.bias])
     self.assertListEqual(dense.non_trainable_variables, [])
-    self.assertListEqual(dense._trainable_variables, [dense.w, dense.bias])
-    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
-    self.assertEqual(dense.w.name, 'my_dense/weights:0')
+    self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
     self.assertEqual(dense.bias.name, 'my_dense/bias:0')
 
   def testNoBias(self):
     dense = core_layers.Dense(2, use_bias=False, name='my_dense')
     inputs = random_ops.random_uniform((5, 2), seed=1)
     _ = dense(inputs)
-    self.assertListEqual(dense.variables, [dense.w])
-    self.assertListEqual(dense.trainable_variables, [dense.w])
+    self.assertListEqual(dense.variables, [dense.kernel])
+    self.assertListEqual(dense.trainable_variables, [dense.kernel])
     self.assertListEqual(dense.non_trainable_variables, [])
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 1)
-    self.assertEqual(dense.w.name, 'my_dense/weights:0')
+    self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
     self.assertEqual(dense.bias, None)
 
   def testNonTrainable(self):
     dense = core_layers.Dense(2, trainable=False, name='my_dense')
     inputs = random_ops.random_uniform((5, 2), seed=1)
     _ = dense(inputs)
-    self.assertListEqual(dense.variables, [dense.w, dense.bias])
-    self.assertListEqual(dense.non_trainable_variables, [dense.w, dense.bias])
+    self.assertListEqual(dense.variables, [dense.kernel, dense.bias])
+    self.assertListEqual(dense.non_trainable_variables,
+                         [dense.kernel, dense.bias])
     self.assertListEqual(dense.trainable_variables, [])
-    self.assertListEqual(dense._trainable_variables, [dense.w, dense.bias])
-    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 0)
 
@@ -148,25 +148,25 @@ class DenseTest(test.TestCase):
     self.assertEqual(len(loss_keys), 1)
     self.assertListEqual(dense.losses, loss_keys)
 
-  def testWeightsRegularizer(self):
+  def testKernelRegularizer(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     dense = core_layers.Dense(
-        2, name='my_dense', weights_regularizer=regularizer)
+        2, name='my_dense', kernel_regularizer=regularizer)
     inputs = random_ops.random_uniform((5, 3), seed=1)
     _ = dense(inputs)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
     self.assertListEqual(dense.losses, loss_keys)
 
-  def testWeightsRegularizerWithReuse(self):
+  def testKernelRegularizerWithReuse(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     inputs = random_ops.random_uniform((5, 3), seed=1)
     _ = core_layers.dense(
-        inputs, 2, name='my_dense', weights_regularizer=regularizer)
+        inputs, 2, name='my_dense', kernel_regularizer=regularizer)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
     _ = core_layers.dense(
-        inputs, 2, name='my_dense', weights_regularizer=regularizer, reuse=True)
+        inputs, 2, name='my_dense', kernel_regularizer=regularizer, reuse=True)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 1)
 
@@ -205,6 +205,30 @@ class DenseTest(test.TestCase):
     vars2 = variables.trainable_variables()
     self.assertEqual(vars1, vars2)
 
+  def testFunctionalDenseTwiceReuseFromScope(self):
+    with variable_scope.variable_scope('scope'):
+      inputs = random_ops.random_uniform((5, 3), seed=1)
+      core_layers.dense(inputs, 2, name='my_dense')
+      vars1 = variables.trainable_variables()
+    with variable_scope.variable_scope('scope', reuse=True):
+      core_layers.dense(inputs, 2, name='my_dense')
+      vars2 = variables.trainable_variables()
+    self.assertEqual(vars1, vars2)
+
+  def testFunctionalDenseInitializerFromScope(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          'scope', initializer=init_ops.ones_initializer()):
+        inputs = random_ops.random_uniform((5, 3), seed=1)
+        core_layers.dense(inputs, 2)
+        sess.run(variables.global_variables_initializer())
+        weights = sess.run(variables.trainable_variables())
+        self.assertEqual(len(weights), 2)
+        # Check that the matrix weights got initialized to ones (from scope).
+        self.assertAllClose(weights[0], np.ones((3, 2)))
+        # Check that the bias still got initialized to zeros.
+        self.assertAllClose(weights[1], np.zeros((2)))
+
   def testFunctionalDenseWithCustomGetter(self):
     called = [0]
 
@@ -222,26 +246,48 @@ class DenseTest(test.TestCase):
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2, name='my_dense')
       var = variables.trainable_variables()[0]
-      self.assertEqual(var.name, 'test/my_dense/weights:0')
+      self.assertEqual(var.name, 'test/my_dense/kernel:0')
     with variable_scope.variable_scope('test1') as scope:
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2, name=scope)
       var = variables.trainable_variables()[2]
-      self.assertEqual(var.name, 'test1/weights:0')
+      self.assertEqual(var.name, 'test1/kernel:0')
     with variable_scope.variable_scope('test2'):
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2)
       var = variables.trainable_variables()[4]
-      self.assertEqual(var.name, 'test2/dense/weights:0')
+      self.assertEqual(var.name, 'test2/dense/kernel:0')
+
+  def testComputeOutputShape(self):
+    dense = core_layers.Dense(2, activation=nn_ops.relu, name='dense1')
+    ts = tensor_shape.TensorShape
+    # pylint: disable=protected-access
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts(None))
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts([]))
+    with self.assertRaises(ValueError):
+      dense._compute_output_shape(ts([1]))
+    self.assertEqual(
+        [None, 2],
+        dense._compute_output_shape((None, 3)).as_list())
+    self.assertEqual(
+        [None, 2],
+        dense._compute_output_shape(ts([None, 3])).as_list())
+    self.assertEqual(
+        [None, 4, 2],
+        dense._compute_output_shape(ts([None, 4, 3])).as_list())
+    # pylint: enable=protected-access
 
 
 class DropoutTest(test.TestCase):
 
   def testDropoutProperties(self):
-    dp = core_layers.Dropout(0.5)
+    dp = core_layers.Dropout(0.5, name='dropout')
     self.assertEqual(dp.rate, 0.5)
-    self.assertEqual(dp.name, 'dropout')
     self.assertEqual(dp.noise_shape, None)
+    dp.apply(np.ones(()))
+    self.assertEqual(dp.name, 'dropout')
 
   def testBooleanLearningPhase(self):
     with self.test_session() as sess:
@@ -289,6 +335,18 @@ class DropoutTest(test.TestCase):
       np_output = sess.run(dropped, feed_dict={training: True})
       self.assertAlmostEqual(0., np_output.min())
       np_output = sess.run(dropped, feed_dict={training: False})
+      self.assertAllClose(np.ones((5, 5)), np_output)
+
+  def testDynamicRate(self):
+    with self.test_session() as sess:
+      rate = array_ops.placeholder(dtype='float32', name='rate')
+      dp = core_layers.Dropout(rate, name='dropout')
+      inputs = array_ops.ones((5, 5))
+      dropped = dp.apply(inputs, training=True)
+      sess.run(variables.global_variables_initializer())
+      np_output = sess.run(dropped, feed_dict={rate: 0.5})
+      self.assertAlmostEqual(0., np_output.min())
+      np_output = sess.run(dropped, feed_dict={rate: 0.0})
       self.assertAllClose(np.ones((5, 5)), np_output)
 
 

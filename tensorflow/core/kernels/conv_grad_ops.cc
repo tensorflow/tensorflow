@@ -73,46 +73,55 @@ Status ConvBackpropExtractAndVerifyDimension(
   return Status::OK();
 }
 
-Status Conv2DBackpropComputeDimensions(
-    StringPiece label, const TensorShape& input_shape,
-    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const std::vector<int32>& strides, Padding padding,
-    TensorFormat data_format, Conv2DBackpropDimensions* dims) {
-  if (input_shape.dims() != 4) {
-    return errors::InvalidArgument(label, ": input must be 4-dimensional");
+Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
+                                     const TensorShape& input_shape,
+                                     const TensorShape& filter_shape,
+                                     const TensorShape& out_backprop_shape,
+                                     const std::vector<int32>& strides,
+                                     Padding padding, TensorFormat data_format,
+                                     ConvBackpropDimensions* dims) {
+  // The + 2 in the following line is for the batch and feature dimensions.
+  const int num_dims = num_spatial_dims + 2;
+  if (input_shape.dims() != num_dims) {
+    return errors::InvalidArgument(label, ": input must be ", num_dims,
+                                   "-dimensional");
   }
-  if (filter_shape.dims() != 4) {
-    return errors::InvalidArgument(label, ": filter must be 4-dimensional");
+  if (filter_shape.dims() != num_dims) {
+    return errors::InvalidArgument(label, ": filter must be ", num_dims,
+                                   "-dimensional");
   }
-  if (out_backprop_shape.dims() != 4) {
-    errors::InvalidArgument(label, ": out_backprop must be 4-dimensional");
+  if (out_backprop_shape.dims() != num_dims) {
+    return errors::InvalidArgument(label, ": out_backprop must be ", num_dims,
+                                   "-dimensional");
   }
-  dims->batch_size = GetTensorDim(input_shape, data_format, 'N');
-  if (dims->batch_size != GetTensorDim(out_backprop_shape, data_format, 'N')) {
+  int batch_dim = GetTensorBatchDimIndex(num_dims, data_format);
+  dims->batch_size = input_shape.dim_size(batch_dim);
+  if (dims->batch_size != out_backprop_shape.dim_size(batch_dim)) {
     return errors::InvalidArgument(
         label, ": input and out_backprop must have the same batch size");
   }
 
-  dims->in_depth = GetTensorDim(input_shape, data_format, 'C');
-  if (dims->in_depth != filter_shape.dim_size(2)) {
+  int feature_dim = GetTensorFeatureDimIndex(num_dims, data_format);
+  dims->in_depth = input_shape.dim_size(feature_dim);
+  // The input and output feature dimensions are the second last and last
+  // dimensions of the filter Tensor.
+  if (dims->in_depth != filter_shape.dim_size(num_dims - 2)) {
     return errors::InvalidArgument(
         label, ": input and filter must have the same depth");
   }
-  dims->out_depth = filter_shape.dim_size(3);
-  if (dims->out_depth != GetTensorDim(out_backprop_shape, data_format, 'C')) {
+  dims->out_depth = filter_shape.dim_size(num_dims - 1);
+  if (dims->out_depth != out_backprop_shape.dim_size(feature_dim)) {
     return errors::InvalidArgument(
         label, ": filter and out_backprop must have the same out_depth");
   }
 
-  const int row_dim = GetTensorDimIndex(data_format, 'H');
-  const int col_dim = GetTensorDimIndex(data_format, 'W');
-  const int filter_row_dim = 0, filter_col_dim = 1;
-  TF_RETURN_IF_ERROR(ConvBackpropExtractAndVerifyDimension(
-      label, input_shape, filter_shape, out_backprop_shape, strides, padding,
-      row_dim, filter_row_dim, &dims->rows));
-  TF_RETURN_IF_ERROR(ConvBackpropExtractAndVerifyDimension(
-      label, input_shape, filter_shape, out_backprop_shape, strides, padding,
-      col_dim, filter_col_dim, &dims->cols));
+  dims->spatial_dims.resize(num_spatial_dims);
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    int image_dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+    TF_RETURN_IF_ERROR(ConvBackpropExtractAndVerifyDimension(
+        label, input_shape, filter_shape, out_backprop_shape, strides, padding,
+        image_dim, i, &dims->spatial_dims[i]));
+  }
   return Status::OK();
 }
 

@@ -22,7 +22,33 @@ limitations under the License.
 
 namespace tensorflow {
 
-LocalMaster::LocalMaster(Master* master_impl) : master_impl_(master_impl) {}
+namespace {
+Status WaitForNotification(CallOptions* call_options,
+                           const int64 default_timeout_in_ms, Notification* n) {
+  int64 timeout_in_ms = call_options->GetTimeout();
+  if (timeout_in_ms == 0) {
+    timeout_in_ms = default_timeout_in_ms;
+  }
+  if (timeout_in_ms > 0) {
+    int64 timeout_in_us = timeout_in_ms * 1000;
+    bool notified = WaitForNotificationWithTimeout(n, timeout_in_us);
+    if (!notified) {
+      call_options->StartCancel();
+      // The call has borrowed pointers to the request and response
+      // messages, so we must still wait for the call to complete.
+      n->WaitForNotification();
+      return errors::DeadlineExceeded("Operation timed out.");
+    }
+  } else {
+    n->WaitForNotification();
+  }
+  return Status::OK();
+}
+}  // namespace
+
+LocalMaster::LocalMaster(Master* master_impl, const int64 default_timeout_in_ms)
+    : master_impl_(master_impl),
+      default_timeout_in_ms_(default_timeout_in_ms) {}
 
 Status LocalMaster::CreateSession(CallOptions* call_options,
                                   const CreateSessionRequest* request,
@@ -33,7 +59,8 @@ Status LocalMaster::CreateSession(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
   return ret;
 }
 
@@ -46,7 +73,8 @@ Status LocalMaster::ExtendSession(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
   return ret;
 }
 
@@ -59,13 +87,14 @@ Status LocalMaster::PartialRunSetup(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
   return ret;
 }
 
 Status LocalMaster::RunStep(CallOptions* call_options,
-                            const RunStepRequest* request,
-                            RunStepResponse* response) {
+                            RunStepRequestWrapper* request,
+                            MutableRunStepResponseWrapper* response) {
   Notification n;
   Status ret;
   master_impl_->RunStep(call_options, request, response,
@@ -73,8 +102,17 @@ Status LocalMaster::RunStep(CallOptions* call_options,
                           ret.Update(s);
                           n.Notify();
                         });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
   return ret;
+}
+
+MutableRunStepRequestWrapper* LocalMaster::CreateRunStepRequest() {
+  return new InMemoryRunStepRequest;
+}
+
+MutableRunStepResponseWrapper* LocalMaster::CreateRunStepResponse() {
+  return new InMemoryRunStepResponse;
 }
 
 Status LocalMaster::CloseSession(CallOptions* call_options,
@@ -86,7 +124,8 @@ Status LocalMaster::CloseSession(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
   return ret;
 }
 
@@ -99,7 +138,8 @@ Status LocalMaster::ListDevices(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
   return ret;
 }
 
@@ -112,7 +152,8 @@ Status LocalMaster::Reset(CallOptions* call_options,
     ret.Update(s);
     n.Notify();
   });
-  n.WaitForNotification();
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
   return ret;
 }
 
@@ -122,7 +163,15 @@ mutex* get_local_master_registry_lock() {
   return &local_master_registry_lock;
 }
 
-typedef std::unordered_map<string, Master*> LocalMasterRegistry;
+struct MasterInfo {
+  Master* master;
+  const int64 default_timeout_in_ms;
+
+  MasterInfo(Master* master, const int64 default_timeout_in_ms)
+      : master(master), default_timeout_in_ms(default_timeout_in_ms) {}
+};
+
+typedef std::unordered_map<string, MasterInfo> LocalMasterRegistry;
 LocalMasterRegistry* local_master_registry() {
   static LocalMasterRegistry* local_master_registry_ = new LocalMasterRegistry;
   return local_master_registry_;
@@ -130,9 +179,11 @@ LocalMasterRegistry* local_master_registry() {
 }  // namespace
 
 /* static */
-void LocalMaster::Register(const string& target, Master* master) {
+void LocalMaster::Register(const string& target, Master* master,
+                           int64 default_timeout_in_ms) {
   mutex_lock l(*get_local_master_registry_lock());
-  local_master_registry()->insert({target, master});
+  local_master_registry()->insert(
+      {target, MasterInfo(master, default_timeout_in_ms)});
 }
 
 /* static */
@@ -141,7 +192,8 @@ std::unique_ptr<LocalMaster> LocalMaster::Lookup(const string& target) {
   mutex_lock l(*get_local_master_registry_lock());
   auto iter = local_master_registry()->find(target);
   if (iter != local_master_registry()->end()) {
-    ret.reset(new LocalMaster(iter->second));
+    ret.reset(new LocalMaster(iter->second.master,
+                              iter->second.default_timeout_in_ms));
   }
   return ret;
 }

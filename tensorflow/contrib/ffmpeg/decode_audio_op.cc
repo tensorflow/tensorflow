@@ -53,7 +53,7 @@ class FileDeleter {
   explicit FileDeleter(const string& filename) : filename_(filename) {}
   ~FileDeleter() {
     Env& env = *Env::Default();
-    env.DeleteFile(filename_);
+    env.DeleteFile(filename_).IgnoreError();
   }
 
  private:

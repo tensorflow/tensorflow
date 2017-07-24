@@ -245,7 +245,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.python import summary
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -253,7 +252,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.summary import summary
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer as tf_optimizer
 
@@ -284,10 +283,11 @@ def add_gradients_summaries(grads_and_vars):
         grad_values = grad.values
       else:
         grad_values = grad
-      summaries.append(summary.histogram_summary(
-          var.op.name + ':gradient', grad_values))
-      summaries.append(summary.histogram_summary(
-          var.op.name + ':gradient_norm', clip_ops.global_norm([grad_values])))
+      summaries.append(
+          summary.histogram(var.op.name + '_gradient', grad_values))
+      summaries.append(
+          summary.scalar(var.op.name + '_gradient_norm',
+                         clip_ops.global_norm([grad_values])))
     else:
       logging.info('Var %s has no gradient', var.op.name)
 
@@ -356,23 +356,27 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
   return multiplied_grads_and_vars
 
 
+_USE_GLOBAL_STEP = 0
+
+
 def create_train_op(total_loss,
                     optimizer,
-                    global_step=None,
+                    global_step=_USE_GLOBAL_STEP,
                     update_ops=None,
                     variables_to_train=None,
                     transform_grads_fn=None,
                     summarize_gradients=False,
                     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
                     aggregation_method=None,
-                    colocate_gradients_with_ops=False):
+                    colocate_gradients_with_ops=False,
+                    check_numerics=True):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
     total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
     global_step: A `Tensor` representing the global step variable. If left as
-      `None`, then tf.contrib.framework.global_step() is used.
+      `_USE_GLOBAL_STEP`, then tf.contrib.framework.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
@@ -390,12 +394,13 @@ def create_train_op(total_loss,
       Valid values are defined in the class `AggregationMethod`.
     colocate_gradients_with_ops: Whether or not to try colocating the gradients
       with the ops that generated them.
+    check_numerics: Whether or not we apply check_numerics.
 
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
   """
-  if global_step is None:
+  if global_step is _USE_GLOBAL_STEP:
     global_step = variables.get_or_create_global_step()
 
   # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
@@ -446,24 +451,31 @@ def create_train_op(total_loss,
 
   with ops.name_scope('train_op'):
     # Make sure total_loss is valid.
-    total_loss = array_ops.check_numerics(total_loss,
-                                          'LossTensor is inf or nan')
+    if check_numerics:
+      total_loss = array_ops.check_numerics(total_loss,
+                                            'LossTensor is inf or nan')
 
     # Ensure the train_tensor computes grad_updates.
-    return control_flow_ops.with_dependencies([grad_updates], total_loss)
+    train_op = control_flow_ops.with_dependencies([grad_updates], total_loss)
+
+  # Add the operation used for training to the 'train_op' collection
+  train_ops = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+  if train_op not in train_ops:
+    train_ops.append(train_op)
+
+  return train_op
 
 
-def train(
-    train_op,
-    logdir,
-    master='',
-    is_chief=True,
-    scaffold=None,
-    hooks=None,
-    chief_only_hooks=None,
-    save_checkpoint_secs=600,
-    save_summaries_steps=100,
-    config=None):
+def train(train_op,
+          logdir,
+          master='',
+          is_chief=True,
+          scaffold=None,
+          hooks=None,
+          chief_only_hooks=None,
+          save_checkpoint_secs=600,
+          save_summaries_steps=100,
+          config=None):
   """Runs the training loop.
 
   Args:
@@ -494,45 +506,25 @@ def train(
     ValueError: if `logdir` is `None` and either `save_checkpoint_secs` or
     `save_summaries_steps` are `None.
   """
-  # TODO(nsilberman): move this logic into monitored_session.py
-  scaffold = scaffold or monitored_session.Scaffold()
-
-  hooks = hooks or []
-
-  if is_chief:
-    session_creator = monitored_session.ChiefSessionCreator(
-        scaffold=scaffold,
-        checkpoint_dir=logdir,
-        master=master,
-        config=config)
-
-    if chief_only_hooks:
-      hooks.extend(chief_only_hooks)
-
-    hooks.append(basic_session_run_hooks.StepCounterHook(
-        output_dir=logdir))
-
+  if logdir is None and is_chief:
     if save_summaries_steps:
-      if logdir is None:
-        raise ValueError(
-            'logdir cannot be None when save_summaries_steps is None')
-      hooks.append(basic_session_run_hooks.SummarySaverHook(
-          scaffold=scaffold,
-          save_steps=save_summaries_steps,
-          output_dir=logdir))
+      raise ValueError(
+          'logdir cannot be None when save_summaries_steps is not None')
 
     if save_checkpoint_secs:
-      if logdir is None:
-        raise ValueError(
-            'logdir cannot be None when save_checkpoint_secs is None')
-      hooks.append(basic_session_run_hooks.CheckpointSaverHook(
-          logdir, save_secs=save_checkpoint_secs, scaffold=scaffold))
-  else:
-    session_creator = monitored_session.WorkerSessionCreator(
-        scaffold=scaffold, master=master, config=config)
+      raise ValueError(
+          'logdir cannot be None when save_checkpoint_secs is not None')
 
-  with monitored_session.MonitoredSession(
-      session_creator=session_creator, hooks=hooks) as session:
+  with monitored_session.MonitoredTrainingSession(
+      master=master,
+      is_chief=is_chief,
+      checkpoint_dir=logdir,
+      scaffold=scaffold,
+      hooks=hooks,
+      chief_only_hooks=chief_only_hooks,
+      save_checkpoint_secs=save_checkpoint_secs,
+      save_summaries_steps=save_summaries_steps,
+      config=config) as session:
     loss = None
     while not session.should_stop():
       loss = session.run(train_op)

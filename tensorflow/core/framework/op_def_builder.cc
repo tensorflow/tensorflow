@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -368,6 +369,15 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
       attr->set_has_minimum(true);
       attr->set_minimum(1);
     }
+  }
+
+  // If the arg's dtype is resource we should mark the op as stateful as it
+  // likely touches a resource manager. This deliberately doesn't cover inputs /
+  // outputs which resolve to resource via Attrs as those mostly operate on
+  // resource handles as an opaque type (as opposed to ops which explicitly take
+  // / produce resources).
+  if (arg->type() == DT_RESOURCE) {
+    op_def->set_is_stateful(true);
   }
 }
 

@@ -19,7 +19,3 @@ from __future__ import print_function
 
 # If tree[i][0] equals this value, then i is a leaf node.
 LEAF_NODE = -1
-
-# Data column types for indicating categorical or other non-float values.
-DATA_FLOAT = 0
-DATA_CATEGORICAL = 1

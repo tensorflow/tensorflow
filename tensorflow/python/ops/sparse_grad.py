@@ -136,12 +136,13 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   Raises:
     TypeError: When the two operands don't have the same type.
   """
-  sp_t = sparse_tensor.SparseTensor(*op.inputs[:3])
+  a_indices, a_values, a_shape = op.inputs[:3]
+  b = op.inputs[3]
   adj_a = op.get_attr("adjoint_a")
   adj_b = op.get_attr("adjoint_b")
 
-  a_type = sp_t.values.dtype.base_dtype
-  b_type = op.inputs[3].dtype.base_dtype
+  a_type = a_values.dtype.base_dtype
+  b_type = b.dtype.base_dtype
   if a_type != b_type:
     raise TypeError("SparseTensorDenseMatMul op received operands with "
                     "different types: ", a_type, " and ", b_type)
@@ -150,15 +151,12 @@ def _SparseTensorDenseMatMulGrad(op, grad):
                               "complex gradients.")
 
   # gradient w.r.t. dense
-  b_grad = sparse_ops.sparse_tensor_dense_matmul(sp_t, grad,
-                                                 adjoint_a=not adj_a)
+  b_grad = gen_sparse_ops._sparse_tensor_dense_mat_mul(  # pylint: disable=protected-access
+      a_indices, a_values, a_shape, grad, adjoint_a=not adj_a)
   if adj_b:
     b_grad = array_ops.transpose(b_grad)
 
   # gradient w.r.t. sparse values
-  a_indices = op.inputs[0]
-  b = op.inputs[3]
-
   rows = a_indices[:, 0]
   cols = a_indices[:, 1]
 
@@ -191,13 +189,14 @@ def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
   y_shape = math_ops.to_int64(array_ops.shape(y))
   num_added_dims = array_ops.expand_dims(
       array_ops.size(x_shape) - array_ops.size(y_shape), 0)
-  augmented_y_shape = array_ops.concat_v2(
+  augmented_y_shape = array_ops.concat(
       [array_ops.ones(num_added_dims, ops.dtypes.int64), y_shape], 0)
 
   scaling = x_shape // augmented_y_shape
   scaled_indices = x_indices // scaling
-  scaled_indices = array_ops.slice(
-      scaled_indices, array_ops.concat_v2([[0], num_added_dims], 0), [-1, -1])
+  scaled_indices = array_ops.slice(scaled_indices,
+                                   array_ops.concat([[0], num_added_dims], 0),
+                                   [-1, -1])
   dense_vals = array_ops.gather_nd(y, scaled_indices)
 
   if is_mul:
@@ -270,3 +269,18 @@ def _SparseSparseMaximumGrad(unused_op, unused_grad):
 def _SparseSparseMinimumGrad(unused_op, unused_grad):
   raise NotImplementedError("Gradient for SparseSparseMinimum is currently not"
                             " implemented yet.")
+
+
+@ops.RegisterGradient("SparseFillEmptyRows")
+def _SparseFillEmptyRowsGrad(op, unused_grad_output_indices, output_grad_values,
+                             unused_grad_empty_row_indicator,
+                             unused_grad_reverse_index_map):
+  """Gradients for SparseFillEmptyRows."""
+  reverse_index_map = op.outputs[3]
+
+  # pylint: disable=protected-access
+  d_values, d_default_value = gen_sparse_ops._sparse_fill_empty_rows_grad(
+      reverse_index_map=reverse_index_map, grad_values=output_grad_values)
+
+  # d_indices, d_values, d_dense_shape, d_default_value.
+  return [None, d_values, None, d_default_value]

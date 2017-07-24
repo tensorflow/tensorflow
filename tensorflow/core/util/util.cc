@@ -85,7 +85,7 @@ void MovingAverage::AddValue(double v) {
 
 static char hex_char[] = "0123456789abcdef";
 
-string PrintMemory(const char* ptr, int n) {
+string PrintMemory(const char* ptr, size_t n) {
   string ret;
   ret.resize(n * 3);
   for (int i = 0; i < n; ++i) {

@@ -20,8 +20,10 @@ from __future__ import print_function
 import argparse
 import curses
 import tempfile
+import threading
 
 import numpy as np
+from six.moves import queue
 
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -43,7 +45,10 @@ def codes_to_string(cmd_code):
 class MockCursesUI(curses_ui.CursesUI):
   """Mock subclass of CursesUI that bypasses actual terminal manipulations."""
 
-  def __init__(self, height, width, command_sequence=None):
+  def __init__(self,
+               height,
+               width,
+               command_sequence=None):
     self._height = height
     self._width = width
 
@@ -69,10 +74,18 @@ class MockCursesUI(curses_ui.CursesUI):
     # Observer for tab-completion candidates.
     self.candidates_lists = []
 
+    # Observer for the main menu.
+    self.main_menu_list = []
+
     # Observer for toast messages.
     self.toasts = []
 
     curses_ui.CursesUI.__init__(self)
+
+    # Override the default path to the command history file to avoid test
+    # concurrency issues.
+    self._command_history_store = debugger_cli_common.CommandHistory(
+        history_file_path=tempfile.mktemp())
 
   # Below, override the _screen_ prefixed member methods that interact with the
   # actual terminal, so that the mock can run in a terminal-less environment.
@@ -88,8 +101,8 @@ class MockCursesUI(curses_ui.CursesUI):
     self._max_y = self._height
     self._max_x = self._width
 
-  def _screen_launch(self):
-    pass
+  def _screen_launch(self, enable_mouse_on_start):
+    self._mouse_enabled = enable_mouse_on_start
 
   def _screen_terminate(self):
     pass
@@ -100,7 +113,7 @@ class MockCursesUI(curses_ui.CursesUI):
   def _screen_create_command_window(self):
     pass
 
-  def _screen_create_command_textbox(self, existing_command):
+  def _screen_create_command_textbox(self, existing_command=None):
     """Override to insert observer of existing commands.
 
     Used in testing of history navigation and tab completion.
@@ -140,18 +153,31 @@ class MockCursesUI(curses_ui.CursesUI):
         self._on_textbox_keypress(c)
         self._command_counter += 1
         return ""
+      elif c == curses.KEY_MOUSE:
+        mouse_x = command[1]
+        mouse_y = command[2]
+        self._command_counter += 1
+        self._textbox_curr_terminator = c
+        return self._fetch_hyperlink_command(mouse_x, mouse_y)
+      else:
+        y = self._on_textbox_keypress(c)
 
-      y = self._on_textbox_keypress(c)
-
-      self._command_key_counter += 1
-      if y == curses_ui.CursesUI.CLI_TERMINATOR_KEY:
-        break
+        self._command_key_counter += 1
+        if y == curses_ui.CursesUI.CLI_TERMINATOR_KEY:
+          break
 
     self._command_counter += 1
 
     # Take into account pre-existing string automatically entered on textbox
     # creation.
     return self._curr_existing_command + codes_to_string(command)
+
+  def _screen_getmouse(self):
+    output = (0, self._mouse_xy_sequence[self._mouse_counter][0],
+              self._mouse_xy_sequence[self._mouse_counter][1], 0,
+              curses.BUTTON1_CLICKED)
+    self._mouse_counter += 1
+    return output
 
   def _screen_gather_textbox_str(self):
     return codes_to_string(self._command_sequence[self._command_counter]
@@ -177,6 +203,17 @@ class MockCursesUI(curses_ui.CursesUI):
     self.scroll_messages.append(self._scroll_info)
     self.output_array_pointer_indices.append(self._output_array_pointer_indices)
     self.output_pad_rows.append(self._output_pad_row)
+
+  def _display_main_menu(self, output):
+    curses_ui.CursesUI._display_main_menu(self, output)
+
+    self.main_menu_list.append(self._main_menu)
+
+  def _screen_render_nav_bar(self):
+    pass
+
+  def _screen_render_menu_pad(self):
+    pass
 
   def _display_candidates(self, candidates):
     curses_ui.CursesUI._display_candidates(self, candidates)
@@ -210,10 +247,42 @@ class CursesTest(test_util.TensorFlowTestCase):
         type=str,
         default="bar",
         help="The content of each line")
+    ap.add_argument(
+        "-k",
+        "--link",
+        dest="link",
+        action="store_true",
+        help="Create a command link on each line")
+    ap.add_argument(
+        "-m",
+        "--menu",
+        dest="menu",
+        action="store_true",
+        help="Create a menu for testing")
 
     parsed = ap.parse_args(args)
 
-    return debugger_cli_common.RichTextLines([parsed.line] * parsed.num_times)
+    lines = [parsed.line] * parsed.num_times
+    font_attr_segs = {}
+    if parsed.link:
+      for i in range(len(lines)):
+        font_attr_segs[i] = [(
+            0,
+            len(lines[i]),
+            debugger_cli_common.MenuItem("", "babble"),)]
+
+    annotations = {}
+    if parsed.menu:
+      menu = debugger_cli_common.Menu()
+      menu.append(
+          debugger_cli_common.MenuItem("babble again", "babble"))
+      menu.append(
+          debugger_cli_common.MenuItem("ahoy", "ahoy", enabled=False))
+      annotations[debugger_cli_common.MAIN_MENU_KEY] = menu
+
+    output = debugger_cli_common.RichTextLines(
+        lines, font_attr_segs=font_attr_segs, annotations=annotations)
+    return output
 
   def _print_ones(self, args, screen_info=None):
     ap = argparse.ArgumentParser(
@@ -239,6 +308,18 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, ui._command_pointer)
     self.assertEqual([], ui._active_command_history)
     self.assertEqual("", ui._pending_command)
+
+  def testCursesUiInChildThreadStartsWithoutException(self):
+    result = queue.Queue()
+    def child_thread():
+      try:
+        MockCursesUI(40, 80)
+      except ValueError as e:
+        result.put(e)
+    t = threading.Thread(target=child_thread)
+    t.start()
+    t.join()
+    self.assertTrue(result.empty())
 
   def testRunUIExitImmediately(self):
     """Make sure that the UI can exit properly after launch."""
@@ -278,7 +359,8 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(["ERROR: Invalid command prefix \"foo\""],
                      ui.wrapped_outputs[0].lines[:1])
     # A single line of output should not have caused scrolling.
-    self.assertEqual("-" * 80, ui.scroll_messages[0])
+    self.assertNotIn("Scroll", ui.scroll_messages[0])
+    self.assertIn("Mouse:", ui.scroll_messages[0])
 
   def testRunUIInvalidCommandSyntax(self):
     """Handle a command with invalid syntax."""
@@ -295,6 +377,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.unwrapped_outputs))
     self.assertEqual(1, len(ui.wrapped_outputs))
     self.assertEqual(1, len(ui.scroll_messages))
+    self.assertIn("Mouse:", ui.scroll_messages[0])
     self.assertEqual(
         ["Syntax error for command: babble", "For help, do \"help babble\""],
         ui.unwrapped_outputs[0].lines)
@@ -323,18 +406,22 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     # Initial scroll: At the top.
     self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[0])
+    self.assertIn("Mouse:", ui.scroll_messages[0])
 
     # After 1st scrolling (PageDown).
     # The screen output shouldn't have changed. Only the viewport should.
     self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
     self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines[:60])
     self.assertIn("Scroll (PgDn/PgUp): 1.69%", ui.scroll_messages[1])
+    self.assertIn("Mouse:", ui.scroll_messages[1])
 
     # After 2nd scrolling (PageDown).
     self.assertIn("Scroll (PgDn/PgUp): 3.39%", ui.scroll_messages[2])
+    self.assertIn("Mouse:", ui.scroll_messages[2])
 
     # After 3rd scrolling (PageUp).
     self.assertIn("Scroll (PgDn/PgUp): 1.69%", ui.scroll_messages[3])
+    self.assertIn("Mouse:", ui.scroll_messages[3])
 
   def testCutOffTooManyOutputLines(self):
     ui = MockCursesUI(
@@ -616,8 +703,9 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     # The manually registered command, along with the automatically registered
     # exit commands should appear in the candidates.
-    self.assertEqual([["a", "babble", "exit", "h", "help", "quit"]],
-                     ui.candidates_lists)
+    self.assertEqual(
+        [["a", "babble", "exit", "h", "help", "m", "mouse", "quit"]],
+        ui.candidates_lists)
 
     # The two candidates have no common prefix. So no command should have been
     # issued.
@@ -807,7 +895,7 @@ class CursesTest(test_util.TensorFlowTestCase):
   def testRegexSearchUnderLineWrapping(self):
     ui = MockCursesUI(
         40,
-        5,  # Use a narrow window to trigger line wrapping
+        6,  # Use a narrow window to trigger line wrapping
         command_sequence=[
             string_to_codes("babble -n 3 -l foo-bar-baz-qux\n"),
             string_to_codes("/foo\n"),  # Regex search and highlight.
@@ -892,7 +980,11 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual([0], ui.output_pad_rows)
 
     # Invalid regex should have led to a toast error message.
-    self.assertEqual(["ERROR: Invalid regular expression: \"[\""], ui.toasts)
+    self.assertEqual(
+        [MockCursesUI._UI_WAIT_MESSAGE,
+         "ERROR: Invalid regular expression: \"[\"",
+         MockCursesUI._UI_WAIT_MESSAGE],
+        ui.toasts)
 
   def testRegexSearchFromCommandHistory(self):
     """Test regex search commands are recorded in command history."""
@@ -938,7 +1030,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     """Test displaying tensor with indices."""
 
     ui = MockCursesUI(
-        8,  # Use a small screen height to cause scrolling.
+        9,  # Use a small screen height to cause scrolling.
         80,
         command_sequence=[
             string_to_codes("print_ones --size 5\n"),
@@ -1083,19 +1175,19 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     self.assertEqual({
         0: None,
-        -1: [1, 0]
+        -1: [0, 0]
     }, ui.output_array_pointer_indices[0])
     self.assertEqual({
         0: [0, 0],
-        -1: [3, 0]
+        -1: [2, 0]
     }, ui.output_array_pointer_indices[1])
     self.assertEqual({
         0: [1, 0],
-        -1: [4, 0]
+        -1: [3, 0]
     }, ui.output_array_pointer_indices[2])
     self.assertEqual({
         0: [0, 0],
-        -1: [3, 0]
+        -1: [2, 0]
     }, ui.output_array_pointer_indices[3])
 
   def testScrollTensorByInvalidIndices(self):
@@ -1122,10 +1214,10 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.output_array_pointer_indices))
 
     # Check error messages.
-    self.assertEqual("ERROR: Indices exceed tensor dimensions.", ui.toasts[1])
+    self.assertEqual("ERROR: Indices exceed tensor dimensions.", ui.toasts[2])
     self.assertEqual("ERROR: invalid literal for int() with base 10: ''",
-                     ui.toasts[2])
-    self.assertEqual("ERROR: Empty indices.", ui.toasts[3])
+                     ui.toasts[4])
+    self.assertEqual("ERROR: Empty indices.", ui.toasts[6])
 
   def testWriteScreenOutputToFileWorks(self):
     output_path = tempfile.mktemp()
@@ -1144,7 +1236,7 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.unwrapped_outputs))
 
     with gfile.Open(output_path, "r") as f:
-      self.assertEqual(b"bar\nbar\n", f.read())
+      self.assertEqual("bar\nbar\n", f.read())
 
     # Clean up output file.
     gfile.Remove(output_path)
@@ -1185,6 +1277,393 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     # Clean up output file.
     gfile.Remove(output_path)
+
+  def testMouseOffTakesEffect(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("mouse off\n"), string_to_codes("babble\n"),
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+
+    ui.run_ui()
+    self.assertFalse(ui._mouse_enabled)
+    self.assertIn("Mouse: OFF", ui.scroll_messages[-1])
+
+  def testMouseOffAndOnTakeEffect(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("mouse off\n"), string_to_codes("mouse on\n"),
+            string_to_codes("babble\n"), self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+
+    ui.run_ui()
+    self.assertTrue(ui._mouse_enabled)
+    self.assertIn("Mouse: ON", ui.scroll_messages[-1])
+
+  def testMouseClickOnLinkTriggersCommand(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 10 -k\n"),
+            [curses.KEY_MOUSE, 1, 4],  # A click on a hyperlink.
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(2, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[1].lines)
+
+  def testMouseClickOnLinkWithExistingTextTriggersCommand(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 10 -k\n"),
+            string_to_codes("foo"),  # Enter some existing code in the textbox.
+            [curses.KEY_MOUSE, 1, 4],  # A click on a hyperlink.
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(2, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[1].lines)
+
+  def testMouseClickOffLinkDoesNotTriggersCommand(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 10 -k\n"),
+            # A click off a hyperlink (too much to the right).
+            [curses.KEY_MOUSE, 8, 4],
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    # The mouse click event should not triggered no command.
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+
+    # This command should have generated no main menus.
+    self.assertEqual([None], ui.main_menu_list)
+
+  def testMouseClickOnEnabledMenuItemWorks(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 10 -m\n"),
+            # A click on the enabled menu item.
+            [curses.KEY_MOUSE, 3, 2],
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(2, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[1].lines)
+
+    # Check the content of the menu.
+    self.assertEqual(["| babble again | ahoy | "], ui.main_menu_list[0].lines)
+    self.assertEqual(1, len(ui.main_menu_list[0].font_attr_segs))
+    self.assertEqual(1, len(ui.main_menu_list[0].font_attr_segs[0]))
+
+    item_annot = ui.main_menu_list[0].font_attr_segs[0][0]
+    self.assertEqual(2, item_annot[0])
+    self.assertEqual(14, item_annot[1])
+    self.assertEqual("babble", item_annot[2][0].content)
+    self.assertEqual("underline", item_annot[2][1])
+
+    # The output from the menu-triggered command does not have a menu.
+    self.assertIsNone(ui.main_menu_list[1])
+
+  def testMouseClickOnDisabledMenuItemTriggersNoCommand(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 10 -m\n"),
+            # A click on the disabled menu item.
+            [curses.KEY_MOUSE, 18, 1],
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 10, ui.unwrapped_outputs[0].lines)
+
+  def testNavigationUsingCommandLineWorks(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            string_to_codes("babble -n 4\n"),
+            string_to_codes("prev\n"),
+            string_to_codes("next\n"),
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[2].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[3].lines)
+
+  def testNavigationOverOldestLimitUsingCommandLineGivesCorrectWarning(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            string_to_codes("babble -n 4\n"),
+            string_to_codes("prev\n"),
+            string_to_codes("prev\n"),  # Navigate over oldest limit.
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(3, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[2].lines)
+
+    self.assertEqual("At the OLDEST in navigation history!", ui.toasts[-2])
+
+  def testNavigationOverLatestLimitUsingCommandLineGivesCorrectWarning(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            string_to_codes("babble -n 4\n"),
+            string_to_codes("prev\n"),
+            string_to_codes("next\n"),
+            string_to_codes("next\n"),  # Navigate over latest limit.
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[2].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[3].lines)
+
+    self.assertEqual("At the LATEST in navigation history!", ui.toasts[-2])
+
+  def testMouseClicksOnNavBarWorks(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            string_to_codes("babble -n 4\n"),
+            # A click on the back (prev) button of the nav bar.
+            [curses.KEY_MOUSE, 3, 1],
+            # A click on the forward (prev) button of the nav bar.
+            [curses.KEY_MOUSE, 7, 1],
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[2].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[3].lines)
+
+  def testMouseClicksOnNavBarAfterPreviousScrollingWorks(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 2\n"),
+            [curses.KEY_NPAGE],   # Scroll down one line.
+            string_to_codes("babble -n 4\n"),
+            # A click on the back (prev) button of the nav bar.
+            [curses.KEY_MOUSE, 3, 1],
+            # A click on the forward (prev) button of the nav bar.
+            [curses.KEY_MOUSE, 7, 1],
+            self._EXIT
+        ])
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(6, len(ui.unwrapped_outputs))
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[0].lines)
+    # From manual scroll.
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[1].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[2].lines)
+    # From history navigation.
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[3].lines)
+    # From history navigation's auto-scroll to history scroll position.
+    self.assertEqual(["bar"] * 2, ui.unwrapped_outputs[4].lines)
+    self.assertEqual(["bar"] * 4, ui.unwrapped_outputs[5].lines)
+
+    self.assertEqual(6, len(ui.scroll_messages))
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[0])
+    self.assertIn("Scroll (PgUp): 100.00%", ui.scroll_messages[1])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[2])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[3])
+    self.assertIn("Scroll (PgUp): 100.00%", ui.scroll_messages[4])
+    self.assertIn("Scroll (PgDn): 0.00%", ui.scroll_messages[5])
+
+
+class ScrollBarTest(test_util.TensorFlowTestCase):
+
+  def testConstructorRaisesExceptionForNotEnoughHeight(self):
+    with self.assertRaisesRegexp(
+        ValueError, r"Insufficient height for ScrollBar \(2\)"):
+      curses_ui.ScrollBar(0, 0, 1, 1, 0, 0)
+
+  def testLayoutIsEmptyForZeroRow(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 0, 0)
+    layout = scroll_bar.layout()
+    self.assertEqual(["  "] * 8, layout.lines)
+    self.assertEqual({}, layout.font_attr_segs)
+
+  def testLayoutIsEmptyFoOneRow(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 0, 1)
+    layout = scroll_bar.layout()
+    self.assertEqual(["  "] * 8, layout.lines)
+    self.assertEqual({}, layout.font_attr_segs)
+
+  def testClickCommandForOneRowIsNone(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 0, 1)
+    self.assertIsNone(scroll_bar.get_click_command(0))
+    self.assertIsNone(scroll_bar.get_click_command(3))
+    self.assertIsNone(scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
+
+  def testLayoutIsCorrectForTopPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 0, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["UP"] + ["  "] * 6 + ["DN"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         1: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testWidth1LayoutIsCorrectForTopPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 0, 7, 0, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["U"] + [" "] * 6 + ["D"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 1, curses_ui.ScrollBar.BASE_ATTR)],
+         1: [(0, 1, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 1, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testWidth3LayoutIsCorrectForTopPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 2, 7, 0, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["UP "] + ["   "] * 6 + ["DN "], layout.lines)
+    self.assertEqual(
+        {0: [(0, 3, curses_ui.ScrollBar.BASE_ATTR)],
+         1: [(0, 3, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 3, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testWidth4LayoutIsCorrectForTopPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 3, 7, 0, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual([" UP "] + ["    "] * 6 + ["DOWN"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 4, curses_ui.ScrollBar.BASE_ATTR)],
+         1: [(0, 4, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 4, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testLayoutIsCorrectForBottomPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 19, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["UP"] + ["  "] * 6 + ["DN"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         6: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testLayoutIsCorrectForMiddlePosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 10, 20)
+    layout = scroll_bar.layout()
+    self.assertEqual(["UP"] + ["  "] * 6 + ["DN"], layout.lines)
+    self.assertEqual(
+        {0: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         3: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)],
+         7: [(0, 2, curses_ui.ScrollBar.BASE_ATTR)]},
+        layout.font_attr_segs)
+
+  def testClickCommandsAreCorrectForMiddlePosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 10, 20)
+    self.assertIsNone(scroll_bar.get_click_command(-1))
+    self.assertEqual(curses_ui._SCROLL_UP_A_LINE,
+                     scroll_bar.get_click_command(0))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(1))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(2))
+    self.assertIsNone(scroll_bar.get_click_command(3))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(5))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(6))
+    self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
+                     scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
+
+  def testClickCommandsAreCorrectForBottomPosition(self):
+    scroll_bar = curses_ui.ScrollBar(0, 0, 1, 7, 19, 20)
+    self.assertIsNone(scroll_bar.get_click_command(-1))
+    self.assertEqual(curses_ui._SCROLL_UP_A_LINE,
+                     scroll_bar.get_click_command(0))
+    for i in range(1, 6):
+      self.assertEqual(curses_ui._SCROLL_UP,
+                       scroll_bar.get_click_command(i))
+    self.assertIsNone(scroll_bar.get_click_command(6))
+    self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
+                     scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
+
+  def testClickCommandsAreCorrectForScrollBarNotAtZeroMinY(self):
+    scroll_bar = curses_ui.ScrollBar(0, 5, 1, 12, 10, 20)
+    self.assertIsNone(scroll_bar.get_click_command(0))
+    self.assertIsNone(scroll_bar.get_click_command(4))
+    self.assertEqual(curses_ui._SCROLL_UP_A_LINE,
+                     scroll_bar.get_click_command(5))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(6))
+    self.assertEqual(curses_ui._SCROLL_UP,
+                     scroll_bar.get_click_command(7))
+    self.assertIsNone(scroll_bar.get_click_command(8))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(10))
+    self.assertEqual(curses_ui._SCROLL_DOWN,
+                     scroll_bar.get_click_command(11))
+    self.assertEqual(curses_ui._SCROLL_DOWN_A_LINE,
+                     scroll_bar.get_click_command(12))
+    self.assertIsNone(scroll_bar.get_click_command(13))
 
 
 if __name__ == "__main__":

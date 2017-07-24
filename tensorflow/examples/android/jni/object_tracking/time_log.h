@@ -18,10 +18,9 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_TIME_LOG_H_
 #define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_TIME_LOG_H_
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
-#include "tensorflow/examples/android/jni/object_tracking/log_streaming.h"
+#include "tensorflow/examples/android/jni/object_tracking/logging.h"
 #include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
 #ifdef LOG_TIME
@@ -32,7 +31,7 @@ limitations under the License.
 
 struct LogEntry {
   const char* id;
-  int64 time_stamp;
+  int64_t time_stamp;
 };
 
 struct AverageEntry {

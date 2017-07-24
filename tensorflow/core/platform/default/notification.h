@@ -51,10 +51,10 @@ class Notification {
 
  private:
   friend bool WaitForNotificationWithTimeout(Notification* n,
-                                             int64 timeout_in_ms);
-  bool WaitForNotificationWithTimeout(int64 timeout_in_ms) {
+                                             int64 timeout_in_us);
+  bool WaitForNotificationWithTimeout(int64 timeout_in_us) {
     mutex_lock l(mu_);
-    return cv_.wait_for(l, std::chrono::milliseconds(timeout_in_ms),
+    return cv_.wait_for(l, std::chrono::microseconds(timeout_in_us),
                         [this]() { return notified_; });
   }
 
@@ -64,8 +64,8 @@ class Notification {
 };
 
 inline bool WaitForNotificationWithTimeout(Notification* n,
-                                           int64 timeout_in_ms) {
-  return n->WaitForNotificationWithTimeout(timeout_in_ms);
+                                           int64 timeout_in_us) {
+  return n->WaitForNotificationWithTimeout(timeout_in_us);
 }
 
 }  // namespace tensorflow

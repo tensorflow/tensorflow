@@ -17,13 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
+from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_test_util
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 
-
-linalg = tf.contrib.linalg
-tf.set_random_seed(23)
+linalg = linalg_lib
+random_seed.set_random_seed(23)
 
 
 class LinearOperatorTriLTest(
@@ -34,7 +36,7 @@ class LinearOperatorTriLTest(
   def _dtypes_to_test(self):
     # TODO(langmore) Test complex types once supported by
     # matrix_triangular_solve.
-    return [tf.float32, tf.float64]
+    return [dtypes.float32, dtypes.float64]
 
   def _operator_and_mat_and_feed_dict(self, shape, dtype, use_placeholder):
     # Upper triangle will be nonzero, but ignored.
@@ -43,7 +45,7 @@ class LinearOperatorTriLTest(
         shape, dtype=dtype, force_well_conditioned=True, remove_upper=False)
 
     if use_placeholder:
-      tril_ph = tf.placeholder(dtype=dtype)
+      tril_ph = array_ops.placeholder(dtype=dtype)
       # Evaluate the tril here because (i) you cannot feed a tensor, and (ii)
       # tril is random and we want the same value used for both mat and
       # feed_dict.
@@ -54,17 +56,9 @@ class LinearOperatorTriLTest(
       operator = linalg.LinearOperatorTriL(tril)
       feed_dict = None
 
-    mat = tf.matrix_band_part(tril, -1, 0)
+    mat = array_ops.matrix_band_part(tril, -1, 0)
 
     return operator, mat, feed_dict
-
-  def test_assert_positive_definite(self):
-    # Singlular matrix with one positive eigenvalue and one negative eigenvalue.
-    with self.test_session():
-      tril = [[1., 0.], [1., -1.]]
-      operator = linalg.LinearOperatorTriL(tril)
-      with self.assertRaisesOpError("was not positive definite"):
-        operator.assert_positive_definite().run()
 
   def test_assert_non_singular(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
@@ -86,6 +80,10 @@ class LinearOperatorTriLTest(
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
 
+  def test_tril_must_have_at_least_two_dims_or_raises(self):
+    with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
+      linalg.LinearOperatorTriL([1.])
+
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

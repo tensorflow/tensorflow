@@ -76,7 +76,7 @@ REGISTER_SYCL_HOST_KERNEL(bool);
 
 #undef REGISTER_SYCL_HOST_KERNEL
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_GPU_KERNEL(type)                                           \
   REGISTER_KERNEL_BUILDER(                                                  \
@@ -96,7 +96,6 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bfloat16);
 
 #undef REGISTER_GPU_KERNEL
-
 
 #if GOOGLE_CUDA
 // A special GPU kernel for int32 and bool.

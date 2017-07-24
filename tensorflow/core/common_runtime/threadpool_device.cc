@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
@@ -27,6 +28,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 
+#ifdef INTEL_MKL
+#include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
+#endif
+
 namespace tensorflow {
 
 ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
@@ -34,13 +39,16 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                    const DeviceLocality& locality,
                                    Allocator* allocator)
     : LocalDevice(options, Device::BuildDeviceAttributes(
-                               name, DEVICE_CPU, memory_limit, locality),
-                  allocator),
+                               name, DEVICE_CPU, memory_limit, locality)),
       allocator_(allocator) {}
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
 void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
+  // When TraceMe profiling is off (which is the default), the
+  // following TraceMe constructor is simply a conditional test of
+  // false value. Measurements show that its overhead is negligible.
+  port::Tracing::TraceMe trace_me(op_kernel->name(), op_kernel->type_string());
   if (port::Tracing::IsActive()) {
     // TODO(pbar) We really need a useful identifier of the graph node.
     const uint64 id = Hash64(op_kernel->name());
@@ -69,5 +77,9 @@ Status ThreadPoolDevice::MakeTensorFromProto(
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                  ProtoDebugString(tensor_proto));
 }
+
+#ifdef INTEL_MKL
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocator);
+#endif
 
 }  // namespace tensorflow

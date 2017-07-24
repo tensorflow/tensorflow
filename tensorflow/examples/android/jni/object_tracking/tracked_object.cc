@@ -19,7 +19,7 @@ namespace tf_tracking {
 
 static const float kInitialDistance = 20.0f;
 
-static void InitNormalized(const Image<uint8>& src_image,
+static void InitNormalized(const Image<uint8_t>& src_image,
                            const BoundingBox& position,
                            Image<float>* const dst_image) {
   BoundingBox scaled_box(position);
@@ -27,8 +27,7 @@ static void InitNormalized(const Image<uint8>& src_image,
   NormalizeImage(dst_image);
 }
 
-TrackedObject::TrackedObject(const std::string& id,
-                             const Image<uint8>& image,
+TrackedObject::TrackedObject(const std::string& id, const Image<uint8_t>& image,
                              const BoundingBox& bounding_box,
                              ObjectModelBase* const model)
     : id_(id),
@@ -49,7 +48,7 @@ TrackedObject::TrackedObject(const std::string& id,
 TrackedObject::~TrackedObject() {}
 
 void TrackedObject::UpdatePosition(const BoundingBox& new_position,
-                                   const int64 timestamp,
+                                   const int64_t timestamp,
                                    const ImageData& image_data,
                                    const bool authoratative) {
   last_known_position_ = new_position;
@@ -113,7 +112,7 @@ void TrackedObject::UpdatePosition(const BoundingBox& new_position,
 void TrackedObject::OnDetection(ObjectModelBase* const model,
                                 const BoundingBox& detection_position,
                                 const MatchScore match_score,
-                                const int64 timestamp,
+                                const int64_t timestamp,
                                 const ImageData& image_data) {
   const float overlap = detection_position.PascalScore(last_known_position_);
   if (overlap > kPositionOverlapThreshold) {

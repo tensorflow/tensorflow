@@ -67,5 +67,7 @@ class PaddingFIFOQueueOp : public TypedQueueOp {
 
 REGISTER_KERNEL_BUILDER(Name("PaddingFIFOQueue").Device(DEVICE_CPU),
                         PaddingFIFOQueueOp);
+REGISTER_KERNEL_BUILDER(Name("PaddingFIFOQueueV2").Device(DEVICE_CPU),
+                        PaddingFIFOQueueOp);
 
 }  // namespace tensorflow

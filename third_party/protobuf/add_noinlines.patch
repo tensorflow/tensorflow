@@ -1,0 +1,30 @@
+diff -u -r a/src/google/protobuf/compiler/cpp/cpp_file.cc b/src/google/protobuf/compiler/cpp/cpp_file.cc
+--- a/src/google/protobuf/compiler/cpp/cpp_file.cc	2017-02-10 23:55:34.000000000 +0100
++++ b/src/google/protobuf/compiler/cpp/cpp_file.cc	2017-03-21 13:41:46.931979154 +0100
+@@ -557,7 +557,7 @@
+         "      $metadata$, $enum_descriptors$, $service_descriptors$);\n"
+         "}\n"
+         "\n"
+-        "void protobuf_AssignDescriptorsOnce() {\n"
++        "GOOGLE_ATTRIBUTE_NOINLINE void protobuf_AssignDescriptorsOnce() {\n"
+         "  static GOOGLE_PROTOBUF_DECLARE_ONCE(once);\n"
+         "  ::google::protobuf::GoogleOnceInit(&once, &protobuf_AssignDescriptors);\n"
+         "}\n"
+@@ -656,7 +656,7 @@
+   printer->Print(
+       "}\n"
+       "\n"
+-      "void InitDefaults() {\n"
++      "GOOGLE_ATTRIBUTE_NOINLINE void InitDefaults() {\n"
+       "  static GOOGLE_PROTOBUF_DECLARE_ONCE(once);\n"
+       "  ::google::protobuf::GoogleOnceInit(&once, &TableStruct::InitDefaultsImpl);\n"
+       "}\n");
+@@ -737,7 +737,7 @@
+   printer->Print(
+       "}\n"
+       "\n"
+-      "void AddDescriptors() {\n"
++      "GOOGLE_ATTRIBUTE_NOINLINE void AddDescriptors() {\n"
+       "  static GOOGLE_PROTOBUF_DECLARE_ONCE(once);\n"
+       "  ::google::protobuf::GoogleOnceInit(&once, &AddDescriptorsImpl);\n"
+       "}\n");

@@ -23,7 +23,7 @@ FROM ubuntu:16.04
 MAINTAINER Shanqing Cai <cais@google.com>
 
 RUN apt-get update
-RUN apt-get install -y --no-install-recommends \
+RUN apt-get install -y \
     curl \
     python \
     python-numpy \

@@ -97,6 +97,18 @@ string DeviceNameUtils::FullName(const string& job, int replica, int task,
                          "/device:", type, ":", id);
 }
 
+/* static */
+string DeviceNameUtils::LegacyName(const string& job, int replica, int task,
+                                   const string& type, int id) {
+  CHECK(IsJobName(job)) << job;
+  CHECK_LE(0, replica);
+  CHECK_LE(0, task);
+  CHECK(!type.empty());
+  CHECK_LE(0, id);
+  return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task,
+                         "/", str_util::Lowercase(type), ":", id);
+}
+
 bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   p->Clear();
   if (fullname == "/") {
@@ -178,7 +190,7 @@ string DeviceNameUtils::ParsedNameToString(const ParsedName& pn) {
   if (pn.has_replica) strings::StrAppend(&buf, "/replica:", pn.replica);
   if (pn.has_task) strings::StrAppend(&buf, "/task:", pn.task);
   if (pn.has_type) {
-    strings::StrAppend(&buf, "/", pn.type, ":");
+    strings::StrAppend(&buf, "/device:", pn.type, ":");
     if (pn.has_id) {
       strings::StrAppend(&buf, pn.id);
     } else {

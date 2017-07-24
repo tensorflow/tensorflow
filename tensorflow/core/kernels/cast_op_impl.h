@@ -33,21 +33,34 @@ struct CastFunctor<Eigen::ThreadPoolDevice, O, I> {
   }
 };
 
+#ifdef TENSORFLOW_USE_SYCL
+template <typename O, typename I>
+struct CastFunctor<Eigen::SyclDevice, O, I> {
+  void operator()(const Eigen::SyclDevice& d, typename TTypes<O>::Flat o,
+                  typename TTypes<I>::ConstFlat i) {
+    o.device(d) = i.template cast<O>();
+  }
+};
+#endif // TENSORFLOW_USE_SYCL
+
 }  // namespace functor
 
-#define CURRY_TYPES3(FN, arg0, arg1)   \
-  FN(arg0, arg1, bool);                \
-  FN(arg0, arg1, uint8);               \
-  FN(arg0, arg1, int8);                \
-  FN(arg0, arg1, uint16);              \
-  FN(arg0, arg1, int16);               \
-  FN(arg0, arg1, int32);               \
-  FN(arg0, arg1, int64);               \
-  FN(arg0, arg1, Eigen::half);         \
-  FN(arg0, arg1, float);               \
-  FN(arg0, arg1, double);              \
-  FN(arg0, arg1, std::complex<float>); \
+#define CURRY_TYPES3_NO_HALF(FN, arg0, arg1)   \
+  FN(arg0, arg1, bool);                        \
+  FN(arg0, arg1, uint8);                       \
+  FN(arg0, arg1, int8);                        \
+  FN(arg0, arg1, uint16);                      \
+  FN(arg0, arg1, int16);                       \
+  FN(arg0, arg1, int32);                       \
+  FN(arg0, arg1, int64);                       \
+  FN(arg0, arg1, float);                       \
+  FN(arg0, arg1, double);                      \
+  FN(arg0, arg1, std::complex<float>);         \
   FN(arg0, arg1, std::complex<double>)
+
+#define CURRY_TYPES3(FN, arg0, arg1)           \
+  CURRY_TYPES3_NO_HALF(FN, arg0, arg1)         \
+  FN(arg0, arg1, Eigen::half);
 
 #define CAST_CASE(DEVICE, IN, OUT)                                         \
   if (DataTypeToEnum<OUT>::value == dst_dtype) {                           \
@@ -139,6 +152,32 @@ std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetGpuCastFromBfloat(DataType dst_dtype);
 
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromBool(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromUint8(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromUint16(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromInt16(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromInt32(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromInt64(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromFloat(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromDouble(DataType dst_dtype);
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
 

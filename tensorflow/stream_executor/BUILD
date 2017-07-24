@@ -24,9 +24,10 @@ cc_library(
         "lib/gtl/*.h",
         "platform/**/*.h",
     ]),
-    linkopts = [
-        "-ldl",
-    ],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
@@ -45,21 +46,22 @@ cc_library(
             exclude = ["cuda/cuda_platform_id.cc"],
         ),
     ),
-    data = [
-        "//tensorflow/core:cuda",
-        "@local_config_cuda//cuda:cublas",
-        "@local_config_cuda//cuda:cudnn",
-        "@local_config_cuda//cuda:cufft",
-        "@local_config_cuda//cuda:curand",
-    ],
-    linkopts = [
-        "-ldl",
-    ],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//conditions:default": ["-ldl"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",
         "//tensorflow/core:lib",
         "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/core:cuda",
+        "@local_config_cuda//cuda:cublas",
+        "@local_config_cuda//cuda:cuda_driver",
+        "@local_config_cuda//cuda:cudnn",
+        "@local_config_cuda//cuda:cufft",
+        "@local_config_cuda//cuda:curand",
+    ]),
     alwayslink = 1,
 )

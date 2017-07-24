@@ -53,6 +53,17 @@ class DecodeCSVOpTest(test.TestCase):
 
     self._test(args, expected_out)
 
+  def testSimpleNoQuoteDelimiter(self):
+    args = {
+        "records": ["1", "2", '"3"'],
+        "record_defaults": [[""]],
+        "use_quote_delim": False,
+    }
+
+    expected_out = [[b"1", b"2", b'"3"']]
+
+    self._test(args, expected_out)
+
   def testScalar(self):
     args = {"records": '1,""', "record_defaults": [[3], [4]]}
 
@@ -63,6 +74,14 @@ class DecodeCSVOpTest(test.TestCase):
   def test2D(self):
     args = {"records": [["1", "2"], ['""', "4"]], "record_defaults": [[5]]}
     expected_out = [[[1, 2], [5, 4]]]
+
+    self._test(args, expected_out)
+
+  def test2DNoQuoteDelimiter(self):
+    args = {"records": [["1", "2"], ['""', '"']],
+            "record_defaults": [[""]],
+            "use_quote_delim": False}
+    expected_out = [[[b"1", b"2"], [b'""', b'"']]]
 
     self._test(args, expected_out)
 
@@ -104,6 +123,17 @@ class DecodeCSVOpTest(test.TestCase):
     }
 
     expected_out = [[1.0, 0.2, 3.0], [1, 3, 0], [b"a", b"bcd", b"a"]]
+
+    self._test(args, expected_out)
+
+  def testWithDefaultsAndNoQuoteDelimiter(self):
+    args = {
+        "records": [",1,", "0.2,3,bcd", '3.0,,"'],
+        "record_defaults": [[1.0], [0], ["a"]],
+        "use_quote_delim": False,
+    }
+
+    expected_out = [[1.0, 0.2, 3.0], [1, 3, 0], [b"a", b"bcd", b"\""]]
 
     self._test(args, expected_out)
 

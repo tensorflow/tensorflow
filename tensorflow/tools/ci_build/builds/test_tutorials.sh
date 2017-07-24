@@ -230,7 +230,9 @@ test_ptb_word_lm() {
   PTB_DATA_URL="http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz"
 
   DATA_DIR="${TUT_TEST_DATA_DIR}/ptb"
-  if [[ ! -d "${DATA_DIR}/simple-examples/data" ]]; then
+  if [[ ! -f "${DATA_DIR}/simple-examples/data/ptb.train.txt" ]] || \
+     [[ ! -f "${DATA_DIR}/simple-examples/data/ptb.valid.txt" ]] || \
+     [[ ! -f "${DATA_DIR}/simple-examples/data/ptb.test.txt" ]]; then
     # Download and extract data
     echo "Downloading and extracting PTB data from \"${PTB_DATA_URL}\" to "\
 "${DATA_DIR}"

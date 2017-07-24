@@ -1,3 +1,17 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 include (ExternalProject)
 
 set(gif_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/gif_archive/giflib-5.1.4/)
@@ -19,7 +33,7 @@ if(WIN32)
       PREFIX gif
       URL ${gif_URL}
       URL_HASH ${gif_HASH}
-      PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/patches/gif/CMakeLists.txt ${gif_BUILD}
+      PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/patches/gif/CMakeLists.txt ${gif_BUILD}
       INSTALL_DIR ${gif_INSTALL}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       CMAKE_CACHE_ARGS
@@ -29,7 +43,7 @@ if(WIN32)
   )
 
   ExternalProject_Add_Step(gif copy_unistd
-      COMMAND ${CMAKE_COMMAND} -E copy
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
           ${CMAKE_SOURCE_DIR}/patches/gif/unistd.h ${gif_BUILD}/lib/unistd.h
       DEPENDEES patch
       DEPENDERS build
@@ -67,5 +81,5 @@ add_custom_target(gif_copy_headers_to_destination
 
 foreach(header_file ${gif_HEADERS})
     add_custom_command(TARGET gif_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${gif_INCLUDE_DIR}/)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${gif_INCLUDE_DIR}/)
 endforeach()

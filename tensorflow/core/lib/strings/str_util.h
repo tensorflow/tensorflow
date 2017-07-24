@@ -30,7 +30,7 @@ namespace str_util {
 
 // Returns a version of 'src' where unprintable characters have been
 // escaped using C-style escape sequences.
-string CEscape(const string& src);
+string CEscape(StringPiece src);
 
 // Copies "source" to "dest", rewriting C-style escape sequences --
 // '\n', '\r', '\\', '\ooo', etc -- to their ASCII equivalents.
@@ -85,6 +85,11 @@ string Uppercase(StringPiece s);
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
 
+// Replaces the first occurrence (if replace_all is false) or all occurrences
+// (if replace_all is true) of oldsub in s with newsub.
+string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
+                     bool replace_all);
+
 // Join functionality
 template <typename T>
 string Join(const T& s, const char* sep);
@@ -122,6 +127,8 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int32>* result);
 bool SplitAndParseAsInts(StringPiece text, char delim,
                          std::vector<int64>* result);
+bool SplitAndParseAsFloats(StringPiece text, char delim,
+                           std::vector<float>* result);
 
 // ------------------------------------------------------------------
 // Implementation details below

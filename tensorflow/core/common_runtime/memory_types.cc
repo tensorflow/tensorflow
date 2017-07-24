@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/memory_types.h"
 
+#include <utility>
+
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -43,14 +45,14 @@ struct EndpointEq {
 };
 
 static Status ProcessMemoryTypes(
-    DeviceType device_type, const Graph* g,
-    std::function<Status(const Edge*, MemoryType, MemoryType)> fn) {
-  if (device_type != DEVICE_GPU) {
-    // On non-GPU devices, HOST_MEMORY and DEVICE_MEMORY are always
+    const DeviceType& device_type, const Graph* g,
+    const std::function<Status(const Edge*, MemoryType, MemoryType)>& fn) {
+  if (device_type != DEVICE_GPU && device_type != DEVICE_SYCL ) {
+    // On non-GPU and non-SYCL devices, HOST_MEMORY and DEVICE_MEMORY are always
     // compatible.
     return Status::OK();
   }
-  // For GPU device, HOST_MEMORY and DEVICE_MEMORY is not
+  // For GPU and SYCL device, HOST_MEMORY and DEVICE_MEMORY is not
   // compatible. I.e., a conversion/transfer must be done.
   //
   // {node id, slot id} -> memory type.
@@ -88,17 +90,18 @@ static Status ProcessMemoryTypes(
   return Status::OK();
 }
 
-Status ValidateMemoryTypes(DeviceType device_type, const Graph* g) {
-  return ProcessMemoryTypes(device_type, g, [g](const Edge* e, MemoryType sm,
-                                                MemoryType dm) {
-    if (sm == dm) {
-      return Status::OK();
-    }
-    return errors::Internal(
-        "Memory type mismatch (", sm, " ", dm, ") between :", e->src()->id(),
-        ":", e->src_output(), " and ", e->dst()->id(), ":", e->dst_input(),
-        " : from ", e->src()->DebugString(), " to ", e->dst()->DebugString());
-  });
+Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g) {
+  return ProcessMemoryTypes(
+      device_type, g, [g](const Edge* e, MemoryType sm, MemoryType dm) {
+        if (sm == dm) {
+          return Status::OK();
+        }
+        return errors::Internal(
+            "Memory type mismatch (", sm, " ", dm,
+            ") between :", e->src()->id(), ":", e->src_output(), " and ",
+            e->dst()->id(), ":", e->dst_input(), " : from ",
+            e->src()->DebugString(), " to ", e->dst()->DebugString());
+      });
 }
 
 static Node* Send(Graph* g, const string& device_name, bool host,
@@ -132,8 +135,8 @@ static Node* Recv(Graph* g, const string& device_name, bool host,
   return ret;
 }
 
-Status EnsureMemoryTypes(DeviceType device_type, const string& device_name,
-                         Graph* g) {
+Status EnsureMemoryTypes(const DeviceType& device_type,
+                         const string& device_name, Graph* g) {
   struct Item {
     const Edge* edge;
     MemoryType sm;
@@ -185,7 +188,7 @@ Status EnsureMemoryTypes(DeviceType device_type, const string& device_name,
   return ValidateMemoryTypes(device_type, g);
 }
 
-Status MemoryTypeForOutput(DeviceType device_type, const Graph* g,
+Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
                            const Node* n, int index, MemoryType* memory_type) {
   MemoryTypeVector inp_mvec;
   MemoryTypeVector out_mvec;

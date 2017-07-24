@@ -17,12 +17,16 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+namespace grappler {
+class GraphProperties;
+}
 
 // ShapeRefiner performs shape inference for TensorFlow Graphs.  It is
 // responsible for instantiating InferenceContext objects for each
@@ -31,7 +35,11 @@ namespace tensorflow {
 // construction time.
 class ShapeRefiner {
  public:
-  explicit ShapeRefiner(const OpRegistryInterface* ops);
+  ShapeRefiner(int graph_def_version, const OpRegistryInterface* ops);
+
+  // Same as ShapeRefiner(versions.producer(), ops)
+  ShapeRefiner(const VersionDef& versions, const OpRegistryInterface* ops);
+
   ~ShapeRefiner();
 
   // Performs validation of 'node' and runs 'node's shape function,
@@ -54,16 +62,57 @@ class ShapeRefiner {
   Status SetShape(const Node* node, int output_port,
                   shape_inference::ShapeHandle shape);
 
+  // Update the input shapes of node in case the shapes of the fan-ins of 'node'
+  // have themselves been modified (For example, in case of incremental shape
+  // refinement). If 'relax' is true, a new shape with the broadest set of
+  // information will be set as the new input (see InferenceContext::RelaxInput
+  // for full details and examples). Sets refined to true if any shapes have
+  // changed (in their string representations). Note that shapes may have been
+  // updated to newer versions (but with identical string representations) even
+  // if <*refined> is set to false.
+  Status UpdateNode(const Node* node, bool relax, bool* refined);
+
   // Returns the InferenceContext for 'node', if present.
   shape_inference::InferenceContext* GetContext(const Node* node) const {
     auto it = node_to_context_.find(node);
     if (it == node_to_context_.end()) {
       return nullptr;
     }
-    return it->second;
+    return it->second.get();
+  }
+
+  // Getters and setters for graph_def_version_.
+  int32 graph_def_version() const { return graph_def_version_; }
+  void set_graph_def_version(int32 version) { graph_def_version_ = version; }
+
+  void set_require_shape_inference_fns(bool require_shape_inference_fns) {
+    require_shape_inference_fns_ = require_shape_inference_fns;
   }
 
  private:
+  friend class ShapeRefinerTest;
+  friend class ::tensorflow::grappler::GraphProperties;
+
+  // Returns true if the ranks and all dimensions of <s0> and <s1> are either
+  // equal in value or both unknown.
+  static bool SameDefinedShape(shape_inference::InferenceContext* c,
+                               shape_inference::ShapeHandle s0,
+                               shape_inference::ShapeHandle s1);
+
+  // Returns true if the shapes and types stored in <*existing> are identical in
+  // value to the shapes and types in <*updated>.
+  static bool IsUpdatedShapesOrTypes(
+      shape_inference::InferenceContext* c,
+      const std::vector<shape_inference::ShapeAndType>& existing,
+      const std::vector<shape_inference::ShapeAndType>& updated);
+
+  // Tries to infer tensor output based on the input shapes of the node. In some
+  // cases, the shapes of the inputs are sufficient for inferring the contents
+  // of the output tensor. For example, a Shape op with fully defined input
+  // shapes can have its output tensor inferred.
+  Status TryToInferTensorOutputFromInputShapes(const Edge* edge, Tensor* output,
+                                               bool* success);
+
   // Extracts the subgraph ending at 'node' that is statically
   // computable and inserts into 'out_graph'. If statically computable,
   // 'is_constant_graph' will be true.
@@ -99,12 +148,21 @@ class ShapeRefiner {
                               const Node* node, int dst_idx,
                               shape_inference::ShapeHandle* result);
 
-  const OpRegistryInterface* ops_registry_ = nullptr;
+  Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
+                    shape_inference::InferenceContext* c);
+
+  int32 graph_def_version_;
+  const OpRegistryInterface* const ops_registry_;
+
+  // The lifetime of the tensors are bound to the runner, so it should be the
+  // deleted after the tensors.
+  GraphRunner graph_runner_;
 
   // Stores a map from a node to its InferenceContext.
   //
   // Owns values.
-  std::unordered_map<const Node*, shape_inference::InferenceContext*>
+  std::unordered_map<const Node*,
+                     std::unique_ptr<shape_inference::InferenceContext>>
       node_to_context_;
 
   // Holds a cache from 'tensor name' to the tensor that is
@@ -117,6 +175,9 @@ class ShapeRefiner {
   // Only tensors less than 1KiB are currently stored in the cache.
   static constexpr int64 kMaxTensorSize = 1024;
   std::unordered_map<string, Tensor> const_tensor_map_;
+
+  bool require_shape_inference_fns_ = true;
+
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };
 

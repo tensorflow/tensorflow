@@ -55,8 +55,11 @@ class ResourceOpKernel : public OpKernel {
     if (resource_ != nullptr) {
       resource_->Unref();
       if (cinfo_.resource_is_private_to_kernel()) {
-        TF_CHECK_OK(cinfo_.resource_manager()->template Delete<T>(
-            cinfo_.container(), cinfo_.name()));
+        if (!cinfo_.resource_manager()
+                 ->template Delete<T>(cinfo_.container(), cinfo_.name())
+                 .ok()) {
+          // Do nothing; the resource can have been deleted by session resets.
+        }
       }
     }
   }
@@ -91,7 +94,13 @@ class ResourceOpKernel : public OpKernel {
       h(1) = cinfo_.name();
       resource_ = resource;
     }
-    context->set_output_ref(0, &mu_, handle_.AccessTensor(context));
+    if (context->expected_output_dtype(0) == DT_RESOURCE) {
+      OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
+                                  context, 0, cinfo_.container(), cinfo_.name(),
+                                  MakeTypeIndex<T>()));
+    } else {
+      context->set_output_ref(0, &mu_, handle_.AccessTensor(context));
+    }
   }
 
  protected:

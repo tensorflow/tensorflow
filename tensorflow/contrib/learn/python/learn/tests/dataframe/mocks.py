@@ -20,9 +20,9 @@ from __future__ import print_function
 
 from abc import ABCMeta
 
-import tensorflow as tf
-
 from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn.dataframe import transform
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 
 # TODO(soergel): Consider cleaning this up using tf.test.mock
@@ -68,7 +68,7 @@ class MockSparseTensor(object):
     self._name = name
     self._dtype = dtype
     self._shape = tensor_shape.unknown_shape()
-    self.indices = MockTensor("%s indices" % name, tf.int32)
+    self.indices = MockTensor("%s indices" % name, dtypes.int32)
     self.values = MockTensor("%s values" % name, dtype)
 
   @property
@@ -124,11 +124,11 @@ class MockTransform(learn.TensorFlowTransform):
   def name(self):
     return "MockTransform"
 
-  @learn.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def param_one(self):
     return self._param_one
 
-  @learn.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def param_two(self):
     return self._param_two
 
@@ -177,7 +177,7 @@ class MockOneOutputTransform(MockTransform):
 
   def _apply_transform(self, input_tensors):
     # pylint: disable=not-callable
-    return self.return_type(MockTensor("Mock Tensor 1", tf.int32))
+    return self.return_type(MockTensor("Mock Tensor 1", dtypes.int32))
 
 
 class MockTwoOutputTransform(MockTransform):
@@ -185,7 +185,7 @@ class MockTwoOutputTransform(MockTransform):
 
   _mock_output_names = ["out1", "out2"]
 
-  @learn.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def param_three(self):
     return self._param_three
 
@@ -200,8 +200,8 @@ class MockTwoOutputTransform(MockTransform):
   def _apply_transform(self, input_tensors):
     # pylint: disable=not-callable
     return self.return_type(
-        MockTensor("Mock Tensor 1", tf.int32),
-        MockTensor("Mock Tensor 2", tf.int32))
+        MockTensor("Mock Tensor 1", dtypes.int32),
+        MockTensor("Mock Tensor 2", dtypes.int32))
 
 
 class Mock2x2Transform(MockTransform):
@@ -220,8 +220,8 @@ class Mock2x2Transform(MockTransform):
   def _apply_transform(self, input_tensors):
     # pylint: disable=not-callable
     return self.return_type(
-        MockTensor("Out " + self._param_one, tf.int32),
-        MockTensor("Out " + self._param_two, tf.int32))
+        MockTensor("Out " + self._param_one, dtypes.int32),
+        MockTensor("Out " + self._param_two, dtypes.int32))
 
   @property
   def input_valency(self):

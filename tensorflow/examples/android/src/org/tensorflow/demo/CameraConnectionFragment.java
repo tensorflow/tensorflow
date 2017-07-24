@@ -42,6 +42,7 @@ import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.text.TextUtils;
 import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
@@ -215,10 +216,8 @@ public class CameraConnectionFragment extends Fragment {
    */
   private final OnImageAvailableListener imageListener;
 
-  /**
-   * The input size in pixels desired by TensorFlow (width and height of a square bitmap).
-   */
-  private final int inputSize;
+  /** The input size in pixels desired by TensorFlow (width and height of a square bitmap). */
+  private final Size inputSize;
 
   /**
    * The layout identifier to inflate for this Fragment.
@@ -231,7 +230,8 @@ public class CameraConnectionFragment extends Fragment {
   private CameraConnectionFragment(
       final ConnectionCallback connectionCallback,
       final OnImageAvailableListener imageListener,
-      final int layout, final int inputSize) {
+      final int layout,
+      final Size inputSize) {
     this.cameraConnectionCallback = connectionCallback;
     this.imageListener = imageListener;
     this.layout = layout;
@@ -258,30 +258,41 @@ public class CameraConnectionFragment extends Fragment {
 
   /**
    * Given {@code choices} of {@code Size}s supported by a camera, chooses the smallest one whose
-   * width and height are at least as large as the respective requested values, and whose aspect
-   * ratio matches with the specified value.
+   * width and height are at least as large as the minimum of both, or an exact match if possible.
    *
-   * @param choices     The list of sizes that the camera supports for the intended output class
-   * @param width       The minimum desired width
-   * @param height      The minimum desired height
-   * @param aspectRatio The aspect ratio
+   * @param choices The list of sizes that the camera supports for the intended output class
+   * @param width The minimum desired width
+   * @param height The minimum desired height
    * @return The optimal {@code Size}, or an arbitrary one if none were big enough
    */
-  private static Size chooseOptimalSize(
-      final Size[] choices, final int width, final int height, final Size aspectRatio) {
+  private static Size chooseOptimalSize(final Size[] choices, final int width, final int height) {
+    final int minSize = Math.max(Math.min(width, height), MINIMUM_PREVIEW_SIZE);
+    final Size desiredSize = new Size(width, height);
+
     // Collect the supported resolutions that are at least as big as the preview Surface
+    boolean exactSizeFound = false;
     final List<Size> bigEnough = new ArrayList<Size>();
-
-    final int minWidth = Math.max(width, MINIMUM_PREVIEW_SIZE);
-    final int minHeight = Math.max(height, MINIMUM_PREVIEW_SIZE);
-
+    final List<Size> tooSmall = new ArrayList<Size>();
     for (final Size option : choices) {
-      if (option.getHeight() >= minHeight && option.getWidth() >= minWidth) {
-        LOGGER.i("Adding size: " + option.getWidth() + "x" + option.getHeight());
+      if (option.equals(desiredSize)) {
+        // Set the size but don't return yet so that remaining sizes will still be logged.
+        exactSizeFound = true;
+      }
+
+      if (option.getHeight() >= minSize && option.getWidth() >= minSize) {
         bigEnough.add(option);
       } else {
-        LOGGER.i("Not adding size: " + option.getWidth() + "x" + option.getHeight());
+        tooSmall.add(option);
       }
+    }
+
+    LOGGER.i("Desired size: " + desiredSize + ", min size: " + minSize + "x" + minSize);
+    LOGGER.i("Valid preview sizes: [" + TextUtils.join(", ", bigEnough) + "]");
+    LOGGER.i("Rejected preview sizes: [" + TextUtils.join(", ", tooSmall) + "]");
+
+    if (exactSizeFound) {
+      LOGGER.i("Exact size match found.");
+      return desiredSize;
     }
 
     // Pick the smallest of those, assuming we found any
@@ -297,7 +308,9 @@ public class CameraConnectionFragment extends Fragment {
 
   public static CameraConnectionFragment newInstance(
       final ConnectionCallback callback,
-      final OnImageAvailableListener imageListener, final int layout, final int inputSize) {
+      final OnImageAvailableListener imageListener,
+      final int layout,
+      final Size inputSize) {
     return new CameraConnectionFragment(callback, imageListener, layout, inputSize);
   }
 
@@ -378,8 +391,10 @@ public class CameraConnectionFragment extends Fragment {
         // bus' bandwidth limitation, resulting in gorgeous previews but the storage of
         // garbage capture data.
         previewSize =
-            chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
-                inputSize, inputSize, largest);
+            chooseOptimalSize(
+                map.getOutputSizes(SurfaceTexture.class),
+                inputSize.getWidth(),
+                inputSize.getHeight());
 
         // We fit the aspect ratio of TextureView to the size of preview we picked.
         final int orientation = getResources().getConfiguration().orientation;
@@ -390,18 +405,20 @@ public class CameraConnectionFragment extends Fragment {
         }
 
         CameraConnectionFragment.this.cameraId = cameraId;
-
-        cameraConnectionCallback.onPreviewSizeChosen(previewSize, sensorOrientation);
-        return;
       }
     } catch (final CameraAccessException e) {
       LOGGER.e(e, "Exception!");
     } catch (final NullPointerException e) {
       // Currently an NPE is thrown when the Camera2API is used but not supported on the
       // device this code runs.
+      // TODO(andrewharp): abstract ErrorDialog/RuntimeException handling out into new method and
+      // reuse throughout app.
       ErrorDialog.newInstance(getString(R.string.camera_error))
           .show(getChildFragmentManager(), FRAGMENT_DIALOG);
+      throw new RuntimeException(getString(R.string.camera_error));
     }
+
+    cameraConnectionCallback.onPreviewSizeChosen(previewSize, sensorOrientation);
   }
 
   /**

@@ -22,13 +22,15 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include <vector>
 
-#include "cuda/cuda_config.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
-#include "tensorflow/stream_executor/platform/port.h"
+
+#if !defined(PLATFORM_GOOGLE)
+#include "cuda/cuda_config.h"
+#endif
 
 namespace perftools {
 namespace gputools {
@@ -56,7 +58,6 @@ class DsoLoader {
  private:
   // Registered rpaths (singleton vector) and a mutex that guards it.
   static std::vector<string>* GetRpaths();
-  static mutex rpath_mutex_;
 
   // Descriptive boolean wrapper to indicate whether symbols are made available
   // to resolve in later-loaded libraries.

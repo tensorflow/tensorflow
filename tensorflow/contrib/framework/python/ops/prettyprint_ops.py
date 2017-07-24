@@ -161,7 +161,8 @@ def print_op(input_,
 
     with ops.control_dependencies([p]):
       input_ = tensor_array_ops.TensorArray(dtype=input_.dtype,
-                                            handle=input_.handle)
+                                            handle=input_.handle,
+                                            flow=input_.flow)
   else:
     raise ValueError("input_ must be of type "
                      "Tensor, SparseTensor or TensorArray")
