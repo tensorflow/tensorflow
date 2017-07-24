@@ -17,6 +17,10 @@
 
 set -e
 
+function real_path() {
+  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
@@ -41,7 +45,7 @@ function main() {
     exit 1
   fi
 
-  DEST=$1
+  DEST=$(real_path $1)
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
   GPU_FLAG=""

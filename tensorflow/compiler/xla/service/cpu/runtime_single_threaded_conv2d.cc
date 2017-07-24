@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
 
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d_impl.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -38,5 +37,3 @@ __xla_cpu_runtime_EigenSingleThreadedConvF32(
       padding_top, padding_bottom, padding_left, padding_right,
       lhs_row_dilation, lhs_col_dilation, rhs_row_dilation, rhs_col_dilation);
 }
-
-REGISTER_XLA_CPU_RUNTIME_BUILTIN(EigenSingleThreadedConvF32);

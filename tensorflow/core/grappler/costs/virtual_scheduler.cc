@@ -484,7 +484,11 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
     for (auto* output_node : port_num_output_pair.second) {
       auto& output_state = node_map_[output_node];
       output_state.num_inputs_ready++;
-      if (output_state.num_inputs_ready == output_state.inputs.size()) {
+      // Execute a node as soon as all its inputs are ready. Merge nodes are
+      // special since they run as soon as one of their inputs becomes
+      // available.
+      if (output_state.num_inputs_ready == output_state.inputs.size() ||
+          IsMerge(*output_node)) {
         // This output node is now ready.
         output_state.time_ready = curr_time;
         ready_nodes_->AddNode(output_node);
