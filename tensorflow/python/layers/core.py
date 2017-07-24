@@ -56,7 +56,7 @@ class Dense(base.Layer):
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
-    kernel_initializer:  Initializer function for the weight matrix.
+    kernel_initializer: Initializer function for the weight matrix.
       If `None` (default), weights are initialized using the default
       initializer used by `tf.get_variable`.
     bias_initializer: Initializer function for the bias.
