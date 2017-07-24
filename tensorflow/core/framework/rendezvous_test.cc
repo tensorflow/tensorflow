@@ -121,8 +121,6 @@ const Rendezvous::ParsedKey& KeyBar() {
 TEST_F(LocalRendezvousTest, SendRecv) {
   Rendezvous::Args args;
   TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
-  EXPECT_TRUE(
-      errors::IsAborted(rendez_->Send(KeyFoo(), args, V("hello"), false)));
   Tensor val(DT_STRING);
   bool is_dead = false;
   TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &val, &is_dead));
@@ -142,26 +140,7 @@ TEST_F(LocalRendezvousTest, RecvSend) {
   EXPECT_EQ("hello", V(val));
 }
 
-TEST_F(LocalRendezvousTest, DuplicateWaiterRecv) {
-  SchedClosure([this]() {
-    Tensor t(DT_STRING);
-    bool is_dead = false;
-    Rendezvous::Args args;
-    TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &t, &is_dead));
-    TF_ASSERT_OK(rendez_->Send(KeyBar(), args, t, is_dead));
-  });
-  Env::Default()->SleepForMicroseconds(1000000);
-  Tensor val(DT_STRING);
-  bool val_dead = false;
-  Rendezvous::Args args;
-  EXPECT_TRUE(
-      errors::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
-  TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("secret msg"), val_dead));
-  TF_ASSERT_OK(rendez_->Recv(KeyBar(), args, &val, &val_dead));
-  EXPECT_EQ("secret msg", V(val));
-}
-
-TEST_F(LocalRendezvousTest, DuplicateSerialRecv) {
+TEST_F(LocalRendezvousTest, PingPong) {
   SchedClosure([this]() {
     Tensor t(DT_STRING);
     bool is_dead = false;
@@ -183,7 +162,7 @@ TEST_F(LocalRendezvousTest, DuplicateSerialRecv) {
 // thread waits for done to be notified.
 struct BlockingState {
   mutex lock;
-  int counter;
+  int counter = 0;
   Notification done;
 };
 
@@ -232,6 +211,30 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
   }
 
   state.done.WaitForNotification();
+}
+
+static void RandomSleep() {
+  if (std::rand() % 10 == 0) {
+    Env::Default()->SleepForMicroseconds(1000);
+  }
+}
+
+TEST_F(LocalRendezvousTest, MultiSends) {
+  static const int N = 100;
+  const auto& key_foo = KeyFoo();
+  Rendezvous::Args args;
+  SchedClosure([=]() {
+    for (int i = 0; i < N; ++i) {
+      TF_ASSERT_OK(rendez_->Send(key_foo, args, V(strings::StrCat(i)), false));
+      RandomSleep();
+    }
+  });
+  Tensor val;
+  bool val_dead;
+  for (int i = 0; i < N; ++i) {
+    TF_ASSERT_OK(rendez_->Recv(key_foo, args, &val, &val_dead));
+    RandomSleep();
+  }
 }
 
 TEST_F(LocalRendezvousTest, RecvAbort) {
@@ -326,6 +329,7 @@ static void BM_SendRecv(int iters) {
 BENCHMARK(BM_SendRecv);
 
 static void BM_PingPong(int iters) {
+  CHECK_GT(iters, 0);
   thread::ThreadPool* pool = new thread::ThreadPool(Env::Default(), "test", 1);
 
   // The main thread sends "foo" for iters times and receives "bar"
