@@ -56,15 +56,44 @@ std::string CanonicalizeSymbol(const std::string &name) {
 // A simple SymbolResolver that delegates to the host dynamic linker.
 struct SimpleResolver : public llvm::JITSymbolResolver {
   llvm::JITSymbol findSymbol(const std::string &name) override {
-    std::string canonical_name = CanonicalizeSymbol(name);
-    bool must_be_builtin =
-        tensorflow::StringPiece(canonical_name.c_str(), canonical_name.size())
-            .starts_with(runtime::kXlaCpuRuntimeSymbolPrefix);
+    void *func_addr = nullptr;
 
-    void *func_addr = must_be_builtin
-                          ? runtime::ResolveSymbol(
-                                {canonical_name.c_str(), canonical_name.size()})
-                          : dlsym(RTLD_DEFAULT, canonical_name.c_str());
+    std::string canonical_name = CanonicalizeSymbol(name);
+    if (canonical_name == runtime::kEigenMatmulF32SymbolName) {
+      func_addr = reinterpret_cast<void *>(__xla_cpu_runtime_EigenMatMulF32);
+    } else if (canonical_name ==
+               runtime::kEigenSingleThreadedMatmulF32SymbolName) {
+      func_addr = reinterpret_cast<void *>(
+          __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
+    } else if (canonical_name == runtime::kEigenConvF32SymbolName) {
+      func_addr = reinterpret_cast<void *>(__xla_cpu_runtime_EigenConvF32);
+    } else if (canonical_name ==
+               runtime::kEigenSingleThreadedConvF32SymbolName) {
+      func_addr = reinterpret_cast<void *>(
+          __xla_cpu_runtime_EigenSingleThreadedConvF32);
+    } else if (canonical_name ==
+               runtime::kAcquireInfeedBufferForDequeueSymbolName) {
+      func_addr = reinterpret_cast<void *>(
+          __xla_cpu_runtime_AcquireInfeedBufferForDequeue);
+    } else if (canonical_name ==
+               runtime::kReleaseInfeedBufferAfterDequeueSymbolName) {
+      func_addr = reinterpret_cast<void *>(
+          __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue);
+    } else if (canonical_name == runtime::kExpV4F32) {
+      func_addr = reinterpret_cast<void *>(runtime::ExpV4F32);
+    } else if (canonical_name == runtime::kExpV8F32) {
+      func_addr = reinterpret_cast<void *>(runtime::ExpV8F32);
+    } else if (canonical_name == runtime::kLogV4F32) {
+      func_addr = reinterpret_cast<void *>(runtime::LogV4F32);
+    } else if (canonical_name == runtime::kLogV8F32) {
+      func_addr = reinterpret_cast<void *>(runtime::LogV8F32);
+    } else if (canonical_name == runtime::kTanhV4F32) {
+      func_addr = reinterpret_cast<void *>(runtime::TanhV4F32);
+    } else if (canonical_name == runtime::kTanhV8F32) {
+      func_addr = reinterpret_cast<void *>(runtime::TanhV8F32);
+    } else {
+      func_addr = dlsym(RTLD_DEFAULT, canonical_name.c_str());
+    }
 
     if (func_addr == nullptr) {
       return nullptr;
@@ -105,8 +134,8 @@ llvm::StringRef GetHostCpuName() {
 
 CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
   CompilerFunctor::VectorIntrinsics intrinsics;
-  intrinsics.sse_intrinsics = (&runtime::__xla_cpu_runtime_ExpV4F32 != nullptr);
-  intrinsics.avx_intrinsics = (&runtime::__xla_cpu_runtime_ExpV8F32 != nullptr);
+  intrinsics.sse_intrinsics = (&runtime::ExpV4F32 != nullptr);
+  intrinsics.avx_intrinsics = (&runtime::ExpV8F32 != nullptr);
   return intrinsics;
 }
 

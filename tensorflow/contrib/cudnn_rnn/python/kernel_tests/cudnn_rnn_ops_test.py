@@ -96,16 +96,19 @@ class CudnnRNNTest(TensorFlowTestCase):
       raise ValueError("Invalid rnn_mode: %s" % rnn_mode)
     return model
 
-  def _create_params_savable(self, params, model):
+  def _create_params_savable(self, params, model, base_variable_scope="rnn",
+                             name="params_canonical"):
     """Create a RNNParamsSaveable for the weight and bias parameters.
 
     Args:
       params: a Variable for weight and bias parameters.
       model: a CudnnRNN model.
+      base_variable_scope: a string, prefix of names of saved variables.
+      name: a string, name of the RNNParamsSaveable object.
     """
     params_saveable = cudnn_rnn_ops.RNNParamsSaveable(
         model, model.params_to_canonical, model.canonical_to_params, [params],
-        "rnn")
+        base_variable_scope=base_variable_scope, name=name)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, params_saveable)
 
   def _testSaveRestoreVariable(self, rnn_mode, dtype):
@@ -133,6 +136,37 @@ class CudnnRNNTest(TensorFlowTestCase):
       saver.restore(sess, save_path)
       params_v_restored = sess.run(params)
       self.assertAllEqual(params_v, params_v_restored)
+
+  def _testSaveRestoreTwoVariables(self, rnn_mode, dtype):
+    model = self._CreateModel(
+        rnn_mode, num_layers=2, num_units=7, input_size=3, dtype=dtype)
+    random_seed.set_random_seed(1234)
+    params_size_t = model.params_size()
+    names = ["rnn_1", "rnn_2"]
+    param_vars = [variables.Variable(
+        random_ops.random_uniform([params_size_t], dtype=dtype),
+        dtype=dtype,
+        validate_shape=False) for name in names]
+    for name, params in zip(names, param_vars):
+      self._create_params_savable(params, model, name, name)
+    save_path = os.path.join(self.get_temp_dir(), "save-restore-variable-test")
+    saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
+    with self.test_session(use_gpu=True) as sess:
+      sess.run(variables.global_variables_initializer())
+      params_v = sess.run(param_vars)
+      val = saver.save(sess, save_path)
+      self.assertEqual(save_path, val)
+    with self.test_session(use_gpu=True) as sess:
+      reset_params = [
+          state_ops.assign(params,
+                           array_ops.zeros(
+                               [params_size_t], dtype=dtype))
+          for params in param_vars]
+      sess.run(reset_params)
+      saver.restore(sess, save_path)
+      params_v_restored = sess.run(param_vars)
+      for v, v_restored in zip(params_v, params_v_restored):
+        self.assertAllEqual(v, v_restored)
 
   def _build_forward_cudnn_model(self,
                                  rnn_mode,
@@ -377,6 +411,7 @@ class CudnnRNNTest(TensorFlowTestCase):
     dtype_list = [dtypes.float32, dtypes.float64]
     for rnn_mode, dtype in itertools.product(rnn_modes, dtype_list):
       self._testSaveRestoreVariable(rnn_mode, dtype)
+      self._testSaveRestoreTwoVariables(rnn_mode, dtype)
       self._testSaveRestoreOutput(rnn_mode, dtype)
 
   def _MinLSTMParamSize(self,

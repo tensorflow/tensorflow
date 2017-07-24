@@ -72,4 +72,17 @@ message TensorProto {
 
   // DT_RESOURCE
   repeated ResourceHandleProto resource_handle_val = 14;
+
+  // DT_VARIANT
+  repeated VariantTensorDataProto variant_val = 15;
 };
+
+// Protocol buffer representing the serialization format of DT_VARIANT tensors.
+message VariantTensorDataProto {
+  // Name of the type of objects being serialized.
+  string type_name = 1;
+  // Portions of the object that are not Tensors.
+  bytes metadata = 2;
+  // Tensors contained within objects being serialized.
+  repeated TensorProto tensors = 3;
+}

@@ -223,7 +223,6 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
@@ -253,7 +252,6 @@ cc_test(
         ":shape_util",
         ":test",
         ":test_helpers",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/core:test_main",
     ],
 )
@@ -609,7 +607,6 @@ cc_header_only_library(
         ":xla_data_proto",
         ":xla_proto",
         "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:stream_executor_headers_lib",

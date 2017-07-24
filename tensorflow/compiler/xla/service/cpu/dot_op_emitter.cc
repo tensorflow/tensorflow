@@ -244,14 +244,14 @@ tensorflow::Status DotOpEmitter::EmitCallToRuntime() {
   switch (type) {
     case F32:
       fn_name = multi_threaded_eigen
-                    ? runtime::kEigenMatMulF32SymbolName
-                    : runtime::kEigenSingleThreadedMatMulF32SymbolName;
+                    ? runtime::kEigenMatmulF32SymbolName
+                    : runtime::kEigenSingleThreadedMatmulF32SymbolName;
       float_type = ir_builder_->getFloatTy();
       break;
     case F64:
       fn_name = multi_threaded_eigen
-                    ? runtime::kEigenMatMulF64SymbolName
-                    : runtime::kEigenSingleThreadedMatMulF64SymbolName;
+                    ? runtime::kEigenMatmulF64SymbolName
+                    : runtime::kEigenSingleThreadedMatmulF64SymbolName;
       float_type = ir_builder_->getDoubleTy();
       break;
     default:

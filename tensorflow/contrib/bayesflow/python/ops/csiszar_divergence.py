@@ -31,6 +31,7 @@ _allowed_symbols = [
     'amari_alpha',
     'arithmetic_geometric',
     'chi_square',
+    'csiszar_vimco',
     'dual_csiszar_function',
     'jeffreys',
     'jensen_shannon',
@@ -43,6 +44,7 @@ _allowed_symbols = [
     'squared_hellinger',
     'symmetrized_csiszar_function',
     'total_variation',
+    't_power',
     'triangular',
 ]
 

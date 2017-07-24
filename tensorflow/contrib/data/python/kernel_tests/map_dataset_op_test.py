@@ -203,6 +203,21 @@ class MapDatasetTest(test.TestCase):
   def testImplicitDisposeParallelMapDataset(self):
     self._testDisposeParallelMapDataset(False)
 
+  def testParallelMapUnspecifiedOutputSize(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+
+    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+               .map(lambda x: array_ops.check_numerics(x, "message"),
+                    num_threads=2))
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for _ in range(3):
+        sess.run(get_next)
+
   def testParallelMapError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
