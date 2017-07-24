@@ -338,6 +338,13 @@ class MonitoredTrainingSessionTest(test.TestCase):
           is_chief=True, checkpoint_dir=logdir) as session:
         self.assertEqual(0, session.run(gstep))
 
+  def test_as_default(self):
+    with ops.Graph().as_default():
+      with monitored_session.MonitoredTrainingSession() as session:
+        self.assertEqual(None, ops.get_default_session())
+        with session.as_default():
+          self.assertEqual(session, ops.get_default_session())
+
 
 class StopAtNSession(monitored_session._WrappedSession):
   """A wrapped session that stops at the N-th call to _check_stop."""
@@ -1243,6 +1250,13 @@ class MonitoredSessionTest(test.TestCase):
             isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))
         self.assertGreater(len(hook.run_metadata_list[0].partition_graphs), 0)
 
+  def test_as_default(self):
+    with ops.Graph().as_default():
+      with monitored_session.MonitoredSession() as session:
+        self.assertEqual(None, ops.get_default_session())
+        with session.as_default():
+          self.assertEqual(session, ops.get_default_session())
+
 
 class SingularMonitoredSessionTest(test.TestCase):
   """Tests SingularMonitoredSession."""
@@ -1336,6 +1350,13 @@ class SingularMonitoredSessionTest(test.TestCase):
     with ops.Graph().as_default():
       with monitored_session.SingularMonitoredSession() as session:
         self.assertTrue(isinstance(session.raw_session(), session_lib.Session))
+
+  def test_as_default(self):
+    with ops.Graph().as_default():
+      with monitored_session.SingularMonitoredSession() as session:
+        self.assertEqual(None, ops.get_default_session())
+        with session.as_default():
+          self.assertEqual(session, ops.get_default_session())
 
 
 if __name__ == '__main__':
