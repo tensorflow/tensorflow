@@ -63,7 +63,6 @@ CreateSliceUpdateOp(poplar::Graph &graph,
   for (unsigned int i = 0; i < s_end.size(); i++) {
     s_end[i] += update.dim(i);
   }
-
   poplar::Tensor slice = input.slice(s_begin, s_end);
   seq.add(poplar::program::Copy(update, slice));
 
