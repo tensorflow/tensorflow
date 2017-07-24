@@ -306,90 +306,219 @@ create_activate_virtualenv_and_install_tensorflow() {
   echo "Successfully installed pip package ${TF_WHEEL_PATH}"
 }
 
-
-# 1. Smoke test of tensorflow install in clean virtualenv
-echo
-echo "Installing and smoke-testing pip wheel in clean virtualenv: ${WHL_PATH}"
-echo
-
-CLEAN_VENV_DIR="${PIP_TEST_ROOT}/venv_clean"
-create_activate_virtualenv_and_install_tensorflow --clean \
-  "${CLEAN_VENV_DIR}" "${WHL_PATH}"
-# cd to a temporary directory to avoid picking up Python files in the source
-# tree.
-TMP_DIR=$(mktemp -d)
-pushd "${TMP_DIR}"
-[[ $(python -c "import tensorflow as tf; print(tf.Session().run(tf.constant(42)))") == 42 ]] \
-  && echo "Smoke test of tensorflow install in clean virtualenv PASSED." \
-  || die "Smoke test of tensroflow install in clean virtualenv FAILED."
-deactivate || \
-  die "FAILED: Unable to deactivate virtualenv from ${CLEAN_VENV_DIR}"
-popd
-rm -rf "${TMP_DIR}" "${CLEAN_VENV_DIR}"
-
-# 2. Perform installation of tensorflow in "non-clean" virtualenv and tests
-# against the install.
-echo
-echo "Installing and testing pip wheel in virtualenv: ${WHL_PATH}"
-echo
-
-# Create virtualenv directory for install test
-VENV_DIR="${PIP_TEST_ROOT}/venv"
-create_activate_virtualenv_and_install_tensorflow \
-  "${CLEAN_VENV_DIR}" "${WHL_PATH}"
-
-# Install extra pip packages required by the test-on-install
-for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
-  echo "Installing extra pip package required by test-on-install: ${PACKAGE}"
-
-  pip install ${PACKAGE} || \
-      die "pip install ${PACKAGE} FAILED"
-done
-
-if [[ -n "${NO_TEST_ON_INSTALL}" ]] &&
-   [[ "${NO_TEST_ON_INSTALL}" != "0" ]]; then
-  echo "NO_TEST_ON_INSTALL=${NO_TEST_ON_INSTALL}:"
-  echo "  Skipping ALL Python unit tests on install"
-else
-  # Call run_pip_tests.sh to perform test-on-install
-  "${SCRIPT_DIR}/run_pip_tests.sh" --virtualenv ${GPU_FLAG} ${MAC_FLAG} ||
-      die "PIP tests-on-install FAILED"
-fi
-
-# Test user ops
-if [[ "${DO_TEST_USER_OPS}" == "1" ]]; then
-  "${SCRIPT_DIR}/test_user_ops.sh" --virtualenv ${GPU_FLAG} || \
-      die "PIP user-op tests-on-install FAILED"
-fi
-
-# Test TensorFlow Debugger (tfdbg) examples.
-if [[ "${DO_TEST_TFDBG_BINARIES}" == "1" ]]; then
-  echo
-  echo "Testing TensorFlow Debugger (tfdbg) binaries"
-  echo
+################################################################################
+# Smoke test of tensorflow install in clean virtualenv
+################################################################################
+do_clean_virtualenv_smoke_test() {
+  CLEAN_VENV_DIR="${PIP_TEST_ROOT}/venv_clean"
+  create_activate_virtualenv_and_install_tensorflow --clean \
+    "${CLEAN_VENV_DIR}" "${WHL_PATH}"
 
   # cd to a temporary directory to avoid picking up Python files in the source
   # tree.
   TMP_DIR=$(mktemp -d)
   pushd "${TMP_DIR}"
+  if [[ $(python -c "import tensorflow as tf; print(tf.Session().run(tf.constant(42)))") == 42 ]];
+  then
+    echo "Smoke test of tensorflow install in clean virtualenv PASSED."
+  else
+    echo "Smoke test of tensroflow install in clean virtualenv FAILED."
+    return 1
+  fi
 
-  "${SCRIPT_DIR}/../../../python/debug/examples/examples_test.sh" \
-      --virtualenv || \
-      die "PIP tests-on-install of tfdbg binaries FAILED"
+  deactivate
+  if [[ $? != 0 ]]; then
+    echo "FAILED: Unable to deactivate virtualenv from ${CLEAN_VENV_DIR}"
+    return 1
+  fi
 
   popd
-fi
+  rm -rf "${TMP_DIR}" "${CLEAN_VENV_DIR}"
+}
 
-# Optional: Run the tutorial tests
-if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
-  "${SCRIPT_DIR}/test_tutorials.sh" --virtualenv || \
-      die "PIP tutorial tests-on-install FAILED"
-fi
+################################################################################
+# Perform installation of tensorflow in "non-clean" virtualenv and tests against
+# the install.
+################################################################################
+do_virtualenv_pip_test() {
+  # Create virtualenv directory for install test
+  VENV_DIR="${PIP_TEST_ROOT}/venv"
+  create_activate_virtualenv_and_install_tensorflow \
+    "${CLEAN_VENV_DIR}" "${WHL_PATH}"
 
-# Optional: Run integration tests
-if [[ "${DO_INTEGRATION_TESTS}" == "1" ]]; then
-  "${SCRIPT_DIR}/integration_tests.sh" --virtualenv || \
-      die "Integration tests on install FAILED"
-fi
+  # Install extra pip packages required by the test-on-install
+  for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
+    echo "Installing extra pip package required by test-on-install: ${PACKAGE}"
+
+    pip install ${PACKAGE}
+    if [[ $? != 0 ]]; then
+      echo "pip install ${PACKAGE} FAILED"
+      return 1
+    fi
+  done
+
+  if [[ -n "${NO_TEST_ON_INSTALL}" ]] &&
+     [[ "${NO_TEST_ON_INSTALL}" != "0" ]]; then
+    echo "NO_TEST_ON_INSTALL=${NO_TEST_ON_INSTALL}:"
+    echo "  Skipping ALL Python unit tests on install"
+  else
+    # Call run_pip_tests.sh to perform test-on-install
+    "${SCRIPT_DIR}/run_pip_tests.sh" --virtualenv ${GPU_FLAG} ${MAC_FLAG}
+    if [[ $? != 0 ]]; then
+      echo "PIP tests-on-install FAILED"
+      return 1
+    fi
+  fi
+}
+
+################################################################################
+# Run tests tagged with oss_serial against the virtualenv install.
+################################################################################
+do_virtualenv_oss_serial_pip_test() {
+  if [[ -n "${NO_TEST_ON_INSTALL}" ]] &&
+     [[ "${NO_TEST_ON_INSTALL}" != "0" ]]; then
+    echo "NO_TEST_ON_INSTALL=${NO_TEST_ON_INSTALL}:"
+    echo "  Skipping Python unit tests on install tagged with oss_serial"
+  else
+    # Call run_pip_tests.sh to perform test-on-install
+    "${SCRIPT_DIR}/run_pip_tests.sh" \
+      --virtualenv ${GPU_FLAG} ${MAC_FLAG} --oss_serial
+    if [[ $? != 0 ]]; then
+      echo "PIP tests-on-install (oss_serial) FAILED"
+      return 1
+    fi
+  fi
+}
+
+################################################################################
+# Test user ops (optional).
+################################################################################
+do_test_user_ops() {
+  if [[ "${DO_TEST_USER_OPS}" == "1" ]]; then
+    "${SCRIPT_DIR}/test_user_ops.sh" --virtualenv ${GPU_FLAG}
+    if [[ $? != 0 ]]; then
+      echo "PIP user-op tests-on-install FAILED"
+      return 1
+    fi
+  else
+    echo "Skipping user-op test-on-install due to DO_TEST_USER_OPS = ${DO_TEST_USER_OPS}"
+  fi
+}
+
+################################################################################
+# Test TensorFlow Debugger (tfdbg) binaries (optional).
+################################################################################
+do_test_tfdbg_binaries() {
+  if [[ "${DO_TEST_TFDBG_BINARIES}" == "1" ]]; then
+    # cd to a temporary directory to avoid picking up Python files in the source
+    # tree.
+    TMP_DIR=$(mktemp -d)
+    pushd "${TMP_DIR}"
+
+    "${SCRIPT_DIR}/../../../python/debug/examples/examples_test.sh" \
+      --virtualenv
+    if  [[ $? != 0 ]]; then
+      echo "PIP tests-on-install of tfdbg binaries FAILED"
+      return 1
+    fi
+    popd
+  else
+    echo "Skipping test of tfdbg binaries due to DO_TEST_TFDBG_BINARIES = ${DO_TEST_TFDBG_BINARIES}"
+  fi
+}
+
+################################################################################
+# Test tutorials (optional).
+################################################################################
+do_test_tutorials() {
+  if [[ "${DO_TEST_TUTORIALS}" == "1" ]]; then
+    "${SCRIPT_DIR}/test_tutorials.sh" --virtualenv
+    if [[ $? != 0 ]]; then
+      echo "PIP tutorial tests-on-install FAILED"
+      return 1
+    fi
+  else
+    echo "Skipping tutorial tests-on-install due to DO_TEST_TUTORIALS = ${DO_TEST_TUTORIALS}"
+  fi
+}
+
+################################################################################
+# Integration test for ffmpeg (optional).
+################################################################################
+do_ffmpeg_integration_test() {
+  # Optional: Run integration tests
+  if [[ "${DO_INTEGRATION_TESTS}" == "1" ]]; then
+    "${SCRIPT_DIR}/integration_tests.sh" --virtualenv
+    if [[ $? != 0 ]]; then
+      echo "Integration tests on install FAILED"
+      return 1
+    fi
+  else
+    echo "Skipping ffmpeg integration due to DO_INTEGRATION_TESTS = ${DO_INTEGRATION_TESTS}"
+  fi
+}
+
+
+# List of all PIP test tasks and their descriptions.
+PIP_TASKS=("do_clean_virtualenv_smoke_test" "do_virtualenv_pip_test" "do_virtualenv_oss_serial_pip_test" "do_test_user_ops" "do_test_tfdbg_binaries" "do_test_tutorials" "do_ffmpeg_integration_test")
+PIP_TASKS_DESC=("Smoke test of pip install in clean virtualenv" "PIP tests in virtualenv" "PIP test in virtualenv (tag: oss_serial)" "User ops test" "TensorFlow Debugger (tfdbg) binaries test" "Tutorials test" "ffmpeg integration test")
+
+
+# Execute all the PIP test steps.
+COUNTER=0
+FAIL_COUNTER=0
+PASS_COUNTER=0
+while [[ ${COUNTER} -lt "${#PIP_TASKS[@]}" ]]; do
+  INDEX=COUNTER
+  ((INDEX++))
+
+  echo ""
+  echo "=== PIP test step ${INDEX} of ${#PIP_TASKS[@]}: "\
+"${PIP_TASKS[COUNTER]} (${PIP_TASKS_DESC[COUNTER]}) ==="
+  echo ""
+
+  ${PIP_TASKS[COUNTER]}
+  RESULT=$?
+
+  if [[ ${RESULT} != "0" ]]; then
+    ((FAIL_COUNTER++))
+  else
+    ((PASS_COUNTER++))
+  fi
+
+  STEP_EXIT_CODES+=(${RESULT})
+
+  echo ""
+  ((COUNTER++))
+done
 
 deactivate || die "FAILED: Unable to deactivate virtualenv from ${VENV_DIR}"
+
+
+# Print summary of build results
+COUNTER=0
+echo "==== Summary of PIP test results ===="
+while [[ ${COUNTER} -lt "${#PIP_TASKS[@]}" ]]; do
+  INDEX=COUNTER
+  ((INDEX++))
+
+  echo "${INDEX}. ${PIP_TASKS[COUNTER]}: ${PIP_TASKS_DESC[COUNTER]}"
+  if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
+    printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
+  else
+    printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
+  fi
+
+  ((COUNTER++))
+done
+
+echo
+echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
+
+echo
+if [[ ${FAIL_COUNTER} == "0" ]]; then
+  printf "PIP test ${COLOR_GREEN}PASSED${COLOR_NC}\n"
+else
+  printf "PIP test ${COLOR_RED}FAILED${COLOR_NC}\n"
+  exit 1
+fi

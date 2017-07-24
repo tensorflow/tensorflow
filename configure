@@ -202,31 +202,16 @@ fi
 setup_python
 
 ## Set up MKL related environment settings
-while [ "$TF_NEED_MKL" == "" ]; do
-  fromuser=""
-  read -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
-  fromuser="1"
-  case $INPUT in
-    [Yy]* ) echo "MKL support will be enabled for TensorFlow"; TF_NEED_MKL=1;;
-    [Nn]* ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
-    "" ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
-done
-
-OSNAME=`uname -s`
-
-if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
-  if [ "$OSNAME" == "Linux" ]; then
-    write_to_bazelrc 'build:mkl --define with_mkl_support=true'
-    write_to_bazelrc 'build:mkl -c opt'
-    write_to_bazelrc 'build:mkl --copt="-DEIGEN_USE_VML"'
-    echo "Add \"--config=mkl\" to your bazel command to build with MKL support."
-  elif [ "$OSNAME" == "Darwin" ]; then
-      echo "Darwin is unsupported yet";
-      exit 1
-  fi
-fi # TF_NEED_MKL
+write_to_bazelrc 'build:mkl --define with_mkl_support=true'
+write_to_bazelrc 'build:mkl --define using_mkl=true'
+write_to_bazelrc 'build:mkl -c opt'
+write_to_bazelrc 'build:mkl --copt="-DEIGEN_USE_VML"'
+echo ""
+echo "Add \"--config=mkl\" to your bazel command to build with MKL support."
+echo "Please note that MKL on MacOS or windows is still not supported."
+echo "If you would like to use a local MKL instead of downloading, please "
+echo "  set the environment variable \"TF_MKL_ROOT\" every time before build."
+echo ""
 ## End MKL setup
 
 ## Set up architecture-dependent optimization flags.
