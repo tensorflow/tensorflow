@@ -37,7 +37,7 @@ bool IsDequeueOp(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Identity";
+  return op == "Identity" || op == "RefIdentity";
 }
 
 bool IsMerge(const NodeDef& node) {
@@ -77,6 +77,11 @@ bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
 bool IsSend(const NodeDef& node) {
   const auto op = node.op();
   return op == "_Send";
+}
+
+bool IsStopGradient(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "StopGradient" || op == "PreventGradient";
 }
 
 bool IsSwitch(const NodeDef& node) {

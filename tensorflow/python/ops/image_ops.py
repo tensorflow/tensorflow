@@ -60,7 +60,6 @@ See the @{$python/image} guide.
 @@per_image_standardization
 @@draw_bounding_boxes
 @@non_max_suppression
-@@non_max_suppression_v2
 @@sample_distorted_bounding_box
 @@total_variation
 """

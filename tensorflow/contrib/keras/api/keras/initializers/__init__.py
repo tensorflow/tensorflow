@@ -36,6 +36,7 @@ from tensorflow.contrib.keras.python.keras.initializers import glorot_normal
 from tensorflow.contrib.keras.python.keras.initializers import glorot_uniform
 from tensorflow.contrib.keras.python.keras.initializers import he_normal
 from tensorflow.contrib.keras.python.keras.initializers import he_uniform
+from tensorflow.contrib.keras.python.keras.initializers import lecun_normal
 from tensorflow.contrib.keras.python.keras.initializers import lecun_uniform
 
 # Auxiliary utils.

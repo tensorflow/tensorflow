@@ -585,7 +585,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     LogicalBuffer::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
-    bool allow_input_output_aliasing, TuplePointsToAnalysis::Colorer colorer) {
+    bool allow_input_output_aliasing, BufferLiveness::Colorer colorer) {
   BufferAssigner assigner(allow_input_output_aliasing, std::move(colorer));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
@@ -1351,7 +1351,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   std::vector<ColocatedBufferSet> colocated_buffer_sets;
   BuildColocatedBufferSets(module, assignment->liveness(),
                            assignment->buffer_size_, &colocated_buffer_sets);
-  TF_RETURN_IF_ERROR(colorer_(&assignment->mutable_points_to_analysis()));
+  TF_RETURN_IF_ERROR(colorer_(assignment->liveness()));
   VLOG(3) << "After coloring:";
   XLA_VLOG_LINES(3, assignment->points_to_analysis().ToString());
 
