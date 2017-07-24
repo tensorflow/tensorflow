@@ -2,6 +2,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+package(default_visibility = ["//visibility:public"])
+
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -10,8 +12,8 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 tf_custom_op_library(
     name = "python/ops/_repeat_op.so",
     srcs = [
-        "kernels/repeat_op.h",
         "kernels/repeat_op.cc",
+        "kernels/repeat_op.h",
         "kernels/repeat_op_cpu_impl.cc",
         "kernels/repeat_op_gpu_impl.cc",
         "ops/repeat_op.cc",
@@ -62,8 +64,8 @@ py_test(
         ":repeat_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:gradients",
         "//tensorflow/python:gradient_checker",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
