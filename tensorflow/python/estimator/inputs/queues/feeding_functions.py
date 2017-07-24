@@ -258,7 +258,7 @@ class _GeneratorFeedFn(object):
         data_row = next(self._iterator)
       for index, key in enumerate(self._keys):
         if key not in data_row.keys():
-          raise KeyError("key mismatch between dicts emitted by GenFun"
+          raise KeyError("key mismatch between dicts emitted by GenFun "
                          "Expected {} keys; got {}".format(
                              self._keys, data_row.keys()))
         list_dict.setdefault(self._col_placeholders[index],
