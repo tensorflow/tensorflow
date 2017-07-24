@@ -126,6 +126,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     tracker = new MultiBoxTracker(this);
 
+
     if (USE_YOLO) {
       detector =
           TensorFlowYoloDetector.create(
@@ -270,15 +271,17 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
       final int uvRowStride = planes[1].getRowStride();
       final int uvPixelStride = planes[1].getPixelStride();
       ImageUtils.convertYUV420ToARGB8888(
-          yuvBytes[0],
-          yuvBytes[1],
-          yuvBytes[2],
-          previewWidth,
-          previewHeight,
-          yRowStride,
-          uvRowStride,
-          uvPixelStride,
-          rgbBytes);
+              yuvBytes[0],
+              yuvBytes[1],
+              yuvBytes[2],
+              rgbBytes,
+              previewWidth,
+              previewHeight,
+              yRowStride,
+              uvRowStride,
+              uvPixelStride,
+              false);
+
 
       image.close();
     } catch (final Exception e) {
@@ -343,6 +346,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     Trace.endSection();
   }
+
+  protected  void processImageRGBbytes(int[] rgbBytes ) {}
 
   @Override
   protected int getLayoutId() {
