@@ -34,8 +34,8 @@ namespace {
 // Logs the provided status message with a backtrace.
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
-  LOG(WARNING) << status.ToString();
-  LOG(WARNING) << tensorflow::CurrentStackTrace();
+  VLOG(1) << status.ToString();
+  VLOG(1) << tensorflow::CurrentStackTrace();
   return status;
 }
 
