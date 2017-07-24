@@ -70,9 +70,13 @@ ProfileResponse Profile(const tensorflow::string& service_addr) {
   ProfileRequest request;
   ProfileResponse response;
   ClientContext context;
+  ::grpc::ChannelArguments channel_args;
+  // TODO(ioeric): use `SetMaxReceiveMessageSize` instead once it's available.
+  channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
+                      std::numeric_limits<int32>::max());
   std::unique_ptr<TPUProfiler::Stub> stub =
-      TPUProfiler::NewStub(::grpc::CreateChannel(
-          service_addr, ::grpc::InsecureChannelCredentials()));
+      TPUProfiler::NewStub(::grpc::CreateCustomChannel(
+          service_addr, ::grpc::InsecureChannelCredentials(), channel_args));
   TF_CHECK_OK(FromGrpcStatus(stub->Profile(&context, request, &response)));
   return response;
 }

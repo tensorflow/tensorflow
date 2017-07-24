@@ -46,6 +46,7 @@ tf_cc_test(
     size = "small",
     srcs = ["xla_tf_graph_util_test.cc"],
     linkstatic = 1,
+    tags = ["nomac"],  # b/63908145
     deps = [
         ":xla_tf_graph_util",
         "//tensorflow/cc:cc_ops",

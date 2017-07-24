@@ -19,9 +19,7 @@ filegroup(
     name = "all_files",
     srcs = glob(
         ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
+        exclude = ["**/OWNERS"],
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -140,12 +138,14 @@ py_test(
     deps = [
         ":ensemble_optimizer_ops_py",
         ":model_ops_py",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
-        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -165,10 +165,13 @@ py_test(
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
         "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -189,7 +192,6 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
-        "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
 )
@@ -205,9 +207,11 @@ py_test(
     deps = [
         ":quantile_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -222,9 +226,10 @@ py_test(
         ":split_handler_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:training",
     ],
 )
 
@@ -238,11 +243,10 @@ py_test(
     ],
     deps = [
         ":stats_accumulator_ops_py",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:resources",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
+        "//tensorflow/python:tensor_shape",
     ],
 )
 
@@ -260,10 +264,12 @@ py_test(
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
-        "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -273,6 +279,11 @@ py_library(
     name = "batch_ops_utils_py",
     srcs = ["python/ops/batch_ops_utils.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
 )
 
 py_library(

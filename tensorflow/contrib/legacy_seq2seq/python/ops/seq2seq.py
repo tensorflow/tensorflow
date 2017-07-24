@@ -1189,10 +1189,10 @@ def model_with_buckets(encoder_inputs,
     raise ValueError("Length of encoder_inputs (%d) must be at least that of la"
                      "st bucket (%d)." % (len(encoder_inputs), buckets[-1][0]))
   if len(targets) < buckets[-1][1]:
-    raise ValueError("Length of targets (%d) must be at least that of last"
+    raise ValueError("Length of targets (%d) must be at least that of last "
                      "bucket (%d)." % (len(targets), buckets[-1][1]))
   if len(weights) < buckets[-1][1]:
-    raise ValueError("Length of weights (%d) must be at least that of last"
+    raise ValueError("Length of weights (%d) must be at least that of last "
                      "bucket (%d)." % (len(weights), buckets[-1][1]))
 
   all_inputs = encoder_inputs + decoder_inputs + targets + weights

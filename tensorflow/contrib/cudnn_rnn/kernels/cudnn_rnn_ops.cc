@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -565,15 +566,20 @@ class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsSize")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("num_layers")
-                            .HostMemory("num_units")
-                            .HostMemory("input_size")
-                            .HostMemory("params_size")
-                            .TypeConstraint<float>("T")
-                            .TypeConstraint<int32>("S"),
-                        CudnnRNNParamsSizeOp<GPUDevice, float, int32>);
+#define REGISTER_GPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsSize")       \
+                              .Device(DEVICE_GPU)          \
+                              .HostMemory("num_layers")    \
+                              .HostMemory("num_units")     \
+                              .HostMemory("input_size")    \
+                              .HostMemory("params_size")   \
+                              .TypeConstraint<T>("T")      \
+                              .TypeConstraint<int32>("S"), \
+                          CudnnRNNParamsSizeOp<GPUDevice, T, int32>);
+
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
 
 // Convert weight and bias params from a platform-specific layout to the
 // canonical form.
@@ -683,13 +689,17 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
   int num_params_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsToCanonical")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("num_layers")
-                            .HostMemory("num_units")
-                            .HostMemory("input_size")
-                            .TypeConstraint<float>("T"),
-                        CudnnRNNParamsToCanonical<GPUDevice, float>);
+#define REGISTER_GPU(T)                                     \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNParamsToCanonical") \
+                              .Device(DEVICE_GPU)           \
+                              .HostMemory("num_layers")     \
+                              .HostMemory("num_units")      \
+                              .HostMemory("input_size")     \
+                              .TypeConstraint<T>("T"),      \
+                          CudnnRNNParamsToCanonical<GPUDevice, T>);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
 
 // Convert weight and bias params from the canonical form to a
 // platform-specific layout.
@@ -725,13 +735,16 @@ class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("CudnnRNNCanonicalToParams")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("num_layers")
-                            .HostMemory("num_units")
-                            .HostMemory("input_size")
-                            .TypeConstraint<float>("T"),
-                        CudnnRNNCanonicalToParams<GPUDevice, float>);
+#define REGISTER_GPU(T)                                     \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNCanonicalToParams") \
+                              .Device(DEVICE_GPU)           \
+                              .HostMemory("num_layers")     \
+                              .HostMemory("num_units")      \
+                              .HostMemory("input_size")     \
+                              .TypeConstraint<T>("T"),      \
+                          CudnnRNNCanonicalToParams<GPUDevice, T>);
+TF_CALL_float(REGISTER_GPU) TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
 
 // Run the forward operation of the RNN model.
 template <typename T>
@@ -874,9 +887,14 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       GUARDED_BY(mu_);
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("CudnnRNN").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    CudnnRNNForwardOp<GPUDevice, float>);
+#define REGISTER_GPU(T)                                           \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("CudnnRNN").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      CudnnRNNForwardOp<GPUDevice, T>);
+
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
 
 // Run the backward operation of the RNN model.
 template <typename T>
@@ -1088,9 +1106,14 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       GUARDED_BY(mu_);
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("CudnnRNNBackprop").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    CudnnRNNBackwardOp<GPUDevice, float>);
+#define REGISTER_GPU(T)                                                   \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("CudnnRNNBackprop").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      CudnnRNNBackwardOp<GPUDevice, T>);
+
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
 
 // TODO(zhengxq): Add the conversion of Cudnn RNN Params from and to
 // its canonical form.

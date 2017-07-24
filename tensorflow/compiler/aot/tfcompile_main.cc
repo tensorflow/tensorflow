@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tfcompile.pb.h"
 #include "tensorflow/compiler/aot/tfcompile_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/util_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/core/framework/function.h"
@@ -131,7 +130,6 @@ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   AppendMainFlags(&flag_list, &flags);
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendServiceFlags(&flag_list);
   xla::legacy_flags::AppendUtilFlags(&flag_list);
 
   tensorflow::string usage = tensorflow::tfcompile::kUsageHeader;
