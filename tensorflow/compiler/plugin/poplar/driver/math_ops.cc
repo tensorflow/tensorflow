@@ -60,6 +60,7 @@ LookupUnaryFn(HloOpcode opcode) {
     case HloOpcode::kLogicalNot: return popstd::logicalNot;
     case HloOpcode::kNegate: return popstd::neg;
     case HloOpcode::kSign: return popstd::signum;
+    case HloOpcode::kSin: return popstd::sine;
     case HloOpcode::kTanh: return popstd::tanh;
 
     case HloOpcode::kIsFinite:
