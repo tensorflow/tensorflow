@@ -1,23 +1,39 @@
 #!/usr/bin/env bash
 set -e
 
-# To be able to build any of the python packages, it is assumed that
-# you have a python directory in /usr/include/arm-linux-gnueabihf/.
-
-# To install the architecture includes for python on ubuntu trusty;
-# run:
-#  sudo dpkg --add-architecture armhf
-#  echo "deb [arch=armhf] http://ports.ubuntu.com/ $(lsb_release -s -c) main universe" | \
-#    sudo tee -a /etc/apt/sources.list.d/armhf.list
-#  # Ignore errors about missing armhf packages in other repos.
-#  sudo aptitude update
-#  # Use aptitude; apt-get sometimes runs into errors on this command.
-#  sudo aptitude install libpython-all-dev:armhf python-numpy
+# By default this builds packages for the Pi Two and Three only, since the NEON support
+# this allows makes calculations many times faster. To support the Pi One or Zero, pass
+# PI_ONE as the first argument to the script, for example:
+# third_party/toolchains/cpus/arm/build_raspberry_pi.sh PI_ONE
 #
+# To install the cross-compilation support for Python this script needs on Ubuntu Trusty, run
+# something like these steps, after backing up your original /etc/apt/sources.list file:
+#
+# dpkg --add-architecture armhf
+# echo 'deb [arch=armhf] http://ports.ubuntu.com/ trusty main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+# echo 'deb [arch=armhf] http://ports.ubuntu.com/ trusty-updates main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+# echo 'deb [arch=armhf] http://ports.ubuntu.com/ trusty-security main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+# echo 'deb [arch=armhf] http://ports.ubuntu.com/ trusty-backports main restricted universe multiverse' >> /etc/apt/sources.list.d/armhf.list
+# sed -i 's#deb http://archive.ubuntu.com/ubuntu/#deb [arch=amd64] http://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list
+# apt-get update
+# apt-get install -y libpython-all-dev:armhf
+#
+# Make sure you have an up to date version of the Bazel build tool installed too.
 
 yes '' | ./configure
 
-bazel build -c opt --copt=-march=armv6 --copt=-mfpu=vfp \
+if [[ $1 == "PI_ONE" ]]; then
+  PI_COPTS="--copt=-march=armv6 --copt=-mfpu=vfp"
+  echo "Building for the Pi One/Zero, with no NEON support"
+else
+  PI_COPTS='--copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
+  --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
+  --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
+  --copt=-U__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8'
+  echo "Building for the Pi Two/Three, with NEON acceleration"
+fi
+
+bazel build -c opt ${PI_COPTS} \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
