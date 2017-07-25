@@ -301,7 +301,7 @@ class Exporter(object):
     if exports_to_keep:
       # create a simple parser that pulls the export_version from the directory.
       def parser(path):
-        match = re.match("^" + export_dir_base + "/(\\d{8})$", path.path)
+        match = re.match("^" + export_dir_base.replace('\\','/') + "/(\\d{8})$", path.path.replace('\\','/'))
         if not match:
           return None
         return path._replace(export_version=int(match.group(1)))
