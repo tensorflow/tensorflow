@@ -94,8 +94,8 @@ TEST_F(ModelPrunerTest, IdentityPruning) {
 
   Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
   Output b = ops::AddN(s.WithOpName("b"), {a});
-  Output c = ops::Identity(s.WithOpName("c").WithDevice("CPU:0"), b);
-  Output d = ops::Identity(s.WithOpName("d").WithDevice("GPU:0"), c);
+  Output c = ops::Identity(s.WithOpName("c"), b);
+  Output d = ops::Identity(s.WithOpName("d"), c);
   Output e = ops::AddN(s.WithOpName("e"), {d});
 
   GrapplerItem item;
@@ -119,9 +119,11 @@ TEST_F(ModelPrunerTest, IdentityPruning) {
   EXPECT_EQ(NodeName(e.name()), new_e.name());
 
   EXPECT_EQ(1, new_e.input_size());
-  EXPECT_EQ(NodeName(c.name()), new_e.input(0));
+  EXPECT_EQ(NodeName(b.name()), new_e.input(0));
   EXPECT_EQ(1, new_d.input_size());
-  EXPECT_EQ(NodeName(c.name()), new_d.input(0));
+  EXPECT_EQ(NodeName(b.name()), new_d.input(0));
+  EXPECT_EQ(1, new_c.input_size());
+  EXPECT_EQ(NodeName(b.name()), new_c.input(0));
 }
 
 TEST_F(ModelPrunerTest, PruningSkipsCtrlDependencies) {
@@ -233,6 +235,38 @@ TEST_F(ModelPrunerTest, PruningPerservesFetch) {
   EXPECT_EQ(NodeName(b.name()), new_b.name());
   const NodeDef& new_c = output.node(2);
   EXPECT_EQ(NodeName(c.name()), new_c.name());
+}
+
+TEST_F(ModelPrunerTest, PruningPerservesCrossDeviceIdentity) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c").WithDevice("/cpu:0"), 0.0f, {10, 10});
+
+  // Node i1 should be preserved.
+  Output i1 = ops::Identity(s.WithOpName("i1").WithDevice("/gpu:0"), c);
+  Output a1 = ops::AddN(s.WithOpName("a1").WithDevice("/gpu:0"), {i1});
+  Output a2 = ops::AddN(s.WithOpName("a2").WithDevice("/gpu:0"), {i1});
+
+  // Node i2 should be pruned since it resides on the sender's device.
+  Output i2 = ops::Identity(s.WithOpName("i2").WithDevice("/cpu:0"), c);
+  Output a3 = ops::AddN(s.WithOpName("a3").WithDevice("/gpu:0"), {i2});
+  Output a4 = ops::AddN(s.WithOpName("a4").WithDevice("/gpu:0"), {i2});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"a1", "a2", "a3", "a4"};
+
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  for (const auto& node : output.node()) {
+    if (node.name() == "a1" || node.name() == "a2") {
+      EXPECT_EQ("i1", node.input(0));
+    } else if (node.name() == "a3" || node.name() == "a4") {
+      EXPECT_EQ("c", node.input(0));
+    }
+  }
 }
 
 }  // namespace
