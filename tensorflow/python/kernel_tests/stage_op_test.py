@@ -105,7 +105,7 @@ class StageTest(test.TestCase):
         expected_name = gpu_dev if 'gpu' not in gpu_dev else '/device:GPU:0'
         self.assertEqual(y.device, expected_name)
       with ops.device('/cpu:0'):
-        x = stager.get()
+        x = stager.get()[0]
         self.assertEqual(x.device, '/device:CPU:0')
 
     G.finalize()

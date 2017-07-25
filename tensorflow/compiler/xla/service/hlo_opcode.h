@@ -87,6 +87,7 @@ enum class HloOpcode {
   kSelectAndScatter,
   kSend,
   kSign,
+  kSin,
   kSlice,
   kSort,
   kSubtract,

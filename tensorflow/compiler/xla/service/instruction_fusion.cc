@@ -69,6 +69,7 @@ namespace xla {
     case HloOpcode::kReverse:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:

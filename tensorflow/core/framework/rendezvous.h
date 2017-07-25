@@ -27,16 +27,22 @@ limitations under the License.
 
 namespace tensorflow {
 
-// A Rendezvous is an abstraction for passing a Tensor
-// from a producer to a consumer, where the consumer may safely
-// request the Tensor before or after it has been produced.  A
-// producer never blocks when using a Rendezvous.  A consumer has the
-// choice of making a blocking call or providing a callback: in either
-// case, the consumer receives the Tensor as soon as it is available.
+// A Rendezvous is an abstraction for passing tensors from producers
+// to consumers. A rendezvous is a table of channels. Each channel is
+// keyed by a rendezvous key. The key encodes a pair of <producer,
+// consumer>, where the producer and the consumer are tensorflow
+// devices.
 //
-// A Rendezvous key encodes a single <producer, consumer> pair.  It is
-// an error to call Send() or Recv*() more than once with the same
-// key.
+// The producer calls the Send() method to send one tensor over one
+// named channel. The consumer calls the Recv() method to receive one
+// tensor from a named channel. A sequence of tensors can be passed
+// from the producer to the consumer.  The consumer receives them in
+// the order as the producer sends them.
+//
+// A consumer may safely request the tensor before or after it has
+// been produced.  A consumer has the choice of making a blocking call
+// or providing a callback: in either case, the consumer receives the
+// Tensor as soon as it is available.  A producer never blocks.
 class Rendezvous : public core::RefCounted {
  public:
   struct Args {
