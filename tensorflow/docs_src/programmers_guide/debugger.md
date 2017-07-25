@@ -153,6 +153,8 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | **`@[coordinates]`** | | Navigate to specified element in `pt` output. | `@[10,0]` or `@10,0` |
 | **`/regex`** | |  [less](https://linux.die.net/man/1/less)-style search for given regular expression. | `/inf` |
 | **`/`** | | Scroll to the next line with matches to the searched regex (if any). | `/` |
+| **`pf`** | | **Print a value in the feed_dict to `Session.run` ** | |
+| | `pf <feed_tensor_name>` | Print the value of the feed. Also note that the `pf` command has the `-a`, `-r` and `-s` flags (not listed below), which have the same syntax and semantics as the identically-named flags of `pt`. | `pf input_xs:0` |
 | **`ni`** | | **Display node information.** | |
 | | `-a` | Include node attributes in the output. | `ni -a hidden/Relu` |
 | | `-d` | List the debug dumps available from the node. | `ni -d hidden/Relu` |
