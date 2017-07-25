@@ -119,7 +119,7 @@ filegroup(
         "@libxsmm_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
-        "@nanopb_git//:LICENSE.txt",
+        "@grpc//third_party/nanopb:LICENSE.txt",
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",

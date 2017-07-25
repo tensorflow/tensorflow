@@ -460,13 +460,15 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   native.bind(
-      name = "protobuf_compiler",
-      actual = "@protobuf_archive//:protoc_lib",
-  )
-
-  native.bind(
       name = "libssl",
       actual = "@boringssl//:ssl",
+  )
+
+  # gRPC has includes directly from their third_party path for nanopb, so we
+  # must depend on their version of it.
+  native.bind(
+      name = "nanopb",
+      actual = "@grpc//third_party/nanopb:nanopb",
   )
 
   native.http_archive(
@@ -554,22 +556,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
       # Add patch to boringssl code to support s390x
       patch_file = str(Label("//third_party/boringssl:add_boringssl_s390x.patch")),
-  )
-
-  native.new_http_archive(
-      name = "nanopb_git",
-      urls = [
-          "http://mirror.bazel.build/github.com/nanopb/nanopb/archive/1251fa1065afc0d62f635e0f63fec8276e14e13c.tar.gz",
-          "https://github.com/nanopb/nanopb/archive/1251fa1065afc0d62f635e0f63fec8276e14e13c.tar.gz",
-      ],
-      sha256 = "ab1455c8edff855f4f55b68480991559e51c11e7dab060bbab7cffb12dd3af33",
-      strip_prefix = "nanopb-1251fa1065afc0d62f635e0f63fec8276e14e13c",
-      build_file = str(Label("//third_party:nanopb.BUILD")),
-  )
-
-  native.bind(
-      name = "nanopb",
-      actual = "@nanopb_git//:nanopb",
   )
 
   native.new_http_archive(
