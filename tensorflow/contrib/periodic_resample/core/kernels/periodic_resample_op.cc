@@ -24,20 +24,4 @@ REGISTER_KERNEL_BUILDER(Name("PeriodicResample")
                             .HostMemory("desired_shape"),
                         PeriodicResampleOp);
 
-// #define REGISTER_GPU_KERNEL(type)                          \
-//   REGISTER_KERNEL_BUILDER(Name("PeriodicResample")         \
-//                               .Device(DEVICE_GPU)          \
-//                               .HostMemory("desired_shape") \
-//                               .TypeConstraint<type>("T"),  \
-//                           PeriodicResampleOp);
-// TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-// #undef REGISTER_GPU_KERNEL
-
-// #ifdef TENSORFLOW_USE_SYCL
-// REGISTER_KERNEL_BUILDER(Name("PeriodicResample")
-//                             .Device(DEVICE_SYCL)
-//                             .HostMemory("desired_shape"),
-//                         PeriodicResampleOp);
-// #endif  // TENSORFLOW_USE_SYCL
-
 }  // namespace tensorflow
