@@ -95,7 +95,7 @@ TEST_F(OutlinerTest, Convolution) {
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 10);
 
 
-  Outliner outliner(2);
+  Outliner outliner;
   EXPECT_TRUE(outliner.Run(hlo_module.get()).ValueOrDie());
   EXPECT_THAT(hlo_module->computations().size(), 3);
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 8);

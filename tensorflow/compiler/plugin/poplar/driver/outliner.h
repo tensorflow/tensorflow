@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 
 namespace xla {
 
@@ -24,18 +24,17 @@ class HloModule;
 
 namespace poplarplugin {
 
-class Outliner : public HloPassInterface {
+class Outliner : public HloMatcher {
 public:
-  Outliner(int32 max_outlined) : max_outlined_instructions_(max_outlined) {}
+  Outliner();
 
   ~Outliner() override = default;
 
   tensorflow::StringPiece name() const override { return "outline"; }
 
-  StatusOr<bool> Run(HloModule *module) override;
+  ReplacedInstructions ReplaceNodes(unsigned int pattern,
+                                    const HloMatcherMatched& match) override;
 
-private:
-  uint32 max_outlined_instructions_ = 1;
 };
 
 }

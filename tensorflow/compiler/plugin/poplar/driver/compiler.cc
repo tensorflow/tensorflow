@@ -213,7 +213,7 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<ReshapeMover>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
-  pipeline.AddPass<Outliner>(1);
+  pipeline.AddPass<Outliner>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloDCE>();

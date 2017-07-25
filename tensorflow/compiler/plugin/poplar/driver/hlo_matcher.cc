@@ -31,6 +31,7 @@ HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
 bool HloMatcher::MatchPattern(HloInstruction* root,
                               const HloMatcherPattern& pattern,
                               HloMatcherMatched& match) {
+  LOG(INFO) << "MatchPattern1";
   match.instructions[0] = root;
 
   for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
@@ -118,6 +119,7 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
     }
   }
 
+  LOG(INFO) << "got all matches";
   unsigned int replacement_count = 0;
   for (unsigned int pattern=0; pattern<matches_.size(); pattern++) {
     for (HloMatcherMatched& match :  matches_[pattern]) {

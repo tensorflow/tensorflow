@@ -290,6 +290,7 @@ test_suite(
         "batch_norm_test",
         "tensor_array_test",
         "fuse_ops_test",
+        "outliner_test",
         "hlo_matcher_test",
     ],
 )
@@ -309,6 +310,7 @@ test_suite(
         "allocation_finder_test",
         "batch_norm_test",
         "fuse_ops_test",
+        "outliner_test",
         "hlo_matcher_test",
     ],
 )
