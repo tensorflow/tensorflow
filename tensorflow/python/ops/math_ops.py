@@ -2292,8 +2292,8 @@ def tensordot(a, b, axes, name=None):
   Example 2: When `a` and `b` are matrices (order 2), the case
   `axes = [[1], [0]]` is equivalent to matrix multiplication.
 
-  Example 3: Suppose that \\(a_ijk\\) and \\(b_lmn\\) represent two
-  tensors of order 3. Then, `contract(a, b, [0], [2])` is the order 4 tensor
+  Example 3: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
+  tensors of order 3. Then, `contract(a, b, [[0], [2]])` is the order 4 tensor
   \\(c_{jklm}\\) whose entry
   corresponding to the indices \\((j,k,l,m)\\) is given by:
 
