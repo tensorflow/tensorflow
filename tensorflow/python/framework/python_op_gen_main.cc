@@ -79,28 +79,26 @@ Status ParseHiddenOpsCommandLine(const char* arg,
 }
 
 void PrintAllPythonOps(const std::vector<string>& hidden_ops,
-                       const string& source_file_name,
-                       bool require_shapes) {
+                       const string& source_file_name, bool require_shapes) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
-  PrintPythonOps(ops, hidden_ops, source_file_name,require_shapes);
+  PrintPythonOps(ops, hidden_ops, source_file_name, require_shapes);
 }
 
-// Use the name of the current executable to infer the C++ source file 
+// Use the name of the current executable to infer the C++ source file
 // where the REGISTER_OP() call for the operator can be found.
 // Returns the name of the file.
-// Returns an empty string if the current executable's name does not 
+// Returns an empty string if the current executable's name does not
 // follow a known pattern.
 string InferSourceFileName(const char* argv_zero) {
   StringPiece command_str = io::Basename(argv_zero);
 
-  // For built-in ops, the Bazel build creates a separate executable 
-  // with the name gen_<op type>_ops_py_wrappers_cc containing the 
+  // For built-in ops, the Bazel build creates a separate executable
+  // with the name gen_<op type>_ops_py_wrappers_cc containing the
   // operators defined in <op type>_ops.cc
   const char* kExecPrefix = "gen_";
   const char* kExecSuffix = "_py_wrappers_cc";
-  if (command_str.Consume(kExecPrefix)
-      && command_str.ends_with(kExecSuffix)) {
+  if (command_str.Consume(kExecPrefix) && command_str.ends_with(kExecSuffix)) {
     command_str.remove_suffix(strlen(kExecSuffix));
     return strings::StrCat(command_str, ".cc");
   } else {
@@ -114,7 +112,8 @@ string InferSourceFileName(const char* argv_zero) {
 int main(int argc, char* argv[]) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  tensorflow::string source_file_name = tensorflow::InferSourceFileName(argv[0]);
+  tensorflow::string source_file_name =
+      tensorflow::InferSourceFileName(argv[0]);
 
   // Usage:
   //   gen_main [ @FILENAME | OpName[,OpName]* ] (0 | 1)
