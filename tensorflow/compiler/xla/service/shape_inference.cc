@@ -185,6 +185,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case UNOP_FLOOR:
     case UNOP_CEIL:
     case UNOP_COS:
+    case UNOP_SIN:
     case UNOP_EXP:
     case UNOP_LOG:
     case UNOP_TANH:

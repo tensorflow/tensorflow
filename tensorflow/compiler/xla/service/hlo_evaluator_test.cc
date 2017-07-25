@@ -218,9 +218,9 @@ TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
 TEST_F(HloEvaluatorTest, DoesReshape) {
   HloComputation::Builder builder(TestName());
   const int64 dimensions[] = {11, 8, 7, 5, 9};
-  TF_ASSIGN_OR_ASSERT_OK(auto literal,
-                         LiteralTestUtil::CreateRandomLiteral<F32>(
-                             ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
+  TF_ASSERT_OK_AND_ASSIGN(auto literal,
+                          LiteralTestUtil::CreateRandomLiteral<F32>(
+                              ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
   auto literal_clone = literal->CloneToUnique();
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));

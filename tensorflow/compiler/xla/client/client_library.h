@@ -43,13 +43,16 @@ namespace xla {
 // Options to configure the local client when it is created.
 class LocalClientOptions {
  public:
+  LocalClientOptions(perftools::gputools::Platform* platform = nullptr,
+                     int number_of_replicas = 1,
+                     int intra_op_parallelism_threads = -1);
+
   // Set the platform backing the service, or nullptr for the default platform.
   LocalClientOptions& set_platform(perftools::gputools::Platform* platform);
   perftools::gputools::Platform* platform() const;
 
   // Set the number of replicas to use when compiling replicated
-  // programs. The default is -1 meaning that the value is read from
-  // the xla_replicas flag.
+  // programs.
   LocalClientOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
@@ -58,9 +61,9 @@ class LocalClientOptions {
   int intra_op_parallelism_threads() const;
 
  private:
-  perftools::gputools::Platform* platform_ = nullptr;
-  int number_of_replicas_ = -1;
-  int intra_op_parallelism_threads_ = -1;
+  perftools::gputools::Platform* platform_;
+  int number_of_replicas_;
+  int intra_op_parallelism_threads_;
 };
 
 class ClientLibrary {

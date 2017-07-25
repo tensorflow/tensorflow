@@ -637,6 +637,9 @@ enum UnaryOperation {
 
   // Elementwise, computes the cosine of x.
   UNOP_COS = 12;
+
+  // Elementwise, computes the sine of x.
+  UNOP_SIN = 13;
 }
 
 message UnaryOpRequest {

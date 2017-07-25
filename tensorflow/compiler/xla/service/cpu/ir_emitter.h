@@ -449,6 +449,14 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // emission (EmitParallelTargetElementLoop).
   int64 num_dynamic_loop_bounds_ = 0;
 
+  // Returns whether the given instruction should be emitted as a parallel loop.
+  bool ShouldEmitParallelLoopFor(const HloInstruction& op) const {
+    // Emit parallel loop for root instruction if dynamic outer-dimension loop
+    // bounds were specified.
+    return num_dynamic_loop_bounds_ > 0 &&
+           op.parent()->root_instruction() == &op;
+  }
+
   // This struct contains all the state needed to emit instructions for
   // profiling a computation.
   class ProfilingState {

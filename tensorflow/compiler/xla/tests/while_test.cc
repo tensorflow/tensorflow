@@ -387,7 +387,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c1));
-    TF_ASSIGN_OR_ASSERT_OK(condition, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   Computation condition2;
@@ -397,7 +397,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c2));
-    TF_ASSIGN_OR_ASSERT_OK(condition2, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -413,7 +413,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto new_weights = builder.Add(weights, input);
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_weights});
-    TF_ASSIGN_OR_ASSERT_OK(body, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   Computation body2;
@@ -426,7 +426,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto new_weights = builder.Add(weights, input);
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_weights});
-    TF_ASSIGN_OR_ASSERT_OK(body2, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(body2, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -466,7 +466,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c1));
-    TF_ASSIGN_OR_ASSERT_OK(condition, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   Computation condition2;
@@ -476,7 +476,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c2));
-    TF_ASSIGN_OR_ASSERT_OK(condition2, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -492,7 +492,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto new_weights = builder.Add(weights, input);
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_weights});
-    TF_ASSIGN_OR_ASSERT_OK(body, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -533,7 +533,7 @@ TEST_F(WhileTest, DISABLED_ON_GPU(WhileLoopsWithSharedBodyAndInit)) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c1));
-    TF_ASSIGN_OR_ASSERT_OK(condition, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   Computation condition2;
@@ -543,7 +543,7 @@ TEST_F(WhileTest, DISABLED_ON_GPU(WhileLoopsWithSharedBodyAndInit)) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c2));
-    TF_ASSIGN_OR_ASSERT_OK(condition2, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -559,7 +559,7 @@ TEST_F(WhileTest, DISABLED_ON_GPU(WhileLoopsWithSharedBodyAndInit)) {
     auto new_weights = builder.Add(weights, input);
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_weights});
-    TF_ASSIGN_OR_ASSERT_OK(body, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -697,11 +697,11 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   };
 
   for (int i = 1; i < 4; ++i) {
-    TF_ASSIGN_OR_ASSERT_OK(auto computation, while_loop(i));
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, while_loop(i));
 
     ExecutionOptions execution_options = execution_options_;
     execution_options.set_seed(65);
-    TF_ASSIGN_OR_ASSERT_OK(
+    TF_ASSERT_OK_AND_ASSIGN(
         auto result,
         client_->ExecuteAndTransfer(computation, {}, &execution_options));
   }

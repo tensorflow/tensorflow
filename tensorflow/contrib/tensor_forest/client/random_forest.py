@@ -25,7 +25,6 @@ from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_f
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
 from tensorflow.contrib.tensor_forest.python import tensor_forest
-from tensorflow.contrib.tensor_forest.python import tensor_forest_v4
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -37,6 +36,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import session_run_hook
 
@@ -44,8 +44,6 @@ from tensorflow.python.training import session_run_hook
 KEYS_NAME = 'keys'
 LOSS_NAME = 'rf_training_loss'
 
-VERSION_BUILDERS = {'v2': tensor_forest.RandomForestGraphs,
-                    'v4': tensor_forest_v4.RandomForestGraphsV4}
 EPSILON = 0.000001
 
 
@@ -163,7 +161,7 @@ def get_model_fn(params,
                  model_head=None,
                  keys_name=None,
                  early_stopping_rounds=100,
-                 early_stopping_loss_threshold=0.01,
+                 early_stopping_loss_threshold=0.001,
                  num_trainers=1,
                  trainer_id=0,
                  report_feature_importances=False,
@@ -197,6 +195,8 @@ def get_model_fn(params,
                                         device_assigner=dev_assn)
 
     logits = graph_builder.inference_graph(features)
+
+    summary.scalar('average_tree_size', graph_builder.average_size())
     # For binary classification problems, convert probabilities to logits.
     # Includes hack to get around the fact that a probability might be 0 or 1.
     if not params.regression and params.num_classes == 2:
@@ -302,13 +302,13 @@ class TensorForestEstimator(estimator.Estimator):
                params,
                device_assigner=None,
                model_dir=None,
-               graph_builder_class=tensor_forest_v4.RandomForestGraphsV4,
+               graph_builder_class=tensor_forest.RandomForestGraphs,
                config=None,
                weights_name=None,
                keys_name=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
-               early_stopping_loss_threshold=0.01,
+               early_stopping_loss_threshold=0.001,
                num_trainers=1,
                trainer_id=0,
                report_feature_importances=False,
@@ -354,22 +354,13 @@ class TensorForestEstimator(estimator.Estimator):
       local_eval: If True, don't use a device assigner for eval. This is to
         support some common setups where eval is done on a single machine, even
         though training might be distributed.
-      version: String indicating TensorForest version to use, for backward
-        compatibility. Either 'v2', 'v4', or None to let system pick.
-        Overrides graph_builder_class.
+      version: Unused.
       head: A heads_lib.Head object that calculates losses and such. If None,
         one will be automatically created based on params.
 
     Returns:
       A `TensorForestEstimator` instance.
     """
-    if version:
-      if version not in VERSION_BUILDERS:
-        logging.error('Unknown version %s. Specify either v2 or v4', version)
-      else:
-        logging.info('Setting graph_builder_class to %s', version)
-        graph_builder_class = VERSION_BUILDERS[version]
-
     super(TensorForestEstimator, self).__init__(
         model_fn=get_model_fn(
             params.fill(),

@@ -1979,6 +1979,49 @@ precision: Computed Precision at `k` as a `bool Tensor`.
 
 )doc");
 
+// This is the same as `InTopK`, but takes `k` as in input rather than an attr.
+REGISTER_OP("InTopKV2")
+    .Input("predictions: float")
+    .Input("targets: T")
+    .Input("k: T")
+    .Output("precision: bool")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle predictions;
+      ShapeHandle targets;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &predictions));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &targets));
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
+      c->set_output(0, c->Vector(batch_size));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Says whether the targets are in the top `K` predictions.
+
+This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+prediction for the target class is among the top `k` predictions among
+all predictions for example `i`. Note that the behavior of `InTopK` differs
+from the `TopK` op in its handling of ties; if multiple classes have the
+same prediction value and straddle the top-`k` boundary, all of those
+classes are considered to be in the top `k`.
+
+More formally, let
+
+  \\(predictions_i\\) be the predictions for all classes for example `i`,
+  \\(targets_i\\) be the target class for example `i`,
+  \\(out_i\\) be the output for example `i`,
+
+$$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+
+predictions: A `batch_size` x `classes` tensor.
+targets: A `batch_size` vector of class ids.
+k: Number of top elements to look at for computing precision.
+precision: Computed precision at `k` as a `bool Tensor`.
+
+)doc");
+
 namespace {
 
 Status TopKShapeFn(InferenceContext* c) {

@@ -105,7 +105,7 @@ class StageTest(test.TestCase):
         expected_name = gpu_dev if 'gpu' not in gpu_dev else '/device:GPU:0'
         self.assertEqual(y.device, expected_name)
       with ops.device('/cpu:0'):
-        x = stager.get()
+        x = stager.get()[0]
         self.assertEqual(x.device, '/device:CPU:0')
 
     G.finalize()
@@ -125,10 +125,10 @@ class StageTest(test.TestCase):
 
     with self.test_session(use_gpu=True, graph=G) as sess:
       for i in range(10):
-        sess.run(stage, feed_dict={x:i})
+        sess.run(stage, feed_dict={x: i})
 
       for i in range(10):
-        self.assertTrue(sess.run(peek, feed_dict={p:i}) == i)
+        self.assertTrue(sess.run(peek, feed_dict={p: i}) == [i])
 
   def testSizeAndClear(self):
     with ops.Graph().as_default() as G:
@@ -210,7 +210,7 @@ class StageTest(test.TestCase):
 
       # Clear the staging area completely
       for i in range(n):
-        self.assertTrue(sess.run(ret) == i)
+        self.assertTrue(sess.run(ret) == [i])
 
       # It should now be empty
       self.assertTrue(sess.run(size) == 0)
@@ -273,7 +273,7 @@ class StageTest(test.TestCase):
 
       # Clear the staging area completely
       for i in range(n):
-        self.assertTrue(np.all(sess.run(ret) == i))
+        self.assertTrue(np.all(sess.run(ret)[0] == i))
 
       self.assertTrue(sess.run(size) == 0)
 

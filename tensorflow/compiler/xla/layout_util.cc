@@ -23,7 +23,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -39,35 +38,17 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using DimensionOrder = legacy_flags::DefaultLayout::DimensionOrder;
-
 // Internal helper for GetDefaultLayoutForShape and SetToDefaultLayout. Sets
 // minor_to_major to the value that represents the default layout.
 void SetDefaultLayoutToContainer(
     tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
         minor_to_major) {
+  // The default XLA layout is major-to-minor (dim 0 is major).
+  // For more information on XLA layouts, see:
+  // https://www.tensorflow.org/performance/xla/shapes
   const int64 size = minor_to_major->size();
-  legacy_flags::LayoutUtilFlags* flags = legacy_flags::GetLayoutUtilFlags();
-  auto default_layout = flags->xla_default_layout;
-  switch (default_layout.dimension_order) {
-    case DimensionOrder::kMajorToMinor:
-      for (int64 i = 0; i < size; ++i) {
-        minor_to_major->Set(i, size - 1 - i);
-      }
-      break;
-    case DimensionOrder::kMinorToMajor:
-      for (int64 i = 0; i < size; ++i) {
-        minor_to_major->Set(i, i);
-      }
-      break;
-    case DimensionOrder::kRandom:
-      for (int64 i = 0; i < size; ++i) {
-        minor_to_major->Set(i, i);
-      }
-      std::shuffle(
-          minor_to_major->begin(), minor_to_major->end(),
-          std::mt19937(default_layout.seed != 0 ? default_layout.seed
-                                                : std::random_device()()));
+  for (int64 i = 0; i < size; ++i) {
+    minor_to_major->Set(i, size - 1 - i);
   }
 }
 
