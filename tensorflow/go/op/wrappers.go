@@ -1130,7 +1130,8 @@ type SqueezeAttr func(optionalAttr)
 // SqueezeSqueezeDims sets the optional squeeze_dims attribute to value.
 //
 // value: If specified, only squeezes the dimensions listed. The dimension
-// index starts at 0. It is an error to squeeze a dimension that is not 1.
+// index starts at 0. It is an error to squeeze a dimension that is not 1. Must
+// be in the range `[-rank(input), rank(input))`.
 // If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
@@ -12819,7 +12820,8 @@ func ReciprocalGrad(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // Arguments:
 //	tensor: Up to 8-D.
-//	axis: 1-D. The indices of the dimensions to reverse.
+//	axis: 1-D. The indices of the dimensions to reverse. Must be in the range
+// `[-rank(tensor), rank(tensor))`.
 //
 // Returns The same shape as `tensor`.
 func ReverseV2(scope *Scope, tensor tf.Output, axis tf.Output) (output tf.Output) {
@@ -16147,6 +16149,8 @@ func SegmentMean(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf
 type CumprodAttr func(optionalAttr)
 
 // CumprodExclusive sets the optional exclusive attribute to value.
+//
+// value: If `True`, perform exclusive cumprod.
 // If not specified, defaults to false
 func CumprodExclusive(value bool) CumprodAttr {
 	return func(m optionalAttr) {
@@ -16155,6 +16159,8 @@ func CumprodExclusive(value bool) CumprodAttr {
 }
 
 // CumprodReverse sets the optional reverse attribute to value.
+//
+// value: A `bool` (default: False).
 // If not specified, defaults to false
 func CumprodReverse(value bool) CumprodAttr {
 	return func(m optionalAttr) {
@@ -16192,6 +16198,13 @@ func CumprodReverse(value bool) CumprodAttr {
 // ```python
 // tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
 // ```
+//
+// Arguments:
+//	x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+// `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+// `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+//	axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+// `[-rank(x), rank(x))`.
 func Cumprod(scope *Scope, x tf.Output, axis tf.Output, optional ...CumprodAttr) (out tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -16420,6 +16433,8 @@ func QuantizedRelu6(scope *Scope, features tf.Output, min_features tf.Output, ma
 type CumsumAttr func(optionalAttr)
 
 // CumsumExclusive sets the optional exclusive attribute to value.
+//
+// value: If `True`, perform exclusive cumsum.
 // If not specified, defaults to false
 func CumsumExclusive(value bool) CumsumAttr {
 	return func(m optionalAttr) {
@@ -16428,6 +16443,8 @@ func CumsumExclusive(value bool) CumsumAttr {
 }
 
 // CumsumReverse sets the optional reverse attribute to value.
+//
+// value: A `bool` (default: False).
 // If not specified, defaults to false
 func CumsumReverse(value bool) CumsumAttr {
 	return func(m optionalAttr) {
@@ -16465,6 +16482,13 @@ func CumsumReverse(value bool) CumsumAttr {
 // ```python
 // tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
 // ```
+//
+// Arguments:
+//	x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+// `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+// `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+//	axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+// `[-rank(x), rank(x))`.
 func Cumsum(scope *Scope, x tf.Output, axis tf.Output, optional ...CumsumAttr) (out tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -18063,7 +18087,8 @@ func AnyKeepDims(value bool) AnyAttr {
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce.
+//	reduction_indices: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
 func Any(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...AnyAttr) (output tf.Output) {
@@ -19213,7 +19238,8 @@ func ProdKeepDims(value bool) ProdAttr {
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce.
+//	reduction_indices: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
 func Prod(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...ProdAttr) (output tf.Output) {
@@ -20258,7 +20284,8 @@ func MaxKeepDims(value bool) MaxAttr {
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce.
+//	reduction_indices: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
 func Max(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...MaxAttr) (output tf.Output) {
@@ -20583,7 +20610,8 @@ func Sqrt(scope *Scope, x tf.Output) (y tf.Output) {
 // Arguments:
 //
 //	dim: 0-D (scalar). Specifies the dimension index at which to
-// expand the shape of `input`.
+// expand the shape of `input`. Must be in the range
+// `[-rank(input) - 1, rank(input)]`.
 //
 // Returns Contains the same data as `input`, but its shape has an additional
 // dimension of size 1 added.
@@ -20623,7 +20651,8 @@ func AllKeepDims(value bool) AllAttr {
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce.
+//	reduction_indices: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
 func All(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...AllAttr) (output tf.Output) {
@@ -21665,8 +21694,8 @@ func ArgMinOutputType(value tf.DataType) ArgMinAttr {
 //
 // Arguments:
 //
-//	dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
-// which dimension of the input Tensor to reduce across. For vectors,
+//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+// Describes which dimension of the input Tensor to reduce across. For vectors,
 // use dimension = 0.
 func ArgMin(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMinAttr) (output tf.Output) {
 	if scope.Err() != nil {
@@ -22716,7 +22745,8 @@ func MeanKeepDims(value bool) MeanAttr {
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce.
+//	reduction_indices: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
 func Mean(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...MeanAttr) (output tf.Output) {
@@ -22856,7 +22886,8 @@ func MinKeepDims(value bool) MinAttr {
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce.
+//	reduction_indices: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
 func Min(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...MinAttr) (output tf.Output) {
@@ -22914,8 +22945,8 @@ func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
 //
 // Arguments:
 //
-//	dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
-// which dimension of the input Tensor to reduce across. For vectors,
+//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+// Describes which dimension of the input Tensor to reduce across. For vectors,
 // use dimension = 0.
 func ArgMax(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMaxAttr) (output tf.Output) {
 	if scope.Err() != nil {
@@ -24724,7 +24755,8 @@ func SumKeepDims(value bool) SumAttr {
 //
 // Arguments:
 //	input: The tensor to reduce.
-//	reduction_indices: The dimensions to reduce.
+//	reduction_indices: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
 //
 // Returns The reduced tensor.
 func Sum(scope *Scope, input tf.Output, reduction_indices tf.Output, optional ...SumAttr) (output tf.Output) {
