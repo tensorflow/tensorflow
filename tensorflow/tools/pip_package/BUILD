@@ -121,7 +121,7 @@ filegroup(
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",

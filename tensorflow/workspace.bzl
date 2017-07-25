@@ -339,7 +339,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   patched_http_archive(
-      name = "protobuf",
+      name = "protobuf_archive",
       urls = [
           "https://github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
           "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
@@ -351,6 +351,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       #       This patch fixes a runtime crash when tensorflow is compiled
       #       with clang -O2 on Linux (see https://github.com/tensorflow/tensorflow/issues/8394)
       patch_file = str(Label("//third_party/protobuf:add_noinlines.patch")),
+  )
+
+  native.bind(
+      name = "protobuf",
+      actual = "@protobuf_archive//:protobuf",
   )
 
   # We need to import the protobuf library under the names com_google_protobuf
@@ -451,23 +456,27 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # to point to the protobuf's compiler library.
   native.bind(
       name = "protobuf_clib",
-      actual = "@protobuf//:protoc_lib",
+      actual = "@protobuf_archive//:protoc_lib",
   )
 
   native.bind(
       name = "protobuf_compiler",
-      actual = "@protobuf//:protoc_lib",
+      actual = "@protobuf_archive//:protoc_lib",
   )
 
-  native.new_http_archive(
+  native.bind(
+      name = "libssl",
+      actual = "@boringssl//:ssl",
+  )
+
+  native.http_archive(
       name = "grpc",
       urls = [
-          "http://mirror.bazel.build/github.com/grpc/grpc/archive/d7ff4ff40071d2b486a052183e3e9f9382afb745.tar.gz",
-          "https://github.com/grpc/grpc/archive/d7ff4ff40071d2b486a052183e3e9f9382afb745.tar.gz",
+          "http://mirror.bazel.build/github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
+          "https://github.com/grpc/grpc/archive/781fd6f6ea03645a520cd5c675da67ab61f87e4b.tar.gz",
       ],
-      sha256 = "a15f352436ab92c521b1ac11e729e155ace38d0856380cf25048c5d1d9ba8e31",
-      strip_prefix = "grpc-d7ff4ff40071d2b486a052183e3e9f9382afb745",
-      build_file = str(Label("//third_party:grpc.BUILD")),
+      sha256 = "2004635e6a078acfac8ffa71738397796be4f8fb72f572cc44ecee5d99511d9f",
+      strip_prefix = "grpc-781fd6f6ea03645a520cd5c675da67ab61f87e4b",
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
