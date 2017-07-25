@@ -51,29 +51,20 @@ FuseOps::FuseOps() : HloMatcher(patterns, false) {}
 
 ReplacedInstructions FuseOps::ReplaceNodes(unsigned int pattern,
                                            const HloMatcherMatched& match) {
+  auto* comp = match.computation;
+  comp->CreateFusionInstruction(match.instructions,
+                                HloInstruction::FusionKind::kCustom);
+
   ReplacedInstructions replaced;
 
-  HloInstruction* inst = match.instructions[0];
-
-  HloInstruction* fusion_instruction =
-      match.computation->AddInstruction(
-          HloInstruction::CreateFusion(inst->shape(),
-                                       HloInstruction::FusionKind::kCustom,
-                                       inst));
-
-  if (!match.computation->ReplaceInstruction(inst, fusion_instruction).ok()) {
-    return replaced;
+  std::set<HloInstruction*> remaining;
+  for (auto& i : comp->instructions()) {
+    remaining.insert(i.get());
   }
 
-  replaced.push_back(inst);
-
-  for (unsigned int i=1; i<match.instructions.size(); i++) {
-    fusion_instruction->FuseInstruction(match.instructions[i]);
-    if (match.instructions[i]->user_count() == 0) {
-      if (!match.computation->RemoveInstruction(match.instructions[i]).ok()) {
-        return replaced;
-      }
-      replaced.push_back(match.instructions[i]);
+  for (auto inst : match.instructions) {
+    if (remaining.count(inst) == 0) {
+      replaced.push_back(inst);
     }
   }
 
