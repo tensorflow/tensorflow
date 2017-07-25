@@ -48,7 +48,10 @@ py_library(
         "python/training/gce_cluster_resolver.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":cluster_resolver_py"],
+    deps = [
+        ":cluster_resolver_py",
+        "//tensorflow/python:training",
+    ],
 )
 
 tf_py_test(

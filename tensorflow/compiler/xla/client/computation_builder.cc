@@ -976,6 +976,11 @@ ComputationDataHandle ComputationBuilder::Cos(
   return UnaryOp(UNOP_COS, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Sin(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_SIN, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);

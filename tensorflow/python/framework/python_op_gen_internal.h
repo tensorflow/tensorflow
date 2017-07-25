@@ -59,6 +59,7 @@ class GenPythonOp {
   void AddOutputGlobals();
   void AddDocStringOutputs();
   void AddBody(const string& prefix);
+  void AddBodyNoReturn(const string& prefix);
 
   // From constructor arguments
   const OpDef& op_def_;

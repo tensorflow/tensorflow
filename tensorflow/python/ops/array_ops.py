@@ -150,7 +150,8 @@ def expand_dims(input, axis=None, name=None, dim=None):
   Args:
     input: A `Tensor`.
     axis: 0-D (scalar). Specifies the dimension index at which to
-      expand the shape of `input`.
+      expand the shape of `input`. Must be in the range
+      `[-rank(input) - 1, rank(input)]`.
     name: The name of the output `Tensor`.
     dim: 0-D (scalar). Equivalent to `axis`, to be deprecated.
 
@@ -830,7 +831,7 @@ def stack(values, axis=0, name="stack"):
   Args:
     values: A list of `Tensor` objects with the same shape and type.
     axis: An `int`. The axis to stack along. Defaults to the first dimension.
-      Supports negative indexes.
+      Negative values wrap around, so the valid range is `[-(R+1), R+1)`.
     name: A name for this operation (optional).
 
   Returns:
@@ -970,7 +971,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
     num: An `int`. The length of the dimension `axis`. Automatically inferred
       if `None` (the default).
     axis: An `int`. The axis to unstack along. Defaults to the first
-      dimension. Supports negative indexes.
+      dimension. Negative values wrap around, so the valid range is `[-R, R)`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1041,7 +1042,8 @@ def concat(values, axis, name="concat"):
 
   Args:
     values: A list of `Tensor` objects or a single `Tensor`.
-    axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate.
+    axis: 0-D `int32` `Tensor`.  Dimension along which to concatenate. Must be
+      in the range `[-rank(values), rank(values))`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1550,13 +1552,12 @@ def placeholder(dtype, shape=None, name=None):
 
 # pylint: disable=redefined-outer-name
 def _normalize_sparse_shape(shape, name):
-  """Takes numpy array or Tensor or None and returns either None or Tensor."""
-  if shape is None: return None
-  if not isinstance(shape, ops.Tensor):
-    for el in shape:
-      if el is None:
-        return None
-  return ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name)
+  """Returns a tuple of (Tensor or None, rank or None)."""
+  if shape is None: return (None, None)
+  rank = shape.get_shape()[0] if isinstance(shape, ops.Tensor) else len(shape)
+  if not isinstance(shape, ops.Tensor) and None in shape:
+    return (None, rank)
+  return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
 def sparse_placeholder(dtype, shape=None, name=None):
@@ -1599,9 +1600,9 @@ def sparse_placeholder(dtype, shape=None, name=None):
     evaluated directly.
   """
   shape_name = (name + "/shape") if name is not None else None
-  shape = _normalize_sparse_shape(shape, shape_name)
+  shape, rank = _normalize_sparse_shape(shape, shape_name)
   if shape is None:
-    shape = placeholder(dtypes.int64, shape=[None], name=shape_name)
+    shape = placeholder(dtypes.int64, shape=[rank], name=shape_name)
   return sparse_tensor.SparseTensor(
       values=placeholder(
           dtype, shape=[None],
@@ -2301,6 +2302,7 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
     axis: An optional list of `ints`. Defaults to `[]`.
       If specified, only squeezes the dimensions listed. The dimension
       index starts at 0. It is an error to squeeze a dimension that is not 1.
+      Must be in the range `[-rank(input), rank(input))`.
     name: A name for the operation (optional).
     squeeze_dims: Deprecated keyword argument that is now axis.
 

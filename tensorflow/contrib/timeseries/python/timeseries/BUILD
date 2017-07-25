@@ -16,6 +16,13 @@ py_library(
         "__init__.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        ":ar_model",
+        ":estimators",
+        ":feature_keys",
+        ":input_pipeline",
+        ":saved_model_utils",
+    ],
 )
 
 py_library(
@@ -24,6 +31,7 @@ py_library(
         "feature_keys.py",
     ],
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/python/saved_model:signature_constants"],
 )
 
 py_library(
@@ -33,7 +41,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python/saved_model",
+        ":feature_keys",
+        ":input_pipeline",
+        ":model_utils",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -50,9 +61,11 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_array_ops",
-        "//third_party/py/numpy",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -64,14 +77,20 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":ar_model",
+        ":feature_keys",
+        ":math_utils",
         ":model_utils",
         ":state_management",
         "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:filtering_postprocessor",
+        "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:state_space_model",
         "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:structural_ensemble",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:export",
     ],
 )
 
@@ -86,13 +105,19 @@ py_test(
         "no_pip_gpu",  # b/63391119
     ],
     deps = [
+        ":ar_model",
         ":estimators",
         ":feature_keys",
         ":input_pipeline",
         ":saved_model_utils",
-        ":state_management",
-        "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:structural_ensemble",
-        "//tensorflow/python:platform",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -114,8 +139,11 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -129,10 +157,19 @@ py_test(
         "no_pip_gpu",  # b/63391119
     ],
     deps = [
+        ":feature_keys",
+        ":model",
         ":model_utils",
         ":state_management",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -143,13 +180,15 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":feature_keys",
         ":math_utils",
         ":model",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//third_party/py/numpy",
+        "//tensorflow/python:util",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -163,7 +202,9 @@ py_test(
         "no_pip_gpu",  # b/63391119
     ],
     deps = [
+        ":feature_keys",
         ":input_pipeline",
+        ":math_utils",
         ":model",
         ":state_management",
         ":test_utils",
@@ -171,10 +212,14 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -191,6 +236,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:math_ops",
@@ -199,7 +245,9 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
@@ -216,11 +264,11 @@ py_test(
         "no_pip_gpu",  # b/63391119
     ],
     deps = [
+        ":feature_keys",
         ":input_pipeline",
         ":test_utils",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:platform",
+        "//tensorflow/python:errors",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -236,14 +284,17 @@ py_library(
     tags = ["no_pip"],
     deps = [
         ":estimators",
+        ":feature_keys",
         ":input_pipeline",
         ":state_management",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
     ],
@@ -256,7 +307,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":math_utils",
+        ":feature_keys",
         ":model",
         ":model_utils",
         "//tensorflow/contrib/distributions:distributions_py",
@@ -266,6 +317,7 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:tensor_array_ops",
@@ -284,14 +336,18 @@ py_test(
     deps = [
         ":ar_model",
         ":estimators",
+        ":feature_keys",
         ":input_pipeline",
-        ":model_utils",
         ":test_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -303,18 +359,22 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":input_pipeline",
+        ":feature_keys",
         "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
     ],
 )
@@ -329,12 +389,15 @@ py_test(
         "no_pip_gpu",  # b/63391119
     ],
     deps = [
+        ":feature_keys",
+        ":input_pipeline",
         ":math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],

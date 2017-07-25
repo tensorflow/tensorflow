@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #include "tensorflow/core/util/mkl_util.h"
-#include "third_party/mkl/include/mkl_dnn.h"
-#include "third_party/mkl/include/mkl_dnn_types.h"
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;

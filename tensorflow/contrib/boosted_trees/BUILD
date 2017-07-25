@@ -18,9 +18,7 @@ filegroup(
     name = "all_files",
     srcs = glob(
         ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
+        exclude = ["**/OWNERS"],
     ),
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -63,6 +61,66 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":boosted_trees_ops_py",
+        ":losses",
+    ],
+)
+
+py_library(
+    name = "losses",
+    srcs = ["python/utils/losses.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:nn",
+    ],
+)
+
+py_test(
+    name = "losses_test",
+    size = "small",
+    srcs = ["python/utils/losses_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
+    deps = [
+        ":losses",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "gbdt_batch",
+    srcs = [
+        "python/training/functions/gbdt_batch.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/boosted_trees:batch_ops_utils_py",
+        "//tensorflow/contrib/boosted_trees:boosted_trees_ops_py",
+        "//tensorflow/contrib/boosted_trees/lib:categorical_split_handler",
+        "//tensorflow/contrib/boosted_trees/lib:ordinal_split_handler",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/contrib/stateless",
+    ],
+)
+
+py_test(
+    name = "gbdt_batch_test",
+    size = "small",
+    srcs = ["python/training/functions/gbdt_batch_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "nomac",  # b/63258195
+    ],
+    deps = [
+        ":gbdt_batch",
+        ":losses",
+        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -79,12 +137,14 @@ py_test(
     deps = [
         ":ensemble_optimizer_ops_py",
         ":model_ops_py",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
-        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -104,10 +164,13 @@ py_test(
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
         "//tensorflow/python:training",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -128,7 +191,6 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
-        "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
 )
@@ -144,9 +206,11 @@ py_test(
     deps = [
         ":quantile_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
     ],
@@ -161,9 +225,10 @@ py_test(
         ":split_handler_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:training",
     ],
 )
 
@@ -177,11 +242,10 @@ py_test(
     ],
     deps = [
         ":stats_accumulator_ops_py",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:resources",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
+        "//tensorflow/python:tensor_shape",
     ],
 )
 
@@ -199,10 +263,12 @@ py_test(
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:resources",
-        "//tensorflow/python:training",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -212,6 +278,11 @@ py_library(
     name = "batch_ops_utils_py",
     srcs = ["python/ops/batch_ops_utils.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
 )
 
 py_library(
@@ -253,6 +324,7 @@ tf_custom_op_py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:resources",
     ],
 )
 
@@ -500,6 +572,8 @@ tf_custom_op_py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -621,6 +695,8 @@ tf_custom_op_py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -656,6 +732,7 @@ py_library(
     name = "boosted_trees_pip",
     deps = [
         ":init_py",
+        "//tensorflow/contrib/boosted_trees/estimator_batch:init_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",

@@ -552,6 +552,7 @@ TEST(TopologicalSortNodesWithTimePriority, WhileLoop) {
     placeholders_in_order.back().node()->AddAttr("_start_time", i + 1);
   }
   std::vector<Placeholder> placeholders;
+  placeholders.reserve(indexes.size());
   for (int i : indexes) {
     placeholders.push_back(placeholders_in_order[i]);
   }
@@ -579,15 +580,16 @@ TEST(TopologicalSortNodesWithTimePriority, WhileLoop) {
     scope.graph()->AddEdge(next_iteration.node(), 0, merge.output.node(), 1);
 
     int base_start_time = i * 10 + 100;
-    for (auto op : std::vector<Output>{enter, merge.output, cv, loop_cond,
-                                       switch_node.output_false, identity,
-                                       next_iteration, while_exits.back()}) {
+    for (const auto& op : std::initializer_list<Output>{
+             enter, merge.output, cv, loop_cond, switch_node.output_false,
+             identity, next_iteration, while_exits.back()}) {
       op.node()->AddAttr("_start_time", base_start_time++);
     }
   }
 
   // Create ops that depend on the loop exits.
   std::vector<Square> squares;
+  squares.reserve(indexes.size());
   for (int i : indexes) {
     squares.emplace_back(root.WithOpName(StrCat("s", i)), while_exits[i]);
     squares.back().node()->AddAttr("_start_time", 500 - (i + 1));

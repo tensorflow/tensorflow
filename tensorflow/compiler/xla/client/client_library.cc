@@ -23,6 +23,13 @@ limitations under the License.
 
 namespace xla {
 
+LocalClientOptions::LocalClientOptions(perftools::gputools::Platform* platform,
+                                       int number_of_replicas,
+                                       int intra_op_parallelism_threads)
+    : platform_(platform),
+      number_of_replicas_(number_of_replicas),
+      intra_op_parallelism_threads_(intra_op_parallelism_threads) {}
+
 LocalClientOptions& LocalClientOptions::set_platform(
     perftools::gputools::Platform* platform) {
   platform_ = platform;

@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -151,8 +150,7 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     module_config->set_intra_op_parallelism_threads(
         execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
   }
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (flags->xla_hlo_profile) {
+  if (module_config->debug_options().xla_hlo_profile()) {
     module_config->enable_hlo_profiling(true);
   }
   auto* computation_layout = module_config->mutable_entry_computation_layout();
