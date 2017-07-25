@@ -92,6 +92,9 @@ enum NodeFilterResult {
   // Style the node the same as kSomeOperandsOmitted, but also don't connect it
   // to its operands, even if they're present in the graph.
   kOmitNodeOperands,
+  // Same style as kSomeOperandsOmitted, but used to indicate that some of the
+  // node's *users* have been omitted.
+  kSomeUsersOmitted,
 };
 
 // NodeFilter is essentially a map from HloInstruction*s to NodeFilterResult.
@@ -117,6 +120,11 @@ class NodeFilter {
   bool SomeOrAllOperandsOmitted(const HloInstruction* instr) const {
     auto result = filter_(instr);
     return result == kOmitNodeOperands || result == kSomeOperandsOmitted;
+  }
+  bool Deemphasized(const HloInstruction* instr) const {
+    auto result = filter_(instr);
+    return result == kOmitNodeOperands || result == kSomeOperandsOmitted ||
+           result == kSomeUsersOmitted;
   }
 
  private:
@@ -203,9 +211,15 @@ string HtmlLikeStringSanitize(tensorflow::StringPiece s) {
 //   "return param0 * param1;"      --> "multiply"
 //   "return min(param0, param1);"  --> "min"
 //   "return max(param0, param1);"  --> "max"
+//   "return param0 <= param1;"     --> "less-or-equal"
+//   "return param0 >= param1;"     --> "greater-or-equal"
+//   "return param0 >  param1;"     --> "greater-than"
+//   "return param0 <  param1;"     --> "less-than"
+//   "return param0 == param1;"     --> "equal-to"
+//   "return param0 != param1;"     --> "not-equal-to"
 //
-// where param0 and param1 are effective scalars.  Since all of the ops above
-// are commutative, we also support them with param0 and param1 swapped.
+// where param0 and param1 are effective scalars.  For the ops that are
+// commutative, we also support them with param0 and param1 swapped.
 //
 // This is useful primarily for reduce and map nodes.  These take a
 // subcomputation which is almost always one of the four above, and pattern
@@ -228,12 +242,27 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
       operand1->opcode() != HloOpcode::kParameter) {
     return nullopt;
   }
+
   // Check that the two operands of root are param0 and param1.  All of the
   // opcodes we recognize are commutative, so we're OK with either order.
   auto n0 = operand0->parameter_number();
   auto n1 = operand1->parameter_number();
   if (!(n0 == 0 && n1 == 1) && !(n1 == 0 && n0 == 1)) {
     return nullopt;
+  }
+
+  // If the params are reversed, check that the operation being performed is
+  // commutative.
+  if (n0 == 1) {
+    switch (root->opcode()) {
+      case HloOpcode::kLe:
+      case HloOpcode::kGe:
+      case HloOpcode::kGt:
+      case HloOpcode::kLt:
+        return nullopt;
+      default:
+        break;
+    }
   }
 
   // Check that the root and params are all effective scalars.
@@ -253,6 +282,18 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
       return "min";
     case HloOpcode::kMaximum:
       return "max";
+    case HloOpcode::kLe:
+      return "less-or-equal";
+    case HloOpcode::kGe:
+      return "greater-or-equal";
+    case HloOpcode::kGt:
+      return "greater-than";
+    case HloOpcode::kLt:
+      return "less-than";
+    case HloOpcode::kEq:
+      return "equal-to";
+    case HloOpcode::kNe:
+      return "not-equal-to";
     default:
       return nullopt;
   }
@@ -374,10 +415,8 @@ HloDotDumper::SubcomputationsToDump() {
       to_dump[instr->fused_instructions_computation()] = instr.get();
     }
 
-    const auto& subcomputations = instr->called_computations();
-    if (subcomputations.size() != 1 ||
-        !MatchTrivialComputation(subcomputations.front())) {
-      for (const HloComputation* comp : instr->called_computations()) {
+    for (const HloComputation* comp : instr->called_computations()) {
+      if (!MatchTrivialComputation(comp)) {
         to_dump[comp] = instr.get();
       }
     }
@@ -459,7 +498,7 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr,
   string in_edges = GetInstructionIncomingEdges(instr, filter);
 
   // Override the node's styling if it should be (de-)emphasized.
-  if (filter.SomeOrAllOperandsOmitted(instr)) {
+  if (filter.Deemphasized(instr)) {
     color = kDashedBorder;
   }
   if (filter.Highlight(instr)) {
@@ -657,7 +696,18 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   if (!opcode_specific_info.empty()) {
     lines.push_back(opcode_specific_info);
   }
-  lines.push_back(ShapeUtil::HumanString(instr->shape()));
+
+  // Some instructions have giant tuples as their shapes, so truncate the HLO's
+  // shape to kMaxShapeLen characters.
+  constexpr int kMaxShapeLen = 64;
+  string instr_shape = ShapeUtil::HumanString(instr->shape());
+  if (instr_shape.length() > kMaxShapeLen) {
+    instr_shape =
+        StrCat(tensorflow::StringPiece(instr_shape).substr(0, kMaxShapeLen - 3),
+               "...");
+  }
+  lines.push_back(instr_shape);
+
   if (show_addresses_) {
     lines.push_back(Printf("[%p]", instr));
   }
@@ -713,16 +763,22 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
     return "";
   }
 
-  const auto& subcomps = instr->called_computations();
-  if (subcomps.size() != 1) {
-    return "";
+  std::vector<string> lines;
+  for (int64 i = 0; i < instr->called_computations().size(); ++i) {
+    optional<string> computation_type =
+        MatchTrivialComputation(instr->called_computations()[i]);
+    if (!computation_type) {
+      continue;
+    }
+    if (instr->called_computations().size() == 1) {
+      lines.push_back(Printf("Subcomputation: <b>%s</b>",
+                             HtmlLikeStringSanitize(*computation_type)));
+    } else {
+      lines.push_back(Printf("Subcomputation %lld: <b>%s</b>", i,
+                             HtmlLikeStringSanitize(*computation_type)));
+    }
   }
-  optional<string> computation_type = MatchTrivialComputation(subcomps.front());
-  if (!computation_type) {
-    return "";
-  }
-  return Printf("Subcomputation: <b>%s</b>",
-                HtmlLikeStringSanitize(*computation_type));
+  return Join(lines, "<br/>");
 }
 
 tensorflow::mutex& RendererMutex() {
@@ -829,14 +885,25 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
       }
     }
 
-    // If you're looking at node X, it's probably not interesting that node Y
-    // also happens to use the same constant, so we don't traverse into
-    // constants' users.
-    if (instr->opcode() != HloOpcode::kConstant) {
-      for (const HloInstruction* user : instr->users()) {
-        if (!nodes.count(user)) {
-          worklist.push_back({user, depth + 1});
-        }
+    // Traverse into instr's users, unless:
+    //
+    //  - there are a ton of them, in which case they're probably not
+    //    interesting (and anyway, rendering them all would make the graph
+    //    unreadable), or
+    //  - instr is a constant, in which case its users are probably not
+    //    interesting.
+    if (instr->opcode() == HloOpcode::kConstant) {
+      continue;
+    }
+    constexpr int kMaxUsersToRender = 16;
+    if (instr->user_count() > kMaxUsersToRender) {
+      // If we're going to skip this node's users, style it as such.
+      nodes[instr] = kSomeUsersOmitted;
+      continue;
+    }
+    for (const HloInstruction* user : instr->users()) {
+      if (!nodes.count(user)) {
+        worklist.push_back({user, depth + 1});
       }
     }
   }
@@ -882,6 +949,16 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
     const auto& operands = instr->operands();
     if (std::all_of(operands.begin(), operands.end(), is_displayed)) {
       nodes[instr] = kNormalNode;
+    }
+  }
+
+  // Similarly, promote nodes with type kSomeUsersOmitted to kNormalNode if all
+  // of their users made it into the graph by other means.
+  for (auto& kv : nodes) {
+    const auto& users = kv.first->users();
+    if (kv.second == kSomeUsersOmitted &&
+        std::all_of(users.begin(), users.end(), is_displayed)) {
+      kv.second = kNormalNode;
     }
   }
 
