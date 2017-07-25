@@ -575,7 +575,7 @@ class _MonitoredSession(object):
           ops.get_default_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
 
   def _is_closed(self):
-    """Return True if the supervised session is closed.  For tests only.
+    """Return True if the monitored session is closed.  For tests only.
 
     Returns:
       A boolean.

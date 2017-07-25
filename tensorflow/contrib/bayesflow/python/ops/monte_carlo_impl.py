@@ -220,9 +220,10 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
   `S_n = Avg{s_i}` and `s_i = f(x_i), x_i ~ p`.
 
   However, if p is not reparameterized, TensorFlow's gradient will be incorrect
-  since the chain-rule stops at samples of unreparameterized distributions. In
-  this circumstance using the Score-Gradient trick results in an unbiased
-  gradient, i.e.,
+  since the chain-rule stops at samples of non-reparameterized distributions.
+  (The non-differentiated result, `approx_expectation`, is the same regardless
+  of `use_reparametrization`.) In this circumstance using the Score-Gradient
+  trick results in an unbiased gradient, i.e.,
 
   ```none
   grad[ E_p[f(X)] ]
@@ -240,6 +241,58 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
   Warning: users are responsible for verifying `p` is a "reparameterized"
   distribution.
 
+  Example Use:
+
+  ```python
+  bf = tf.contrib.bayesflow
+  ds = tf.contrib.distributions
+
+  # Monte-Carlo approximation of a reparameterized distribution, e.g., Normal.
+
+  num_draws = int(1e5)
+  p = ds.Normal(loc=0., scale=1.)
+  q = ds.Normal(loc=1., scale=2.)
+  exact_kl_normal_normal = ds.kl_divergence(p, q)
+  # ==> 0.44314718
+  approx_kl_normal_normal = bf.expectation(
+      f=lambda x: p.log_prob(x) - q.log_prob(x),
+      samples=p.sample(num_draws, seed=42),
+      log_prob=p.log_prob,
+      use_reparametrization=(p.reparameterization_type
+                             == distribution.FULLY_REPARAMETERIZED))
+  # ==> 0.44632751
+  # Relative Error: <1%
+
+  # Monte-Carlo approximation of non-reparameterized distribution, e.g., Gamma.
+
+  num_draws = int(1e5)
+  p = ds.Gamma(concentration=1., rate=1.)
+  q = ds.Gamma(concentration=2., rate=3.)
+  exact_kl_gamma_gamma = ds.kl_divergence(p, q)
+  # ==> 0.37999129
+  approx_kl_gamma_gamma = bf.expectation(
+      f=lambda x: p.log_prob(x) - q.log_prob(x),
+      samples=p.sample(num_draws, seed=42),
+      log_prob=p.log_prob,
+      use_reparametrization=(p.reparameterization_type
+                             == distribution.FULLY_REPARAMETERIZED))
+  # ==> 0.37696719
+  # Relative Error: <1%
+
+  # For comparing the gradients, see `monte_carlo_test.py`.
+  ```
+
+  Note: The above example is for illustration only. To compute approximate
+  KL-divergence, the following is preferred:
+
+  ```python
+  approx_kl_p_q = bf.monte_carlo_csiszar_f_divergence(
+      f=bf.kl_reverse,
+      p_log_prob=q.log_prob,
+      q=p,
+      num_draws=num_draws)
+  ```
+
   Args:
     f: Python callable which can return `f(samples)`.
     samples: `Tensor` of samples used to form the Monte-Carlo approximation of
@@ -247,21 +300,27 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
     log_prob: Python callable which can return `log_prob(samples)`. Must
       correspond to the natural-logarithm of the pdf/pmf of each sample. Only
       required/used if `use_reparametrization=False`.
+      Default value: `None`.
     use_reparametrization: Python `bool` indicating that the approximation
-      should use the fact that the gradient of samples is unbiased.
-    axis: The dimensions to average. If `None` (the default), averages all
+      should use the fact that the gradient of samples is unbiased. Whether
+      `True` or `False`, this arg only affects the gradient of the resulting
+      `approx_expectation`.
+      Default value: `True`.
+    axis: The dimensions to average. If `None`, averages all
       dimensions.
-    keep_dims: If true, retains averaged dimensions with length 1.
-    name: A `name_scope` for operations created by this function (optional).
-      Default value: "expectation".
+      Default value: `0` (the left-most dimension).
+    keep_dims: If True, retains averaged dimensions using size `1`.
+      Default value: `False`.
+    name: A `name_scope` for operations created by this function.
+      Default value: `None` (which implies "expectation").
 
   Returns:
     approx_expectation: `Tensor` corresponding to the Monte-Carlo approximation
       of `E_p[f(X)]`.
 
   Raises:
-    ValueError: if `f` is not `callable`.
-    ValueError: if `use_reparametrization=False` and `log_prob` is not
+    ValueError: if `f` is not a Python `callable`.
+    ValueError: if `use_reparametrization=False` and `log_prob` is not a Python
       `callable`.
   """
 
@@ -273,19 +332,23 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
     else:
       if not callable(log_prob):
         raise ValueError('`log_prob` must be a callable function.')
-      x = array_ops.stop_gradient(samples)
+      stop = array_ops.stop_gradient  # For readability.
+      x = stop(samples)
       logpx = log_prob(x)
-      # Numerically, exp(g(x) - stop[g(x)]) is always 1, even if exp(g(x)) is
-      # unstable. But the gradient is also stable, ie,
-      # d/dx exp(g(x) - stop[g(x)])
-      # = exp(g(x) - stop[g(x)]) d/dx g(x)
-      # = d/dx g(x)   [numerically exact since IEEE754 has the property
-      #                that for any finite floating-point number x:
-      #                x - x == 0.0]
-      return math_ops.reduce_mean(
-          f(x) * math_ops.exp(logpx - array_ops.stop_gradient(logpx)),
-          axis=axis,
-          keep_dims=keep_dims)
+      fx = f(x)  # Call `f` once in case it has side-effects.
+      # We now rewrite f(x) so that:
+      #   `grad[f(x)] := grad[f(x)] + f(x) * grad[logqx]`.
+      # To achieve this, we use a trick that
+      #   `h(x) - stop(h(x)) == zeros_like(h(x))`
+      # but its gradient is grad[h(x)].
+      # Note that IEEE754 specifies that `x - x == 0.` and `x + 0. == x`, hence
+      # this trick loses no precision. For more discussion regarding the
+      # relevant portions of the IEEE754 standard, see the StackOverflow
+      # question,
+      # "Is there a floating point value of x, for which x-x == 0 is false?"
+      # http://stackoverflow.com/q/2686644
+      fx += stop(fx) * (logpx - stop(logpx))  # Add zeros_like(logpx).
+      return math_ops.reduce_mean(fx, axis=axis, keep_dims=keep_dims)
 
 
 def _sample_mean(values):

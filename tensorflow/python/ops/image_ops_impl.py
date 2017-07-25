@@ -1566,8 +1566,7 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
       Provide as input to `tf.image.draw_bounding_boxes`.
   """
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
-    # TODO (yongtang): Need to switch to v2 after 3 weeks.
-    return gen_image_ops._sample_distorted_bounding_box(image_size,
+    return gen_image_ops._sample_distorted_bounding_box_v2(image_size,
                 bounding_boxes, seed=seed,
                 seed2=seed2, min_object_covered=min_object_covered,
                 aspect_ratio_range=aspect_ratio_range, area_range=area_range,

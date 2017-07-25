@@ -62,7 +62,7 @@ TEST_F(HloOrderingTest, LastUseScheduledFirst) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       SequentialHloOrdering::HloModuleSequence sequence,
       CreateMemoryMinimizingSequence(*module, [](const LogicalBuffer& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape());

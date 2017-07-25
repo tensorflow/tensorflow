@@ -42,7 +42,7 @@ namespace cpu {
 namespace {
 
 // Converts a symbol 'name' into the form expected by dlsym().
-std::string CanonicalizeSymbol(const std::string &name) {
+std::string CanonicalizeSymbol(const std::string& name) {
 #if defined(__APPLE__)
   // On Mac OS X, dlsym() expects names not to be prefixed with a leading
   // underscore.
@@ -53,17 +53,76 @@ std::string CanonicalizeSymbol(const std::string &name) {
   return name;
 }
 
+class JITSymbolTable {
+ public:
+  JITSymbolTable() { Populate(); }
+
+  void* Lookup(llvm::StringRef jit_symbol_name) const {
+    auto it = jit_symbol_table_.find(jit_symbol_name);
+    return it == jit_symbol_table_.end() ? nullptr : it->getValue();
+  }
+
+  static bool MustBeInTable(llvm::StringRef name) {
+    // In particular, names starting with
+    // runtime::kXlaCpuRuntimeSymbolNamePrefix should not be dlsym'ed.
+    return name.startswith(runtime::kXlaCpuRuntimeSymbolNamePrefix);
+  }
+
+ private:
+  void AddJITSymbolToTable(llvm::StringRef jit_symbol_name,
+                           llvm::StringRef cpp_symbol_name,
+                           void* jit_symbol_value) {
+    // The JIT symbol name and the C++ symbol name (with an extern "C" linkage)
+    // need to match, otherwise AOT links will fail.
+    CHECK(jit_symbol_name == cpp_symbol_name);
+    CHECK(jit_symbol_table_.insert({jit_symbol_name, jit_symbol_value}).second);
+  }
+
+  void Populate() {
+#define ADD_JIT_SYMBOL_TO_TABLE(base_name)                       \
+  do {                                                           \
+    AddJITSymbolToTable(                                         \
+        xla::cpu::runtime::k##base_name##SymbolName,             \
+        "__xla_cpu_runtime_" #base_name,                         \
+        reinterpret_cast<void*>(__xla_cpu_runtime_##base_name)); \
+  } while (false)
+
+    ADD_JIT_SYMBOL_TO_TABLE(AcquireInfeedBufferForDequeue);
+    ADD_JIT_SYMBOL_TO_TABLE(ReleaseInfeedBufferAfterDequeue);
+    ADD_JIT_SYMBOL_TO_TABLE(AcquireOutfeedBufferForPopulation);
+    ADD_JIT_SYMBOL_TO_TABLE(ReleaseOutfeedBufferAfterPopulation);
+    ADD_JIT_SYMBOL_TO_TABLE(ExpV8F32);
+    ADD_JIT_SYMBOL_TO_TABLE(LogV8F32);
+    ADD_JIT_SYMBOL_TO_TABLE(TanhV8F32);
+    ADD_JIT_SYMBOL_TO_TABLE(ExpV4F32);
+    ADD_JIT_SYMBOL_TO_TABLE(LogV4F32);
+    ADD_JIT_SYMBOL_TO_TABLE(TanhV4F32);
+    ADD_JIT_SYMBOL_TO_TABLE(EigenConvF32);
+    ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF32);
+    ADD_JIT_SYMBOL_TO_TABLE(EigenMatMulF64);
+    ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedConvF32);
+    ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedMatMulF32);
+    ADD_JIT_SYMBOL_TO_TABLE(EigenSingleThreadedMatMulF64);
+
+#undef ADD_JIT_SYMBOL_TO_TABLE
+  }
+
+  llvm::StringMap<void*> jit_symbol_table_;
+};
+
+const JITSymbolTable& GetJITSymbolTable() {
+  static JITSymbolTable* symbol_table = new JITSymbolTable;
+  return *symbol_table;
+}
+
 // A simple SymbolResolver that delegates to the host dynamic linker.
 struct SimpleResolver : public llvm::JITSymbolResolver {
-  llvm::JITSymbol findSymbol(const std::string &name) override {
+  llvm::JITSymbol findSymbol(const std::string& name) override {
     std::string canonical_name = CanonicalizeSymbol(name);
-    bool must_be_builtin =
-        tensorflow::StringPiece(canonical_name.c_str(), canonical_name.size())
-            .starts_with(runtime::kXlaCpuRuntimeSymbolPrefix);
+    const JITSymbolTable& jit_symbol_table = GetJITSymbolTable();
 
-    void *func_addr = must_be_builtin
-                          ? runtime::ResolveSymbol(
-                                {canonical_name.c_str(), canonical_name.size()})
+    void* func_addr = JITSymbolTable::MustBeInTable(canonical_name)
+                          ? jit_symbol_table.Lookup(canonical_name)
                           : dlsym(RTLD_DEFAULT, canonical_name.c_str());
 
     if (func_addr == nullptr) {
@@ -73,7 +132,7 @@ struct SimpleResolver : public llvm::JITSymbolResolver {
                                          llvm::JITSymbolFlags::None);
     return symbol_info;
   }
-  llvm::JITSymbol findSymbolInLogicalDylib(const std::string &name) override {
+  llvm::JITSymbol findSymbolInLogicalDylib(const std::string& name) override {
     return nullptr;
   }
 };
@@ -82,7 +141,7 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
   llvm::StringMap<bool> host_features;
   if (llvm::sys::getHostCPUFeatures(host_features)) {
-    for (auto &feature : host_features) {
+    for (auto& feature : host_features) {
       if (feature.second) {
         llvm::StringRef feature_name = feature.first();
         // Skip avx512 for now, it isn't quite ready in LLVM.
@@ -105,14 +164,14 @@ llvm::StringRef GetHostCpuName() {
 
 CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
   CompilerFunctor::VectorIntrinsics intrinsics;
-  intrinsics.sse_intrinsics = (&runtime::__xla_cpu_runtime_ExpV4F32 != nullptr);
-  intrinsics.avx_intrinsics = (&runtime::__xla_cpu_runtime_ExpV8F32 != nullptr);
+  intrinsics.sse_intrinsics = (&__xla_cpu_runtime_ExpV4F32 != nullptr);
+  intrinsics.avx_intrinsics = (&__xla_cpu_runtime_ExpV8F32 != nullptr);
   return intrinsics;
 }
 
 }  // namespace
 
-SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions &target_options,
+SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                            llvm::CodeGenOpt::Level opt_level,
                            CompilerFunctor::ModuleHook pre_optimization_hook,
                            CompilerFunctor::ModuleHook post_optimization_hook)
@@ -152,7 +211,7 @@ void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::ModuleHandleT handle) {
   cantFail(compile_layer_.removeModule(handle));
 }
 
-llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string &name) {
+llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string& name) {
   std::string mangled_name;
   {
     llvm::raw_string_ostream mangled_name_stream(mangled_name);
@@ -161,7 +220,7 @@ llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string &name) {
 
   // Resolve symbol from last module to first, allowing later redefinitions of
   // symbols shadow earlier ones.
-  for (auto &handle :
+  for (auto& handle :
        llvm::make_range(module_handles_.rbegin(), module_handles_.rend())) {
     if (auto symbol =
             compile_layer_.findSymbolIn(handle, mangled_name,

@@ -130,6 +130,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
       break;
@@ -792,6 +793,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
@@ -1196,6 +1198,7 @@ bool HloInstruction::Identical(
     case HloOpcode::kRemainder:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
@@ -1897,6 +1900,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleTanh(this, operands_[0]);
     case HloOpcode::kCos:
       return visitor->HandleCos(this, operands_[0]);
+    case HloOpcode::kSin:
+      return visitor->HandleSin(this, operands_[0]);
     case HloOpcode::kIsFinite:
       return visitor->HandleIsFinite(this, operands_[0]);
     case HloOpcode::kLogicalNot:
@@ -2172,6 +2177,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kNegate:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kTanh:
       return true;
 
