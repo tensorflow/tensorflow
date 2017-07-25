@@ -127,6 +127,11 @@ class NodeFilter {
            result == kSomeUsersOmitted;
   }
 
+  bool ShowFusionSubcomputation(const HloInstruction* instr) const {
+    CHECK_EQ(instr->opcode(), HloOpcode::kFusion);
+    return Show(instr) && !SomeOrAllOperandsOmitted(instr);
+  }
+
  private:
   std::function<NodeFilterResult(const HloInstruction* instr)> filter_;
 };
@@ -334,15 +339,14 @@ class HloDotDumper {
 
   string DumpSubcomputation(const HloComputation* subcomp,
                             const HloInstruction* parent_instr);
-  string DumpComputation(const HloComputation* comp, const NodeFilter& filter);
-  string DumpInstruction(const HloInstruction* instr, const NodeFilter& filter);
+  string DumpComputation(const HloComputation* comp);
+  string DumpInstruction(const HloInstruction* instr);
   ColorScheme GetInstructionColor(const HloInstruction* instr);
   string GetInstructionNodeShape(const HloInstruction* instr);
   string GetInstructionNodeLabel(const HloInstruction* instr);
   string GetInstructionNodeExtraInfo(const HloInstruction* instr);
-  string GetInstructionIncomingEdges(const HloInstruction* instr,
-                                     const NodeFilter& filter);
   string GetInstructionNodeInlinedConstants(const HloInstruction* instr);
+  void AddInstructionIncomingEdges(const HloInstruction* instr);
 
   // If instr has just one computation and it's trivial (e.g. "return param0 +
   // param1"), returns a string you can put into the node's body that names the
@@ -355,6 +359,12 @@ class HloDotDumper {
   const bool show_layouts_;
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
+
+  // Edges to print from Footer().  Edges come at the end because graphviz is
+  // unhappy if an edge from a subcomputation to a node in the outer computation
+  // appears before both the inner computation and the destination node are
+  // defined.
+  std::vector<string> edges_;
 };
 
 string HloDotDumper::Dump() {
@@ -364,7 +374,7 @@ string HloDotDumper::Dump() {
     const HloInstruction* parent = kv.second;
     StrAppend(&g, DumpSubcomputation(subcomp, parent));
   }
-  StrAppend(&g, DumpComputation(computation_, filter_));
+  StrAppend(&g, DumpComputation(computation_));
   StrAppend(&g, Footer());
   return g;
 }
@@ -397,7 +407,7 @@ stylesheet="
   return Printf(fmt, graph_label);
 }
 
-string HloDotDumper::Footer() { return "}\n"; }
+string HloDotDumper::Footer() { return StrCat(Join(edges_, "\n"), "\n}"); }
 
 std::unordered_map<const HloComputation*, const HloInstruction*>
 HloDotDumper::SubcomputationsToDump() {
@@ -427,8 +437,7 @@ HloDotDumper::SubcomputationsToDump() {
 string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
                                         const HloInstruction* parent_instr) {
   const char* computation_fmt = R"(subgraph %s {
-style = "%s";
-color = "%s";
+%s;
 label = <%s>;
 labelloc = t;
 %s
@@ -436,55 +445,66 @@ labelloc = t;
 
 )";
 
-  const char* edge_fmt = R"(%s -> %s [ltail="%s", %s];)";
-
   string id = SubcomputationId(subcomp);
 
-  string subcomp_label, style, edge_or_bg_color, edge_attrs;
+  string subcomp_label, style;
   if (parent_instr->opcode() == HloOpcode::kFusion) {
     subcomp_label = Printf("Fused expression for <b>%s</b><br/>%s",
                            HtmlLikeStringSanitize(parent_instr->name()),
                            HtmlLikeStringSanitize(parent_instr->ToCategory()));
-    style = "rounded,filled";
-    edge_or_bg_color = "lightgray";
-    edge_attrs = "style=dotted, arrowsize=0";
+
+    // Subcomputation's fill/stroke color is light/dark red/gray, depending on
+    // whether or not the subcomputation's fusion node is highlighted.
+    bool highlight = filter_.Highlight(parent_instr);
+    const char* fillcolor = highlight ? "#ffcdd2" : "#f5f5f5";
+    const char* strokecolor = highlight ? "#b71c1c" : "#c2c2c2";
+    style = Printf(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s")",
+                   fillcolor, strokecolor);
   } else {
     subcomp_label = Printf("Subcomputation for <b>%s</b><br/>%s",
                            HtmlLikeStringSanitize(parent_instr->name()),
                            HtmlLikeStringSanitize(subcomp->name()));
-    style = "rounded";
-    edge_or_bg_color = "black";
-    edge_attrs = "style=dashed";
+    style = "style=rounded; color=black;";
   }
 
-  // Pass an empty filter to DumpComputation -- we always dump the entirety of a
-  // subcomputation.
-  string comp_body = DumpComputation(subcomp, NodeFilter());
-  string computation = Printf(computation_fmt, id, style, edge_or_bg_color,
-                              subcomp_label, comp_body, id);
-  string edge = Printf(edge_fmt, InstructionId(subcomp->root_instruction()),
-                       InstructionId(parent_instr), SubcomputationId(subcomp),
-                       edge_attrs);
-  return StrCat(computation, "\n", edge, "\n");
+  string comp_body = DumpComputation(subcomp);
+  string computation =
+      Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
+
+  // Add an edge from the subcomputation to its parent node.  If subcomp
+  // belongs to a fusion node, it's drawn in place of the fusion instruction, so
+  // there's no need to link those.
+  if (parent_instr->opcode() != HloOpcode::kFusion) {
+    const char* edge_fmt = R"(%s -> %s [ltail="%s", style="dashed"];)";
+    edges_.push_back(
+        Printf(edge_fmt, InstructionId(subcomp->root_instruction()),
+               InstructionId(parent_instr), SubcomputationId(subcomp)));
+  }
+
+  return computation;
 }
 
-string HloDotDumper::DumpComputation(const HloComputation* comp,
-                                     const NodeFilter& filter) {
+string HloDotDumper::DumpComputation(const HloComputation* comp) {
   string g;
   for (const auto& instr : comp->instructions()) {
-    if (!filter.Show(instr.get())) {
+    if (!filter_.Show(instr.get())) {
       continue;
     }
-    StrAppend(&g, DumpInstruction(instr.get(), filter));
+    StrAppend(&g, DumpInstruction(instr.get()));
   }
   return g;
 }
 
-string HloDotDumper::DumpInstruction(const HloInstruction* instr,
-                                     const NodeFilter& filter) {
+string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
   // We don't display constants as separate nodes; they're merged into their
   // users.
   if (instr->opcode() == HloOpcode::kConstant) {
+    return "";
+  }
+  // Omit the fusion node if its subcomputation is drawn, since the
+  // subcomputation will be drawn inline.
+  if (instr->opcode() == HloOpcode::kFusion &&
+      filter_.ShowFusionSubcomputation(instr)) {
     return "";
   }
 
@@ -494,14 +514,13 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr,
   string extra_info = GetInstructionNodeExtraInfo(instr);
   string inlined_constants = GetInstructionNodeInlinedConstants(instr);
   string trivial_subcomputation = GetInstructionTrivialComputationStr(instr);
-
-  string in_edges = GetInstructionIncomingEdges(instr, filter);
+  AddInstructionIncomingEdges(instr);
 
   // Override the node's styling if it should be (de-)emphasized.
-  if (filter.Deemphasized(instr)) {
+  if (filter_.Deemphasized(instr)) {
     color = kDashedBorder;
   }
-  if (filter.Highlight(instr)) {
+  if (filter_.Highlight(instr)) {
     node_shape = "diamond";
     color = kDarkRed;
   }
@@ -515,34 +534,44 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr,
     }
   }
 
-  string node = Printf("%s [label=<%s>, shape=%s, %s];", InstructionId(instr),
-                       node_body, node_shape, NodeColorAttributes(color));
-  return StrCat(node, "\n", in_edges);
+  return Printf("%s [label=<%s>, shape=%s, %s];\n", InstructionId(instr),
+                node_body, node_shape, NodeColorAttributes(color));
 }
 
 string HloDotDumper::GetInstructionNodeInlinedConstants(
     const HloInstruction* instr) {
+  auto stringify_constant = [](const HloInstruction* constant) {
+    if (ShapeUtil::IsEffectiveScalar(constant->shape())) {
+      auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
+          constant->shape(), /*linear_index=*/0);
+      return Printf("%s{%s}", ShapeUtil::HumanString(constant->shape()),
+                    constant->literal().GetAsString(elem_idx));
+    }
+    if (tensorflow::StringPiece(constant->name()).starts_with("%constant")) {
+      return constant->name();
+    }
+    return StrCat("constant ", constant->name());
+  };
+
+  // Special case: If instr is a parameter to a fusion node, check whether the
+  // corresponding operand to the fusion node is a constant.
+  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
+    const HloInstruction* fusion = instr->fusion_instruction();
+    const HloInstruction* operand = fusion->operand(instr->parameter_number());
+    if (operand->opcode() != HloOpcode::kConstant) {
+      return "";
+    }
+    return stringify_constant(operand);
+  }
+
   std::vector<string> lines;
   for (int64 i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
     if (operand->opcode() != HloOpcode::kConstant) {
       continue;
     }
-
-    string line = Printf("<b>operand %lld</b> = ", i);
-    if (ShapeUtil::IsEffectiveScalar(operand->shape())) {
-      auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
-          operand->shape(), /*linear_index=*/0);
-      Appendf(&line, "%s{%s}", ShapeUtil::HumanString(operand->shape()),
-              operand->literal().GetAsString(elem_idx));
-    } else {
-      if (tensorflow::StringPiece(operand->name()).starts_with("%constant")) {
-        StrAppend(&line, operand->name());
-      } else {
-        StrAppend(&line, "constant ", operand->name());
-      }
-    }
-    lines.push_back(line);
+    lines.push_back(
+        Printf("<b>operand %lld</b> = %s", i, stringify_constant(operand)));
   }
   return Join(lines, "<br/>");
 }
@@ -648,8 +677,7 @@ string HloDotDumper::GetInstructionNodeShape(const HloInstruction* instr) {
 string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
   // If we have a parameter, put the param number in the name.
   if (instr->opcode() == HloOpcode::kParameter) {
-    return Printf("<b>Parameter %lld</b><br/>%s", instr->parameter_number(),
-                  HtmlLikeStringSanitize(instr->name()));
+    return Printf("<b>Parameter %lld</b>", instr->parameter_number());
   }
 
   // The HLO instruction name contains usually the opcode, e.g. "%add.42" is
@@ -735,23 +763,39 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   return Join(lines, "<br/>");
 }
 
-string HloDotDumper::GetInstructionIncomingEdges(const HloInstruction* instr,
-                                                 const NodeFilter& filter) {
-  std::vector<string> edges;
-  for (int64 i = 0; i < instr->operand_count(); ++i) {
-    const HloInstruction* operand = instr->operand(i);
-    if (!filter.Show(operand) || operand->opcode() == HloOpcode::kConstant) {
-      continue;
+void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
+  auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
+                      int64 operand_num) {
+    // Fusion nodes' subcomputations are displayed inline, so if 'from' is a
+    // fusion node and the node's subcomputation is shown, we draw our edge
+    // starting at the fusion node's root instead of at the fusion node itself.
+    if (from->opcode() == HloOpcode::kFusion &&
+        filter_.ShowFusionSubcomputation(from)) {
+      from = from->fused_expression_root();
     }
-    string edge =
-        Printf("%s -> %s", InstructionId(operand), InstructionId(instr));
+    if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant) {
+      return;
+    }
+    string edge = Printf("%s -> %s", InstructionId(from), InstructionId(to));
     if (instr->operand_count() > 1) {
-      Appendf(&edge, R"( [headlabel="%lld",labeldistance=2])", i);
+      Appendf(&edge, R"( [headlabel="%lld",labeldistance=2])", operand_num);
     }
     StrAppend(&edge, ";");
-    edges.push_back(edge);
+    edges_.push_back(edge);
+  };
+
+  // Add edges from instr's operands to instr.  Parameters within fusion
+  // expressions are handled specially -- we draw an edge from the corresponding
+  // operand on the fusion node itself to the parameter.
+  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
+    const HloInstruction* fusion = instr->fusion_instruction();
+    add_edge(fusion->operand(instr->parameter_number()), instr,
+             /*operand_num=*/0);
+  } else {
+    for (int64 i = 0; i < instr->operand_count(); ++i) {
+      add_edge(instr->operand(i), instr, i);
+    }
   }
-  return Join(edges, "\n");
 }
 
 string HloDotDumper::GetInstructionTrivialComputationStr(
@@ -847,14 +891,6 @@ class FileGraphRenderer : public GraphRendererInterface {
 
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
-//
-// It's confusing to draw a node and include only some of its operands.  So if
-// some but not all of a node's operands are <= radius units away from the root,
-// we include the other operands (unless there are a lot of them, as often in a
-// tuple node).  These additional operands may have as inputs other nodes
-// already present in the graph, but we don't draw those edges unless *all* of
-// the inputs are present.  (Otherwise we'd have the same problem we were trying
-// to solve in the first place!)
 NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
@@ -912,48 +948,22 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
     return nodes.count(instr) > 0;
   };
 
-  // If a node has some but not all of its operands omitted, add the operands to
-  // the map with type kOmitNodeOperands.  Unless the node has a lot of
-  // operands, in which case just mark the node as "some operands omitted".
-  std::vector<const HloInstruction*> extra_operands;
+  // Mark nodes which don't have all of their operands present as "some operands
+  // omitted".
   for (auto& kv : nodes) {
     const HloInstruction* instr = kv.first;
     NodeFilterResult& filter_result = kv.second;
     const auto& operands = instr->operands();
 
-    // Mark nodes with many operands and some omitted as "some operands omitted"
-    // and carry on -- don't add their omitted operands to extra_operands.
-    if (operands.size() > 4) {
-      if (std::any_of(operands.begin(), operands.end(), is_displayed) &&
-          !std::all_of(operands.begin(), operands.end(), is_displayed)) {
-        filter_result = kSomeOperandsOmitted;
-      }
-      continue;
-    }
-
-    if (std::any_of(operands.begin(), operands.end(), is_displayed)) {
-      for (const HloInstruction* operand : operands) {
-        if (!is_displayed(operand)) {
-          extra_operands.push_back(operand);
-        }
-      }
-    }
-  }
-  for (const HloInstruction* instr : extra_operands) {
-    nodes[instr] = kOmitNodeOperands;
-  }
-
-  // Some of the nodes in extra_operands may now have all of their inputs
-  // present in nodes.  We can promote these to normal nodes.
-  for (const HloInstruction* instr : extra_operands) {
-    const auto& operands = instr->operands();
-    if (std::all_of(operands.begin(), operands.end(), is_displayed)) {
-      nodes[instr] = kNormalNode;
+    // Mark nodes with some omitted as "some operands omitted".
+    if (std::any_of(operands.begin(), operands.end(), is_displayed) &&
+        !std::all_of(operands.begin(), operands.end(), is_displayed)) {
+      filter_result = kSomeOperandsOmitted;
     }
   }
 
-  // Similarly, promote nodes with type kSomeUsersOmitted to kNormalNode if all
-  // of their users made it into the graph by other means.
+  // Promote nodes with type kSomeUsersOmitted to kNormalNode if all of their
+  // users made it into the graph by other means.
   for (auto& kv : nodes) {
     const auto& users = kv.first->users();
     if (kv.second == kSomeUsersOmitted &&
@@ -979,6 +989,10 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
     auto it = nodes.find(instr);
     if (it != nodes.end()) {
       return it->second;
+    }
+    // Show all nodes in subcomputations.
+    if (instr->parent() != root->parent()) {
+      return kNormalNode;
     }
     return kHideNode;
   });
