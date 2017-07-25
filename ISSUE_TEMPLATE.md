@@ -1,6 +1,6 @@
 Please go to Stack Overflow for help and support:
 
-https://stackoverflow.com/questions/tagged/tensorflow
+http://stackoverflow.com/questions/tagged/tensorflow
 
 If you open a GitHub issue, here is our policy:
 
