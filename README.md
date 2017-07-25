@@ -11,8 +11,8 @@
 **TensorFlow** is an open source software library for numerical computation using
 data flow graphs.  The graph nodes represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow
-between them.  This flexible architecture lets you deploy computation to at least
-one CPUs or GPUs in a desktop, server, or mobile device without rewriting
+between them.  This flexible architecture lets you deploy computation to one
+or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
 code.  TensorFlow also includes TensorBoard, a data visualization toolkit.
 
 TensorFlow was originally developed by researchers and engineers
