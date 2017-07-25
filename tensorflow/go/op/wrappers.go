@@ -5737,6 +5737,24 @@ func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, out
 	return op.Output(0)
 }
 
+// Identity op for gradient debugging.
+//
+// This op is hidden from public in Python. It is used by TensorFlow Debugger to
+// register gradient tensors for gradient debugging.
+func DebugGradientIdentity(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DebugGradientIdentity",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Deprecated. Use TensorArrayGradV3
 func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source string) (grad_handle tf.Output) {
 	if scope.Err() != nil {

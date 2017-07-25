@@ -360,6 +360,7 @@ string InstructionSequenceGraph(
       case HloOpcode::kRemainder:
       case HloOpcode::kSelect:
       case HloOpcode::kSign:
+      case HloOpcode::kSin:
       case HloOpcode::kSlice:
       case HloOpcode::kSort:
       case HloOpcode::kSubtract:

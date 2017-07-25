@@ -23,7 +23,6 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 py_library(
     name = "debug_py",
@@ -64,18 +63,13 @@ py_library(
     ],
 )
 
-tf_gen_op_wrapper_py(
-    name = "debug_ops",
-    deps = ["//tensorflow/core:debug_ops_op_lib"],
-)
-
 py_library(
     name = "debug_gradients",
     srcs = ["lib/debug_gradients.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
-        ":debug_ops",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
         "@six_archive//:six",

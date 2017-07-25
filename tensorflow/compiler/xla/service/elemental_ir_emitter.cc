@@ -177,6 +177,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::cos, {operand_value},
                                           {operand_value->getType()},
                                           ir_builder_);
+    case HloOpcode::kSin:
+      return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sin, {operand_value},
+                                          {operand_value->getType()},
+                                          ir_builder_);
     case HloOpcode::kFloor:
       return llvm_ir::EmitCallToIntrinsic(
           llvm::Intrinsic::floor, {operand_value}, {operand_value->getType()},
@@ -788,6 +792,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kLog:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kTanh:
     case HloOpcode::kLogicalNot:
       return [this, hlo, &operand_to_generator](
