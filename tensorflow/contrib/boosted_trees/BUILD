@@ -302,14 +302,14 @@ py_library(
 
 tf_cc_shared_object(
     name = "libboostedtreeprotos.so",
+    framework_so = [],
     linkstatic = 1,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:proto_impl",
+        "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource_impl",
         "@protobuf//:protobuf",
-	"//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource_impl",
     ],
-    framework_so=[],
 )
 
 # Model Ops.

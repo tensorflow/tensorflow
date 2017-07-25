@@ -33,7 +33,7 @@ cc_library(
     name = "decision-tree-resource_impl",
     srcs = ["decision-tree-resource.cc"],
     deps = [
-      ":decision-tree-resource",
+        ":decision-tree-resource",
     ],
 )
 
