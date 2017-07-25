@@ -168,7 +168,7 @@ def input_producer(input_tensor,
             q, [enq], cancel_op=cancel_op))
     if summary_name is not None:
       summary.scalar(summary_name,
-                     math_ops.cast(q.size(), dtypes.float32) * (1. / capacity))
+                     math_ops.to_float(q.size()) * (1. / capacity))
     return q
 
 
@@ -643,7 +643,7 @@ def _shapes(tensor_list_list, shapes, enqueue_many):
 
 def _select_which_to_enqueue(tensor_list, keep_input):
   """Select which examples to enqueue based on vector `keep_input`."""
-  select_i = math_ops.cast(keep_input, dtypes.int32)
+  select_i = math_ops.to_int32(keep_input)
   tensor_list = [
       data_flow_ops.dynamic_partition(x, select_i, num_partitions=2)[1]
       for x in tensor_list]
@@ -707,8 +707,7 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
     summary.scalar("fraction_of_%d_full" % capacity,
-                   math_ops.cast(queue.size(), dtypes.float32) *
-                   (1. / capacity))
+                   math_ops.to_float(queue.size()) * (1. / capacity))
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
@@ -742,8 +741,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
         capacity=capacity, dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
     summary.scalar("fraction_of_%d_full" % capacity,
-                   math_ops.cast(queue.size(), dtypes.float32) *
-                   (1. / capacity))
+                   math_ops.to_float(queue.size()) * (1. / capacity))
 
     if allow_smaller_final_batch:
       dequeued = queue.dequeue_up_to(batch_size, name=name)
@@ -775,8 +773,8 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
-    full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
-                          dtypes.float32) *
+    full = (math_ops.to_float(
+        math_ops.maximum(0, queue.size() - min_after_dequeue)) *
             (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
@@ -812,8 +810,8 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
-    full = (math_ops.cast(math_ops.maximum(0, queue.size() - min_after_dequeue),
-                          dtypes.float32) *
+    full = (math_ops.to_float(
+        math_ops.maximum(0, queue.size() - min_after_dequeue)) *
             (1. / (capacity - min_after_dequeue)))
     # Note that name contains a '/' at the end so we intentionally do not place
     # a '/' after %s below.
