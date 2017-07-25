@@ -798,6 +798,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
+        "no_windows",
         "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
         "oss_serial",
@@ -826,6 +827,7 @@ cuda_py_test(
     data = ["//tensorflow/tools/dist_test/server:grpc_tensorflow_server"],
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
+        "no_windows",
         "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
     ],
