@@ -107,13 +107,13 @@ class MasterService final {
 
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
-    const ::grpc::RpcMethod rpcmethod_CreateSession_;
-    const ::grpc::RpcMethod rpcmethod_ExtendSession_;
-    const ::grpc::RpcMethod rpcmethod_PartialRunSetup_;
-    const ::grpc::RpcMethod rpcmethod_RunStep_;
-    const ::grpc::RpcMethod rpcmethod_CloseSession_;
-    const ::grpc::RpcMethod rpcmethod_ListDevices_;
-    const ::grpc::RpcMethod rpcmethod_Reset_;
+    const ::grpc::internal::RpcMethod rpcmethod_CreateSession_;
+    const ::grpc::internal::RpcMethod rpcmethod_ExtendSession_;
+    const ::grpc::internal::RpcMethod rpcmethod_PartialRunSetup_;
+    const ::grpc::internal::RpcMethod rpcmethod_RunStep_;
+    const ::grpc::internal::RpcMethod rpcmethod_CloseSession_;
+    const ::grpc::internal::RpcMethod rpcmethod_ListDevices_;
+    const ::grpc::internal::RpcMethod rpcmethod_Reset_;
   };
   static std::unique_ptr<Stub> NewStub(
       const std::shared_ptr< ::grpc::ChannelInterface>& channel,
