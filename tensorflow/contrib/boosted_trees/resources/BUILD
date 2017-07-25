@@ -26,7 +26,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
-	"@protobuf//:protobuf_headers",
+        "@protobuf//:protobuf_headers",
     ],
 )
 
@@ -63,7 +63,7 @@ cc_library(
     name = "decision_tree_ensemble_resource_impl",
     srcs = ["decision_tree_ensemble_resource.cc"],
     deps = [
-      ":stamped_resource_impl",
-      ":decision_tree_ensemble_resource",
+        ":decision_tree_ensemble_resource",
+        ":stamped_resource_impl",
     ],
 )
