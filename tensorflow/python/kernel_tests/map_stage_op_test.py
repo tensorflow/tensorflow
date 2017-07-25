@@ -112,11 +112,11 @@ class MapStageTest(test.TestCase):
         self.assertEqual(y.device, expected_name)
       with ops.device('/cpu:0'):
         _, x = stager.get(1)
-        y = stager.peek(1)
+        y = stager.peek(1)[0]
         _, z = stager.get()
-        self.assertEqual(x.device, '/device:CPU:0')
+        self.assertEqual(x[0].device, '/device:CPU:0')
         self.assertEqual(y.device, '/device:CPU:0')
-        self.assertEqual(z.device, '/device:CPU:0')
+        self.assertEqual(z[0].device, '/device:CPU:0')
 
     G.finalize()
 
@@ -142,7 +142,7 @@ class MapStageTest(test.TestCase):
         sess.run(stage, feed_dict={x: i, pi: i})
 
       for i in range(n):
-        self.assertTrue(sess.run(peek, feed_dict={gi: i}) == i)
+        self.assertTrue(sess.run(peek, feed_dict={gi: i})[0] == i)
 
       self.assertTrue(sess.run(size) == 10)
 

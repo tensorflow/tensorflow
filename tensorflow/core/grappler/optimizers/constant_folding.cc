@@ -301,6 +301,9 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
       continue;
     }
     const NodeDef* input_node = node_map_->GetNode(input);
+    if (!input_node) {
+      return false;
+    }
     bool is_const = IsConstant(*input_node);
     if (!is_const && !is_merge) {
       return false;
@@ -369,7 +372,7 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
   for (int i = 0; i < num_outputs; i++) {
     output->push_back(op_context.release_output(i));
   }
-  return Status::OK();
+  return op_context.status();
 }
 
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
@@ -382,13 +385,18 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
   });
 
   for (const auto& input : node.input()) {
-    if (IsControlInput(input)) {
+    int position = 0;
+    ParseNodeName(input, &position);
+    if (position < 0) {
+      // Control dependency
       break;
     }
+    // There should be a single output since the input node should be a constant
+    // node.
     TensorVector output;
     TF_RETURN_IF_ERROR(
         EvaluateNode(*node_map_->GetNode(input), TensorVector(), &output));
-    inputs.push_back(output[0]);
+    inputs.push_back(output[position]);
   }
 
   TensorVector output_tensors;

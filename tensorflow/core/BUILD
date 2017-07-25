@@ -558,17 +558,9 @@ tf_gen_op_libs(
     deps = [":lib"],
 )
 
-cc_library(
-    name = "debug_ops_op_lib",
-    srcs = ["ops/debug_ops.cc"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":framework",
-        "//tensorflow/core/kernels:debug_ops",
-    ],
-    alwayslink = 1,
+tf_gen_op_libs(
+    op_lib_names = ["debug_ops"],
+    deps = ["//tensorflow/core/kernels:debug_ops"],
 )
 
 # And one for all user ops

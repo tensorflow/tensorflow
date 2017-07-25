@@ -67,9 +67,9 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
   // Try copying the elements back and comparing it
   auto handles = result_status.ConsumeValueOrDie();
   std::unique_ptr<Literal> literal;
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
 }
 
@@ -89,17 +89,17 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
   auto handles2 = result_status2.ConsumeValueOrDie();
 
   std::unique_ptr<Literal> literal;
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles1[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles1[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
 
   handles1[0].reset();
   handles1[1].reset();
 
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles2[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles2[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
 }
 
@@ -119,13 +119,13 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
   auto handles = result_status.ConsumeValueOrDie();
 
   std::unique_ptr<Literal> literal;
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[2]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[3]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[3]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 }
 
@@ -145,17 +145,17 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
   global_data.reset();
 
   std::unique_ptr<Literal> literal;
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[0]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[1]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
   LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[2]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 
   /// Try deallocating one of the repeated elements, then copy
   handles[0].reset();
 
-  TF_ASSIGN_OR_ASSERT_OK(literal, client_->Transfer(*handles[2]));
+  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
   LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 }
 

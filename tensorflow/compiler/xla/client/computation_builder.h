@@ -513,6 +513,9 @@ class ComputationBuilder {
   // Enqueues a cosine instruction onto the computation.
   ComputationDataHandle Cos(const ComputationDataHandle& operand);
 
+  // Enqueues a sine instruction onto the computation.
+  ComputationDataHandle Sin(const ComputationDataHandle& operand);
+
   // Enqueues a tanh instruction onto the computation.
   ComputationDataHandle Tanh(const ComputationDataHandle& operand);
 

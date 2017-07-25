@@ -26,14 +26,12 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ],
 )
 
@@ -44,11 +42,46 @@ tf_cc_test(
     deps = [
         ":transform_utils",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "file_utils",
+    srcs = [
+        "file_utils.cc",
+    ],
+    hdrs = [
+        "file_utils.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+tf_cc_test(
+    name = "file_utils_test",
+    size = "small",
+    srcs = ["file_utils_test.cc"],
+    deps = [
+        ":file_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -154,6 +187,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":file_utils",
         ":transform_utils",
         ":transforms_lib",
         "//tensorflow/core:framework_internal",
@@ -215,6 +249,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":file_utils",
         ":transform_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -240,6 +275,7 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        ":file_utils",
         ":transform_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
