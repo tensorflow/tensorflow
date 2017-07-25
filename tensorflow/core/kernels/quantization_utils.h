@@ -823,9 +823,9 @@ void QuantizedAddUsingEigen(const Eigen::ThreadPoolDevice& device,
   const int64 input_element_count = input.NumElements();
   const int64 smaller_input_element_count = smaller_input.NumElements();
 
-  QuantizedToFloatStruct<T1> smaller_input_q2f(smaller_input_min,
+  QuantizedToFloatStruct<T1> input_q2f(input_min, input_max);
+  QuantizedToFloatStruct<T2> smaller_input_q2f(smaller_input_min,
                                                smaller_input_max);
-  QuantizedToFloatStruct<T2> input_q2f(input_min, input_max);
   FloatToQuantizedStruct<T3> f2q(*output_min, *output_max);
 
   auto smaller_input_float =
