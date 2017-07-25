@@ -424,7 +424,7 @@ tf_cc_shared_object(
     name = "libtfframework.so",
     framework_so = [],
     linkstatic = 1,
-    visibility = [":__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core:lib_internal_impl",
