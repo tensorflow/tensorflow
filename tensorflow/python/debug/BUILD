@@ -31,6 +31,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":debug_data",
+        ":debug_gradients",
         ":debug_utils",
         ":hooks",
         ":local_cli_wrapper",
@@ -57,6 +58,19 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "debug_gradients",
+    srcs = ["lib/debug_gradients.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "@six_archive//:six",
     ],
 )
 
@@ -273,12 +287,15 @@ py_library(
     deps = [
         ":analyzer_cli",
         ":cli_shared",
+        ":command_parser",
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
         ":profile_analyzer_cli",
         ":stepper_cli",
+        ":tensor_format",
         ":ui_factory",
+        "@six_archive//:six",
     ],
 )
 
@@ -378,6 +395,26 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "debug_gradients_test",
+    size = "small",
+    srcs = [
+        "lib/debug_gradients_test.py",
+    ],
+    additional_deps = [
+        ":debug_data",
+        ":debug_gradients",
+        ":debug_utils",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 
