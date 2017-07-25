@@ -305,7 +305,6 @@ cc_library(
     hdrs = ["cpu_runtime_sse4_1.h"],
     copts = ["-DEIGEN_AVOID_STL_ARRAY"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
@@ -318,7 +317,6 @@ cc_library(
     hdrs = ["cpu_runtime_avx.h"],
     copts = ["-DEIGEN_AVOID_STL_ARRAY"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
@@ -356,13 +354,11 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -372,12 +368,10 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -390,12 +384,10 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -405,11 +397,9 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":cpu_runtime",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
-    alwayslink = True,
 )
 
 cc_test(

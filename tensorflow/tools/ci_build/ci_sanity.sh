@@ -24,6 +24,7 @@
 
 # Current script directory
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+source "${SCRIPT_DIR}/builds/builds_common.sh"
 
 # Helper functions
 die() {
@@ -494,20 +495,21 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
-    echo "  PASS"
+    printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
   else
-    echo "  FAIL"
+    printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
   fi
 
   ((COUNTER++))
 done
 
-echo ""
+echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
 
-echo ""
+echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then
-  echo "Sanity checks PASSED"
+  printf "Sanity checks ${COLOR_GREEN}PASSED${COLOR_NC}\n"
 else
-  die "Sanity checks FAILED"
+  printf "Sanity checks ${COLOR_RED}FAILED${COLOR_NC}\n"
+  exit 1
 fi

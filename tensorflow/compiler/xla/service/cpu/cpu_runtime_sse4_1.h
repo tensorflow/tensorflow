@@ -34,20 +34,23 @@ extern const char *const kTanhV4F32SymbolName;
 
 typedef float V4F32 __attribute__((__vector_size__(16)));
 
+}  // namespace runtime
+}  // namespace cpu
+}  // namespace xla
+
 extern "C" {
 
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
-V4F32 __xla_cpu_runtime_ExpV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
+xla::cpu::runtime::V4F32 __xla_cpu_runtime_ExpV4F32(xla::cpu::runtime::V4F32 x)
+    TF_ATTRIBUTE_WEAK;
 
-V4F32 __xla_cpu_runtime_LogV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
+xla::cpu::runtime::V4F32 __xla_cpu_runtime_LogV4F32(xla::cpu::runtime::V4F32 x)
+    TF_ATTRIBUTE_WEAK;
 
-V4F32 __xla_cpu_runtime_TanhV4F32(V4F32 x) TF_ATTRIBUTE_WEAK;
+xla::cpu::runtime::V4F32 __xla_cpu_runtime_TanhV4F32(xla::cpu::runtime::V4F32 x)
+    TF_ATTRIBUTE_WEAK;
 }
-
-}  // namespace runtime
-}  // namespace cpu
-}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_SSE4_1_H_

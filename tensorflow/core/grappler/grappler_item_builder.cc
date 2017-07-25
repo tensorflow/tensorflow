@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -81,6 +82,11 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
 
   // Inline all functions.
   GraphDef inlined_graph_def(graph_def);
+  // Populate default attrs to the NodeDefs in the GraphDef, which is required
+  // by inlining code.
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(&inlined_graph_def, *OpRegistry::Global(), 0));
+
   for (int i = 0; i < inlined_graph_def.library().function().size(); i++) {
     FunctionDef* fdef =
         inlined_graph_def.mutable_library()->mutable_function(i);

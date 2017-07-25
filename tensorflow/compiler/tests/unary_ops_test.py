@@ -161,6 +161,16 @@ class UnaryOpsTest(XLATestCase):
           np.array([[1, 2]], dtype=dtype),
           expected=np.array([[0, 0.69314718]], dtype=dtype))
 
+      self._assertOpOutputMatchesExpected(
+          math_ops.sin,
+          np.array([[1, 2]], dtype=dtype),
+          expected=np.array([[0.841478, 0.909302]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
+          math_ops.cos,
+          np.array([[1, 2]], dtype=dtype),
+          expected=np.array([[0.540297, -0.41614]], dtype=dtype))
+
       # TODO(b/34703906): improve log1p implementation and make tolerance
       # tighter.
       self._assertOpOutputMatchesExpected(

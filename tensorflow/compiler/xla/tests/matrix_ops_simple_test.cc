@@ -178,11 +178,11 @@ TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2) {
   Shape rhs_shape =
       ShapeUtil::MakeShape(prim_type, {rhs.height(), rhs.width()});
 
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       auto lhs_handle,
       client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<float>(
           lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       auto rhs_handle,
       client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<float>(
           rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
