@@ -51,6 +51,10 @@ class GraphRewriter {
   // fanout (excluding control dependencies) of 'node' is a function.
   bool IsConnectedToFunction(const NodeDef& node) const;
 
+  // Returns true if the node is driven by at least one node placed on another
+  // device.
+  bool IsDrivenByAnotherDevice(const NodeDef& node) const;
+
  private:
   void RecordConnectivity(const NodeDef& node,
                           const std::unordered_set<string>& function_names);
@@ -63,6 +67,7 @@ class GraphRewriter {
   std::unordered_map<string, const NodeDef*> optimized_nodes_;
   std::unordered_set<const NodeDef*> control_dependency_drivers_;
   std::unordered_set<const NodeDef*> function_neighbors_;
+  std::unordered_set<const NodeDef*> cross_device_receivers_;
 };
 
 }  // end namespace grappler

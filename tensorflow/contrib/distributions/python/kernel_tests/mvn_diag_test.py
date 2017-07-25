@@ -275,6 +275,20 @@ class MultivariateNormalDiagTest(test.TestCase):
                           np.tile(num_draws, dims),
                           rtol=1e-6, atol=0.)
 
+  def testDynamicBatchShape(self):
+    mvn = ds.MultivariateNormalDiag(
+        loc=array_ops.placeholder(dtypes.float32, shape=[None, None, 2]),
+        scale_diag=array_ops.placeholder(dtypes.float32, shape=[None, None, 2]))
+    self.assertListEqual(mvn.batch_shape.as_list(), [None, None])
+    self.assertListEqual(mvn.event_shape.as_list(), [2])
+
+  def testDynamicEventShape(self):
+    mvn = ds.MultivariateNormalDiag(
+        loc=array_ops.placeholder(dtypes.float32, shape=[2, 3, None]),
+        scale_diag=array_ops.placeholder(dtypes.float32, shape=[2, 3, None]))
+    self.assertListEqual(mvn.batch_shape.as_list(), [2, 3])
+    self.assertListEqual(mvn.event_shape.as_list(), [None])
+
 
 if __name__ == "__main__":
   test.main()

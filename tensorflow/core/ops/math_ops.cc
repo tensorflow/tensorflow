@@ -1146,7 +1146,8 @@ Reduces `input` along the dimensions given in `reduction_indices`. Unless
 retained with length 1.
 
 input: The tensor to reduce.
-reduction_indices: The dimensions to reduce.
+reduction_indices: The dimensions to reduce. Must be in the range
+  `[-rank(input), rank(input))`.
 keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
@@ -1168,7 +1169,8 @@ Reduces `input` along the dimensions given in `reduction_indices`. Unless
 retained with length 1.
 
 input: The tensor to reduce.
-reduction_indices: The dimensions to reduce.
+reduction_indices: The dimensions to reduce. Must be in the range
+  `[-rank(input), rank(input))`.
 keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
@@ -1190,7 +1192,8 @@ Reduces `input` along the dimensions given in `reduction_indices`. Unless
 retained with length 1.
 
 input: The tensor to reduce.
-reduction_indices: The dimensions to reduce.
+reduction_indices: The dimensions to reduce. Must be in the range
+  `[-rank(input), rank(input))`.
 keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
@@ -1212,7 +1215,8 @@ Reduces `input` along the dimensions given in `reduction_indices`. Unless
 retained with length 1.
 
 input: The tensor to reduce.
-reduction_indices: The dimensions to reduce.
+reduction_indices: The dimensions to reduce. Must be in the range
+  `[-rank(input), rank(input))`.
 keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
@@ -1234,7 +1238,8 @@ Reduces `input` along the dimensions given in `reduction_indices`. Unless
 retained with length 1.
 
 input: The tensor to reduce.
-reduction_indices: The dimensions to reduce.
+reduction_indices: The dimensions to reduce. Must be in the range
+  `[-rank(input), rank(input))`.
 keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
@@ -1311,8 +1316,8 @@ Returns the index with the largest value across dimensions of a tensor.
 
 Note that in case of ties the identity of the return value is not guaranteed.
 
-dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
-  which dimension of the input Tensor to reduce across. For vectors,
+dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+  Describes which dimension of the input Tensor to reduce across. For vectors,
   use dimension = 0.
 )doc");
 
@@ -1329,8 +1334,8 @@ Returns the index with the smallest value across dimensions of a tensor.
 
 Note that in case of ties the identity of the return value is not guaranteed.
 
-dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
-  which dimension of the input Tensor to reduce across. For vectors,
+dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+  Describes which dimension of the input Tensor to reduce across. For vectors,
   use dimension = 0.
 )doc");
 
@@ -1658,7 +1663,7 @@ If the maximum is empty for a given segment ID `i`, it outputs the smallest poss
  `output[i] = numeric_limits<T>::min()`.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
+<img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
 </div>
 
 segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
@@ -1825,7 +1830,8 @@ Reduces `input` along the dimensions given in `reduction_indices`. Unless
 retained with length 1.
 
 input: The tensor to reduce.
-reduction_indices: The dimensions to reduce.
+reduction_indices: The dimensions to reduce. Must be in the range
+  `[-rank(input), rank(input))`.
 keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
@@ -1846,7 +1852,8 @@ Reduces `input` along the dimensions given in `reduction_indices`. Unless
 retained with length 1.
 
 input: The tensor to reduce.
-reduction_indices: The dimensions to reduce.
+reduction_indices: The dimensions to reduce. Must be in the range
+  `[-rank(input), rank(input))`.
 keep_dims: If true, retain reduced dimensions with length 1.
 output: The reduced tensor.
 )doc");
@@ -2178,6 +2185,14 @@ The `reverse` and `exclusive` kwargs can also be combined:
 ```python
 tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
 ```
+
+x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+  `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+  `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+  `[-rank(x), rank(x))`.
+exclusive: If `True`, perform exclusive cumsum.
+reverse: A `bool` (default: False).
 )doc");
 
 REGISTER_OP("Cumprod")
@@ -2220,6 +2235,14 @@ The `reverse` and `exclusive` kwargs can also be combined:
 ```python
 tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
 ```
+
+x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+  `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+  `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+  `[-rank(x), rank(x))`.
+exclusive: If `True`, perform exclusive cumprod.
+reverse: A `bool` (default: False).
 )doc");
 
 REGISTER_OP("QuantizedMatMul")

@@ -2,6 +2,7 @@
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
@@ -140,6 +141,19 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   cuda_configure(name="local_config_cuda")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
+
+  mkl_repository(
+      name = "mkl",
+      urls = [
+          "http://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
+          "https://github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
+      ],
+      sha256 = "3cc2501fb209e1fd0960a5f61c919438f9619c68a644dcebf0fdf69b07460c57",
+      strip_prefix = "mklml_lnx_2018.0.20170425",
+      build_file = str(Label("//third_party/mkl:mkl.BUILD")),
+      repository = tf_repo_name,
+  )
+
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
@@ -484,11 +498,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/9889fe2290766430b99a2d4fadbc5ba92f8004b6.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/9889fe2290766430b99a2d4fadbc5ba92f8004b6.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/4d98985c94c36b9eb4396c91fe0a72a0c5f707b2.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/4d98985c94c36b9eb4396c91fe0a72a0c5f707b2.tar.gz",
       ],
-      sha256 = "00fb4a83a4dd1c046b19730a80e2183acc647715b7a8dcc8e808d49ea5530ca8",
-      strip_prefix = "llvm-9889fe2290766430b99a2d4fadbc5ba92f8004b6",
+      sha256 = "1a085c995522fa19900568c03eb595b425df53842c7f281e3ab79aaa04affffa",
+      strip_prefix = "llvm-4d98985c94c36b9eb4396c91fe0a72a0c5f707b2",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )

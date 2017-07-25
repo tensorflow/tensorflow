@@ -162,6 +162,8 @@ string DumpCluster(const RemoteFusedGraphExecuteUtils::ClusterInfo& cluster) {
 /* static */ constexpr const char* const
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSED_OP_TYPES;
 /* static */ constexpr const char* const
+    RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_FUSE_BY_EXECUTOR;
+/* static */ constexpr const char* const
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_INPUT_TYPES;
 /* static */ constexpr const char* const
     RemoteFusedGraphExecuteUtils::TRANSFORM_ARG_INPUT_SHAPES;
@@ -1084,6 +1086,26 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       require_shape_type, output_graph_def);
 }
 
+/* static */ Status RemoteFusedGraphExecuteUtils::FuseRemoteGraphByExecutor(
+    const GraphDef& input_graph_def, const std::vector<string>& inputs,
+    const std::vector<string>& outputs, const string& executor_name,
+    GraphDef* output_graph_def) {
+  const ExecutorBuildFunc* build_func = GetExecutorBuildFunc(executor_name);
+  if (build_func == nullptr) {
+    return errors::InvalidArgument("Unknown executor name: " + executor_name);
+  }
+  std::unique_ptr<IRemoteFusedGraphExecutor> executor;
+  TF_RETURN_IF_ERROR((*build_func)(&executor));
+  CHECK_NOTNULL(executor.get());
+  if (!executor->IsEnabled()) {
+    // As this executor is not enabled, just return original graph as is.
+    *output_graph_def = input_graph_def;
+    return Status::OK();
+  }
+  return executor->FuseRemoteGraph(input_graph_def, inputs, outputs,
+                                   output_graph_def);
+}
+
 /* static */ Status RemoteFusedGraphExecuteUtils::PlaceRemoteGraphArguments(
     const std::vector<string>& inputs, const std::vector<string>& outputs,
     const std::unordered_set<string>& fused_node_names,
@@ -1381,6 +1403,28 @@ RemoteFusedGraphExecuteUtils::BuildNodeMapFromOpTypes(
   std::unordered_set<string> retval;
   for (const NodeDef& node_def : graph_def.node()) {
     if (op_types.count(node_def.op()) > 0) {
+      retval.emplace(node_def.name());
+    }
+  }
+  return retval;
+}
+
+/* static */ std::unordered_set<string>
+RemoteFusedGraphExecuteUtils::BuildNodeMapFromOpsDefinitions(
+    const GraphDef& graph_def,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions) {
+  std::unordered_set<string> retval;
+  for (const NodeDef& node_def : graph_def.node()) {
+    std::vector<DataType> dt_vec;
+    std::vector<TensorShape> shape_vec;
+    const Status status =
+        GetOutputTensorShapeType(node_def, &dt_vec, &shape_vec);
+    if (!status.ok()) {
+      shape_vec.clear();
+    }
+    if (ops_definitions.GetOpIdFor(
+            node_def.op(), DataTypeVector(dt_vec.begin(), dt_vec.end())) !=
+        IRemoteFusedGraphOpsDefinitions::INVALID_OP_ID) {
       retval.emplace(node_def.name());
     }
   }

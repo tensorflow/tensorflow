@@ -24,8 +24,8 @@ import uuid
 import six
 
 from tensorflow.python.debug.lib import debug_data
-from tensorflow.python.debug.ops import gen_debug_ops
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import variables
 
 _GRADIENT_DEBUG_TAG = "gradient_debug_"
@@ -154,15 +154,14 @@ class GradientsDebugger(object):
     # TODO(cais): Allow overriding gradient.
     # TODO(cais): Implement value_stack.
     grad_debug_op_name = _tensor_to_grad_debug_op_name(input_tensor, self._uuid)
-    debug_identity = gen_debug_ops.debug_identity(
-        input_tensor,
-        tensor_name=input_tensor.name,
-        debug_urls=[],
-        name=grad_debug_op_name)
-    if debug_identity.op.name != grad_debug_op_name:
+    # pylint: disable=protected-access
+    debug_grad_identity = gen_array_ops._debug_gradient_identity(
+        input_tensor, name=grad_debug_op_name)
+    # pylint: enable=protected-access
+    if debug_grad_identity.op.name != grad_debug_op_name:
       raise ValueError(
           "The graph already contains an op named %s" % grad_debug_op_name)
-    return debug_identity
+    return debug_grad_identity
 
   def watch_gradients_by_tensors(self, graph, tensors):
     """Watch gradient tensors by x-tensor(s).
@@ -303,7 +302,7 @@ class GradientsDebugger(object):
     """Register the gradient tensor for an x-tensor.
 
     Args:
-      x_tensor_name: (`str`) the name of the the independent `tf.Tensor`, i.e.,
+      x_tensor_name: (`str`) the name of the independent `tf.Tensor`, i.e.,
         the tensor on the denominator of the differentiation.
       gradient_tensor: the gradient `tf.Tensor`.
     """
@@ -359,7 +358,7 @@ def clear_gradient_debuggers():
   _gradient_debuggers.clear()
 
 
-@ops.RegisterGradient("DebugIdentity")
+@ops.RegisterGradient("DebugGradientIdentity")
 def _identify_gradient_grad(op, dy):
   """Gradient function for the DebugIdentity op."""
   # TODO(cais): Allow overriding gradient.
