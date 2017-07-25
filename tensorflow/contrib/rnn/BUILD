@@ -27,7 +27,7 @@ load(
 tf_custom_op_py_library(
     name = "rnn_py",
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]) 
-                           + glob(["python/tools/.py"]),
+                           + ["python/tools/checkpoint_convert.py"],
     dso = [
         ":python/ops/_gru_ops.so",
         ":python/ops/_lstm_ops.so",
