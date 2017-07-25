@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import numpy as np
 
 import numpy as np
 
@@ -308,7 +309,7 @@ class BeamSearchDecoder(decoder.Decoder):
     log_prob_neg_inf = array_ops.ones([self._batch_size, self._beam_width],
                                       dtype=nest.flatten(
                                           self._initial_cell_state)[0].dtype
-                                     ) * -float('inf')
+                                     ) * -np.Inf
 
     log_probs = array_ops.where(log_prob_mask, log_prob_zeros, log_prob_neg_inf)
 
@@ -628,7 +629,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       range_size=beam_width,
       gather_shape=[-1])
   next_prediction_len += lengths_to_add
-  next_prediction_len = array_ops.where(next_beam_probs > -float('inf'),
+  next_prediction_len = array_ops.where(next_beam_probs > -np.Inf,
                                         next_prediction_len,
                                         array_ops.zeros_like(
                                             next_prediction_len))

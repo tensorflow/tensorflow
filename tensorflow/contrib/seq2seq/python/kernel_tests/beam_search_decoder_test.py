@@ -226,7 +226,10 @@ class TestBeamStep(test.TestCase):
 
 
 class TestLargeBeamStep(test.TestCase):
-  """Tests a single step of beam search."""
+  """
+  Tests a single step of beam search in such
+  case that beam size is less than vocabulary size.
+  """
 
   def setUp(self):
     super(TestLargeBeamStep, self).setUp()
@@ -239,7 +242,7 @@ class TestLargeBeamStep(test.TestCase):
 
   def test_step(self):
     def get_probs():
-      '''this simulates the initialize method in BeamSearchDecoder'''
+      """this simulates the initialize method in BeamSearchDecoder"""
       log_prob_mask = array_ops.one_hot(array_ops.zeros([self.batch_size],
                                                         dtype=dtypes.int32),
                                         depth=self.beam_width, on_value=True,
@@ -248,7 +251,7 @@ class TestLargeBeamStep(test.TestCase):
       log_prob_zeros = array_ops.zeros([self.batch_size, self.beam_width],
                                        dtype=dtypes.float32)
       log_prob_neg_inf = array_ops.ones([self.batch_size, self.beam_width],
-                                        dtype=dtypes.float32) * -float('inf')
+                                        dtype=dtypes.float32) * -np.Inf
 
       log_probs = array_ops.where(log_prob_mask, log_prob_zeros,
                                   log_prob_neg_inf)
@@ -275,7 +278,7 @@ class TestLargeBeamStep(test.TestCase):
     logits_[1, 1, 2] = 2.7
     logits_[1, 2, 2] = 10.0
     logits_[1, 2, 3] = 0.2
-    logits = ops.convert_to_tensor(logits_, dtype=dtypes.float32)
+    logits = constant_op.constant(logits_, dtype=dtypes.float32)
     log_probs = nn_ops.log_softmax(logits)
 
     outputs, next_beam_state = beam_search_decoder._beam_search_step(
@@ -292,15 +295,15 @@ class TestLargeBeamStep(test.TestCase):
       outputs_, next_state_, state_, log_probs_ = sess.run(
           [outputs, next_beam_state, beam_state, log_probs])
 
-    self.assertAllEqual(outputs_.predicted_ids[0, 0], 3)
-    self.assertAllEqual(outputs_.predicted_ids[0, 1], 2)
-    self.assertAllEqual(outputs_.predicted_ids[1, 0], 1)
-    neg_inf = -float('inf')
+    self.assertEqual(outputs_.predicted_ids[0, 0], 3)
+    self.assertEqual(outputs_.predicted_ids[0, 1], 2)
+    self.assertEqual(outputs_.predicted_ids[1, 0], 1)
+    neg_inf = -np.Inf
     self.assertAllEqual(next_state_.log_probs[:, -3:],
                         [[neg_inf, neg_inf, neg_inf],
                          [neg_inf, neg_inf, neg_inf]])
-    self.assertAllEqual((next_state_.log_probs[:, :-3] > neg_inf).all(), True)
-    self.assertAllEqual((next_state_.lengths[:, :-3] > 0).all(), True)
+    self.assertEqual((next_state_.log_probs[:, :-3] > neg_inf).all(), True)
+    self.assertEqual((next_state_.lengths[:, :-3] > 0).all(), True)
     self.assertAllEqual(next_state_.lengths[:, -3:], [[0, 0, 0],
                                                       [0, 0, 0]])
 
