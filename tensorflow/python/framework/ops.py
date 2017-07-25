@@ -1372,7 +1372,7 @@ class Operation(object):
     """
     if self._graph._c_graph:  # pylint: disable=protected-access
       # TODO(iga): Remove this assert after converting to C API by default.
-      # Just being a bit paranoid here.
+      # Just being a bit paranoid here
       assert self._node_def.device == c_api.TF_OperationDevice(self._c_op)
       return c_api.TF_OperationDevice(self._c_op)
     else:
@@ -1426,8 +1426,10 @@ class Operation(object):
     Args:
       device: string or device..  The device to set.
     """
-    assert not self._graph._c_graph, (  # pylint: disable=protected-access
-        "Operation._set_device doesn't work with C API")
+    if _USE_C_API:
+      c_api.SetRequestedDevice(
+          self._graph._c_graph, self._c_op, _device_string(device))  # pylint: disable=protected-access
+    # TODO(nolivia): remove this line when switch to C api
     self._node_def.device = _device_string(device)
 
   def _add_input(self, tensor, dtype=None):

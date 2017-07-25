@@ -30,37 +30,13 @@ from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops
+from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.platform import test
 
 VALID_FFT_RANKS = (1, 2, 3)
 
 
 class BaseFFTOpsTest(test.TestCase):
-
-  def _use_eigen_kernels(self):
-    use_eigen_kernels = False  # Eigen kernels are default
-    if test.is_gpu_available(cuda_only=True):
-      use_eigen_kernels = False
-    return use_eigen_kernels
-
-  def _fft_kernel_label_map(self):
-    """Returns a generator overriding kernel selection.
-
-    This is used to force testing of the eigen kernels, even
-    when they are not the default registered kernels.
-
-    Returns:
-      A generator in which to wrap every test.
-    """
-    if self._use_eigen_kernels():
-      d = dict([(op, "eigen")
-                for op in [
-                    "FFT", "FFT2D", "FFT3D", "IFFT", "IFFT2D", "IFFT3D",
-                    "IRFFT", "IRFFT2D", "IRFFT3D", "RFFT", "RFFT2D", "RFFT3D"
-                ]])
-      return ops.get_default_graph()._kernel_label_map(d)
-    else:
-      return ops.get_default_graph()._kernel_label_map({})
 
   def _compare(self, x, rank, fft_length=None, use_placeholder=False):
     self._compareForward(x, rank, fft_length, use_placeholder)
@@ -178,7 +154,7 @@ class FFTOpsTest(BaseFFTOpsTest):
       raise ValueError("invalid rank")
 
   def testEmpty(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           x = np.zeros((0,) * dims).astype(np.complex64)
@@ -186,7 +162,7 @@ class FFTOpsTest(BaseFFTOpsTest):
           self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
   def testBasic(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           self._compare(
@@ -212,7 +188,7 @@ class FFTOpsTest(BaseFFTOpsTest):
   #               (128,) * dims).astype(np.complex64), rank)
 
   def testBasicPlaceholder(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           self._compare(
@@ -222,7 +198,7 @@ class FFTOpsTest(BaseFFTOpsTest):
               use_placeholder=True)
 
   def testRandom(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       np.random.seed(12345)
 
       def gen(shape):
@@ -247,7 +223,7 @@ class FFTOpsTest(BaseFFTOpsTest):
           self._tfIFFT(x, rank)
 
   def testGrad_Simple(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 2):
           re = np.ones(shape=(4,) * dims, dtype=np.float32) / 10.0
@@ -256,7 +232,7 @@ class FFTOpsTest(BaseFFTOpsTest):
           self._checkGradComplex(self._tfIFFTForRank(rank), re, im)
 
   def testGrad_Random(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       np.random.seed(54321)
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 2):
@@ -321,7 +297,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
       raise ValueError("invalid rank")
 
   def testEmpty(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           x = np.zeros((0,) * dims).astype(np.float32)
@@ -330,7 +306,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
           self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
   def testBasic(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           for size in (5, 6):
@@ -357,7 +333,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
           self._compareBackward(c2r.astype(np.complex64), rank, (size,) * rank)
 
   def testBasicPlaceholder(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(rank, rank + 3):
           for size in (5, 6):
@@ -377,7 +353,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
 
   def testFftLength(self):
     if test.is_gpu_available(cuda_only=True):
-      with self._fft_kernel_label_map():
+      with spectral_ops_test_util.fft_kernel_label_map():
         for rank in VALID_FFT_RANKS:
           for dims in xrange(rank, rank + 3):
             for size in (5, 6):
@@ -418,7 +394,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                   use_placeholder=True)
 
   def testRandom(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       np.random.seed(12345)
 
       def gen_real(shape):
@@ -444,7 +420,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 gen_complex(complex_dims), rank, (size,) * rank)
 
   def testError(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         for dims in xrange(0, rank):
           x = np.zeros((1,) * dims).astype(np.complex64)
@@ -500,7 +476,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
             irfft_fn(x, fft_length).eval()
 
   def testGrad_Simple(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
         # rfft3d/irfft3d do not have gradients yet.
         if rank == 3:
@@ -514,7 +490,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 self._tfIFFTForRank(rank), re, im, result_is_complex=False)
 
   def testGrad_Random(self):
-    with self._fft_kernel_label_map():
+    with spectral_ops_test_util.fft_kernel_label_map():
       np.random.seed(54321)
       for rank in VALID_FFT_RANKS:
         # rfft3d/irfft3d do not have gradients yet.
