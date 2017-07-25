@@ -107,7 +107,7 @@ tf_custom_op_library(
         ":v2_op_sources",
     ],
     deps = [
-      ":tree_utils",
+        ":tree_utils",
     ],
 )
 
@@ -212,7 +212,9 @@ py_library(
 # Model Ops.
 cc_library(
     name = "model_ops_lib",
-    srcs = ["kernels/model_ops.cc"],
+    srcs = [
+        "kernels/model_ops.cc",
+    ],
     deps = [
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc_headers_only",
@@ -283,6 +285,7 @@ tf_cc_test(
     deps = [
         ":forest_proto_impl",
         ":model_ops_lib",
+        "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
@@ -366,6 +369,7 @@ tf_cc_test(
     deps = [
         ":forest_proto_impl",
         ":stats_ops_lib",
+        "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
         "//tensorflow/core",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:test",
@@ -404,14 +408,14 @@ cc_library(
 # avoids attempting to register the same protocol buffer multiple times.
 tf_cc_shared_object(
     name = "libforestprotos.so",
+    # This object does not depend on TensorFlow.
+    framework_so = [],
     linkstatic = 1,
     deps = [
         ":forest_proto_impl",
+        "//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
         "@protobuf//:protobuf",
-	"//tensorflow/contrib/tensor_forest/kernels/v4:decision-tree-resource_impl",
     ],
-     # This object does not depend on TensorFlow.
-     framework_so = [],
 )
 
 # --------------------------------- Python -------------------------------- #
