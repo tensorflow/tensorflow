@@ -145,6 +145,9 @@ class DfsHloVisitor {
   virtual Status HandleCos(HloInstruction* cos, HloInstruction* operand) {
     return HandleElementwiseUnary(cos, HloOpcode::kCos);
   }
+  virtual Status HandleSin(HloInstruction* sin, HloInstruction* operand) {
+    return HandleElementwiseUnary(sin, HloOpcode::kSin);
+  }
   virtual Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) {
     return HandleElementwiseUnary(tanh, HloOpcode::kTanh);
   }
@@ -226,6 +229,8 @@ class DfsHloVisitor {
   virtual Status HandleRecv(HloInstruction* recv) = 0;
 
   virtual Status HandleBatchNormTraining(HloInstruction* batchNormTraining) = 0;
+
+  virtual Status HandleBatchNormGrad(HloInstruction* batchNormGrad) = 0;
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".

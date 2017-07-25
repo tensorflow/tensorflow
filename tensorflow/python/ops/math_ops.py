@@ -168,13 +168,27 @@ from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated_args
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
 
+arg_max = deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
+arg_min = deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+
+
+def _set_doc(doc):
+  def _decorator(func):
+    func.__doc__ = doc
+    return func
+  return _decorator
+
 
 # pylint: disable=redefined-builtin
-# TODO(aselle): deprecate arg_max
+@deprecated_args(None, "Use the `axis` argument instead", "dimension")
+@_set_doc(gen_math_ops.arg_max.__doc__
+          .replace("dimensions", "axes")
+          .replace("dimension", "axis"))
 def argmax(input,
            axis=None,
            name=None,
@@ -189,12 +203,10 @@ def argmax(input,
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
-argmax.__doc__ = (gen_math_ops.arg_max.__doc__.replace("dimensions",
-                                                       "axes").replace(
-                                                           "dimension", "axis"))
-
-
-# TODO(aselle:deprecate arg_min)
+@deprecated_args(None, "Use the `axis` argument instead", "dimension")
+@_set_doc(gen_math_ops.arg_min.__doc__
+          .replace("dimensions", "axes")
+          .replace("dimension", "axis"))
 def argmin(input,
            axis=None,
            name=None,
@@ -208,10 +220,6 @@ def argmin(input,
     axis = 0
   return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
-
-argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
-                                                       "axes").replace(
-                                                           "dimension", "axis"))
 
 # pylint: enable=redefined-builtin
 
@@ -1251,7 +1259,8 @@ def reduce_sum(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1305,7 +1314,8 @@ def count_nonzero(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should be of numeric type, or `bool`.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
@@ -1355,7 +1365,8 @@ def reduce_mean(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1392,7 +1403,8 @@ def reduce_prod(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1429,7 +1441,8 @@ def reduce_min(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1466,7 +1479,8 @@ def reduce_max(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1513,7 +1527,8 @@ def reduce_all(input_tensor,
   Args:
     input_tensor: The boolean tensor to reduce.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1560,7 +1575,8 @@ def reduce_any(input_tensor,
   Args:
     input_tensor: The boolean tensor to reduce.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1613,7 +1629,8 @@ def reduce_logsumexp(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -2163,7 +2180,8 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    axis: A `Tensor` of type `int32` (default: 0).
+    axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+      `[-rank(x), rank(x))`.
     exclusive: If `True`, perform exclusive cumsum.
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
@@ -2213,7 +2231,8 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    axis: A `Tensor` of type `int32` (default: 0).
+    axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+      `[-rank(x), rank(x))`.
     exclusive: If `True`, perform exclusive cumprod.
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).

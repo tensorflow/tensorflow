@@ -166,7 +166,7 @@ Status MessageToBuffer(const tensorflow::protobuf::Message& in,
   if (out->data != nullptr) {
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
   }
-  const auto proto_size = in.ByteSize();
+  const auto proto_size = in.ByteSizeLong();
   void* buf = tensorflow::port::Malloc(proto_size);
   in.SerializeToArray(buf, proto_size);
   out->data = buf;
@@ -2117,7 +2117,8 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
     const int max_node_id_before = g->graph.num_node_ids();
 
     tensorflow::Scope scope =
-        NewInternalScope(&g->graph, &status->status, &g->refiner);
+        NewInternalScope(&g->graph, &status->status, &g->refiner)
+            .NewSubScope("gradients");
 
     if (dx != nullptr) {
       std::vector<tensorflow::Output> dx_arg;

@@ -261,7 +261,10 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
       std::vector<const Edge*> edges(arg.enter->out_edges().begin(),
                                      arg.enter->out_edges().end());
       for (int i = 0; i < edges.size(); ++i) {
-        TF_RET_CHECK(!edges[i]->IsControlEdge());
+        if (edges[i]->IsControlEdge() && edges[i]->dst()->IsSink()) {
+          continue;
+        }
+        TF_RET_CHECK(!edges[i]->IsControlEdge()) << edges[i]->src()->name();
         Arg new_arg;
         new_arg.is_loop_invariant = false;
         if (i == 0) {
@@ -380,7 +383,7 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
         }
       }
       if (arg.exit == nullptr) {
-        return errors::InvalidArgument("Mising Exit successor to ",
+        return errors::InvalidArgument("Missing Exit successor to ",
                                        arg.switch_node->name());
       }
     }

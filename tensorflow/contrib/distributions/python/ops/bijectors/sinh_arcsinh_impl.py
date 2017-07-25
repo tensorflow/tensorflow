@@ -18,17 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import trig
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
-
-sinh = trig.sinh
-arcsinh = trig.arcsinh
-cosh = trig.cosh
-log_cosh = trig.log_cosh
 
 __all__ = [
     "SinhArcsinh",
@@ -114,10 +108,10 @@ class SinhArcsinh(bijector.Bijector):
     return self._tailweight
 
   def _forward(self, x):
-    return sinh((arcsinh(x) + self.skewness) * self.tailweight)
+    return math_ops.sinh((math_ops.asinh(x) + self.skewness) * self.tailweight)
 
   def _inverse(self, y):
-    return sinh(arcsinh(y) / self.tailweight - self.skewness)
+    return math_ops.sinh(math_ops.asinh(y) / self.tailweight - self.skewness)
 
   def _inverse_log_det_jacobian(self, y):
     # x = sinh(arcsinh(y) / tailweight - skewness)
@@ -125,9 +119,17 @@ class SinhArcsinh(bijector.Bijector):
     # dx/dy
     # = cosh(arcsinh(y) / tailweight - skewness)
     #     / (tailweight * sqrt(y**2 + 1))
+    # Note that this could potentially return a NaN due to the log1p(x**2)
+    # term since, for instance, this will only be valid for float32 til ~1.7e19.
+    # This is in contrast with the forward/inverse passes since an arcsinh
+    # transformation is done first, which is valid until the maximum float
+    # value.
+    # TODO(srvasude): It might be possible to extend the range of validity to
+    # match that of forward/inverse by approximating log1p(y**2) by 2 * log(y).
     event_dims = self._event_dims_tensor(y)
     return math_ops.reduce_sum(
-        log_cosh(arcsinh(y) / self.tailweight - self.skewness) -
+        math_ops.log(math_ops.cosh(
+            math_ops.asinh(y) / self.tailweight - self.skewness)) -
         math_ops.log(self.tailweight) - 0.5 * math_ops.log1p(y**2),
         axis=event_dims)
 
@@ -136,8 +138,16 @@ class SinhArcsinh(bijector.Bijector):
     # Using sinh' = cosh, arcsinh'(x) = 1 / sqrt(x**2 + 1),
     # dy/dx
     # = cosh((arcsinh(x) + skewness) * tailweight) * tailweight / sqrt(x**2 + 1)
+    # Note that this could potentially return a NaN due to the log1p(x**2)
+    # term since, for instance, this will only be valid for float32 til ~1.7e19.
+    # This is in contrast with the forward/inverse passes since an arcsinh
+    # transformation is done first, which is valid until the maximum float
+    # value.
+    # TODO(srvasude): It might be possible to extend the range of validity to
+    # match that of forward/inverse by approximating log1p(y**2) by 2 * log(y).
     event_dims = self._event_dims_tensor(x)
     return math_ops.reduce_sum(
-        log_cosh((arcsinh(x) + self.skewness) * self.tailweight) +
+        math_ops.log(math_ops.cosh(
+            (math_ops.asinh(x) + self.skewness) * self.tailweight)) +
         math_ops.log(self.tailweight) - 0.5 * math_ops.log1p(x**2),
         axis=event_dims)

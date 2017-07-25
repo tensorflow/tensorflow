@@ -19,6 +19,7 @@ package_group(
     name = "friends",
     packages = [
         "//learning/brain/contrib/...",
+        "//learning/brain/research/sparse_matrix/...",
         "//tensorflow/...",
     ],
 )
@@ -64,7 +65,6 @@ config_setting(
     # will also need appropriate -mavx*, as required by specific op you use.
     name = "xsmm_backward",
     values = {
-        "define": "tensorflow_xsmm=1",
         "define": "tensorflow_xsmm_backward=1",
     },
 )
@@ -94,13 +94,11 @@ tf_kernel_library(
         "strided_slice_op_inst_7.cc",
     ],
     hdrs = [
-        "dense_update_ops.h",
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
     ],
     gpu_srcs = [
-        "dense_update_ops.h",
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
@@ -109,6 +107,7 @@ tf_kernel_library(
     ],
     deps = [
         ":bounds_check",
+        ":dense_update_functor",
         ":ops_util",
         ":variable_ops",
         "//tensorflow/core:framework",
@@ -157,7 +156,17 @@ cc_library(
     hdrs = ["conv_2d.h"],
     deps = [
         ":eigen_helpers",
+        ":gpu_util_hdrs",
         "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "conv_2d_hdrs",
+    hdrs = ["conv_2d.h"],
+    deps = [
+        ":eigen_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -244,6 +253,24 @@ cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
     deps = [
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "conv_ops_gpu_hdrs",
+    hdrs = ["conv_ops_gpu.h"],
+    deps = [
+        ":eigen_helpers",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "gpu_util_hdrs",
+    hdrs = ["gpu_utils.h"],
+    deps = [
+        ":eigen_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -796,6 +823,7 @@ tf_cc_test(
         ":identity_op",
         ":ops_testutil",
         ":ops_util",
+        ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1011,6 +1039,22 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "dense_update_functor",
+    srcs = ["dense_update_functor.cc"],
+    hdrs = ["dense_update_functor.h"],
+    gpu_srcs = [
+        "dense_update_functor.h",
+        "dense_update_functor_gpu.cu.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 0,
+)
+
 tf_cuda_cc_test(
     name = "gather_op_test",
     size = "small",
@@ -1223,6 +1267,7 @@ tf_kernel_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_ops",
         "//third_party/eigen3",
@@ -1605,7 +1650,7 @@ tf_kernel_library(
     srcs = ["resource_variable_ops.cc"],
     deps = [
         ":bounds_check",
-        ":dense_update_ops",
+        ":dense_update_functor",
         ":gather_functor",
         ":scatter_functor",
         ":state",
@@ -2078,7 +2123,7 @@ tf_kernel_library(
         "//tensorflow:darwin": [],
         "//conditions:default": ["-Wl,-z,muldefs"],
     }),
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -2389,7 +2434,9 @@ tf_kernel_library(
         ],
         "//conditions:default": [],
     }),
-    deps = MATH_DEPS + select({
+    deps = MATH_DEPS + [
+        ":gpu_util_hdrs",
+    ] + select({
         ":xsmm": [
             "@libxsmm_archive//:xsmm_avx",
         ],
@@ -2806,7 +2853,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "topk_op",
     prefix = "topk_op",
-    deps = NN_DEPS,
+    deps = NN_DEPS + if_cuda(["@cub_archive//:cub"]),
 )
 
 tf_kernel_library(
@@ -3481,7 +3528,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "dense_update_ops",
     prefix = "dense_update_ops",
-    deps = STATE_DEPS,
+    deps = STATE_DEPS + [":dense_update_functor"],
 )
 
 tf_kernel_library(
@@ -3502,16 +3549,14 @@ tf_kernel_library(
         "scatter_nd_op_cpu_impl_5.cc",
     ],
     hdrs = [
-        "dense_update_ops.h",
         "scatter_nd_op.h",
         "scatter_nd_op_cpu_impl.h",
     ],
     gpu_srcs = [
-        "dense_update_ops.h",
         "scatter_nd_op.h",
         "scatter_nd_op_gpu.cu.cc",
     ],
-    deps = STATE_DEPS + [":dense_update_ops"],
+    deps = STATE_DEPS + [":dense_update_functor"],
 )
 
 tf_kernel_library(
@@ -4053,8 +4098,9 @@ filegroup(
         "cwise_ops_common.cc",
         "cwise_ops_common.h",
         "cwise_ops_gradients.h",
+        "dense_update_functor.cc",
+        "dense_update_functor.h",
         "dense_update_ops.cc",
-        "dense_update_ops.h",
         "example_parsing_ops.cc",
         "fill_functor.cc",
         "fill_functor.h",
@@ -4172,6 +4218,7 @@ filegroup(
         "tile_functor.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
+        "topk_op.h",
         "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
@@ -5040,9 +5087,13 @@ tf_kernel_library(
 
 cc_library(
     name = "remote_fused_graph_execute_utils",
-    srcs = ["remote_fused_graph_execute_utils.cc"],
+    srcs = [
+        "i_remote_fused_graph_ops_definitions.cc",
+        "remote_fused_graph_execute_utils.cc",
+    ],
     hdrs = [
         "i_remote_fused_graph_executor.h",
+        "i_remote_fused_graph_ops_definitions.h",
         "remote_fused_graph_execute_utils.h",
     ],
     deps = [
@@ -5061,6 +5112,7 @@ cc_library(
     srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
     hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
     deps = [
+        ":remote_fused_graph_execute_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
@@ -5150,6 +5202,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -5408,6 +5461,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "interleave_dataset_op",
+    srcs = ["interleave_dataset_op.cc"],
+    deps = [
+        ":captured_function",
+        ":dataset",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "repeat_dataset_op",
     srcs = ["repeat_dataset_op.cc"],
     deps = [
@@ -5528,6 +5595,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "concatenate_dataset_op",
+    srcs = ["concatenate_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "reader_dataset_ops",
     srcs = ["reader_dataset_ops.cc"],
     deps = [
@@ -5571,11 +5650,13 @@ tf_kernel_library(
     deps = [
         ":batch_dataset_op",
         ":cache_dataset_ops",
+        ":concatenate_dataset_op",
         ":dense_to_sparse_batch_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
         ":group_by_window_dataset_op",
         ":ignore_errors_dataset_op",
+        ":interleave_dataset_op",
         ":iterator_ops",
         ":map_dataset_op",
         ":padded_batch_dataset_op",

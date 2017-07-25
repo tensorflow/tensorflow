@@ -20,6 +20,7 @@
 namespace tensorflow {
 namespace gtflow {
 using shape_inference::InferenceContext;
+using shape_inference::DimensionHandle;
 using shape_inference::ShapeHandle;
 
 REGISTER_RESOURCE_HANDLE_OP(QuantileStreamResource);
@@ -119,6 +120,21 @@ stamp_token: Stamp token for Read/Write operations.
 next_stamp_token: Stamp token to be used for the next iteration.
 )doc");
 
+REGISTER_OP("QuantileAccumulatorFlushSummary")
+    .Input("quantile_accumulator_handle: resource")
+    .Input("stamp_token: int64")
+    .Input("next_stamp_token: int64")
+    .Output("output: string")
+    .Doc(R"doc(
+Resets quantile summary stream and returns the summary.
+
+quantile_accumulator_handle: The handle to the accumulator.
+stamp_token: Stamp token for Read/Write operations.
+             Any operation with a mismatching token will be dropped.
+next_stamp_token: Stamp token to be used for the next iteration.
+output: A scalar string that is the a summary of the accumulator.
+)doc");
+
 REGISTER_OP("QuantileAccumulatorSerialize")
     .Input("quantile_accumulator_handle: resource")
     .Output("stamp_token: int64")
@@ -172,7 +188,17 @@ REGISTER_OP("MakeQuantileSummaries")
       int num_sparse_features;
       TF_RETURN_IF_ERROR(
           c->GetAttr("num_sparse_features", &num_sparse_features));
+      ShapeHandle example_weights_shape;
+      int example_weights_index = num_dense_features + num_sparse_features * 3;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(example_weights_index), 2,
+                                     &example_weights_shape));
       for (int i = 0; i < num_dense_features; ++i) {
+        ShapeHandle dense_feature_shape;
+        DimensionHandle unused_dim;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &dense_feature_shape));
+        TF_RETURN_IF_ERROR(c->Merge(c->Dim(dense_feature_shape, 0),
+                                    c->Dim(example_weights_shape, 0),
+                                    &unused_dim));
         c->set_output(i, c->Scalar());
       }
       for (int i = 0; i < num_sparse_features; ++i) {
@@ -193,7 +219,8 @@ sparse_float_feature_values: List of rank 1 tensors containing the sparse float
 feature values.
 sparse_float_feature_shapes: List of rank 1 tensors containing the shape of the
 float feature.
-example_weights: Rank 1 tensor containing the example weight tensor.
+example_weights: Rank 2 (N, 1) tensor of per-example weights. Should match
+    dense and sparse features shape.
 dense_summaries: A list of serialized QuantileSummaryState for dense columns.
 sparse_summaries: A list of serialized QuantileSummaryState for sparse columns.
 )doc");

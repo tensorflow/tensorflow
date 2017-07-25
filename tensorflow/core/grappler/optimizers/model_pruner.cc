@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include "tensorflow/core/grappler/utils.h"
 
@@ -44,23 +45,35 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (auto& node : item.graph.node()) {
     // Remove the stop gradient nodes since they serve no purpose once the graph
     // is built. Also remove Identity ops.
-    if (node.op() != "StopGradient" && node.op() != "Identity") {
+    if (!IsStopGradient(node) && !IsIdentity(node)) {
       continue;
     }
     // Don't remove nodes that must be preserved.
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
     }
+
     // Don't remove nodes that drive control dependencies.
     // Don't remove nodes that are driven by control dependencies either since
     // we can't ensure (yet) that we won't increase the number of control
     // dependency edges by deleting them (for example, removing a node driven by
     // 10 control edges and driving 10 control edges would result in the
     // creation of 100 edges).
+    // Don't modify nodes that are connected to functions since that can result
+    // in inlining failures later on.
+    // Don't prune nodes that are driven by another device since these could be
+    // used to reduce cross device communication.
     if (!rewriter.DrivesControlDependency(node) &&
-        !rewriter.IsDrivenByControlDependency(node)) {
+        !rewriter.IsDrivenByControlDependency(node) &&
+        !rewriter.IsConnectedToFunction(node) &&
+        !rewriter.IsDrivenByAnotherDevice(node)) {
       nodes_to_delete.insert(&node);
     }
+  }
+
+  if (nodes_to_delete.empty()) {
+    *pruned_graph = item.graph;
+    return Status::OK();
   }
 
   for (auto& node : item.graph.node()) {

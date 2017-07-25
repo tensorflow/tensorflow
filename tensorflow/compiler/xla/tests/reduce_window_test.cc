@@ -74,7 +74,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
   ComputationBuilder builder_;
 };
 
-TEST_F(ReduceWindowTest, DISABLED_ON_CPU(DISABLED_ON_GPU(Min3In5Stride2))) {
+TEST_F(ReduceWindowTest, Min3In5Stride2) {
   const auto input = builder_.ConstantR1<float>({10000, 1000, 100, 10, 1});
   ReduceWindowMin(input, {3}, {2}, Padding::kValid);
   ComputeAndCompareR1<float>(&builder_, {100, 1}, {}, ErrorSpec(0.0001));
@@ -314,8 +314,8 @@ TEST_F(ReduceWindowTest, R4UnitWindow) {
   auto res = ReferenceUtil::ReduceWindow4DAdd(input_array, 0.0f, {1, 1, 7, 1},
                                               {1, 4, 1, 1}, padding);
 
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_data,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
@@ -337,8 +337,8 @@ XLA_TEST_F(ReduceWindowTest, R4SecondMinorStride) {
   auto res = ReferenceUtil::ReduceWindow4DAdd(
       input_array, 0.0f, {1, 1, win_len, 1}, {1, 1, stride, 1}, padding);
 
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_data,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
@@ -360,8 +360,8 @@ XLA_TEST_F(ReduceWindowTest, R4SecondMinorUnitStride) {
   auto res = ReferenceUtil::ReduceWindow4DAdd(
       input_array, 0.0f, {1, 1, win_len, 1}, {1, 1, stride, 1}, padding);
 
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_data,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
@@ -383,8 +383,8 @@ XLA_TEST_F(ReduceWindowTest, R4SecondMinorWin) {
   auto res = ReferenceUtil::ReduceWindow4DAdd(
       input_array, 0.0f, {1, 1, win_len, 1}, {1, 1, stride, 1}, padding);
 
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_data,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
   ComputeAndCompareR4<float>(&builder_, *res, {input_data.get()},
                              ErrorSpec(1e-3, 1e-3));
 }
@@ -507,8 +507,8 @@ class R4ReduceWindowTest
     input.FillIota(1);
     std::unique_ptr<Literal> input_literal =
         Literal::CreateR4FromArray4D(input);
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_arg,
-                           client_->TransferToServer(*input_literal));
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_arg,
+                            client_->TransferToServer(*input_literal));
 
     std::vector<std::pair<int64, int64>> padding(4);
     for (int i = 0; i < 4; ++i) {
@@ -541,7 +541,8 @@ class R4ReduceWindowTest
             /*window=*/param.window_bounds,
             /*stride=*/param.strides,
             /*padding=*/padding);
-    ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()});
+    ComputeAndCompareR4<float>(&b, *expected, {input_arg.get()},
+                               ErrorSpec(1e-3, 1e-3));
   }
 };
 
@@ -773,8 +774,8 @@ TEST_P(R2ReduceWindowTest, Add) {
   std::unique_ptr<Literal> input_literal =
       Literal::CreateR2FromArray2DWithLayout(
           input, LayoutUtil::MakeLayout(param.layout));
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_arg,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_arg,
+                          client_->TransferToServer(*input_literal));
   b.ReduceWindow(/*operand=*/
                  b.Parameter(0, input_literal->shape(), "p0"),
                  /*init_value=*/b.ConstantR0<float>(kInitValue),
@@ -877,8 +878,8 @@ TEST_P(R1ReduceWindowTest, DoIt) {
   std::iota(std::begin(input_vector), std::end(input_vector), 0);
   std::unique_ptr<Literal> input_literal =
       Literal::CreateR1(tensorflow::gtl::ArraySlice<float>(input_vector));
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> input_arg,
-                         client_->TransferToServer(*input_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_arg,
+                          client_->TransferToServer(*input_literal));
 
   auto computation = param.reducer == kAdd
                          ? CreateScalarAddComputation(F32, &b)

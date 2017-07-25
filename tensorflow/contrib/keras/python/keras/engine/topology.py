@@ -29,13 +29,13 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.utils import conv_utils
+from tensorflow.contrib.keras.python.keras.utils.generic_utils import has_arg
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.contrib.keras.python.keras.utils.layer_utils import print_summary as print_layer_summary
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import tf_inspect
 
 
 # pylint: disable=g-import-not-at-top
@@ -386,7 +386,7 @@ class Layer(tf_base_layers.Layer):
     user_kwargs = copy.copy(kwargs)
     if not _is_all_none(previous_mask):
       # The previous layer generated a mask.
-      if 'mask' in tf_inspect.getargspec(self.call).args:
+      if has_arg(self.call, 'mask'):
         if 'mask' not in kwargs:
           # If mask is explicitly passed to __call__,
           # we should override the default mask.
@@ -1916,7 +1916,7 @@ class Container(Layer):
               kwargs = {}
             if len(computed_data) == 1:
               computed_tensor, computed_mask = computed_data[0]
-              if 'mask' in tf_inspect.getargspec(layer.call).args:
+              if has_arg(layer.call, 'mask'):
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_mask
               output_tensors = _to_list(layer.call(computed_tensor, **kwargs))
@@ -1927,7 +1927,7 @@ class Container(Layer):
             else:
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
-              if 'mask' in tf_inspect.getargspec(layer.call).args:
+              if has_arg(layer.call, 'mask'):
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_masks
               output_tensors = _to_list(layer.call(computed_tensors, **kwargs))
@@ -2352,8 +2352,25 @@ class Container(Layer):
       raise ImportError('Requires yaml module installed.')
     return yaml.dump(self._updated_config(), **kwargs)
 
-  def summary(self, line_length=None, positions=None):
-    print_layer_summary(self, line_length=line_length, positions=positions)
+  def summary(self, line_length=None, positions=None, print_fn=None):
+    """Prints a string summary of the network.
+
+    Arguments:
+        line_length: Total length of printed lines
+            (e.g. set this to adapt the display to different
+            terminal window sizes).
+        positions: Relative or absolute positions of log elements
+            in each line. If not provided,
+            defaults to `[.33, .55, .67, 1.]`.
+        print_fn: Print function to use. Defaults to `print`.
+            It will be called on each line of the summary.
+            You can set it to a custom function
+            in order to capture the string summary.
+    """
+    print_layer_summary(self,
+                        line_length=line_length,
+                        positions=positions,
+                        print_fn=print_fn)
 
 
 def get_source_inputs(tensor, layer=None, node_index=None):
@@ -2609,6 +2626,35 @@ def preprocess_weights_for_loading(layer,
           kernel = np.transpose(kernel, (2, 3, 1, 0))
           recurrent_kernel = np.transpose(recurrent_kernel, (2, 3, 1, 0))
         weights = [kernel, recurrent_kernel, bias]
+
+    if layer.__class__.__name__ in ['Model', 'Sequential']:
+      new_weights = []
+      # trainable weights
+      for sublayer in layer.layers:
+        num_weights = len(sublayer.trainable_weights)
+        if num_weights > 0:
+          new_weights.extend(
+              preprocess_weights_for_loading(
+                  layer=sublayer,
+                  weights=weights[:num_weights],
+                  original_keras_version=original_keras_version,
+                  original_backend=original_backend))
+          weights = weights[num_weights:]
+
+      # non-trainable weights
+      for sublayer in layer.layers:
+        num_weights = len([
+            l for l in sublayer.weights if l not in sublayer.trainable_weights
+        ])
+        if num_weights > 0:
+          new_weights.extend(
+              preprocess_weights_for_loading(
+                  layer=sublayer,
+                  weights=weights[:num_weights],
+                  original_keras_version=original_keras_version,
+                  original_backend=original_backend))
+          weights = weights[num_weights:]
+      weights = new_weights
 
   conv_layers = ['Conv1D', 'Conv2D', 'Conv3D', 'Conv2DTranspose', 'ConvLSTM2D']
   if layer.__class__.__name__ in conv_layers:

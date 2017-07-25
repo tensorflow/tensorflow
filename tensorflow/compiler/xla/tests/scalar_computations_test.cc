@@ -354,7 +354,7 @@ TEST_F(ScalarComputationsTest, DivU32s) {
     ComputationDataHandle divisor =
         builder.Parameter(1, ShapeUtil::MakeShape(U32, {}), "divisor");
     builder.Div(dividend, divisor);
-    TF_ASSIGN_OR_ASSERT_OK(div_computation, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(div_computation, builder.Build());
   }
 
   for (uint32 divisor : vals) {
@@ -362,10 +362,10 @@ TEST_F(ScalarComputationsTest, DivU32s) {
       for (uint32 dividend : vals) {
         auto dividend_literal = Literal::CreateR0<uint32>(dividend);
         auto divisor_literal = Literal::CreateR0<uint32>(divisor);
-        TF_ASSIGN_OR_ASSERT_OK(auto dividend_data,
-                               client_->TransferToServer(*dividend_literal));
-        TF_ASSIGN_OR_ASSERT_OK(auto divisor_data,
-                               client_->TransferToServer(*divisor_literal));
+        TF_ASSERT_OK_AND_ASSIGN(auto dividend_data,
+                                client_->TransferToServer(*dividend_literal));
+        TF_ASSERT_OK_AND_ASSIGN(auto divisor_data,
+                                client_->TransferToServer(*divisor_literal));
         auto actual_literal =
             client_
                 ->ExecuteAndTransfer(div_computation,
@@ -395,7 +395,7 @@ TEST_F(ScalarComputationsTest, RemU32s) {
     ComputationDataHandle divisor =
         builder.Parameter(1, ShapeUtil::MakeShape(U32, {}), "divisor");
     builder.Rem(dividend, divisor);
-    TF_ASSIGN_OR_ASSERT_OK(rem_computation, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(rem_computation, builder.Build());
   }
 
   for (uint32 divisor : vals) {
@@ -403,10 +403,10 @@ TEST_F(ScalarComputationsTest, RemU32s) {
       for (uint32 dividend : vals) {
         auto dividend_literal = Literal::CreateR0<uint32>(dividend);
         auto divisor_literal = Literal::CreateR0<uint32>(divisor);
-        TF_ASSIGN_OR_ASSERT_OK(auto dividend_data,
-                               client_->TransferToServer(*dividend_literal));
-        TF_ASSIGN_OR_ASSERT_OK(auto divisor_data,
-                               client_->TransferToServer(*divisor_literal));
+        TF_ASSERT_OK_AND_ASSIGN(auto dividend_data,
+                                client_->TransferToServer(*dividend_literal));
+        TF_ASSERT_OK_AND_ASSIGN(auto divisor_data,
+                                client_->TransferToServer(*divisor_literal));
         auto actual_literal =
             client_
                 ->ExecuteAndTransfer(rem_computation,
@@ -426,7 +426,7 @@ TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   builder.Rem(x, builder.ConstantR0<int32>(80000));
 
   std::unique_ptr<Literal> literal = Literal::CreateR0<int32>(87919);
-  TF_ASSIGN_OR_ASSERT_OK(auto input_data, client_->TransferToServer(*literal));
+  TF_ASSERT_OK_AND_ASSIGN(auto input_data, client_->TransferToServer(*literal));
   ComputeAndCompareR0<int32>(&builder, 7919, {input_data.get()});
 }
 

@@ -81,7 +81,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace se = ::perftools::gputools;
@@ -167,7 +169,7 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
     fake_argv_storage.push_back("");
     for (const auto& it : options) {
       // Skip options the XLA backend itself consumes.
-      if (it.first != kXlaParallelCpuOption) {
+      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
         if (it.second.empty()) {
           fake_argv_storage.push_back(it.first);
         } else {
@@ -355,6 +357,47 @@ Status AppendIRToFile(const string& file_name, const string& ir_module_string) {
   return Status::OK();
 }
 
+Status InitializeIRDumpHooks(
+    const HloModule& module,
+    CompilerFunctor::ModuleHook* pre_optimization_ir_dump_hook,
+    CompilerFunctor::ModuleHook* post_optimization_ir_dump_hook) {
+  const string& dump_ir_to = module.config().debug_options().xla_dump_ir_to();
+  if (dump_ir_to.empty()) {
+    return Status::OK();
+  }
+
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->RecursivelyCreateDir(dump_ir_to));
+
+  string safe_file_name_base = module.name();
+  std::replace_if(safe_file_name_base.begin(), safe_file_name_base.end(),
+                  [](char c) { return c == '/' || c == '\\'; }, '_');
+
+  string unoptimized_ir_file_name = tensorflow::io::JoinPath(
+      dump_ir_to,
+      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-no-opt.ll"));
+  string optimized_ir_file_name = tensorflow::io::JoinPath(
+      dump_ir_to,
+      tensorflow::strings::StrCat("ir-", safe_file_name_base, "-opt.ll"));
+
+  // We still want to append to avoid overwriting possibly important information
+  // due to operator error.
+
+  *pre_optimization_ir_dump_hook =
+      [unoptimized_ir_file_name](const llvm::Module& module) {
+        return AppendIRToFile(unoptimized_ir_file_name,
+                              llvm_ir::DumpModuleToString(module));
+      };
+
+  *post_optimization_ir_dump_hook =
+      [optimized_ir_file_name](const llvm::Module& module) {
+        return AppendIRToFile(optimized_ir_file_name,
+                              llvm_ir::DumpModuleToString(module));
+      };
+
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
@@ -364,15 +407,11 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   std::call_once(llvm_command_line_options_initialized,
                  &InitializeLLVMCommandLineOptions, module->config());
 
-  const string dump_ir_to = module->config().debug_options().xla_dump_ir_to();
-
-  auto dump_ir_to_disk = [dump_ir_to](const llvm::Module& module) {
-    if (!dump_ir_to.empty()) {
-      TF_RETURN_IF_ERROR(
-          AppendIRToFile(dump_ir_to, llvm_ir::DumpModuleToString(module)));
-    }
-    return Status::OK();
-  };
+  CompilerFunctor::ModuleHook pre_optimization_ir_dump_hook;
+  CompilerFunctor::ModuleHook post_optimization_ir_dump_hook;
+  TF_RETURN_IF_ERROR(InitializeIRDumpHooks(*module,
+                                           &pre_optimization_ir_dump_hook,
+                                           &post_optimization_ir_dump_hook));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
@@ -380,7 +419,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
   auto jit = MakeUnique<SimpleOrcJIT>(CompilerTargetOptions(module->config()),
                                       CodeGenOptLevel(module->config()),
-                                      dump_ir_to_disk, dump_ir_to_disk);
+                                      pre_optimization_ir_dump_hook,
+                                      post_optimization_ir_dump_hook);
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
@@ -455,7 +495,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
 
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx);
+                         &hlo_to_profile_idx, jit->target_machine());
 
     std::unique_ptr<std::map<HloInstruction*, string>> function_names(
         new std::map<HloInstruction*, string>());
@@ -529,7 +569,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
-                         &hlo_to_profile_idx);
+                         &hlo_to_profile_idx, jit->target_machine());
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -693,7 +733,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
-                         /*hlo_to_profile_idx=*/nullptr);
+                         /*hlo_to_profile_idx=*/nullptr, target_machine.get());
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
@@ -714,10 +754,17 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
 
+    CompilerFunctor::ModuleHook pre_optimization_ir_dump_hook;
+    CompilerFunctor::ModuleHook post_optimization_ir_dump_hook;
+    TF_RETURN_IF_ERROR(InitializeIRDumpHooks(*module,
+                                             &pre_optimization_ir_dump_hook,
+                                             &post_optimization_ir_dump_hook));
+
     Disassembler disassembler(*target_machine);
-    CompilerFunctor compiler_functor(target_machine.get(), &disassembler,
-                                     opt_level,
-                                     CompilerFunctor::AllIntrinsics());
+    CompilerFunctor compiler_functor(
+        target_machine.get(), &disassembler, opt_level,
+        CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
+        post_optimization_ir_dump_hook);
     llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
         compiler_functor(llvm_module);
     llvm::StringRef object_file_data_ref = object_file.getBinary()->getData();

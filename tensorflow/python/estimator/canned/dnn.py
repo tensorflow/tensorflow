@@ -50,7 +50,7 @@ def _dnn_model_fn(
   """Deep Neural Net model_fn.
 
   Args:
-    features: Dict of `Tensor` (depends on data passed to `train`).
+    features: dict of `Tensor`.
     labels: `Tensor` of shape [batch_size, 1] or [batch_size] labels of
       dtype `int32` or `int64` in the range `[0, n_classes)`.
     mode: Defines whether this is training, evaluation or prediction.
@@ -72,7 +72,13 @@ def _dnn_model_fn(
     predictions: A dict of `Tensor` objects.
     loss: A scalar containing the loss of the step.
     train_op: The op for training.
+
+  Raises:
+    ValueError: If features has the wrong type.
   """
+  if not isinstance(features, dict):
+    raise ValueError('features should be a dictionary of `Tensor`s. '
+                     'Given type: {}'.format(type(features)))
   optimizer = optimizers.get_optimizer_instance(
       optimizer, learning_rate=_LEARNING_RATE)
   num_ps_replicas = config.num_ps_replicas if config else 0

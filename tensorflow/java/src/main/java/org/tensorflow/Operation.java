@@ -91,6 +91,21 @@ public final class Operation {
     }
   }
 
+  /**
+   * Returns symbolic handles to a list of tensors produced by this operation.
+   *
+   * @param idx index of the first tensor of the list
+   * @param length number of tensors in the list
+   * @return array of {@code Output}
+   */
+  public Output[] outputList(int idx, int length) {
+    Output[] outputs = new Output[length];
+    for (int i = 0; i < length; ++i) {
+      outputs[i] = output(idx + i);
+    }
+    return outputs;
+  }
+
   /** Returns a symbolic handle to one of the tensors produced by this operation. */
   public Output output(int idx) {
     return new Output(this, idx);
@@ -139,7 +154,7 @@ public final class Operation {
    *
    * @param name identifier of the list of tensors (of which there may be many) inputs to this
    *     operation.
-   * @returns the size of the list of Tensors produced by this named input.
+   * @return the size of the list of Tensors produced by this named input.
    * @throws IllegalArgumentException if this operation has no input with the provided name.
    */
   public int inputListLength(final String name) {

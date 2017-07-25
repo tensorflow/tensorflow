@@ -36,13 +36,9 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         num_features=60).fill()
     self.assertEquals(2, hparams.num_classes)
     self.assertEquals(3, hparams.num_output_columns)
-    self.assertEquals(60, hparams.num_splits_to_consider)
-    # Don't have more fertile nodes than max # leaves, which is 500.
-    self.assertEquals(500, hparams.max_fertile_nodes)
+    self.assertEquals(10, hparams.num_splits_to_consider)
     # Default value of valid_leaf_threshold
     self.assertEquals(1, hparams.valid_leaf_threshold)
-    # floor(60 / 25) = 2
-    self.assertEquals(2, hparams.split_initializations_per_input)
     self.assertEquals(0, hparams.base_random_seed)
 
   def testForestHParamsBigTree(self):
@@ -52,11 +48,17 @@ class TensorForestTest(test_util.TensorFlowTestCase):
         max_nodes=1000000,
         split_after_samples=25,
         num_features=1000).fill()
-    self.assertEquals(1000, hparams.num_splits_to_consider)
-    # 1000000 / 2 = 500000
-    self.assertEquals(500000, hparams.max_fertile_nodes)
-    # floor(1000 / 25) = 40
-    self.assertEquals(40, hparams.split_initializations_per_input)
+    self.assertEquals(31, hparams.num_splits_to_consider)
+
+  def testForestHParamsStringParams(self):
+    hparams = tensor_forest.ForestHParams(
+        num_classes=2,
+        num_trees=100,
+        max_nodes=1000000,
+        split_after_samples="25",
+        num_splits_to_consider="1000000",
+        num_features=1000).fill()
+    self.assertEquals("1000000", hparams.num_splits_to_consider)
 
   def testTrainingConstructionClassification(self):
     input_data = [[-1., 0.], [-1., 2.],  # node 1
@@ -104,18 +106,6 @@ class TensorForestTest(test_util.TensorFlowTestCase):
 
     graph_builder = tensor_forest.RandomForestGraphs(params)
     graph = graph_builder.inference_graph(input_data)
-    self.assertTrue(isinstance(graph, ops.Tensor))
-
-  def testImpurityConstruction(self):
-    params = tensor_forest.ForestHParams(
-        num_classes=4,
-        num_features=2,
-        num_trees=10,
-        max_nodes=1000,
-        split_after_samples=25).fill()
-
-    graph_builder = tensor_forest.RandomForestGraphs(params)
-    graph = graph_builder.average_impurity()
     self.assertTrue(isinstance(graph, ops.Tensor))
 
   def testTrainingConstructionClassificationSparse(self):

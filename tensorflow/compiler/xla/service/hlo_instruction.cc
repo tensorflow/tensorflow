@@ -130,6 +130,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
       break;
@@ -313,6 +314,12 @@ HloInstruction::CreateCrossReplicaSum(const Shape& shape,
   instruction->slice_starts_.assign(start_indices.begin(), start_indices.end());
   instruction->slice_limits_.assign(limit_indices.begin(), limit_indices.end());
   instruction->slice_strides_.assign(strides.begin(), strides.end());
+  // For backward compatibility with old serialized computations: if there are
+  // no strides, assume all strides are 1.
+  // TODO(b/63317920): remove this code.
+  if (instruction->slice_strides_.empty()) {
+    instruction->slice_strides_ = std::vector<int64>(start_indices.size(), 1LL);
+  }
   return instruction;
 }
 
@@ -396,6 +403,24 @@ HloInstruction::CreateBatchNormTraining(const Shape& shape,
   instruction->AppendOperand(operand);
   instruction->AppendOperand(scale);
   instruction->AppendOperand(offset);
+  instruction->epsilon_ = epsilon;
+  instruction->feature_index_ = feature_index;
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBatchNormGrad(const Shape& shape, HloInstruction* operand,
+                                    HloInstruction* scale, HloInstruction* mean,
+                                    HloInstruction* variance,
+                                    HloInstruction* grad_output, float epsilon,
+                                    int64 feature_index) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBatchNormGrad, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(scale);
+  instruction->AppendOperand(mean);
+  instruction->AppendOperand(variance);
+  instruction->AppendOperand(grad_output);
   instruction->epsilon_ = epsilon;
   instruction->feature_index_ = feature_index;
   return instruction;
@@ -768,6 +793,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
@@ -883,13 +909,21 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateBatchNormTraining(shape, new_operands[0], new_operands[1],
                                      new_operands[2], epsilon(),
                                      feature_index());
-    // Unsupported ops for cloning.
+    case HloOpcode::kInfeed:
+      CHECK_EQ(new_operands.size(), 0);
+      return CreateInfeed(shape, infeed_config());
+    case HloOpcode::kOutfeed:
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateOutfeed(shape, new_operands[0], outfeed_config());
+    case HloOpcode::kBatchNormGrad:
+      CHECK_EQ(new_operands.size(), 5);
+      return CreateBatchNormGrad(shape, new_operands[0], new_operands[1],
+                                 new_operands[2], new_operands[3],
+                                 new_operands[4], epsilon(), feature_index());
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:
     case HloOpcode::kIndex:
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
   }
@@ -1164,6 +1198,7 @@ bool HloInstruction::Identical(
     case HloOpcode::kRemainder:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
@@ -1183,6 +1218,7 @@ bool HloInstruction::Identical(
              ShapeUtil::Compatible(shape(), other.shape());
 
     case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBatchNormGrad:
       return feature_index() == other.feature_index() &&
              epsilon() == other.epsilon();
 
@@ -1488,7 +1524,7 @@ string HloInstruction::ToString(bool compact_operands,
   string operands;
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
-    if (ShapeUtil::ElementsIn(shape()) <= 10) {
+    if (!ShapeUtil::IsTuple(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) {
       // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
       string tmp = literal().ToString();
@@ -1505,7 +1541,7 @@ string HloInstruction::ToString(bool compact_operands,
         first = false;
       }
     } else {
-      // Do not show large constants.
+      // Do not show large constants or tuples.
       operands = "{...}";
     }
   } else if (opcode() == HloOpcode::kParameter) {
@@ -1615,7 +1651,7 @@ HloInstructionProto HloInstruction::ToProto() const {
     case HloOpcode::kFusion: {
       HloComputationProto* proto_fused_computation =
           proto.mutable_fused_instructions_computation();
-      proto_fused_computation->set_name(FullyQualifiedName());
+      proto_fused_computation->set_name(name());
 
       // Fill in fused instructions. Note that fused_instructions() returns in
       // reverse post-order (i.e. root first), so we reverse to get post-order.
@@ -1689,14 +1725,6 @@ string HloInstruction::ToCategory() const {
   }
 
   return HloOpcodeString(opcode());
-}
-
-string HloInstruction::FullyQualifiedName() const {
-  if (IsFused()) {
-    return StrCat(fusion_instruction()->parent()->name(),
-                  "::", fusion_instruction()->name(), "::", name_);
-  }
-  return StrCat(parent_->name(), "::", name_);
 }
 
 HloInstruction* HloInstruction::tracing() const { return trace_instruction_; }
@@ -1790,6 +1818,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleAbs(this, operands_[0]);
     case HloOpcode::kBatchNormTraining:
       return visitor->HandleBatchNormTraining(this);
+    case HloOpcode::kBatchNormGrad:
+      return visitor->HandleBatchNormGrad(this);
     case HloOpcode::kSign:
       return visitor->HandleSign(this, operands_[0]);
     case HloOpcode::kConstant:
@@ -1870,6 +1900,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleTanh(this, operands_[0]);
     case HloOpcode::kCos:
       return visitor->HandleCos(this, operands_[0]);
+    case HloOpcode::kSin:
+      return visitor->HandleSin(this, operands_[0]);
     case HloOpcode::kIsFinite:
       return visitor->HandleIsFinite(this, operands_[0]);
     case HloOpcode::kLogicalNot:
@@ -2145,6 +2177,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kNegate:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kTanh:
       return true;
 

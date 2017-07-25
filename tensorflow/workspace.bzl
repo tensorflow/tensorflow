@@ -2,6 +2,7 @@
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
@@ -140,6 +141,19 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   cuda_configure(name="local_config_cuda")
   sycl_configure(name="local_config_sycl")
   python_configure(name="local_config_python")
+
+  mkl_repository(
+      name = "mkl",
+      urls = [
+          "http://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
+          "https://github.com/01org/mkl-dnn/releases/download/v0.7/mklml_lnx_2018.0.20170425.tgz",
+      ],
+      sha256 = "3cc2501fb209e1fd0960a5f61c919438f9619c68a644dcebf0fdf69b07460c57",
+      strip_prefix = "mklml_lnx_2018.0.20170425",
+      build_file = str(Label("//third_party/mkl:mkl.BUILD")),
+      repository = tf_repo_name,
+  )
+
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
@@ -205,11 +219,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "farmhash_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
-          "https://github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
+          "http://mirror.bazel.build/github.com/google/farmhash/archive/23eecfbe7e84ebf2e229bd02248f431c36e12f1a.zip",
+          "https://github.com/google/farmhash/archive/23eecfbe7e84ebf2e229bd02248f431c36e12f1a.zip",
       ],
-      sha256 = "4c626d1f306bda2c6804ab955892f803f5245f4dcaecb4979dc08b091256da54",
-      strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f",
+      sha256 = "55215f8cd3ddbe9781f6fe5cc228731d6dcc8301b6191c6d420034c3fff1cb8d",
+      strip_prefix = "farmhash-23eecfbe7e84ebf2e229bd02248f431c36e12f1a",
       build_file = str(Label("//third_party:farmhash.BUILD")),
   )
 
@@ -327,11 +341,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   patched_http_archive(
       name = "protobuf",
       urls = [
-          "http://mirror.bazel.build/github.com/google/protobuf/archive/v3.3.1.tar.gz",
-          "https://github.com/google/protobuf/archive/v3.3.1.tar.gz",
+          "https://github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
+          "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
       ],
-      sha256 = "30f23a45c6f4515598702a6d19c4295ba92c4a635d7ad8d331a4db9fccff392d",
-      strip_prefix = "protobuf-3.3.1",
+      sha256 = "6d43b9d223ce09e5d4ce8b0060cb8a7513577a35a64c7e3dad10f0703bf3ad93",
+      strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
       # TODO: remove patching when tensorflow stops linking same protos into
       #       multiple shared libraries loaded in runtime by python.
       #       This patch fixes a runtime crash when tensorflow is compiled
@@ -345,21 +359,21 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.http_archive(
       name = "com_google_protobuf",
       urls = [
-          "http://mirror.bazel.build/github.com/google/protobuf/archive/v3.3.1.tar.gz",
-          "https://github.com/google/protobuf/archive/v3.3.1.tar.gz",
+          "https://github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
+          "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
       ],
-      sha256 = "30f23a45c6f4515598702a6d19c4295ba92c4a635d7ad8d331a4db9fccff392d",
-      strip_prefix = "protobuf-3.3.1",
+      sha256 = "6d43b9d223ce09e5d4ce8b0060cb8a7513577a35a64c7e3dad10f0703bf3ad93",
+      strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
   )
 
   native.http_archive(
       name = "com_google_protobuf_cc",
       urls = [
-          "http://mirror.bazel.build/github.com/google/protobuf/archive/v3.3.1.tar.gz",
-          "https://github.com/google/protobuf/archive/v3.3.1.tar.gz",
+          "https://github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
+          "http://mirror.bazel.build/github.com/google/protobuf/archive/0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66.tar.gz",
       ],
-      sha256 = "30f23a45c6f4515598702a6d19c4295ba92c4a635d7ad8d331a4db9fccff392d",
-      strip_prefix = "protobuf-3.3.1",
+      sha256 = "6d43b9d223ce09e5d4ce8b0060cb8a7513577a35a64c7e3dad10f0703bf3ad93",
+      strip_prefix = "protobuf-0b059a3d8a8f8aa40dde7bea55edca4ec5dfea66",
   )
 
   native.new_http_archive(
@@ -484,11 +498,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/5d353d4750143a13e53abf721d521684ba6a5165.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/5d353d4750143a13e53abf721d521684ba6a5165.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/4d98985c94c36b9eb4396c91fe0a72a0c5f707b2.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/4d98985c94c36b9eb4396c91fe0a72a0c5f707b2.tar.gz",
       ],
-      sha256 = "148e96f1cfb0b880e0831a287f44d48251eabc20e24589e6fa4db5916c0c8153",
-      strip_prefix = "llvm-5d353d4750143a13e53abf721d521684ba6a5165",
+      sha256 = "1a085c995522fa19900568c03eb595b425df53842c7f281e3ab79aaa04affffa",
+      strip_prefix = "llvm-4d98985c94c36b9eb4396c91fe0a72a0c5f707b2",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -661,4 +675,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.bind(
       name = "cub",
       actual = "@cub_archive//:cub",
+  )
+
+  native.http_archive(
+      name = "bazel_toolchains",
+      urls = [
+          "http://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/bccee4855c049d34bac481083b4c68e2fab8cc50.tar.gz",
+      ],
+      sha256 = "3903fd93b96b42067e00b7973a2c16c34e761ad7a0b55e1557d408f352849e41",
+      strip_prefix = "bazel-toolchains-bccee4855c049d34bac481083b4c68e2fab8cc50",
   )

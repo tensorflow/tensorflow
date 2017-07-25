@@ -31,7 +31,7 @@ namespace tensorflow {
 class RdmaRemoteRendezvous : public BaseRemoteRendezvous {
  public:
   RdmaRemoteRendezvous(const WorkerEnv* env, int64 step_id, RdmaMgr* rdma_mgr)
-      : BaseRemoteRendezvous(env, step_id, true), rdma_mgr_(rdma_mgr) {}
+      : BaseRemoteRendezvous(env, step_id), rdma_mgr_(rdma_mgr) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,

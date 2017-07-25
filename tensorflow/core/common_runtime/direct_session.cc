@@ -62,7 +62,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
+#include "tensorflow/core/platform/gpu_tracer.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -390,6 +390,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(
       MaybeInitializeExecutionState(graph, &already_initialized));
   if (already_initialized) {
+    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<SimpleGraphExecutionState> state;
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
@@ -557,7 +558,7 @@ Status DirectSession::Run(const RunOptions& run_options,
 #if GOOGLE_CUDA
   std::unique_ptr<GPUTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer.reset(CreateGPUTracer());
+    tracer = CreateGPUTracer();
     // tracer will be NULL on non-GPU platforms.
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     if (tracer) tracer->Start().IgnoreError();
@@ -619,12 +620,33 @@ Status DirectSession::Run(const RunOptions& run_options,
     } else if (!s.ok()) {
       return s;
     }
+    const bool unique_outputs =
+        output_names.size() == executors_and_keys->output_name_to_index.size();
+    // first_indices[i] = j implies that j is the smallest value for which
+    // output_names[i] == output_names[j].
+    std::vector<int> first_indices;
+    if (!unique_outputs) {
+      first_indices.resize(output_names.size());
+      for (int i = 0; i < output_names.size(); ++i) {
+        for (int j = 0; j <= i; ++j) {
+          if (output_names[i] == output_names[j]) {
+            first_indices[i] = j;
+            break;
+          }
+        }
+      }
+    }
     outputs->clear();
     outputs->reserve(sorted_outputs.size());
-    for (const string& output_name : output_names) {
-      outputs->emplace_back(
-          std::move(sorted_outputs[executors_and_keys
-                                       ->output_name_to_index[output_name]]));
+    for (int i = 0; i < output_names.size(); ++i) {
+      const string& output_name = output_names[i];
+      if (first_indices.empty() || first_indices[i] == i) {
+        outputs->emplace_back(
+            std::move(sorted_outputs[executors_and_keys
+                                         ->output_name_to_index[output_name]]));
+      } else {
+        outputs->push_back((*outputs)[first_indices[i]]);
+      }
     }
   }
 

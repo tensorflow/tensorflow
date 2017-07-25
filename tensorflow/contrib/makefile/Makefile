@@ -500,7 +500,7 @@ $(wildcard tensorflow/core/grappler/clusters/single_machine.*)
 # Filter out all the excluded files.
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily
-TF_CC_SRCS += tensorflow/core/common_runtime/gpu/gpu_tracer.cc
+TF_CC_SRCS += tensorflow/core/platform/default/gpu_tracer.cc
 # Also include the op and kernel definitions.
 TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)
 PBT_CC_SRCS := $(shell cat $(MAKEFILE_DIR)/tf_pb_text_files.txt)

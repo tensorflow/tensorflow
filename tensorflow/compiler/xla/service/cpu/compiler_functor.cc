@@ -64,8 +64,8 @@ operator()(llvm::Module& module) const {
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
-  if (pre_optimization_callback_) {
-    TF_CHECK_OK(pre_optimization_callback_(module));
+  if (pre_optimization_hook_) {
+    TF_CHECK_OK(pre_optimization_hook_(module));
   }
 
   // Build up optimization pipeline.
@@ -91,8 +91,8 @@ operator()(llvm::Module& module) const {
   VLOG(2) << "IR after optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
-  if (post_optimization_callback_) {
-    TF_CHECK_OK(post_optimization_callback_(module));
+  if (post_optimization_hook_) {
+    TF_CHECK_OK(post_optimization_hook_(module));
   }
 
   // Generate code.
@@ -131,25 +131,25 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
   std::vector<llvm::VecDesc> vector_functions;
 
   const llvm::VecDesc four_wide_vector_functions[] = {
-      {"expf", runtime::kExpV4F32, 4},
-      {"llvm.exp.f32", runtime::kExpV4F32, 4},
+      {"expf", runtime::kExpV4F32SymbolName, 4},
+      {"llvm.exp.f32", runtime::kExpV4F32SymbolName, 4},
 
-      {"logf", runtime::kLogV4F32, 4},
-      {"llvm.log.f32", runtime::kLogV4F32, 4},
+      {"logf", runtime::kLogV4F32SymbolName, 4},
+      {"llvm.log.f32", runtime::kLogV4F32SymbolName, 4},
 
-      {"tanhf", runtime::kTanhV4F32, 4},
-      {"llvm.tanh.f32", runtime::kTanhV4F32, 4},
+      {"tanhf", runtime::kTanhV4F32SymbolName, 4},
+      {"llvm.tanh.f32", runtime::kTanhV4F32SymbolName, 4},
   };
 
   const llvm::VecDesc eight_wide_vector_functions[] = {
-      {"expf", runtime::kExpV8F32, 8},
-      {"llvm.exp.f32", runtime::kExpV8F32, 8},
+      {"expf", runtime::kExpV8F32SymbolName, 8},
+      {"llvm.exp.f32", runtime::kExpV8F32SymbolName, 8},
 
-      {"logf", runtime::kLogV8F32, 8},
-      {"llvm.log.f32", runtime::kLogV8F32, 8},
+      {"logf", runtime::kLogV8F32SymbolName, 8},
+      {"llvm.log.f32", runtime::kLogV8F32SymbolName, 8},
 
-      {"tanhf", runtime::kTanhV8F32, 8},
-      {"llvm.tanh.f32", runtime::kTanhV8F32, 8},
+      {"tanhf", runtime::kTanhV8F32SymbolName, 8},
+      {"llvm.tanh.f32", runtime::kTanhV8F32SymbolName, 8},
   };
 
   if (arch == llvm::Triple::x86 || llvm::Triple::x86_64) {

@@ -115,9 +115,14 @@ def freeze_graph_with_def_protos(
         output_node_names.split(","),
         variable_names_blacklist=variable_names_blacklist)
 
-  with gfile.GFile(output_graph, "wb") as f:
-    f.write(output_graph_def.SerializeToString())
+  # Write GraphDef to file if output path has been given.
+  if output_graph:
+    with gfile.GFile(output_graph, "wb") as f:
+      f.write(output_graph_def.SerializeToString())
+
   print("%d ops in the final graph." % len(output_graph_def.node))
+
+  return output_graph_def
 
 
 def _parse_input_graph_proto(input_graph, input_binary):

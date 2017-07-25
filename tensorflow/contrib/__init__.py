@@ -51,6 +51,7 @@ from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
 from tensorflow.contrib import periodic_resample
+from tensorflow.contrib import predictor
 from tensorflow.contrib import quantization
 from tensorflow.contrib import resampler
 from tensorflow.contrib import rnn
@@ -67,6 +68,7 @@ from tensorflow.contrib import tensor_forest
 from tensorflow.contrib import tensorboard
 from tensorflow.contrib import testing
 from tensorflow.contrib import tfprof
+from tensorflow.contrib import timeseries
 from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util

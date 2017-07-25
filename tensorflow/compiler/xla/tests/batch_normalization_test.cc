@@ -318,6 +318,7 @@ INSTANTIATE_TEST_CASE_P(
                       BatchNormTestParam{{10, 10, 10, 10}, 2, 666.6f, 777.7f},
                       BatchNormTestParam{{10, 10, 10, 10}, 1, -666.6f, 777.7f},
                       BatchNormTestParam{{10, 10, 10, 10}, 2, 0.f, 777.7f},
+                      BatchNormTestParam{{1, 1, 10, 130}, 2, 0.f, 777.7f},
                       BatchNormTestParam{{1, 1, 10, 1}, 3, 888.8f, 9.9f},
 
                       BatchNormTestParam{{24, 129, 1, 2}, 2, 10000, 10000},

@@ -38,6 +38,7 @@ class GraphDef;
 class OpKernel;
 class ResourceMgr;
 class ScopedStepContainer;
+class StepStatsCollector;
 class Node;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
@@ -287,20 +288,24 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   const FunctionDef* Find(const string& func) const;
 
   // Adds function definition 'fdef' to this function library.
-  // Returns status 'ok' on success, or error otherwise.
+  // Returns status 'ok' on success, or error otherwise. This is a no-op if
+  // 'fdef' already exists in this function library.
   // If 'fdef' is successfully added to the library, it will be accessible
   // from 'LookUp' and included in the proto returned by 'ToProto'.
   Status AddFunctionDef(const FunctionDef& fdef);
 
   // Adds gradient definition 'grad' to this function library.
+  // This is a no-op if 'grad' already exists in this function library.
   // If 'grad' is successfully added, it will be accessible via 'FindGradient'
   // and included in the proto returned by 'ToProto'.
   Status AddGradientDef(const GradientDef& grad);
 
   // Adds the functions and gradients in 'other' to this function library.
+  // Duplicate functions and gradients are ignored.
   Status AddLibrary(const FunctionLibraryDefinition& other);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
+  // Duplicate functions and gradients are ignored.
   Status AddLibrary(const FunctionDefLibrary& lib_def);
 
   // If the gradient function for 'func' is specified explicitly in
@@ -350,9 +355,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   };
 
   const OpRegistryInterface* const default_registry_;
-  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>, HashStr>
+  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
       function_defs_;
-  gtl::FlatMap<string, string, HashStr> func_grad_;
+  gtl::FlatMap<string, string> func_grad_;
 
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
@@ -398,7 +403,8 @@ class FunctionLibraryRuntime {
     int64 step_id = 0;
 
     // Per-step container.
-    ScopedStepContainer* step_container;
+    ScopedStepContainer* step_container = nullptr;
+    StepStatsCollector* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
   };

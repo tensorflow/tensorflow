@@ -55,6 +55,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -215,7 +216,11 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "noasan",  # times out b/63678675
+        "nomsan",
+    ],
 )
 
 # Kernel tests

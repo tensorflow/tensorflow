@@ -359,6 +359,7 @@ cc_library(
     srcs = ["graph_mgr.cc"],
     hdrs = ["graph_mgr.h"],
     deps = [
+        ":message_wrappers",
         ":rendezvous_mgr_interface",
         ":worker_env",
         "//tensorflow/core:core_cpu_internal",
@@ -451,7 +452,11 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["remote_device_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["manual"],
+    tags = tf_cuda_tests_tags() + [
+        "manual",
+        "notap",  # Memory leak due to b/62910646
+        "noguitar",  # Memory leak due to b/62910646
+    ],
     deps = [
         ":master",
         ":remote_device",
