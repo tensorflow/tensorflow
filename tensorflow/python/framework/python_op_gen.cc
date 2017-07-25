@@ -713,7 +713,7 @@ string GetPythonOp(const OpDef& op_def, const string& function_name) {
 }
 
 string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    const string source_file_name, bool require_shapes) {
+                    const string& source_file_name, bool require_shapes) {
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
@@ -803,7 +803,7 @@ _op_def_lib = _InitOpDefLibrary()
 }
 
 void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    const string source_file_name,
+                    const string& source_file_name,
                     bool require_shapes) {
   printf("%s", GetPythonOps(ops, hidden_ops, source_file_name, 
                             require_shapes).c_str());

@@ -30,9 +30,9 @@ namespace tensorflow {
 // The Print* version prints the output to stdout, Get* version returns the
 // output as a string.
 void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    const string source_file_name, bool require_shapes);
+                    const string& source_file_name, bool require_shapes);
 string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
-                    const string source_file_name, bool require_shapes);
+                    const string& source_file_name, bool require_shapes);
 string GetPythonOp(const OpDef& op_def, const string& function_name);
 
 // Get the python wrappers for a list of ops in a OpList.

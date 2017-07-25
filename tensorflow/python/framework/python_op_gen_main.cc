@@ -79,7 +79,7 @@ Status ParseHiddenOpsCommandLine(const char* arg,
 }
 
 void PrintAllPythonOps(const std::vector<string>& hidden_ops,
-                       const string source_file_name,
+                       const string& source_file_name,
                        bool require_shapes) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
