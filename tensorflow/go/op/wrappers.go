@@ -7070,6 +7070,61 @@ func TFRecordReaderV2(scope *Scope, optional ...TFRecordReaderV2Attr) (reader_ha
 	return op.Output(0)
 }
 
+// TextLineReaderV2Attr is an optional argument to TextLineReaderV2.
+type TextLineReaderV2Attr func(optionalAttr)
+
+// TextLineReaderV2SkipHeaderLines sets the optional skip_header_lines attribute to value.
+//
+// value: Number of lines to skip from the beginning of every file.
+// If not specified, defaults to 0
+func TextLineReaderV2SkipHeaderLines(value int64) TextLineReaderV2Attr {
+	return func(m optionalAttr) {
+		m["skip_header_lines"] = value
+	}
+}
+
+// TextLineReaderV2Container sets the optional container attribute to value.
+//
+// value: If non-empty, this reader is placed in the given container.
+// Otherwise, a default container is used.
+// If not specified, defaults to ""
+func TextLineReaderV2Container(value string) TextLineReaderV2Attr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// TextLineReaderV2SharedName sets the optional shared_name attribute to value.
+//
+// value: If non-empty, this reader is named in the given bucket
+// with this shared_name. Otherwise, the node name is used instead.
+// If not specified, defaults to ""
+func TextLineReaderV2SharedName(value string) TextLineReaderV2Attr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// A Reader that outputs the lines of a file delimited by '\n'.
+//
+// Returns The handle to reference the Reader.
+func TextLineReaderV2(scope *Scope, optional ...TextLineReaderV2Attr) (reader_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TextLineReaderV2",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes rectified linear 6: `min(max(features, 0), 6)`.
 func Relu6(scope *Scope, features tf.Output) (activations tf.Output) {
 	if scope.Err() != nil {
@@ -14495,61 +14550,6 @@ func Tanh(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// TextLineReaderV2Attr is an optional argument to TextLineReaderV2.
-type TextLineReaderV2Attr func(optionalAttr)
-
-// TextLineReaderV2SkipHeaderLines sets the optional skip_header_lines attribute to value.
-//
-// value: Number of lines to skip from the beginning of every file.
-// If not specified, defaults to 0
-func TextLineReaderV2SkipHeaderLines(value int64) TextLineReaderV2Attr {
-	return func(m optionalAttr) {
-		m["skip_header_lines"] = value
-	}
-}
-
-// TextLineReaderV2Container sets the optional container attribute to value.
-//
-// value: If non-empty, this reader is placed in the given container.
-// Otherwise, a default container is used.
-// If not specified, defaults to ""
-func TextLineReaderV2Container(value string) TextLineReaderV2Attr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// TextLineReaderV2SharedName sets the optional shared_name attribute to value.
-//
-// value: If non-empty, this reader is named in the given bucket
-// with this shared_name. Otherwise, the node name is used instead.
-// If not specified, defaults to ""
-func TextLineReaderV2SharedName(value string) TextLineReaderV2Attr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// A Reader that outputs the lines of a file delimited by '\n'.
-//
-// Returns The handle to reference the Reader.
-func TextLineReaderV2(scope *Scope, optional ...TextLineReaderV2Attr) (reader_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TextLineReaderV2",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Component-wise multiplies a SparseTensor by a dense Tensor.
 //
 // The output locations corresponding to the implicitly zero elements in the sparse
@@ -17916,6 +17916,28 @@ func Svd(scope *Scope, input tf.Output, optional ...SvdAttr) (s tf.Output, u tf.
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Computes element-wise population count (a.k.a. popcount, bitsum, bitcount).
+//
+// For each entry in `x`, calculates the number of `1` (on) bits in the binary
+// representation of that entry.
+//
+// **NOTE**: It is more efficient to first `tf.bitcast` your tensors into
+// `int32` or `int64` and perform the bitcount on the result, than to feed in
+// 8- or 16-bit inputs and then aggregate the resulting counts.
+func PopulationCount(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "PopulationCount",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // AssertAttr is an optional argument to Assert.
@@ -23917,6 +23939,51 @@ func QuantizeDownAndShrinkRange(scope *Scope, input tf.Output, input_min tf.Outp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Compare values of `input` to `threshold` and pack resulting bits into a `uint8`.
+//
+// Each comparison returns a boolean `true` (if `input_value > threshold`)
+// or and `false` otherwise.
+//
+// This operation is useful for Locality-Sensitive-Hashing (LSH) and other
+// algorithms that use hashing approximations of cosine and `L2` distances;
+// codes can be generated from an input via:
+//
+// ```python
+// codebook_size = 50
+// codebook_bits = codebook_size * 32
+// codebook = tf.get_variable('codebook', [x.shape[-1].value, codebook_bits],
+//                            dtype=x.dtype,
+//                            initializer=tf.orthogonal_initializer())
+// codes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)
+// codes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32
+// # now codes has shape x.shape[:-1] + [codebook_size]
+// ```
+//
+// **NOTE**: Currently, the innermost dimension of the tensor must be divisible
+// by 8.
+//
+// Given an `input` shaped `[s0, s1, ..., s_n]`, the output is
+// a `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`.
+//
+// Arguments:
+//	input: Values to compare against `threshold` and bitpack.
+//	threshold: Threshold to compare against.
+//
+// Returns The bitpacked comparisons.
+func CompareAndBitpack(scope *Scope, input tf.Output, threshold tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CompareAndBitpack",
+		Input: []tf.Input{
+			input, threshold,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Outputs a `Summary` protocol buffer with a tensor and per-plugin data.
