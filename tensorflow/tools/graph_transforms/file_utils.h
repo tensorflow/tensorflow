@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_RANDOM_RANDOM_H_
-#define TENSORFLOW_LIB_RANDOM_RANDOM_H_
+#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_
+#define THIRD_PARTY_TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-namespace random {
+namespace graph_transforms {
 
-// Return a 64-bit random value.  Different sequences are generated
-// in different processes.
-uint64 New64();
+// First tries to load the file as a text protobuf, if that fails tries to parse
+// it as a binary protobuf, and returns an error if both fail.
+Status LoadTextOrBinaryGraphFile(const string& file_name, GraphDef* graph_def);
 
-// Return a 64-bit random value. Uses
-// std::mersenne_twister_engine::default_seed as seed value.
-uint64 New64DefaultSeed();
-
-}  // namespace random
+}  // namespace graph_transforms
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_RANDOM_H_
+#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_GRAPH_TRANSFORMS_FILE_UTILS_H_

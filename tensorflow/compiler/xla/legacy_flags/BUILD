@@ -44,18 +44,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "util_flags",
-    srcs = ["util_flags.cc"],
-    hdrs = ["util_flags.h"],
-    deps =
-        [
-            ":parse_flags_from_env",
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-        ],
-)
-
-cc_library(
     name = "debug_options_flags",
     srcs = ["debug_options_flags.cc"],
     hdrs = ["debug_options_flags.h"],

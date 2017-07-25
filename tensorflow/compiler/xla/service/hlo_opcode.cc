@@ -145,6 +145,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "send";
     case HloOpcode::kSign:
       return "sign";
+    case HloOpcode::kSin:
+      return "sine";
     case HloOpcode::kSlice:
       return "slice";
     case HloOpcode::kSort:

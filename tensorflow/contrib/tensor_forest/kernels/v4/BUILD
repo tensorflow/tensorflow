@@ -1,7 +1,8 @@
 # TensorFlow code for training random forests.
-package(default_visibility = [
-    "//visibility:public",
-])
+
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])  # Apache 2.0
 
@@ -9,9 +10,7 @@ exports_files(["LICENSE"])
 
 filegroup(
     name = "all_files",
-    srcs = glob(
-        ["**/*"],
-    ),
+    srcs = glob(["**/*"]),
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -81,10 +80,16 @@ cc_library(
     deps = [
         ":input_target",
         ":params",
+<<<<<<< HEAD
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",
         "//tensorflow/core:framework_headers_lib",
+=======
+        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
+        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
+>>>>>>> upstream/master
     ],
 )
 
@@ -134,7 +139,6 @@ tf_cc_test(
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -151,7 +155,6 @@ cc_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework_headers_lib",
     ],
 )
 
@@ -213,7 +216,6 @@ cc_library(
         ":params",
         ":split_collection_operators",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc_headers_only",
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",

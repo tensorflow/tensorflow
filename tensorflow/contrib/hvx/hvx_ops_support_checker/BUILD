@@ -32,6 +32,6 @@ tf_cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//tensorflow/core/kernels/hexagon:graph_transferer",
-        "//tensorflow/tools/graph_transforms:transform_utils",
+        "//tensorflow/tools/graph_transforms:file_utils",
     ],
 )

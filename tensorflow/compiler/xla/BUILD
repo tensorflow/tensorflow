@@ -169,7 +169,6 @@ cc_library(
         ":status",
         ":types",
         ":xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:util_flags",
         "//tensorflow/core:lib",
     ],
 )

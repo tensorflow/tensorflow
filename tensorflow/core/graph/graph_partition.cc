@@ -937,8 +937,14 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     dst_def->set_device(dst->assigned_device_name());
     dst_def->clear_input();  // Inputs are filled below
     if (opts.need_to_record_start_times) {
-      int64 start_time = opts.start_times[dst->id()].value();
-      AddNodeAttr("_start_time", start_time, dst_def);
+      int64 start_time;
+      status = GetNodeAttr(*dst_def, "_start_time", &start_time);
+      if (errors::IsNotFound(status)) {
+        start_time = opts.start_times[dst->id()].value();
+        AddNodeAttr("_start_time", start_time, dst_def);
+      } else if (!status.ok()) {
+        return status;
+      }
     }
 
     // Arrange the incoming edges to dst so that input[i] holds the
@@ -995,18 +1001,18 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       int64 send_start_time = 0;
       int64 recv_start_time = 0;
       if (opts.scheduling_for_recvs) {
-        if (opts.need_to_record_start_times) {
+        status = GetNodeAttr(src->attrs(), "_start_time", &send_start_time);
+        if (errors::IsNotFound(status) && opts.need_to_record_start_times) {
           send_start_time = opts.start_times[src->id()].value();
+        } else if (!status.ok()) {
+          return status;
+        }
+
+        status = GetNodeAttr(dst->attrs(), "_start_time", &recv_start_time);
+        if (errors::IsNotFound(status) && opts.need_to_record_start_times) {
           recv_start_time = opts.start_times[dst->id()].value();
-        } else {
-          status = GetNodeAttr(src->attrs(), "_start_time", &send_start_time);
-          if (!status.ok()) {
-            return status;
-          }
-          status = GetNodeAttr(dst->attrs(), "_start_time", &recv_start_time);
-          if (!status.ok()) {
-            return status;
-          }
+        } else if (!status.ok()) {
+          return status;
         }
       }
 
