@@ -73,7 +73,7 @@ class GrpcMasterService : public AsyncServiceInterface {
       // that causes the completion queue to be shut down on the
       // polling thread.
       shutdown_alarm_ =
-          new ::grpc::Alarm(cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
+          new ::grpc::Alarm(cq_.get(), grpc_now(GRPC_CLOCK_MONOTONIC), nullptr);
     }
   }
 
