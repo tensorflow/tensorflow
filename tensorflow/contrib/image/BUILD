@@ -105,6 +105,9 @@ tf_custom_op_library(
         "kernels/single_image_random_dot_stereograms_ops.cc",
         "ops/single_image_random_dot_stereograms_ops.cc",
     ],
+    deps = [
+        "@protobuf//:protobuf",
+    ],
 )
 
 tf_gen_op_libs(
