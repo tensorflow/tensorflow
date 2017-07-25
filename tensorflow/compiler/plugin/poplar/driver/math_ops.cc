@@ -395,6 +395,28 @@ CreateReluOp(poplar::Graph &graph,
   return seq;
 }
 
+port::StatusOr<poplar::program::Program>
+CreateSigmoidOp(poplar::Graph &graph,
+                CompilerResources& res,
+                const HloInstruction *inst,
+                const xla::Shape& output_shape,
+                TensorMap& tensor_map) {
+  poplar::Tensor t;
+  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0, 0));
+
+  poplar::program::Sequence seq;
+  poplar::Tensor out = graph.clone(t);
+
+  seq.add(poplar::program::Copy(t, out));
+  popnn::sigmoid(graph, out, seq, inst->name());
+
+  TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
+}
+
 }
 }
 

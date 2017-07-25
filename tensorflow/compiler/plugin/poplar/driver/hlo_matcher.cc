@@ -57,7 +57,7 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
     for (unsigned int i=0; i<node.operands.size(); i++) {
       int n = node.operands[i];
       if (n == -1) continue;
-      if (n <= node_num) continue;
+      if (n <= node_num) return false;
 
       match.instructions[n] = inst->mutable_operand(i);
     }

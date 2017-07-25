@@ -26,8 +26,18 @@ static bool IsTruncatedNormalWhile(HloInstruction* inst) {
 }
 
 static bool IsConstantZero(HloInstruction* inst) {
-  return inst->literal().IsAll(0);
+  return inst->literal().IsAllFloat(0.0);
 }
+
+static bool IsConstantHalf(HloInstruction* inst) {
+  return inst->literal().IsAllFloat(0.5);
+}
+
+/*
+ * Note about constructing these patterns.  Due to the behaviour of the fuser
+ * there must be no backward references.  All nodes should appear after any
+ * other nodes that refer to them.
+ */
 
 static const std::vector<HloMatcherPattern> patterns = {
   // dynamic update slice with constant coordinate
@@ -45,6 +55,13 @@ static const std::vector<HloMatcherPattern> patterns = {
   // Relu
   {{HloOpcode::kMaximum, nullptr, {-1, 1}},
    {HloOpcode::kConstant, IsConstantZero, {}}},
+
+  // Sigmoid
+  {{HloOpcode::kAdd, nullptr, {4, 1}},
+   {HloOpcode::kMultiply, nullptr, {4, 2}},
+   {HloOpcode::kTanh, nullptr, {3}},
+   {HloOpcode::kMultiply, nullptr, {4, -1}},
+   {HloOpcode::kConstant, IsConstantHalf, {}}}
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}
@@ -52,8 +69,11 @@ FuseOps::FuseOps() : HloMatcher(patterns, false) {}
 ReplacedInstructions FuseOps::ReplaceNodes(unsigned int pattern,
                                            const HloMatcherMatched& match) {
   auto* comp = match.computation;
-  comp->CreateFusionInstruction(match.instructions,
-                                HloInstruction::FusionKind::kCustom);
+  HloInstruction* fused = comp->CreateFusionInstruction(
+          match.instructions,
+          HloInstruction::FusionKind::kCustom);
+
+  fused->set_fusion_custom_tag(pattern);
 
   ReplacedInstructions replaced;
 

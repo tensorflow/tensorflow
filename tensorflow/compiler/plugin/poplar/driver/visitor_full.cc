@@ -184,8 +184,8 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
 
 Status FullVisitor::HandleFusion(HloInstruction* inst) {
   if (inst->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-    switch (inst->fused_expression_root()->opcode()) {
-      case HloOpcode::kDynamicUpdateSlice:
+    switch (inst->fusion_custom_tag()) {
+      case FUSED_SLICE_UPDATE:
       {
         poplar::program::Program prog;
         TF_ASSIGN_OR_RETURN(prog,
@@ -197,7 +197,7 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
         sequence.add(prog);
         return Status::OK();
       }
-      case HloOpcode::kDynamicSlice:
+      case FUSED_SLICE:
       {
         poplar::program::Program prog;
         TF_ASSIGN_OR_RETURN(prog,
@@ -209,7 +209,7 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
         sequence.add(prog);
         return Status::OK();
       }
-      case HloOpcode::kWhile:
+      case FUSED_TRUNCATED_NORMAL:
       {
         poplar::program::Program prog;
         TF_ASSIGN_OR_RETURN(prog,
@@ -221,7 +221,7 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
         sequence.add(prog);
         return Status::OK();
       }
-      case HloOpcode::kMaximum:
+      case FUSED_RELU:
       {
         poplar::program::Program prog;
         TF_ASSIGN_OR_RETURN(prog,
@@ -230,6 +230,18 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
                                          inst,
                                          GetOutputShape(inst),
                                          tensor_map));
+        sequence.add(prog);
+        return Status::OK();
+      }
+      case FUSED_SIGMOID:
+      {
+        poplar::program::Program prog;
+        TF_ASSIGN_OR_RETURN(prog,
+                            CreateSigmoidOp(*graph_,
+                                            resources_,
+                                            inst,
+                                            GetOutputShape(inst),
+                                            tensor_map));
         sequence.add(prog);
         return Status::OK();
       }
