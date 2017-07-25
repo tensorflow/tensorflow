@@ -197,6 +197,7 @@ tensorflow/core/kernels/aggregate_ops.cc
 tensorflow/core/kernels/depthwise_conv_op.cc
 tensorflow/core/kernels/dequantize_op.cc
 tensorflow/core/kernels/meta_support.cc
+tensorflow/core/kernels/population_count_op.cc
 tensorflow/core/kernels/quantization_utils.cc
 tensorflow/core/kernels/quantize_down_and_shrink_range.cc
 tensorflow/core/kernels/quantize_op.cc

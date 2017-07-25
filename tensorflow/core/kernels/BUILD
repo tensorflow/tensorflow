@@ -2348,6 +2348,7 @@ cc_library(
         ":cwise_op",
         ":fft_ops",
         ":matmul_op",
+        ":population_count_op",
         ":reduction_ops",
         ":scan_ops",
         ":segment_reduction_ops",
@@ -2407,6 +2408,12 @@ tf_kernel_library(
     name = "cwise_op",
     prefix = "cwise_op",
     deps = MATH_DEPS + ["//tensorflow/core:bitwise_ops_op_lib"],
+)
+
+tf_kernel_library(
+    name = "population_count_op",
+    prefix = "population_count_op",
+    deps = MATH_DEPS,
 )
 
 tf_kernel_library(
@@ -4292,6 +4299,8 @@ filegroup(
         "fake_quant_ops.cc",
         "fifo_queue.cc",
         "fused_batch_norm_op.cc",
+        "population_count_op.cc",
+        "population_count_op.h",
         "winograd_transform.h",
         ":android_extended_ops_headers",
     ] + select({
