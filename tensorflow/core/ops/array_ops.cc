@@ -1148,7 +1148,8 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 ```
 
 tensor: Up to 8-D.
-axis: 1-D. The indices of the dimensions to reverse.
+axis: 1-D. The indices of the dimensions to reverse. Must be in the range
+  `[-rank(tensor), rank(tensor))`.
 output: The same shape as `tensor`.
 )Doc");
 
@@ -1684,6 +1685,20 @@ REGISTER_OP("RefIdentity")
     .SetAllowsUninitializedInput()
     .Doc(R"Doc(
 Return the same ref tensor as the input ref tensor.
+)Doc");
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DebugGradientIdentity")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetAllowsUninitializedInput()
+    .Doc(R"Doc(
+Identity op for gradient debugging.
+
+This op is hidden from public in Python. It is used by TensorFlow Debugger to
+register gradient tensors for gradient debugging.
 )Doc");
 
 // --------------------------------------------------------------------------
@@ -3172,7 +3187,8 @@ This operation is related to `squeeze()`, which removes dimensions of
 size 1.
 
 dim: 0-D (scalar). Specifies the dimension index at which to
-  expand the shape of `input`.
+  expand the shape of `input`. Must be in the range
+  `[-rank(input) - 1, rank(input)]`.
 output: Contains the same data as `input`, but its shape has an additional
   dimension of size 1 added.
 )doc");
@@ -3268,7 +3284,8 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 
 input: The `input` to squeeze.
 squeeze_dims: If specified, only squeezes the dimensions listed. The dimension
-  index starts at 0. It is an error to squeeze a dimension that is not 1.
+  index starts at 0. It is an error to squeeze a dimension that is not 1. Must
+  be in the range `[-rank(input), rank(input))`.
 output: Contains the same data as `input`, but has one or more dimensions of
   size 1 removed.
 )doc");
