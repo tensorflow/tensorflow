@@ -555,17 +555,18 @@ class BinaryOpsTest(XLATestCase):
     self._testBinary(
         math_ops.matmul,
         np.array(
-            [[[[1000, 100], [10, 1]], [[2000, 200], [20, 2]]],
-             [[[3000, 300], [30, 3]], [[4000, 400], [40, 4]]]],
+            [[[[7, 13], [10, 1]], [[2, 0.25], [20, 2]]],
+             [[[3, 5], [30, 3]], [[0.75, 1], [40, 4]]]],
             dtype=np.float32),
         np.array(
             [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]], [[[11, 22], [33, 44]],
                                                     [[55, 66], [77, 88]]]],
             dtype=np.float32),
         expected=np.array(
-            [[[[1300, 2400], [13, 24]], [[11400, 13600], [114, 136]]],
-             [[[42900, 79200], [429, 792]], [[250800, 299200], [2508, 2992]]]],
+            [[[[46, 66], [13, 24]], [[11.75, 14], [114, 136]]],
+             [[[198, 286], [429, 792]], [[118.25, 137.5], [2508, 2992]]]],
             dtype=np.float32))
+
     self._testBinary(
         math_ops.matmul,
         np.array([], dtype=np.float32).reshape((2, 2, 0)),
@@ -581,7 +582,7 @@ class BinaryOpsTest(XLATestCase):
 
     # Regression test for b/31472796.
     if hasattr(np, "matmul"):
-      x = np.arange(0, 3 * 5 * 16 * 7, dtype=np.float32).reshape((3, 5, 16, 7))
+      x = np.arange(0, 3 * 5 * 2 * 7, dtype=np.float32).reshape((3, 5, 2, 7))
       self._testBinary(
           lambda x, y: math_ops.matmul(x, y, adjoint_b=True),
           x, x,

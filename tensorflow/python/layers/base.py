@@ -537,7 +537,7 @@ class Layer(object):
         if x.get_shape().ndims is None:
           raise ValueError('Input ' + str(input_index) + ' of layer ' +
                            self.name + ' is incompatible with the layer: '
-                           'its rank is undefined, by the layer requires a '
+                           'its rank is undefined, but the layer requires a '
                            'defined rank.')
 
       # Check ndim.

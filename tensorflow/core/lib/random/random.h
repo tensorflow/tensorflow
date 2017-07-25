@@ -26,9 +26,8 @@ namespace random {
 uint64 New64();
 
 // Return a 64-bit random value. Uses
-// std::mersenne_twister_engine::default_seed as seed value
+// std::mersenne_twister_engine::default_seed as seed value.
 uint64 New64DefaultSeed();
-
 
 }  // namespace random
 }  // namespace tensorflow

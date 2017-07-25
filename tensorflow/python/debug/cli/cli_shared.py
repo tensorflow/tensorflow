@@ -138,6 +138,13 @@ def parse_ranges_highlight(ranges_string):
     return None
 
 
+def numpy_printoptions_from_screen_info(screen_info):
+  if screen_info and "cols" in screen_info:
+    return {"linewidth": screen_info["cols"]}
+  else:
+    return {}
+
+
 def format_tensor(tensor,
                   tensor_name,
                   np_printoptions,
@@ -318,32 +325,35 @@ def get_run_start_intro(run_call_count,
   fetch_lines = _get_fetch_names(fetches)
 
   if not feed_dict:
-    feed_dict_lines = ["(Empty)"]
+    feed_dict_lines = [debugger_cli_common.RichLine("  (Empty)")]
   else:
     feed_dict_lines = []
     for feed_key in feed_dict:
-      if isinstance(feed_key, six.string_types):
-        feed_dict_lines.append(feed_key)
-      else:
-        feed_dict_lines.append(feed_key.name)
+      feed_key_name = (feed_key if isinstance(feed_key, six.string_types)
+                       else feed_key.name)
+      feed_dict_line = debugger_cli_common.RichLine("  ")
+      feed_dict_line += debugger_cli_common.RichLine(
+          feed_key_name,
+          debugger_cli_common.MenuItem(None, "pf %s" % feed_key_name))
+      feed_dict_lines.append(feed_dict_line)
+  feed_dict_lines = debugger_cli_common.rich_text_lines_from_rich_line_list(
+      feed_dict_lines)
 
-  intro_lines = [_HORIZONTAL_BAR]
+  out = debugger_cli_common.RichTextLines(_HORIZONTAL_BAR)
   if is_callable_runner:
-    intro_lines.append("Running a runner returned by Session.make_callabe()")
+    out.append("Running a runner returned by Session.make_callabe()")
   else:
-    intro_lines.extend([
-        "Session.run() call #%d:" % run_call_count,
-        "", "Fetch(es):"
-    ])
-    intro_lines.extend(["  " + line for line in fetch_lines])
-    intro_lines.extend(["", "Feed dict(s):"])
-    intro_lines.extend(["  " + line for line in feed_dict_lines])
-  intro_lines.extend([
-      _HORIZONTAL_BAR, "",
-      "Select one of the following commands to proceed ---->"
-  ])
-
-  out = debugger_cli_common.RichTextLines(intro_lines)
+    out.append("Session.run() call #%d:" % run_call_count)
+    out.append("")
+    out.append("Fetch(es):")
+    out.extend(debugger_cli_common.RichTextLines(
+        ["  " + line for line in fetch_lines]))
+    out.append("")
+    out.append("Feed dict:")
+    out.extend(feed_dict_lines)
+  out.append(_HORIZONTAL_BAR)
+  out.append("")
+  out.append("Select one of the following commands to proceed ---->")
 
   out.extend(
       _recommend_command(

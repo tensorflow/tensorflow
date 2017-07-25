@@ -88,10 +88,15 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
         (*options_.populate_resource_manager)(device_->resource_manager());
   }
 
-  flib_def_.reset(new FunctionLibraryDefinition(*options.flib_def));
+  local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
+                                                      FunctionDefLibrary{}));
+  local_flib_runtime_.reset(NewFunctionLibraryRuntime(
+      &device_mgr_, Env::Default(), device_, options.graph_def_version,
+      local_flib_def_.get(), OptimizerOptions(),
+      nullptr /* custom_kernel_creator */));
   flib_runtime_.reset(NewFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), device_, options.graph_def_version,
-      flib_def_.get(), OptimizerOptions(),
+      options.flib_def, OptimizerOptions(),
       nullptr /* custom_kernel_creator */));
 }
 
@@ -105,6 +110,18 @@ int64 XlaCompiler::NextStepId() {
 uint64 XlaCompiler::SignatureHash::operator()(
     const std::pair<string, std::vector<Argument>>& signature) const {
   return std::hash<string>()(signature.first);
+}
+
+static Status GetFunctionBody(const NameAttrList& function,
+                              FunctionLibraryRuntime* flib_runtime,
+                              const FunctionBody** fbody) {
+  FunctionLibraryRuntime::Handle handle;
+  TF_RETURN_IF_ERROR(flib_runtime->Instantiate(
+      function.name(), AttrSlice(&function.attr()), &handle));
+
+  *fbody = flib_runtime->GetFunctionBody(handle);
+  TF_RET_CHECK(*fbody);
+  return Status::OK();
 }
 
 Status XlaCompiler::CompileFunction(
@@ -121,12 +138,10 @@ Status XlaCompiler::CompileFunction(
     return Status::OK();
   }
 
-  FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(flib_runtime_->Instantiate(
-      function.name(), AttrSlice(&function.attr()), &handle));
-
-  const FunctionBody* fbody = flib_runtime_->GetFunctionBody(handle);
-  CHECK(fbody);
+  const FunctionBody* fbody;
+  if (!GetFunctionBody(function, local_flib_runtime_.get(), &fbody).ok()) {
+    TF_RETURN_IF_ERROR(GetFunctionBody(function, flib_runtime_.get(), &fbody));
+  }
 
   TF_RETURN_IF_ERROR(CheckSignature(fbody->arg_types, args));
 
@@ -433,7 +448,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
   // Converts Tensorflow's graph control-flow constructs into functional
   // control-flow that can be compiled into XLA code.
-  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(graph.get(), flib_def_.get()));
+  TF_RETURN_IF_ERROR(
+      FunctionalizeControlFlow(graph.get(), local_flib_def_.get()));
 
   xla::ComputationBuilder builder(client(), name);
   XlaContext* context =

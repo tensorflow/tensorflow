@@ -184,6 +184,34 @@ tensorflow::ImportNumpy();
 // END TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
 
+// Typemap for TF_Status* inputs that automatically unwraps a ScopedTFStatus.
+// This can also handle a wrapped TF_Status* input.
+%typemap(in) (TF_Status*) {
+  PyObject* wrapped_tf_status;
+  if (strcmp(Py_TYPE($input)->tp_name, "ScopedTFStatus") == 0) {
+    DCHECK(PyObject_HasAttrString($input, "status"))
+        << "ScopedTFStatus.status not found! Do you need to modify "
+           "tf_session.i?";
+    wrapped_tf_status = PyObject_GetAttrString($input, "status");
+  } else {
+    // Assume wrapped TF_Status*
+    wrapped_tf_status = $input;
+  }
+  DCHECK_EQ(strcmp(Py_TYPE(wrapped_tf_status)->tp_name, "SwigPyObject"), 0)
+      << Py_TYPE(wrapped_tf_status)->tp_name;
+
+  // The following is the default SWIG code generated for TF_Status*
+  void* tf_status = nullptr;
+  int r = SWIG_ConvertPtr(wrapped_tf_status, &tf_status,
+                          $descriptor(TF_Status*), 0 | 0);
+  if (!SWIG_IsOK(r)) {
+    SWIG_exception_fail(
+        SWIG_ArgError(r),
+        "in method '_TF_DeleteStatus', argument 1 of type 'TF_Status *'");
+  }
+  $1 = reinterpret_cast<TF_Status*>(tf_status);
+}
+
 // Typemap for functions that return a TF_Buffer struct. This typemap creates a
 // Python string from the TF_Buffer and returns it. The TF_Buffer.data string
 // is not expected to be NULL-terminated, and TF_Buffer.length does not count
@@ -271,6 +299,7 @@ bool PyTensorListToVector(PyObject* py_tensor_list,
 
 %include "tensorflow/c/c_api.h"
 %include "tensorflow/c/python_api.h"
+
 
 %ignoreall
 %insert("python") %{

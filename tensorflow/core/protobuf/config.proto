@@ -102,6 +102,8 @@ message OptimizerOptions {
     L0 = -1;
   }
 
+  // Overall optimization level. The actual optimizations applied will be the
+  // logical OR of the flags that this level implies and any flags already set.
   Level opt_level = 3;
 
   // Control the use of the compiler/jit.  Experimental.
