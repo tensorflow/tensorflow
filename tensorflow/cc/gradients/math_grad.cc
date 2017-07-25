@@ -464,11 +464,11 @@ Status BatchMatMulGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
 
-class ReshapeGradientsWRTBroadcasting {
+class ReshapeGradientsForBroadcast {
  public:
-  ReshapeGradientsWRTBroadcasting(const ::tensorflow::Scope& scope,
-                                  const Output& x, const Output& y,
-                                  const Output& grad_x, const Output& grad_y) {
+  ReshapeGradientsForBroadcast(const ::tensorflow::Scope& scope,
+                               const Output& x, const Output& y,
+                               const Output& grad_x, const Output& grad_y) {
     const Output sx = Shape(scope, x);
     const Output sy = Shape(scope, y);
     const internal::BroadcastGradientArgs broadcast_gradient_args(scope, sx,
@@ -501,8 +501,7 @@ Status SquaredDifferenceGrad(const Scope& scope, const Operation& op,
   // grad(y) = grad(f) * conj(df/dy)
   const auto grad_y = Mul(scope, grad_inputs[0], ConjugateHelper(scope, df_dy));
 
-  ReshapeGradientsWRTBroadcasting reshaped_gradients(scope, x, y, grad_x,
-                                                     grad_y);
+  ReshapeGradientsForBroadcast reshaped_gradients(scope, x, y, grad_x, grad_y);
 
   grad_outputs->push_back(reshaped_gradients.reshaped_grad_x);
   grad_outputs->push_back(reshaped_gradients.reshaped_grad_y);
