@@ -466,9 +466,9 @@ REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
 
 class ReshapeGradientsForBroadcast {
  public:
-  ReshapeGradientsForBroadcast(const ::tensorflow::Scope& scope,
-                               const Output& x, const Output& y,
-                               const Output& grad_x, const Output& grad_y) {
+  ReshapeGradientsForBroadcast(const Scope& scope, const Output& x,
+                               const Output& y, const Output& grad_x,
+                               const Output& grad_y) {
     const Output sx = Shape(scope, x);
     const Output sy = Shape(scope, y);
     const internal::BroadcastGradientArgs broadcast_gradient_args(scope, sx,
