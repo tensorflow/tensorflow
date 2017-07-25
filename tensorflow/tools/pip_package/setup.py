@@ -34,7 +34,7 @@ _VERSION = '1.3.0-rc0'
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
-    'protobuf >= 3.2.0',
+    'protobuf >= 3.3.0',
     'tensorflow-tensorboard',
 ]
 
