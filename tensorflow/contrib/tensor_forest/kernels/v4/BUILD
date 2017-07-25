@@ -80,16 +80,9 @@ cc_library(
     deps = [
         ":input_target",
         ":params",
-<<<<<<< HEAD
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc_headers_only",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc_headers_only",
-        "//tensorflow/core:framework_headers_lib",
-=======
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
-        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
-        "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
->>>>>>> upstream/master
     ],
 )
 
