@@ -499,7 +499,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -601,7 +601,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1691,7 +1691,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1757,7 +1757,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5656,10 +5656,12 @@ op {
   name: "Cumprod"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5672,6 +5674,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumprod."
   }
   attr {
     name: "reverse"
@@ -5679,6 +5682,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -5722,10 +5726,12 @@ op {
   name: "Cumsum"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5738,6 +5744,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumsum."
   }
   attr {
     name: "reverse"
@@ -5745,6 +5752,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -7615,7 +7623,7 @@ op {
   }
   input_arg {
     name: "dim"
-    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`."
+    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`. Must be in the range\n`[-rank(input) - 1, rank(input)]`."
     type_attr: "Tdim"
   }
   output_arg {
@@ -12325,7 +12333,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -13102,7 +13110,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -13293,7 +13301,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -15662,7 +15670,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -21708,7 +21716,7 @@ op {
   }
   input_arg {
     name: "axis"
-    description: "1-D. The indices of the dimensions to reverse."
+    description: "1-D. The indices of the dimensions to reverse. Must be in the range\n`[-rank(tensor), rank(tensor))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -27260,7 +27268,7 @@ op {
       list {
       }
     }
-    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1."
+    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1. Must\nbe in the range `[-rank(input), rank(input))`."
     has_minimum: true
   }
   summary: "Removes dimensions of size 1 from the shape of a tensor."
@@ -28250,7 +28258,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
