@@ -22,8 +22,6 @@ namespace xla {
 namespace poplarplugin {
 
 static const char* names[] = {
-  "pop_conv_bias",
-  "pop_conv_bias",
   "pop_convolution",
 };
 

@@ -33,6 +33,10 @@ static bool IsConstantHalf(HloInstruction* inst) {
   return inst->literal().IsAllFloat(0.5);
 }
 
+static bool IsPoplarConvolution(HloInstruction* inst) {
+  return inst->to_apply()->name() == "pop_convolution";
+}
+
 /*
  * Note about constructing these patterns.  Due to the behaviour of the fuser
  * there must be no backward references.  All nodes should appear after any
@@ -61,7 +65,16 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kMultiply, true, nullptr, {4, 2}},
    {HloOpcode::kTanh, true, nullptr, {3}},
    {HloOpcode::kMultiply, true, nullptr, {4, -1}},
-   {HloOpcode::kConstant, true, IsConstantHalf, {}}}
+   {HloOpcode::kConstant, true, IsConstantHalf, {}}},
+
+  // BiasAdd on convolution (explicit broadcast)
+  {{HloOpcode::kAdd, true, nullptr, {1, 2}},
+   {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}},
+   {HloOpcode::kBroadcast, true, nullptr, {-1}}},
+
+  // BiasAdd on convolution (implicit broadcast)
+  {{HloOpcode::kAdd, true, nullptr, {1, -1}},
+   {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}}},
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}

@@ -245,6 +245,19 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
         sequence.add(prog);
         return Status::OK();
       }
+      case FUSED_BIASADD_BROADCAST:
+      case FUSED_BIASADD:
+      {
+        poplar::program::Program prog;
+        TF_ASSIGN_OR_RETURN(prog,
+                            CreateBiasAddOp(*graph_,
+                                            resources_,
+                                            inst,
+                                            GetOutputShape(inst),
+                                            tensor_map));
+        sequence.add(prog);
+        return Status::OK();
+      }
       default:
         return Unimplemented(inst);
     }
