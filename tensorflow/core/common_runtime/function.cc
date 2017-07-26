@@ -260,6 +260,8 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.rendezvous = ctx->rendezvous();
+    opts.cancellation_manager = ctx->cancellation_manager();
     opts.step_container = ctx->step_container();
     opts.stats_collector = ctx->stats_collector();
     opts.runner = ctx->runner();
@@ -545,23 +547,18 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
-  exec_args.step_container = opts.step_container;
-
+  exec_args.rendezvous = opts.rendezvous;
   exec_args.stats_collector = opts.stats_collector;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
+  exec_args.step_container = opts.step_container;
   exec_args.runner = *opts.runner;
-  // TODO(zhifengc): we can avoid creating rendez here if we know
-  // there is no send/recv nodes in the graph.
-  auto* rendez = new IntraProcessRendezvous(device_mgr_);
-  exec_args.rendezvous = rendez;
   item->exec->RunAsync(
       // Executor args
       exec_args,
       // Done callback.
-      [item, frame, rets, rendez, done](const Status& status) {
+      [item, frame, rets, done](const Status& status) {
         item->Unref();
-        rendez->Unref();
         Status s = status;
         if (s.ok()) {
           s = frame->GetRetvals(rets);
