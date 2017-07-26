@@ -1208,6 +1208,7 @@ cc_test(
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
     ],
@@ -1943,6 +1944,7 @@ cc_library(
         ":buffer_liveness",
         ":hlo",
         ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
     ],
 )

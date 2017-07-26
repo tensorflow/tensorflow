@@ -120,7 +120,7 @@ else
 fi
 
 export TF_NEED_CUDA=$IS_GPU
-yes "" | ./configure
+${PYTHON_BIN_PATH} configure.py
 
 # Figure out how many concurrent tests we can run and do run the tests.
 BAZEL_PARALLEL_TEST_FLAGS=""
