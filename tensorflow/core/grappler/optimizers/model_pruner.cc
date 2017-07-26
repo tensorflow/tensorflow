@@ -26,6 +26,29 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+int NumNonControlInputs(const NodeDef& node) {
+  int num_inputs = node.input_size();
+  for (int i = 0; i < node.input_size(); ++i) {
+    if (!node.input(i).empty() && node.input(i)[0] == '^') {
+      num_inputs--;
+    }
+  }
+  return num_inputs;
+}
+
+bool IsTrivialOp(const NodeDef& node) {
+  // Remove the stop gradient nodes since they serve no purpose once the graph
+  // is built. Also remove Identity ops.
+  if (IsStopGradient(node) || IsIdentity(node)) {
+    return true;
+  }
+  if (IsAddN(node) && NumNonControlInputs(node) <= 1) {
+    return true;
+  }
+
+  return false;
+}
+
 Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* pruned_graph) {
   GraphRewriter rewriter(item);
@@ -43,9 +66,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   std::unordered_set<const NodeDef*> nodes_to_delete;
   for (auto& node : item.graph.node()) {
-    // Remove the stop gradient nodes since they serve no purpose once the graph
-    // is built. Also remove Identity ops.
-    if (!IsStopGradient(node) && !IsIdentity(node)) {
+    if (!IsTrivialOp(node)) {
       continue;
     }
     // Don't remove nodes that must be preserved.
