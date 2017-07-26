@@ -432,6 +432,7 @@ tf_cuda_library(
 
 cc_library(
     name = "safe_framework_dep",
+    visibility = ["//visibility:public"],
     deps = [":framework"],
 )
 
