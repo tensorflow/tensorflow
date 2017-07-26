@@ -519,6 +519,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         new std::map<HloInstruction*, string>());
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
+      if (embedded_computation->IsFusionComputation()) {
+        continue;
+      }
       auto parallel_computation_iter =
           parallel_computations.find(embedded_computation);
       // All parallel computations are considered to be an entry computation for
@@ -591,6 +594,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
+      if (embedded_computation->IsFusionComputation()) {
+        continue;
+      }
       TF_RETURN_IF_ERROR(
           ir_emitter
               .EmitComputation(embedded_computation,
@@ -755,6 +761,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
+      if (embedded_computation->IsFusionComputation()) {
+        continue;
+      }
       TF_RETURN_IF_ERROR(
           ir_emitter
               .EmitComputation(embedded_computation,

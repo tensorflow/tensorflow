@@ -64,6 +64,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "full_path",
     "if_android",
+    "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
     "if_not_mobile",
@@ -937,9 +938,7 @@ filegroup(
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + [
-        "-Os",
-    ],
+    copts = tf_copts() + if_not_android_mips_and_mips64(["-Os"]),
     linkopts = ["-lz"],
     tags = [
         "manual",

@@ -2772,6 +2772,56 @@ class LayerNormTest(test.TestCase):
     self.doOutputTest((1, 100, 100, 1))
 
 
+class GDNTest(test.TestCase):
+
+  def _runGDN(self, x, shape, inverse, data_format):
+    inputs = array_ops.placeholder(dtypes.float32, shape)
+    outputs = _layers.gdn(inputs, inverse=inverse, data_format=data_format)
+    with self.test_session() as sess:
+      variables_lib.global_variables_initializer().run()
+      y, = sess.run([outputs], {inputs: x})
+    return y
+
+  def testInvalidDataFormat(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    with self.assertRaises(ValueError):
+      self._runGDN(x, x.shape, False, 'NHWC')
+
+  def testUnknownDim(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    with self.assertRaises(ValueError):
+      self._runGDN(x, 4 * [None], False, 'channels_last')
+
+  def testChannelsLast(self):
+    for ndim in [3, 4, 5]:
+      x = np.random.uniform(size=(1, 2, 3, 4)[:ndim])
+      y = self._runGDN(x, x.shape, False, 'channels_last')
+      self.assertEqual(x.shape, y.shape)
+      self.assertAllClose(y, x / np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+  def testChannelsFirst(self):
+    # `bias_add` doesn't support NCHW on CPU.
+    if test.is_gpu_available(cuda_only=True):
+      for ndim in [3, 4, 5]:
+        x = np.random.uniform(size=(4, 3, 2, 1)[:ndim])
+        y = self._runGDN(x, x.shape, False, 'channels_first')
+        self.assertEqual(x.shape, y.shape)
+        self.assertAllClose(
+            y, x / np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+  def testWrongDims(self):
+    for ndim in [1, 2, 6]:
+      x = np.random.uniform(size=(1, 2, 3, 4, 3, 2)[:ndim])
+      with self.assertRaises(ValueError):
+        self._runGDN(x, x.shape, False, 'channels_last')
+
+  def testIGDN(self):
+    x = np.random.uniform(size=(1, 2, 3, 4))
+    y = self._runGDN(x, x.shape, True, 'channels_last')
+    self.assertEqual(x.shape, y.shape)
+    self.assertAllClose(y, x * np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+
+
 class MaxPool2DTest(test.TestCase):
 
   def testInvalidDataFormat(self):

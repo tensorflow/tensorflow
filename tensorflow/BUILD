@@ -66,6 +66,24 @@ config_setting(
 )
 
 config_setting(
+    name = "android_mips",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "mips",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "android_mips64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "cpu": "mips64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
