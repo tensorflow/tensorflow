@@ -2514,20 +2514,9 @@ REGISTER_OP("QuantizedConv2DBackpropInput")
   .Attr("strides: list(int)")
   .Attr(GetPaddingAttrString()) // add padding string
   .SetShapeFn([] (InferenceContext *c) {
-    // TODO: Don't understand this shape handle funtion for now, will check later
     // TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
 
-    ShapeHandle unused;
-
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
-    
-    c->set_output(1, c->Scalar());
-    c->set_output(2, c->Scalar());
-
-    return Status::OK();
+    return InputTensorShapeOrUnknown(c, 0 /* input_idx */, 4 /* ndims */);
   })
   .Doc(R"doc(
 Computes quantized conv2d_transpose.
