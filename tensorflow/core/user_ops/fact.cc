@@ -32,7 +32,7 @@ class FactOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // Output a scalar string.
-    Tensor* output_tensor = NULL;
+    Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape(), &output_tensor));
     auto output = output_tensor->template scalar<string>();

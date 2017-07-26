@@ -25,8 +25,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char* const DEVICE_XLA_CPU = "XLA_CPU";
-
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,

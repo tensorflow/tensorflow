@@ -42,9 +42,9 @@ source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
 source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
   || { echo "Failed to source bazel_test_lib.sh" >&2; exit 1; }
 
-clean_output_base
-
 run_configure_for_cpu_build
+
+clean_output_base
 
 bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
@@ -58,12 +58,10 @@ create_python_test_dir "${PY_TEST_DIR}"
 PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
-failing_cpu_py_tests=$(get_failing_cpu_py_tests ${PY_TEST_DIR})
-
-passing_tests=$(bazel query "kind(py_test,  //${PY_TEST_DIR}/tensorflow/python/...) - (${failing_cpu_py_tests})" |
-  # We need to strip \r so that the result could be store into a variable under MSYS
-  tr '\r' ' ')
-
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-bazel test -c opt $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors
+bazel test -c opt $BUILD_OPTS -k --test_output=errors \
+  --define=no_tensorflow_py_deps=true --test_lang_filters=py \
+  --test_tag_filters=-no_pip,-no_windows \
+  --build_tag_filters=-no_pip,-no_windows --build_tests_only \
+  //${PY_TEST_DIR}/tensorflow/python/...

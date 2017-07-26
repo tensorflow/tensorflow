@@ -83,7 +83,7 @@ class MatrixBandPartOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MatrixBandPart").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       MatrixBandPartOp<CPUDevice, type>);
-TF_CALL_NUMBER_TYPES(REGISTER_MATRIX_BAND_PART);
+TF_CALL_POD_TYPES(REGISTER_MATRIX_BAND_PART);
 #undef REGISTER_MATRIX_BAND_PART
 
 // Registration of the deprecated kernel.
@@ -143,7 +143,9 @@ namespace functor {
   extern template struct MatrixBandPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-
+TF_CALL_bool(DECLARE_GPU_SPEC);
+TF_CALL_complex64(DECLARE_GPU_SPEC);
+TF_CALL_complex128(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -155,6 +157,9 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
                               .HostMemory("num_upper"),  \
                           MatrixBandPartOp<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_MATRIX_BAND_PART_GPU);
+TF_CALL_bool(REGISTER_MATRIX_BAND_PART_GPU);
+TF_CALL_complex64(REGISTER_MATRIX_BAND_PART_GPU);
+TF_CALL_complex128(REGISTER_MATRIX_BAND_PART_GPU);
 #undef REGISTER_MATRIX_BAND_PART_GPU
 
 // Registration of the deprecated kernel.

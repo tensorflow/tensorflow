@@ -77,9 +77,9 @@ class SquareLinearOperatorCompositionTest(
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated each matrix to a numpy array.
-    apply_order_list = list(reversed(matrices))
-    mat = ops.convert_to_tensor(apply_order_list[0])
-    for other_mat in apply_order_list[1:]:
+    matmul_order_list = list(reversed(matrices))
+    mat = ops.convert_to_tensor(matmul_order_list[0])
+    for other_mat in matmul_order_list[1:]:
       mat = math_ops.matmul(other_mat, mat)
 
     return operator, mat, feed_dict
@@ -188,9 +188,9 @@ class NonSquareLinearOperatorCompositionTest(
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated each matrix to a numpy array.
-    apply_order_list = list(reversed(matrices))
-    mat = ops.convert_to_tensor(apply_order_list[0])
-    for other_mat in apply_order_list[1:]:
+    matmul_order_list = list(reversed(matrices))
+    mat = ops.convert_to_tensor(matmul_order_list[0])
+    for other_mat in matmul_order_list[1:]:
       mat = math_ops.matmul(other_mat, mat)
 
     return operator, mat, feed_dict

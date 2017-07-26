@@ -29,7 +29,6 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.lib.core import error_codes_pb2
-from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -37,6 +36,7 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -47,12 +47,15 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+# Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
+ops._USE_C_API = True
 
 # NOTE(mrry): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
@@ -124,6 +127,17 @@ class SessionTest(test_util.TensorFlowTestCase):
       results = s.run([inp])
       self.assertAllEqual([20.0], results)
 
+    pool = config.session_inter_op_thread_pool.add()
+    pool.num_threads = 1
+    pool.global_name = 't1'
+    run_options = config_pb2.RunOptions()
+    run_options.inter_op_thread_pool = (
+        len(config.session_inter_op_thread_pool) - 1)
+    with session.Session(config=config) as s:
+      inp = constant_op.constant(30.0, name='W2')
+      results = s.run([inp], options=run_options)
+      self.assertAllEqual([30.0], results)
+
   def testErrorsReported(self):
     with session.Session() as s:
       constant_op.constant(10.0, name='W1')
@@ -149,6 +163,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         # Run with a bogus handle.
         s.partial_run('foo', r1, feed_dict={a: 1, b: 2})
 
+  @test_util.disable_c_api  # No shape registration for 'ConstructionFails'
   def testOpConstructionErrorPayload(self):
     with session.Session():
       failing_op = ops.get_default_graph().create_op(
@@ -191,6 +206,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaises(TypeError):
         s.run({'a': a, 'b': None})
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchSingleton(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -213,6 +229,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.run(a.op)  # An op, not a tensor.
       self.assertEqual(None, res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchList(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -228,6 +245,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue(isinstance(res, list))
       self.assertEqual([42.0, None, 44.0, 42.0, None], res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchTuple(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -241,6 +259,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue(isinstance(res, tuple))
       self.assertEqual((42.0, None, 44.0, 42.0), res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchNamedTuple(self):
     # pylint: disable=invalid-name
     ABC = collections.namedtuple('ABC', ['a', 'b', 'c'])
@@ -1157,6 +1176,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b_val, [[2.0, 2.0, 2.0]])
       self.assertAllEqual(a2_val, [[1.0, 1.0]])
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFeedAndFetch(self):
     with session.Session() as sess:
       for dtype in [dtypes.float16,
@@ -1202,6 +1222,50 @@ class SessionTest(test_util.TensorFlowTestCase):
           out_v, feed_v = feed_fetch_runner(np_array)
           self.assertAllEqual(np_array, out_v)
           self.assertAllEqual(np_array, feed_v)
+
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
+  def testMakeCallableOnTensorWithRunOptions(self):
+    with session.Session() as sess:
+      a = constant_op.constant(42.0)
+      tensor_runner = sess.make_callable(a, accept_options=True)
+      run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertEqual(0, len(run_metadata.step_stats.dev_stats))
+      res = tensor_runner(options=run_options, run_metadata=run_metadata)
+      self.assertEqual(42.0, res)
+      self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
+
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
+  def testMakeCallableOnOperationWithRunOptions(self):
+    with session.Session() as sess:
+      a = variables.Variable(42.0)
+      b = state_ops.assign_add(a, 1.0)
+      sess.run(a.initializer)
+      tensor_runner = sess.make_callable(b.op, accept_options=True)
+      run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertEqual(0, len(run_metadata.step_stats.dev_stats))
+      tensor_runner(options=run_options, run_metadata=run_metadata)
+      self.assertEqual(43.0, sess.run(a))
+      self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
+
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
+  def testMakeCallableWithFeedListAndRunOptions(self):
+    with session.Session() as sess:
+      ph = array_ops.placeholder(dtypes.float32)
+      a = math_ops.add(ph, 1.0)
+      tensor_runner = sess.make_callable(
+          a, feed_list=[ph.name], accept_options=True)
+      run_options = config_pb2.RunOptions(
+          trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertEqual(0, len(run_metadata.step_stats.dev_stats))
+      self.assertAllClose(
+          42.0,
+          tensor_runner(41.0, options=run_options, run_metadata=run_metadata))
+      self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
 
   def testFeedError(self):
     with session.Session() as sess:
@@ -1345,223 +1409,6 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess_2.run(c_1.op)
       self.assertEqual(2.0, sess_2.run(c_2))
 
-  def runTestPartialRun(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(r1, c)
-
-    h = sess.partial_run_setup([r1, r2], [a, b, c])
-    res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-    self.assertEqual(3, res)
-    temp = res * 17
-    res = sess.partial_run(h, r2, feed_dict={c: temp})
-    self.assertEqual(153, res)
-
-    # Call again on the same graph.
-    h2 = sess.partial_run_setup([r1, r2], [a, b, c])
-    res = sess.partial_run(h2, r1, feed_dict={a: 1, b: 2})
-    self.assertEqual(3, res)
-    temp = res * 18
-    res = sess.partial_run(h2, r2, feed_dict={c: temp})
-    self.assertEqual(162, res)
-
-  def runTestPartialRunIncomplete(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(r1, c)
-
-    h = sess.partial_run_setup([r1, r2], [a, b, c])
-    res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-    self.assertEqual(3, res)
-
-  def runTestConcurrentPartialRun(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(r1, c)
-
-    h1 = sess.partial_run_setup([r1], [a, b, c])
-    h2 = sess.partial_run_setup([r1, r2], [a, b, c])
-    res = sess.partial_run(h1, r1, feed_dict={a: 1, b: 2})
-    self.assertEqual(3, res)
-    temp = res * 19
-    res = sess.partial_run(h2, r1, feed_dict={a: temp, b: 9})
-    self.assertEqual(66, res)
-    res = sess.partial_run(h2, r2, feed_dict={c: 7})
-    self.assertEqual(462, res)
-
-  def runTestManyPartialRun(self, sess):
-    steps = 200
-    inputs = []
-    outputs = []
-    a = constant_op.constant(2.0, dtypes.float32)
-    for i in xrange(steps):
-      inputs.append(array_ops.placeholder(dtypes.float32, shape=[]))
-      a = math_ops.multiply(a, inputs[i])
-      outputs.append(a)
-
-    h = sess.partial_run_setup(outputs, inputs)
-    for i in xrange(steps):
-      res = sess.partial_run(h, outputs[i], feed_dict={inputs[i]: 1.0})
-    self.assertEqual(2.0, res)
-
-    feed_dict = {}
-    for i in xrange(steps):
-      feed_dict[inputs[i]] = 1.0
-    res = sess.run(outputs, feed_dict)
-    self.assertEqual(steps, len(res))
-    self.assertEqual(2.0, res[-1])
-
-  def runTestRunAndPartialRun(self, sess):
-    a = constant_op.constant(2.0, dtypes.float32)
-    b = a * 2
-    c = b * 3
-    r1 = sess.run([b, c])
-    h = sess.partial_run_setup([b, c], [])
-    r2 = sess.partial_run(h, [b, c])
-    self.assertEqual(r1, r2)
-
-  def runTestPartialRunMissingPlaceholderFeedException(self, sess):
-    x = array_ops.placeholder(dtypes.float32, shape=())
-    fetches = [x * 2, x * 3]
-    handle = sess.partial_run_setup(fetches=fetches, feeds=[])
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'You must feed a value for placeholder'):
-      sess.partial_run(handle, fetches[0])
-
-  def runTestPartialRunUnspecifiedFeed(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-
-    h = sess.partial_run_setup([r1], [a, b])
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'was not specified in partial_run_setup.$'):
-      sess.partial_run(h, r1, feed_dict={a: 1, b: 2, c: 3})
-
-  def runTestPartialRunUnspecifiedFetch(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(a, c)
-
-    h = sess.partial_run_setup([r1], [a, b, c])
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'was not specified in partial_run_setup.$'):
-      sess.partial_run(h, r2, feed_dict={a: 1, c: 3})
-
-  def runTestPartialRunAlreadyFed(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(a, c)
-
-    h = sess.partial_run_setup([r1, r2], [a, b, c])
-    sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'has already been fed.$'):
-      sess.partial_run(h, r2, feed_dict={a: 1, c: 3})
-
-  def runTestPartialRunAlreadyFetched(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(a, c)
-
-    h = sess.partial_run_setup([r1, r2], [a, b, c])
-    sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'has already been fetched.$'):
-      sess.partial_run(h, r1, feed_dict={c: 3})
-
-  def testInvalidPartialRunSetup(self):
-    sess = session.Session()
-    x = array_ops.placeholder(dtypes.float32, shape=[])
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'specify at least one target to fetch or execute.'):
-      sess.partial_run_setup(fetches=[], feeds=[x])
-
-  def testPartialRunDirect(self):
-    self.runTestPartialRun(session.Session())
-
-  def testPartialRunIncompleteDirect(self):
-    self.runTestPartialRunIncomplete(session.Session())
-
-  def testConcurrentPartialRunDirect(self):
-    self.runTestConcurrentPartialRun(session.Session())
-
-  def testManyPartialRunDirect(self):
-    self.runTestManyPartialRun(session.Session())
-
-  def testRunAndPartialRunDirect(self):
-    self.runTestRunAndPartialRun(session.Session())
-
-  def testPartialRunMissingPlaceholderFeedExceptionDirect(self):
-    self.runTestPartialRunMissingPlaceholderFeedException(session.Session())
-
-  def testPartialRunUnspecifiedFeedDirect(self):
-    self.runTestPartialRunUnspecifiedFeed(session.Session())
-
-  def testPartialRunUnspecifiedFetchDirect(self):
-    self.runTestPartialRunUnspecifiedFetch(session.Session())
-
-  def testPartialRunAlreadyFedDirect(self):
-    self.runTestPartialRunAlreadyFed(session.Session())
-
-  def testPartialRunAlreadyFetchedDirect(self):
-    self.runTestPartialRunAlreadyFetched(session.Session())
-
-  def testPartialRunDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRun(session.Session(server.target))
-
-  def testPartialRunIncompleteDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRunIncomplete(session.Session(server.target))
-
-  def testConcurrentPartialRunDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestConcurrentPartialRun(session.Session(server.target))
-
-  def testManyPartialRunDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestManyPartialRun(session.Session(server.target))
-
-  def testRunAndPartialRunDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestRunAndPartialRun(session.Session(server.target))
-
-  def testPartialRunMissingPlaceholderFeedExceptionDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRunMissingPlaceholderFeedException(
-        session.Session(server.target))
-
-  def testPartialRunUnspecifiedFeedDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRunUnspecifiedFeed(session.Session(server.target))
-
-  def testPartialRunUnspecifiedFetchDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRunUnspecifiedFetch(session.Session(server.target))
-
-  def testPartialRunAlreadyFedDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRunAlreadyFed(session.Session(server.target))
-
-  def testPartialRunAlreadyFetchedDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRunAlreadyFetched(session.Session(server.target))
-
   def testFeedDictKeyException(self):
     with session.Session() as sess:
       a = constant_op.constant(1.0, dtypes.float32, name='a')
@@ -1661,6 +1508,22 @@ class SessionTest(test_util.TensorFlowTestCase):
         else:
           self.assertFalse(run_metadata.HasField('cost_graph'))
 
+  def runTestOutputPartitionGraphs(self, sess):
+    run_options = config_pb2.RunOptions(output_partition_graphs=True)
+    a = constant_op.constant(1)
+    run_metadata = config_pb2.RunMetadata()
+    sess.run(a, options=run_options, run_metadata=run_metadata)
+    self.assertGreater(len(run_metadata.partition_graphs), 0)
+    sess.run(a, run_metadata=run_metadata)
+    self.assertEqual(len(run_metadata.partition_graphs), 0)
+
+  def testOutputPartitionGraphsDirect(self):
+    self.runTestOutputPartitionGraphs(session.Session())
+
+  def testOutputPartitionGraphsDistributed(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestOutputPartitionGraphs(session.Session(server.target))
+
   def testNonInteractiveSessionNesting(self):
     sess1 = session.Session()
     sess1_controller = sess1.as_default()
@@ -1720,6 +1583,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
 
+  @test_util.disable_c_api  # set_device does not work with C API
   def testRegisterFetchAndFeedConversionFunctions(self):
     class SquaredTensor(object):
       def __init__(self, tensor):
@@ -1837,270 +1701,6 @@ class SessionTest(test_util.TensorFlowTestCase):
     server = server_lib.Server.create_local_server()
     self.runTestBuildGraphError(session.Session(server.target))
 
-  def testClusterSpecPropagationSimple(self):
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    const = constant_op.constant(17)
-    sess = session.Session(server1.target, config=config)
-    output = sess.run(const)
-    self.assertEqual(17, output)
-
-  def testClusterSpecPropagationWorker2Placement(self):
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    with ops.Graph().as_default() as g, ops.device('/job:worker/task:1'):
-      const = constant_op.constant(17)
-    sess = session.Session(server1.target, config=config, graph=g)
-    run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
-    run_metadata = config_pb2.RunMetadata()
-    output = sess.run(const, options=run_options, run_metadata=run_metadata)
-    self.assertEqual(17, output)
-    self.assertEqual(1,
-                     len([
-                         node_stats
-                         for dev_stats in run_metadata.step_stats.dev_stats
-                         for node_stats in dev_stats.node_stats
-                         if '/job:worker/replica:0/task:1/device:CPU:0' ==
-                         dev_stats.device and 'Const' == node_stats.node_name
-                     ]))
-
-  def testClusterSpecPropagationWorker1Placement(self):
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    with ops.Graph().as_default() as g, ops.device('/job:worker/task:0'):
-      const = constant_op.constant(17)
-    sess = session.Session(server1.target, config=config, graph=g)
-    output = sess.run(const)
-    self.assertEqual(17, output)
-
-  def testClusterSpecPropagationThreeServers2Graphs(self):
-    """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
-
-    We create 2 clusterspecs:
-     1. server2 as the master, server1 as a worker
-     2. server2 as the master, server3 as a worker
-
-    We ensure that variables on the workers are independent.
-    """
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    server3 = server_lib.Server.create_local_server()
-    cluster_def1 = cluster_pb2.ClusterDef()
-    job1 = cluster_def1.job.add()
-    job1.name = 'worker1'
-    job1.tasks[0] = server2.target[len('grpc://'):]
-    job1.tasks[1] = server1.target[len('grpc://'):]
-
-    cluster_def2 = cluster_pb2.ClusterDef()
-    job2 = cluster_def2.job.add()
-    job2.name = 'worker2'
-    job2.tasks[0] = server2.target[len('grpc://'):]
-    job2.tasks[1] = server3.target[len('grpc://'):]
-
-    config1 = config_pb2.ConfigProto(cluster_def=cluster_def1)
-    config2 = config_pb2.ConfigProto(cluster_def=cluster_def2)
-
-    with ops.Graph().as_default() as g1:
-      with ops.device('/job:worker1/task:1'):
-        var1 = variables.Variable(array_ops.zeros([2]), name='var1')
-        update_op1 = state_ops.assign_add(
-            var1, array_ops.ones([2]), name='var1_assign_add')
-        init1 = variables.global_variables_initializer()
-
-    with ops.Graph().as_default() as g2:
-      with ops.device('/job:worker2/task:1'):
-        var2 = variables.Variable(array_ops.zeros([2]), name='var2')
-        update_op2 = state_ops.assign_add(
-            var2, array_ops.ones([2]), name='var2_assign_add')
-        init2 = variables.global_variables_initializer()
-
-    sess1 = session.Session(server2.target, graph=g1, config=config1)
-    sess2 = session.Session(server2.target, graph=g2, config=config2)
-
-    init1.run(session=sess1)
-    init2.run(session=sess2)
-
-    expected_zeros = np.zeros([2])
-    expected_ones = np.ones([2])
-
-    self.assertAllEqual(expected_zeros, sess1.run(var1))
-    self.assertAllEqual(expected_zeros, sess2.run(var2))
-
-    self.assertAllEqual(expected_ones, sess1.run(update_op1))
-    self.assertAllEqual(expected_ones, sess1.run(var1))
-    self.assertAllEqual(expected_zeros, sess2.run(var2))
-    self.assertAllEqual(expected_ones, sess2.run(update_op2))
-    self.assertAllEqual(expected_ones + expected_ones, sess1.run(update_op1))
-    self.assertAllEqual(expected_ones, sess2.run(var2))
-    self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
-
-  def testClusterSpecPropagationThreeServers(self):
-    """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
-
-    We create 2 clusterspecs:
-     1. server2 as the master, server1 as a worker
-     2. server2 as the master, server3 as a worker
-
-    We ensure that variables on the workers are independent.
-    """
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    server3 = server_lib.Server.create_local_server()
-    cluster_def1 = cluster_pb2.ClusterDef()
-    job1 = cluster_def1.job.add()
-    job1.name = 'worker'
-    job1.tasks[0] = server2.target[len('grpc://'):]
-    job1.tasks[1] = server1.target[len('grpc://'):]
-
-    cluster_def2 = cluster_pb2.ClusterDef()
-    job2 = cluster_def2.job.add()
-    job2.name = 'worker'
-    job2.tasks[0] = server2.target[len('grpc://'):]
-    job2.tasks[1] = server3.target[len('grpc://'):]
-
-    config1 = config_pb2.ConfigProto(cluster_def=cluster_def1)
-    config2 = config_pb2.ConfigProto(cluster_def=cluster_def2)
-
-    with ops.device('/job:worker/task:1'):
-      var = variables.Variable(array_ops.zeros([2]), name='var')
-      feed = array_ops.placeholder(dtypes.float32, shape=(2))
-      update_op = var.assign_add(feed)
-
-    sess1 = session.Session(server2.target, config=config1)
-    sess2 = session.Session(server2.target, config=config2)
-
-    variables.global_variables_initializer().run(session=sess1)
-    variables.global_variables_initializer().run(session=sess2)
-
-    expected_zeros = np.zeros([2])
-    expected_ones = np.ones([2])
-
-    self.assertAllEqual(expected_zeros, sess1.run(var))
-    self.assertAllEqual(expected_zeros, sess2.run(var))
-    self.assertAllEqual(expected_ones,
-                        sess1.run(update_op, feed_dict={feed: expected_ones}))
-    self.assertAllEqual(expected_ones, sess1.run(var))
-    self.assertAllEqual(expected_zeros, sess2.run(var))
-    self.assertAllEqual(expected_ones,
-                        sess2.run(update_op, feed_dict={feed: expected_ones}))
-    self.assertAllEqual(expected_ones + expected_ones,
-                        sess1.run(update_op, feed_dict={feed: expected_ones}))
-    self.assertAllEqual(expected_ones, sess2.run(var))
-    self.assertAllEqual(expected_ones + expected_ones, sess1.run(var))
-
-  def testClusterSpecPropagationThreeServersOneCluster(self):
-    """Boots 3 servers, ensures appropriate communication across workers.
-
-    Additionally, in this cluster, we ensure the master is not the 0-th worker.
-
-    Note: this test only uses one session.
-    """
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    server3 = server_lib.Server.create_local_server()
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server3.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    job.tasks[2] = server1.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    # Add ops to the devices in non-linear order.
-
-    with ops.device('/job:worker/task:1'):
-      feed1 = array_ops.placeholder(dtypes.float32, shape=(2))
-      const1 = constant_op.constant(2.0)
-      mul1 = const1 * feed1
-
-    with ops.device('/job:worker/task:2'):
-      feed2 = array_ops.placeholder(dtypes.float32, shape=(2))
-      const2 = constant_op.constant(2.0)
-      mul2 = const2 * feed2
-
-    with ops.device('/job:worker/task:0'):
-      feed0 = array_ops.placeholder(dtypes.float32, shape=(2))
-      const0 = constant_op.constant(2.0)
-      mul0 = const0 * feed0
-
-    sum_op = mul0 + mul1 + mul2
-
-    ones = np.ones([2])
-    run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
-    run_metadata = config_pb2.RunMetadata()
-
-    # Run!
-    with session.Session(server1.target, config=config) as sess:
-      output = sess.run(
-          sum_op,
-          options=run_options,
-          run_metadata=run_metadata,
-          feed_dict={feed1: ones,
-                     feed2: ones,
-                     feed0: ones})
-      self.assertAllEqual(6 * ones, output)
-
-      self.assertEqual(
-          3,
-          len([
-              dev_stats.device
-              for dev_stats in run_metadata.step_stats.dev_stats
-              for node_stats in dev_stats.node_stats
-              if '/job:worker/replica:0/task:' in dev_stats.device and
-              node_stats.node_name.startswith('Const')
-          ]), run_metadata)
-
-  def testClusterSpecPropagationPartialRun(self):
-    """Test successful partial run with ClusterSpec propagation."""
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    with ops.device('/job:worker/task:0'):
-      a = array_ops.placeholder(dtypes.float32, shape=[])
-    with ops.device('/job:worker/task:1'):
-      b = array_ops.placeholder(dtypes.float32, shape=[])
-      c = array_ops.placeholder(dtypes.float32, shape=[])
-      r1 = math_ops.add(a, b)
-    with ops.device('/job:worker/task:0'):
-      r2 = math_ops.multiply(r1, c)
-
-    with session.Session(server1.target, config=config) as sess:
-      h = sess.partial_run_setup([r1, r2], [a, b, c])
-      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-      self.assertEqual(3, res)
-      res = sess.partial_run(h, r2, feed_dict={c: 3})
-      self.assertEqual(9, res)
-
   def testGraphOptimizer(self):
     rewrite_options = rewriter_config_pb2.RewriterConfig(
         disable_model_pruning=False, constant_folding=True)
@@ -2137,6 +1737,46 @@ class SessionTest(test_util.TensorFlowTestCase):
           self.assertEqual(node.input_info[1].preceding_node, r1_cost_id)
           found_valid_nodes += 1
     self.assertEqual(3, found_valid_nodes)
+
+  def testDeviceAttributes(self):
+    attrs = session._DeviceAttributes(
+        '/job:worker/replica:0/task:3/device:CPU:2', 'TYPE', 1337)
+    self.assertEqual(1337, attrs.memory_limit_bytes)
+    self.assertEqual('/job:worker/replica:0/task:3/device:CPU:2', attrs.name)
+    self.assertEqual('TYPE', attrs.device_type)
+    str_repr = '%s' % attrs
+    self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
+
+  def testDeviceAttributesCanonicalization(self):
+    attrs = session._DeviceAttributes('/job:worker/replica:0/task:3/cpu:1',
+                                      'TYPE', 1337)
+    self.assertEqual(1337, attrs.memory_limit_bytes)
+    self.assertEqual('/job:worker/replica:0/task:3/device:CPU:1', attrs.name)
+    self.assertEqual('TYPE', attrs.device_type)
+    str_repr = '%s' % attrs
+    self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
+
+  def runTestAddFunctionToSession(self, target=''):
+    """Add a function to a session after the graph has already been run."""
+    @function.Defun(dtypes.float32)
+    def foo(x):
+      return x + 1
+
+    x = constant_op.constant(1.0)
+    with session.Session(target=target) as sess:
+      sess.run(x)
+      f = foo(x)
+      result = sess.run(f)
+      self.assertEqual(result, 2.0)
+
+  @test_util.disable_c_api  # functions don't work with C API
+  def testAddFunctionToSession(self):
+    self.runTestAddFunctionToSession()
+
+  @test_util.disable_c_api  # functions don't work with C API
+  def testAddFunctionToGrpcSession(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestAddFunctionToSession(server.target)
 
 
 if __name__ == '__main__':

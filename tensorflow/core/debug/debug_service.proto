@@ -20,7 +20,7 @@ package tensorflow;
 import "tensorflow/core/util/event.proto";
 
 // Reply message from EventListener to the client, i.e., to the source of the
-// Event protocal buffers, e.g., debug ops inserted by a debugged runtime to a
+// Event protocol buffers, e.g., debug ops inserted by a debugged runtime to a
 // TensorFlow graph being executed.
 message EventReply {
   message DebugOpStateChange {

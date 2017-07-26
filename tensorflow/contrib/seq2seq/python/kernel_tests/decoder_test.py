@@ -21,12 +21,12 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
@@ -51,7 +51,7 @@ class DynamicDecodeRNNTest(test.TestCase):
       else:
         inputs = np.random.randn(batch_size, max_time,
                                  input_depth).astype(np.float32)
-      cell = core_rnn_cell.LSTMCell(cell_depth)
+      cell = rnn_cell.LSTMCell(cell_depth)
       helper = helper_py.TrainingHelper(
           inputs, sequence_length, time_major=time_major)
       my_decoder = basic_decoder.BasicDecoder(
@@ -71,7 +71,7 @@ class DynamicDecodeRNNTest(test.TestCase):
 
       self.assertTrue(
           isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
-      self.assertTrue(isinstance(final_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(final_state, rnn_cell.LSTMStateTuple))
 
       self.assertEqual(
           (batch_size,),
@@ -126,7 +126,7 @@ class DynamicDecodeRNNTest(test.TestCase):
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
 
-      cell = core_rnn_cell.LSTMCell(cell_depth)
+      cell = rnn_cell.LSTMCell(cell_depth)
       zero_state = cell.zero_state(dtype=dtypes.float32, batch_size=batch_size)
       helper = helper_py.TrainingHelper(inputs, sequence_length)
       my_decoder = basic_decoder.BasicDecoder(

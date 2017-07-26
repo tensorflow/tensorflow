@@ -18,21 +18,80 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+bool IsAddN(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "AddN";
+}
+
 bool IsConcat(const NodeDef& node) {
   const auto op = node.op();
   return op == "Concat" || op == "ConcatV2";
 }
 
+bool IsConstant(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Const";
+}
+
 bool IsDequeueOp(const NodeDef& node) {
-  static const std::set<std::string> dequeue_ops = {
-      "QueueDequeueManyV2", "QueueDequeueMany", "QueueDequeueV2",
-      "QueueDequeue"};
-  return dequeue_ops.count(node.op()) > 0;
+  const auto& op = node.op();
+  return op == "QueueDequeueManyV2" || op == "QueueDequeueMany" ||
+         op == "QueueDequeueV2" || op == "QueueDequeue" ||
+         op == "QueueDequeueUpToV2" || op == "QueueDequeueUpTo";
+}
+
+bool IsIdentity(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Identity" || op == "RefIdentity";
+}
+
+bool IsMerge(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Merge";
+}
+
+bool IsNoOp(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "NoOp";
+}
+
+bool IsNextIteration(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "NextIteration" || op == "RefNextIteration";
 }
 
 bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
-  return op == "Placeholder" || op == "PlaceholderV2";
+  return op == "Placeholder" || op == "PlaceholderV2" ||
+         op == "PlaceholderWithDefault";
+}
+
+bool IsRecv(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "_Recv";
+}
+
+bool IsReduction(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
+         op == "Mean" || op == "Any" || op == "All";
+}
+
+bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
+
+bool IsSend(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "_Send";
+}
+
+bool IsStopGradient(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "StopGradient" || op == "PreventGradient";
+}
+
+bool IsSwitch(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Switch";
 }
 
 bool IsTranspose(const NodeDef& node) {
@@ -43,12 +102,7 @@ bool IsTranspose(const NodeDef& node) {
 bool IsVariable(const NodeDef& node) {
   const auto op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
-         op == "VarHandleOp";
-}
-
-bool IsMerge(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Merge";
+         op == "VarHandleOp" || op == "TemporaryVariable";
 }
 
 }  // end namespace grappler

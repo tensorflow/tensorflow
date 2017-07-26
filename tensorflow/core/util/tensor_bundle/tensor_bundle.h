@@ -31,7 +31,7 @@ limitations under the License.
 // (tensorflow::table::Table).  Each key is a name of a tensor and its value is
 // a serialized BundleEntryProto.  Each BundleEntryProto describes the metadata
 // of a tensor: which of the "data" files contains the content of a tensor, the
-// offset into that file, checksum, some auxilary data, etc.
+// offset into that file, checksum, some auxiliary data, etc.
 //
 // A tensor bundle can be accessed randomly using a BundleReader.  Usage:
 //
@@ -210,6 +210,14 @@ class BundleReader {
   // REQUIRES: status().ok()
   Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
 
+  // Looks up the tensor pointed to by the internal iterator.
+  //
+  // On error, "val" may contain nonsense data.
+  //
+  // Validates the stored crc32c checksum against the restored bytes.
+  // REQUIRES: status().ok() && Valid()
+  Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
+
   // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
   // is non-empty if and only if the tensor is a partitioned tensor.
   //
@@ -273,6 +281,7 @@ class BundleReader {
   RandomAccessFile* metadata_;  // Owned.
   table::Table* table_;
   table::Iterator* iter_;
+  // Owned the InputBuffer objects and their underlying RandomAccessFile's.
   std::unordered_map<int32, io::InputBuffer*> data_;
 
   // Maps each partitioned tensor's key to its stored slices (represented in a

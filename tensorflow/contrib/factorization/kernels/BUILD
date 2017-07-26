@@ -43,6 +43,7 @@ cc_library(
     srcs = ["masked_matmul_ops.cc"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
         "@protobuf//:protobuf_headers",
     ],
@@ -51,6 +52,7 @@ cc_library(
 
 cc_test(
     name = "clustering_ops_test",
+    size = "small",
     srcs = ["clustering_ops_test.cc"],
     deps = [
         ":clustering_ops",

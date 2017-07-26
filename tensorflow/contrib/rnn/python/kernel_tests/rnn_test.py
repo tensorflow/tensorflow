@@ -22,12 +22,12 @@ import itertools
 
 import numpy as np
 
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
-from tensorflow.contrib.rnn.python.ops import rnn
+from tensorflow.contrib.rnn.python.ops import rnn as contrib_rnn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -58,14 +58,14 @@ class StackBidirectionalRNNTest(test.TestCase):
         dtypes.int64) if use_sequence_length else None
 
     self.cells_fw = [
-        core_rnn_cell_impl.LSTMCell(
+        rnn_cell.LSTMCell(
             num_units,
             input_size,
             initializer=initializer,
             state_is_tuple=False) for num_units in self.layers
     ]
     self.cells_bw = [
-        core_rnn_cell_impl.LSTMCell(
+        rnn_cell.LSTMCell(
             num_units,
             input_size,
             initializer=initializer,
@@ -77,7 +77,7 @@ class StackBidirectionalRNNTest(test.TestCase):
             dtypes.float32,
             shape=(batch_size, input_size) if use_shape else (None, input_size))
     ]
-    outputs, state_fw, state_bw = rnn.stack_bidirectional_rnn(
+    outputs, state_fw, state_bw = contrib_rnn.stack_bidirectional_rnn(
         self.cells_fw,
         self.cells_bw,
         inputs,
@@ -237,14 +237,14 @@ class StackBidirectionalRNNTest(test.TestCase):
     sequence_length = array_ops.placeholder(dtypes.int64)
 
     self.cells_fw = [
-        core_rnn_cell_impl.LSTMCell(
+        rnn_cell.LSTMCell(
             num_units,
             input_size,
             initializer=initializer,
             state_is_tuple=False) for num_units in self.layers
     ]
     self.cells_bw = [
-        core_rnn_cell_impl.LSTMCell(
+        rnn_cell.LSTMCell(
             num_units,
             input_size,
             initializer=initializer,
@@ -258,7 +258,7 @@ class StackBidirectionalRNNTest(test.TestCase):
     ]
     inputs_c = array_ops.stack(inputs)
     inputs_c = array_ops.transpose(inputs_c, [1, 0, 2])
-    outputs, st_fw, st_bw = rnn.stack_bidirectional_dynamic_rnn(
+    outputs, st_fw, st_bw = contrib_rnn.stack_bidirectional_dynamic_rnn(
         self.cells_fw,
         self.cells_bw,
         inputs_c,

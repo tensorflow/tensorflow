@@ -30,7 +30,9 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -99,7 +101,7 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
   TF_RETURN_IF_ERROR(
       DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
   TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
-  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
+  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph, device->name()));
   return Status::OK();
 }
 
@@ -440,10 +442,9 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
 }
 
 void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
-                            WorkerSession* session,
-                            const ExecutorOpts& /*opts*/,
+                            WorkerSession* session, const ExecutorOpts& opts,
                             StepStatsCollector* collector,
-                            CostGraphDef* cost_graph,
+                            MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   // Lookup an item. Holds one ref while executing.
@@ -460,6 +461,18 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
   if (item == nullptr) {
     done(errors::Aborted("Graph handle is not found: ", handle));
     return;
+  }
+
+  CostGraphDef* cost_graph = nullptr;
+  if (response != nullptr) {
+    cost_graph = response->mutable_cost_graph();
+    if (opts.record_partition_graphs()) {
+      for (const ExecutionUnit& unit : item->units) {
+        GraphDef graph_def;
+        unit.graph->ToGraphDef(&graph_def);
+        response->AddPartitionGraph(graph_def);
+      }
+    }
   }
 
   RemoteRendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);

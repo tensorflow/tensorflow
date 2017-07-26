@@ -127,11 +127,10 @@ void BaseRendezvousMgr::CleanupAll() {
   }
 }
 
-BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
-                                           bool tolerate_dup_recv)
+BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id)
     : env_(env),
       step_id_(step_id),
-      local_(NewLocalRendezvous(tolerate_dup_recv)),
+      local_(NewLocalRendezvous()),
       session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
@@ -248,14 +247,15 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
+  WorkerSession* sess = session();
   Device* src_device;
-  Status s = env_->device_mgr->LookupDevice(parsed.src_device, &src_device);
+  Status s = sess->device_mgr->LookupDevice(parsed.src_device, &src_device);
   if (!s.ok()) {
     done(s);
     return;
   }
   Device* dst_device;
-  s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+  s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
   if (!s.ok()) {
     done(s);
     return;

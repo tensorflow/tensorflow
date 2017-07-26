@@ -33,9 +33,9 @@ from tensorflow.contrib.keras.python.keras.engine import Layer
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import func_dump
 from tensorflow.contrib.keras.python.keras.utils.generic_utils import func_load
+from tensorflow.contrib.keras.python.keras.utils.generic_utils import has_arg
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as tf_core_layers
-from tensorflow.python.util import tf_inspect
 
 
 class Masking(Layer):
@@ -85,7 +85,7 @@ class Masking(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class Dropout(Layer):
+class Dropout(tf_core_layers.Dropout, Layer):
   """Applies Dropout to the input.
 
   Dropout consists in randomly setting
@@ -104,24 +104,18 @@ class Dropout(Layer):
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
-    super(Dropout, self).__init__(**kwargs)
-    self.rate = min(1., max(0., rate))
-    self.noise_shape = noise_shape
-    self.seed = seed
     self.supports_masking = True
-
-  def _get_noise_shape(self, _):
-    return self.noise_shape
+    # Inheritance call order:
+    # 1) tf.layers.Dropout, 2) keras.layers.Layer, 3) tf.layers.Layer
+    super(Dropout, self).__init__(rate=rate, noise_shape=noise_shape, seed=seed, **kwargs)
 
   def call(self, inputs, training=None):
-    if 0. < self.rate < 1.:
-      noise_shape = self._get_noise_shape(inputs)
-
-      def dropped_inputs():
-        return K.dropout(inputs, self.rate, noise_shape, seed=self.seed)
-
-      return K.in_train_phase(dropped_inputs, inputs, training=training)
-    return inputs
+    if training is None:
+      training = K.learning_phase()
+    output = super(Dropout, self).call(inputs, training=training)
+    if training is K.learning_phase():
+      output._uses_learning_phase = True  # pylint: disable=protected-access
+    return output
 
   def get_config(self):
     config = {'rate': self.rate}
@@ -596,8 +590,7 @@ class Lambda(Layer):
 
   def call(self, inputs, mask=None):
     arguments = self.arguments
-    arg_spec = tf_inspect.getargspec(self.function)
-    if 'mask' in arg_spec.args:
+    if has_arg(self.function, 'mask'):
       arguments['mask'] = mask
     return self.function(inputs, **arguments)
 
@@ -639,6 +632,16 @@ class Lambda(Layer):
       function = func_load(config['function'], globs=globs)
     else:
       raise TypeError('Unknown function type:', function_type)
+
+    # If arguments were numpy array, they have been saved as
+    # list. We need to recover the ndarray
+    if 'arguments' in config:
+      for key in config['arguments']:
+        if isinstance(config['arguments'][key], dict):
+          arg_dict = config['arguments'][key]
+          if 'type' in arg_dict and arg_dict['type'] == 'ndarray':
+            # Overwrite the argument with its numpy translation
+            config['arguments'][key] = np.array(arg_dict['value'])
 
     config['function'] = function
     return cls(**config)
@@ -726,45 +729,32 @@ class Dense(tf_core_layers.Dense, Layer):
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
         **kwargs)
-
+    # TODO(fchollet): move weight constraint support to core layers.
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
-    self.input_spec = InputSpec(min_ndim=2)
     self.supports_masking = True
 
   def build(self, input_shape):
-    assert len(input_shape) >= 2
-    input_dim = input_shape[-1]
     super(Dense, self).build(input_shape)
-    self.input_spec = InputSpec(min_ndim=2, axes={-1: input_dim})
+    # TODO(fchollet): move weight constraint support to core layers.
     if self.kernel_constraint:
       self.constraints[self.kernel] = self.kernel_constraint
     if self.use_bias and self.bias_constraint:
       self.constraints[self.bias] = self.bias_constraint
-    self.built = True
 
   def get_config(self):
     config = {
-        'units':
-            self.units,
-        'activation':
-            activations.serialize(self.activation),
-        'use_bias':
-            self.use_bias,
-        'kernel_initializer':
-            initializers.serialize(self.kernel_initializer),
-        'bias_initializer':
-            initializers.serialize(self.bias_initializer),
-        'kernel_regularizer':
-            regularizers.serialize(self.kernel_regularizer),
-        'bias_regularizer':
-            regularizers.serialize(self.bias_regularizer),
+        'units': self.units,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'kernel_initializer': initializers.serialize(self.kernel_initializer),
+        'bias_initializer': initializers.serialize(self.bias_initializer),
+        'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
+        'bias_regularizer': regularizers.serialize(self.bias_regularizer),
         'activity_regularizer':
             regularizers.serialize(self.activity_regularizer),
-        'kernel_constraint':
-            constraints.serialize(self.kernel_constraint),
-        'bias_constraint':
-            constraints.serialize(self.bias_constraint)
+        'kernel_constraint': constraints.serialize(self.kernel_constraint),
+        'bias_constraint': constraints.serialize(self.bias_constraint)
     }
     base_config = super(Dense, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

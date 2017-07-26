@@ -30,11 +30,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -60,7 +62,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
+#include "tensorflow/core/platform/gpu_tracer.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -85,17 +87,48 @@ thread::ThreadPool* NewThreadPoolFromSessionOptions(
   return new thread::ThreadPool(options.env, "Compute", num_threads);
 }
 
-thread::ThreadPool* NewThreadPoolFromThreadPoolOptions(
+Status NewThreadPoolFromThreadPoolOptions(
     const SessionOptions& options,
-    const ThreadPoolOptionProto& thread_pool_options, int pool_number) {
+    const ThreadPoolOptionProto& thread_pool_options, int pool_number,
+    thread::ThreadPool** pool, bool* owned) {
   int32 num_threads = thread_pool_options.num_threads();
   if (num_threads == 0) {
     num_threads = NumInterOpThreadsFromSessionOptions(options);
   }
-  VLOG(1) << "Direct session inter op parallelism threads for pool "
-          << pool_number << ": " << num_threads;
-  return new thread::ThreadPool(
-      options.env, strings::StrCat("Compute", pool_number), num_threads);
+  const string& name = thread_pool_options.global_name();
+  if (name.empty()) {
+    // Session-local threadpool.
+    VLOG(1) << "Direct session inter op parallelism threads for pool "
+            << pool_number << ": " << num_threads;
+    *pool = new thread::ThreadPool(
+        options.env, strings::StrCat("Compute", pool_number), num_threads);
+    *owned = true;
+    return Status::OK();
+  }
+
+  // Global, named threadpool.
+  typedef std::pair<int32, thread::ThreadPool*> MapValue;
+  static std::map<string, MapValue>* global_pool_map =
+      new std::map<string, MapValue>;
+  static mutex* mu = new mutex();
+  mutex_lock l(*mu);
+  MapValue* mvalue = &(*global_pool_map)[name];
+  if (mvalue->second == nullptr) {
+    mvalue->first = thread_pool_options.num_threads();
+    mvalue->second = new thread::ThreadPool(
+        options.env, strings::StrCat("Compute", pool_number), num_threads);
+  } else {
+    if (mvalue->first != thread_pool_options.num_threads()) {
+      return errors::InvalidArgument(
+          "Pool ", name,
+          " configured previously with num_threads=", mvalue->first,
+          "; cannot re-configure with num_threads=",
+          thread_pool_options.num_threads());
+    }
+  }
+  *owned = false;
+  *pool = mvalue->second;
+  return Status::OK();
 }
 
 thread::ThreadPool* GlobalThreadPool(const SessionOptions& options) {
@@ -232,16 +265,18 @@ DirectSession::DirectSession(const SessionOptions& options,
   if (options_.config.session_inter_op_thread_pool_size() > 0) {
     for (int i = 0; i < options_.config.session_inter_op_thread_pool_size();
          ++i) {
-      thread_pools_.push_back(NewThreadPoolFromThreadPoolOptions(
-          options_, options_.config.session_inter_op_thread_pool(i), i));
+      thread::ThreadPool* pool = nullptr;
+      bool owned = false;
+      init_error_.Update(NewThreadPoolFromThreadPoolOptions(
+          options_, options_.config.session_inter_op_thread_pool(i), i, &pool,
+          &owned));
+      thread_pools_.emplace_back(pool, owned);
     }
-    owns_thread_pools_ = true;
   } else if (options_.config.use_per_session_threads()) {
-    thread_pools_.push_back(NewThreadPoolFromSessionOptions(options_));
-    owns_thread_pools_ = true;
+    thread_pools_.emplace_back(NewThreadPoolFromSessionOptions(options_),
+                               true /* owned */);
   } else {
-    thread_pools_.push_back(GlobalThreadPool(options));
-    owns_thread_pools_ = false;
+    thread_pools_.emplace_back(GlobalThreadPool(options), false /* owned */);
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
@@ -290,8 +325,8 @@ DirectSession::~DirectSession() {
     d->op_segment()->RemoveHold(session_handle_);
   }
   delete cancellation_manager_;
-  if (owns_thread_pools_) {
-    for (auto* p : thread_pools_) delete p;
+  for (const auto& p_and_owned : thread_pools_) {
+    if (p_and_owned.second) delete p_and_owned.first;
   }
 
   execution_state_.reset(nullptr);
@@ -330,6 +365,7 @@ Status DirectSession::MaybeInitializeExecutionState(
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
+  TF_RETURN_IF_ERROR(init_error_);
   if (graph.node_size() > 0) {
     mutex_lock l(graph_def_lock_);
     if (graph_created_) {
@@ -354,6 +390,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(
       MaybeInitializeExecutionState(graph, &already_initialized));
   if (already_initialized) {
+    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<SimpleGraphExecutionState> state;
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
@@ -371,15 +408,15 @@ Status DirectSession::Run(const NamedTensorList& inputs,
 }
 
 Status DirectSession::CreateDebuggerState(
-    const DebugOptions& debug_options, int64 session_run_count,
-    int64 executor_step_count, const std::vector<string>& input_names,
+    const DebugOptions& debug_options, int64 session_run_index,
+    int64 executor_step_index, const std::vector<string>& input_names,
     const std::vector<string>& output_names,
     const std::vector<string>& target_names,
     std::unique_ptr<DebuggerStateInterface>* debugger_state) {
   TF_RETURN_IF_ERROR(
       DebuggerStateRegistry::CreateState(debug_options, debugger_state));
   TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
-      debug_options.global_step(), session_run_count, executor_step_count,
+      debug_options.global_step(), session_run_index, executor_step_index,
       input_names, output_names, target_names));
   return Status::OK();
 }
@@ -391,7 +428,7 @@ Status DirectSession::DecorateAndPublishGraphForDebug(
       DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
 
   TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
-  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
+  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph, device->name()));
   return Status::OK();
 }
 
@@ -423,7 +460,8 @@ Status DirectSession::Run(const RunOptions& run_options,
     return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
                                    run_options.inter_op_thread_pool());
   }
-  thread::ThreadPool* pool = thread_pools_[run_options.inter_op_thread_pool()];
+  thread::ThreadPool* pool =
+      thread_pools_[run_options.inter_op_thread_pool()].first;
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
@@ -520,7 +558,7 @@ Status DirectSession::Run(const RunOptions& run_options,
 #if GOOGLE_CUDA
   std::unique_ptr<GPUTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer.reset(CreateGPUTracer());
+    tracer = CreateGPUTracer();
     // tracer will be NULL on non-GPU platforms.
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     if (tracer) tracer->Start().IgnoreError();
@@ -582,12 +620,33 @@ Status DirectSession::Run(const RunOptions& run_options,
     } else if (!s.ok()) {
       return s;
     }
+    const bool unique_outputs =
+        output_names.size() == executors_and_keys->output_name_to_index.size();
+    // first_indices[i] = j implies that j is the smallest value for which
+    // output_names[i] == output_names[j].
+    std::vector<int> first_indices;
+    if (!unique_outputs) {
+      first_indices.resize(output_names.size());
+      for (int i = 0; i < output_names.size(); ++i) {
+        for (int j = 0; j <= i; ++j) {
+          if (output_names[i] == output_names[j]) {
+            first_indices[i] = j;
+            break;
+          }
+        }
+      }
+    }
     outputs->clear();
     outputs->reserve(sorted_outputs.size());
-    for (const string& output_name : output_names) {
-      outputs->emplace_back(
-          std::move(sorted_outputs[executors_and_keys
-                                       ->output_name_to_index[output_name]]));
+    for (int i = 0; i < output_names.size(); ++i) {
+      const string& output_name = output_names[i];
+      if (first_indices.empty() || first_indices[i] == i) {
+        outputs->emplace_back(
+            std::move(sorted_outputs[executors_and_keys
+                                         ->output_name_to_index[output_name]]));
+      } else {
+        outputs->push_back((*outputs)[first_indices[i]]);
+      }
     }
   }
 
@@ -618,11 +677,11 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   // If requested via RunOptions, output the partition graphs.
   if (run_options.output_partition_graphs()) {
-    protobuf::RepeatedPtrField<GraphDef>* parition_graph_defs =
+    protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
         run_metadata->mutable_partition_graphs();
     for (const PerPartitionExecutorsAndLib& exec_and_lib :
          executors_and_keys->items) {
-      GraphDef* partition_graph_def = parition_graph_defs->Add();
+      GraphDef* partition_graph_def = partition_graph_defs->Add();
       exec_and_lib.graph->ToGraphDef(partition_graph_def);
     }
   }
@@ -644,7 +703,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   // RunOptions is not available in PRunSetup, so use thread pool 0.
-  thread::ThreadPool* pool = thread_pools_[0];
+  thread::ThreadPool* pool = thread_pools_[0].first;
 
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
@@ -1296,7 +1355,7 @@ Status DirectSession::CreateGraphs(
 
   // Check for valid partitions.
   for (const auto& partition : partitions) {
-    const string& local_partition_name =
+    const string local_partition_name =
         DeviceNameUtils::LocalName(partition.first);
     if (std::count(device_names.begin(), device_names.end(),
                    local_partition_name) == 0) {
@@ -1352,6 +1411,17 @@ Status DirectSession::CreateGraphs(
   std::swap(*input_types, client_graph->feed_types);
   std::swap(*output_types, client_graph->fetch_types);
   return s;
+}
+
+::tensorflow::Status DirectSession::ListDevices(
+    std::vector<DeviceAttributes>* response) {
+  response->clear();
+  response->reserve(devices_.size());
+  for (Device* d : devices_) {
+    const DeviceAttributes& attrs = d->attributes();
+    response->emplace_back(attrs);
+  }
+  return ::tensorflow::Status::OK();
 }
 
 ::tensorflow::Status DirectSession::Reset(

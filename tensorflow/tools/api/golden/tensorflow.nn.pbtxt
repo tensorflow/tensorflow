@@ -1,5 +1,9 @@
 path: "tensorflow.nn"
 tf_module {
+  member {
+    name: "rnn_cell"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
@@ -253,6 +257,10 @@ tf_module {
     argspec: "args=[\'weights\', \'biases\', \'labels\', \'inputs\', \'num_sampled\', \'num_classes\', \'num_true\', \'sampled_values\', \'remove_accidental_hits\', \'partition_strategy\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'True\', \'mod\', \'sampled_softmax_loss\'], "
   }
   member_method {
+    name: "selu"
+    argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "separable_conv2d"
     argspec: "args=[\'input\', \'depthwise_filter\', \'pointwise_filter\', \'strides\', \'padding\', \'rate\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
@@ -283,6 +291,18 @@ tf_module {
   member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
     argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "static_bidirectional_rnn"
+    argspec: "args=[\'cell_fw\', \'cell_bw\', \'inputs\', \'initial_state_fw\', \'initial_state_bw\', \'dtype\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "static_rnn"
+    argspec: "args=[\'cell\', \'inputs\', \'initial_state\', \'dtype\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "static_state_saving_rnn"
+    argspec: "args=[\'cell\', \'inputs\', \'state_saver\', \'state_name\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "sufficient_statistics"

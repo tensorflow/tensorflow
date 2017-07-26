@@ -25,20 +25,20 @@ from tensorflow.python.platform import test
 class ConvUtilsTest(test.TestCase):
 
   def testConvertDataFormat(self):
-    self.assertEqual(utils.convert_data_format('channels_first', 5), 'NCDHW')
-    self.assertEqual(utils.convert_data_format('channels_first', 4), 'NCHW')
-    self.assertEqual(utils.convert_data_format('channels_first', 3), 'NCW')
-    self.assertEqual(utils.convert_data_format('channels_last', 4), 'NHWC')
-    self.assertEqual(utils.convert_data_format('channels_last', 3), 'NWC')
-    self.assertEqual(utils.convert_data_format('channels_last', 5), 'NDHWC')
+    self.assertEqual('NCDHW', utils.convert_data_format('channels_first', 5))
+    self.assertEqual('NCHW', utils.convert_data_format('channels_first', 4))
+    self.assertEqual('NCW', utils.convert_data_format('channels_first', 3))
+    self.assertEqual('NHWC', utils.convert_data_format('channels_last', 4))
+    self.assertEqual('NWC', utils.convert_data_format('channels_last', 3))
+    self.assertEqual('NDHWC', utils.convert_data_format('channels_last', 5))
 
     with self.assertRaises(ValueError):
       utils.convert_data_format('invalid', 2)
 
   def testNormalizeTuple(self):
-    self.assertEqual(utils.normalize_tuple(2, n=3, name='strides'), (2, 2, 2))
+    self.assertEqual((2, 2, 2), utils.normalize_tuple(2, n=3, name='strides'))
     self.assertEqual(
-        utils.normalize_tuple((2, 1, 2), n=3, name='strides'), (2, 1, 2))
+        (2, 1, 2), utils.normalize_tuple((2, 1, 2), n=3, name='strides'))
 
     with self.assertRaises(ValueError):
       utils.normalize_tuple((2, 1), n=3, name='strides')
@@ -48,27 +48,44 @@ class ConvUtilsTest(test.TestCase):
 
   def testNormalizeDataFormat(self):
     self.assertEqual(
-        utils.normalize_data_format('Channels_Last'), 'channels_last')
+        'channels_last', utils.normalize_data_format('Channels_Last'))
     self.assertEqual(
-        utils.normalize_data_format('CHANNELS_FIRST'), 'channels_first')
+        'channels_first', utils.normalize_data_format('CHANNELS_FIRST'))
 
     with self.assertRaises(ValueError):
       utils.normalize_data_format('invalid')
 
   def testNormalizePadding(self):
-    self.assertEqual(utils.normalize_padding('SAME'), 'same')
-    self.assertEqual(utils.normalize_padding('VALID'), 'valid')
+    self.assertEqual('same', utils.normalize_padding('SAME'))
+    self.assertEqual('valid', utils.normalize_padding('VALID'))
 
     with self.assertRaises(ValueError):
       utils.normalize_padding('invalid')
 
-  def testGetDeconvDim(self):
-    self.assertEqual(utils.get_deconv_dim(30, 1, 3, 'valid'), 32)
-    self.assertEqual(utils.get_deconv_dim(28, 1, 5, 'valid'), 32)
-    self.assertEqual(utils.get_deconv_dim(28, 2, 5, 'valid'), 59)
-    self.assertEqual(utils.get_deconv_dim(32, 1, 3, 'same'), 32)
-    self.assertEqual(utils.get_deconv_dim(32, 1, 5, 'same'), 32)
-    self.assertEqual(utils.get_deconv_dim(32, 2, 5, 'same'), 64)
+  def testConvOutputLength(self):
+    self.assertEqual(4, utils.conv_output_length(4, 2, 'same', 1, 1))
+    self.assertEqual(2, utils.conv_output_length(4, 2, 'same', 2, 1))
+    self.assertEqual(3, utils.conv_output_length(4, 2, 'valid', 1, 1))
+    self.assertEqual(2, utils.conv_output_length(4, 2, 'valid', 2, 1))
+    self.assertEqual(5, utils.conv_output_length(4, 2, 'full', 1, 1))
+    self.assertEqual(3, utils.conv_output_length(4, 2, 'full', 2, 1))
+    self.assertEqual(2, utils.conv_output_length(5, 2, 'valid', 2, 2))
+
+  def testConvInputLength(self):
+    self.assertEqual(3, utils.conv_input_length(4, 2, 'same', 1))
+    self.assertEqual(2, utils.conv_input_length(2, 2, 'same', 2))
+    self.assertEqual(4, utils.conv_input_length(3, 2, 'valid', 1))
+    self.assertEqual(4, utils.conv_input_length(2, 2, 'valid', 2))
+    self.assertEqual(3, utils.conv_input_length(4, 2, 'full', 1))
+    self.assertEqual(4, utils.conv_input_length(3, 2, 'full', 2))
+
+  def testDeconvOutputLength(self):
+    self.assertEqual(4, utils.deconv_output_length(4, 2, 'same', 1))
+    self.assertEqual(8, utils.deconv_output_length(4, 2, 'same', 2))
+    self.assertEqual(5, utils.deconv_output_length(4, 2, 'valid', 1))
+    self.assertEqual(8, utils.deconv_output_length(4, 2, 'valid', 2))
+    self.assertEqual(3, utils.deconv_output_length(4, 2, 'full', 1))
+    self.assertEqual(6, utils.deconv_output_length(4, 2, 'full', 2))
 
 if __name__ == '__main__':
   test.main()

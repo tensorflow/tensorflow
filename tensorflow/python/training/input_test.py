@@ -429,6 +429,13 @@ class DictHelperTest(test_lib.TestCase):
     d2 = inp._as_original_type(d, l)
     self.assertEquals(d, d2)
 
+  def testHeterogeneousKeysDictInputs(self):
+    d = {"z": 1, 1: 42, ("a", "b"): 100}
+    l = inp._as_tensor_list(d)
+    self.assertEquals([100, 42, 1], l)
+    d2 = inp._as_original_type(d, l)
+    self.assertEquals(d, d2)
+
 
 class BatchTest(test_lib.TestCase):
 

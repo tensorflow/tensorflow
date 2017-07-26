@@ -12,4 +12,4 @@ RUN pip install scikit-learn pyreadline Pillow
 RUN rm -rf /notebooks/*
 ADD *.ipynb /notebooks/
 WORKDIR /notebooks
-CMD ["/run_jupyter.sh"]
+CMD ["/run_jupyter.sh", "--allow-root"]

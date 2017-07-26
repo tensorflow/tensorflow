@@ -18,6 +18,7 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/types.h"

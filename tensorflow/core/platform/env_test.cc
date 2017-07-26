@@ -18,6 +18,7 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"

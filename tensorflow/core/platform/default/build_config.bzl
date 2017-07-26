@@ -3,6 +3,7 @@
 load("@protobuf//:protobuf.bzl", "cc_proto_library")
 load("@protobuf//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -45,11 +46,11 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
       srcs = srcs,
       deps = tf_deps(protodeps, "_cc") + ["@protobuf//:cc_wkt_protos"],
       cc_libs = cc_libs + ["@protobuf//:protobuf"],
-      copts = [
+      copts = if_not_windows([
           "-Wno-unknown-warning-option",
           "-Wno-unused-but-set-variable",
           "-Wno-sign-compare",
-      ],
+      ]),
       protoc = "@protobuf//:protoc",
       default_runtime = "@protobuf//:protobuf",
       use_grpc_plugin = use_grpc_plugin,
@@ -74,7 +75,8 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
 def tf_proto_library(name, srcs = [], has_services = None,
                      protodeps = [], visibility = [], testonly = 0,
                      cc_libs = [],
-                     cc_api_version = 2, go_api_version = 2,
+                     cc_api_version = 2, cc_grpc_version = None,
+                     go_api_version = 2,
                      j2objc_api_version = 1,
                      java_api_version = 2, py_api_version = 2,
                      js_api_version = 2, js_codegen = "jspb"):
@@ -83,6 +85,7 @@ def tf_proto_library(name, srcs = [], has_services = None,
       name = name,
       srcs = srcs,
       protodeps = protodeps,
+      cc_grpc_version = cc_grpc_version,
       cc_libs = cc_libs,
       testonly = testonly,
       visibility = visibility,
@@ -98,12 +101,14 @@ def tf_proto_library(name, srcs = [], has_services = None,
   )
 
 def tf_additional_lib_hdrs(exclude = []):
+  windows_hdrs = native.glob([
+      "platform/default/*.h",
+      "platform/windows/*.h",
+      "platform/posix/error.h",
+  ], exclude = exclude)
   return select({
-    "//tensorflow:windows" : native.glob([
-        "platform/default/*.h",
-        "platform/windows/*.h",
-        "platform/posix/error.h",
-      ], exclude = exclude),
+    "//tensorflow:windows" : windows_hdrs,
+    "//tensorflow:windows_msvc" : windows_hdrs,
     "//conditions:default" : native.glob([
         "platform/default/*.h",
         "platform/posix/*.h",
@@ -111,17 +116,27 @@ def tf_additional_lib_hdrs(exclude = []):
   })
 
 def tf_additional_lib_srcs(exclude = []):
+  windows_srcs = native.glob([
+      "platform/default/*.cc",
+      "platform/windows/*.cc",
+      "platform/posix/error.cc",
+  ], exclude = exclude)
   return select({
-    "//tensorflow:windows" : native.glob([
-        "platform/default/*.cc",
-        "platform/windows/*.cc",
-        "platform/posix/error.cc",
-      ], exclude = exclude),
+    "//tensorflow:windows" : windows_srcs,
+    "//tensorflow:windows_msvc" : windows_srcs,
     "//conditions:default" : native.glob([
         "platform/default/*.cc",
         "platform/posix/*.cc",
       ], exclude = exclude),
   })
+
+# pylint: disable=unused-argument
+def tf_additional_framework_hdrs(exclude = []):
+  return []
+
+def tf_additional_framework_srcs(exclude = []):
+  return []
+# pylint: enable=unused-argument
 
 def tf_additional_minimal_lib_srcs():
   return [
@@ -148,11 +163,13 @@ def tf_env_time_hdrs():
   ]
 
 def tf_env_time_srcs():
+  win_env_time = native.glob([
+    "platform/windows/env_time.cc",
+    "platform/env_time.cc",
+  ], exclude = [])
   return select({
-    "//tensorflow:windows" : native.glob([
-        "platform/windows/env_time.cc",
-        "platform/env_time.cc",
-      ], exclude = []),
+    "//tensorflow:windows" : win_env_time,
+    "//tensorflow:windows_msvc" : win_env_time,
     "//conditions:default" : native.glob([
         "platform/posix/env_time.cc",
         "platform/env_time.cc",
@@ -164,6 +181,15 @@ def tf_additional_stream_executor_srcs():
 
 def tf_additional_cupti_wrapper_deps():
   return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
+
+def tf_additional_gpu_tracer_srcs():
+  return ["platform/default/gpu_tracer.cc"]
+
+def tf_additional_gpu_tracer_cuda_deps():
+  return []
+
+def tf_additional_gpu_tracer_deps():
+  return []
 
 def tf_additional_libdevice_data():
   return []
@@ -254,3 +280,13 @@ def tf_additional_verbs_lib_defines():
       "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
       "//conditions:default": [],
   })
+
+def tf_additional_mpi_lib_defines():
+  return select({
+      "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
+      "//conditions:default": [],
+  })
+
+def tf_pyclif_proto_library(name, proto_lib, proto_srcfile="", visibility=None,
+                            **kwargs):
+  pass

@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/named_tensor.pb.h"
 
 namespace tensorflow {
 
@@ -516,7 +520,20 @@ CostGraphDef* InMemoryRunGraphResponse::mutable_cost_graph() {
 
 RunGraphResponse* InMemoryRunGraphResponse::get_proto() {
   LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunGraphResponse";
-  return NULL;
+  return nullptr;
+}
+
+size_t InMemoryRunGraphResponse::num_partition_graphs() const {
+  return partition_graphs_.size();
+}
+
+GraphDef* InMemoryRunGraphResponse::mutable_partition_graph(size_t i) {
+  return &partition_graphs_[i];
+}
+
+void InMemoryRunGraphResponse::AddPartitionGraph(
+    const GraphDef& partition_graph) {
+  partition_graphs_.push_back(partition_graph);
 }
 
 size_t OwnedProtoRunGraphResponse::num_recvs() const {
@@ -558,6 +575,20 @@ CostGraphDef* OwnedProtoRunGraphResponse::mutable_cost_graph() {
 }
 
 RunGraphResponse* OwnedProtoRunGraphResponse::get_proto() { return &response_; }
+
+size_t OwnedProtoRunGraphResponse::num_partition_graphs() const {
+  return response_.partition_graph_size();
+}
+
+GraphDef* OwnedProtoRunGraphResponse::mutable_partition_graph(size_t i) {
+  return response_.mutable_partition_graph(i);
+}
+
+void OwnedProtoRunGraphResponse::AddPartitionGraph(
+    const GraphDef& partition_graph) {
+  GraphDef* graph_def = response_.mutable_partition_graph()->Add();
+  *graph_def = partition_graph;
+}
 
 NonOwnedProtoRunGraphResponse::NonOwnedProtoRunGraphResponse(
     RunGraphResponse* response)
@@ -605,6 +636,20 @@ RunGraphResponse* NonOwnedProtoRunGraphResponse::get_proto() {
   return response_;
 }
 
+size_t NonOwnedProtoRunGraphResponse::num_partition_graphs() const {
+  return response_->partition_graph_size();
+}
+
+GraphDef* NonOwnedProtoRunGraphResponse::mutable_partition_graph(size_t i) {
+  return response_->mutable_partition_graph(i);
+}
+
+void NonOwnedProtoRunGraphResponse::AddPartitionGraph(
+    const GraphDef& partition_graph) {
+  GraphDef* graph_def = response_->add_partition_graph();
+  *graph_def = partition_graph;
+}
+
 MutableRunStepResponseWrapper::~MutableRunStepResponseWrapper() {}
 
 size_t InMemoryRunStepResponse::num_tensors() const { return tensors_.size(); }
@@ -635,7 +680,7 @@ RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
 
 RunStepResponse* InMemoryRunStepResponse::get_proto() {
   LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunStepResponse";
-  return NULL;
+  return nullptr;
 }
 
 size_t OwnedProtoRunStepResponse::num_tensors() const {

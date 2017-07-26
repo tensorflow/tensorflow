@@ -37,6 +37,9 @@ Status RemoveNodes(const GraphDef& input_graph_def,
         "remove_nodes expects at least one 'op'"
         "argument, e.g. remove_nodes(op=Identity)");
   }
+  int32 max_inputs;
+  TF_RETURN_IF_ERROR(
+      context.GetOneInt32Parameter("max_inputs", 1, &max_inputs));
 
   // Make sure we don't get rid of any nodes used as graph inputs or outputs.
   std::set<string> required_nodes;
@@ -50,39 +53,48 @@ Status RemoveNodes(const GraphDef& input_graph_def,
   std::vector<string> ops_to_remove = context.params.at("op");
   GraphDef current_graph_def = input_graph_def;
   for (const string& op : ops_to_remove) {
-    // Keep looking for nodes to remove until there are no more changes.
-    bool any_nodes_removed;
-    do {
-      any_nodes_removed = false;
-      std::map<string, string> inputs_to_rename;
-      GraphDef replaced_graph_def;
-      TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
-          current_graph_def, {op, {{"*"}}},
-          [&inputs_to_rename, &required_nodes, &any_nodes_removed](
-              const NodeMatch& match, const std::set<string>& input_nodes,
-              const std::set<string>& output_nodes,
-              std::vector<NodeDef>* new_nodes) {
-            const NodeDef& replace_node = match.node;
-            // If this node is needed in the inputs or outputs don't replace it.
-            if (required_nodes.count(replace_node.name())) {
-              LOG(INFO) << "Skipping replacement for " << replace_node.name();
-              CopyOriginalMatch(match, new_nodes);
+    for (int num_inputs = 1; num_inputs <= max_inputs; ++num_inputs) {
+      // Look for a variable number of inputs.
+      OpTypePattern pattern = {op};
+      pattern.inputs.resize(num_inputs);
+      for (int i = 0; i < num_inputs; ++i) {
+        pattern.inputs[i] = {"*"};
+      }
+      // Keep looking for nodes to remove until there are no more changes.
+      bool any_nodes_removed;
+      do {
+        any_nodes_removed = false;
+        std::map<string, string> inputs_to_rename;
+        GraphDef replaced_graph_def;
+        TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
+            current_graph_def, pattern,
+            [&inputs_to_rename, &required_nodes, &any_nodes_removed](
+                const NodeMatch& match, const std::set<string>& input_nodes,
+                const std::set<string>& output_nodes,
+                std::vector<NodeDef>* new_nodes) {
+              const NodeDef& replace_node = match.node;
+              // If this node is needed in the inputs or outputs don't replace
+              // it.
+              if (required_nodes.count(replace_node.name())) {
+                LOG(INFO) << "Skipping replacement for " << replace_node.name();
+                CopyOriginalMatch(match, new_nodes);
+                return Status::OK();
+              }
+              const NodeDef& input_node = match.inputs[0].node;
+              inputs_to_rename[replace_node.name()] = input_node.name();
+              inputs_to_rename["^" + replace_node.name()] =
+                  "^" + input_node.name();
+              new_nodes->push_back(input_node);
+              any_nodes_removed = true;
               return Status::OK();
-            }
-            const NodeDef& input_node = match.inputs[0].node;
-            inputs_to_rename[replace_node.name()] = input_node.name();
-            inputs_to_rename["^" + replace_node.name()] =
-                "^" + input_node.name();
-            new_nodes->push_back(input_node);
-            any_nodes_removed = true;
-            return Status::OK();
-          },
-          {true}, &replaced_graph_def));
-      // Make sure all references to removed nodes now point to their inputs.
-      TF_RETURN_IF_ERROR(RenameNodeInputs(replaced_graph_def, inputs_to_rename,
-                                          std::unordered_set<string>(),
-                                          &current_graph_def));
-    } while (any_nodes_removed);
+            },
+            {true}, &replaced_graph_def));
+        // Make sure all references to removed nodes now point to their inputs.
+        TF_RETURN_IF_ERROR(
+            RenameNodeInputs(replaced_graph_def, inputs_to_rename,
+                             std::unordered_set<string>(), &current_graph_def));
+      } while (any_nodes_removed);
+    }
   }
 
   *output_graph_def = current_graph_def;

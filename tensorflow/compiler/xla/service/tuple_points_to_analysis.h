@@ -48,7 +48,10 @@ namespace xla {
 // the corresponding buffer.
 class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
  public:
-  explicit PointsToSet(const Shape& shape)
+  // Construct our ShapeTree with a pointer rather than a reference to a Shape
+  // because this is very hot code, and copying (and then destroying) all these
+  // Shapes is slow.
+  explicit PointsToSet(const Shape* shape)
       : ShapeTree<std::vector<const LogicalBuffer*>>(shape),
         tuple_sources_(shape) {}
 
@@ -117,27 +120,21 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 // value.
 class BufferAlias {
  public:
-  BufferAlias(const LogicalBuffer& buffer, HloInstruction* instruction,
-              const ShapeIndex& index)
-      : buffer_(&buffer), instruction_(instruction), index_(index) {}
-
-  // Return the logical buffer aliased at the instruction and index.
-  const LogicalBuffer& buffer() const { return *buffer_; }
+  BufferAlias(HloInstruction* instruction, const ShapeIndex& index)
+      : instruction_(instruction), index_(index) {}
 
   // Return the instruction/index of the subshape.
   HloInstruction* instruction() const { return instruction_; }
   const ShapeIndex& index() const { return index_; }
 
   bool operator==(const BufferAlias& other) const {
-    return buffer_ == other.buffer_ && instruction_ == other.instruction_ &&
-           index_ == other.index_;
+    return instruction_ == other.instruction_ && index_ == other.index_;
   }
   bool operator!=(const BufferAlias& other) const { return !(*this == other); }
 
   string ToString() const;
 
  private:
-  const LogicalBuffer* buffer_;
   HloInstruction* instruction_;
   const ShapeIndex index_;
 };
@@ -206,8 +203,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* get_tuple_element,
                                HloInstruction* operand) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
-  Status HandleFusion(HloInstruction* fusion) override;
+  Status HandleCopy(HloInstruction* copy) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                       HloInstruction* on_true,
                       HloInstruction* on_false) override;

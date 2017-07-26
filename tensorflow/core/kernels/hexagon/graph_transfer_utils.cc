@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/logging.h"
 namespace tensorflow {
@@ -62,7 +63,7 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   execute_info.set_executor_name("build_hexagon_remote_fused_graph_executor");
 
   // copy graph
-  execute_info.mutable_remote_graph()->CopyFrom(graph_def);
+  *execute_info.mutable_remote_graph() = graph_def;
 
   for (const std::pair<string, Tensor>& input : inputs) {
     execute_info.add_graph_input_node_name(input.first);
@@ -95,7 +96,7 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
 }
 
 /* static */ GraphDef GraphTransferUtils::BuildFusedGraphDef(
-    const IGraphTransferOpsDefinitions& ops_definitions,
+    const IRemoteFusedGraphOpsDefinitions& ops_definitions,
     const string& remote_graph_execute_name,
     const std::vector<std::pair<string, Tensor>>& inputs,
     const std::vector<string>& outputs, GraphDef* original_def) {
@@ -114,13 +115,13 @@ GraphTransferUtils::BuildRemoteFusedGraphExecuteInfo(
   for (const std::pair<string, Tensor>& input_node_info : inputs) {
     const Scope& scope = root.WithOpName(input_node_info.first);
     Node* ret;
-    const auto unique_name = scope.GetUniqueNameForOp("PlaceholderV2");
-    auto builder = NodeBuilder(unique_name, "PlaceholderV2")
+    const auto unique_name = scope.GetUniqueNameForOp("Placeholder");
+    auto builder = NodeBuilder(unique_name, "Placeholder")
                        .Attr("dtype", input_node_info.second.dtype())
                        .Attr("shape", input_node_info.second.shape());
     scope.UpdateBuilder(&builder);
     scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
-    CHECK(scope.ok());
+    TF_CHECK_OK(scope.status());
     output_list.emplace_back(Output(ret, 0));
     input_types.push_back(input_node_info.second.dtype());
   }

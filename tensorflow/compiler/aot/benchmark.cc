@@ -40,7 +40,7 @@ namespace benchmark {
 // the implementation without pulling in all of the Env dependencies.
 static double NowMicros() {
   struct timeval tv;
-  gettimeofday(&tv, NULL);
+  gettimeofday(&tv, nullptr);
   return static_cast<uint64>(tv.tv_sec) * 1000000 + tv.tv_usec;
 }
 

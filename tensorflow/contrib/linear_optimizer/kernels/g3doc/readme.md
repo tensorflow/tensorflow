@@ -159,7 +159,7 @@ expected.
 
 On criteo dataset, the usual Newton method goes out of range for a small (but
 non negligible) fraction of the examples. The returned dual in these cases will
-be $$0$$ or $$\pm 1$$. The modified Newton algorihm always find the true zero
+be $$0$$ or $$\pm 1$$. The modified Newton algorithm always find the true zero
 and achieves a better log loss.
 
 The blue lines represent the modified Newton (evaluation and training) and the

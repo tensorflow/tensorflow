@@ -27,6 +27,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -136,8 +138,21 @@ Status GetOutputShapes(const std::vector<InputLayerInfo>& inputs,
   std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
   CreateTensorsFromInputInfo(inputs, &input_tensors);
   std::vector<tensorflow::Tensor> output_tensors;
-  std::vector<string> output_tensor_names(wanted_shapes.begin(),
-                                          wanted_shapes.end());
+  std::vector<string> output_tensor_names;
+  for (const string& wanted_shape : wanted_shapes) {
+    bool is_input = false;
+    for (const std::pair<string, tensorflow::Tensor>& input_tensor :
+         input_tensors) {
+      if (input_tensor.first == wanted_shape) {
+        (*node_shapes)[wanted_shape] = input_tensor.second.shape();
+        is_input = true;
+        break;
+      }
+    }
+    if (!is_input) {
+      output_tensor_names.push_back(wanted_shape);
+    }
+  }
   TF_RETURN_IF_ERROR(
       session->Run(input_tensors, output_tensor_names, {}, &output_tensors));
   CHECK_EQ(output_tensors.size(), output_tensor_names.size());
@@ -154,7 +169,8 @@ Status CalculateFlops(const GraphDef& graph,
                       Session* session, int64* total_flops,
                       std::unordered_map<string, int64>* flops_by_op) {
   std::unordered_set<string> floppable_ops = {
-      "Conv2D", "MatMul", "QuantizedConv2D", "QuantizedMatMul"};
+      "Conv2D", "MatMul", "QuantizedConv2D", "QuantizedMatMul",
+      "DepthwiseConv2dNative"};
 
   std::set<string> wanted_shapes;
   for (const NodeDef& node : graph.node()) {
@@ -199,6 +215,13 @@ Status CalculateFlops(const GraphDef& graph,
         }
         int64 output_count = output_shape.num_elements();
         current_flops = k * output_count * 2;
+      } else if (node.op() == "DepthwiseConv2dNative") {
+        const TensorShape& filter_shape = found_shapes[node.input(1)];
+        const TensorShape& output_shape = found_shapes[node.name()];
+        int64 filter_height = filter_shape.dim_size(0);
+        int64 filter_width = filter_shape.dim_size(1);
+        int64 output_count = output_shape.num_elements();
+        current_flops = output_count * filter_height * filter_width * 2;
       }
       (*flops_by_op)[node.op()] += current_flops;
       *total_flops += current_flops;
@@ -422,6 +445,12 @@ int Main(int argc, char** argv) {
     CHECK(str_util::SplitAndParseAsInts(input_layer_shapes[n], ',', &sizes))
         << "Incorrect size string specified: " << input_layer_shapes[n];
     for (int i = 0; i < sizes.size(); ++i) {
+      int32 size = sizes[i];
+      if (size == -1) {
+        LOG(ERROR) << "Any unknown sizes in the shapes (-1's) must be replaced"
+                   << " with the size you want to benchmark with.";
+        return -1;
+      }
       input.shape.AddDim(sizes[i]);
     }
     input.name = input_layers[n];
@@ -531,10 +560,12 @@ int Main(int argc, char** argv) {
     std::map<string, int64> node_type_map_count;
     std::map<string, int64> node_type_map_time;
     std::map<string, int64> node_type_map_memory;
+    std::map<string, int64> node_type_map_times_called;
 
     int64 accumulated_us;
     stats->ComputeStatsByType(&node_type_map_count, &node_type_map_time,
-                              &node_type_map_memory, &accumulated_us);
+                              &node_type_map_memory,
+                              &node_type_map_times_called, &accumulated_us);
     for (const auto& time : node_type_map_time) {
       std::stringstream stream;
       stream << benchmark_name << "_" << time.first;

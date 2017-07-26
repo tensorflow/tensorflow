@@ -193,7 +193,7 @@ class AffineLinearOperator(bijector.Bijector):
           y, expand_batch_dim=False)
       with ops.control_dependencies(self._maybe_collect_assertions() if
                                     self.validate_args else []):
-        y = self.scale.apply(y)
+        y = self.scale.matmul(y)
       y = self._shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape, expand_batch_dim=False)
     if self.shift is not None:

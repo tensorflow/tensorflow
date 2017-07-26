@@ -29,7 +29,7 @@ namespace tensorflow {
 namespace {
 
 std::vector<string> Split(const string& str, const string& delimiter) {
-  if (delimiter.size()) {
+  if (!delimiter.empty()) {
     return str_util::Split(str, delimiter, str_util::SkipEmpty());
   }
   std::vector<string> char_vector(str.size());

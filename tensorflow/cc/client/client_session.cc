@@ -113,10 +113,12 @@ Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,
     feeds.emplace_back(feed.first.name(), feed.second.tensor);
   }
   std::vector<string> output_tensor_names;
+  output_tensor_names.reserve(fetch_outputs.size());
   for (auto const& output : fetch_outputs) {
     output_tensor_names.push_back(output.name());
   }
   std::vector<string> target_node_names;
+  target_node_names.reserve(run_outputs.size());
   for (auto const& output : run_outputs) {
     target_node_names.push_back(output.node()->name());
   }

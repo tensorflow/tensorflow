@@ -63,13 +63,18 @@ if(WIN32)
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
-  add_definitions(/bigobj /nologo /EHsc /GF /FC /MP /Gm-)
+  add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
   # Suppress warnings to reduce build log size.
   add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
   add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
   add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
+  add_definitions(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
+  # Suppress linker warnings.
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
-  set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Ob0")
+  set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Ob2")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
@@ -108,6 +113,7 @@ include(zlib)
 include(gif)
 include(png)
 include(jpeg)
+include(lmdb)
 include(eigen)
 include(gemmlowp)
 include(jsoncpp)
@@ -115,6 +121,8 @@ include(farmhash)
 include(fft2d)
 include(highwayhash)
 include(protobuf)
+include(re2)
+include(cub)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -124,24 +132,29 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
+    ${lmdb_STATIC_LIBRARIES}
     ${jsoncpp_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
     ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
+    ${re2_STATIC_LIBRARIES}
 )
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
     gif_copy_headers_to_destination
     png_copy_headers_to_destination
     jpeg_copy_headers_to_destination
+    lmdb_copy_headers_to_destination
     jsoncpp
     farmhash_copy_headers_to_destination
     highwayhash_copy_headers_to_destination
     protobuf
     eigen
     gemmlowp
+    cub
     fft2d
+    re2
 )
 
 include_directories(
@@ -153,12 +166,15 @@ include_directories(
     ${gif_INCLUDE_DIR}
     ${png_INCLUDE_DIR}
     ${jpeg_INCLUDE_DIR}
+    ${lmdb_INCLUDE_DIR}
     ${eigen_INCLUDE_DIRS}
     ${gemmlowp_INCLUDE_DIR}
     ${jsoncpp_INCLUDE_DIR}
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
+    ${cub_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
+    ${re2_INCLUDE_DIR}
 )
 
 if(tensorflow_ENABLE_SSL_SUPPORT)
@@ -200,6 +216,9 @@ if (tensorflow_ENABLE_GPU)
     add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2)
 
     # add cudnn
+    if(NOT CUDNN_HOME)
+      set(CUDNN_HOME ${CUDA_TOOLKIT_TARGET_DIR})
+    endif(NOT CUDNN_HOME)
     include_directories(${CUDNN_HOME})
     set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
       ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDA_cusolver_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
@@ -258,13 +277,14 @@ endif()
 # We include tf_cc_ops first, because tf_c depends on tf_cc.
 include(tf_cc_ops.cmake)
 include(tf_c.cmake)
+include(tf_grappler.cmake)
+include(tf_core_profiler.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)
 endif()
 include(tf_tools.cmake)
 if(tensorflow_BUILD_PYTHON_BINDINGS)
-  include(tensorboard)
   include(tf_python.cmake)
 endif()
 if(tensorflow_BUILD_SHARED_LIB)

@@ -57,7 +57,9 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                 &ir_emitter_context->buffer_assignment(), &ir_builder_,
                 is_nested),
       hlo_module_config_(hlo_module_config) {
-  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(hlo_module_config));
+  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
+      /*fast_math_enabled=*/hlo_module_config.debug_options()
+          .xla_enable_fast_math()));
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
@@ -200,18 +202,22 @@ bool IrEmitter::MaybeEmitSpecialAtomicOperation(
   // NVPTX supports atomicMax and atomicMin on only integer types.
   if (root_opcode == HloOpcode::kMaximum &&
       primitive_util::IsIntegralType(element_type)) {
-    // min(integral, integral)
-    ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Max, output_address,
-                                source,
+    // max(integral, integral)
+    auto opcode = primitive_util::IsSignedIntegralType(element_type)
+                      ? llvm::AtomicRMWInst::Max
+                      : llvm::AtomicRMWInst::UMax;
+    ir_builder_.CreateAtomicRMW(opcode, output_address, source,
                                 llvm::AtomicOrdering::SequentiallyConsistent);
     return true;
   }
 
   if (root_opcode == HloOpcode::kMinimum &&
       primitive_util::IsIntegralType(element_type)) {
-    // max(integral, integral)
-    ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Min, output_address,
-                                source,
+    // min(integral, integral)
+    auto opcode = primitive_util::IsSignedIntegralType(element_type)
+                      ? llvm::AtomicRMWInst::Min
+                      : llvm::AtomicRMWInst::UMin;
+    ir_builder_.CreateAtomicRMW(opcode, output_address, source,
                                 llvm::AtomicOrdering::SequentiallyConsistent);
     return true;
   }

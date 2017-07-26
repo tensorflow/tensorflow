@@ -42,6 +42,27 @@ class Mixture(distribution.Distribution):
 
   Methods supported include `log_prob`, `prob`, `mean`, `sample`, and
   `entropy_lower_bound`.
+
+
+  #### Examples
+
+  ```python
+  # Create a mixture of two Gaussians:
+  ds = tf.contrib.distributions
+  mix = 0.3
+  bimix_gauss = ds.Mixture(
+    cat=ds.Categorical(probs=[mix, 1.-mix]),
+    components=[
+      ds.Normal(loc=-1., scale=0.1),
+      ds.Normal(loc=+1., scale=0.5),
+  ])
+
+  # Plot the PDF.
+  import matplotlib.pyplot as plt
+  x = tf.linspace(-2., 3., int(1e4)).eval()
+  plt.plot(x, bimix_gauss.prob(x).eval());
+  ```
+
   """
 
   def __init__(self,

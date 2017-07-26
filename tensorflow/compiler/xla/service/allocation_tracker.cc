@@ -171,6 +171,7 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
           executor, allocation->device_memory(), allocation->shape()));
 
   std::vector<GlobalDataHandle> element_handles;
+  element_handles.reserve(element_bases.size());
   for (int i = 0; i < element_bases.size(); ++i) {
     element_handles.push_back(RegisterInternal(
         allocation->backend(), allocation->device_ordinal(), element_bases[i],

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
+#include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -35,7 +36,8 @@ class GcsFileSystem : public FileSystem {
   GcsFileSystem();
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
                 std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                size_t read_ahead_bytes, int64 initial_retry_delay_usec);
+                size_t block_size, size_t max_bytes, uint64 max_staleness,
+                int64 initial_retry_delay_usec);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -74,6 +76,9 @@ class GcsFileSystem : public FileSystem {
 
   Status DeleteRecursively(const string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs) override;
+  size_t block_size() const { return file_block_cache_->block_size(); }
+  size_t max_bytes() const { return file_block_cache_->max_bytes(); }
+  uint64 max_staleness() const { return file_block_cache_->max_staleness(); }
 
  private:
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
@@ -107,14 +112,19 @@ class GcsFileSystem : public FileSystem {
                        FileStatistics* stat);
   Status RenameObject(const string& src, const string& target);
 
+  std::unique_ptr<FileBlockCache> MakeFileBlockCache(size_t block_size,
+                                                     size_t max_bytes,
+                                                     uint64 max_staleness);
+
+  /// Loads file contents from GCS for a given filename, offset, and length.
+  Status LoadBufferFromGCS(const string& filename, size_t offset, size_t n,
+                           std::vector<char>* out);
+
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+  std::unique_ptr<FileBlockCache> file_block_cache_;
 
-  // The number of bytes to read ahead for buffering purposes in the
-  // RandomAccessFile implementation. Defaults to 256Mb.
-  const size_t read_ahead_bytes_ = 256 * 1024 * 1024;
-
-  // The initial delay for exponential backoffs when retrying failed calls.
+  /// The initial delay for exponential backoffs when retrying failed calls.
   const int64 initial_retry_delay_usec_ = 1000000L;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);

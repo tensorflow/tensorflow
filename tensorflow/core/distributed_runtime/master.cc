@@ -25,7 +25,7 @@ limitations under the License.
 // A Master discovers remote devices on-demand and keeps track of
 // statistics of those remote devices.
 //
-// Each session analyses the graph, places nodes across available
+// Each session analyzes the graph, places nodes across available
 // devices, and ultimately drives the graph computation by initiating
 // RunGraph on the workers.
 
@@ -372,7 +372,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
         DeviceNameUtils::ParsedName name = d->parsed_name();
         if (name.job == *worker_cache_factory_options.job_name &&
             name.task == worker_cache_factory_options.task_index &&
-            name.type == "CPU") {
+            name.type == "CPU" && name.id == 0) {
           device_set->set_client_device(d.get());
         }
       }
@@ -399,7 +399,8 @@ void Master::CreateSession(const CreateSessionRequest* req,
       }
     }
 
-    CHECK(device_set->client_device());
+    CHECK(device_set->client_device()) << "No client device found. Missing "
+                                       << "CPU:0 device?";
 
     SessionOptions options;
     options.config = req->config();
@@ -524,6 +525,26 @@ void Master::CloseSession(const CloseSessionRequest* req,
 void Master::ListDevices(const ListDevicesRequest* req,
                          ListDevicesResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
+    if (!req->session_handle().empty()) {
+      MasterSession* session = nullptr;
+      {
+        mutex_lock l(mu_);
+        session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+        if (session != nullptr) {
+          session->Ref();
+        }
+      }
+      if (session == nullptr) {
+        done(errors::InvalidArgument(
+            "Session ", req->session_handle(),
+            " is not found. Possibly, this master has restarted."));
+        return;
+      }
+      core::ScopedUnref ref(session);
+      Status s = session->ListDevices(resp);
+      done(s);
+      return;
+    }
     std::vector<std::unique_ptr<Device>> remote_devices;
     Status s = DeviceFinder::GetRemoteDevices({}, env_, env_->worker_cache,
                                               &remote_devices);

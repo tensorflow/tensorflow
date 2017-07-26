@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"

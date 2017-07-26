@@ -49,39 +49,39 @@ class BaseInMemorySource(transform.TensorFlowTransform):
     self._seed = seed
     self._data_name = data_name
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def data(self):
     return self._data
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def num_threads(self):
     return self._num_threads
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def enqueue_size(self):
     return self._enqueue_size
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def batch_size(self):
     return self._batch_size
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def queue_capacity(self):
     return self._queue_capacity
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def shuffle(self):
     return self._shuffle
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def min_after_dequeue(self):
     return self._min_after_dequeue
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def seed(self):
     return self._seed
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def data_name(self):
     return self._data_name
 

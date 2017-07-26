@@ -240,7 +240,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, x_np)
 
   def _reverse1DimAuto(self, np_dtype):
-    x_np = np.array([1, 2, 3, 4, 5], dtype=np_dtype)
+    x_np = np.array([1, 200, 3, 40, 5], dtype=np_dtype)
 
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu):
@@ -248,7 +248,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def _reverse2DimAuto(self, np_dtype):
-    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np_dtype)
+    x_np = np.array([[1, 200, 3], [4, 5, 60]], dtype=np_dtype)
 
     for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
       for use_gpu in [False, True]:
@@ -283,14 +283,14 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   def testReverse1DimAuto(self):
     for dtype in [
         np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16, np.float32,
-        np.float64, np.complex64, np.complex128
+        np.float64, np.complex64, np.complex128, np.array(b"").dtype.type
     ]:
       self._reverse1DimAuto(dtype)
 
   def testReverse2DimAuto(self):
     for dtype in [
         np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16, np.float32,
-        np.float64, np.complex64, np.complex128
+        np.float64, np.complex64, np.complex128, np.array(b"").dtype.type
     ]:
       self._reverse2DimAuto(dtype)
 

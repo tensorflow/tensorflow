@@ -17,12 +17,15 @@ limitations under the License.
 
 %{
 
+#include "tensorflow/c/python_api.h"
 #include "tensorflow/python/client/tf_session_helper.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/public/version.h"
 
 %}
+
+%include "tensorflow/python/client/tf_sessionrun_wrapper.i"
 
 // Required to use PyArray_* functions.
 %init %{
@@ -61,6 +64,37 @@ tensorflow::ImportNumpy();
 // Constants used by TensorHandle (get_session_handle).
 %constant const char* TENSOR_HANDLE_KEY = tensorflow::SessionState::kTensorHandleResourceTypeName;
 
+// Convert TF_OperationName output to unicode python string
+%typemap(out) const char* TF_OperationName {
+  $result = PyUnicode_FromString($1);
+}
+
+// Convert TF_OperationOpType output to unicode python string
+%typemap(out) const char* TF_OperationOpType {
+  $result = PyUnicode_FromString($1);
+}
+
+// We use TF_OperationGetControlInputs_wrapper instead of
+// TF_OperationGetControlInputs
+%ignore TF_OperationGetControlInputs;
+%unignore TF_OperationGetControlInputs_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_OperationGetControlInputs_wrapper;
+
+// Build a Python list of TF_Operation* and return it.
+%typemap(out) std::vector<TF_Operation*> tensorflow::TF_OperationGetControlInputs_wrapper {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  for (size_t i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM($result, i, SWIG_NewPointerObj(
+                            $1[i], SWIGTYPE_p_TF_Operation, 0));
+  }
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +103,8 @@ tensorflow::ImportNumpy();
 // represented as a list of strings.
 %typemap(in) const tensorflow::NameVector& (
     tensorflow::NameVector temp,
-    tensorflow::Safe_PyObjectPtr temp_string_list(tensorflow::make_safe(nullptr))) {
+    tensorflow::Safe_PyObjectPtr temp_string_list(
+        tensorflow::make_safe(static_cast<PyObject*>(nullptr)))) {
   if (!PyList_Check($input)) {
     SWIG_fail;
   }
@@ -109,6 +144,8 @@ tensorflow::ImportNumpy();
     tensorflow::PyObjectVector temp) {
   $1 = &temp;
 }
+// TODO(iga): move this and the corresponding typemap(argout) to
+// tf_sessionrun_wrapper.i once we get rid of this code for DeprecatedSession.
 %typemap(in, numinputs=0) char** out_handle (
     char* temp) {
   $1 = &temp;
@@ -116,7 +153,7 @@ tensorflow::ImportNumpy();
 
 // Build a Python list of outputs and return it.
 %typemap(argout) tensorflow::PyObjectVector* out_values {
-  tensorflow::Safe_PyObjectVector out_values_safe;
+  std::vector<tensorflow::Safe_PyObjectPtr> out_values_safe;
   for (size_t i = 0; i < $1->size(); ++i) {
     out_values_safe.emplace_back(tensorflow::make_safe($1->at(i)));
   }
@@ -139,13 +176,41 @@ tensorflow::ImportNumpy();
 %#else
   $result = PyUnicode_FromStringAndSize(
 %#endif
-    *$1, strlen(*$1));
+    *$1, *$1 == nullptr ? 0 : strlen(*$1));
   delete[] *$1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // END TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
+
+// Typemap for TF_Status* inputs that automatically unwraps a ScopedTFStatus.
+// This can also handle a wrapped TF_Status* input.
+%typemap(in) (TF_Status*) {
+  PyObject* wrapped_tf_status;
+  if (strcmp(Py_TYPE($input)->tp_name, "ScopedTFStatus") == 0) {
+    DCHECK(PyObject_HasAttrString($input, "status"))
+        << "ScopedTFStatus.status not found! Do you need to modify "
+           "tf_session.i?";
+    wrapped_tf_status = PyObject_GetAttrString($input, "status");
+  } else {
+    // Assume wrapped TF_Status*
+    wrapped_tf_status = $input;
+  }
+  DCHECK_EQ(strcmp(Py_TYPE(wrapped_tf_status)->tp_name, "SwigPyObject"), 0)
+      << Py_TYPE(wrapped_tf_status)->tp_name;
+
+  // The following is the default SWIG code generated for TF_Status*
+  void* tf_status = nullptr;
+  int r = SWIG_ConvertPtr(wrapped_tf_status, &tf_status,
+                          $descriptor(TF_Status*), 0 | 0);
+  if (!SWIG_IsOK(r)) {
+    SWIG_exception_fail(
+        SWIG_ArgError(r),
+        "in method '_TF_DeleteStatus', argument 1 of type 'TF_Status *'");
+  }
+  $1 = reinterpret_cast<TF_Status*>(tf_status);
+}
 
 // Typemap for functions that return a TF_Buffer struct. This typemap creates a
 // Python string from the TF_Buffer and returns it. The TF_Buffer.data string
@@ -160,29 +225,37 @@ tensorflow::ImportNumpy();
 // Helper function to convert a Python list of Tensors to a C++ vector of
 // TF_Outputs.
 //
-// Caller should have already checked that `py_tensor_list` is a list (this
-// isn't done in this function to allow for function-specific error messages)
-void PyTensorListToVector(PyObject* py_tensor_list,
-                          std::vector<TF_Output>* vec) {
+// Returns true if successful. Otherwise, returns false and sets error_msg.
+bool PyTensorListToVector(PyObject* py_tensor_list,
+                          std::vector<TF_Output>* vec,
+                          string* error_msg) {
+  if (!PyList_Check(py_tensor_list)) {
+    *error_msg = "expected Python list.";
+    return false;
+  }
   size_t size = PyList_Size(py_tensor_list);
   for (int i = 0; i < size; ++i) {
     PyObject* item = PyList_GetItem(py_tensor_list, i);
     TF_Output* input_ptr;
-    SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
-                    SWIGTYPE_p_TF_Output, 0);
+    if (!SWIG_IsOK(SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
+                                   SWIGTYPE_p_TF_Output, 0))) {
+      *error_msg = "expected Python list of wrapped TF_Output objects. "
+          "Found python list of something else.";
+      return false;
+    }
     vec->push_back(*input_ptr);
   }
+  return true;
 }
 %}
 
 // Converts input Python list of wrapped TF_Outputs into a single array
 %typemap(in) (const TF_Output* inputs, int num_inputs)
     (std::vector<TF_Output> inputs) {
-  if (!PyList_Check($input)) {
-    SWIG_exception_fail(
-        SWIG_TypeError, "$symname: expected Python list of wrapped TF_Outputs");
+  string error_msg;
+  if (!PyTensorListToVector($input, &inputs, &error_msg)) {
+    SWIG_exception_fail(SWIG_TypeError, ("$symname: " + error_msg).c_str());
   }
-  PyTensorListToVector($input, &inputs);
   $1 = inputs.data();
   $2 = inputs.size();
 }
@@ -199,11 +272,34 @@ void PyTensorListToVector(PyObject* py_tensor_list,
 %ignore TF_PRun;
 %ignore TF_PRunSetup;
 
+// We use TF_SessionRun_wrapper instead of TF_SessionRun
+%ignore TF_SessionRun;
+%unignore TF_SessionRun_wrapper;
+// The %exception block above releases the Python GIL for the length of each
+// wrapped method. We disable this behavior for TF_SessionRun_wrapper because it
+// uses Python method(s) that expect the GIL to be held (at least
+// PyArray_Return, maybe others).
+%noexception TF_SessionRun_wrapper;
+
+// We use TF_SessionPRunSetup_wrapper instead of TF_SessionPRunSetup
+%ignore TF_SessionPRunSetup;
+%unignore TF_SessionPRunSetup_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_SessionPRunSetup_wrapper;
+
+// We use TF_SessionPRun_wrapper instead of TF_SessionPRun
+%ignore TF_SessionPRun;
+%unignore TF_SessionPRun_wrapper;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_SessionPRun_wrapper;
+
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 
 %include "tensorflow/c/c_api.h"
+%include "tensorflow/c/python_api.h"
+
 
 %ignoreall
 %insert("python") %{

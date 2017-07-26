@@ -122,6 +122,12 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
                                                ArgOp);
 #undef REGISTER
 
+REGISTER_KERNEL_BUILDER(Name("_Arg")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("output")
+                            .TypeConstraint<ResourceHandle>("T"),
+                        ArgOp);
+
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name("_Retval").Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
@@ -186,12 +192,12 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                         PassOn);
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(type)                                      \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_ListToArray").Device(DEVICE_SYCL).TypeConstraint<type>("T"),\
-      PassOn);                                                           \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_ArrayToList").Device(DEVICE_SYCL).TypeConstraint<type>("T"),\
+#define REGISTER_SYCL_KERNELS(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("_ListToArray").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      PassOn);                                                            \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("_ArrayToList").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       PassOn);
 
 REGISTER_SYCL_KERNELS(float);
@@ -211,7 +217,7 @@ REGISTER_KERNEL_BUILDER(Name("_ArrayToList")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         PassOn);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class SymbolicGradientOp : public AsyncOpKernel {
  public:
@@ -227,10 +233,12 @@ class SymbolicGradientOp : public AsyncOpKernel {
 
     FunctionLibraryRuntime::Handle handle;
     OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle), done);
+        ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.rendezvous = ctx->rendezvous();
+    opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());

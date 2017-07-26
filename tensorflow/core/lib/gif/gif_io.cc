@@ -25,9 +25,19 @@ limitations under the License.
 namespace tensorflow {
 namespace gif {
 
+struct InputBufferInfo {
+  const uint8_t* buf;
+  int bytes_left;
+};
+
 int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
-  if (gif_file->UserData && memcpy(buf, gif_file->UserData, size)) {
-    gif_file->UserData = reinterpret_cast<uint8_t*>(gif_file->UserData) + size;
+  InputBufferInfo* const info =
+      reinterpret_cast<InputBufferInfo*>(gif_file->UserData);
+  if (info != nullptr) {
+    if (size > info->bytes_left) size = info->bytes_left;
+    memcpy(buf, info->buf, size);
+    info->buf += size;
+    info->bytes_left -= size;
     return size;
   }
   return 0;
@@ -36,8 +46,9 @@ int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
 uint8* Decode(const void* srcdata, int datasize,
               std::function<uint8*(int, int, int, int)> allocate_output) {
   int error_code = D_GIF_SUCCEEDED;
+  InputBufferInfo info = {reinterpret_cast<const uint8*>(srcdata), datasize};
   GifFileType* gif_file =
-      DGifOpen(const_cast<void*>(srcdata), &input_callback, &error_code);
+      DGifOpen(static_cast<void*>(&info), &input_callback, &error_code);
   const auto cleanup = gtl::MakeCleanup([gif_file]() {
     int error_code = D_GIF_SUCCEEDED;
     if (gif_file && DGifCloseFile(gif_file, &error_code) != GIF_OK) {

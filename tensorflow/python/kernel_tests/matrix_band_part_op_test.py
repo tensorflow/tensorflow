@@ -71,7 +71,8 @@ def _GetMatrixBandPartGradTest(dtype_, batch_shape_, shape_):
 
 
 if __name__ == '__main__':
-  for dtype in np.int32, np.int64, np.float32, np.float64:
+  for dtype in (
+      np.int32, np.int64, np.float32, np.float64, np.complex64, np.complex128):
     for batch_shape in ((), (2,), (1, 3, 2)):
       for rows in 1, 2, 7:
         for cols in 1, 2, 7:

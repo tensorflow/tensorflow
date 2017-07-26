@@ -94,6 +94,7 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
     // TODO(mrry): Consider providing a system-default fallback option
     // in this case.
     std::vector<string> factory_types;
+    factory_types.reserve(candidate_factories.size());
     for (const auto& candidate_factory : candidate_factories) {
       factory_types.push_back(candidate_factory.first);
     }

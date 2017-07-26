@@ -48,17 +48,15 @@ class ModeKeys(object):
   PREDICT = 'infer'
 
 
-class MetricKeys(object):
-  """Metric key strings."""
-  LOSS = 'loss'
-  AVERAGE_LOSS = 'average_loss'
+LOSS_METRIC_KEY = 'loss'
+AVERAGE_LOSS_METRIC_KEY = 'average_loss'
 
 
 class EstimatorSpec(
     collections.namedtuple('EstimatorSpec', [
         'predictions', 'loss', 'train_op', 'eval_metric_ops',
         'export_outputs', 'training_chief_hooks', 'training_hooks',
-        'scaffold'
+        'scaffold', 'evaluation_hooks'
     ])):
   """Ops and objects returned from a `model_fn` and passed to `Estimator`.
 
@@ -74,12 +72,13 @@ class EstimatorSpec(
               export_outputs=None,
               training_chief_hooks=None,
               training_hooks=None,
-              scaffold=None):
+              scaffold=None,
+              evaluation_hooks=None):
     """Creates a validated `EstimatorSpec` instance.
 
     Depending on the value of `mode`, different arguments are required. Namely
     * For `mode == ModeKeys.TRAIN`: required fields are `loss` and `train_op`.
-    * For `mode == ModeKeys.EVAL`: required field is`loss`.
+    * For `mode == ModeKeys.EVAL`: required field is `loss`.
     * For `mode == ModeKeys.PREDICT`: required fields are `predictions`.
 
     model_fn can populate all arguments independent of mode. In this case, some
@@ -145,10 +144,12 @@ class EstimatorSpec(
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY.
       training_chief_hooks: Iterable of `tf.train.SessionRunHook` objects to
         run on the chief worker during training.
-      training_hooks: Iterable of `tf.train.SessionRunHook` objects that to run
+      training_hooks: Iterable of `tf.train.SessionRunHook` objects to run
         on all workers during training.
       scaffold: A `tf.train.Scaffold` object that can be used to set
         initialization, saver, and more to be used in training.
+      evaluation_hooks: Iterable of `tf.train.SessionRunHook` objects to
+        run during evaluation.
 
     Returns:
       A validated `EstimatorSpec` object.
@@ -239,22 +240,45 @@ class EstimatorSpec(
 
     # Validate that all tensors and ops are from the default graph.
     default_graph = ops.get_default_graph()
-    for value in _prediction_values(predictions):
-      if value.graph is not default_graph:
-        raise ValueError('prediction values must be from the default graph.')
+
+    # We enumerate possible error causes here to aid in debugging.
+    error_message_template = (
+        '{0} with "{1}" must be from the default graph. '
+        'Possible causes of this error include: \n\n'
+        '1) {0} was created outside the context of the default graph.'
+        '\n\n'
+        '2) The object passed through to EstimatorSpec was not created '
+        'in the most recent call to "model_fn".')
+
+    if isinstance(predictions, dict):
+      for key, value in six.iteritems(predictions):
+        if value.graph is not default_graph:
+          raise ValueError(error_message_template.format(
+              'prediction values',
+              '{0}: {1}'.format(key, value.name)))
+    elif predictions is not None:
+      # 'predictions' must be a single Tensor.
+      if predictions.graph is not default_graph:
+        raise ValueError(error_message_template.format(
+            'prediction values', predictions.name))
+
     if loss is not None and loss.graph is not default_graph:
-      raise ValueError('loss must be from the default graph.')
+      raise ValueError(error_message_template.format('loss', loss.name))
     if train_op is not None and train_op.graph is not default_graph:
-      raise ValueError('train_op must be from the default graph.')
-    for value in nest.flatten(list(eval_metric_ops.values())):
-      if value.graph is not default_graph:
-        raise ValueError(
-            'eval_metric_ops values must be from the default graph.')
+      raise ValueError(error_message_template.format('train_op', train_op.name))
+    for key, value in list(six.iteritems(eval_metric_ops)):
+      values = nest.flatten(value)
+      for value in values:
+        if value.graph is not default_graph:
+          raise ValueError(error_message_template.format(
+              'eval_metric_ops',
+              '{0}: {1}'.format(key, value.name)))
 
     # Validate hooks.
     training_chief_hooks = tuple(training_chief_hooks or [])
     training_hooks = tuple(training_hooks or [])
-    for hook in training_hooks + training_chief_hooks:
+    evaluation_hooks = tuple(evaluation_hooks or [])
+    for hook in training_hooks + training_chief_hooks + evaluation_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
         raise TypeError(
             'All hooks must be SessionRunHook instances, given: {}'.format(
@@ -275,7 +299,8 @@ class EstimatorSpec(
         export_outputs=export_outputs,
         training_chief_hooks=training_chief_hooks,
         training_hooks=training_hooks,
-        scaffold=scaffold)
+        scaffold=scaffold,
+        evaluation_hooks=evaluation_hooks)
 
 
 def _check_is_tensor_or_operation(x, name):
@@ -288,12 +313,3 @@ def _check_is_tensor(x, tensor_name):
   if not isinstance(x, ops.Tensor):
     raise TypeError('{} must be Tensor, given: {}'.format(tensor_name, x))
   return x
-
-
-def _prediction_values(predictions):
-  """Returns the values of the given predictions dict or `Tensor`."""
-  if predictions is None:
-    return []
-  if isinstance(predictions, dict):
-    return list(six.itervalues(predictions))
-  return [predictions]

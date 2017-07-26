@@ -87,9 +87,13 @@ struct MultinomialFunctor<GPUDevice, T> {
     // Calculates "scores = logits - log(-log(noises))"; B*C*S elements.
     // NOTE: we don't store back to "noises" because having it appear on both
     // sides is potentially unsafe (e.g. Eigen may use ldg() to load RHS data).
+    // 2e-30 is chosen so as to be small enough to only change 0 -> 2e-30 while
+    // not affect any of the other numbers (smallest is ~1e-7), but not so small
+    // that log(x) == -inf, which is why it needs to be larger than 0 in the
+    // first place.
     To32Bit(scores).device(d) =
         To32Bit(logits).reshape(boc).broadcast(oso).template cast<float>() -
-        ((-(To32Bit(noises).log())).log());
+        ((-((To32Bit(noises) + 2e-30f).log())).log());
 
     // Max-reduce along classes for each (batch, sample).
     To32Bit(maxima).device(d) = To32Bit(scores).reshape(bsc).maximum(kTwo);

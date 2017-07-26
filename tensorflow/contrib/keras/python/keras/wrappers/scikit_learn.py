@@ -109,7 +109,7 @@ class BaseWrapper(object):
     """Gets parameters for this estimator.
 
     Arguments:
-        **params: ignored (exists for API compatiblity).
+        **params: ignored (exists for API compatibility).
 
     Returns:
         Dictionary of parameter names mapped to their values.

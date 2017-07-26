@@ -153,7 +153,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
         info_checker_callback) const {
   std::vector<HostLapackInfo> host_lapack_infos;
   if (dev_lapack_infos.empty()) {
-    info_checker_callback(Status::OK(), std::move(host_lapack_infos));
+    info_checker_callback(Status::OK(), host_lapack_infos);
     return Status::OK();
   }
 
@@ -174,7 +174,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
   auto wrapped_info_checker_callback =
       [info_checker_callback](std::vector<HostLapackInfo> host_lapack_infos) {
         Status status;
-        for (auto host_lapack_info : host_lapack_infos) {
+        for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
             const int info_value = (host_lapack_info.data())[i];
             if (info_value != 0) {
@@ -252,6 +252,37 @@ static inline Status PotrfImpl(BufSizeFnT bufsize, SolverFnT solver,
 
 TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
 
+template <typename Scalar, typename SolverFnT>
+static inline Status GeamImpl(SolverFnT solver, cublasHandle_t cublas_handle,
+                              cublasOperation_t transa,
+                              cublasOperation_t transb, int m, int n,
+                              const Scalar* alpha, /* host or device pointer */
+                              const Scalar* A, int lda,
+                              const Scalar* beta, /* host or device pointer */
+                              const Scalar* B, int ldb, Scalar* C, int ldc) {
+  using CudaScalar = typename CUDAComplexT<Scalar>::type;
+  TF_RETURN_IF_CUBLAS_ERROR(
+      solver(cublas_handle, transa, transb, m, n, (const CudaScalar*)alpha,
+             (const CudaScalar*)A, lda, (const CudaScalar*)beta,
+             (const CudaScalar*)B, ldb, (CudaScalar*)C, ldc));
+  return Status::OK();
+}
+
+#define GEAM_INSTANCE(Scalar, lapack_prefix)                              \
+  template <>                                                             \
+  Status CudaSolver::Geam<Scalar>(                                        \
+      cublasOperation_t transa, cublasOperation_t transb, int m, int n,   \
+      const Scalar* alpha, /* host or device pointer */                   \
+      const Scalar* A, int lda,                                           \
+      const Scalar* beta, /* host or device pointer */                    \
+      const Scalar* B, int ldb, Scalar* C, int ldc) const {               \
+    return GeamImpl(BLAS_SOLVER_FN(geam, lapack_prefix), cublas_handle_,  \
+                    transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, \
+                    ldc);                                                 \
+  }
+
+TF_CALL_LAPACK_TYPES(GEAM_INSTANCE);
+
 //=============================================================================
 // Wrappers of cuBlas computational methods begin here.
 //
@@ -268,9 +299,8 @@ static inline Status GetrfBatchedImpl(
   using CudaScalar = typename CUDAComplexT<Scalar>::type;
   ScratchSpace<uint8> dev_a_dev_ptrs(context, sizeof(CudaScalar*) * batch_size,
                                      /* on_host */ false);
-  if (!CopyHostToDevice(
-          context, (void*)dev_a_dev_ptrs.mutable_data() /* dest */,
-          (const void*)host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
     return errors::Internal("GetrfBatched: failed to copy pointers to device");
   }
   TF_RETURN_IF_CUBLAS_ERROR(
@@ -302,12 +332,10 @@ static inline Status GetriBatchedImpl(
                                      /* on_host */ false);
   ScratchSpace<uint8> dev_a_inv_dev_ptrs(
       context, sizeof(CudaScalar*) * batch_size, /* on_host */ false);
-  if (!CopyHostToDevice(
-          context, (void*)dev_a_dev_ptrs.mutable_data() /* dest */,
-          (const void*)host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes()) ||
-      !CopyHostToDevice(context, (void*)dev_a_inv_dev_ptrs.mutable_data(),
-                        (const void*)host_a_inv_dev_ptrs,
-                        dev_a_inv_dev_ptrs.bytes())) {
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes()) ||
+      !CopyHostToDevice(context, dev_a_inv_dev_ptrs.mutable_data(),
+                        host_a_inv_dev_ptrs, dev_a_inv_dev_ptrs.bytes())) {
     return errors::Internal("GetriBatched: failed to copy pointers to device");
   }
   TF_RETURN_IF_CUBLAS_ERROR(

@@ -112,17 +112,15 @@ TEST_F(QuantizeTrainingTest, SignedInput) {
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(identity->name(), "/QuantizeAndDequantizeV2"),
                &identity_q_node));
-  NodeDef identity_q = identity_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(identity_q.attr().find("signed_input")->second));
+            SummarizeAttrValue(*identity_q_node->attrs().Find("signed_input")));
   // Quantize_and_dequantize node for relu should have signed_input==false.
   Node* relu_q_node;
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
                &relu_q_node));
-  NodeDef relu_q = relu_q_node->def();
   ASSERT_EQ("false",
-            SummarizeAttrValue(relu_q.attr().find("signed_input")->second));
+            SummarizeAttrValue(*relu_q_node->attrs().Find("signed_input")));
 }
 
 TEST_F(QuantizeTrainingTest, RangeGivenTrue) {
@@ -165,17 +163,15 @@ TEST_F(QuantizeTrainingTest, RangeGivenTrue) {
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu6->name(), "/QuantizeAndDequantizeV2"),
                &relu6_q_node));
-  NodeDef identity_q = relu6_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(identity_q.attr().find("range_given")->second));
+            SummarizeAttrValue(*relu6_q_node->attrs().Find("range_given")));
   // Quantize_and_dequantize node for relu should have range_given==true.
   Node* relu_q_node;
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
                &relu_q_node));
-  NodeDef relu_q = relu_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(relu_q.attr().find("range_given")->second));
+            SummarizeAttrValue(*relu_q_node->attrs().Find("range_given")));
 }
 
 TEST_F(QuantizeTrainingTest, WithBackwardNodes_QuantizeAndDequantize) {
@@ -286,7 +282,7 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_FakeQuant) {
       g, strings::StrCat(c->name(), "/FakeQuantWithMinMaxVars"), &found_node));
 }
 
-TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
+TEST_F(QuantizeTrainingTest, QuantizeSerializedGraphDef) {
   // Construct a simple graph with 5 nodes.
   Reset();
   Graph* graph = g_.get();
@@ -314,8 +310,40 @@ TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
   GraphDef result_graphdef;
   EXPECT_TRUE(ParseProtoUnlimited(&result_graphdef, result_string));
 
+  // Ensure that quantizing the serialized graph_def results in a graph with the
+  // same number of nodes as quantizing the graph.
+  GraphConstructorOptions opts;
+  Graph result_graph(OpRegistry::Global());
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, result_graphdef, &result_graph));
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "QuantizeAndDequantizeV2", graph));
+  EXPECT_EQ(graph->num_nodes(), result_graph.num_nodes());
+}
+
+TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
+  // Construct a simple graph with 5 nodes.
+  Reset();
+  Graph* graph = g_.get();
+  Node* const_a = Constant<float>({1.0, 2.0, 3.0, 4.0}, {2, 2});
+  Node* const_b = Constant<float>({1.0, 2.0, 3.0, 4.0}, {2, 2});
+  graph->AddControlEdge(graph->source_node(), const_a);
+  graph->AddControlEdge(graph->source_node(), const_b);
+  Node* relu = test::graph::Relu(graph, const_a);
+  Node* identity = test::graph::Identity(graph, const_b);
+  Node* matmul = test::graph::Matmul(graph, relu, identity, false, false);
+  graph->AddControlEdge(matmul, graph->sink_node());
+
+  int num_bits = 8;
+
+  // Convert the graph to the graphdef string.
+  GraphDef input_graphdef;
+  graph->ToGraphDef(&input_graphdef);
+
+  GraphDef result_graphdef;
+  TF_ASSERT_OK(DoQuantizeTrainingOnGraphDef(
+      input_graphdef, num_bits, "QuantizeAndDequantizeV2", &result_graphdef));
+
   // Ensure that quantizing the graph_def results in a graph with the same
-  // number of nodes.
+  // number of nodes as the graph_def.
   GraphConstructorOptions opts;
   Graph result_graph(OpRegistry::Global());
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, result_graphdef, &result_graph));

@@ -50,11 +50,11 @@ class CSVParser(transform.TensorFlowTransform):
   def _output_names(self):
     return self.column_names
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def column_names(self):
     return self._column_names
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def default_values(self):
     return self._default_values
 

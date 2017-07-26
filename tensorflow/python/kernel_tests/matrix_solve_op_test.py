@@ -96,11 +96,6 @@ class MatrixSolveOpTest(test.TestCase):
             [[1., 0., -1.], [-1., 1., 0.], [0., -1., 1.]])
         linalg_ops.matrix_solve(matrix, matrix).eval()
 
-  def testEmpty(self):
-    with self.test_session():
-      self._verifySolve(np.empty([0, 0]), np.empty([0, 0]))
-      self._verifySolve(np.empty([2, 2]), np.empty([2, 0]))
-
 
 if __name__ == "__main__":
   test.main()

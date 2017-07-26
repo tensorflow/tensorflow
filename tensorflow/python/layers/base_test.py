@@ -22,6 +22,7 @@ import copy
 
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import base as base_layers
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -191,6 +192,7 @@ class BaseLayerTest(test.TestCase):
         return math_ops.square(inputs)
 
     layer = MyLayer(name='my_layer')
+    layer._private_tensor = random_ops.random_uniform(())
     inputs = random_ops.random_uniform((5,), seed=1)
     outputs = layer.apply(inputs)
     self.assertEqual(layer.built, True)
@@ -200,6 +202,7 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(layer_copy.name, layer.name)
     self.assertEqual(layer_copy._scope.name, layer._scope.name)
     self.assertEqual(layer_copy._graph, layer._graph)
+    self.assertEqual(layer_copy._private_tensor, layer._private_tensor)
 
   def testScopeNaming(self):
 
@@ -247,6 +250,153 @@ class BaseLayerTest(test.TestCase):
       my_layer_scoped1 = PrivateLayer(name='my_layer')
       my_layer_scoped1.apply(inputs)
       self.assertEqual(my_layer_scoped1._scope.name, 'var_scope/my_layer_1')
+
+  def testInputSpecNdimCheck(self):
+
+    class CustomerLayer(base_layers.Layer):
+
+      def __init__(self):
+        super(CustomerLayer, self).__init__()
+        self.input_spec = base_layers.InputSpec(ndim=2)
+
+      def call(self, inputs):
+        return inputs
+
+    layer = CustomerLayer()
+    with self.assertRaisesRegexp(ValueError,
+                                 r'requires a defined rank'):
+      layer.apply(array_ops.placeholder('int32'))
+
+    with self.assertRaisesRegexp(ValueError,
+                                 r'expected ndim=2'):
+      layer.apply(array_ops.placeholder('int32', shape=(None,)))
+
+    # Works
+    layer.apply(array_ops.placeholder('int32', shape=(None, None)))
+
+  def testInputSpecMinNdimCheck(self):
+
+    class CustomerLayer(base_layers.Layer):
+
+      def __init__(self):
+        super(CustomerLayer, self).__init__()
+        self.input_spec = base_layers.InputSpec(min_ndim=2)
+
+      def call(self, inputs):
+        return inputs
+
+    layer = CustomerLayer()
+    with self.assertRaisesRegexp(ValueError,
+                                 r'requires a defined rank'):
+      layer.apply(array_ops.placeholder('int32'))
+
+    with self.assertRaisesRegexp(ValueError,
+                                 r'expected min_ndim=2'):
+      layer.apply(array_ops.placeholder('int32', shape=(None,)))
+
+    # Works
+    layer.apply(array_ops.placeholder('int32', shape=(None, None)))
+    layer.apply(array_ops.placeholder('int32', shape=(None, None, None)))
+
+  def testInputSpecMaxNdimCheck(self):
+
+    class CustomerLayer(base_layers.Layer):
+
+      def __init__(self):
+        super(CustomerLayer, self).__init__()
+        self.input_spec = base_layers.InputSpec(max_ndim=2)
+
+      def call(self, inputs):
+        return inputs
+
+    layer = CustomerLayer()
+    with self.assertRaisesRegexp(ValueError,
+                                 r'requires a defined rank'):
+      layer.apply(array_ops.placeholder('int32'))
+
+    with self.assertRaisesRegexp(ValueError,
+                                 r'expected max_ndim=2'):
+      layer.apply(array_ops.placeholder('int32', shape=(None, None, None)))
+
+    # Works
+    layer.apply(array_ops.placeholder('int32', shape=(None, None)))
+    layer.apply(array_ops.placeholder('int32', shape=(None,)))
+
+  def testInputSpecDtypeCheck(self):
+
+    class CustomerLayer(base_layers.Layer):
+
+      def __init__(self):
+        super(CustomerLayer, self).__init__()
+        self.input_spec = base_layers.InputSpec(dtype='float32')
+
+      def call(self, inputs):
+        return inputs
+
+    layer = CustomerLayer()
+    with self.assertRaisesRegexp(ValueError,
+                                 r'expected dtype=float32'):
+      layer.apply(array_ops.placeholder('int32'))
+
+    # Works
+    layer.apply(array_ops.placeholder('float32', shape=(None, None)))
+
+  def testInputSpecAxesCheck(self):
+
+    class CustomerLayer(base_layers.Layer):
+
+      def __init__(self):
+        super(CustomerLayer, self).__init__()
+        self.input_spec = base_layers.InputSpec(axes={-1: 2})
+
+      def call(self, inputs):
+        return inputs
+
+    layer = CustomerLayer()
+    with self.assertRaisesRegexp(ValueError,
+                                 r'expected axis'):
+      layer.apply(array_ops.placeholder('int32', shape=(None, 3)))
+
+    # Works
+    layer.apply(array_ops.placeholder('int32', shape=(None, None, 2)))
+    layer.apply(array_ops.placeholder('int32', shape=(None, 2)))
+
+  def testInputSpecShapeCheck(self):
+
+    class CustomerLayer(base_layers.Layer):
+
+      def __init__(self):
+        super(CustomerLayer, self).__init__()
+        self.input_spec = base_layers.InputSpec(shape=(None, 3))
+
+      def call(self, inputs):
+        return inputs
+
+    layer = CustomerLayer()
+    with self.assertRaisesRegexp(ValueError,
+                                 r'expected shape'):
+      layer.apply(array_ops.placeholder('int32', shape=(None, 2)))
+
+    # Works
+    layer.apply(array_ops.placeholder('int32', shape=(None, 3)))
+    layer.apply(array_ops.placeholder('int32', shape=(2, 3)))
+
+  def testNoInputSpec(self):
+
+    class CustomerLayer(base_layers.Layer):
+
+      def __init__(self):
+        super(CustomerLayer, self).__init__()
+        self.input_spec = None
+
+      def call(self, inputs):
+        return inputs
+
+    layer = CustomerLayer()
+
+    # Works
+    layer.apply(array_ops.placeholder('int32'))
+    layer.apply(array_ops.placeholder('int32', shape=(2, 3)))
 
 
 if __name__ == '__main__':

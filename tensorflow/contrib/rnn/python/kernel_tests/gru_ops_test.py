@@ -22,7 +22,6 @@ import time
 
 import numpy as np
 
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.contrib.rnn.python.ops import gru_ops
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
@@ -33,6 +32,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -40,10 +40,9 @@ from tensorflow.python.training import gradient_descent
 
 
 class GRUBlockCellTest(test.TestCase):
-  _use_gpu = False
 
   def testNoneDimsWithDynamicRNN(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       batch_size = 4
       cell_size = 5
       input_size = 6
@@ -60,7 +59,7 @@ class GRUBlockCellTest(test.TestCase):
       sess.run(output, feed)
 
   def testBlockGRUToGRUCellSingleStep(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       batch_size = 4
       cell_size = 5
       input_size = 6
@@ -78,7 +77,7 @@ class GRUBlockCellTest(test.TestCase):
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        output = core_rnn_cell_impl.GRUCell(cell_size)(x, h)
+        output = rnn_cell.GRUCell(cell_size)(x, h)
         sess.run([variables.global_variables_initializer()])
         basic_res = sess.run([output], {x: x_value, h: h_value})
 
@@ -93,7 +92,7 @@ class GRUBlockCellTest(test.TestCase):
         self.assertAllClose(block, basic)
 
   def testBlockGRUToGRUCellMultiStep(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       batch_size = 2
       cell_size = 3
       input_size = 3
@@ -128,7 +127,7 @@ class GRUBlockCellTest(test.TestCase):
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.GRUCell(cell_size)
+        cell = rnn_cell.GRUCell(cell_size)
         outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
             cell,
             inputs=concat_x,
@@ -152,7 +151,7 @@ class GRUBlockCellTest(test.TestCase):
       self.assertAllClose(block_res[1], block_res[1])
 
   def testDerivativeOfBlockGRUToGRUCellSingleStep(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       batch_size = 2
       cell_size = 3
       input_size = 4
@@ -192,7 +191,7 @@ class GRUBlockCellTest(test.TestCase):
 
       # Gradients from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        output = core_rnn_cell_impl.GRUCell(cell_size)(x, h)
+        output = rnn_cell.GRUCell(cell_size)(x, h)
         sess.run([variables.global_variables_initializer()])
 
         all_variables = variables.global_variables()[4:8]
@@ -222,7 +221,7 @@ class GRUBlockCellTest(test.TestCase):
     cell_size = 3
     input_size = 4
     time_steps = 2
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       # Random initializers.
       seed = 1994
       initializer = init_ops.random_uniform_initializer(-0.01, 0.01, seed=seed)
@@ -258,7 +257,7 @@ class GRUBlockCellTest(test.TestCase):
 
       # Gradients from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.GRUCell(cell_size)
+        cell = rnn_cell.GRUCell(cell_size)
 
         outputs_dynamic, _ = rnn.dynamic_rnn(
             cell,
@@ -289,7 +288,7 @@ class GRUBlockCellTest(test.TestCase):
       self.assertAllClose(block, basic)
 
   def testGradient(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       batch_size = 1
       cell_size = 3
       input_size = 2
@@ -329,10 +328,6 @@ class GRUBlockCellTest(test.TestCase):
     self.assertLess(error_w_c, eps)
     self.assertLess(error_b_ru, eps)
     self.assertLess(error_b_c, eps)
-
-
-class GRUBlockCellGpuTest(GRUBlockCellTest):
-  _use_gpu = True
 
 
 #### Benchmarking GRUBlockCell vs GRUCell.
@@ -377,7 +372,7 @@ def training_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.GRUCell(cell_size)
+        cell = rnn_cell.GRUCell(cell_size)
 
         outputs_dynamic, _ = rnn.dynamic_rnn(
             cell,
@@ -448,7 +443,7 @@ def inference_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.GRUCell(cell_size)
+        cell = rnn_cell.GRUCell(cell_size)
         outputs_dynamic, _ = rnn.dynamic_rnn(
             cell,
             inputs=concat_x,
@@ -497,8 +492,8 @@ def single_bprop_step_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        output = core_rnn_cell_impl.GRUCell(cell_size)(array_ops.identity(x),
-                                                       array_ops.identity(h))
+        output = rnn_cell.GRUCell(cell_size)(array_ops.identity(x),
+                                             array_ops.identity(h))
         sess.run([variables.global_variables_initializer()])
         grad_output_wrt_input = gradients_impl.gradients([output], h)
         basic_time_bprop = time_taken_by_op(grad_output_wrt_input, sess, iters)

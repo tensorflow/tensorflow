@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -339,7 +338,7 @@ class TransformedDistribution(distribution_lib.Distribution):
             self.distribution.event_shape_tensor()))
 
   def _event_shape(self):
-    # If there's a chance that the event_shape has been overriden, we return
+    # If there's a chance that the event_shape has been overridden, we return
     # what we statically know about the `event_shape_override`. This works
     # because: `_is_maybe_event_override` means `static_override` is `None` or a
     # non-empty list, i.e., we don't statically know the `event_shape` or we do.
@@ -347,9 +346,10 @@ class TransformedDistribution(distribution_lib.Distribution):
     # Since the `bijector` may change the `event_shape`, we then forward what we
     # know to the bijector. This allows the `bijector` to have final say in the
     # `event_shape`.
-    static_override = tensor_util.constant_value(self._override_event_shape)
+    static_override = tensor_util.constant_value_as_shape(
+        self._override_event_shape)
     return self.bijector.forward_event_shape(
-        tensor_shape.TensorShape(static_override)
+        static_override
         if self._is_maybe_event_override
         else self.distribution.event_shape)
 
@@ -360,7 +360,7 @@ class TransformedDistribution(distribution_lib.Distribution):
         self.distribution.batch_shape_tensor())
 
   def _batch_shape(self):
-    # If there's a chance that the batch_shape has been overriden, we return
+    # If there's a chance that the batch_shape has been overridden, we return
     # what we statically know about the `batch_shape_override`. This works
     # because: `_is_maybe_batch_override` means `static_override` is `None` or a
     # non-empty list, i.e., we don't statically know the `batch_shape` or we do.
@@ -369,8 +369,9 @@ class TransformedDistribution(distribution_lib.Distribution):
     # the `bijector` doesn't get to alter the `batch_shape`. Recall that
     # `batch_shape` is a property of a distribution while `event_shape` is
     # shared between both the `distribution` instance and the `bijector`.
-    static_override = tensor_util.constant_value(self._override_batch_shape)
-    return (tensor_shape.TensorShape(static_override)
+    static_override = tensor_util.constant_value_as_shape(
+        self._override_batch_shape)
+    return (static_override
             if self._is_maybe_batch_override
             else self.distribution.batch_shape)
 

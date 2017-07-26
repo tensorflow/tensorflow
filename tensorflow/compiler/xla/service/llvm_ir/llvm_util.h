@@ -27,8 +27,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Module.h"
 #include "external/llvm/include/llvm/IR/Value.h"
 #include "external/llvm/include/llvm/Support/raw_ostream.h"
-#include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -107,6 +106,19 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder);
 
+// Returns a value that represents a pointer to a global string constant that
+// encodes the shape as a serialized protobuf.
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32* shape_size, llvm::IRBuilder<>* ir_builder);
+
+// Inverses the encoding of a Shape protobuf into an LLVM global variable.
+//
+// This is intended to be called from the runtime to decode the llvm::Constants
+// that are created via ConvertShapeToSelfDescribingConstant and subsequently
+// embedded into the program.
+StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                  int32 size_bytes);
+
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
@@ -130,7 +142,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
     llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
     llvm::IRBuilder<>* ir_builder, int alignment = 0);
 
-// Creates a basic block with the same context and funtion as for the
+// Creates a basic block with the same context and function as for the
 // builder. Inserts at the end of the function if insert_before is
 // null.
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
@@ -219,11 +231,11 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
 // Gets an llvm::FastMathFlags that reflects the settings in the given
 // module config.
-llvm::FastMathFlags GetFastMathFlags(const HloModuleConfig& config);
+llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled);
 
 // Sets values in the given TargetOptions struct according to the given
 // compilation options.
-void SetTargetOptions(const HloModuleConfig& config,
+void SetTargetOptions(bool fast_math_enabled,
                       llvm::TargetOptions* target_options);
 
 }  // namespace llvm_ir

@@ -5,7 +5,7 @@ TensorFlow is a fast moving project. In order for the community to better
 understand what the near future will bring, this document shares what we are
 working on internally. Many of these features were requested by the community,
 and we welcome
-[contributions](https://github.com/tensorflow/tensorflow/labels/contributions%20welcome).
+[contributions](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
 
 The features on this list are targeted for the next few months. At this point,
 we do not have timelines for these features.

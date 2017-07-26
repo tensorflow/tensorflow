@@ -24,6 +24,25 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+namespace {
+
+Status DequeueManyV2Shape(InferenceContext* c, ShapeHandle n_shape) {
+  auto* t = c->input_handle_shapes_and_types(0);
+  if (t != nullptr && t->size() == c->num_outputs()) {
+    for (int i = 0; i < c->num_outputs(); ++i) {
+      ShapeHandle combined_shape;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(n_shape, (*t)[i].shape, &combined_shape));
+      c->set_output(i, combined_shape);
+    }
+    return Status::OK();
+  } else {
+    return shape_inference::UnknownShape(c);
+  }
+}
+
+}  // namespace
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("DynamicPartition")
@@ -100,6 +119,8 @@ For example:
     outputs[0] = [10, 20, 50]
     outputs[1] = [30, 40]
 ```
+
+See `dynamic_stitch` for an example on how to merge partitions back.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/DynamicPartition.png" alt>
@@ -187,6 +208,24 @@ For example:
     data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
     merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
               [51, 52], [61, 62]]
+```
+
+This method can be used to merge partitions created by `dynamic_partition`
+as illustrated on the following example:
+
+```python
+    # Apply function (increments x_i) on elements for which a certain condition
+    # apply (x_i != -1 in this example).
+    x=tf.constant([0.1, -1., 5.2, 4.3, -1., 7.4])
+    condition_mask=tf.not_equal(x,tf.constant(-1.))
+    partitioned_data = tf.dynamic_partition(
+        x, tf.cast(condition_mask, tf.int32) , 2)
+    partitioned_data[1] = partitioned_data[1] + 1.0
+    condition_indices = tf.dynamic_partition(
+        tf.range(tf.shape(x)[0]), tf.cast(condition_mask, tf.int32) , 2)
+    x = tf.dynamic_stitch(condition_indices, partitioned_data)
+    # Here x=[1.1, -1., 6.2, 5.3, -1, 8.4], the -1. values remain
+    # unchanged.
 ```
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
@@ -624,15 +663,15 @@ REGISTER_OP("QueueDequeueV2")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
     .SetShapeFn([](InferenceContext* c) {
-      if (c->num_outputs() == 1) {
-        c->set_output(0, c->input_handle_shape(0));
-      } else {
-        // TODO(vrv): handle the case of multiple outputs.
+      auto* t = c->input_handle_shapes_and_types(0);
+      if (t != nullptr && t->size() == c->num_outputs()) {
         for (int i = 0; i < c->num_outputs(); ++i) {
-          c->set_output(i, c->UnknownShape());
+          c->set_output(i, (*t)[i].shape);
         }
+        return Status::OK();
+      } else {
+        return shape_inference::UnknownShape(c);
       }
-      return Status::OK();
     })
     .Doc(R"doc(
 Dequeues a tuple of one or more tensors from the given queue.
@@ -691,7 +730,19 @@ REGISTER_OP("QueueDequeueManyV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle n_shape;
+      if (c->input_tensor(1) == nullptr) {
+        n_shape = c->Vector(InferenceContext::kUnknownDim);
+      } else {
+        const int32 n = c->input_tensor(1)->scalar<int32>()();
+        if (n < 0) {
+          return errors::InvalidArgument("Input 'n' must be >= 0, but is ", n);
+        }
+        n_shape = c->Vector(n);
+      }
+      return DequeueManyV2Shape(c, n_shape);
+    })
     .Doc(R"doc(
 Dequeues `n` tuples of one or more tensors from the given queue.
 
@@ -761,7 +812,9 @@ REGISTER_OP("QueueDequeueUpToV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      return DequeueManyV2Shape(c, c->Vector(InferenceContext::kUnknownDim));
+    })
     .Doc(R"doc(
 Dequeues `n` tuples of one or more tensors from the given queue.
 
@@ -807,7 +860,7 @@ operations that would block will fail immediately.
 
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the given queue will be cancelled.
+  blocked on the given queue will be canceled.
 )doc");
 
 REGISTER_OP("QueueCloseV2")
@@ -825,7 +878,33 @@ operations that would block will fail immediately.
 
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the given queue will be cancelled.
+  blocked on the given queue will be canceled.
+)doc");
+
+REGISTER_OP("QueueIsClosed")
+    .Input("handle: Ref(string)")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
+)doc");
+
+REGISTER_OP("QueueIsClosedV2")
+    .Input("handle: resource")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
 )doc");
 
 REGISTER_OP("QueueSize")
@@ -1061,8 +1140,9 @@ dtype: The data type of accumulated gradients. Needs to correspond to the type
 
 // --------------------------------------------------------------------------
 
-REGISTER_OP("Stack")
-    .Output("handle: Ref(string)")
+REGISTER_OP("StackV2")
+    .Input("max_size: int32")
+    .Output("handle: resource")
     .Attr("elem_type: type")
     .Attr("stack_name: string = ''")
     .SetIsStateful()
@@ -1070,14 +1150,16 @@ REGISTER_OP("Stack")
     .Doc(R"doc(
 A stack that produces elements in first-in last-out order.
 
+max_size: The maximum size of the stack if non-negative. If negative, the stack
+  size is unlimited.
 handle: The handle to the stack.
 elem_type: The type of the elements on the stack.
 stack_name: Overrides the name used for the temporary stack resource. Default
 value is the name of the 'Stack' op (which is guaranteed unique).
 )doc");
 
-REGISTER_OP("StackPush")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPushV2")
+    .Input("handle: resource")
     .Input("elem: T")
     .Output("output: T")
     .Attr("T: type")
@@ -1095,8 +1177,8 @@ output: The same tensor as the input 'elem'.
 swap_memory: Swap `elem` to CPU. Default to false.
 )doc");
 
-REGISTER_OP("StackPop")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPopV2")
+    .Input("handle: resource")
     .Output("elem: elem_type")
     .Attr("elem_type: type")
     .SetShapeFn(shape_inference::UnknownShape)
@@ -1108,13 +1190,55 @@ elem: The tensor that is popped from the top of the stack.
 elem_type: The type of the elem that is popped.
 )doc");
 
-REGISTER_OP("StackClose")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackCloseV2")
+    .Input("handle: resource")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
     .Doc(R"doc(
 Delete the stack from its resource container.
 
 handle: The handle to a stack.
+)doc");
+
+// Deprecated ref-typed variants of stack.
+
+REGISTER_OP("Stack")
+    .Output("handle: Ref(string)")
+    .Attr("elem_type: type")
+    .Attr("stack_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+Deprecated, use StackV2.
+)doc");
+
+REGISTER_OP("StackPush")
+    .Input("handle: Ref(string)")
+    .Input("elem: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("swap_memory: bool = false")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Deprecated, use StackPushV2.
+)doc");
+
+REGISTER_OP("StackPop")
+    .Input("handle: Ref(string)")
+    .Output("elem: elem_type")
+    .Attr("elem_type: type")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Deprecated, use StackPopV2.
+)doc");
+
+REGISTER_OP("StackClose")
+    .Input("handle: Ref(string)")
+    .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
+    .Doc(R"doc(
+Deprecated, use StackCloseV2.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1201,7 +1325,7 @@ of the forward TensorArray is known when this operation is called.
 
 TensorArray gradient calls use an accumulator TensorArray object.  If
 multiple gradients are calculated and run in the same session, the multiple
-gradient nodes may accidentally flow throuth the same accumulator TensorArray.
+gradient nodes may accidentally flow through the same accumulator TensorArray.
 This double counts and generally breaks the TensorArray gradient flow.
 
 The solution is to identify which gradient call this particular
@@ -1859,7 +1983,7 @@ Subsequent TakeMany operations that would block will fail immediately.
 
 handle: The handle to a barrier.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the barrier's queue will be cancelled. InsertMany will fail, even
+  blocked on the barrier's queue will be canceled. InsertMany will fail, even
   if no new key is introduced.
 )doc");
 
@@ -1947,6 +2071,8 @@ handle: The handle for a tensor stored in the session state.
 
 REGISTER_OP("Stage")
     .Input("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -1959,6 +2085,11 @@ The basic functionality of this Op is similar to a queue with many
 fewer capabilities and options.  This Op is optimized for performance.
 
 values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
+memory_limit: The maximum number of bytes allowed for Tensors in the Staging Area.
+  If > 0, inserts will block until sufficient space is available.
 container: If non-empty, this queue is placed in the given container. Otherwise,
   a default container is used.
 shared_name: It is necessary to match this name to the matching Unstage Op.
@@ -1966,6 +2097,8 @@ shared_name: It is necessary to match this name to the matching Unstage Op.
 
 REGISTER_OP("Unstage")
     .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
     .Attr("dtypes: list(type)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
@@ -1974,9 +2107,286 @@ REGISTER_OP("Unstage")
     .Doc(R"doc(
 Op is similar to a lightweight Dequeue.
 
-The basic funtionality is similar to dequeue with many fewer
+The basic functionality is similar to dequeue with many fewer
 capabilities and options.  This Op is optimized for performance.
 )doc");
+
+REGISTER_OP("StagePeek")
+    .Input("index: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op peeks at the values at the specified index.  If the
+underlying container does not contain sufficient elements
+this op will block until it does.   This Op is optimized for
+performance.
+    )doc");
+
+
+REGISTER_OP("StageSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
+
+REGISTER_OP("StageClear")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
+    )doc");
+
+// UnorderedMap
+REGISTER_OP("MapStage")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Input("values: fake_dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("fake_dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+Stage (key, values) in the underlying container which behaves like a hashtable.
+
+key: int64
+values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
+container: If non-empty, this queue is placed in the given container. Otherwise,
+  a default container is used.
+shared_name: It is necessary to match this name to the matching Unstage Op.
+)doc");
+
+REGISTER_OP("MapPeek")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op peeks at the values at the specified key.  If the
+underlying container does not contain this key
+this op will block until it does.
+    )doc");
+
+REGISTER_OP("MapUnstage")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes and returns the values associated with the key
+from the underlying container.   If the underlying container
+does not contain this key, the op will block until it does.
+    )doc");
+
+REGISTER_OP("MapUnstageNoKey")
+    .Input("indices: int32")
+    .Output("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes and returns a random (key, value)
+from the underlying container.   If the underlying container
+does not contain elements, the op will block until it does.
+      )doc");
+
+REGISTER_OP("MapSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
+
+REGISTER_OP("MapIncompleteSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of incomplete elements in the underlying container.
+    )doc");
+
+
+REGISTER_OP("MapClear")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
+    )doc");
+
+
+// OrderedMap
+REGISTER_OP("OrderedMapStage")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Input("values: fake_dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("fake_dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+Stage (key, values) in the underlying container which behaves like a ordered
+associative container.   Elements are ordered by key.
+
+key: int64
+values: a list of tensors
+dtypes A list of data types that inserted values should adhere to.
+capacity: Maximum number of elements in the Staging Area. If > 0, inserts
+  on the container will block when the capacity is reached.
+container: If non-empty, this queue is placed in the given container. Otherwise,
+  a default container is used.
+shared_name: It is necessary to match this name to the matching Unstage Op.
+)doc");
+
+REGISTER_OP("OrderedMapPeek")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op peeks at the values at the specified key.  If the
+underlying container does not contain this key
+this op will block until it does.   This Op is optimized for
+performance.
+    )doc");
+
+REGISTER_OP("OrderedMapUnstage")
+    .Input("key: int64")
+    .Input("indices: int32")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes and returns the values associated with the key
+from the underlying container.   If the underlying container
+does not contain this key, the op will block until it does.
+    )doc");
+
+REGISTER_OP("OrderedMapUnstageNoKey")
+    .Input("indices: int32")
+    .Output("key: int64")
+    .Output("values: dtypes")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes and returns the (key, value) element with the smallest
+key from the underlying container.   If the underlying container
+does not contain elements, the op will block until it does.
+      )doc");
+
+REGISTER_OP("OrderedMapSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of elements in the underlying container.
+    )doc");
+
+REGISTER_OP("OrderedMapIncompleteSize")
+    .Output("size: int32")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op returns the number of incomplete elements in the underlying container.
+    )doc");
+
+REGISTER_OP("OrderedMapClear")
+    .Attr("capacity: int >= 0 = 0")
+    .Attr("memory_limit: int >= 0 = 0")
+    .Attr("dtypes: list(type)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .SetIsStateful()
+    .Doc(R"doc(
+Op removes all elements in the underlying container.
+    )doc");
 
 REGISTER_OP("RecordInput")
     .Output("records: string")

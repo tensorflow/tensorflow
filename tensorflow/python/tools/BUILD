@@ -44,6 +44,20 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "import_pb_to_tensorboard",
+    srcs = ["import_pb_to_tensorboard.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+    ],
+)
+
 py_test(
     name = "freeze_graph_test",
     size = "small",
@@ -189,6 +203,7 @@ py_binary(
 
 py_test(
     name = "print_selective_registration_header_test",
+    size = "small",
     srcs = ["print_selective_registration_header_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -211,11 +226,13 @@ py_binary(
 
 py_test(
     name = "saved_model_cli_test",
+    size = "small",
     srcs = ["saved_model_cli_test.py"],
     data = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":saved_model_cli",
     ],

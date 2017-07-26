@@ -6,6 +6,7 @@ ConcatOffset
 Concat
 ConcatV2
 Const
+DebugGradientIdentity
 EditDistance
 ExpandDims
 ListDiff
@@ -14,6 +15,7 @@ MirrorPadGrad
 OneHot
 Pack
 Pad
+PadV2
 ParallelConcat
 Placeholder
 RefIdentity
@@ -111,6 +113,10 @@ Stack
 StackClose
 StackPop
 StackPush
+StackV2
+StackCloseV2
+StackPopV2
+StackPushV2
 TensorArray
 TensorArrayClose
 TensorArrayCloseV2
@@ -157,6 +163,8 @@ ResizeBilinearGrad
 ResizeNearestNeighborGrad
 AdjustContrastv2
 ScaleImageGrad
+SampleDistortedBoundingBox
+SampleDistortedBoundingBoxV2
 
 # io_ops
 FixedLengthRecordReader
@@ -191,6 +199,7 @@ WholeFileReader
 TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
+LMDBReader
 
 # linalg_ops
 BatchCholesky
@@ -218,6 +227,7 @@ MergeSummary
 Print
 ScalarSummary
 TensorSummary
+TensorSummaryV2
 
 # math_ops
 Abs
@@ -280,6 +290,7 @@ MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
+SeluGrad
 SoftplusGrad
 SoftsignGrad
 TopK
@@ -293,6 +304,8 @@ Softmax
 LogSoftmax
 FractionalAvgPoolGrad
 FractionalMaxPoolGrad
+InTopK
+InTopKV2
 
 # parsing_ops
 ParseExample
@@ -331,6 +344,8 @@ SparseAdd
 SparseAddGrad
 SparseConcat
 SparseCross
+SparseFillEmptyRows
+SparseFillEmptyRowsGrad
 SparseSplit
 SparseSelectLastK
 SparseReorder

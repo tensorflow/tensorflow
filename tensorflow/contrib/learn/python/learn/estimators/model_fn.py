@@ -132,7 +132,7 @@ class ModelFnOps(
     # Validate train_op.
     if train_op is None:
       if mode == ModeKeys.TRAIN:
-        raise ValueError('Missing training_op.')
+        raise ValueError('Missing train_op.')
     elif not isinstance(train_op, ops.Operation):
       # TODO(ptucker): Should this be allowed? Consider raising error.
       train_op = ops.convert_to_tensor(train_op).op
@@ -270,8 +270,17 @@ class ModelFnOps(
           result[key] = value
       return result
 
+    # Convert the contrib mode enum to the core mode enum.
+    # Note: mode already validated in __new__().
+    if self.mode == ModeKeys.TRAIN:
+      core_mode = core_model_fn_lib.ModeKeys.TRAIN
+    elif self.mode == ModeKeys.EVAL:
+      core_mode = core_model_fn_lib.ModeKeys.EVAL
+    elif self.mode == ModeKeys.INFER:
+      core_mode = core_model_fn_lib.ModeKeys.PREDICT
+
     return core_model_fn_lib.EstimatorSpec(
-        mode=self.mode,
+        mode=core_mode,
         predictions=self.predictions,
         loss=self.loss,
         train_op=self.train_op,

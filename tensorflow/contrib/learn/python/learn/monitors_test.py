@@ -301,10 +301,12 @@ class MonitorsTest(test.TestCase):
                                  monitor,
                                  expected_early_stopped=False,
                                  expected_best_step=None,
-                                 expected_best_value=None):
+                                 expected_best_value=None,
+                                 expected_best_metrics=None):
     self.assertEqual(expected_early_stopped, monitor.early_stopped)
     self.assertEqual(expected_best_step, monitor.best_step)
     self.assertEqual(expected_best_value, monitor.best_value)
+    self.assertEqual(expected_best_metrics, monitor.best_metrics)
 
   def test_validation_monitor_no_estimator(self):
     monitor = learn.monitors.ValidationMonitor(
@@ -379,7 +381,7 @@ class MonitorsTest(test.TestCase):
     estimator = mock_estimator_class()
     model_dir = 'model/dir'
     estimator.model_dir = model_dir
-    validation_outputs = {'loss': None}
+    validation_outputs = {'loss': None, 'auc': None}
     estimator.evaluate.return_value = validation_outputs
 
     monitor = learn.monitors.ValidationMonitor(
@@ -395,11 +397,13 @@ class MonitorsTest(test.TestCase):
       step = 0
       mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
       validation_outputs['loss'] = 42.0
+      validation_outputs['auc'] = 0.5
       self.assertEqual(0, len(monitor.step_begin(step=step)))
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(1, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=0, expected_best_value=42.0)
+          monitor, expected_best_step=0, expected_best_value=42.0,
+          expected_best_metrics={'loss': 42.0, 'auc': 0.5})
       monitor.post_step(step=step, session=None)
 
       # Step 1, same checkpoint, no eval.
@@ -408,29 +412,34 @@ class MonitorsTest(test.TestCase):
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(1, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=0, expected_best_value=42.0)
+          monitor, expected_best_step=0, expected_best_value=42.0,
+          expected_best_metrics={'loss': 42.0, 'auc': 0.5})
       monitor.post_step(step=step, session=None)
 
       # Step 2, lower loss.
       step = 2
       mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
       validation_outputs['loss'] = 40.0
+      validation_outputs['auc'] = 0.6
       self.assertEqual(0, len(monitor.step_begin(step=step)))
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(2, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=2, expected_best_value=40.0)
+          monitor, expected_best_step=2, expected_best_value=40.0,
+          expected_best_metrics={'loss': 40.0, 'auc': 0.6})
       monitor.post_step(step=step, session=None)
 
       # Step 3, higher loss.
       step = 3
       mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
       validation_outputs['loss'] = 44.0
+      validation_outputs['auc'] = 0.7
       self.assertEqual(0, len(monitor.step_begin(step=step)))
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(3, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=2, expected_best_value=40.0)
+          monitor, expected_best_step=2, expected_best_value=40.0,
+          expected_best_metrics={'loss': 40.0, 'auc': 0.6})
       monitor.post_step(step=step, session=None)
 
       # Step 4, higher loss for 2 steps, early stopping.
@@ -444,7 +453,8 @@ class MonitorsTest(test.TestCase):
           monitor,
           expected_early_stopped=True,
           expected_best_step=2,
-          expected_best_value=40.0)
+          expected_best_value=40.0,
+          expected_best_metrics={'loss': 40.0, 'auc': 0.6})
       monitor.post_step(step=step, session=None)
 
       monitor.epoch_end(epoch=0)
@@ -455,7 +465,7 @@ class MonitorsTest(test.TestCase):
     estimator = test.mock.Mock(spec=core_estimator.Estimator)
     model_dir = 'model/dir'
     estimator.model_dir = model_dir
-    validation_outputs = {'loss': None}
+    validation_outputs = {'loss': None, 'auc': None}
     estimator.evaluate.return_value = validation_outputs
 
     monitor = learn.monitors.ValidationMonitor(
@@ -472,11 +482,13 @@ class MonitorsTest(test.TestCase):
       step = 0
       mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
       validation_outputs['loss'] = 42.0
+      validation_outputs['auc'] = 0.5
       self.assertEqual(0, len(monitor.step_begin(step=step)))
       self.assertFalse(monitor.step_end(step=step, output={}))
       self.assertEqual(1, estimator.evaluate.call_count)
       self._assert_validation_monitor(
-          monitor, expected_best_step=0, expected_best_value=42.0)
+          monitor, expected_best_step=0, expected_best_value=42.0,
+          expected_best_metrics={'loss': 42.0, 'auc': 0.5})
       monitor.post_step(step=step, session=None)
 
   @test.mock.patch.object(saver, 'latest_checkpoint')

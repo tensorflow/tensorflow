@@ -139,7 +139,8 @@ class _Merge(Layer):
             batch_size = x_shape[0]
             new_shape = K.concatenate([x_shape[1:], K.expand_dims(batch_size)])
             x_transposed = K.reshape(x,
-                                     K.stack([batch_size, K.prod(x_shape[1:])]))
+                                     K.stack([batch_size,
+                                              K.prod(x_shape[1:])]))
             x_transposed = K.permute_dimensions(x_transposed, (1, 0))
             x_transposed = K.reshape(x_transposed, new_shape)
             reshaped_inputs.append(x_transposed)
