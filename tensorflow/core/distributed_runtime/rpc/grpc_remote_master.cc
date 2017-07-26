@@ -114,7 +114,7 @@ class GrpcRemoteMaster : public MasterInterface {
 
   void SetDeadline(::grpc::ClientContext* ctx, int64 time_in_ms) {
     if (time_in_ms > 0) {
-      ctx->set_deadline(grpc_time_from_millis(time_in_ms, GRPC_TIMESPAN));
+      ctx->set_deadline(gpr_time_from_millis(time_in_ms, GPR_TIMESPAN));
     }
   }
 };

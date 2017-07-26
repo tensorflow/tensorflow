@@ -408,12 +408,12 @@ class GrpcServerFactory : public ServerFactory {
 class GrpcServerRegistrar {
  public:
   GrpcServerRegistrar() {
-    grpc_allocation_functions alloc_fns;
+    gpr_allocation_functions alloc_fns;
     memset(&alloc_fns, 0, sizeof(alloc_fns));
     alloc_fns.malloc_fn = port::Malloc;
     alloc_fns.realloc_fn = port::Realloc;
     alloc_fns.free_fn = port::Free;
-    grpc_set_allocation_functions(alloc_fns);
+    gpr_set_allocation_functions(alloc_fns);
     ServerFactory::Register("GRPC_SERVER", new GrpcServerFactory());
   }
 };
