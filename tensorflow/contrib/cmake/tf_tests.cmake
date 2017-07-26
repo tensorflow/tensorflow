@@ -152,16 +152,22 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/*_test.py"
-    # Adding other major packages
-    "${tensorflow_source_dir}/tensorflow/contrib/legacy_seq2seq/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/linalg/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/framework/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/keras/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/distributions/*_test.py"
-    "${tensorflow_source_dir}/tensorflow/contrib/learn/*_test.py"
   )
+
+  if (tensorflow_BUILD_MORE_PYTHON_TESTS)
+    # Adding other major packages
+    file(GLOB_RECURSE tf_test_src_py
+      ${tf_test_rnn_src_py}
+      "${tensorflow_source_dir}/tensorflow/contrib/legacy_seq2seq/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/linalg/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/framework/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/keras/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/*_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/learn/*_test.py"
+    )
+  endif()
 
   # exclude the ones we don't want
   set(tf_test_src_py_exclude
