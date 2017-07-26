@@ -896,6 +896,36 @@ Status AddControlEdges(const PartitionOptions& opts,
   return Status::OK();
 }
 
+// If 'ndef' is a Send or Recv, fills its attr send_device_incarnation
+// if possible.
+void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
+  StringPiece op(ndef->op());
+  if (op != "_Send" && op != "_Recv") {
+    // Not related to send/recv.
+    return;
+  }
+  string send_device;
+  if (!GetNodeAttr(*ndef, "send_device", &send_device).ok()) {
+    // No known send_device. The runtime will detect it later.
+    return;
+  }
+  int64 incarnation = opts.get_incarnation(send_device);
+  AddNodeAttr("send_device_incarnation", incarnation, ndef);
+}
+
+// Sets attribute send_device_incarnation of all Send/Recv nodes in
+// 'gdef', if possible.
+void SetIncarnation(const PartitionOptions& opts, GraphDef* gdef) {
+  for (NodeDef& ndef : *gdef->mutable_node()) {
+    SetIncarnation(opts, &ndef);
+  }
+  for (FunctionDef& fdef : *gdef->mutable_library()->mutable_function()) {
+    for (NodeDef& ndef : *fdef.mutable_node_def()) {
+      SetIncarnation(opts, &ndef);
+    }
+  }
+}
+
 Status Partition(const PartitionOptions& opts, Graph* g,
                  std::unordered_map<string, GraphDef>* partitions) {
   Status status;
@@ -1130,10 +1160,15 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     }
   }
 
-  // Set versions and function library
+  // Set versions, function library and send/recv incarnation.
   for (auto& it : *partitions) {
-    it.second.mutable_versions()->CopyFrom(g->versions());
-    *it.second.mutable_library() = g->flib_def().ToProto();
+    GraphDef* gdef = &it.second;
+    *gdef->mutable_versions() = g->versions();
+    *gdef->mutable_library() = g->flib_def().ToProto();
+
+    // Traverse the graph to fill every send/recv op's incarnation
+    // information.
+    SetIncarnation(opts, gdef);
   }
 
   // Set the start times for recvs at the very end.

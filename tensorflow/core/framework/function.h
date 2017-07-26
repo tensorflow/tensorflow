@@ -37,6 +37,7 @@ class CancellationManager;
 class GraphDef;
 class OpKernel;
 class ResourceMgr;
+class Rendezvous;
 class ScopedStepContainer;
 class StepStatsCollector;
 class Node;
@@ -398,11 +399,10 @@ class FunctionLibraryRuntime {
   //
   // Does not take ownership of "rets".
   struct Options {
-    CancellationManager* cancellation_manager = nullptr;
     // The id of the step that is calling this function.
     int64 step_id = 0;
-
-    // Per-step container.
+    Rendezvous* rendezvous = nullptr;
+    CancellationManager* cancellation_manager = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollector* stats_collector = nullptr;
 
