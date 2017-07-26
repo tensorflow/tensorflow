@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <sys/stat.h>
 #include <deque>
 #include <utility>
 #include <vector>
@@ -31,10 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -275,93 +271,6 @@ string Env::GetExecutablePath() {
   exe_path[sizeof(exe_path) - 1] = 0;
 
   return exe_path;
-}
-
-bool Env::LocalTempFilename(string* filename) {
-  std::vector<string> dirs;
-  GetLocalTempDirectories(&dirs);
-
-  // Try each directory, as they might be full, have inappropriate
-  // permissions or have different problems at times.
-  for (const string& dir : dirs) {
-#ifdef __APPLE__
-    uint64_t tid64;
-    pthread_threadid_np(nullptr, &tid64);
-    int32 tid = static_cast<int32>(tid64);
-    int32 pid = static_cast<int32>(getpid());
-#elif defined(PLATFORM_WINDOWS)
-    int32 tid = static_cast<int32>(GetCurrentThreadId());
-    int32 pid = static_cast<int32>(GetCurrentProcessId());
-#else
-    int32 tid = static_cast<int32>(pthread_self());
-    int32 pid = static_cast<int32>(getpid());
-#endif
-    uint64 now_microsec = NowMicros();
-
-    *filename = io::JoinPath(
-        dir, strings::Printf("tempfile-%s-%x-%d-%llx", port::Hostname().c_str(),
-                             tid, pid, now_microsec));
-    if (FileExists(*filename).ok()) {
-      filename->clear();
-    } else {
-      return true;
-    }
-  }
-  return false;
-}
-
-void Env::GetLocalTempDirectories(std::vector<string>* list) {
-  list->clear();
-#ifdef PLATFORM_WINDOWS
-  // On windows we'll try to find a directory in this order:
-  //   C:/Documents & Settings/whomever/TEMP (or whatever GetTempPath() is)
-  //   C:/TMP/
-  //   C:/TEMP/
-  //   C:/WINDOWS/ or C:/WINNT/
-  //   .
-  char tmp[MAX_PATH];
-  // GetTempPath can fail with either 0 or with a space requirement > bufsize.
-  // See http://msdn.microsoft.com/en-us/library/aa364992(v=vs.85).aspx
-  DWORD n = GetTempPathA(MAX_PATH, tmp);
-  if (n > 0 && n <= MAX_PATH) list->push_back(tmp);
-  list->push_back("C:\\tmp\\");
-  list->push_back("C:\\temp\\");
-#else
-  // Directories, in order of preference. If we find a dir that
-  // exists, we stop adding other less-preferred dirs
-  const char* candidates[] = {
-      // Non-null only during unittest/regtest
-      getenv("TEST_TMPDIR"),
-
-      // Explicitly-supplied temp dirs
-      getenv("TMPDIR"),
-      getenv("TMP"),
-
-      // The old classic tmpdir
-      "/export/hda3/tmp",
-
-      // If all else fails
-      "/tmp",
-  };
-
-  for (const char* d : candidates) {
-    if (!d || d[0] == '\0') continue;  // Empty env var
-
-    // Make sure we don't surprise anyone who's expecting a '/'
-    string dstr = d;
-    if (dstr[dstr.size() - 1] != '/') {
-      dstr += "/";
-    }
-
-    struct stat statbuf;
-    if (!stat(d, &statbuf) && S_ISDIR(statbuf.st_mode) &&
-        !access(dstr.c_str(), 0)) {
-      // We found a dir that exists and is accessible - we're done.
-      list->push_back(dstr);
-      return;
-    }
-  }
-#endif
 }
 
 Thread::~Thread() {}
