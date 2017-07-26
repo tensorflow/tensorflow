@@ -356,7 +356,7 @@ Status SymbolicGradientBuilder::AddGradients() {
   // Check if any input nodes still have pending gradients and have not been
   // processed yet. This happens if not all outputs of a node are in 'inputs_'.
   std::unordered_map<Node*, int> requested_grads;
-  for (Output nout : inputs_) {
+  for (const Output& nout : inputs_) {
     if (pending_[nout.node()->id()] > 0) {
       DCHECK_GT(nout.node()->num_outputs(), 1);
       int idx = input_nodes_[nout];
@@ -365,7 +365,7 @@ Status SymbolicGradientBuilder::AddGradients() {
       ++requested_grads[nout.node()];
     }
   }
-  for (auto& p : requested_grads) {
+  for (const auto& p : requested_grads) {
     int num_requested_inputs = p.first->num_outputs() - pending_[p.first->id()];
     CHECK_EQ(num_requested_inputs, p.second);
   }

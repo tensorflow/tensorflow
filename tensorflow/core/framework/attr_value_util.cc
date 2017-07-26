@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 
+#include <string>
 #include <vector>
+
 #include "tensorflow/core/framework/attr_value.pb_text.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
-
 namespace {
 
 string SummarizeString(const string& str) {
@@ -460,7 +461,8 @@ bool HasPlaceHolder(const AttrValue& val) {
   return false;
 }
 
-bool SubstitutePlaceholders(SubstituteFunc substitute, AttrValue* value) {
+bool SubstitutePlaceholders(const SubstituteFunc& substitute,
+                            AttrValue* value) {
   switch (value->value_case()) {
     case AttrValue::kList: {
       for (NameAttrList& func : *value->mutable_list()->mutable_func()) {
