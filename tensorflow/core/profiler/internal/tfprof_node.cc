@@ -131,7 +131,7 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
 
   // TODO(xpan): Make this more robust?
   // See run_metadata_test.py
-  // It can be /job:0/replica:0/xxxx/gpu:0, or simply /gpu:0.
+  // It can be /job:0/replica:0/xxxx/device:GPU:0, or simply /device:GPU:0.
   // It can has some ad-hoc suffix, such as /stream:xx or /memcpy:xx.
   if (IsCanonicalDevice(device)) {
     if (!canonical_device_.empty()) {

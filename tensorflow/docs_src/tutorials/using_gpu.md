@@ -7,7 +7,7 @@ supported device types are `CPU` and `GPU`. They are represented as `strings`.
 For example:
 
 *   `"/cpu:0"`: The CPU of your machine.
-*   `"/gpu:0"`: The GPU of your machine, if you have one.
+*   `"/device:GPU:0"`: The GPU of your machine, if you have one.
 *   `"/gpu:1"`: The second GPU of your machine, etc.
 
 If a TensorFlow operation has both CPU and GPU implementations, the GPU devices
@@ -35,11 +35,11 @@ You should see the following output:
 
 ```
 Device mapping:
-/job:localhost/replica:0/task:0/gpu:0 -> device: 0, name: Tesla K40c, pci bus
+/job:localhost/replica:0/task:0/device:GPU:0 -> device: 0, name: Tesla K40c, pci bus
 id: 0000:05:00.0
-b: /job:localhost/replica:0/task:0/gpu:0
-a: /job:localhost/replica:0/task:0/gpu:0
-MatMul: /job:localhost/replica:0/task:0/gpu:0
+b: /job:localhost/replica:0/task:0/device:GPU:0
+a: /job:localhost/replica:0/task:0/device:GPU:0
+MatMul: /job:localhost/replica:0/task:0/device:GPU:0
 [[ 22.  28.]
  [ 49.  64.]]
 
@@ -71,11 +71,11 @@ example) and automatically copy tensors between devices if required.
 
 ```
 Device mapping:
-/job:localhost/replica:0/task:0/gpu:0 -> device: 0, name: Tesla K40c, pci bus
+/job:localhost/replica:0/task:0/device:GPU:0 -> device: 0, name: Tesla K40c, pci bus
 id: 0000:05:00.0
 b: /job:localhost/replica:0/task:0/cpu:0
 a: /job:localhost/replica:0/task:0/cpu:0
-MatMul: /job:localhost/replica:0/task:0/gpu:0
+MatMul: /job:localhost/replica:0/task:0/device:GPU:0
 [[ 22.  28.]
  [ 49.  64.]]
 ```
@@ -192,7 +192,7 @@ You will see the following output.
 
 ```
 Device mapping:
-/job:localhost/replica:0/task:0/gpu:0 -> device: 0, name: Tesla K20m, pci bus
+/job:localhost/replica:0/task:0/device:GPU:0 -> device: 0, name: Tesla K20m, pci bus
 id: 0000:02:00.0
 /job:localhost/replica:0/task:0/gpu:1 -> device: 1, name: Tesla K20m, pci bus
 id: 0000:03:00.0

@@ -108,7 +108,7 @@ class DeviceTest(test_util.TensorFlowTestCase):
     d = device.DeviceSpec()
     d.merge_from(device.DeviceSpec.from_string("/task:1/cpu:0"))
     self.assertEquals("/task:1/device:CPU:0", d.to_string())
-    d.merge_from(device.DeviceSpec.from_string("/job:boo/gpu:0"))
+    d.merge_from(device.DeviceSpec.from_string("/job:boo/device:GPU:0"))
     self.assertEquals("/job:boo/task:1/device:GPU:0", d.to_string())
     d.merge_from(device.DeviceSpec.from_string("/job:muu/cpu:2"))
     self.assertEquals("/job:muu/task:1/device:CPU:2", d.to_string())
@@ -134,10 +134,10 @@ class DeviceTest(test_util.TensorFlowTestCase):
 
     self.assertEqual("/job:foo/replica:0/task:0/device:GPU:0",
                      device.canonical_name(
-                         "/job:foo/replica:0/task:0/gpu:0"))
+                         "/job:foo/replica:0/task:0/device:GPU:0"))
     self.assertEqual("/job:foo/replica:0/task:0/device:GPU:0",
                      device.canonical_name(
-                         "/gpu:0/task:0/replica:0/job:foo"))
+                         "/device:GPU:0/task:0/replica:0/job:foo"))
 
   def testCheckValid(self):
     device.check_valid("/job:foo/replica:0")

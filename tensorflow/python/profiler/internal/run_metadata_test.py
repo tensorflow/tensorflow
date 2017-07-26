@@ -98,15 +98,15 @@ class RunMetadataTest(test.TestCase):
       return
 
     ops.reset_default_graph()
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       tfprof_node, run_meta = _run_model()
       self.assertEqual(tfprof_node.children[0].name, 'MatMul')
       self.assertGreater(tfprof_node.children[0].exec_micros, 10)
 
     ret = _extract_node(run_meta, ['MatMul', 'MatMul:MatMul'])
     self.assertEqual(len(ret), 3)
-    self.assertTrue('/job:localhost/replica:0/task:0/gpu:0' in ret)
-    del ret['/job:localhost/replica:0/task:0/gpu:0']
+    self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:0' in ret)
+    del ret['/job:localhost/replica:0/task:0/device:GPU:0']
 
     has_all_stream = False
     for k, _ in six.iteritems(ret):
@@ -159,24 +159,24 @@ class RunMetadataTest(test.TestCase):
       return
 
     ops.reset_default_graph()
-    with ops.device('/gpu:0'):
+    with ops.device('/device:GPU:0'):
       tfprof_node, run_meta = _run_loop_model()
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
                           'rnn/while/rnn/basic_rnn_cell/basic_rnn_cell/MatMul')
-      self.assertEqual(len(ret['/job:localhost/replica:0/task:0/gpu:0']), 4)
+      self.assertEqual(len(ret['/job:localhost/replica:0/task:0/device:GPU:0']), 4)
 
       total_cpu_execs = 0
-      for node in ret['/job:localhost/replica:0/task:0/gpu:0']:
+      for node in ret['/job:localhost/replica:0/task:0/device:GPU:0']:
         total_cpu_execs += node.op_end_rel_micros
 
       ret = _extract_node(
           run_meta,
           'rnn/while/rnn/basic_rnn_cell/basic_rnn_cell/MatMul:MatMul')
-      self.assertGreaterEqual(len(ret['/gpu:0/stream:all']), 4)
+      self.assertGreaterEqual(len(ret['/device:GPU:0/stream:all']), 4)
 
       total_accelerator_execs = 0
-      for node in ret['/gpu:0/stream:all']:
+      for node in ret['/device:GPU:0/stream:all']:
         total_accelerator_execs += node.op_end_rel_micros
 
       mm_node = lib.SearchTFProfNode(

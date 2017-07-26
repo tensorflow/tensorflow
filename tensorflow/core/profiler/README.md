@@ -127,7 +127,7 @@ tfprof> advise
 Not running under xxxx. Skip JobChecker.
 
 AcceleratorUtilizationChecker:
-device: /job:worker/replica:0/task:0/gpu:0 low utilization: 0.03
+device: /job:worker/replica:0/task:0/device:GPU:0 low utilization: 0.03
 device: /job:worker/replica:0/task:0/gpu:1 low utilization: 0.08
 device: /job:worker/replica:0/task:0/gpu:2 low utilization: 0.04
 device: /job:worker/replica:0/task:0/gpu:3 low utilization: 0.21

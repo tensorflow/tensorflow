@@ -134,7 +134,7 @@ AddN                            50.10ms (17.33%, 1.34%),       5481
 tfprof> op -select micros,device -order_by micros
 node name | execution time | assigned devices
 SoftmaxCrossEntropyWithLogits     1.37sec (100.00%, 36.44%), /job:worker/replica:0/task:0/cpu:0
-MatMul                        618.97ms (63.56%, 16.51%), |/job:worker/replica:0/task:0/cpu:0|/job:worker/replica:0/task:0/gpu:0|/job:worker/replica:0/task:0/gpu:1|/job:worker/replica:0/task:0/gpu:2|/job:worker/replica:0/task:0/gpu:3
+MatMul                        618.97ms (63.56%, 16.51%), |/job:worker/replica:0/task:0/cpu:0|/job:worker/replica:0/task:0/device:GPU:0|/job:worker/replica:0/task:0/gpu:1|/job:worker/replica:0/task:0/gpu:2|/job:worker/replica:0/task:0/gpu:3
 ```
 
 

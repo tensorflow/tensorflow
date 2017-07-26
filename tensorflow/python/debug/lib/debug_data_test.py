@@ -281,7 +281,7 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     node = graph_gpu_0.node.add()
     node.name = "node_foo_1"
     node.op = "FooOp"
-    node.device = "/job:localhost/replica:0/task:0/gpu:0"
+    node.device = "/job:localhost/replica:0/task:0/device:GPU:0"
     graph_gpu_1 = graph_pb2.GraphDef()
     node = graph_gpu_1.node.add()
     node.name = "node_foo_1"
@@ -294,7 +294,7 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
 
     self.assertItemsEqual(
         ["/job:localhost/replica:0/task:0/cpu:0",
-         "/job:localhost/replica:0/task:0/gpu:0",
+         "/job:localhost/replica:0/task:0/device:GPU:0",
          "/job:localhost/replica:0/task:0/gpu:1"], dump_dir.devices())
     self.assertEqual(1472563253536385, dump_dir.t0)
     self.assertEqual(3, dump_dir.size)
@@ -319,7 +319,7 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     node = graph_gpu_0.node.add()
     node.name = "node_foo_1"
     node.op = "FooOp"
-    node.device = "/job:localhost/replica:0/task:0/gpu:0"
+    node.device = "/job:localhost/replica:0/task:0/device:GPU:0"
     graph_gpu_1 = graph_pb2.GraphDef()
     node = graph_gpu_1.node.add()
     node.name = "node_foo_1"

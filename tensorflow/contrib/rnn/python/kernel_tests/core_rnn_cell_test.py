@@ -424,7 +424,7 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 1, 3])
-        cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), "/gpu:0")
+        cell = rnn_cell_impl.DeviceWrapper(rnn_cell_impl.GRUCell(3), "/device:GPU:0")
         with ops.device("/cpu:0"):
           outputs, _ = rnn.dynamic_rnn(
               cell=cell, inputs=x, dtype=dtypes.float32)
