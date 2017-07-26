@@ -48,3 +48,11 @@ ExternalProject_Add(grpc
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 	-DgRPC_SSL_PROVIDER:STRING=NONE
 )
+
+# grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.
+ExternalProject_Add_Step(grpc copy_rand
+    COMMAND ${CMAKE_COMMAND} -E copy
+    ${CMAKE_SOURCE_DIR}/patches/grpc/rand.h ${GRPC_BUILD}/include/openssl/rand.h
+    DEPENDEES patch
+    DEPENDERS build
+)
