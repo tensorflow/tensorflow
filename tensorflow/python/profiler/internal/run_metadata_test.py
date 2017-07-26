@@ -97,21 +97,22 @@ class RunMetadataTest(test.TestCase):
     if not test.is_gpu_available(cuda_only=True):
       return
 
+    gpu_dev = test.gpu_device_name()
     ops.reset_default_graph()
-    with ops.device('/device:GPU:0'):
+    with ops.device(gpu_dev):
       tfprof_node, run_meta = _run_model()
       self.assertEqual(tfprof_node.children[0].name, 'MatMul')
       self.assertGreater(tfprof_node.children[0].exec_micros, 10)
 
     ret = _extract_node(run_meta, ['MatMul', 'MatMul:MatMul'])
     self.assertEqual(len(ret), 3)
-    self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:0' in ret)
-    del ret['/job:localhost/replica:0/task:0/device:GPU:0']
+    self.assertTrue('/job:localhost/replica:0/task:0' + gpu_dev in ret)
+    del ret['/job:localhost/replica:0/task:0' + gpu_dev]
 
     has_all_stream = False
     for k, _ in six.iteritems(ret):
-      self.assertTrue('gpu:0/stream' in k)
-      if 'gpu:0/stream:all' in k:
+      self.assertTrue(gpu_dev + '/stream' in k)
+      if gpu_dev + '/stream:all' in k:
         has_all_stream = True
     self.assertTrue(has_all_stream)
 
