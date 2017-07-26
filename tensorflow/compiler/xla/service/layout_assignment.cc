@@ -611,6 +611,9 @@ Status CheckLayouts(
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     for (auto& instruction : computation->instructions()) {
       // Verify every instruction has a layout and the layout is valid for the
       // shape.
@@ -1356,6 +1359,8 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
     if (computation == module->entry_computation()) {
       TF_RETURN_IF_ERROR(RunOnComputation(*entry_computation_layout_,
                                           module->entry_computation()));
+    } else if (computation->IsFusionComputation()) {
+      continue;
     } else {
       ComputationLayout computation_layout(computation->ComputeProgramShape());
       // Setting all embedded computations to the default layout is potentially
