@@ -148,7 +148,7 @@ def input_producer(input_tensor,
   """
   with ops.name_scope(name, "input_producer", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
-    element_shape = input_tensor.get_shape()[1:].merge_with(element_shape)
+    element_shape = input_tensor.shape[1:].merge_with(element_shape)
     if not element_shape.is_fully_defined():
       raise ValueError("Either `input_tensor` must have a fully defined shape "
                        "or `element_shape` must be specified")
@@ -465,7 +465,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
   def _sparse_meta_data(t, storing_op, map_op):
     if not isinstance(t, sparse_tensor.SparseTensor):
       return _SparseMetaData(False, None, None)
-    rank = t.dense_shape.get_shape().with_rank(1)[0]
+    rank = t.dense_shape.shape.with_rank(1)[0]
     if enqueue_many:
       rank -= 1
     # If a shared map_op was provided, use that. Otherwise use the name of
@@ -492,7 +492,7 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
           lambda: -1 * array_ops.ones(array_ops.shape(t)[0:1], dtypes.int64))
       out_tensor.set_shape([None])  # necessary when t.ndims is unknown
       return out_tensor
-    if keep_input.get_shape().ndims == 1:
+    if keep_input.shape.ndims == 1:
       t = sparse_ops.sparse_retain(t, keep_input)
       store_f = lambda t, name, _: _store_many_sparse(t, shared_name=name)
     elif enqueue_many:
@@ -577,13 +577,13 @@ def _validate_join(tensor_list_list):
 def _validate_keep_input(keep_input, enqueue_many):
   """Validate `keep_input` argument to conditional batching functions."""
   keep_input = ops.convert_to_tensor(keep_input)
-  if keep_input.get_shape().ndims is None:
+  if keep_input.shape.ndims is None:
     raise ValueError(
         "`keep_input` dimensions must be known at graph construction.")
-  if not enqueue_many and keep_input.get_shape().ndims == 1:
+  if not enqueue_many and keep_input.shape.ndims == 1:
     raise ValueError(
         "`keep_input` cannot be a vector when `enqueue_many=False`.")
-  if keep_input.get_shape().ndims > 1:
+  if keep_input.shape.ndims > 1:
     raise ValueError("`keep_input` must be 0 or 1 dimensions.")
   return keep_input
 
@@ -632,11 +632,11 @@ def _shapes(tensor_list_list, shapes, enqueue_many):
 
     for tl in tensor_list_list:
       for i in xrange(len0):
-        if tl[i].get_shape().ndims is None:
+        if tl[i].shape.ndims is None:
           raise ValueError("Cannot infer Tensor's rank: %s" % tl[i])
 
     shapes = [_merge_shapes(
-        [tl[i].get_shape().as_list() for tl in tensor_list_list], enqueue_many)
+        [tl[i].shape.as_list() for tl in tensor_list_list], enqueue_many)
               for i in xrange(len0)]
   return shapes
 
@@ -656,7 +656,7 @@ def _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input):
     enqueue_fn = queue.enqueue_many
   else:
     enqueue_fn = queue.enqueue
-  if keep_input.get_shape().ndims == 1:
+  if keep_input.shape.ndims == 1:
     enqueue_ops = [enqueue_fn(_select_which_to_enqueue(x, keep_input))
                    for x in tensor_list_list]
   else:
@@ -673,7 +673,7 @@ def _enqueue(queue, tensor_list, threads, enqueue_many, keep_input):
     enqueue_fn = queue.enqueue_many
   else:
     enqueue_fn = queue.enqueue
-  if keep_input.get_shape().ndims == 1:
+  if keep_input.shape.ndims == 1:
     enqueue_ops = [
         enqueue_fn(_select_which_to_enqueue(tensor_list, keep_input))] * threads
   else:
