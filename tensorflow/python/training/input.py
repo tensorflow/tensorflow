@@ -492,8 +492,15 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
           lambda: -1 * array_ops.ones(array_ops.shape(t)[0:1], dtypes.int64))
       out_tensor.set_shape([None])  # necessary when t.ndims is unknown
       return out_tensor
+    def _sparse_values_to_keep(t, keep_input):
+      """Convert a per-row `keep_input` vector to a per-value one."""
+      # Get the rows of every value in the sparse Tensor.
+      row_values = array_ops.reshape(
+          t.indices, [array_ops.shape(t.indices)[0], -1])[:, 0]
+      # The value should be kept iff the row should be kept.
+      return array_ops.gather(keep_input, row_values)
     if keep_input.shape.ndims == 1:
-      t = sparse_ops.sparse_retain(t, keep_input)
+      t = sparse_ops.sparse_retain(t, _sparse_values_to_keep(t, keep_input))
       store_f = lambda t, name, _: _store_many_sparse(t, shared_name=name)
     elif enqueue_many:
       store_f = _maybe_store_many_sparse
