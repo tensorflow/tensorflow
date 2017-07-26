@@ -499,7 +499,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -601,7 +601,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1691,7 +1691,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1757,7 +1757,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -4407,6 +4407,43 @@ op {
   description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
 }
 op {
+  name: "CompareAndBitpack"
+  input_arg {
+    name: "input"
+    description: "Values to compare against `threshold` and bitpack."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "threshold"
+    description: "Threshold to compare against."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "The bitpacked comparisons."
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of the input and threshold."
+    allowed_values {
+      list {
+        type: DT_BOOL
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Compare values of `input` to `threshold` and pack resulting bits into a `uint8`."
+  description: "Each comparison returns a boolean `true` (if `input_value > threshold`)\nor and `false` otherwise.\n\nThis operation is useful for Locality-Sensitive-Hashing (LSH) and other\nalgorithms that use hashing approximations of cosine and `L2` distances;\ncodes can be generated from an input via:\n\n```python\ncodebook_size = 50\ncodebook_bits = codebook_size * 32\ncodebook = tf.get_variable(\'codebook\', [x.shape[-1].value, codebook_bits],\n                           dtype=x.dtype,\n                           initializer=tf.orthogonal_initializer())\ncodes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)\ncodes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32\n# now codes has shape x.shape[:-1] + [codebook_size]\n```\n\n**NOTE**: Currently, the innermost dimension of the tensor must be divisible\nby 8.\n\nGiven an `input` shaped `[s0, s1, ..., s_n]`, the output is\na `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`."
+}
+op {
   name: "Complex"
   input_arg {
     name: "real"
@@ -5656,10 +5693,12 @@ op {
   name: "Cumprod"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5672,6 +5711,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumprod."
   }
   attr {
     name: "reverse"
@@ -5679,6 +5719,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -5722,10 +5763,12 @@ op {
   name: "Cumsum"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5738,6 +5781,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumsum."
   }
   attr {
     name: "reverse"
@@ -5745,6 +5789,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -7615,7 +7660,7 @@ op {
   }
   input_arg {
     name: "dim"
-    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`."
+    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`. Must be in the range\n`[-rank(input) - 1, rank(input)]`."
     type_attr: "Tdim"
   }
   output_arg {
@@ -12325,7 +12370,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -13102,7 +13147,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -13293,7 +13338,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -15437,6 +15482,33 @@ op {
   description: "The polygamma function is defined as:\n\n\n\\\\(\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\\\\)\n\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
 }
 op {
+  name: "PopulationCount"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Computes element-wise population count (a.k.a. popcount, bitsum, bitcount)."
+  description: "For each entry in `x`, calculates the number of `1` (on) bits in the binary\nrepresentation of that entry.\n\n**NOTE**: It is more efficient to first `tf.bitcast` your tensors into\n`int32` or `int64` and perform the bitcount on the result, than to feed in\n8- or 16-bit inputs and then aggregate the resulting counts."
+}
+op {
   name: "Pow"
   input_arg {
     name: "x"
@@ -15662,7 +15734,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -21708,7 +21780,7 @@ op {
   }
   input_arg {
     name: "axis"
-    description: "1-D. The indices of the dimensions to reverse."
+    description: "1-D. The indices of the dimensions to reverse. Must be in the range\n`[-rank(tensor), rank(tensor))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -27260,7 +27332,7 @@ op {
       list {
       }
     }
-    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1."
+    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1. Must\nbe in the range `[-rank(input), rank(input))`."
     has_minimum: true
   }
   summary: "Removes dimensions of size 1 from the shape of a tensor."
@@ -28250,7 +28322,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {

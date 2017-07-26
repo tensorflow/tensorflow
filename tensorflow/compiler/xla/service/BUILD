@@ -1943,6 +1943,7 @@ cc_library(
         ":buffer_liveness",
         ":hlo",
         ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
     ],
 )

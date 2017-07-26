@@ -54,7 +54,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'cell\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'cell\', \'residual_fn\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "add_loss"
