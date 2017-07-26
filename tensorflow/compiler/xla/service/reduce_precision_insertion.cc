@@ -26,6 +26,9 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
   VLOG(1) << "Running ReducePrecisionInsertion pass on " << module->name();
 
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     std::vector<HloInstruction*> instructions_to_suffix;
 
     for (auto& instruction : computation->instructions()) {
