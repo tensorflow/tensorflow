@@ -49,8 +49,8 @@ VerbsService::Stub::Stub(
 ::grpc::Status VerbsService::Stub::GetRemoteAddress(
     ::grpc::ClientContext* context, const GetRemoteAddressRequest& request,
     GetRemoteAddressResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_GetRemoteAddress_,
-                                   context, request, response);
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_GetRemoteAddress_, context, request, response);
 }
 
 VerbsService::AsyncService::AsyncService() {
