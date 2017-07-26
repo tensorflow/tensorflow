@@ -191,12 +191,16 @@ string NodeColorAttributes(ColorScheme color) {
       case kYellow:
         return make_tuple("filled", "#fff9c4", "#cbc693", "black");
       case kDashedBorder:
-        return make_tuple("dashed", "white", "#757575", "#757575");
+        // "filled,dashed" looks the same as "dashed", since we have a white
+        // background.  But we use "filled,dashed" so that when you hover over
+        // any part of the node (not just the text inside the node), our css
+        // :hover rule is triggered.
+        return make_tuple("filled,dashed", "white", "#757575", "#757575");
     }
   }();
 
   return Printf(
-      R"(style=%s, fontcolor="%s", color="%s", fillcolor="%s")", style,
+      R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")", style,
       font_color, stroke_color, fill_color);
 }
 
@@ -304,6 +308,7 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
   }
 }
 
+// Encapsulates logic for dumping an HLO module to DOT (i.e. graphviz syntax).
 class HloDotDumper {
  public:
   HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
@@ -329,6 +334,9 @@ class HloDotDumper {
     return StrCat("cluster_", reinterpret_cast<uint64>(computation));
   }
 
+  // Generates graph header/footer.  These should be called *after* dumping all
+  // of the instructions and subcomputations for the graph, as they both use
+  // data generated while dumping the graph.
   string Header();
   string Footer();
 
@@ -360,6 +368,24 @@ class HloDotDumper {
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
+  // Each HloInstruction dumped gets a monotically-increasing node ID.  This
+  // must start at 1, because that's where graphviz's accounting starts.
+  int64 next_node_id_ = 1;
+  std::unordered_map<const HloInstruction*, int64> node_ids_;
+
+  // Each (from, to) edge gets a monotonically-increasing ID.  This is a
+  // multimap because it's possible for the same edge to appear multiple times
+  // in the graph (e.g. x^2 may be represented as mul(x, x)).
+  int64 next_edge_id_ = 1;
+  std::unordered_multimap<
+      std::pair<const HloInstruction*, const HloInstruction*>, int64,
+      tensorflow::hash<std::pair<const HloInstruction*, const HloInstruction*>>>
+      edge_ids_;
+
+  // Each HloComputation that's emitted gets a monotonically-increasing ID.
+  int64 next_cluster_id_ = 1;
+  std::unordered_map<const HloComputation*, int64> cluster_ids_;
+
   // Edges to print from Footer().  Edges come at the end because graphviz is
   // unhappy if an edge from a subcomputation to a node in the outer computation
   // appears before both the inner computation and the destination node are
@@ -368,25 +394,32 @@ class HloDotDumper {
 };
 
 string HloDotDumper::Dump() {
-  string g = Header();
+  string body;
   for (const auto& kv : SubcomputationsToDump()) {
     const HloComputation* subcomp = kv.first;
     const HloInstruction* parent = kv.second;
-    StrAppend(&g, DumpSubcomputation(subcomp, parent));
+    StrAppend(&body, DumpSubcomputation(subcomp, parent));
   }
-  StrAppend(&g, DumpComputation(computation_));
+  StrAppend(&body, DumpComputation(computation_));
+
+  // By contract, Header() and Footer() have to be called after we've dumped all
+  // our instructions, because they use state generated during that process.
+  string g = Header();
+  StrAppend(&g, body);
   StrAppend(&g, Footer());
   return g;
 }
 
 string HloDotDumper::Header() {
-  // DOT graphs accept a stylesheet as a URI.  So naturally, an inline
-  // stylesheet is a data URI!
   const char* fmt = R"(digraph G {
 rankdir = TB;
 compound = true;
 label = <<b>%s</b>>;
 labelloc = t;
+// Disable the tooltip.  Interestingly, "" doesn't work!
+tooltip = " ";
+// DOT graphs accept a stylesheet as a URI.  So naturally, an inline
+// stylesheet is a data URI!
 stylesheet="
   data:text/css,
   @import url(https://fonts.googleapis.com/css?family=Roboto:400,700);
@@ -394,6 +427,8 @@ stylesheet="
     font-family: 'Roboto';
     font-size: 12px;
   }
+
+  %s
 "
 
 )";
@@ -404,7 +439,59 @@ stylesheet="
     Appendf(&graph_label, "<br/>total cycles = %lld (%s)", cycles,
             tensorflow::strings::HumanReadableNum(cycles));
   }
-  return Printf(fmt, graph_label);
+
+  // Create CSS rules that say, when you hover over the given node or cluster,
+  // turn the given edge the given color.
+  //
+  // We rely on a few properties of how graphviz generates SVGs:
+  //
+  //  - Nodes are named "nodeN", where N corresponds to the 1-based index of
+  //    the node in our DOT (i.e. the first node in the DOT is "node1", etc.).
+  //    Edges are similarly named "edgeN", and clusters are named "clustN".
+  //  - Nodes come before their in- and out-edges in the SVG.  We need this
+  //    because the "X ~ Y" CSS selector finds a sibling of X that *comes
+  //    after X in the DOM* and matches Y.
+  std::vector<string> edge_css_rules;
+  const char* kBlue = "#1976d2";
+  const char* kRed = "#d32f2f";
+  for (const auto& kv : edge_ids_) {
+    const HloInstruction* from_node = kv.first.first;
+    const HloInstruction* to_node = kv.first.second;
+    int64 edge_id = kv.second;
+
+    auto add_hover_css_rule = [&](string elem_type, int64 elem_id,
+                                  const char* color) {
+      // One could imagine other ways of writing this CSS rule that involve less
+      // duplication, but this way seems to be relatively performant.
+      edge_css_rules.push_back(Printf(
+          "  #%s%d:hover ~ #edge%lld text { fill: %s; }\n"
+          "  #%s%d:hover ~ #edge%lld path { stroke: %s; stroke-width: .2em; }\n"
+          "  #%s%d:hover ~ #edge%lld polygon { "
+          "fill: %s; stroke: %s; stroke-width: .2em; }\n",
+          elem_type, elem_id, edge_id, color,  //
+          elem_type, elem_id, edge_id, color,  //
+          elem_type, elem_id, edge_id, color, color));
+    };
+
+    int64 from_node_id = node_ids_.at(from_node);
+    int64 to_node_id = node_ids_.at(to_node);
+    add_hover_css_rule("node", from_node_id, kBlue);
+    add_hover_css_rule("node", to_node_id, kRed);
+
+    // If this edge crosses a fusion cluster boundary, highlight it when the
+    // cluster is hovered over.
+    if (from_node->IsFused() &&
+        from_node->fusion_instruction()->fused_expression_root() == from_node) {
+      int64 cluster_id = cluster_ids_.at(from_node->parent());
+      add_hover_css_rule("clust", cluster_id, kBlue);
+    }
+    if (to_node->IsFused() && to_node->opcode() == HloOpcode::kParameter) {
+      int64 cluster_id = cluster_ids_.at(to_node->parent());
+      add_hover_css_rule("clust", cluster_id, kRed);
+    }
+  }
+
+  return Printf(fmt, graph_label, Join(edge_css_rules, "\n"));
 }
 
 string HloDotDumper::Footer() { return StrCat(Join(edges_, "\n"), "\n}"); }
@@ -440,10 +527,13 @@ string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
 %s;
 label = <%s>;
 labelloc = t;
+tooltip = " ";
 %s
 }  // %s
 
 )";
+
+  cluster_ids_[subcomp] = next_cluster_id_++;
 
   string id = SubcomputationId(subcomp);
 
@@ -475,10 +565,14 @@ labelloc = t;
   // belongs to a fusion node, it's drawn in place of the fusion instruction, so
   // there's no need to link those.
   if (parent_instr->opcode() != HloOpcode::kFusion) {
-    const char* edge_fmt = R"(%s -> %s [ltail="%s", style="dashed"];)";
+    edge_ids_.insert(
+        {{subcomp->root_instruction(), parent_instr}, next_edge_id_++});
+    const char* edge_fmt =
+        R"(%s -> %s [ltail="%s", style="dashed" tooltip="%s -> %s"];)";
     edges_.push_back(
         Printf(edge_fmt, InstructionId(subcomp->root_instruction()),
-               InstructionId(parent_instr), SubcomputationId(subcomp)));
+               InstructionId(parent_instr), SubcomputationId(subcomp),
+               subcomp->name(), parent_instr->name()));
   }
 
   return computation;
@@ -508,6 +602,8 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
     return "";
   }
 
+  node_ids_[instr] = next_node_id_++;
+
   ColorScheme color = GetInstructionColor(instr);
   string node_shape = GetInstructionNodeShape(instr);
   string node_label = GetInstructionNodeLabel(instr);
@@ -534,8 +630,10 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
     }
   }
 
-  return Printf("%s [label=<%s>, shape=%s, %s];\n", InstructionId(instr),
-                node_body, node_shape, NodeColorAttributes(color));
+  return Printf(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
+                "\n",
+                InstructionId(instr), node_body, node_shape,
+                NodeColorAttributes(color));
 }
 
 string HloDotDumper::GetInstructionNodeInlinedConstants(
@@ -776,12 +874,15 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant) {
       return;
     }
-    string edge = Printf("%s -> %s", InstructionId(from), InstructionId(to));
+    edge_ids_.insert({{from, to}, next_edge_id_++});
+
+    string edge_label;
     if (instr->operand_count() > 1) {
-      Appendf(&edge, R"( [headlabel="%lld",labeldistance=2])", operand_num);
+      edge_label = Printf(R"( headlabel="%lld", labeldistance=2)", operand_num);
     }
-    StrAppend(&edge, ";");
-    edges_.push_back(edge);
+    const char* kEdgeFmt = R"(%s -> %s [tooltip="%s -> %s" %s];)";
+    edges_.push_back(Printf(kEdgeFmt, InstructionId(from), InstructionId(to),
+                            from->name(), to->name(), edge_label));
   };
 
   // Add edges from instr's operands to instr.  Parameters within fusion
@@ -945,40 +1046,33 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
   }
 
   auto is_displayed = [&](const HloInstruction* instr) {
-    return nodes.count(instr) > 0;
+    // Constants are displayed inline with their users; they're never omitted.
+    return nodes.count(instr) > 0 || instr->opcode() == HloOpcode::kConstant;
   };
 
-  // Mark nodes which don't have all of their operands present as "some operands
-  // omitted".
+  // Make a second pass over 'nodes' to fix up the NodeFilterResults now that we
+  // know which nodes will be included in the graph.
   for (auto& kv : nodes) {
     const HloInstruction* instr = kv.first;
     NodeFilterResult& filter_result = kv.second;
     const auto& operands = instr->operands();
 
-    // Mark nodes with some omitted as "some operands omitted".
     if (std::any_of(operands.begin(), operands.end(), is_displayed) &&
         !std::all_of(operands.begin(), operands.end(), is_displayed)) {
+      // Mark nodes with some operands omitted appropriately.
       filter_result = kSomeOperandsOmitted;
+    } else if (!operands.empty() &&
+               std::none_of(operands.begin(), operands.end(), is_displayed)) {
+      // Mark nodes with *all* operands omitted appropriately.
+      filter_result = kOmitNodeOperands;
     }
-  }
 
-  // Promote nodes with type kSomeUsersOmitted to kNormalNode if all of their
-  // users made it into the graph by other means.
-  for (auto& kv : nodes) {
-    const auto& users = kv.first->users();
-    if (kv.second == kSomeUsersOmitted &&
-        std::all_of(users.begin(), users.end(), is_displayed)) {
-      kv.second = kNormalNode;
-    }
-  }
-
-  // If none of a node's operands appear in nodes, mark it as type
-  // kOmitNodeOperands so it gets styled appropriately.
-  for (auto& kv : nodes) {
-    const auto& operands = kv.first->operands();
-    if (!operands.empty() &&
-        std::none_of(operands.begin(), operands.end(), is_displayed)) {
-      kv.second = kOmitNodeOperands;
+    // Promote nodes with type kSomeUsersOmitted to kNormalNode if all of their
+    // users made it into the graph.
+    if (filter_result == kSomeUsersOmitted &&
+        std::all_of(instr->users().begin(), instr->users().end(),
+                    is_displayed)) {
+      filter_result = kNormalNode;
     }
   }
 
