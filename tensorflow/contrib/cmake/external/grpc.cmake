@@ -38,7 +38,10 @@ ExternalProject_Add(grpc
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    # TODO(jhseu): Remove this PATCH_COMMAND once grpc removes the dependency
+    # on "grpc" from the "grpc++_unsecure" rule.
     PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
+    BUILD_COMMAND ${CMAKE_COMMAND} --build . --target grpc++_unsecure
     INSTALL_COMMAND ""
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
