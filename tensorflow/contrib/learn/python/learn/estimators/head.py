@@ -665,6 +665,7 @@ class _RegressionHead(_SingleHead):
                label_dimension,
                loss_fn,
                link_fn,
+               logits_dimension=None,
                label_name=None,
                weight_column_name=None,
                enable_centered_bias=False,
@@ -677,6 +678,10 @@ class _RegressionHead(_SingleHead):
         shape `[batch_size, label_dimension]`).
       loss_fn: Loss function, takes logits and labels and returns loss.
       link_fn: Link function, takes a logits tensor and returns the output.
+      logits_dimension: Number of logits per example. This is the
+        size of the last dimension of the logits `Tensor` (typically, this has
+        shape `[batch_size, label_dimension]`).
+        Default value: `label_dimension`.
       label_name: String, name of the key in label dict. Can be null if label
           is a tensor (single headed models).
       weight_column_name: A string defining feature column name representing
@@ -691,7 +696,8 @@ class _RegressionHead(_SingleHead):
     """
     super(_RegressionHead, self).__init__(
         problem_type=constants.ProblemType.LINEAR_REGRESSION,
-        logits_dimension=label_dimension,
+        logits_dimension=(logits_dimension if logits_dimension is not None
+                          else label_dimension),
         label_name=label_name,
         weight_column_name=weight_column_name,
         head_name=head_name)

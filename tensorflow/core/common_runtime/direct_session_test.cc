@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -1246,6 +1247,16 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   Status s = session->Run({} /* inputs */, {},
                           {var_assign->name()} /* target_nodes */, nullptr);
   EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+}
+
+TEST(DirectSessionTest, LocalDeviceManager) {
+  SessionOptions options;
+  std::unique_ptr<Session> session(NewSession(options));
+
+  const DeviceMgr* mgr = nullptr;
+  TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
+  ASSERT_TRUE(mgr != nullptr);
+  EXPECT_GT(mgr->ListDevices().size(), 0);
 }
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls

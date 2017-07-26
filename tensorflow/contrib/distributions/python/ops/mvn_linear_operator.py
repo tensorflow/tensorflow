@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
-from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops.bijectors import AffineLinearOperator
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -189,7 +189,7 @@ class MultivariateNormalLinearOperator(
         distribution=normal.Normal(
             loc=array_ops.zeros([], dtype=scale.dtype),
             scale=array_ops.ones([], dtype=scale.dtype)),
-        bijector=bijectors.AffineLinearOperator(
+        bijector=AffineLinearOperator(
             shift=loc, scale=scale, validate_args=validate_args),
         batch_shape=batch_shape,
         event_shape=event_shape,

@@ -82,10 +82,6 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
 
   // Inline all functions.
   GraphDef inlined_graph_def(graph_def);
-  // Populate default attrs to the NodeDefs in the GraphDef, which is required
-  // by inlining code.
-  TF_RETURN_IF_ERROR(
-      AddDefaultAttrsToGraphDef(&inlined_graph_def, *OpRegistry::Global(), 0));
 
   for (int i = 0; i < inlined_graph_def.library().function().size(); i++) {
     FunctionDef* fdef =
@@ -122,6 +118,10 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
+  // Populate default attrs to the NodeDefs in the GraphDef.
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&inlined_graph_def,
+                                               *graphptr->op_registry(), 0));
+
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_ctor_opts, inlined_graph_def,
                                             graphptr.get()));
 
