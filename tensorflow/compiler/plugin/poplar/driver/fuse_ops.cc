@@ -41,27 +41,27 @@ static bool IsConstantHalf(HloInstruction* inst) {
 
 static const std::vector<HloMatcherPattern> patterns = {
   // dynamic update slice with constant coordinate
-  {{HloOpcode::kDynamicUpdateSlice, nullptr, {-1, -1, 1}},
-   {HloOpcode::kConstant, nullptr, {}}},
+  {{HloOpcode::kDynamicUpdateSlice, true, nullptr, {-1, -1, 1}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
 
   // dynamic slice with constant coordinate
-  {{HloOpcode::kDynamicSlice, nullptr, {-1, 1}},
-   {HloOpcode::kConstant, nullptr, {}}},
+  {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
 
   // Truncated normal
-  {{HloOpcode::kWhile, IsTruncatedNormalWhile, {1}},
-   {HloOpcode::kRng, nullptr, {}}},
+  {{HloOpcode::kWhile, true, IsTruncatedNormalWhile, {1}},
+   {HloOpcode::kRng, true, nullptr, {}}},
 
   // Relu
-  {{HloOpcode::kMaximum, nullptr, {-1, 1}},
-   {HloOpcode::kConstant, IsConstantZero, {}}},
+  {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
+   {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
   // Sigmoid
-  {{HloOpcode::kAdd, nullptr, {4, 1}},
-   {HloOpcode::kMultiply, nullptr, {4, 2}},
-   {HloOpcode::kTanh, nullptr, {3}},
-   {HloOpcode::kMultiply, nullptr, {4, -1}},
-   {HloOpcode::kConstant, IsConstantHalf, {}}}
+  {{HloOpcode::kAdd, true, nullptr, {4, 1}},
+   {HloOpcode::kMultiply, true, nullptr, {4, 2}},
+   {HloOpcode::kTanh, true, nullptr, {3}},
+   {HloOpcode::kMultiply, true, nullptr, {4, -1}},
+   {HloOpcode::kConstant, true, IsConstantHalf, {}}}
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}

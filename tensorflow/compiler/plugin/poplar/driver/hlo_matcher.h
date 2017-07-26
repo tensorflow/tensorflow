@@ -26,6 +26,7 @@ namespace poplarplugin {
 
 struct HloMatcherNode {
   HloOpcode opcode;
+  bool include_in_replacement;
   std::function<bool(HloInstruction*)> verification_fn;
   std::vector<int> operands;
 };

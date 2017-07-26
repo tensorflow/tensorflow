@@ -28,17 +28,9 @@ static const char* names[] = {
 };
 
 static const std::vector<HloMatcherPattern> patterns = {
-  // Convolution with bias, explicit broadcast
-  {{HloOpcode::kAdd, nullptr, {1, 2}},
-   {HloOpcode::kConvolution, nullptr, {-1, -1}},
-   {HloOpcode::kBroadcast, nullptr, {-1}}},
-
-  // Convolution with bias
-  {{HloOpcode::kAdd, nullptr, {1, -1}},
-   {HloOpcode::kConvolution, nullptr, {-1, -1}}},
 
   // Stand-alone convolution
-  {{HloOpcode::kConvolution, nullptr, {-1, -1}}},
+  {{HloOpcode::kConvolution, true, nullptr, {-1, -1}}},
 
 };
 

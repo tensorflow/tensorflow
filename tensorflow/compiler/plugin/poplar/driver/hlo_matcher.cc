@@ -31,7 +31,6 @@ HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
 bool HloMatcher::MatchPattern(HloInstruction* root,
                               const HloMatcherPattern& pattern,
                               HloMatcherMatched& match) {
-  LOG(INFO) << "MatchPattern1";
   match.instructions[0] = root;
 
   for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
@@ -63,6 +62,14 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       match.instructions[n] = inst->mutable_operand(i);
     }
   }
+
+  ReplacedInstructions replaced;
+  for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
+    if (pattern[node_num].include_in_replacement) {
+      replaced.push_back(match.instructions[node_num]);
+    }
+  }
+  match.instructions = std::move(replaced);
 
   return true;
 }
@@ -119,7 +126,6 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
     }
   }
 
-  LOG(INFO) << "got all matches";
   unsigned int replacement_count = 0;
   for (unsigned int pattern=0; pattern<matches_.size(); pattern++) {
     for (HloMatcherMatched& match :  matches_[pattern]) {
