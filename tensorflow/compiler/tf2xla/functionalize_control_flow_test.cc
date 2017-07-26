@@ -96,6 +96,14 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     TF_EXPECT_OK(scope.ToGraph(&graph));
   }
 
+  // Regression test: control edges from an Enter node to the graph sink should
+  // be ignored.
+  for (Node* n : graph.nodes()) {
+    if (n->name() == "while/Enter") {
+      graph.AddControlEdge(n, graph.sink_node());
+    }
+  }
+
   FunctionLibraryDefinition library(OpRegistry::Global(), {});
   TF_ASSERT_OK(FunctionalizeControlFlow(&graph, &library));
 

@@ -133,7 +133,10 @@ cc_library(
 cc_library(
     name = "statusor",
     srcs = ["statusor.cc"],
-    hdrs = ["statusor.h"],
+    hdrs = [
+        "statusor.h",
+        "statusor_internals.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":status",

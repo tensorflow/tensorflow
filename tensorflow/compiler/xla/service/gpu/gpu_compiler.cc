@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -123,6 +124,15 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
+
+    for (const auto& reduce_precision_options :
+         hlo_module->config().debug_options().hlo_reduce_precision_options()) {
+      if (reduce_precision_options.pass_timing() ==
+          HloReducePrecisionOptions::BEFORE_OP_FUSION) {
+        pipeline.AddPass<ReducePrecisionInsertion>(reduce_precision_options);
+      }
+    }
+
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
@@ -149,8 +159,27 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
-    return fusion.Run(hlo_module).status();
+    TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+
+    HloPassPipeline reduce_pipeline("reduce-precision");
+    for (const auto& reduce_precision_options :
+         hlo_module->config().debug_options().hlo_reduce_precision_options()) {
+      if (reduce_precision_options.pass_timing() ==
+          HloReducePrecisionOptions::AFTER_OP_FUSION) {
+        reduce_pipeline.AddPass<ReducePrecisionInsertion>(
+            reduce_precision_options);
+      }
+    }
+    StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
+    TF_RETURN_IF_ERROR(reduce_result.status());
+
+    if (reduce_result.ValueOrDie()) {
+      // Do another fusion pass, with the expectation that we may be able to
+      // fuse the new ReducePrecision operations.
+      TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+    }
   }
+  return tensorflow::Status::OK();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.

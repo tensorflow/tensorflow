@@ -47,6 +47,7 @@ tf_kernel_library(
         "reshape_op.cc",
         "retval_op.cc",
         "reverse_op.cc",
+        "segment_reduction_ops.cc",
         "select_op.cc",
         "sequence_ops.cc",
         "shape_op.cc",
