@@ -19,9 +19,19 @@ message RewriterConfig {
   // configuration options do not apply to explicitly triggered optimization
   // passes in the optimizers field.
 
+  enum Toggle {
+    DEFAULT = 0;
+    ON = 1;
+    OFF = 2;
+  }
+
+  // Optimize tensor layouts
   bool optimize_tensor_layout = 1;
+  // Fold constants (default is OFF)
+  Toggle constant_folding = 3;
+
+  // If true, don't remove unecessary ops from the graph
   bool disable_model_pruning = 2;
-  bool constant_folding = 3;
 
   enum MemOptType {
     // Disabled in the meta-optimizer.
