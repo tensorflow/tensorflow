@@ -42,6 +42,17 @@ class ReducePrecisionInsertion : public HloPassInterface {
       : exponent_bits_(exponent_bits),
         mantissa_bits_(mantissa_bits),
         should_reduce_output_precision_(should_reduce_output_precision) {}
+
+  // Version of the constructor that takes an HloReducePrecisionOptions proto
+  // rather than explicitly-enumerated parameters, for convenience when
+  // creating passes based on DebugOptions.
+  explicit ReducePrecisionInsertion(
+      const HloReducePrecisionOptions& reduce_precision_options)
+      : exponent_bits_(reduce_precision_options.exponent_bits()),
+        mantissa_bits_(reduce_precision_options.mantissa_bits()),
+        should_reduce_output_precision_(
+            make_filter_function(reduce_precision_options)) {}
+
   ~ReducePrecisionInsertion() override{};
 
   tensorflow::StringPiece name() const override {
@@ -52,6 +63,15 @@ class ReducePrecisionInsertion : public HloPassInterface {
   // (reduce-precision instructions were inserted).
   StatusOr<bool> Run(HloModule* module) override;
 
+  // Convert between the (inconvenient) xla.proto HloReducePrecisionOptions
+  // representation and OpcodeFilterFunction functions.
+  static OpcodeFilterFunction make_filter_function(
+      const HloReducePrecisionOptions& reduce_precision_options);
+  static HloReducePrecisionOptions make_options_proto(
+      const HloReducePrecisionOptions::PassTiming pass_timing,
+      const int exponent_bits, const int mantissa_bits,
+      const OpcodeFilterFunction& should_reduce_output_precision);
+
  private:
   // Parameters for the precision reduction to be added.
   const int exponent_bits_;
@@ -59,7 +79,7 @@ class ReducePrecisionInsertion : public HloPassInterface {
 
   // Function to determine (from the opcode) whether a given instruction should
   // have a reduce-precision instruction inserted in its output stream.
-  const OpcodeFilterFunction& should_reduce_output_precision_;
+  const OpcodeFilterFunction should_reduce_output_precision_;
 };
 
 }  // namespace xla
