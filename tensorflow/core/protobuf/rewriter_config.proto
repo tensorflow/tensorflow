@@ -34,13 +34,15 @@ message RewriterConfig {
   bool disable_model_pruning = 2;
 
   enum MemOptType {
+    // The default setting (currently disabled)
+    DEFAULT_MEM_OPT = 0;
     // Disabled in the meta-optimizer.
-    NO_MEM_OPT = 0;
+    NO_MEM_OPT = 1;
     // Driven by manual op-level annotations.
-    MANUAL = 1;
+    MANUAL = 2;
     // Driven by heuristics. The behavior of these heuristics is subject to
     // change. Currently includes an experimental recomputation heuristic.
-    HEURISTICS = 2;
+    HEURISTICS = 3;
   }
   // Configures memory optimization passes through the meta-optimizer. Has no
   // effect on manually requested memory optimization passes in the optimizers

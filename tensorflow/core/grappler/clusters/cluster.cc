@@ -64,6 +64,7 @@ void Cluster::DisableOptimizer(bool disable) {
     auto rewriter_config =
         options_.config.mutable_graph_options()->mutable_rewrite_options();
     rewriter_config->set_constant_folding(RewriterConfig::DEFAULT);
+    rewriter_config->set_memory_optimization(RewriterConfig::DEFAULT_MEM_OPT);
   }
 }
 
