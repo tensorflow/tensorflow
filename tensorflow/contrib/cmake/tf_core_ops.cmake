@@ -63,11 +63,20 @@ function(GENERATE_CONTRIB_OP_LIBRARY op_lib_name cc_srcs)
     add_dependencies(tf_contrib_${op_lib_name}_ops tf_core_framework)
 endfunction()
 
-file(GLOB_RECURSE boosted_trees_resources
+file(GLOB_RECURSE boosted_trees_model_srcs
+    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/model_ops.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/resources/*.cc"
 )
 
+file(GLOB_RECURSE boosted_trees_quantile_srcs
+    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/quantile_ops.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/resources/*.cc"
+)
 
+file(GLOB_RECURSE boosted_trees_stats_accumulator_srcs
+    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc"
+    "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/resources/*.cc"
+)
 
 file(GLOB_RECURSE tensor_forest_hybrid_srcs
      "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/hybrid/core/ops/*.cc"
@@ -77,13 +86,13 @@ file(GLOB_RECURSE tpu_ops_srcs
      "${tensorflow_source_dir}/tensorflow/contrib/tpu/ops/*.cc"
 )
 
-GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_model "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/model_ops.cc" ${boosted_trees_resources})
-GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_split_handler "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/split_handler_ops.cc" ${boosted_trees_resources})
-GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_training "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/training_ops.cc" ${boosted_trees_resources})
-GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_prediction "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/prediction_ops.cc" ${boosted_trees_resources})
-GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_quantiles "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/quantile_ops.cc" ${boosted_trees_resources})
-GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_ensemble_optimzier "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/ensemble_optimizer_ops.cc" ${boosted_trees_resources})
-GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_stats_accumulator "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc" ${boosted_trees_resources})
+GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_model "${boosted_trees_model_srcs}"})
+GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_split_handler "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/split_handler_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_training "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/training_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_prediction "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/prediction_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_quantiles "${boosted_trees_quantiles_srcs}")
+GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_ensemble_optimzier "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/ensemble_optimizer_ops.cc")
+GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_stats_accumulator "${boosted_trees_stats_accumulator_srcs}")
 GENERATE_CONTRIB_OP_LIBRARY(cudnn_rnn "${tensorflow_source_dir}/tensorflow/contrib/cudnn_rnn/ops/cudnn_rnn_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(factorization_clustering "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/clustering_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(factorization_factorization "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc")
