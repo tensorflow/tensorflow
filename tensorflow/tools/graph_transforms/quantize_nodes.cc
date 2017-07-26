@@ -745,7 +745,6 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
         }
         // This isn't a float op, so don't quantize it.
         if (!are_all_float) {
-          LOG(INFO) << SummarizeNodeDef(float_node);
           CopyOriginalMatch(match, new_nodes);
           return Status::OK();
         }
