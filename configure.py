@@ -240,7 +240,7 @@ def run_gen_git_source(environ_cp):
   Args:
     environ_cp: copy of the os.environ.
   """
-  cmd = '%s tensorflow/tools/git/gen_git_source.py --configure %s' % (
+  cmd = '"%s" tensorflow/tools/git/gen_git_source.py --configure %s' % (
       environ_cp.get('PYTHON_BIN_PATH'), os.getcwd())
   os.system(cmd)
 
@@ -379,7 +379,7 @@ def check_bazel_version(min_version):
     min_version: string for minimum bazel version.
   """
   try:
-    curr_version = run_shell('bazel version')
+    curr_version = run_shell('bazel --batch version')
   except subprocess.CalledProcessError:
     print('Cannot find bazel. Please install bazel.')
     sys.exit(0)
