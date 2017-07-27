@@ -88,14 +88,14 @@ static bool ConsumeNumber(StringPiece* in, int* val) {
 // Returns a fully qualified device name given the parameters.
 static string RealName(const string& job, int replica, int task,
                        const string& device_prefix, const string& device_type,
-					   int id) {
+                       int id) {
   CHECK(IsJobName(job)) << job;
   CHECK_LE(0, replica);
   CHECK_LE(0, task);
   CHECK(!device_type.empty());
   CHECK_LE(0, id);
   return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task,
-		                 device_prefix, device_type, ":", id);
+                         device_prefix, device_type, ":", id);
 }
 
 /* static */
