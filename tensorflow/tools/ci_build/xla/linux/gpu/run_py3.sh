@@ -33,7 +33,7 @@ export TF_NEED_CUDA=1
 export TF_ENABLE_XLA=1
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
 
-yes "" | ./configure
+$PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --config=cuda --test_tag_filters=-no_gpu,-benchmark-test -k \

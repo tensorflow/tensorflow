@@ -61,6 +61,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
@@ -983,9 +984,16 @@ class GradLoopState(object):
             # the right control flow context.
             real_value = self._grad_context.AddValue(cur_value)
             break
+        elif constant_op.is_constant(cur_value):
+          # If the value to be forwarded is a constant, clone the constant in
+          # the gradient loop rather than using a stack.
+          # TODO(phawkins): consider hoisting the constant out of the loop
+          # instead.
+          real_value = constant_op.constant(
+              tensor_util.constant_value(cur_value), dtype=cur_value.dtype)
+          break
         else:
           # Record the history of this value in forward_ctxt.
-          # TODO(yuanbyu): Avoid recording constants.
           self._grad_context.Exit()
           history_value = cur_grad_state.AddForwardAccumulator(cur_value)
           self._grad_context.Enter()

@@ -557,78 +557,110 @@ TEST_F(HloInstructionTest, PostProcessAllVisitedNodes) {
 }
 
 TEST_F(HloInstructionTest, SingletonFusionOp) {
+  HloComputation::Builder builder(TestName());
   // Create a fusion instruction containing a single unary operation.
-  auto constant =
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
-  auto exp =
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {exp}, HloInstruction::FusionKind::kLoop);
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, exp.get());
-
-  EXPECT_THAT(fusion->operands(), ElementsAre(constant.get()));
-  EXPECT_THAT(constant->users(), UnorderedElementsAre(fusion.get(), exp.get()));
+  EXPECT_THAT(fusion->operands(), ElementsAre(constant));
+  EXPECT_THAT(constant->users(), ElementsAre(fusion));
 }
 
 TEST_F(HloInstructionTest, BinaryFusionOp) {
+  HloComputation::Builder builder(TestName());
   // Create a fusion instruction containing a single binary operation.
-  auto constant1 =
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
-  auto constant2 =
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.1f));
-  auto add = HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
-                                          constant1.get(), constant2.get());
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.1f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {add}, HloInstruction::FusionKind::kLoop);
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, add.get());
-
-  EXPECT_THAT(fusion->operands(),
-              ElementsAre(constant1.get(), constant2.get()));
-  EXPECT_THAT(constant1->users(),
-              UnorderedElementsAre(fusion.get(), add.get()));
-  EXPECT_THAT(constant2->users(),
-              UnorderedElementsAre(fusion.get(), add.get()));
+  EXPECT_THAT(fusion->operands(), ElementsAre(constant1, constant2));
+  EXPECT_THAT(constant1->users(), ElementsAre(fusion));
+  EXPECT_THAT(constant2->users(), ElementsAre(fusion));
 }
 
 TEST_F(HloInstructionTest, ChainFusionOp) {
+  HloComputation::Builder builder(TestName());
   // Create a chain of fused unary ops.
-  auto constant =
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
-  auto exp1 =
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
-  auto exp2 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1.get());
-  auto exp3 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2.get());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
+  auto exp3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp2));
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, exp3.get());
-  fusion->FuseInstruction(exp2.get());
-  fusion->FuseInstruction(exp1.get());
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {exp3, exp2, exp1}, HloInstruction::FusionKind::kLoop);
 
-  EXPECT_THAT(fusion->operands(), ElementsAre(constant.get()));
-  EXPECT_THAT(constant->users(),
-              UnorderedElementsAre(fusion.get(), exp1.get()));
+  EXPECT_THAT(fusion->operands(), ElementsAre(constant));
+  EXPECT_THAT(constant->users(), ElementsAre(fusion));
 }
 
 TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
+  HloComputation::Builder builder(TestName());
   // Create a chain of fused unary ops.
-  auto constant =
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
-  auto exp1 =
-      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant.get());
-  auto exp2 = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1.get());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+  auto exp2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, exp1));
   OpMetadata metadata;
   metadata.set_op_name("tf_op");
   exp1->set_metadata(metadata);
   exp2->set_metadata(metadata);
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, exp2.get());
-  auto* fused = fusion->FuseInstruction(exp1.get());
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {exp2, exp1}, HloInstruction::FusionKind::kLoop);
+
   EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
-  EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fused->metadata()));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      metadata, fusion->fused_expression_root()->metadata()));
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      metadata, fusion->fused_expression_root()->operand(0)->metadata()));
+}
+
+TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
+  HloComputation::Builder builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
+  auto outfeed10 = builder.AddInstruction(
+      HloInstruction::CreateOutfeed(shape10, constant, ""));
+  auto outfeed01 = builder.AddInstruction(
+      HloInstruction::CreateOutfeed(shape01, constant, ""));
+
+  auto clone01 = builder.AddInstruction(outfeed01->Clone());
+  auto clone10 = builder.AddInstruction(outfeed10->Clone());
+
+  EXPECT_TRUE(ShapeUtil::Equal(clone01->outfeed_shape(), shape01));
+  EXPECT_TRUE(ShapeUtil::Equal(clone10->outfeed_shape(), shape10));
 }
 
 TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
+  HloComputation::Builder builder(TestName());
   // Create a fusion instruction containing a single unary operation.
   const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
 
@@ -642,33 +674,36 @@ TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   std::unique_ptr<HloComputation> computation_x = make_map_computation();
   std::unique_ptr<HloComputation> computation_y = make_map_computation();
 
-  auto constant =
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
-  auto map_1_x =
-      HloInstruction::CreateMap(scalar_shape, {constant.get()},
-                                computation_x.get(), /*static_operands=*/{});
-  auto map_2_x =
-      HloInstruction::CreateMap(scalar_shape, {map_1_x.get()},
-                                computation_x.get(), /*static_operands=*/{});
-  auto map_3_y =
-      HloInstruction::CreateMap(scalar_shape, {map_2_x.get()},
-                                computation_y.get(), /*static_operands=*/{});
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto map_1_x = builder.AddInstruction(HloInstruction::CreateMap(
+      scalar_shape, {constant}, computation_x.get(), /*static_operands=*/{}));
+  auto map_2_x = builder.AddInstruction(HloInstruction::CreateMap(
+      scalar_shape, {map_1_x}, computation_x.get(), /*static_operands=*/{}));
+  auto map_3_y = builder.AddInstruction(HloInstruction::CreateMap(
+      scalar_shape, {map_2_x}, computation_y.get(), /*static_operands=*/{}));
 
-  auto fusion = HloInstruction::CreateFusion(
-      scalar_shape, HloInstruction::FusionKind::kLoop, map_3_y.get());
-
-  EXPECT_THAT(fusion->called_computations(), ElementsAre(computation_y.get()));
-
-  fusion->FuseInstruction(map_2_x.get());
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {map_3_y}, HloInstruction::FusionKind::kLoop);
+  auto* fused_computation = fusion->fused_instructions_computation();
   EXPECT_THAT(fusion->called_computations(),
-              ElementsAre(computation_y.get(), computation_x.get()));
+              ElementsAre(fused_computation, computation_y.get()));
 
-  fusion->FuseInstruction(map_1_x.get());
-  EXPECT_THAT(fusion->called_computations(),
-              ElementsAre(computation_y.get(), computation_x.get()));
+  fusion->FuseInstruction(map_2_x);
+  EXPECT_THAT(
+      fusion->called_computations(),
+      ElementsAre(fused_computation, computation_y.get(), computation_x.get()));
+
+  fusion->FuseInstruction(map_1_x);
+  EXPECT_THAT(
+      fusion->called_computations(),
+      ElementsAre(fused_computation, computation_y.get(), computation_x.get()));
 }
 
 TEST_F(HloInstructionTest, ComplexFusionOp) {
+  HloComputation::Builder builder(TestName());
   // Fuse all instructions in complicated expression:
   //
   //   add = Add(C1, C2)
@@ -680,35 +715,35 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
   //
   // Notable complexities are repeated operands in a same instruction, different
   // shapes, use of value in different expressions.
-  auto c1 = HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f));
-  auto c2 = HloInstruction::CreateConstant(Literal::CreateR0<float>(2.1f));
-  auto c3 = HloInstruction::CreateConstant(Literal::CreateR0<float>(9.0f));
+  auto c1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+  auto c2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.1f)));
+  auto c3 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(9.0f)));
 
-  auto add =
-      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, c1.get(), c2.get());
-  auto clamp = HloInstruction::CreateTernary(r0f32_, HloOpcode::kClamp,
-                                             c2.get(), add.get(), add.get());
-  auto exp = HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, add.get());
-  auto mul = HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply,
-                                          exp.get(), c3.get());
-  auto sub = HloInstruction::CreateBinary(r0f32_, HloOpcode::kSubtract,
-                                          mul.get(), clamp.get());
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, c1, c2));
+  auto clamp = builder.AddInstruction(
+      HloInstruction::CreateTernary(r0f32_, HloOpcode::kClamp, c2, add, add));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, add));
+  auto mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kMultiply, exp, c3));
+  auto sub = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kSubtract, mul, clamp));
   auto tuple =
-      HloInstruction::CreateTuple({sub.get(), sub.get(), mul.get(), c1.get()});
+      builder.AddInstruction(HloInstruction::CreateTuple({sub, sub, mul, c1}));
 
-  auto fusion = HloInstruction::CreateFusion(
-      r0f32_, HloInstruction::FusionKind::kLoop, tuple.get());
-  fusion->FuseInstruction(sub.get());
-  fusion->FuseInstruction(mul.get());
-  fusion->FuseInstruction(exp.get());
-  fusion->FuseInstruction(clamp.get());
-  fusion->FuseInstruction(add.get());
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {tuple, sub, mul, exp, clamp, add}, HloInstruction::FusionKind::kLoop);
 
   // Operands in the fusion instruction's operands() vector should be in the
   // order in which their users were added fused.
-  EXPECT_THAT(fusion->operands(), ElementsAre(c1.get(), c3.get(), c2.get()));
-  EXPECT_THAT(c1->users(),
-              UnorderedElementsAre(add.get(), tuple.get(), fusion.get()));
+  EXPECT_THAT(fusion->operands(), ElementsAre(c1, c3, c2));
+  EXPECT_THAT(c1->users(), ElementsAre(fusion));
 }
 
 // Convenience function for comparing two HloInstructions inside of
@@ -864,7 +899,8 @@ TEST_F(HloInstructionTest, PartiallyElementwise) {
   HloInstruction* max = builder.AddInstruction(
       HloInstruction::CreateBinary(r2f32, HloOpcode::kMaximum, div, broadcast));
 
-  auto computation = builder.Build();
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {max, broadcast, div, mul}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
@@ -906,7 +942,8 @@ TEST_F(HloInstructionTest, PartiallyElementwiseWithReuse) {
   HloInstruction* sub = builder.AddInstruction(HloInstruction::CreateBinary(
       r1f32, HloOpcode::kSubtract, min, broadcast));
 
-  auto computation = builder.Build();
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {sub, broadcast, min}, HloInstruction::FusionKind::kLoop);
   EXPECT_FALSE(fusion->IsElementwise());
@@ -945,7 +982,8 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   HloInstruction* dot = builder.AddInstruction(
       HloInstruction::CreateBinary(sout, HloOpcode::kDot, x, reshape));
 
-  auto computation = builder.Build();
+  HloModule module(TestName());
+  auto* computation = module.AddEntryComputation(builder.Build());
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
 

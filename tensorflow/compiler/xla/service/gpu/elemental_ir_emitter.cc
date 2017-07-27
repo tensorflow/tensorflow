@@ -211,6 +211,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
     case HloOpcode::kLog:
       return EmitLibdeviceMathCall("__nv_log", {operand_value}, {input_type},
                                    output_type);
+    case HloOpcode::kCos:
+      return EmitLibdeviceMathCall("__nv_cos", {operand_value}, {input_type},
+                                   output_type);
+    case HloOpcode::kSin:
+      return EmitLibdeviceMathCall("__nv_sin", {operand_value}, {input_type},
+                                   output_type);
     case HloOpcode::kTanh:
       return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
                                    output_type);

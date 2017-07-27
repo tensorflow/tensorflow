@@ -19,18 +19,30 @@ message RewriterConfig {
   // configuration options do not apply to explicitly triggered optimization
   // passes in the optimizers field.
 
+  enum Toggle {
+    DEFAULT = 0;
+    ON = 1;
+    OFF = 2;
+  }
+
+  // Optimize tensor layouts
   bool optimize_tensor_layout = 1;
+  // Fold constants (default is OFF)
+  Toggle constant_folding = 3;
+
+  // If true, don't remove unecessary ops from the graph
   bool disable_model_pruning = 2;
-  bool constant_folding = 3;
 
   enum MemOptType {
+    // The default setting (currently disabled)
+    DEFAULT_MEM_OPT = 0;
     // Disabled in the meta-optimizer.
-    NO_MEM_OPT = 0;
+    NO_MEM_OPT = 1;
     // Driven by manual op-level annotations.
-    MANUAL = 1;
+    MANUAL = 2;
     // Driven by heuristics. The behavior of these heuristics is subject to
     // change. Currently includes an experimental recomputation heuristic.
-    HEURISTICS = 2;
+    HEURISTICS = 3;
   }
   // Configures memory optimization passes through the meta-optimizer. Has no
   // effect on manually requested memory optimization passes in the optimizers

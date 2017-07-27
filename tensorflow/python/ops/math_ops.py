@@ -1259,7 +1259,8 @@ def reduce_sum(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1313,7 +1314,8 @@ def count_nonzero(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should be of numeric type, or `bool`.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
@@ -1363,7 +1365,8 @@ def reduce_mean(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1400,7 +1403,8 @@ def reduce_prod(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1437,7 +1441,8 @@ def reduce_min(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1474,7 +1479,8 @@ def reduce_max(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1521,7 +1527,8 @@ def reduce_all(input_tensor,
   Args:
     input_tensor: The boolean tensor to reduce.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1568,7 +1575,8 @@ def reduce_any(input_tensor,
   Args:
     input_tensor: The boolean tensor to reduce.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1621,7 +1629,8 @@ def reduce_logsumexp(input_tensor,
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions.
+      reduces all dimensions. Must be in the range
+      `[-rank(input_tensor), rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -2171,7 +2180,8 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    axis: A `Tensor` of type `int32` (default: 0).
+    axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+      `[-rank(x), rank(x))`.
     exclusive: If `True`, perform exclusive cumsum.
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
@@ -2221,7 +2231,8 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
        `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
        `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-    axis: A `Tensor` of type `int32` (default: 0).
+    axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+      `[-rank(x), rank(x))`.
     exclusive: If `True`, perform exclusive cumprod.
     reverse: A `bool` (default: False).
     name: A name for the operation (optional).
@@ -2327,8 +2338,8 @@ def tensordot(a, b, axes, name=None):
   Example 2: When `a` and `b` are matrices (order 2), the case
   `axes = [[1], [0]]` is equivalent to matrix multiplication.
 
-  Example 3: Suppose that \\(a_ijk\\) and \\(b_lmn\\) represent two
-  tensors of order 3. Then, `contract(a, b, [0], [2])` is the order 4 tensor
+  Example 3: Suppose that \\(a_{ijk}\\) and \\(b_{lmn}\\) represent two
+  tensors of order 3. Then, `contract(a, b, [[0], [2]])` is the order 4 tensor
   \\(c_{jklm}\\) whose entry
   corresponding to the indices \\((j,k,l,m)\\) is given by:
 

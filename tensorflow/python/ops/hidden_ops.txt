@@ -6,6 +6,7 @@ ConcatOffset
 Concat
 ConcatV2
 Const
+DebugGradientIdentity
 EditDistance
 ExpandDims
 ListDiff
@@ -289,6 +290,7 @@ MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
+SeluGrad
 SoftplusGrad
 SoftsignGrad
 TopK

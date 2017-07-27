@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/variant_coding.h"
 
 namespace tensorflow {
 namespace {
@@ -220,6 +223,36 @@ struct Helper<ResourceHandle> {
   }
 };
 
+template <>
+struct Helper<Variant> {
+  // Encodes "n" elements of type Variant stored in "in" into destination
+  // "out", which is usually the TensorProto::tensor_content.
+  template <typename Destination>
+  static void Encode(TensorBuffer* in, int64 n, Destination* out) {
+    port::EncodeVariantList(in->base<const Variant>(), n, out);
+  }
+
+  // Decodes "n" elements of type Variant from "in" and constructs a
+  // buffer out of it. Returns nullptr if the decoding fails. "in" is
+  // usually the TensorProto::tensor_content.
+  template <typename Source>
+  static TensorBuffer* Decode(Allocator* a, const Source& in, int64 n) {
+    auto* buf = new Buffer<Variant>(a, n);
+    Variant* ps = buf->template base<Variant>();
+    if (ps == nullptr || !port::DecodeVariantList(in, ps, n)) {
+      buf->Unref();
+      return nullptr;
+    }
+    return buf;
+  }
+
+  // Returns the estimated memory usage of "n" elements of type T
+  // stored in buffer "in".
+  static int64 TotalBytes(TensorBuffer* in, int n) {
+    return n * sizeof(Variant);
+  }
+};
+
 template <typename T>
 struct ProtoHelper {};
 
@@ -285,6 +318,26 @@ struct ProtoHelper<ResourceHandle> {
     handles->Clear();
     for (size_t i = 0; i < n; i++) {
       data[i].AsProto(handles->Add());
+    }
+  }
+};
+
+template <>
+struct ProtoHelper<Variant> {
+  static protobuf::RepeatedPtrField<VariantTensorDataProto>::const_iterator
+  Begin(const TensorProto& proto) {
+    return proto.variant_val().begin();
+  }
+  static size_t NumElements(const TensorProto& proto) {
+    return proto.variant_val().size();
+  }
+  static void Fill(const Variant* data, size_t n, TensorProto* proto) {
+    auto* variant_values = proto->mutable_variant_val();
+    variant_values->Clear();
+    for (size_t i = 0; i < n; ++i) {
+      VariantTensorData tmp;
+      data[i].Encode(&tmp);
+      tmp.ToProto(variant_values->Add());
     }
   }
 };
@@ -418,6 +471,30 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64 n) {
     }
   }
 
+  return buf;
+}
+
+template <>
+TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
+                                      int64 n) {
+  CHECK_GT(n, 0);
+  Buffer<Variant>* buf = new Buffer<Variant>(a, n);
+  Variant* data = buf->template base<Variant>();
+  if (data == nullptr) {
+    buf->Unref();
+    return nullptr;
+  }
+  const int64 in_n = ProtoHelper<Variant>::NumElements(in);
+  if (in_n <= 0) {
+    std::fill_n(data, n, Variant());
+  } else {
+    for (int64 i = 0; i < in_n; ++i) {
+      data[i] = in.variant_val(i);
+    }
+    for (int64 i = in_n; i < n; ++i) {
+      data[i] = Variant();
+    }
+  }
   return buf;
 }
 
@@ -571,6 +648,7 @@ bool Tensor::RefCountIsOne() const {
     CASE(bfloat16, SINGLE_ARG(STMTS))                          \
     CASE(Eigen::half, SINGLE_ARG(STMTS))                       \
     CASE(ResourceHandle, SINGLE_ARG(STMTS))                    \
+    CASE(Variant, SINGLE_ARG(STMTS))                           \
     case DT_INVALID:                                           \
       INVALID;                                                 \
       break;                                                   \

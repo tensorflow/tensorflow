@@ -1573,7 +1573,7 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
 
   {
     FlattenCallGraph flatten;
-    TF_ASSIGN_OR_ASSERT_OK(bool result, flatten.Run(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
     std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   }
@@ -1652,7 +1652,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   {
     FlattenCallGraph flatten;
-    TF_ASSIGN_OR_ASSERT_OK(bool result, flatten.Run(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
   }
 
@@ -1723,7 +1723,7 @@ TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
 
   {
     FlattenCallGraph flatten;
-    TF_ASSIGN_OR_ASSERT_OK(bool result, flatten.Run(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
   }
 

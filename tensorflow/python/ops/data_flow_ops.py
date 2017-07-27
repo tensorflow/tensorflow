@@ -512,8 +512,8 @@ class QueueBase(object):
     the given queue. Subsequent `enqueue` and `enqueue_many`
     operations will fail. Subsequent `dequeue` and `dequeue_many`
     operations will continue to succeed if sufficient elements remain
-    in the queue. Subsequently dequeue and dequeue_many operations 
-    that would otherwise block waiting for more elements (if close 
+    in the queue. Subsequently dequeue and dequeue_many operations
+    that would otherwise block waiting for more elements (if close
     hadn't been called) will now fail immediately.
 
     If `cancel_pending_enqueues` is `True`, all pending requests will also
@@ -546,7 +546,7 @@ class QueueBase(object):
 
     Args:
       name: A name for the operation (optional).
-	
+
     Returns:
       True if the queue is closed and false if the queue is open.
     """
@@ -1552,10 +1552,7 @@ class BaseStagingArea(object):
       # The returned values in `tensors` are in the same order as
       # the names in `self._names`.
       return {self._names[i]: t for t, i in zip(tensors, indices)}
-    elif len(tensors) == 1:
-      return tensors[0]
-    else:
-      return tensors
+    return tensors
 
   def _scope_vals(self, vals):
     """Return a list of values to pass to `name_scope()`.

@@ -64,6 +64,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kNegate;
     case UNOP_SIGN:
       return HloOpcode::kSign;
+    case UNOP_SIN:
+      return HloOpcode::kSin;
     case UNOP_SORT:
       return HloOpcode::kSort;
     case UNOP_TANH:

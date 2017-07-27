@@ -160,6 +160,11 @@ else()
       "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu_tracer.cc")
   list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_srcs_exclude})
 endif()
+
+file(GLOB tf_core_platform_exclude_srcs
+  "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc")
+list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_exclude_srcs})
+
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
 if(UNIX)
@@ -229,6 +234,8 @@ set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.c
 file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.h"
+    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"

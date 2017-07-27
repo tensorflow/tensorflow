@@ -125,6 +125,9 @@ StatusOr<bool> ParallelizationPreparation::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     HloInstruction* root = computation->root_instruction();
     // Copy root instruction if it does not define its own top-level buffer.
     // TODO(b/32885001) Remove these copies (at least for the unambiguous case).

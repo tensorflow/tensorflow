@@ -702,6 +702,39 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "compare_and_bitpack_op",
+    srcs = ["compare_and_bitpack_op.cc"],
+    hdrs = ["compare_and_bitpack_op.h"],
+    gpu_srcs = [
+        "compare_and_bitpack_op.h",
+        "compare_and_bitpack_op_gpu.cu.cc",
+    ],
+    deps = ARRAY_DEPS,
+)
+
+# TODO(ebrevdo): Add benchmarks once the op is in the autogen array namespace.
+# tf_cuda_cc_test(
+#     name = "compare_and_bitpack_op_test",
+#     srcs = ["compare_and_bitpack_op_test.cc"],
+#     deps = [
+#         ":array",
+#         ":ops_testutil",
+#         ":ops_util",
+#         "//third_party/eigen3",
+#         "//tensorflow/cc:cc_ops",
+#         "//tensorflow/cc:cc_ops_internal",
+#         "//tensorflow/core:core_cpu",
+#         "//tensorflow/core:core_cpu_internal",
+#         "//tensorflow/core:framework",
+#         "//tensorflow/core:lib",
+#         "//tensorflow/core:protos_all_cc",
+#         "//tensorflow/core:test",
+#         "//tensorflow/core:test_main",
+#         "//tensorflow/core:testlib",
+#     ],
+# )
+
+tf_kernel_library(
     name = "reshape_op",
     prefix = "reshape_op",
     deps = ARRAY_DEPS,
@@ -2344,10 +2377,12 @@ cc_library(
         ":bucketize_op",
         ":cast_op",
         ":check_numerics_op",
+        ":compare_and_bitpack_op",
         ":cross_op",
         ":cwise_op",
         ":fft_ops",
         ":matmul_op",
+        ":population_count_op",
         ":reduction_ops",
         ":scan_ops",
         ":segment_reduction_ops",
@@ -2407,6 +2442,12 @@ tf_kernel_library(
     name = "cwise_op",
     prefix = "cwise_op",
     deps = MATH_DEPS + ["//tensorflow/core:bitwise_ops_op_lib"],
+)
+
+tf_kernel_library(
+    name = "population_count_op",
+    prefix = "population_count_op",
+    deps = MATH_DEPS,
 )
 
 tf_kernel_library(
@@ -4266,9 +4307,11 @@ filegroup(
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_less.cc",
+        "cwise_op_less_equal.cc",
         "cwise_op_log.cc",
         "cwise_op_logical_and.cc",
         "cwise_op_logical_not.cc",
+        "cwise_op_logical_or.cc",
         "cwise_op_maximum.cc",
         "cwise_op_minimum.cc",
         "cwise_op_mul_1.cc",
@@ -4292,6 +4335,8 @@ filegroup(
         "fake_quant_ops.cc",
         "fifo_queue.cc",
         "fused_batch_norm_op.cc",
+        "population_count_op.cc",
+        "population_count_op.h",
         "winograd_transform.h",
         ":android_extended_ops_headers",
     ] + select({
@@ -5202,6 +5247,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
