@@ -52,29 +52,75 @@ def create_examples(num_examples, input_mean):
 def create_dir_test():
   """Verifies file_io directory handling methods ."""
 
+  # Test directory creation
   starttime = int(round(time.time() * 1000))
   dir_name = "%s/tf_gcs_test_%s" % (FLAGS.gcs_bucket_url, starttime)
   print("Creating dir %s" % dir_name)
   file_io.create_dir(dir_name)
   elapsed = int(round(time.time() * 1000)) - starttime
   print("Created directory in: %d milliseconds" % elapsed)
+
   # Check that the directory exists.
   dir_exists = file_io.is_directory(dir_name)
+  assert dir_exists
   print("%s directory exists: %s" % (dir_name, dir_exists))
 
+  # Test recursive directory creation
+  starttime = int(round(time.time() * 1000))
+  recursive_dir_name = "%s/%s/%s" % (dir_name,
+                                     "nested_dir1",
+                                     "nested_dir2")
+  print("Creating recursive dir %s" % recursive_dir_name)
+  file_io.recursive_create_dir(recursive_dir_name)
+  elapsed = int(round(time.time() * 1000)) - starttime
+  print("Created directory recursively in: %d milliseconds" % elapsed)
+
+  # Check that the directory exists.
+  recursive_dir_exists = file_io.is_directory(recursive_dir_name)
+  assert recursive_dir_exists
+  print("%s directory exists: %s" % (recursive_dir_name, recursive_dir_exists))
+
   # List contents of just created directory.
+  num_files = 10
+  files_to_create = ["file_%d.txt" % n for n in range(num_files)]
+  for file_num in files_to_create:
+    file_name = "%s/%s" % (dir_name, file_num)
+    print("Creating file %s." % file_name)
+    file_io.write_string_to_file(file_name, "test file.")
+
   print("Listing directory %s." % dir_name)
   starttime = int(round(time.time() * 1000))
-  print(file_io.list_directory(dir_name))
+  directory_contents = file_io.list_directory(dir_name)
+  print(directory_contents)
   elapsed = int(round(time.time() * 1000)) - starttime
   print("Listed directory %s in %s milliseconds" % (dir_name, elapsed))
+  assert set(directory_contents) == set(files_to_create + ["nested_dir1/"])
 
-  # Delete directory.
-  print("Deleting directory %s." % dir_name)
+  # Test directory renaming
+  dir_to_rename = "%s/old_dir" % dir_name
+  new_dir_name = "%s/new_dir" %dir_name
+  file_io.create_dir(dir_to_rename)
+  assert file_io.is_directory(dir_to_rename)
+  assert not file_io.is_directory(new_dir_name)
+
+  starttime = int(round(time.time() * 1000))
+  print("Will try renaming directory %s to %s" % (dir_to_rename, new_dir_name))
+  file_io.rename(dir_to_rename, new_dir_name)
+  elapsed = int(round(time.time() * 1000)) - starttime
+  print("Renamed directory %s to %s in %s milliseconds" % (
+      dir_to_rename, new_dir_name, elapsed))
+  assert not file_io.is_directory(dir_to_rename)
+  assert file_io.is_directory(new_dir_name)
+
+  # Test Delete directory recursively.
+  print("Deleting directory recursively %s." % dir_name)
   starttime = int(round(time.time() * 1000))
   file_io.delete_recursively(dir_name)
   elapsed = int(round(time.time() * 1000)) - starttime
-  print("Deleted directory %s in %s milliseconds" % (dir_name, elapsed))
+  dir_exists = file_io.is_directory(dir_name)
+  assert not dir_exists
+  print("Deleted directory recursively %s in %s milliseconds" % (
+      dir_name, elapsed))
 
 def create_object_test():
   """Verifies file_io's object manipulation methods ."""
@@ -83,22 +129,56 @@ def create_object_test():
   print("Creating dir %s." % dir_name)
   file_io.create_dir(dir_name)
 
-  # Create a file in this directory.
-  file_name = "%s/test_file.txt" % dir_name
-  print("Creating file %s." % file_name)
-  file_io.write_string_to_file(file_name, "test file creation.")
+  num_files = 5
+  # Create a files of 2 different patterns in this directory.
+  files_pattern_1 = ["%s/test_file_%d.txt" % (dir_name, n)
+                     for n in range(num_files)]
+  files_pattern_2 = ["%s/testfile%d.txt" % (dir_name, n)
+                     for n in range(num_files)]
 
+  starttime = int(round(time.time() * 1000))
+  files_to_create = files_pattern_1 + files_pattern_2
+  for file_name in files_to_create:
+    print("Creating file %s." % file_name)
+    file_io.write_string_to_file(file_name, "test file creation.")
+  elapsed = int(round(time.time() * 1000)) - starttime
+  print("Created %d files in %s milliseconds" % (len(files_to_create), elapsed))
+
+  # Listing files of pattern1
   list_files_pattern = "%s/test_file*.txt" % dir_name
   print("Getting files matching pattern %s." % list_files_pattern)
+  starttime = int(round(time.time() * 1000))
   files_list = file_io.get_matching_files(list_files_pattern)
+  elapsed = int(round(time.time() * 1000)) - starttime
+  print("Listed files in %s milliseconds" % elapsed)
   print(files_list)
+  assert set(files_list) == set(files_pattern_1)
 
-  assert len(files_list) == 1
-  assert files_list[0] == file_name
+  # Listing files of pattern2
+  list_files_pattern = "%s/testfile*.txt" % dir_name
+  print("Getting files matching pattern %s." % list_files_pattern)
+  starttime = int(round(time.time() * 1000))
+  files_list = file_io.get_matching_files(list_files_pattern)
+  elapsed = int(round(time.time() * 1000)) - starttime
+  print("Listed files in %s milliseconds" % elapsed)
+  print(files_list)
+  assert set(files_list) == set(files_pattern_2)
 
-  # Cleanup test files.
-  print("Deleting file %s." % file_name)
-  file_io.delete_file(file_name)
+  # Test renaming file
+  file_to_rename = "%s/oldname.txt" % dir_name
+  file_new_name = "%s/newname.txt" % dir_name
+  file_io.write_string_to_file(file_to_rename, "test file.")
+  assert file_io.file_exists(file_to_rename)
+  assert not file_io.file_exists(file_new_name)
+
+  print("Will try renaming file %s to %s" % (file_to_rename, file_new_name))
+  starttime = int(round(time.time() * 1000))
+  file_io.rename(file_to_rename, file_new_name)
+  elapsed = int(round(time.time() * 1000)) - starttime
+  print("File %s renamed to %s in %s milliseconds" % (
+      file_to_rename, file_new_name, elapsed))
+  assert not file_io.file_exists(file_to_rename)
+  assert file_io.file_exists(file_new_name)
 
   # Delete directory.
   print("Deleting directory %s." % dir_name)
