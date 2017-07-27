@@ -268,6 +268,9 @@ StatusOr<bool> BatchNormRewriter::Run(HloModule* module) {
   // module, invalidating iteration.
   std::vector<HloComputation*> computations;
   for (auto& comp : module->computations()) {
+    if (comp->IsFusionComputation()) {
+      continue;
+    }
     computations.push_back(comp.get());
   }
   for (auto& comp : computations) {

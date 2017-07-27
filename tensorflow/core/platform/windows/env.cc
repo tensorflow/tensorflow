@@ -172,4 +172,21 @@ Env* Env::Default() {
   return default_env;
 }
 
+void Env::GetLocalTempDirectories(std::vector<string>* list) {
+  list->clear();
+  // On windows we'll try to find a directory in this order:
+  //   C:/Documents & Settings/whomever/TEMP (or whatever GetTempPath() is)
+  //   C:/TMP/
+  //   C:/TEMP/
+  //   C:/WINDOWS/ or C:/WINNT/
+  //   .
+  char tmp[MAX_PATH];
+  // GetTempPath can fail with either 0 or with a space requirement > bufsize.
+  // See http://msdn.microsoft.com/en-us/library/aa364992(v=vs.85).aspx
+  DWORD n = GetTempPathA(MAX_PATH, tmp);
+  if (n > 0 && n <= MAX_PATH) list->push_back(tmp);
+  list->push_back("C:\\tmp\\");
+  list->push_back("C:\\temp\\");
+}
+
 }  // namespace tensorflow

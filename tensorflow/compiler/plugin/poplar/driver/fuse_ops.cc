@@ -26,54 +26,78 @@ static bool IsTruncatedNormalWhile(HloInstruction* inst) {
 }
 
 static bool IsConstantZero(HloInstruction* inst) {
-  return inst->literal().IsAll(0);
+  return inst->literal().IsAllFloat(0.0);
 }
+
+static bool IsConstantHalf(HloInstruction* inst) {
+  return inst->literal().IsAllFloat(0.5);
+}
+
+static bool IsPoplarConvolution(HloInstruction* inst) {
+  return inst->to_apply()->name().substr(0, 15) == "pop_convolution";
+}
+
+/*
+ * Note about constructing these patterns.  Due to the behaviour of the fuser
+ * there must be no backward references.  All nodes should appear after any
+ * other nodes that refer to them.
+ */
 
 static const std::vector<HloMatcherPattern> patterns = {
   // dynamic update slice with constant coordinate
-  {{HloOpcode::kDynamicUpdateSlice, nullptr, {-1, -1, 1}},
-   {HloOpcode::kConstant, nullptr, {}}},
+  {{HloOpcode::kDynamicUpdateSlice, true, nullptr, {-1, -1, 1}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
 
   // dynamic slice with constant coordinate
-  {{HloOpcode::kDynamicSlice, nullptr, {-1, 1}},
-   {HloOpcode::kConstant, nullptr, {}}},
+  {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
 
   // Truncated normal
-  {{HloOpcode::kWhile, IsTruncatedNormalWhile, {1}},
-   {HloOpcode::kRng, nullptr, {}}},
+  {{HloOpcode::kWhile, true, IsTruncatedNormalWhile, {1}},
+   {HloOpcode::kRng, true, nullptr, {}}},
 
   // Relu
-  {{HloOpcode::kMaximum, nullptr, {-1, 1}},
-   {HloOpcode::kConstant, IsConstantZero, {}}},
+  {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
+   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+
+  // Sigmoid
+  {{HloOpcode::kAdd, true, nullptr, {4, 1}},
+   {HloOpcode::kMultiply, true, nullptr, {4, 2}},
+   {HloOpcode::kTanh, true, nullptr, {3}},
+   {HloOpcode::kMultiply, true, nullptr, {4, -1}},
+   {HloOpcode::kConstant, true, IsConstantHalf, {}}},
+
+  // BiasAdd on convolution (explicit broadcast)
+  {{HloOpcode::kAdd, true, nullptr, {1, 2}},
+   {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}},
+   {HloOpcode::kBroadcast, true, nullptr, {-1}}},
+
+  // BiasAdd on convolution (implicit broadcast)
+  {{HloOpcode::kAdd, true, nullptr, {1, -1}},
+   {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}}},
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}
 
 ReplacedInstructions FuseOps::ReplaceNodes(unsigned int pattern,
                                            const HloMatcherMatched& match) {
+  auto* comp = match.computation;
+  HloInstruction* fused = comp->CreateFusionInstruction(
+          match.instructions,
+          HloInstruction::FusionKind::kCustom);
+
+  fused->set_fusion_custom_tag(pattern);
+
   ReplacedInstructions replaced;
 
-  HloInstruction* inst = match.instructions[0];
-
-  HloInstruction* fusion_instruction =
-      match.computation->AddInstruction(
-          HloInstruction::CreateFusion(inst->shape(),
-                                       HloInstruction::FusionKind::kCustom,
-                                       inst));
-
-  if (!match.computation->ReplaceInstruction(inst, fusion_instruction).ok()) {
-    return replaced;
+  std::set<HloInstruction*> remaining;
+  for (auto& i : comp->instructions()) {
+    remaining.insert(i.get());
   }
 
-  replaced.push_back(inst);
-
-  for (unsigned int i=1; i<match.instructions.size(); i++) {
-    fusion_instruction->FuseInstruction(match.instructions[i]);
-    if (match.instructions[i]->user_count() == 0) {
-      if (!match.computation->RemoveInstruction(match.instructions[i]).ok()) {
-        return replaced;
-      }
-      replaced.push_back(match.instructions[i]);
+  for (auto inst : match.instructions) {
+    if (remaining.count(inst) == 0) {
+      replaced.push_back(inst);
     }
   }
 

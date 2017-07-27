@@ -131,7 +131,8 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param_name)
         for param, param_name in zip(params, param_names)
     ]
-    super(RNNParamsSaveable, self).__init__(None, specs, name)
+    super(RNNParamsSaveable, self).__init__(
+        param_variables[0], specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
     if (self._cudnn_rnn.direction == CUDNN_RNN_UNIDIRECTION and

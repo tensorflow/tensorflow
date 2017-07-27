@@ -127,11 +127,10 @@ void BaseRendezvousMgr::CleanupAll() {
   }
 }
 
-BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
-                                           bool tolerate_dup_recv)
+BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id)
     : env_(env),
       step_id_(step_id),
-      local_(NewLocalRendezvous(tolerate_dup_recv)),
+      local_(NewLocalRendezvous()),
       session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {

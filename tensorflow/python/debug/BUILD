@@ -23,7 +23,6 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 py_library(
     name = "debug_py",
@@ -64,18 +63,13 @@ py_library(
     ],
 )
 
-tf_gen_op_wrapper_py(
-    name = "debug_ops",
-    deps = ["//tensorflow/core:debug_ops_op_lib"],
-)
-
 py_library(
     name = "debug_gradients",
     srcs = ["lib/debug_gradients.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":debug_data",
-        ":debug_ops",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
         "@six_archive//:six",
@@ -804,9 +798,10 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
-        "no_oss",  # b/62956105: port conflicts.
+        "no_windows",
         "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
+        "oss_serial",
     ],
 )
 
@@ -831,7 +826,8 @@ cuda_py_test(
     ],
     data = ["//tensorflow/tools/dist_test/server:grpc_tensorflow_server"],
     tags = [
-        "no_oss",  # b/62956105: port conflicts + Incompatible with bazel_pip.
+        "no_oss",  # Incompatible with bazel_pip.
+        "no_windows",
         "nomac",  # TODO(cais): Install of futures and grpcio on all macs.
         "notsan",
     ],

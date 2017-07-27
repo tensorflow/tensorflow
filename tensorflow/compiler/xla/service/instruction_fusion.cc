@@ -69,6 +69,7 @@ namespace xla {
     case HloOpcode::kReverse:
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
+    case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
@@ -210,8 +211,17 @@ bool InstructionFusion::CanFuseOnAllPaths(
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
+
+  std::vector<HloComputation*> computations;
   for (auto& computation : module->computations()) {
-    computation_ = computation.get();
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
+    computations.push_back(computation.get());
+  }
+  for (auto& computation : computations) {
+    CHECK(!computation->IsFusionComputation());
+    computation_ = computation;
 
     // We want to be able to remove arbitrary instructions from the post order
     // and also compare positions of instructions in the post order. To make

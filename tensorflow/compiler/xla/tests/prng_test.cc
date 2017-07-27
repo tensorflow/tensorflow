@@ -68,13 +68,12 @@ void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
   auto shape = ShapeUtil::MakeShape(U32, dims);
   builder.RngBernoulli(builder.ConstantR0<float>(p), shape);
 
-  TF_ASSIGN_OR_ASSERT_OK(auto computation, builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
   ExecutionOptions execution_options = execution_options_;
   execution_options.set_seed(42);
-  TF_ASSIGN_OR_ASSERT_OK(
-      auto actual,
-      client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                  &execution_options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto actual, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                               &execution_options));
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
   int32 sum = 0;
   actual->EachCell<uint32>(
@@ -167,22 +166,21 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
       Literal::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
-  TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> param0_data,
-                         client_->TransferToServer(*param0_literal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> param0_data,
+                          client_->TransferToServer(*param0_literal));
 
   auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
   auto fn = build_sum_rng(builder);
   builder.Map({param0}, fn);
 
-  TF_ASSIGN_OR_ASSERT_OK(auto computation, builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 
   ExecutionOptions execution_options = execution_options_;
   execution_options.set_seed(125);
-  TF_ASSIGN_OR_ASSERT_OK(
-      auto actual,
-      client_->ExecuteAndTransfer(computation,
-                                  /*arguments=*/{param0_data.get()},
-                                  &execution_options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto actual, client_->ExecuteAndTransfer(
+                       computation,
+                       /*arguments=*/{param0_data.get()}, &execution_options));
 
   EXPECT_EQ(actual->f32s_size(), param0_literal->f32s_size());
   for (int i = 0; i < param0_literal->f32s_size(); ++i) {
@@ -213,39 +211,35 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
 
   std::unique_ptr<Literal> result1;
   {
-    TF_ASSIGN_OR_ASSERT_OK(auto computation, build_computation());
-    TF_ASSIGN_OR_ASSERT_OK(
-        result1,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    &execution_options1));
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    TF_ASSERT_OK_AND_ASSIGN(
+        result1, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options1));
   }
   std::unique_ptr<Literal> result2;
   std::unique_ptr<Literal> result3;
   {
-    TF_ASSIGN_OR_ASSERT_OK(auto computation, build_computation());
-    TF_ASSIGN_OR_ASSERT_OK(
-        result2,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    &execution_options1));
-    TF_ASSIGN_OR_ASSERT_OK(
-        result3,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    &execution_options1));
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    TF_ASSERT_OK_AND_ASSIGN(
+        result2, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options1));
+    TF_ASSERT_OK_AND_ASSIGN(
+        result3, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options1));
   }
 
   std::unique_ptr<Literal> result4;
   std::unique_ptr<Literal> result5;
   std::unique_ptr<Literal> result6;
   {
-    TF_ASSIGN_OR_ASSERT_OK(auto computation, build_computation());
-    TF_ASSIGN_OR_ASSERT_OK(
-        result4,
-        client_->ExecuteAndTransfer(computation, /*arguments=*/{},
-                                    &execution_options2));
-    TF_ASSIGN_OR_ASSERT_OK(
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, build_computation());
+    TF_ASSERT_OK_AND_ASSIGN(
+        result4, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options2));
+    TF_ASSERT_OK_AND_ASSIGN(
         result5, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                              &execution_options_));
-    TF_ASSIGN_OR_ASSERT_OK(
+    TF_ASSERT_OK_AND_ASSIGN(
         result6, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                              &execution_options_));
   }

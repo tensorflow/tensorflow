@@ -25,6 +25,15 @@ class HloComputation;
 
 namespace poplarplugin {
 
+static const unsigned int FUSED_SLICE_UPDATE = 0;
+static const unsigned int FUSED_SLICE = 1;
+static const unsigned int FUSED_TRUNCATED_NORMAL = 2;
+static const unsigned int FUSED_RELU = 3;
+static const unsigned int FUSED_SIGMOID = 4;
+static const unsigned int FUSED_BIASADD_BROADCAST = 5;
+static const unsigned int FUSED_BIASADD = 6;
+
+
 struct CompilerResources;
 
 using TensorMap = std::map<std::pair<std::string, int64>, poplar::Tensor>;
@@ -160,6 +169,13 @@ CreateConv2D(poplar::Graph &graph,
              TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
+CreateBiasAddOp(poplar::Graph &graph,
+                CompilerResources& res,
+                const HloInstruction *inst,
+                const xla::Shape& output_shape,
+                TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
 CreateRandomOp(poplar::Graph &graph,
                CompilerResources& res,
                const HloInstruction *inst,
@@ -193,6 +209,13 @@ CreateReluOp(poplar::Graph &graph,
              const HloInstruction *inst,
              const xla::Shape& output_shape,
              TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
+CreateSigmoidOp(poplar::Graph &graph,
+                CompilerResources& res,
+                const HloInstruction *inst,
+                const xla::Shape& output_shape,
+                TensorMap& tensor_map);
 
 /* Optimization tests */
 

@@ -45,9 +45,8 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-
-bool TF_Tensor_DecodeStrings(TF_Tensor* src, Tensor* dst, TF_Status* status);
-TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src);
+TF_Tensor* TF_TensorFromTensor(const Tensor& src);
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 namespace {
 
@@ -146,19 +145,16 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
       src.flat<string>()(i) = data[i];
     }
-    TF_Tensor* dst = TF_Tensor_EncodeStrings(src);
+    TF_Tensor* dst = TF_TensorFromTensor(src);
 
     // Convert back to a C++ Tensor and ensure we get expected output.
-    TF_Status* status = TF_NewStatus();
     Tensor output;
-    ASSERT_TRUE(TF_Tensor_DecodeStrings(dst, &output, status)) << line;
-    ASSERT_EQ(TF_OK, TF_GetCode(status)) << line;
+    ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
       ASSERT_EQ(data[i], output.flat<string>()(i)) << line;
     }
 
-    TF_DeleteStatus(status);
     TF_DeleteTensor(dst);
   }
 }
@@ -918,7 +914,7 @@ TEST(CAPI, SavedModel) {
   TF_Operation* input_op =
       TF_GraphOperationByName(graph, input_op_name.c_str());
   ASSERT_TRUE(input_op != nullptr);
-  csession.SetInputs({{input_op, TF_Tensor_EncodeStrings(input)}});
+  csession.SetInputs({{input_op, TF_TensorFromTensor(input)}});
 
   const tensorflow::string output_op_name =
       tensorflow::ParseTensorName(output_name).first.ToString();
@@ -1636,6 +1632,39 @@ TEST_F(CApiAttributesTest, Tensor) {
   TF_DeleteTensor(value);
 }
 
+TEST_F(CApiAttributesTest, StringTensor) {
+  // Create the string-Tensor "atttribute" value.
+  char encoded[] = {
+      0,   0, 0, 0, 0, 0, 0, 0,  // array[uint64] offsets
+      1,                         // varint encoded string length
+      'A',
+  };
+  auto deallocator = [](void* data, size_t len, void* arg) {};
+  unique_tensor_ptr t_in(TF_NewTensor(TF_STRING, nullptr, 0, &encoded[0],
+                                      sizeof(encoded), deallocator, nullptr),
+                         TF_DeleteTensor);
+
+  // Create a TF_Operation with the attribute t_in
+  auto desc = init("tensor");
+  TF_SetAttrTensor(desc, "v", t_in.get(), s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Fetch the attribute back.
+  EXPECT_TF_META("v", -1, TF_ATTR_TENSOR, -1);
+  TF_Tensor* t_out = nullptr;
+  TF_OperationGetAttrTensor(oper, "v", &t_out, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(TF_STRING, TF_TensorType(t_out));
+  EXPECT_EQ(0, TF_NumDims(t_out));
+  ASSERT_EQ(TF_TensorByteSize(t_in.get()), TF_TensorByteSize(t_out));
+  EXPECT_EQ(0, memcmp(TF_TensorData(t_in.get()), TF_TensorData(t_out),
+                      TF_TensorByteSize(t_out)));
+  TF_DeleteTensor(t_out);
+}
+
 TEST_F(CApiAttributesTest, TensorList) {
   const char tensor1[] = {5, 7};
   const int64_t dims1[] = {1, 2};
@@ -1647,7 +1676,8 @@ TEST_F(CApiAttributesTest, TensorList) {
 
   auto desc = init("list(tensor)");
   TF_Tensor* tmp[] = {
-      Int8Tensor(dims1, ndims1, tensor1), Int8Tensor(dims2, ndims2, tensor2),
+      Int8Tensor(dims1, ndims1, tensor1),
+      Int8Tensor(dims2, ndims2, tensor2),
   };
   TF_SetAttrTensorList(desc, "v", tmp, TF_ARRAYSIZE(tmp), s_);
   for (int i = 0; i < TF_ARRAYSIZE(tmp); ++i) {

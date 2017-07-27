@@ -21,54 +21,34 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-class OutlineCandidateFinder : public DfsHloVisitorWithDefault {
-public:
-  explicit OutlineCandidateFinder() {}
-
-  Status DefaultAction(HloInstruction *) override {
-    return Status::OK();
-  }
-
-  Status HandleConvolution(
-          HloInstruction *convolution,
-          HloInstruction *lhs_instruction,
-          HloInstruction *rhs_instruction,
-          const Window &window) override {
-    candidates_.push_back(convolution);
-    return Status::OK();
-  }
-
-  Status HandleDot(HloInstruction *dot, HloInstruction *lhs,
-                   HloInstruction *rhs) override {
-    candidates_.push_back(dot);
-    return Status::OK();
-  }
-
-  std::vector<HloInstruction *> candidates_;
+static const char* names[] = {
+  "pop_convolution",
 };
 
-StatusOr<bool> Outliner::Run(HloModule *module) {
-  OutlineCandidateFinder visitor;
-  TF_RETURN_IF_ERROR(
-          module->entry_computation()->root_instruction()->Accept(&visitor));
+static const std::vector<HloMatcherPattern> patterns = {
 
-  for (HloInstruction *top : visitor.candidates_) {
-    std::vector < HloInstruction * > to_replace;
-    to_replace.push_back(top);
-    if (top->user_count() == 1) {
-      for (HloInstruction *inst = top->users()[0];
-           inst->user_count() == 1 && inst->IsElementwise() &&
-           to_replace.size() < max_outlined_instructions_;
-           inst = inst->users()[0]) {
-        to_replace.push_back(inst);
-      }
-    }
+  // Stand-alone convolution
+  {{HloOpcode::kConvolution, true, nullptr, {-1, -1}}},
 
-    module->OutlineExpressionFromComputation(to_replace,
-                                             top->name(),
-                                             module->entry_computation());
-  }
-  return visitor.candidates_.size() > 0;
+};
+
+Outliner::Outliner() : HloMatcher(patterns, true) {}
+
+ReplacedInstructions Outliner::ReplaceNodes(unsigned int pattern,
+                                            const HloMatcherMatched& match) {
+
+  HloModule* module = match.computation->parent();
+
+  std::vector<HloInstruction*> reversed(match.instructions.begin(),
+                                       match.instructions.end());
+
+  std::reverse(reversed.begin(), reversed.end());
+
+  module->OutlineExpressionFromComputation(reversed,
+                                           names[pattern],
+                                           module->entry_computation());
+
+  return match.instructions;
 }
 
 }

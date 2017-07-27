@@ -57,11 +57,19 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
     for (unsigned int i=0; i<node.operands.size(); i++) {
       int n = node.operands[i];
       if (n == -1) continue;
-      if (n <= node_num) continue;
+      if (n <= node_num) return false;
 
       match.instructions[n] = inst->mutable_operand(i);
     }
   }
+
+  ReplacedInstructions replaced;
+  for (unsigned int node_num=0; node_num < pattern.size(); node_num++) {
+    if (pattern[node_num].include_in_replacement) {
+      replaced.push_back(match.instructions[node_num]);
+    }
+  }
+  match.instructions = std::move(replaced);
 
   return true;
 }
