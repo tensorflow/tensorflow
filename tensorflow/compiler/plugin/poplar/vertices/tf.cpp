@@ -208,3 +208,86 @@ WINDOWED_SELECTION(SelectionGe, >=)
 WINDOWED_SELECTION(SelectionGt, >)
 WINDOWED_SELECTION(SelectionLe, <=)
 WINDOWED_SELECTION(SelectionLt, <)
+
+// Dynamic slicing
+
+int calculateIndex(const std::vector<int>& index,
+                   const Vector<int>& base,
+                   const Vector<int>& shape) {
+  int v=0;
+  for (int i=0; i<shape.size(); i++) {
+    v *= shape[i];
+    v += (index[i] + base[i]);
+  }
+  return v;
+}
+
+template<typename T>
+class DynamicSlice : public Vertex {
+public:
+  Input<Vector<T>> in;
+  Input<Vector<int>> index_base;
+  Output<Vector<T>> out;
+
+  Vector<int> in_shape;
+  Vector<int> out_shape;
+
+  bool compute() {
+
+    std::vector<int> pos(in_shape.size());
+    for (int i=0; i<out.size(); i++) {
+
+      int input_index = calculateIndex(pos, index_base, out_shape);
+      out[i] = in[input_index];
+
+      // Advance the element
+      for (int d=in_shape.size()-1; d>=0; d--) {
+        pos[d]++;
+        if (pos[d] < in_shape[d]) break;
+        pos[d] = 0;
+      }
+    }
+    return true;
+  }
+
+  int getCycleEstimate() const { return 1; }
+};
+
+template class DynamicSlice<float>;
+template class DynamicSlice<half>;
+template class DynamicSlice<int>;
+
+
+template<typename T>
+class DynamicUpdateSlice : public Vertex {
+public:
+  InOut<Vector<T>> in;
+  Input<Vector<T>> update;
+  Input<Vector<int>> index_base;
+
+  Vector<int> in_shape;
+  Vector<int> update_shape;
+
+  bool compute() {
+    std::vector<int> pos(in_shape.size());
+    for (int i=0; i<update.size(); i++) {
+
+      int output_index = calculateIndex(pos, index_base, update_shape);
+      in[output_index] = update[i];
+
+      // Advance the element
+      for (int d=in_shape.size()-1; d>=0; d--) {
+        pos[d]++;
+        if (pos[d] < in_shape[d]) break;
+        pos[d] = 0;
+      }
+    }
+    return true;
+  }
+
+  int getCycleEstimate() const { return 1; }
+};
+
+template class DynamicUpdateSlice<float>;
+template class DynamicUpdateSlice<half>;
+template class DynamicUpdateSlice<int>;

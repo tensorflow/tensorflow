@@ -311,6 +311,37 @@ Status FullVisitor::HandleSlice(
   return Status::OK();
 }
 
+Status FullVisitor::HandleDynamicSlice(
+        HloInstruction* inst,
+        HloInstruction* operand,
+        HloInstruction* start_indices) {
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(prog,
+                      CreateDynamicSliceOp(*graph_,
+                                           resources_,
+                                           inst,
+                                           GetOutputShape(inst),
+                                           tensor_map));
+  sequence.add(prog);
+  return Status::OK();
+}
+
+Status FullVisitor::HandleDynamicUpdateSlice(
+        HloInstruction* inst,
+        HloInstruction* operand,
+        HloInstruction* update,
+        HloInstruction* start_indices) {
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(prog,
+                      CreateDynamicSliceUpdateOp(*graph_,
+                                                 resources_,
+                                                 inst,
+                                                 GetOutputShape(inst),
+                                                 tensor_map));
+  sequence.add(prog);
+  return Status::OK();
+}
+
 Status FullVisitor::HandleTuple(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
