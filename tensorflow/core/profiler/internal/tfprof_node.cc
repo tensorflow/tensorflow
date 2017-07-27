@@ -25,7 +25,7 @@ bool CountAsAcceleratorTime(const string& device) {
 }
 
 bool CountAsCPUTime(const string& device) {
-  return RE2::FullMatch(device, ".*/(gpu|cpu):\\d+");
+  return RE2::FullMatch(device, ".*/(device:gpu|cpu):\\d+");
 }
 
 bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
@@ -133,7 +133,7 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
   // See run_metadata_test.py
   // It can be /job:0/replica:0/xxxx/device:GPU:0, or simply /device:GPU:0.
   // It can has some ad-hoc suffix, such as /stream:xx or /memcpy:xx.
-  if (IsCanonicalDevice(device)) {
+  if (IsCanonicalDevice(dev)) {
     if (!canonical_device_.empty()) {
       if (canonical_device_ != dev) {
         fprintf(stderr, "Unexpected: graph node changed device: %s->%s.\n",
@@ -143,7 +143,7 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
     } else {
       canonical_device_ = dev;
       // TODO(xpan): Support things other than gpu?
-      host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
+      host_device_ = StringReplace(dev, "device:gpu:\\d+", "cpu:0");
       AddOpType(canonical_device_);
     }
   }
