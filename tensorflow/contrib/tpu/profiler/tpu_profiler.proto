@@ -13,7 +13,8 @@ service TPUProfiler {
 
 message ProfileRequest {
   // In future, the caller will be able to customize when profiling starts and
-  // stops. For now, it always collects 10 seconds worth of data.
+  // stops. For now, it collects `duration_ms` milliseconds worth of data.
+  uint64 duration_ms = 1;
 
   // In future, the caller will indicate which TF session is being profiled, and
   // only data relating to that program will be returned. For now, we assume

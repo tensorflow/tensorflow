@@ -638,6 +638,27 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
       metadata, fusion->fused_expression_root()->operand(0)->metadata()));
 }
 
+TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
+  HloComputation::Builder builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2<float>({
+          {1, 2},
+          {3, 4},
+      })));
+  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
+  auto outfeed10 = builder.AddInstruction(
+      HloInstruction::CreateOutfeed(shape10, constant, ""));
+  auto outfeed01 = builder.AddInstruction(
+      HloInstruction::CreateOutfeed(shape01, constant, ""));
+
+  auto clone01 = builder.AddInstruction(outfeed01->Clone());
+  auto clone10 = builder.AddInstruction(outfeed10->Clone());
+
+  EXPECT_TRUE(ShapeUtil::Equal(clone01->outfeed_shape(), shape01));
+  EXPECT_TRUE(ShapeUtil::Equal(clone10->outfeed_shape(), shape10));
+}
+
 TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   HloComputation::Builder builder(TestName());
   // Create a fusion instruction containing a single unary operation.
