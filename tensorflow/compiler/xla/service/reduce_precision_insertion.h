@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
@@ -71,6 +72,13 @@ class ReducePrecisionInsertion : public HloPassInterface {
       const HloReducePrecisionOptions::PassTiming pass_timing,
       const int exponent_bits, const int mantissa_bits,
       const OpcodeFilterFunction& should_reduce_output_precision);
+
+  // Add ReducePrecisionInsertion passes to an HloPassPipeline based on the list
+  // of HloReducePrecisionOptions in a DebugOptions proto.  Returns true if any
+  // passes were added.
+  static bool AddPasses(
+      HloPassPipeline* pipeline, const DebugOptions& debug_options,
+      const HloReducePrecisionOptions::PassTiming pass_timing);
 
  private:
   // Parameters for the precision reduction to be added.

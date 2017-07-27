@@ -447,7 +447,7 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
                  (cheap_to_recompute_ops.count(node.op()) > 0 ||
                   node.attr().count(kRecomputeHint) > 0);
         });
-  } else {  // optimization_level == RewriterConfig::MANUAL
+  } else if (optimization_level == RewriterConfig::MANUAL) {
     recomputed_subgraphs =
         GetOpGroupsToRecompute(graph, node_map, [&feeds](const NodeDef& node) {
           return !IsTargetOp(node) && feeds.count(node.name()) == 0 &&
