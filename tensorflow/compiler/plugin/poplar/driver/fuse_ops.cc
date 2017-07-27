@@ -34,7 +34,7 @@ static bool IsConstantHalf(HloInstruction* inst) {
 }
 
 static bool IsPoplarConvolution(HloInstruction* inst) {
-  return inst->to_apply()->name() == "pop_convolution";
+  return inst->to_apply()->name().substr(0, 15) == "pop_convolution";
 }
 
 /*

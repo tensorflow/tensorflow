@@ -22,7 +22,7 @@ plugins = {
     "device":"XLA_IPU",
     "types":"DT_FLOAT,DT_INT32,DT_INT64",
     "tags":[],
-    "disabled": ["conv3d_test","tensor_array_ops_test","stack_ops_test"],
+    "disabled": ["conv3d_test","tensor_array_ops_test","stack_ops_test","segment_reduction_ops_test"],
   },
   "executor": {
     "device":"XLA_EXEC",
