@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
 GTEST_API_ int main(int argc, char** argv) {

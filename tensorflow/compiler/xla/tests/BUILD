@@ -41,6 +41,7 @@ cc_library(
     srcs = ["xla_internal_test_main.cc"],
     deps = [
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
 )
