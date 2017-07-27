@@ -62,8 +62,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":repeat_py",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:gradient_checker",
         "//tensorflow/python:gradients",
         "//tensorflow/python:platform_test",
