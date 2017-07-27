@@ -18,7 +18,7 @@ limitations under the License.
 GTEST_API_ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  auto usage = tensorflow::Flags::Usage(argv[0], flag_list);
   if (!tensorflow::Flags::Parse(&argc, argv, flag_list)) {
     LOG(ERROR) << "\n" << usage;
     return 2;
