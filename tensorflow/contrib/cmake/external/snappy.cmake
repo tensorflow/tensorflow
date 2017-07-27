@@ -21,8 +21,6 @@ set(snappy_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
 
 if(WIN32)
     set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/$(Configuration)/snappy.lib)
-else()
-    set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/libsnappy.a)
 endif()
 
 set(snappy_HEADERS
