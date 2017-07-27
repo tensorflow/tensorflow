@@ -2177,6 +2177,7 @@ cuda_py_test(
         ":dtypes",
         ":framework_test_lib",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
