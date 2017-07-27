@@ -248,7 +248,7 @@ class EinsumTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError,
         'invalid keyword arguments for this function: invalid1, invalid2'):
       _ = special_math_ops.einsum('ij,jk->ik', m0, m1, name="name",
-                                  invalid1="invalid1", invalid2="invalid2")
+                                  invalid1="value1", invalid2="value2")
 
   def test_dim_mismatch(self):
     for axes, input_shapes in self.dim_mismatch_cases:
