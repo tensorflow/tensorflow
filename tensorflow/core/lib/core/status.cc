@@ -128,8 +128,7 @@ string* TfCheckOpHelperOutOfLine(const ::tensorflow::Status& v,
   r += msg;
   r += " status: ";
   r += v.ToString();
-  // Leaks string but this is only to be used in a fatal error message
-  return new string(r);
+  return r;
 }
 
 }  // namespace tensorflow
