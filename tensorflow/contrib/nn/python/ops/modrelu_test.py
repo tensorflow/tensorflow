@@ -24,41 +24,43 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 class ModreluTest(test.TestCase):
-  def test_tensor(self):
+
+  def testModRelu(self):
     with self.test_session() as sess:
-      inp_re = constant_op.constant(
+      input_real = constant_op.constant(
           [
               [2.5, 0.5, 0.3, 0.4],
               [0.7, 0, -0.3, 0.2]
           ]
       )
-      inp_im = constant_op.constant(
+      input_imag = constant_op.constant(
           [
               [0.2, 0.0, 0.5, 0.7],
               [0.5, -2.5, 0.0, 0.8]
           ]
       )
-      inp = math_ops.complex(inp_re, inp_im)
+      input_complex = math_ops.complex(input_real, input_imag)
       biases = constant_op.constant([0.0, 1.0, 0.0, -1.0])
+      computed = sess.run(modrelu.modrelu(input_complex, biases))
 
-      target_re = constant_op.constant(
+      # Compute the expected target value.
+      target_real = constant_op.constant(
           [
               [2.5, 1.5, 0.3, 0.0],
               [0.7, 0, -0.3, 0.0]
           ]
       )
-      target_im = constant_op.constant(
+      target_imag = constant_op.constant(
           [
               [0.2, 0.0, 0.5, 0.0],
               [0.5, -3.5, 0.0, 0.0]
           ]
       )
-      target = math_ops.complex(target_re, target_im)
+      target = math_ops.complex(target_real, target_imag)
+      expected = sess.run(target)
 
-      out = sess.run(modrelu.modrelu(inp, biases))
-      tar = sess.run(target)
+      self.assertAllClose(expected, computed)
 
-      self.assertAllClose(out, tar)
 
 if __name__ == '__main__':
   test.main()
