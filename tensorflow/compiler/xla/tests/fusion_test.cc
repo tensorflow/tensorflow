@@ -522,6 +522,9 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceWindow)) {
       *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
+// When a constant (or other op) which has multiple users is imported
+// into a fusion, it should remain shared, rather than being duplicated
+// within the fusion.
 XLA_TEST_F(FusionTest, SharedConstant) {
   auto hlo_module = CreateNewModule();
 

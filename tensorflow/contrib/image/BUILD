@@ -106,7 +106,7 @@ tf_custom_op_library(
         "ops/single_image_random_dot_stereograms_ops.cc",
     ],
     deps = [
-        "@protobuf//:protobuf",
+        "@protobuf_archive//:protobuf",
     ],
 )
 

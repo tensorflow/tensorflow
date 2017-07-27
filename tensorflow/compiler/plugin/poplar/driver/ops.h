@@ -190,6 +190,13 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
                              TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
+CreateSliceUpdateOp(poplar::Graph &graph,
+                    CompilerResources& res,
+                    const HloInstruction *inst,
+                    const xla::Shape& output_shape,
+                    TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
 CreateSliceOp(poplar::Graph &graph,
               CompilerResources& res,
               const HloInstruction *inst,
@@ -197,11 +204,18 @@ CreateSliceOp(poplar::Graph &graph,
               TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
-CreateSliceUpdateOp(poplar::Graph &graph,
-                    CompilerResources& res,
-                    const HloInstruction *inst,
-                    const xla::Shape& output_shape,
-                    TensorMap& tensor_map);
+CreateDynamicSliceUpdateOp(poplar::Graph &graph,
+                           CompilerResources& res,
+                           const HloInstruction *inst,
+                           const xla::Shape& output_shape,
+                           TensorMap& tensor_map);
+
+port::StatusOr<poplar::program::Program>
+CreateDynamicSliceOp(poplar::Graph &graph,
+                     CompilerResources& res,
+                     const HloInstruction *inst,
+                     const xla::Shape& output_shape,
+                     TensorMap& tensor_map);
 
 port::StatusOr<poplar::program::Program>
 CreateReluOp(poplar::Graph &graph,

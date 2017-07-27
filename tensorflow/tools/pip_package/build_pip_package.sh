@@ -130,7 +130,7 @@ function main() {
   mkdir -p ${TMPDIR}/google
   mkdir -p ${TMPDIR}/third_party
   pushd ${RUNFILES%org_tensorflow}
-  for header in $(find protobuf -name \*.h); do
+  for header in $(find protobuf_archive -name \*.h); do
     mkdir -p "${TMPDIR}/google/$(dirname ${header})"
     cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
   done
