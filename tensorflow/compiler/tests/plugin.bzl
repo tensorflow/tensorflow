@@ -18,6 +18,11 @@
 #   git update-index --assume-unchanged tensorflow/compiler/tests/plugin.bzl
 
 plugins = {
-  #"poplar": {"device":"XLA_IPU", "types":"DT_FLOAT,DT_INT32", "tags":[]},
+  #"example": {
+  #  "device":"XLA_EXAMPLE",
+  #  "types":"DT_FLOAT,DT_INT32,DT_INT64",
+  #  "tags":[],
+  #  "disabled": ["a_test","a_n_other_test"],
+  #},
 }
 
