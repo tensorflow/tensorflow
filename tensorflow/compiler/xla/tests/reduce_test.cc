@@ -795,6 +795,25 @@ INSTANTIATE_TEST_CASE_P(
                       BoundsLayout{{2, 300, 784}, {2, 1, 0}, {1}},
                       BoundsLayout{{2, 300, 784}, {2, 1, 0}, {0}}));
 
+// TODO(b/64093391) Disabled on GPU due to an assertion failure when running
+// IrEmitterUnnested::EmitInitializer() for the Reduce operator.  Failed on
+// 2017-07-26.
+XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OperationOnConstantAsInitValue)) {
+  ComputationBuilder builder(client_, TestName());
+  Computation max_f32 = CreateScalarMaxComputation(F32, &builder);
+
+  auto a = builder.ConstantR0<float>(2.0f);
+  auto a2 = builder.Abs(a);
+
+  std::unique_ptr<Literal> b_literal = Literal::CreateR1<float>({1.0f, 4.0f});
+  std::unique_ptr<GlobalData> b_data =
+      client_->TransferToServer(*b_literal).ConsumeValueOrDie();
+  auto b = builder.Parameter(0, b_literal->shape(), "b");
+  auto max = builder.Reduce(b, a2, max_f32, {0});
+
+  ComputeAndCompareR0<float>(&builder, 4.0f, {b_data.get()});
+}
+
 }  // namespace
 }  // namespace xla
 
