@@ -18,6 +18,7 @@ cc_library(
     hdrs = [":custom_op_headers"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "@protobuf//:protobuf_headers",
     ],
     alwayslink = 1,
 )
