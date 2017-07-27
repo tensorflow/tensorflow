@@ -254,13 +254,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   HloPassPipeline pipeline("CPU");
   pipeline.AddInvariantChecker<HloVerifier>();
 
-  for (const auto& reduce_precision_options :
-       module->config().debug_options().hlo_reduce_precision_options()) {
-    if (reduce_precision_options.pass_timing() ==
-        HloReducePrecisionOptions::BEFORE_OP_FUSION) {
-      pipeline.AddPass<ReducePrecisionInsertion>(reduce_precision_options);
-    }
-  }
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, module->config().debug_options(),
+      HloReducePrecisionOptions::BEFORE_OP_FUSION);
 
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
   // where we will take this pass in future.
@@ -288,13 +284,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
 
-  for (const auto& reduce_precision_options :
-       module->config().debug_options().hlo_reduce_precision_options()) {
-    if (reduce_precision_options.pass_timing() ==
-        HloReducePrecisionOptions::AFTER_OP_FUSION) {
-      pipeline.AddPass<ReducePrecisionInsertion>(reduce_precision_options);
-    }
-  }
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, module->config().debug_options(),
+      HloReducePrecisionOptions::AFTER_OP_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout());

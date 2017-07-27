@@ -507,7 +507,7 @@ def _parse_function_details(docstring):
   pairs = list(_gen_pairs(parts[1:]))
 
   function_details = []
-  item_re = re.compile(r'^  (\w+):', re.MULTILINE)
+  item_re = re.compile(r'^  (\*?\*?\w+):', re.MULTILINE)
 
   for keyword, content in pairs:
     content = item_re.split(content)

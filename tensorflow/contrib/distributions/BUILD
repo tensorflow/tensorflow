@@ -76,6 +76,7 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:session",
     ],
+    tags = ["no_pip"],  # contrib/learn:head_test is not available in pip.
 )
 
 cuda_py_test(
