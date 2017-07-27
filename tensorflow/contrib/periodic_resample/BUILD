@@ -1,38 +1,15 @@
-package(
-    default_visibility = ["//visibility:public"],
-)
-
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+package(default_visibility = ["//visibility:public"])
 
-filegroup(
-    name = "custom_op_sources",
-    srcs = glob(
-        [
-            "core/ops/*.cc",
-            "core/kernels/*.cc",
-        ],
-        exclude = [
-            "core/ops/*_test.cc",
-            "core/kernels/*_test.cc",
-        ],
-    ),
-)
-
-filegroup(
-    name = "custom_op_headers",
-    srcs = glob(
-        [
-            "core/kernels/*.h",
-            "core/ops/*.h",
-        ],
-    ),
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_gen_op_libs",
+    "tf_py_test",
+    "tf_custom_op_library",
+    "tf_gen_op_wrapper_py"
 )
 
 cc_library(
@@ -79,4 +56,28 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "custom_op_sources",
+    srcs = glob(
+        [
+            "core/ops/*.cc",
+            "core/kernels/*.cc",
+        ],
+        exclude = [
+            "core/ops/*_test.cc",
+            "core/kernels/*_test.cc",
+        ],
+    ),
+)
+
+filegroup(
+    name = "custom_op_headers",
+    srcs = glob(
+        [
+            "core/kernels/*.h",
+            "core/ops/*.h",
+        ],
+    ),
 )
