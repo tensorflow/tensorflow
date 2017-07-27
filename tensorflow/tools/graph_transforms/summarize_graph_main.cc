@@ -24,6 +24,7 @@ limitations under the License.
 // --in_graph=my_graph.pb
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -253,6 +254,11 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
   std::map<string, int> op_counts;
   for (const NodeDef& node : graph.node()) {
     ++op_counts[node.op()];
+  }
+  for (const FunctionDef& function : graph.library().function()) {
+    for (const NodeDef& node : function.node_def()) {
+      ++op_counts[node.op()];
+    }
   }
   std::vector<std::pair<string, int>> op_counts_vec(op_counts.begin(),
                                                     op_counts.end());
