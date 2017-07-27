@@ -492,8 +492,15 @@ def _store_sparse_tensors(tensor_list, enqueue_many, keep_input,
           lambda: -1 * array_ops.ones(array_ops.shape(t)[0:1], dtypes.int64))
       out_tensor.set_shape([None])  # necessary when t.ndims is unknown
       return out_tensor
+    def _sparse_values_to_keep(t, keep_input):
+      """Convert a per-row `keep_input` vector to a per-value one."""
+      # Get the rows of every value in the sparse Tensor.
+      row_values = array_ops.reshape(
+          t.indices, [array_ops.shape(t.indices)[0], -1])[:, 0]
+      # The value should be kept iff the row should be kept.
+      return array_ops.gather(keep_input, row_values)
     if keep_input.shape.ndims == 1:
-      t = sparse_ops.sparse_retain(t, keep_input)
+      t = sparse_ops.sparse_retain(t, _sparse_values_to_keep(t, keep_input))
       store_f = lambda t, name, _: _store_many_sparse(t, shared_name=name)
     elif enqueue_many:
       store_f = _maybe_store_many_sparse
@@ -877,7 +884,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1031,7 +1038,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1086,8 +1093,8 @@ def maybe_batch_join(tensors_list, keep_input, batch_size, capacity=32,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresponding value in `keep_input` is `True`. This tensor essentially acts
-      as a filtering mechanism.
+      corresponding value in `keep_input` is `True`. This tensor essentially
+      acts as a filtering mechanism.
     batch_size: An integer. The new batch size pulled from the queue.
     capacity: An integer. The maximum number of elements in the queue.
     enqueue_many: Whether each tensor in `tensor_list_list` is a single
@@ -1176,7 +1183,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1237,8 +1244,8 @@ def maybe_shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresponding value in `keep_input` is `True`. This tensor essentially acts
-      as a filtering mechanism.
+      corresponding value in `keep_input` is `True`. This tensor essentially
+      acts as a filtering mechanism.
     num_threads: The number of threads enqueuing `tensor_list`.
     seed: Seed for the random shuffling within the queue.
     enqueue_many: Whether each tensor in `tensor_list` is a single example.
@@ -1318,7 +1325,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1379,8 +1386,8 @@ def maybe_shuffle_batch_join(tensors_list, batch_size, capacity,
       added to the queue or not.  If it is a scalar and evaluates `True`, then
       `tensors` are all added to the queue. If it is a vector and `enqueue_many`
       is `True`, then each example is added to the queue only if the
-      corresponding value in `keep_input` is `True`. This tensor essentially acts
-      as a filtering mechanism.
+      corresponding value in `keep_input` is `True`. This tensor essentially
+      acts as a filtering mechanism.
     seed: Seed for the random shuffling within the queue.
     enqueue_many: Whether each tensor in `tensor_list_list` is a single
       example.
