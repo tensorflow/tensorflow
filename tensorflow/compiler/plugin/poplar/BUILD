@@ -30,7 +30,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
@@ -80,7 +80,7 @@ cc_library(
         ":optimizers",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_poplar//poplar:poplar_headers",
     ],
@@ -310,7 +310,6 @@ test_suite(
         "allocation_finder_test",
         "batch_norm_test",
         "fuse_ops_test",
-        "outliner_test",
         "hlo_matcher_test",
     ],
 )
