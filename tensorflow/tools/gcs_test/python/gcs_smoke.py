@@ -130,7 +130,7 @@ def create_object_test():
   file_io.create_dir(dir_name)
 
   num_files = 5
-  # Create a files of 2 different patterns in this directory.
+  # Create files of 2 different patterns in this directory.
   files_pattern_1 = ["%s/test_file_%d.txt" % (dir_name, n)
                      for n in range(num_files)]
   files_pattern_2 = ["%s/testfile%d.txt" % (dir_name, n)
