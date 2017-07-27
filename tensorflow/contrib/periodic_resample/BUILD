@@ -9,7 +9,7 @@ load(
     "tf_gen_op_libs",
     "tf_py_test",
     "tf_custom_op_library",
-    "tf_gen_op_wrapper_py"
+    "tf_gen_op_wrapper_py",
 )
 
 cc_library(
@@ -24,7 +24,10 @@ cc_library(
 
 tf_custom_op_library(
     name = "python/ops/_periodic_resample_op.so",
-    srcs = [":custom_op_sources", ":custom_op_headers"],
+    srcs = [
+        ":custom_op_headers", 
+        ":custom_op_sources",
+    ],
 )
 
 py_library(
