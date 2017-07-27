@@ -310,7 +310,7 @@ tf_cc_binary(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/kernels:data_flow",
         "@grpc//:grpc++_unsecure",
-        "@protobuf//:protobuf",
+        "@protobuf_archive//:protobuf",
     ],
 )
 

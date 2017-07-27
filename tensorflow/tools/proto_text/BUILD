@@ -37,7 +37,7 @@ cc_binary(
     deps = [
         ":gen_proto_text_functions_lib",
         "//tensorflow/core:lib_proto_parsing",
-        "@protobuf//:protobuf",
+        "@protobuf_archive//:protobuf",
     ],
 )
 

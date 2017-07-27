@@ -1417,7 +1417,7 @@ cc_library(
         ],
     }),
     deps = tf_additional_lib_deps() + [
-        "@protobuf//:protobuf",
+        "@protobuf_archive//:protobuf",
         "@snappy",
         "@zlib_archive//:zlib",
         ":lib_hash_crc32c_accelerate_internal",
@@ -1573,7 +1573,7 @@ tf_cuda_library(
     deps = [
         ":framework_internal_headers_lib",
         "//third_party/eigen3",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
 )

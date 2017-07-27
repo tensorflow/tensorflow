@@ -39,7 +39,7 @@ tf_cc_binary(
         "//tensorflow/core/profiler/internal:tfprof_utils",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
         "@linenoise//:linenoise",
-        "@protobuf//:protobuf",
+        "@protobuf_archive//:protobuf",
     ],
 )
 

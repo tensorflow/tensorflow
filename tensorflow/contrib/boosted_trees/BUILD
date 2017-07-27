@@ -308,7 +308,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/contrib/boosted_trees/proto:proto_impl",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource_impl",
-        "@protobuf//:protobuf",
+        "@protobuf_archive//:protobuf",
     ],
 )
 
