@@ -1165,11 +1165,16 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     }
   }
 
+  const FunctionLibraryDefinition* flib_def = opts.flib_def;
+  if (flib_def == nullptr) {
+    flib_def = &g->flib_def();
+  }
+
   // Set versions, function library and send/recv incarnation.
   for (auto& it : *partitions) {
     GraphDef* gdef = &it.second;
     *gdef->mutable_versions() = g->versions();
-    *gdef->mutable_library() = g->flib_def().ToProto();
+    *gdef->mutable_library() = flib_def->ToProto();
 
     // Traverse the graph to fill every send/recv op's incarnation
     // information.
