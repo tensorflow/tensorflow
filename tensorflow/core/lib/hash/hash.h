@@ -77,6 +77,13 @@ struct hash<StringPiece> {
   }
 };
 
+template <typename T, typename U>
+struct hash<std::pair<T, U>> {
+  size_t operator()(const std::pair<T, U>& p) const {
+    return Hash64Combine(hash<T>()(p.first), hash<U>()(p.second));
+  }
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_LIB_HASH_HASH_H_
