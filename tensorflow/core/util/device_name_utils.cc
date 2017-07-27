@@ -86,9 +86,9 @@ static bool ConsumeNumber(StringPiece* in, int* val) {
 }
 
 // Returns a fully qualified device name given the parameters.
-static string RealName(const string& job, int replica, int task,
-                       const string& device_prefix, const string& device_type,
-                       int id) {
+static string DeviceName(const string& job, int replica, int task,
+                         const string& device_prefix, const string& device_type,
+                         int id) {
   CHECK(IsJobName(job)) << job;
   CHECK_LE(0, replica);
   CHECK_LE(0, task);
@@ -101,13 +101,13 @@ static string RealName(const string& job, int replica, int task,
 /* static */
 string DeviceNameUtils::FullName(const string& job, int replica, int task,
                                  const string& type, int id) {
-  return RealName(job, replica, task, "/device:", type, id);
+  return DeviceName(job, replica, task, "/device:", type, id);
 }
 
 /* static */
 string DeviceNameUtils::LegacyName(const string& job, int replica, int task,
                                    const string& type, int id) {
-  return RealName(job, replica, task, "/", str_util::Lowercase(type), id);
+  return DeviceName(job, replica, task, "/", str_util::Lowercase(type), id);
 }
 
 bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
