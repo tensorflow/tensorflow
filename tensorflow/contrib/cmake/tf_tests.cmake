@@ -157,7 +157,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
   if (tensorflow_BUILD_MORE_PYTHON_TESTS)
     # Adding other major packages
     file(GLOB_RECURSE tf_test_src_py
-      ${tf_test_rnn_src_py}
+      ${tf_test_src_py}
       "${tensorflow_source_dir}/tensorflow/contrib/legacy_seq2seq/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/linalg/*_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/graph_editor/*_test.py"
@@ -283,6 +283,16 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/vector_student_t_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/wishart_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/estimators/kmeans_test.py"
+      # Not tested with TF 1.3 (TODO)
+      "${tensorflow_source_dir}/tensorflow/contrib/rnn/python/kernel_tests/core_rnn_cell_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/python/kernel_tests/csiszar_divergence_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/python/kernel_tests/custom_grad_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/python/kernel_tests/monte_carlo_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/bijectors/affine_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/distribution_util_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/estimator_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/moving_stats_test.py"
+      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/vector_diffeomixture_test.py"
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
