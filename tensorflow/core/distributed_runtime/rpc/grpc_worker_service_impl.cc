@@ -58,9 +58,9 @@ namespace grpc {
 
 WorkerService::AsyncService::AsyncService() {
   for (int i = 0; i < kGrpcNumWorkerMethods; ++i) {
-    AddMethod(new ::grpc::RpcServiceMethod(
+    AddMethod(new ::grpc::internal::RpcServiceMethod(
         GrpcWorkerMethodName(static_cast<GrpcWorkerMethod>(i)),
-        ::grpc::RpcMethod::NORMAL_RPC, nullptr));
+        ::grpc::internal::RpcMethod::NORMAL_RPC, nullptr));
     ::grpc::Service::MarkMethodAsync(i);
   }
 }
