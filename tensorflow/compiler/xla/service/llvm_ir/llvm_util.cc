@@ -18,9 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/MDBuilder.h"
-#include "external/llvm/include/llvm/IR/Operator.h"
-#include "external/llvm/include/llvm/Target/TargetOptions.h"
+#include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Operator.h"
+#include "llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"

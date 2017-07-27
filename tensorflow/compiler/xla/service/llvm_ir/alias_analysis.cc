@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
-#include "external/llvm/include/llvm/IR/MDBuilder.h"
+#include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/types.h"

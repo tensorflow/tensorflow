@@ -21,10 +21,10 @@ limitations under the License.
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
