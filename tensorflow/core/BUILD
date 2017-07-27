@@ -202,6 +202,12 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+jspb_proto_library(
+    name = "protos_all_jspb_proto",
+    visibility = ["//visibility:public"],
+    deps = [":protos_all_cc"],
+)
+
 exports_files([
     "framework/types.proto",
 ])
