@@ -349,10 +349,8 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
       return llvm::CodeGenOpt::Less;
     case 2:
       return llvm::CodeGenOpt::Default;
-      break;
     case 3:
       return llvm::CodeGenOpt::Aggressive;
-      break;
     default:
       return llvm::CodeGenOpt::None;
   }
