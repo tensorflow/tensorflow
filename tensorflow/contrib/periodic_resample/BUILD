@@ -25,7 +25,7 @@ cc_library(
 tf_custom_op_library(
     name = "python/ops/_periodic_resample_op.so",
     srcs = [
-        ":custom_op_headers", 
+        ":custom_op_headers",
         ":custom_op_sources",
     ],
 )
