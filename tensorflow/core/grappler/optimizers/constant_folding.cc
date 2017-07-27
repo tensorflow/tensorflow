@@ -59,7 +59,7 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
 class DeviceSimple : public DeviceBase {
  public:
   DeviceSimple() : DeviceBase(Env::Default()) {
-    eigen_worker_threads_.num_threads = 1;
+    eigen_worker_threads_.num_threads = port::NumSchedulableCPUs();
     eigen_worker_threads_.workers = new thread::ThreadPool(
         Env::Default(), "constant_folding", eigen_worker_threads_.num_threads);
     eigen_threadpool_wrapper_.reset(
@@ -101,6 +101,8 @@ string AsControlDependency(const NodeDef& node) {
 }  // namespace
 
 ConstantFolding::ConstantFolding() {
+  resource_mgr_.reset(new ResourceMgr());
+
   ops_to_preserve_ = std::regex(
       "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|"
       "Enter|RefEnter|Exit|RefExit|NextIteration|RefNextIteration|"
@@ -346,6 +348,7 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op_kernel.get();
+  params.resource_manager = resource_mgr_.get();
 
   gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
   const int num_outputs = op_kernel->num_outputs();

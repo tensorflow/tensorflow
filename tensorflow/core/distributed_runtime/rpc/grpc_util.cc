@@ -80,9 +80,9 @@ grpc::protobuf::int64 GrpcByteBufferSource::ByteCount() const {
 void GrpcUnparseProto(const protobuf::Message& src, grpc::ByteBuffer* dst) {
   // TODO(sanjay): For bigger protos, serialize into a ZeroCopyOutputStream.
   size_t len = src.ByteSizeLong();
-  gpr_slice s = gpr_slice_malloc(len);
+  grpc_slice s = grpc_slice_malloc(len);
   src.SerializeWithCachedSizesToArray(
-      reinterpret_cast<uint8*>(GPR_SLICE_START_PTR(s)));
+      reinterpret_cast<uint8*>(GRPC_SLICE_START_PTR(s)));
   ::grpc::Slice slice(s, ::grpc::Slice::STEAL_REF);
   ::grpc::ByteBuffer buffer(&slice, 1);
   // TODO(sanjay): Use Swap() when grpc version we are using is new enough.

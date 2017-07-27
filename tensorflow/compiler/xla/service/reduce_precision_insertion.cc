@@ -92,4 +92,18 @@ HloReducePrecisionOptions ReducePrecisionInsertion::make_options_proto(
   return options;
 }
 
+bool ReducePrecisionInsertion::AddPasses(
+    HloPassPipeline* pipeline, const DebugOptions& debug_options,
+    const HloReducePrecisionOptions::PassTiming pass_timing) {
+  bool passes_added = false;
+  for (const auto& pass_options :
+       debug_options.hlo_reduce_precision_options()) {
+    if (pass_options.pass_timing() == pass_timing) {
+      pipeline->AddPass<ReducePrecisionInsertion>(pass_options);
+      passes_added = true;
+    }
+  }
+  return passes_added;
+}
+
 }  // namespace xla
