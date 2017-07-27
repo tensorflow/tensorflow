@@ -1202,6 +1202,9 @@ StatusOr<bool> HloRematerialization::Run(
   // After DCE, the module sequence may include instructions which no longer
   // exist.
   for (const auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     if (sequence->at(computation.get()).size() !=
         computation->instruction_count()) {
       // A size mismatch between the computation instruction count and the size

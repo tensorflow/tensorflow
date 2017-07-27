@@ -330,7 +330,7 @@ def rank(input, name=None):
   # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
 
-  This operation returns an integer representing the rank of `input`.
+  Returns a 0-D `int32` `Tensor` representing the rank of `input`.
 
   For example:
 

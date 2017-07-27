@@ -66,8 +66,10 @@ void DumpTraceToLogDirectory(const tensorflow::string& logdir,
   LOG(INFO) << "Dumped trace data to " << path;
 }
 
-ProfileResponse Profile(const tensorflow::string& service_addr) {
+ProfileResponse Profile(const tensorflow::string& service_addr,
+                        int duration_ms) {
   ProfileRequest request;
+  request.set_duration_ms(duration_ms);
   ProfileResponse response;
   ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -77,7 +79,7 @@ ProfileResponse Profile(const tensorflow::string& service_addr) {
   std::unique_ptr<TPUProfiler::Stub> stub =
       TPUProfiler::NewStub(::grpc::CreateCustomChannel(
           service_addr, ::grpc::InsecureChannelCredentials(), channel_args));
-  TF_CHECK_OK(FromGrpcStatus(stub->Profile(&context, request, &response)));
+  TF_QCHECK_OK(FromGrpcStatus(stub->Profile(&context, request, &response)));
   return response;
 }
 
@@ -88,12 +90,16 @@ ProfileResponse Profile(const tensorflow::string& service_addr) {
 int main(int argc, char** argv) {
   tensorflow::string FLAGS_service_addr;
   tensorflow::string FLAGS_logdir;
+  int FLAGS_duration_ms = 2000;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("service_addr", &FLAGS_service_addr,
                        "Address of TPU profiler service e.g. localhost:8466"),
       tensorflow::Flag("logdir", &FLAGS_logdir,
                        "Path of TensorBoard log directory e.g. /tmp/tb_log"),
+      tensorflow::Flag("duration_ms", &FLAGS_duration_ms,
+                       "Duration of tracing in ms. Default is 2000ms."),
   };
+
   tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok || FLAGS_service_addr.empty() || FLAGS_logdir.empty()) {
@@ -101,9 +107,23 @@ int main(int argc, char** argv) {
     return 2;
   }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
+
+  int duration_ms = FLAGS_duration_ms;
   tensorflow::ProfileResponse response =
-      tensorflow::tpu::Profile(FLAGS_service_addr);
+      tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms);
   // Ignore computation_graph for now.
-  tensorflow::tpu::DumpTraceToLogDirectory(FLAGS_logdir,
-                                           response.encoded_trace());
+  if (response.encoded_trace().empty()) {
+    LOG(WARNING) << "No trace event is collected during the " << duration_ms
+                 << "ms interval.";
+  } else {
+    tensorflow::tpu::DumpTraceToLogDirectory(FLAGS_logdir,
+                                             response.encoded_trace());
+  }
+  // Print this at the end so that it's not buried in irrelevant LOG messages.
+  std::cout
+      << "NOTE: using the trace duration " << duration_ms << "ms." << std::endl
+      << "Set an appropriate duration (with --duration_ms) if you "
+         "don't see a full step in your trace or the captured trace is too "
+         "large."
+      << std::endl;
 }
