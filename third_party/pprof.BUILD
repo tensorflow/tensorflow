@@ -4,15 +4,15 @@ package(
 
 licenses(["notice"])  # MIT
 
-load("@protobuf//:protobuf.bzl", "py_proto_library")
+load("@protobuf_git//:protobuf.bzl", "py_proto_library")
 
 exports_files(["pprof/LICENSE"])
 
 py_proto_library(
     name = "pprof_proto_py",
     srcs = ["proto/profile.proto"],
-    default_runtime = "@protobuf//:protobuf_python",
-    protoc = "@protobuf//:protoc",
+    default_runtime = "@protobuf_git//:protobuf_python",
+    protoc = "@protobuf_git//:protoc",
     srcs_version = "PY2AND3",
-    deps = ["@protobuf//:protobuf_python"],
+    deps = ["@protobuf_git//:protobuf_python"],
 )

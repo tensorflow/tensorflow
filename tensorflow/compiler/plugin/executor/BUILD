@@ -18,7 +18,7 @@ cc_library(
         "//tensorflow/compiler/xla/service",
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
-        "@protobuf//:protobuf_headers",
+        "@protobuf_git//:protobuf_headers",
     ],
 )
 
