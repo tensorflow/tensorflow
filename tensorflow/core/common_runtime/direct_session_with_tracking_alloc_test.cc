@@ -154,14 +154,14 @@ static void TestHWAccelerator(bool enableHWTrace) {
   Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
   test::FillValues<float>(&x_tensor, {1, 1});
   Node* x = test::graph::Constant(&graph, x_tensor);
-  x->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+  x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
 #ifdef TENSORFLOW_USE_SYCL
   x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
 #endif // TENSORFLOW_USE_SYCL
 
   // y = A * x
   Node* y = test::graph::Matmul(&graph, a, x, false, false);
-  y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+  y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
 #ifdef TENSORFLOW_USE_SYCL
 y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
 #endif // TENSORFLOW_USE_SYCL

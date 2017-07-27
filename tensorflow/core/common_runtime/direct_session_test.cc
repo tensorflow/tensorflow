@@ -475,7 +475,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     vx.scalar<float>()() = 1.0;
     Node* x = test::graph::Constant(&g, vx);
     Node* y = test::graph::Unary(&g, "Darth", x);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
     test::graph::ToGraphDef(&g, &def);
 
@@ -493,7 +493,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     vx.scalar<float>()() = 1.0;
     Node* x = test::graph::Constant(&g, vx);
     Node* y = test::graph::Unary(&g, "Darth", x);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
     test::graph::ToGraphDef(&g, &def);
 

@@ -485,7 +485,7 @@ class FunctionTest(test.TestCase):
 
       _ = PlusOne(1, name="p1")
       with self.assertRaisesRegexp(ValueError, "Unknown keyword arguments"):
-        _ = PlusOne(1, device="/gpu:0")
+        _ = PlusOne(1, device="/device:GPU:0")
 
   def testFunctionDecorator(self):
 

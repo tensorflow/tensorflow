@@ -73,7 +73,7 @@ other wrappers and the dynamic decoder described below.  For example, one can
 write:
 
 ```python
-cell = tf.contrib.rnn.DeviceWrapper(LSTMCell(512), "/gpu:0")
+cell = tf.contrib.rnn.DeviceWrapper(LSTMCell(512), "/device:GPU:0")
 attention_mechanism = tf.contrib.seq2seq.LuongAttention(512, encoder_outputs)
 attn_cell = tf.contrib.seq2seq.AttentionWrapper(
   cell, attention_mechanism, attention_size=256)

@@ -433,7 +433,7 @@ TEST(DeviceNameUtilsTest, MergeDevNames) {
   MergeDevNamesError("/replica:0", "/replica:1", "incompatible replicas");
   MergeDevNamesError("/task:0", "/task:1", "incompatible tasks");
   MergeDevNamesError("/gpu:*", "/cpu:*", "incompatible types");
-  MergeDevNamesError("/gpu:0", "/gpu:1", "incompatible ids");
+  MergeDevNamesError("/device:GPU:0", "/gpu:1", "incompatible ids");
 }
 
 TEST(DeviceNameUtilsTest, MergeDevNamesAllowSoftPlacement) {
