@@ -884,7 +884,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1038,7 +1038,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1183,7 +1183,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
@@ -1325,7 +1325,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
   `batch_size` is returned when the queue is closed and there are not enough
   elements to fill the batch, otherwise the pending elements are discarded.
   In addition, all output tensors' static shapes, as accessed via the
-  `get_shape` method will have a first `Dimension` value of `None`, and
+  `shape` property will have a first `Dimension` value of `None`, and
   operations that depend on fixed batch_size would fail.
 
   Args:
