@@ -387,4 +387,16 @@ bool DeviceNameUtils::SplitDeviceName(StringPiece name, string* task,
   return false;
 }
 
+std::vector<string> DeviceNameUtils::GetNamesForDeviceMappings(
+    const ParsedName& pn) {
+  if (pn.has_job && pn.has_replica && pn.has_task && pn.has_type && pn.has_id) {
+    return {
+        DeviceNameUtils::FullName(pn.job, pn.replica, pn.task, pn.type, pn.id),
+        DeviceNameUtils::LegacyName(pn.job, pn.replica, pn.task, pn.type,
+                                    pn.id)};
+  } else {
+    return {};
+  }
+}
+
 }  // namespace tensorflow
