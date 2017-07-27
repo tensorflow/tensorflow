@@ -909,8 +909,13 @@ void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
     // No known send_device. The runtime will detect it later.
     return;
   }
-  int64 incarnation = opts.get_incarnation(send_device);
-  AddNodeAttr("send_device_incarnation", incarnation, ndef);
+  int64 incarnation = PartitionOptions::kIllegalIncarnation;
+  if (!GetNodeAttr(*ndef, "send_device_incarnation", &incarnation).ok() ||
+      (incarnation == PartitionOptions::kIllegalIncarnation)) {
+    incarnation = opts.get_incarnation(send_device);
+    SetAttrValue(incarnation,
+                 &((*ndef->mutable_attr())["send_device_incarnation"]));
+  }
 }
 
 // Sets attribute send_device_incarnation of all Send/Recv nodes in
