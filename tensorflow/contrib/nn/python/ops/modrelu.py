@@ -19,35 +19,35 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import array_ops
 
 
-def modrelu(inputs, biases, name=None):
+def modrelu(input, biases, name=None):
   """Mod ReLU.
 
   ModReLU is a modified ReLU that applied to complex number.
-  ModRelu applies ReLU to the magnitude of complex numbers and keep the phases.
+  ModReLU applies ReLU to the magnitude of complex numbers and keep the phases.
   Source: [Tunable Efficient Unitary Neural Networks (EUNN) and their
   application to RNNs. L. Jing, et al.](https://arxiv.org/abs/1612.05231)
 
   Args:
-    inputs: A `Tensor` with type `complex64` or `complex128`.
+    input: A `Tensor` with type `complex64` or `complex128`.
     biases: A 1-D `Tensor` with size matching the last dimension of `inputs`.
       Must have type `float` or `double`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` with the same type as `inputs`.
+    A `Tensor` with the same type as `input`.
   """
-  with ops.name_scope(name, "modRelu", [inputs]):
-    inputs = ops.convert_to_tensor(inputs, name="inputs")
-    inputs_re = math_ops.real(inputs)
-    inputs_im = math_ops.imag(inputs)
-    inputs_norm = math_ops.sqrt(inputs_re * inputs_re + inputs_im * inputs_im)
-    inputs_norm = inputs_norm + 0.000001
-    zero_im = array_ops.zeros_like(inputs_norm)
-    magnitudes = nn_ops.relu(nn_ops.bias_add(inputs_norm, biases))
-    phases = inputs/math_ops.complex(inputs_norm, zero_im)
+  with ops.name_scope(name, "modrelu", [input]):
+    input = ops.convert_to_tensor(input, name="input")
+    input_re = math_ops.real(input)
+    input_im = math_ops.imag(input)
+    input_norm = math_ops.sqrt(input_re * input_re + input_im * input_im)
+    input_norm = input_norm + 0.000001
+    zero_im = array_ops.zeros_like(input_norm)
+    magnitudes = nn_ops.relu(nn_ops.bias_add(input_norm, biases))
+    phases = input / math_ops.complex(input_norm, zero_im)
     return math_ops.complex(magnitudes, zero_im) * phases
