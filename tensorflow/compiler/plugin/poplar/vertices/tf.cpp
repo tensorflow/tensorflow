@@ -120,53 +120,6 @@ public:
 template class RandomTruncatedNormal<float>;
 template class RandomTruncatedNormal<half>;
 
-template<typename T>
-class ScalarSelect : public Vertex {
-public:
-  Input<bool> pred;
-  Input<Vector<T>> a;
-  Input<Vector<T>> b;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    for (unsigned i = 0; i < a.size(); ++i) {
-      out[i] = pred ? a[i] : b[i];
-    }
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class ScalarSelect<float>;
-template class ScalarSelect<half>;
-template class ScalarSelect<int>;
-template class ScalarSelect<bool>;
-
-template<typename T>
-class Select : public Vertex {
-public:
-  Input<Vector<bool>> pred;
-  Input<Vector<T>> a;
-  Input<Vector<T>> b;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    for (unsigned i = 0; i < a.size(); ++i) {
-      out[i] = pred[i] ? a[i] : b[i];
-    }
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class Select<float>;
-template class Select<half>;
-template class Select<int>;
-template class Select<bool>;
-
-
 // Simple reductions
 
 #define REDUCTION_ELEMENTWISE(NAME, INIT, EXP) \
