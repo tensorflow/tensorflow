@@ -175,7 +175,8 @@ def setup_python(environ_cp):
   if not python_lib_path:
     python_lib_paths = get_python_path(environ_cp)
     if environ_cp.get('USE_DEFAULT_PYTHON_LIB_PATH') == '1':
-      environ_cp['PYTHON_LIB_PATH'] = python_lib_paths[0]
+      python_lib_path = python_lib_paths[0]
+      environ_cp['PYTHON_LIB_PATH'] = python_lib_path
     else:
       print('Found possible Python library paths:\n%s' %
             '\n'.join(python_lib_paths))
