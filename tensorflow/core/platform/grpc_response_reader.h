@@ -38,7 +38,7 @@ template <class ResponseMessage, class RequestMessage>
 ::grpc::ClientAsyncResponseReader<ResponseMessage>*
 CreateClientAsyncResponseReader(::grpc::ChannelInterface* channel,
                                 ::grpc::CompletionQueue* cq,
-                                const ::grpc::RpcMethod& method,
+                                const ::grpc::internal::RpcMethod& method,
                                 ::grpc::ClientContext* context,
                                 const RequestMessage& request);
 
