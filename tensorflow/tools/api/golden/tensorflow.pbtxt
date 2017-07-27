@@ -910,7 +910,7 @@ tf_module {
   }
   member_method {
     name: "einsum"
-    argspec: "args=[\'equation\'], varargs=inputs, keywords=None, defaults=None"
+    argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "encode_base64"
