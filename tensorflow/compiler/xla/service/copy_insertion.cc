@@ -551,6 +551,9 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   // Add copies of computation root instructions, if needed.
   FlatMap<const HloComputation*, ShapeTree<bool>> while_body_read_only_indices;
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     VLOG(2) << "computation " << computation->name();
     InstructionCopier root_copier(computation->root_instruction(),
                                   /*copy_users=*/{});

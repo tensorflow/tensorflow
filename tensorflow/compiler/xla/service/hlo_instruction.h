@@ -945,10 +945,6 @@ class HloInstruction {
   // padding of this pad instruction. Only set for pad instructions.
   std::unique_ptr<PaddingConfig> padding_config_;
 
-  // The computation that stores of instructions fused into this fusion
-  // instruction. Only set for fusion instructions.
-  std::unique_ptr<HloComputation> fused_instructions_computation_;
-
   // If this instruction is fused into a fusion instruction, this field points
   // to the fusion instruction.
   HloInstruction* parent_fusion_instruction_ = nullptr;

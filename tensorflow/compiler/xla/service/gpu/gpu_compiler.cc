@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -123,6 +124,9 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
+    ReducePrecisionInsertion::AddPasses(
+        &pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::BEFORE_OP_FUSION);
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
@@ -149,8 +153,22 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
-    return fusion.Run(hlo_module).status();
+    TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+
+    HloPassPipeline reduce_pipeline("reduce-precision");
+    ReducePrecisionInsertion::AddPasses(
+        &reduce_pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::AFTER_OP_FUSION);
+    StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
+    TF_RETURN_IF_ERROR(reduce_result.status());
+
+    if (reduce_result.ValueOrDie()) {
+      // Do another fusion pass, with the expectation that we may be able to
+      // fuse the new ReducePrecision operations.
+      TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+    }
   }
+  return tensorflow::Status::OK();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
