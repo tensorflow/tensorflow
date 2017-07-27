@@ -45,7 +45,7 @@ REGISTER_KERNEL_BUILDER(Name("Sub")
 #define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "Sub", functor::sub, type);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
-REGISTER(BinaryOp, SYCL, "Sub", functor::sub, int64);
+REGISTER1_SYCL(BinaryOp, "Sub", functor::sub, int64);
 REGISTER_KERNEL_BUILDER(Name("Sub")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

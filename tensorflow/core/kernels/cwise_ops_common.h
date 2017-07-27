@@ -476,17 +476,17 @@ struct ApproximateEqual<CPUDevice, T> {
 // Override on the command-line "--define ANDROID_TYPES=__ANDROID_TYPES_FULL__"
 // to generate a library with full type support with a consequent increase in
 // code size.
-// the float data type is registered with TF_CALL_SYCL_NUMBER_TYPES,
-// so REGISTER* here should be empty
-#define REGISTER(OP, D, N, F, T0)
-#define REGISTER2(OP, D, N, F, T0, T1)
-#define REGISTER3(OP, D, N, F, T0, T1, T2)
-#define REGISTER4(OP, D, N, F, T0, T1, T2, T3)
-#define REGISTER5(OP, D, N, F, T0, T1, T2, T3, T4)
-#define REGISTER6(OP, D, N, F, T0, T1, T2, T3, T4, T5)
-#define REGISTER7(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6)
-#define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7)
-#define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8)
+#define REGISTER2(OP, D, N, F, T0, T1) REGISTER(OP, D, N, F, T0)
+#define REGISTER3(OP, D, N, F, T0, T1, T2) REGISTER(OP, D, N, F, T0)
+#define REGISTER4(OP, D, N, F, T0, T1, T2, T3) REGISTER(OP, D, N, F, T0)
+#define REGISTER5(OP, D, N, F, T0, T1, T2, T3, T4) REGISTER(OP, D, N, F, T0)
+#define REGISTER6(OP, D, N, F, T0, T1, T2, T3, T4, T5) REGISTER(OP, D, N, F, T0)
+#define REGISTER7(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6) \
+  REGISTER(OP, D, N, F, T0)
+#define REGISTER8(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7) \
+  REGISTER(OP, D, N, F, T0)
+#define REGISTER9(OP, D, N, F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
+  REGISTER(OP, D, N, F, T0)
 #else  // !defined(__ANDROID_TYPES_SLIM__)
 #define REGISTER2(OP, D, N, F, T0, T1) \
   REGISTER(OP, D, N, F, T0)            \

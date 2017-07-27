@@ -37,7 +37,7 @@ REGISTER_KERNEL_BUILDER(Name("Less")
 #define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "Less", functor::less, type);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
-REGISTER(BinaryOp, SYCL, "Less", functor::less, int64);
+REGISTER1_SYCL(BinaryOp, "Less", functor::less, int64);
 REGISTER_KERNEL_BUILDER(Name("Less")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

@@ -39,7 +39,7 @@ REGISTER_KERNEL_BUILDER(
 #define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference, type);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
-REGISTER(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference, int64);
+REGISTER1_SYCL(BinaryOp, "SquaredDifference", functor::squared_difference, int64);
 REGISTER_KERNEL_BUILDER(
     Name("SquaredDifference")
         .Device(DEVICE_SYCL)

@@ -154,6 +154,28 @@ struct BinaryFunctor<SYCLDevice, Functor, NDIMS, has_errors> {
   DEFINE_BINARY5(F, T5, T6, T7, T8, T9)
 
 }  // end namespace functor
+
+
+#if defined(__ANDROID_TYPES_SLIM__)
+#define REGISTER1_SYCL(OP, N, F, T0)
+#define REGISTER2_SYCL(OP, N, F, T0, T1)
+#define REGISTER3_SYCL(OP, N, F, T0, T1, T2)
+#define REGISTER4_SYCL(OP, N, F, T0, T1, T2, T3)
+#else  // !defined(__ANDROID_TYPES_SLIM__)
+#define REGISTER1_SYCL(OP, N, F, T)                                           \
+  REGISTER_KERNEL_BUILDER(Name(N).Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+                          OP<SYCLDevice, F<T>>);
+#define REGISTER2_SYCL(OP, N, F, T0, T1)        \
+  REGISTER1_SYCL(OP, N, F, T0)                  \
+  REGISTER1_SYCL(OP, N, F, T1)
+#define REGISTER3_SYCL(OP, N, F, T0, T1, T2)    \
+  REGISTER2_SYCL(OP, N, F, T0, T1)              \
+  REGISTER1_SYCL(OP, N, F, T2)
+#define REGISTER4_SYCL(OP, N, F, T0, T1, T2, T3) \
+  REGISTER2_SYCL(OP, N, F, T0, T1)               \
+  REGISTER2_SYCL(OP, N, F, T2, T3)
+#endif  // defined(__ANDROID_TYPES_SLIM__)
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CWISE_OPS_SYCL_COMMON_H_

@@ -41,7 +41,7 @@ REGISTER_KERNEL_BUILDER(Name("Abs")
 #define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Abs", functor::abs, type);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
-REGISTER(UnaryOp, SYCL, "Abs", functor::abs, int64);
+REGISTER1_SYCL(UnaryOp, "Abs", functor::abs, int64);
 
 REGISTER_KERNEL_BUILDER(Name("Abs")
                             .Device(DEVICE_SYCL)

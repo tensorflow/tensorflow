@@ -23,7 +23,7 @@ REGISTER7(UnaryOp, CPU, "Neg", functor::neg, float, Eigen::half, double, int32,
 #define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Neg", functor::neg, type);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
-REGISTER(UnaryOp, SYCL, "Neg", functor::neg, int64);
+REGISTER1_SYCL(UnaryOp, "Neg", functor::neg, int64);
 REGISTER_KERNEL_BUILDER(Name("Neg")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

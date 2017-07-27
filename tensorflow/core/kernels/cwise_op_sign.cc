@@ -37,7 +37,7 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
 #define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Sign", functor::sign, type);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
-REGISTER(UnaryOp, SYCL, "Sign", functor::sign, int64);
+REGISTER1_SYCL(UnaryOp, "Sign", functor::sign, int64);
 REGISTER_KERNEL_BUILDER(Name("Sign")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

@@ -50,7 +50,7 @@ REGISTER_KERNEL_BUILDER(Name("Equal")
 #define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "Equal", functor::equal_to, type);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
-REGISTER3(BinaryOp, SYCL, "Equal", functor::equal_to, uint8, int8, int16);
+REGISTER3_SYCL(BinaryOp, "Equal", functor::equal_to, uint8, int8, int16);
 REGISTER_KERNEL_BUILDER(Name("Equal")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

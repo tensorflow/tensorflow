@@ -38,7 +38,7 @@ REGISTER_KERNEL_BUILDER(Name("Minimum")
 #define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "Minimum", functor::minimum, type);
 TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 
-REGISTER(BinaryOp, SYCL, "Minimum", functor::minimum, int64);
+REGISTER1_SYCL(BinaryOp, "Minimum", functor::minimum, int64);
 REGISTER_KERNEL_BUILDER(Name("Minimum")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")
