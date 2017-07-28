@@ -1,3 +1,15 @@
+diff --git a/BUILD b/BUILD
+index 6dcc76eb7a..903739bfad 100644
+--- a/BUILD
++++ b/BUILD
+@@ -287,6 +287,7 @@ grpc_cc_library(
+         "grpc++_base_unsecure",
+         "grpc++_codegen_base",
+         "grpc++_codegen_base_src",
++        "grpc++_codegen_proto",
+         "grpc_unsecure",
+     ],
+ )
 diff --git a/bazel/grpc_build_system.bzl b/bazel/grpc_build_system.bzl
 index f793cae56d..0295adb8ab 100644
 --- a/bazel/grpc_build_system.bzl
