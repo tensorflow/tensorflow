@@ -61,6 +61,7 @@ tf_cuda_library(
             "//tensorflow/cc:grad_ops",
             "//tensorflow/cc:scope_internal",
             "//tensorflow/core:core_cpu",
+            "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",

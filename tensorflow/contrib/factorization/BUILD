@@ -200,7 +200,7 @@ tf_py_test(
 # Estimators tests
 tf_py_test(
     name = "wals_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/ops/wals_test.py"],
     additional_deps = [
         ":factorization_py",

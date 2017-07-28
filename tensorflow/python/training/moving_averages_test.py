@@ -260,10 +260,10 @@ class ExponentialMovingAverageTest(test.TestCase):
             ema.average_name(tensor2) + "/biased",
             ema.average_name(tensor2) + "/local_step"
         ]
-      self.assertEqual(sorted(vars_to_restore.keys()), sorted(expected_names))
-      self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
-      self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
-      self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
+      self.assertEqual(sorted(expected_names), sorted(vars_to_restore.keys()))
+      self.assertEqual(ema.average(v0).op.name, ema.average_name(v0))
+      self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
+      self.assertEqual(ema.average(tensor2).op.name, ema.average_name(tensor2))
 
   def testAverageVariablesNames(self):
     self.averageVariablesNamesHelper(zero_debias=True)
@@ -307,11 +307,11 @@ class ExponentialMovingAverageTest(test.TestCase):
               sc + ema.average_name(tensor2) + "/local_step"
           ]
 
-        self.assertEqual(sorted(vars_to_restore.keys()), sorted(expected_names))
-        self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
-        self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
+        self.assertEqual(sorted(expected_names), sorted(vars_to_restore.keys()))
+        self.assertEqual(ema.average(v0).op.name, ema.average_name(v0))
+        self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
         self.assertEqual(
-            ema.average_name(tensor2), ema.average(tensor2).op.name)
+            ema.average(tensor2).op.name, ema.average_name(tensor2))
 
   def testAverageVariablesNamesRespectScope(self):
     self.averageVariablesNamesRespectScopeHelper(zero_debias=True)
@@ -343,9 +343,9 @@ class ExponentialMovingAverageTest(test.TestCase):
               v2.op.name
           ]))
       ema.apply([v0, v1, tensor2])
-      self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
-      self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
-      self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
+      self.assertEqual(ema.average(v0).op.name, ema.average_name(v0))
+      self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
+      self.assertEqual(ema.average(tensor2).op.name, ema.average_name(tensor2))
 
   def testAverageVariablesDeviceAssignment(self):
     with ops.device("/job:dev_v0"):
