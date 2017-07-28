@@ -281,6 +281,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "call_inliner",
+    srcs = ["call_inliner.cc"],
+    hdrs = ["call_inliner.h"],
+    deps = [
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_test(
+    name = "call_inliner_test",
+    size = "small",
+    srcs = ["call_inliner_test.cc"],
+    deps = [
+        ":call_inliner",
+        ":hlo",
+        ":hlo_matchers",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_test(
     name = "flatten_call_graph_test",
     size = "small",
