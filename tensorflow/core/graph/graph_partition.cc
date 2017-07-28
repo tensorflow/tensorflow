@@ -909,8 +909,13 @@ void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
     // No known send_device. The runtime will detect it later.
     return;
   }
-  int64 incarnation = opts.get_incarnation(send_device);
-  AddNodeAttr("send_device_incarnation", incarnation, ndef);
+  int64 incarnation = PartitionOptions::kIllegalIncarnation;
+  if (!GetNodeAttr(*ndef, "send_device_incarnation", &incarnation).ok() ||
+      (incarnation == PartitionOptions::kIllegalIncarnation)) {
+    incarnation = opts.get_incarnation(send_device);
+    SetAttrValue(incarnation,
+                 &((*ndef->mutable_attr())["send_device_incarnation"]));
+  }
 }
 
 // Sets attribute send_device_incarnation of all Send/Recv nodes in
@@ -1160,11 +1165,16 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     }
   }
 
+  const FunctionLibraryDefinition* flib_def = opts.flib_def;
+  if (flib_def == nullptr) {
+    flib_def = &g->flib_def();
+  }
+
   // Set versions, function library and send/recv incarnation.
   for (auto& it : *partitions) {
     GraphDef* gdef = &it.second;
     *gdef->mutable_versions() = g->versions();
-    *gdef->mutable_library() = g->flib_def().ToProto();
+    *gdef->mutable_library() = flib_def->ToProto();
 
     // Traverse the graph to fill every send/recv op's incarnation
     // information.

@@ -1342,6 +1342,7 @@ Status DirectSession::CreateGraphs(
     // Just return '1'.
     return 1;
   };
+  popts.flib_def = &client_graph->graph.flib_def();
   popts.control_flow_added = false;
 
   std::unordered_map<string, GraphDef> partitions;
