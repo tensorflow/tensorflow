@@ -1,7 +1,13 @@
 # Release 1.3.0
 
 ## Major Features and Improvements
-* Added canned estimators to Tensorflow library. List of added estimators: `DNNClassifier`, `DNNRegressor`, `LinearClassifer`, `LinearRegressor`, `DNNLinearCombinedClassifier`, `DNNLinearCombinedRegressor`.
+* Added canned estimators to Tensorflow library. List of added estimators:
+  * `DNNClassifier`
+  * `DNNRegressor`
+  * `LinearClassifier`
+  * `LinearRegressor`
+  * `DNNLinearCombinedClassifier`
+  * `DNNLinearCombinedRegressor`.
 * All our prebuilt binaries have been built with cuDNN 6.
 * Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
 * Added an axis parameter to `tf.gather`.
@@ -17,10 +23,14 @@
 * Introduces base implementations of ClusterResolvers.
 * Unify memory representations of TensorShape and PartialTensorShape. As a consequence, tensors now have a maximum of 254 dimensions, not 255.
 * Changed references to LIBXSMM to use version 1.8.1.
-* TensorFlow Debugger (tfdbg): Display summaries of numeric tensor values with the `-s` flag to command `print_tensor` or `pt`.
+* TensorFlow Debugger (tfdbg):
+  * Display summaries of numeric tensor values with the `-s` flag to command `print_tensor` or `pt`.
+  * Display feed values with the `print_feed` or `pf` command and clickable links in the curses UI.
+  * Runtime profiler at the op level and the Python source line level with the `run -p` command.
 * Initial release of the statistical distribution library `tf.distributions`.
 * GPU kernels and speed improvements for for unary `tf.where` and `tf.nn.top_k`.
 * Monotonic Attention wrappers added to `tf.contrib.seq2seq`.
+* Added `tf.contrib.signal`, a library for signal processing primitives.
 
 ## Breaking Changes to the API
 * `tf.RewriterConfig` was removed from the Python API after being available in 1.2 release candidates (it was never in an actual release). Graph rewriting is still available, just not as `tf.RewriterConfig`. Instead add an explicit import.
@@ -33,7 +43,7 @@
 * Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
 
 ## Bug Fixes and Other Changes
-* Fixes 'strides' and 'begin' dtype mismatch when slicing using int64 Tensor index in python.
+* Fixes `strides` and `begin` dtype mismatch when slicing using int64 Tensor index in python.
 * Improved convolution padding documentation.
 * Add a tag constant, gpu, to present graph with GPU support.
 * `saved_model.utils` now support SparseTensors transparently.
@@ -65,8 +75,9 @@
 * Framework now supports armv7, cocoapods.org now displays correct page.
 * Script to create iOS framework for CocoaPods.
 * Android releases of TensorFlow are now pushed to jcenter for easier integration into apps. See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md for more details.
-* Fixed a bug that prevented tfdbg from functioning with multi-GPU setups.
-* Fixed a bug that prevented tfdbg from working with `tf.Session.make_callable`.
+* TensorFlow Debugger (tfdbg):
+  * Fixed a bug that prevented tfdbg from functioning with multi-GPU setups.
+  * Fixed a bug that prevented tfdbg from working with `tf.Session.make_callable`.
 
 ## Thanks to our Contributors
 
