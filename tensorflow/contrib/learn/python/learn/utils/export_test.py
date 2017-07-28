@@ -51,7 +51,7 @@ def _training_input_fn():
 
 class ExportTest(test.TestCase):
   def _get_default_signature(self, export_meta_filename):
-    #Gets the default signature from the export.meta file.
+    """ Gets the default signature from the export.meta file. """
     with session.Session():
       save = saver.import_meta_graph(export_meta_filename)
       meta_graph_def = save.export_meta_graph()
@@ -79,7 +79,8 @@ class ExportTest(test.TestCase):
         six.b(os.path.join(export_dir, '00000010')),
         export_monitor.last_export_dir)
     # Validate the signature
-    signature = self._get_default_signature(os.path.join( export_dir, '00000010', 'export.meta'))
+    signature = self._get_default_signature(
+      os.path.join( export_dir, '00000010', 'export.meta'))
     self.assertTrue(signature.HasField(expected_signature))
   
   def testExportMonitor_EstimatorProvidesSignature(self):
@@ -248,9 +249,11 @@ class ExportTest(test.TestCase):
     # with self.assertRaises(errors.NotFoundError): 
     with self.assertRaises(errors.NotFoundError):
       saver.checkpoint_exists(os.path.join( export_dir, '00000000', 'export'))
-    self.assertTrue(saver.checkpoint_exists(os.path.join( export_dir, '00000010', 'export')))
+    self.assertTrue(
+      saver.checkpoint_exists(os.path.join( export_dir, '00000010', 'export')))
     # Validate the signature
-    signature = self._get_default_signature(os.path.join( export_dir, '00000010', 'export.meta'))
+    signature = self._get_default_signature(
+      os.path.join( export_dir, '00000010', 'export.meta'))
     self.assertTrue(signature.HasField('regression_signature'))
 
 

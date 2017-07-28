@@ -229,11 +229,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
       # training tests
       "${tensorflow_source_dir}/tensorflow/python/training/basic_session_run_hooks_test.py"  # Needs tf.contrib fix.
-      #"${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"  # Needs tf.contrib fix.
       "${tensorflow_source_dir}/tensorflow/python/training/localhost_cluster_performance_test.py"  # Needs portpicker.
-      #"${tensorflow_source_dir}/tensorflow/python/training/monitored_session_test.py"  # Needs tf.contrib fix.
       "${tensorflow_source_dir}/tensorflow/python/training/quantize_training_test.py"  # Needs quantization ops to be included in windows.
-      #"${tensorflow_source_dir}/tensorflow/python/training/saver_large_variable_test.py"  # Overflow error.
       "${tensorflow_source_dir}/tensorflow/python/training/supervisor_test.py"  # Flaky I/O error on rename.
       "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"  # Needs portpicker.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/array_ops_test.py"  # depends on python/framework/test_ops
@@ -283,16 +280,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/vector_student_t_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/wishart_test.py"
       "${tensorflow_source_dir}/tensorflow/contrib/learn/python/learn/estimators/kmeans_test.py"
-      # Not tested with TF 1.3 (TODO)
-      "${tensorflow_source_dir}/tensorflow/contrib/rnn/python/kernel_tests/core_rnn_cell_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/python/kernel_tests/csiszar_divergence_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/python/kernel_tests/custom_grad_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/bayesflow/python/kernel_tests/monte_carlo_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/bijectors/affine_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/distribution_util_test.py"
+      # Failing with TF 1.3 (TODO)
       "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/estimator_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/moving_stats_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/distributions/python/kernel_tests/vector_diffeomixture_test.py"
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
