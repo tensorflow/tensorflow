@@ -94,7 +94,6 @@ cc_library(
         ":tfprof_utils",
         "//tensorflow/c:c_api",
         "//tensorflow/c:checkpoint_reader",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:regexp_internal",

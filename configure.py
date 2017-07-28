@@ -175,7 +175,7 @@ def setup_python(environ_cp):
   if not python_lib_path:
     python_lib_paths = get_python_path(environ_cp)
     if environ_cp.get('USE_DEFAULT_PYTHON_LIB_PATH') == '1':
-      environ_cp['PYTHON_LIB_PATH'] = python_lib_paths[0]
+      python_lib_path = python_lib_paths[0]
     else:
       print('Found possible Python library paths:\n%s' %
             '\n'.join(python_lib_paths))
@@ -185,7 +185,7 @@ def setup_python(environ_cp):
           % python_lib_paths[0])
       if not python_lib_path:
         python_lib_path = default_python_lib_path
-      environ_cp['PYTHON_LIB_PATH'] = python_lib_path
+    environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
   python_major_version = sys.version_info[0]
   # Convert python path to Windows style before writing into bazel.rc
@@ -240,7 +240,7 @@ def run_gen_git_source(environ_cp):
   Args:
     environ_cp: copy of the os.environ.
   """
-  cmd = '%s tensorflow/tools/git/gen_git_source.py --configure %s' % (
+  cmd = '"%s" tensorflow/tools/git/gen_git_source.py --configure %s' % (
       environ_cp.get('PYTHON_BIN_PATH'), os.getcwd())
   os.system(cmd)
 
@@ -379,7 +379,7 @@ def check_bazel_version(min_version):
     min_version: string for minimum bazel version.
   """
   try:
-    curr_version = run_shell('bazel version')
+    curr_version = run_shell('bazel --batch version')
   except subprocess.CalledProcessError:
     print('Cannot find bazel. Please install bazel.')
     sys.exit(0)

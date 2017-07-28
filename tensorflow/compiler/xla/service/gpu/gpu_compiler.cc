@@ -19,10 +19,10 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/DiagnosticInfo.h"
-#include "external/llvm/include/llvm/IR/DiagnosticPrinter.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -124,15 +124,9 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
-
-    for (const auto& reduce_precision_options :
-         hlo_module->config().debug_options().hlo_reduce_precision_options()) {
-      if (reduce_precision_options.pass_timing() ==
-          HloReducePrecisionOptions::BEFORE_OP_FUSION) {
-        pipeline.AddPass<ReducePrecisionInsertion>(reduce_precision_options);
-      }
-    }
-
+    ReducePrecisionInsertion::AddPasses(
+        &pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::BEFORE_OP_FUSION);
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
@@ -162,14 +156,9 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
-    for (const auto& reduce_precision_options :
-         hlo_module->config().debug_options().hlo_reduce_precision_options()) {
-      if (reduce_precision_options.pass_timing() ==
-          HloReducePrecisionOptions::AFTER_OP_FUSION) {
-        reduce_pipeline.AddPass<ReducePrecisionInsertion>(
-            reduce_precision_options);
-      }
-    }
+    ReducePrecisionInsertion::AddPasses(
+        &reduce_pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::AFTER_OP_FUSION);
     StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
     TF_RETURN_IF_ERROR(reduce_result.status());
 

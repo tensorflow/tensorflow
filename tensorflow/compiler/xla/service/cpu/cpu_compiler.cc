@@ -26,17 +26,17 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
-#include "external/llvm/include/llvm/ADT/StringRef.h"
-#include "external/llvm/include/llvm/ADT/Triple.h"
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/Object/ObjectFile.h"
-#include "external/llvm/include/llvm/Support/CommandLine.h"
-#include "external/llvm/include/llvm/Support/TargetRegistry.h"
-#include "external/llvm/include/llvm/Support/TargetSelect.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
-#include "external/llvm/include/llvm/Target/TargetOptions.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -254,13 +254,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   HloPassPipeline pipeline("CPU");
   pipeline.AddInvariantChecker<HloVerifier>();
 
-  for (const auto& reduce_precision_options :
-       module->config().debug_options().hlo_reduce_precision_options()) {
-    if (reduce_precision_options.pass_timing() ==
-        HloReducePrecisionOptions::BEFORE_OP_FUSION) {
-      pipeline.AddPass<ReducePrecisionInsertion>(reduce_precision_options);
-    }
-  }
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, module->config().debug_options(),
+      HloReducePrecisionOptions::BEFORE_OP_FUSION);
 
   // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
   // where we will take this pass in future.
@@ -288,13 +284,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module) {
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
 
-  for (const auto& reduce_precision_options :
-       module->config().debug_options().hlo_reduce_precision_options()) {
-    if (reduce_precision_options.pass_timing() ==
-        HloReducePrecisionOptions::AFTER_OP_FUSION) {
-      pipeline.AddPass<ReducePrecisionInsertion>(reduce_precision_options);
-    }
-  }
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, module->config().debug_options(),
+      HloReducePrecisionOptions::AFTER_OP_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
       module->mutable_entry_computation_layout());
@@ -357,10 +349,8 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
       return llvm::CodeGenOpt::Less;
     case 2:
       return llvm::CodeGenOpt::Default;
-      break;
     case 3:
       return llvm::CodeGenOpt::Aggressive;
-      break;
     default:
       return llvm::CodeGenOpt::None;
   }
@@ -519,6 +509,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         new std::map<HloInstruction*, string>());
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
+      if (embedded_computation->IsFusionComputation()) {
+        continue;
+      }
       auto parallel_computation_iter =
           parallel_computations.find(embedded_computation);
       // All parallel computations are considered to be an entry computation for
@@ -591,6 +584,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
+      if (embedded_computation->IsFusionComputation()) {
+        continue;
+      }
       TF_RETURN_IF_ERROR(
           ir_emitter
               .EmitComputation(embedded_computation,
@@ -755,6 +751,9 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
+      if (embedded_computation->IsFusionComputation()) {
+        continue;
+      }
       TF_RETURN_IF_ERROR(
           ir_emitter
               .EmitComputation(embedded_computation,

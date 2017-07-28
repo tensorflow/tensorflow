@@ -183,6 +183,9 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     predecessors_.emplace(computation.get(),
                           computation->ComputeReachability());
   }
