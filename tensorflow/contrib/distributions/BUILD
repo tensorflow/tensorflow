@@ -44,6 +44,7 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:histogram_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
@@ -328,6 +329,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "poisson_lognormal_test",
+    size = "small",
+    srcs = ["python/kernel_tests/poisson_lognormal_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "sample_stats_test",
     size = "small",
     srcs = ["python/kernel_tests/sample_stats_test.py"],
@@ -518,19 +530,13 @@ cuda_py_test(
 
 cuda_py_test(
     name = "vector_diffeomixture_test",
-    size = "large",
+    size = "small",
     srcs = ["python/kernel_tests/vector_diffeomixture_test.py"],
     additional_deps = [
-        ":bijectors_py",
         ":distributions_py",
         "//third_party/py/numpy",
         "//tensorflow/contrib/linalg:linalg_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform_test",
     ],
 )
 

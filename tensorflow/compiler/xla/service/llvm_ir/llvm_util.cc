@@ -464,5 +464,53 @@ void SetTargetOptions(bool fast_math_enabled,
   target_options->NoSignedZerosFPMath = fast_math_enabled;
 }
 
+std::map<int, llvm::MDNode*> MergeMetadata(
+    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
+    const std::map<int, llvm::MDNode*>& b) {
+  // We should extend this as needed to deal with other kinds of metadata like
+  // !dereferenceable and !range.
+
+  std::map<int, llvm::MDNode*> result;
+  for (auto kind_md_pair : a) {
+    if (kind_md_pair.first == llvm::LLVMContext::MD_alias_scope) {
+      llvm::SmallVector<llvm::Metadata*, 8> union_of_scopes;
+      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
+      for (const auto& scope_a : kind_md_pair.second->operands()) {
+        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
+        union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_a.get()));
+      }
+      auto it = b.find(kind_md_pair.first);
+      if (it != b.end()) {
+        for (const auto& scope_b : it->second->operands()) {
+          if (!scope_set.count(llvm::cast<llvm::MDNode>(scope_b.get()))) {
+            union_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b.get()));
+          }
+        }
+      }
+      result[llvm::LLVMContext::MD_alias_scope] =
+          llvm::MDNode::get(*context, union_of_scopes);
+    } else if (kind_md_pair.first == llvm::LLVMContext::MD_noalias) {
+      llvm::SmallVector<llvm::Metadata*, 8> intersection_of_scopes;
+      llvm::SmallPtrSet<llvm::Metadata*, 8> scope_set;
+      for (const auto& scope_a : kind_md_pair.second->operands()) {
+        scope_set.insert(llvm::cast<llvm::MDNode>(scope_a.get()));
+      }
+      auto it = b.find(kind_md_pair.first);
+      if (it != b.end()) {
+        for (const auto& scope_b : it->second->operands()) {
+          if (scope_set.count(llvm::cast<llvm::MDNode>(scope_b))) {
+            intersection_of_scopes.push_back(llvm::cast<llvm::MDNode>(scope_b));
+          }
+        }
+      }
+      if (!intersection_of_scopes.empty()) {
+        result[llvm::LLVMContext::MD_noalias] =
+            llvm::MDNode::get(*context, intersection_of_scopes);
+      }
+    }
+  }
+  return result;
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

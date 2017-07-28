@@ -43,6 +43,7 @@ from tensorflow.python.training import session_run_hook
 
 KEYS_NAME = 'keys'
 LOSS_NAME = 'rf_training_loss'
+TREE_PATHS_PREDICTION_KEY = 'tree_paths'
 
 EPSILON = 0.000001
 
@@ -194,7 +195,7 @@ def get_model_fn(params,
     graph_builder = graph_builder_class(params,
                                         device_assigner=dev_assn)
 
-    logits = graph_builder.inference_graph(features)
+    logits, tree_paths = graph_builder.inference_graph(features)
 
     summary.scalar('average_tree_size', graph_builder.average_size())
     # For binary classification problems, convert probabilities to logits.
@@ -260,6 +261,9 @@ def get_model_fn(params,
 
     if keys is not None:
       model_ops.predictions[keys_name] = keys
+
+    if params.inference_tree_paths:
+      model_ops.predictions[TREE_PATHS_PREDICTION_KEY] = tree_paths
 
     return model_ops
 
