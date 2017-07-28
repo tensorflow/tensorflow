@@ -421,12 +421,39 @@ class ShapeUtil {
   // current index.
   // The visitor_function visitor function should return true if it wants to
   // continue, or false otherwise.
-  using IndexVisitorFunction = std::function<bool(const std::vector<int64>&)>;
+  //
+  // visitor_function must be a callable of type bool(const std::vector<int64>&)
+  // or compatible.
+  template <typename FnType>
   static void ForEachIndex(const Shape& shape,
                            tensorflow::gtl::ArraySlice<int64> base,
                            tensorflow::gtl::ArraySlice<int64> count,
                            tensorflow::gtl::ArraySlice<int64> incr,
-                           const IndexVisitorFunction& visitor_function);
+                           const FnType& visitor_function) {
+    if (ShapeUtil::HasZeroElements(shape)) {
+      return;
+    }
+    CHECK_EQ(Rank(shape), base.size());
+    CHECK_EQ(incr.size(), base.size());
+    CHECK_EQ(count.size(), base.size());
+    const Layout& layout = shape.layout();
+    const int64 rank = layout.minor_to_major_size();
+    // Allows handling R0 arrays, such that the visitor function will be called
+    // once with the proper empty indexes.
+    int64 n = -1;
+    std::vector<int64> indexes(base.begin(), base.end());
+    while (n < rank && visitor_function(indexes)) {
+      // Increments dimensions in minor to major order.
+      for (n = 0; n < rank; ++n) {
+        int64 dim = layout.minor_to_major(n);
+        indexes[dim] += incr[dim];
+        if (indexes[dim] < base[dim] + count[dim]) {
+          break;
+        }
+        indexes[dim] = base[dim];
+      }
+    }
+  }
 
  private:
   // Validates all of the non-layout properties of the shape -- this is a helper

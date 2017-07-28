@@ -28,7 +28,7 @@ cc_library(
             "S_IEXEC=S_IXUSR",
         ],
         "//conditions:default": [],
-    }),  
+    }),
     includes = ["lib/."],
     visibility = ["//visibility:public"],
     deps = select({
@@ -68,5 +68,3 @@ config_setting(
     name = "android",
     values = {"crosstool_top": "//external:android/crosstool"},
 )
-
-
