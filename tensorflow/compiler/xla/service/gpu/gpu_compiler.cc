@@ -19,10 +19,10 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/DiagnosticInfo.h"
-#include "external/llvm/include/llvm/IR/DiagnosticPrinter.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"

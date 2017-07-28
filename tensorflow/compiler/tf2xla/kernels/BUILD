@@ -24,6 +24,7 @@ tf_kernel_library(
         "concat_op.cc",
         "const_op.cc",
         "conv_ops.cc",
+        "cross_op.cc",
         "cwise_ops.cc",
         "depthwise_conv_ops.cc",
         "diag_op.cc",
