@@ -535,7 +535,7 @@ class _MonitoredSession(object):
     # __exit__ should return True to suppress an exception.
     return exception_type is None
 
-  class _CoordinatedSessionCreator(object):
+  class _CoordinatedSessionCreator(SessionCreator):
     """Factory for the _RecoverableSession."""
 
     def __init__(self, session_creator, hooks, stop_grace_period_secs):
@@ -575,7 +575,7 @@ class _MonitoredSession(object):
           ops.get_default_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
 
   def _is_closed(self):
-    """Return True if the supervised session is closed.  For tests only.
+    """Return True if the monitored session is closed.  For tests only.
 
     Returns:
       A boolean.

@@ -4307,9 +4307,11 @@ filegroup(
         "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_less.cc",
+        "cwise_op_less_equal.cc",
         "cwise_op_log.cc",
         "cwise_op_logical_and.cc",
         "cwise_op_logical_not.cc",
+        "cwise_op_logical_or.cc",
         "cwise_op_maximum.cc",
         "cwise_op_minimum.cc",
         "cwise_op_mul_1.cc",
@@ -4530,6 +4532,32 @@ cc_library(
         "//tensorflow/core:protos_cc",
         "//third_party/eigen3",
         "@gemmlowp//:gemmlowp",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "android_tensorflow_image_op",
+    srcs = [
+        "decode_image_op.cc",
+    ],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:android": [
+            "-ldl",
+        ],
+        "//conditions:default": [],
+    }),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:android_gif_internal",
+        "//tensorflow/core:android_jpeg_internal",
+        "//tensorflow/core:android_png_internal",
+        "//tensorflow/core:android_tensorflow_lib_lite",
     ],
     alwayslink = 1,
 )

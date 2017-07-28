@@ -1,7 +1,7 @@
 # Platform-specific build configurations.
 
-load("@protobuf//:protobuf.bzl", "cc_proto_library")
-load("@protobuf//:protobuf.bzl", "py_proto_library")
+load("@protobuf_archive//:protobuf.bzl", "cc_proto_library")
+load("@protobuf_archive//:protobuf.bzl", "py_proto_library")
 load("//tensorflow:tensorflow.bzl", "if_not_mobile")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
@@ -44,15 +44,15 @@ def tf_proto_library_cc(name, srcs = [], has_services = None,
   cc_proto_library(
       name = name + "_cc",
       srcs = srcs,
-      deps = tf_deps(protodeps, "_cc") + ["@protobuf//:cc_wkt_protos"],
-      cc_libs = cc_libs + ["@protobuf//:protobuf"],
+      deps = tf_deps(protodeps, "_cc") + ["@protobuf_archive//:cc_wkt_protos"],
+      cc_libs = cc_libs + ["@protobuf_archive//:protobuf"],
       copts = if_not_windows([
           "-Wno-unknown-warning-option",
           "-Wno-unused-but-set-variable",
           "-Wno-sign-compare",
       ]),
-      protoc = "@protobuf//:protoc",
-      default_runtime = "@protobuf//:protobuf",
+      protoc = "@protobuf_archive//:protoc",
+      default_runtime = "@protobuf_archive//:protobuf",
       use_grpc_plugin = use_grpc_plugin,
       testonly = testonly,
       visibility = visibility,
@@ -65,9 +65,9 @@ def tf_proto_library_py(name, srcs=[], protodeps=[], deps=[], visibility=[],
       name = name + "_py",
       srcs = srcs,
       srcs_version = srcs_version,
-      deps = deps + tf_deps(protodeps, "_py") + ["@protobuf//:protobuf_python"],
-      protoc = "@protobuf//:protoc",
-      default_runtime = "@protobuf//:protobuf_python",
+      deps = deps + tf_deps(protodeps, "_py") + ["@protobuf_archive//:protobuf_python"],
+      protoc = "@protobuf_archive//:protoc",
+      default_runtime = "@protobuf_archive//:protobuf_python",
       visibility = visibility,
       testonly = testonly,
   )

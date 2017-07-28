@@ -29,12 +29,12 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.2.1'
+_VERSION = '1.3.0-rc0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
-    'protobuf >= 3.2.0',
+    'protobuf >= 3.3.0',
     'tensorflow-tensorboard',
 ]
 
@@ -113,7 +113,7 @@ class InstallHeaders(Command):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
-    install_dir = re.sub('/google/protobuf/src', '', install_dir)
+    install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
 
     # Copy eigen code into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
@@ -164,7 +164,7 @@ else:
 
 headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +
-           list(find_files('*.h', 'google/protobuf/src')) +
+           list(find_files('*.h', 'google/protobuf_archive/src')) +
            list(find_files('*', 'third_party/eigen3')) +
            list(find_files('*', 'external/eigen_archive')))
 
