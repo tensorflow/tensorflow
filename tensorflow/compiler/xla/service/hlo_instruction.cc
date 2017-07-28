@@ -1759,7 +1759,7 @@ bool HloInstruction::IsFusable() const {
     // Only fuse Rng if it is used once, otherwise the random numbers generated
     // will be different in each fusion.
     case HloOpcode::kRng:
-      return users_.size() == 1;
+      return users_.size() <= 1;
     default:
       return true;
   }
