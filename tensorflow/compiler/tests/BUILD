@@ -355,7 +355,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "segment_reduction_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
     deps = [
         ":xla_test",

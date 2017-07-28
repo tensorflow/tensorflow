@@ -606,27 +606,27 @@ CustomCreatorSingleton* GetCustomCreatorSingleton() {
   return ccs;
 }
 
-}  // end namespace
+}  // namespace
 
 void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
   GetCustomCreatorSingleton()->Set(std::move(cb));
 }
 
-FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator) {
-  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
-                                        lib_def, optimizer_options,
-                                        std::move(custom_kernel_creator));
+  return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
+      device_mgr, env, device, graph_def_version, lib_def, optimizer_options,
+      std::move(custom_kernel_creator)));
 }
 
-FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return NewFunctionLibraryRuntime(dmgr, env, device, graph_def_version,
+  return NewFunctionLibraryRuntime(device_mgr, env, device, graph_def_version,
                                    lib_def, optimizer_options,
                                    GetCustomCreatorSingleton()->Get());
 }

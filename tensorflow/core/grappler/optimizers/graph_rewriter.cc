@@ -37,10 +37,9 @@ GraphRewriter::GraphRewriter(const GrapplerItem& item) {
     Status s = op_registry->LookUp(node.op(), &op_reg_data);
     // TODO(bsteiner): make this not a best-effort lookup and evaluation?
     if (s.ok()) {
-      s = InOutTypesForNode(node, op_reg_data->op_def, &info->inputs,
-                            &info->outputs);
+      DataTypeVector inputs;
+      s = InOutTypesForNode(node, op_reg_data->op_def, &inputs, &info->outputs);
       if (!s.ok()) {
-        info->inputs.clear();
         info->outputs.clear();
       }
     }
