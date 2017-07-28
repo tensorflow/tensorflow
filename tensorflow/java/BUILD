@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:private"])
 licenses(["notice"])  # Apache 2.0
 
 load("build_defs", "JAVACOPTS")
+load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_gen_op_wrappers_java")
 
 java_library(
     name = "tensorflow",
@@ -34,9 +35,35 @@ filegroup(
 
 filegroup(
     name = "java_op_sources",
-    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]),
+    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]) + [
+        ":java_op_gensources",
+    ],
     visibility = [
         "//tensorflow/java:__pkg__",
+    ],
+)
+
+tf_gen_op_wrappers_java(
+    name = "java_op_gensources",
+    ops_libs = [
+        "array_ops",
+        "candidate_sampling_ops",
+        "control_flow_ops",
+        "data_flow_ops",
+        "image_ops",
+        "io_ops",
+        "linalg_ops",
+        "logging_ops",
+        "math_ops",
+        "nn_ops",
+        "no_op",
+        "parsing_ops",
+        "random_ops",
+        "sparse_ops",
+        "state_ops",
+        "string_ops",
+        "training_ops",
+        "user_ops",
     ],
 )
 
@@ -281,4 +308,21 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "java_ops_gentool",
+    srcs = glob([
+        "src/gen/cc/gen_util.h",
+        "src/gen/cc/ops/*.h",
+        "src/gen/cc/ops/*.cc",
+    ]),
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
