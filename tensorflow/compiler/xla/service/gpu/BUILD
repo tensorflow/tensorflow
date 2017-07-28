@@ -432,6 +432,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:transpose_folding",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",

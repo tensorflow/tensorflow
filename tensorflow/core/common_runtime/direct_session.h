@@ -98,14 +98,16 @@ class DirectSession : public Session {
   ::tensorflow::Status ListDevices(
       std::vector<DeviceAttributes>* response) override;
   ::tensorflow::Status Close() override;
+  ::tensorflow::Status LocalDeviceManager(const DeviceMgr** output) override {
+    *output = device_mgr_.get();
+    return ::tensorflow::Status::OK();
+  }
 
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
     cost_model_manager_.ExportCostModels(cost_models);
   }
 
  private:
-  typedef DirectSession ME;
-
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {

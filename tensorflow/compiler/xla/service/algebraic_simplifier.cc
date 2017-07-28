@@ -1488,9 +1488,9 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   // We cannot insert bitcasts if the layouts will not be compatible.
   // TODO(b/33178038): Consider inserting a transpose if a bitcast would be
   // invalid.
-  if (!valid_bitcast_callback_(lhs->shape(), input_shape) ||
-      !valid_bitcast_callback_(rhs->shape(), new_filter_shape) ||
-      !valid_bitcast_callback_(dot_output_shape, convolution_shape)) {
+  if (!valid_bitcast_callback_(input_shape, lhs->shape()) ||
+      !valid_bitcast_callback_(new_filter_shape, rhs->shape()) ||
+      !valid_bitcast_callback_(convolution_shape, dot_output_shape)) {
     return Status::OK();
   }
 
@@ -1586,6 +1586,9 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   // module, invalidating iteration.
   std::vector<HloComputation*> computations;
   for (auto& comp : module->computations()) {
+    if (comp->IsFusionComputation()) {
+      continue;
+    }
     computations.push_back(comp.get());
   }
   for (auto& comp : computations) {

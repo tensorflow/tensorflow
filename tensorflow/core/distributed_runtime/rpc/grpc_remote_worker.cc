@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/grpc_response_reader.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/worker.pb.h"

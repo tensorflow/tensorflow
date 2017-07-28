@@ -18,6 +18,11 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+bool IsAddN(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "AddN";
+}
+
 bool IsConcat(const NodeDef& node) {
   const auto op = node.op();
   return op == "Concat" || op == "ConcatV2";

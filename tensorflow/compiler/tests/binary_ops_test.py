@@ -114,6 +114,14 @@ class BinaryOpsTest(XLATestCase):
           expected=np.array([0.4, 1.2, 2.4, 4, 5, 6], dtype=dtype))
 
       self._testBinary(
+          gen_nn_ops._selu_grad,
+          np.array([1, 2, 3, 4, 5, 6], dtype=dtype),
+          np.array([-.6, -.4, -.2, .2, .4, .6], dtype=dtype),
+          expected=np.array(
+              [1.158099340847, 2.7161986816948, 4.67429802254,
+               4.202803949422, 5.2535049367774, 6.30420592413], dtype=dtype))
+
+      self._testBinary(
           gen_nn_ops._relu_grad,
           np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=dtype),
           np.array([0, 0, 0, 0, 0, 0.1, 0.3, 0.5, 0.7, 0.9], dtype=dtype),
@@ -764,6 +772,24 @@ class BinaryOpsTest(XLATestCase):
           np.array([[1, 2], [3, 4]], dtype=dtype),
           np.array([1, 0], dtype=np.int32),
           expected=np.array([[1, 3], [2, 4]], dtype=dtype))
+
+  def testCross(self):
+    for dtype in self.float_types:
+      self._testBinary(
+          gen_math_ops.cross,
+          np.zeros((4, 3), dtype=dtype),
+          np.zeros((4, 3), dtype=dtype),
+          expected=np.zeros((4, 3), dtype=dtype))
+      self._testBinary(
+          gen_math_ops.cross,
+          np.array([1, 2, 3], dtype=dtype),
+          np.array([4, 5, 6], dtype=dtype),
+          expected=np.array([-3, 6, -3], dtype=dtype))
+      self._testBinary(
+          gen_math_ops.cross,
+          np.array([[1, 2, 3], [10, 11, 12]], dtype=dtype),
+          np.array([[4, 5, 6], [40, 50, 60]], dtype=dtype),
+          expected=np.array([[-3, 6, -3], [60, -120, 60]], dtype=dtype))
 
 
 if __name__ == "__main__":
