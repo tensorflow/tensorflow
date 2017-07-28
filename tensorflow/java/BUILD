@@ -35,7 +35,7 @@ filegroup(
 
 filegroup(
     name = "java_op_sources",
-    srcs = glob(["src/main/java/org/tensorflow/op/*.java"]),
+    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]),
     visibility = [
         "//tensorflow/java:__pkg__",
     ],
@@ -185,6 +185,19 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/op/OperandsTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.op.OperandsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "ConstantTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/ConstantTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.ConstantTest",
     deps = [
         ":tensorflow",
         ":testutil",

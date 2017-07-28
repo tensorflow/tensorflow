@@ -308,6 +308,7 @@ filegroup(
         "//tensorflow/contrib/linear_optimizer:all_files",
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
+        "//tensorflow/contrib/meta_graph_transform:all_files",
         "//tensorflow/contrib/metrics:all_files",
         "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nn:all_files",

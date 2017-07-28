@@ -68,7 +68,7 @@ class DecisionTreeResource : public ResourceBase {
   // Return the TreeNode for the leaf that the example ends up at according
   // to decsion_tree_. Also fill in that leaf's depth if it isn't nullptr.
   int32 TraverseTree(const std::unique_ptr<TensorDataSet>& input_data,
-                     int example, int32* depth) const;
+                     int example, int32* depth, TreePath* path) const;
 
   // Split the given node_id, turning it from a Leaf to a BinaryNode and
   // setting it's split to the given best.  Add new children ids to

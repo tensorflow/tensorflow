@@ -309,6 +309,7 @@ const Layout* LayoutConstraints::BufferLayout(
   }
   return nullptr;
 }
+
 const BufferLayoutConstraint* LayoutConstraints::GetBufferLayoutConstraint(
     const LogicalBuffer& buffer) const {
   auto it = buffer_constraints_.find(&buffer);
@@ -323,6 +324,7 @@ const ShapeLayout* LayoutConstraints::OperandLayout(
   }
   return nullptr;
 }
+
 const OperandLayoutConstraint* LayoutConstraints::GetOperandLayoutConstraint(
     const HloInstruction* instruction, int64 operand_no) const {
   auto it = operand_constraints_.find(std::make_pair(instruction, operand_no));
@@ -382,11 +384,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // instruction.
       // TODO(b/31425034): Change infeeds to be more like parameters, with
       // shapes in the ComputationLayout.
-      // TODO(b/62477016): When the infeed does not set padding anymore, the
-      // call to ShapeWithoutPadding can be removed.
-      Shape infeed_shape = ShapeUtil::ShapeWithoutPadding(instruction->shape());
-      TF_RETURN_IF_ERROR(
-          constraints->SetInstructionLayout(infeed_shape, instruction.get()));
+      DCHECK(!LayoutUtil::IsPadded(instruction->shape()));
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(instruction->shape(),
+                                                           instruction.get()));
     } else if (instruction->opcode() == HloOpcode::kOutfeed) {
       // Constrain the input to the Outfeed instruction to be the expected
       // layout of the Outfeed.

@@ -682,28 +682,26 @@ void GenPythonOp::AddDocStringOutputs() {
 }
 
 void GenPythonOp::AddBody(const string& prefix) {
-  AddBodyNoReturn(prefix);
-  strings::StrAppend(&result_, prefix, "return _result\n");
-}
-
-void GenPythonOp::AddBodyNoReturn(const string& prefix) {
-  string return_prefix =
+  const string apply_prefix =
       strings::StrCat(prefix, "_result = _op_def_lib.apply_op(");
-  string return_args = strings::StrCat("\"", op_def_.name(), "\", ");
-  for (size_t i = 0; i < param_names_.size(); ++i) {
-    strings::StrAppend(&return_args, param_names_[i], "=", param_names_[i],
-                       ", ");
-  }
-  strings::StrAppend(&return_args, "name=name)");
-
-  strings::StrAppend(&result_,
-                     // Wrap the arguments, and indent to the (.
-                     WordWrap(return_prefix, return_args, kRightMargin), "\n");
-
+  AddBodyNoReturn(apply_prefix);
   if (num_outs_ > 1) {
     strings::StrAppend(&result_, prefix, "_result = _", op_def_.name(),
                        "Output._make(_result)\n");
   }
+  strings::StrAppend(&result_, prefix, "return _result\n");
+}
+
+void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
+  string args = strings::StrCat("\"", op_def_.name(), "\", ");
+  for (size_t i = 0; i < param_names_.size(); ++i) {
+    strings::StrAppend(&args, param_names_[i], "=", param_names_[i], ", ");
+  }
+  strings::StrAppend(&args, "name=name)");
+
+  strings::StrAppend(&result_,
+                     // Wrap the arguments, and indent to the (.
+                     WordWrap(apply_prefix, args, kRightMargin), "\n");
 }
 
 }  // namespace python_op_gen_internal

@@ -221,7 +221,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
                quadrature_polynomial_degree=8,
                validate_args=False,
                allow_nan_stats=True,
-               name="VectorLocationScaleDiffeomixture"):
+               name="VectorDiffeomixture"):
     """Constructs the VectorDiffeomixture on `R**k`.
 
     Args:
@@ -387,23 +387,33 @@ class VectorDiffeomixture(distribution_lib.Distribution):
 
   @property
   def mixture_distribution(self):
+    """Distribution used to select a convex combination of affine transforms."""
     return self._mixture_distribution
 
   @property
   def distribution(self):
+    """Base scalar-event, scalar-batch distribution."""
     return self._distribution
 
   @property
   def interpolate_weight(self):
+    """Grid of mixing probabilities, one for each grid point."""
     return self._interpolate_weight
 
   @property
   def endpoint_affine(self):
+    """Affine transformation for each of `K` components."""
     return self._endpoint_affine
 
   @property
   def interpolated_affine(self):
+    """Affine transformation for each convex combination of `K` components."""
     return self._interpolated_affine
+
+  @property
+  def quadrature_polynomial_degree(self):
+    """Polynomial largest exponent used for Gauss-Hermite quadrature."""
+    return self._degree
 
   def _batch_shape_tensor(self):
     return self._batch_shape_
@@ -457,12 +467,12 @@ class VectorDiffeomixture(distribution_lib.Distribution):
 
     # Alternatively:
     # x = weight * x[0] + (1. - weight) * x[1]
-    x = weight * (x[0] - x[1]) + array_ops.ones_like(x[0]) * x[1]
+    x = weight * (x[0] - x[1]) + x[1]
 
     return x
 
   def _log_prob(self, x):
-    # By convention, we always put the the grid points right-most.
+    # By convention, we always put the grid points right-most.
     y = array_ops.stack(
         [aff.inverse(x) for aff in self.interpolated_affine],
         axis=-1)
@@ -740,8 +750,7 @@ def interpolate_loc(deg, interpolate_weight, loc):
       x = interpolate_weight[..., array_ops.newaxis] * loc[0]
     else:
       delta = loc[0] - loc[1]
-      offset = array_ops.ones_like(loc[0]) * loc[1]
-      x = interpolate_weight[..., array_ops.newaxis] * delta + offset
+      x = interpolate_weight[..., array_ops.newaxis] * delta + loc[1]
     return [x[..., k, :] for k in range(deg)]
 
 

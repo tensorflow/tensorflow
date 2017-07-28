@@ -26,14 +26,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Constants.h"
-#include "external/llvm/include/llvm/IR/GlobalVariable.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/Target/TargetRegisterInfo.h"
-#include "external/llvm/include/llvm/Target/TargetSubtargetInfo.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/Target/TargetRegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -2380,6 +2380,173 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
   ir_builder_.SetInsertPoint(exit_bb);
 
   return Status::OK();
+}
+
+StatusOr<bool> IrEmitter::EmitFastConcatenate(
+    HloInstruction* concatenate,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    string* failure_reason) {
+  if (ShouldEmitParallelLoopFor(*concatenate)) {
+    *failure_reason =
+        "cannot generate memcpy-based concat for the parallel CPU backend";
+    return false;
+  }
+
+  const Shape& output_shape = concatenate->shape();
+  for (auto* op : operands) {
+    if (!LayoutUtil::Equal(op->shape().layout(), output_shape.layout())) {
+      *failure_reason = "operand has mismatching layouts";
+      return false;
+    }
+    if (LayoutUtil::IsPadded(op->shape())) {
+      *failure_reason = "operand has padded layout";
+      return false;
+    }
+  }
+
+  CHECK(!LayoutUtil::IsPadded(concatenate->shape()));
+
+  // We split the dimensions into three categories: the dimension over which we
+  // are concatenating (concat_dim), the dimensions that are minor to it
+  // (inner_dims) and the dimensions that are major to it (outer_dims).
+
+  int64 concat_dim = concatenate->dimensions(0);
+  const Layout& output_layout = output_shape.layout();
+  auto concat_dim_layout_itr =
+      std::find(output_layout.minor_to_major().begin(),
+                output_layout.minor_to_major().end(), concat_dim);
+
+  std::vector<int64> inner_dims(output_layout.minor_to_major().begin(),
+                                concat_dim_layout_itr);
+  std::vector<int64> outer_dims(std::next(concat_dim_layout_itr),
+                                output_layout.minor_to_major().end());
+
+  llvm::Type* i8_ptr_type = ir_builder_.getInt8PtrTy();
+  llvm::Type* i8_type = ir_builder_.getInt8Ty();
+
+  TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                      EmitTargetAddressForOp(concatenate));
+
+  llvm_ir::IrArray target_array(target_address, output_shape);
+
+  llvm_ir::ForLoopNest loops(&ir_builder_);
+  llvm_ir::IrArray::Index outer_dims_index =
+      loops.AddLoopsForShapeOnDimensions(output_shape, outer_dims, "concat");
+  std::replace(outer_dims_index.begin(), outer_dims_index.end(),
+               static_cast<llvm::Value*>(nullptr),
+               static_cast<llvm::Value*>(ir_builder_.getInt64(0)));
+
+  if (!outer_dims.empty()) {
+    SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &ir_builder_);
+  }
+
+  PrimitiveType primitive_type = output_shape.element_type();
+  unsigned primitive_type_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
+
+  AddAliasingInformationToIrArray(*concatenate, &target_array);
+
+  // Contiguous subregions from each operand to the concatenate contribute to a
+  // contiguous subregion in the target buffer starting at target_region_begin.
+  llvm::Value* target_region_begin = ir_builder_.CreateBitCast(
+      target_array.EmitArrayElementAddress(outer_dims_index, &ir_builder_,
+                                           "target_region"),
+      i8_ptr_type);
+  int64 byte_offset_into_target_region = 0;
+
+  int64 inner_dims_product =
+      std::accumulate(inner_dims.begin(), inner_dims.end(), 1l,
+                      [&](int64 product, int64 inner_dim) {
+                        return product * output_shape.dimensions(inner_dim);
+                      });
+
+  // For each operand, emit a memcpy from the operand to the target of size
+  // equal to the product of inner dimensions.
+  for (HloInstruction* operand : operands) {
+    const Shape& input_shape = operand->shape();
+    llvm_ir::IrArray source_array(GetEmittedValueFor(operand), input_shape);
+    AddAliasingInformationToIrArray(*operand, &source_array);
+
+    llvm::Value* copy_source_address = ir_builder_.CreateBitCast(
+        source_array.EmitArrayElementAddress(outer_dims_index, &ir_builder_,
+                                             "src_addr"),
+        i8_ptr_type);
+
+    llvm::Value* copy_target_address = ir_builder_.CreateGEP(
+        i8_type, target_region_begin,
+        ir_builder_.getInt64(byte_offset_into_target_region));
+
+    EmitTransferElements(
+        copy_target_address, copy_source_address,
+        inner_dims_product * input_shape.dimensions(concat_dim), primitive_type,
+        target_array, source_array);
+
+    byte_offset_into_target_region += inner_dims_product *
+                                      input_shape.dimensions(concat_dim) *
+                                      primitive_type_size;
+  }
+
+  if (!outer_dims.empty()) {
+    SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &ir_builder_);
+  }
+
+  emitted_value_[concatenate] = target_address;
+
+  return true;
+}
+
+void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
+                                     int64 element_count,
+                                     PrimitiveType primitive_type,
+                                     const llvm_ir::IrArray& target_array,
+                                     const llvm_ir::IrArray& source_array) {
+  unsigned primitive_type_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
+  unsigned element_alignment = GCD(
+      primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type));
+  llvm::Type* primitive_ptr_type = llvm::PointerType::getUnqual(
+      llvm_ir::PrimitiveTypeToIrType(primitive_type, &ir_builder_));
+
+  if (element_count == 1) {
+    auto* load_instruction = ir_builder_.CreateAlignedLoad(
+        ir_builder_.CreateBitCast(source, primitive_ptr_type),
+        element_alignment);
+    source_array.AnnotateLoadStoreInstructionWithMetadata(load_instruction);
+    auto* store_instruction = ir_builder_.CreateAlignedStore(
+        load_instruction, ir_builder_.CreateBitCast(target, primitive_ptr_type),
+        element_alignment);
+    target_array.AnnotateLoadStoreInstructionWithMetadata(store_instruction);
+  } else {
+    auto* memcpy_instruction = ir_builder_.CreateMemCpy(
+        target, source, element_count * primitive_type_size, element_alignment);
+
+    // The memcpy does the load and the store internally.  The aliasing related
+    // metadata has to reflect that.
+    std::map<int, llvm::MDNode*> merged_metadata =
+        llvm_ir::MergeMetadata(&module_->getContext(), source_array.metadata(),
+                               target_array.metadata());
+    for (const auto& kind_md_pair : merged_metadata) {
+      memcpy_instruction->setMetadata(kind_md_pair.first, kind_md_pair.second);
+    }
+  }
+}
+
+Status IrEmitter::HandleConcatenate(
+    HloInstruction* concatenate,
+    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  string failure_reason;
+  TF_ASSIGN_OR_RETURN(
+      bool successful,
+      EmitFastConcatenate(concatenate, operands, &failure_reason));
+  if (successful) {
+    VLOG(1) << "Emitted fast concatenate for " << concatenate->ToString();
+    return Status::OK();
+  }
+
+  VLOG(1) << "Could not emit fast concatenate for " << concatenate->ToString()
+          << ": " << failure_reason;
+
+  return DefaultAction(concatenate);
 }
 
 Status IrEmitter::FinishVisit(HloInstruction* root) {

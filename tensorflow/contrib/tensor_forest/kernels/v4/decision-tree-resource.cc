@@ -28,12 +28,15 @@ DecisionTreeResource::DecisionTreeResource(const TensorForestParams& params)
 
 int32 DecisionTreeResource::TraverseTree(
     const std::unique_ptr<TensorDataSet>& input_data, int example,
-    int32* leaf_depth) const {
+    int32* leaf_depth, TreePath* path) const {
   const DecisionTree& tree = decision_tree_->decision_tree();
   int32 current_id = 0;
   int32 depth = 0;
   while (true) {
     const TreeNode& current = tree.nodes(current_id);
+    if (path != nullptr) {
+      *path->add_nodes_visited() = current;
+    }
     if (current.has_leaf()) {
       if (leaf_depth != nullptr) {
         *leaf_depth = depth;
