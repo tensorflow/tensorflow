@@ -200,11 +200,7 @@ must be part of your `classpath`. For example, you can include the
 downloaded `.jar` in your `classpath` by using the `-cp` compilation flag
 as follows:
 
-<<<<<<< HEAD
-<pre><b>javac -cp libtensorflow-1.3.0-rc0.jar HelloTF.java</b></pre>
-=======
 <pre><b>javac -cp libtensorflow-1.3.0-rc1.jar HelloTF.java</b></pre>
->>>>>>> google/r1.3
 
 
 ### Running
@@ -218,19 +214,11 @@ two files are available to the JVM:
 For example, the following command line executes the `HelloTF` program on Linux
 and Mac OS X:
 
-<<<<<<< HEAD
-<pre><b>java -cp libtensorflow-1.3.0-rc0.jar:. -Djava.library.path=./jni HelloTF</b></pre>
-
-And the following command line executes the `HelloTF` program on Windows:
-
-<pre><b>java -cp libtensorflow-1.3.0-rc0.jar;. -Djava.library.path=jni HelloTF</b></pre>
-=======
 <pre><b>java -cp libtensorflow-1.3.0-rc1.jar:. -Djava.library.path=./jni HelloTF</b></pre>
 
 And the following command line executes the `HelloTF` program on Windows:
 
 <pre><b>java -cp libtensorflow-1.3.0-rc1.jar;. -Djava.library.path=jni HelloTF</b></pre>
->>>>>>> google/r1.3
 
 If the program prints <tt>Hello from <i>version</i></tt>, you've successfully
 installed TensorFlow for Java and are ready to use the API.  If the program
