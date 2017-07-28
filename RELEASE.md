@@ -75,14 +75,9 @@
 * Framework now supports armv7, cocoapods.org now displays correct page.
 * Script to create iOS framework for CocoaPods.
 * Android releases of TensorFlow are now pushed to jcenter for easier integration into apps. See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md for more details.
-<<<<<<< HEAD
-* Fixed a bug that prevented tfdbg from functioning with multi-GPU setups.
-* Fixed a bug that prevented tfdbg from working with `tf.Session.make_callable`.
-=======
 * TensorFlow Debugger (tfdbg):
   * Fixed a bug that prevented tfdbg from functioning with multi-GPU setups.
   * Fixed a bug that prevented tfdbg from working with `tf.Session.make_callable`.
->>>>>>> google/r1.3
 
 ## Thanks to our Contributors
 
