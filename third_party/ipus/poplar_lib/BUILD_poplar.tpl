@@ -17,6 +17,7 @@ filegroup(
     "lib/libpopconv.*",
     "lib/libpopreduce.*",
     "lib/libpopstd.*",
+    "lib/libpoprand.*",
   ]),
 )
 
