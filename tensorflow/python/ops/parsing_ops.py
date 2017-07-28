@@ -120,8 +120,10 @@ class SparseFeature(
       `value_key` are already sorted by their index position. If so skip
       sorting. False by default (optional).
   """
-  pass
-SparseFeature.__new__.__defaults__ = (False,)
+
+  def __new__(cls, index_key, value_key, dtype, size, already_sorted=False):
+    return super(SparseFeature, cls).__new__(
+        cls, index_key, value_key, dtype, size, already_sorted)
 
 
 class FixedLenFeature(collections.namedtuple(
@@ -137,8 +139,10 @@ class FixedLenFeature(collections.namedtuple(
     default_value: Value to be used if an example is missing this feature. It
         must be compatible with `dtype` and of the specified `shape`.
   """
-  pass
-FixedLenFeature.__new__.__defaults__ = (None,)
+
+  def __new__(cls, shape, dtype, default_value=None):
+    return super(FixedLenFeature, cls).__new__(
+        cls, shape, dtype, default_value)
 
 
 class FixedLenSequenceFeature(collections.namedtuple(
@@ -168,8 +172,10 @@ class FixedLenSequenceFeature(collections.namedtuple(
       `SequenceExample`. Defaults to "" for dtype string and 0 otherwise
       (optional).
   """
-  pass
-FixedLenSequenceFeature.__new__.__defaults__ = (False, None)
+
+  def __new__(cls, shape, dtype, allow_missing=False, default_value=None):
+    return super(FixedLenSequenceFeature, cls).__new__(
+        cls, shape, dtype, allow_missing, default_value)
 
 
 def _features_to_raw_params(features, types):

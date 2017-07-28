@@ -133,9 +133,9 @@ TEST_F(LoaderTest, NoTagMatch) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {"missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
-  EXPECT_TRUE(
-      StringPiece(st.error_message())
-          .contains("Could not find meta graph def matching supplied tags."))
+  EXPECT_TRUE(StringPiece(st.error_message())
+                  .contains("Could not find meta graph def matching supplied "
+                            "tags: { missing-tag }"))
       << st.error_message();
 }
 
@@ -151,7 +151,7 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(
       StringPiece(st.error_message())
-          .contains("Could not find meta graph def matching supplied tags."))
+          .contains("Could not find meta graph def matching supplied tags: "))
       << st.error_message();
 }
 

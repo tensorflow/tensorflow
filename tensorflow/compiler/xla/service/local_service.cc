@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -47,13 +47,6 @@ namespace se = ::perftools::gputools;
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
-    perftools::gputools::Platform* platform) {
-  ServiceOptions default_options;
-  default_options.set_platform(platform);
-  return NewService(default_options);
-}
-
-/* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
     const ServiceOptions& options) {
   perftools::gputools::Platform* platform = options.platform();
   if (platform == nullptr) {
@@ -62,7 +55,6 @@ namespace xla {
 
   BackendOptions backend_options;
   backend_options.set_platform(platform)
-      .set_number_of_replicas(options.number_of_replicas())
       .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
                       Backend::CreateBackend(backend_options));
@@ -70,15 +62,15 @@ namespace xla {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
   std::unique_ptr<LocalService> service(new LocalService(
-      std::move(backend), std::move(compute_constant_backend)));
+      options, std::move(backend), std::move(compute_constant_backend)));
   return std::move(service);
 }
 
-LocalService::LocalService(std::unique_ptr<Backend> execute_backend,
+LocalService::LocalService(const ServiceOptions& options,
+                           std::unique_ptr<Backend> execute_backend,
                            std::unique_ptr<Backend> compute_constant_backend)
-    : Service(std::move(execute_backend), std::move(compute_constant_backend)) {
-  runs_in_client_process_ = true;
-}
+    : Service(options, std::move(execute_backend),
+              std::move(compute_constant_backend)) {}
 
 namespace {
 // Returns the space required to allocate a shape. If
@@ -152,9 +144,13 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   // Construct computation layout from the argument layouts.
   auto module_config = MakeUnique<HloModuleConfig>(*program_shape);
   module_config->set_has_hybrid_result(has_hybrid_result);
-  module_config->set_replica_count(execute_backend_->Replicas().size());
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (flags->xla_hlo_profile) {
+  module_config->set_replica_count(options_.number_of_replicas());
+  module_config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  if (execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
+    module_config->set_intra_op_parallelism_threads(
+        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+  }
+  if (module_config->debug_options().xla_hlo_profile()) {
     module_config->enable_hlo_profiling(true);
   }
   auto* computation_layout = module_config->mutable_entry_computation_layout();

@@ -22,11 +22,11 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Operator.h"
 #include "external/llvm/include/llvm/Target/TargetOptions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/llvm_util_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/casts.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -137,6 +137,24 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder) {
   return result_type;
 }
 
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32* shape_size, llvm::IRBuilder<>* ir_builder) {
+  string encoded_shape = shape.SerializeAsString();
+  if (encoded_shape.size() > std::numeric_limits<int32>::max()) {
+    return InternalError("Encoded shape size exceeded int32 size limit.");
+  }
+  *shape_size = static_cast<int32>(encoded_shape.size());
+  return ir_builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
+}
+
+StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
+                                                  int32 size_bytes) {
+  Shape shape;
+  TF_RET_CHECK(shape.ParseFromArray(shape_ptr, size_bytes));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
+  return shape;
+}
+
 namespace {
 
 // Recursively construct a multidimensional LLVM constant which represents the
@@ -163,36 +181,36 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
     llvm::Constant* value;
     switch (shape.element_type()) {
       case PRED:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<bool>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<bool>(*multi_index));
         break;
       case U8:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint8>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint8>(*multi_index));
         break;
       case S32:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<int32>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<int32>(*multi_index));
         break;
       case U32:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint32>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint32>(*multi_index));
         break;
       case S64:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<int64>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<int64>(*multi_index));
         break;
       case U64:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint64>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint64>(*multi_index));
         break;
       case F32:
-        value = llvm::ConstantFP::get(
-            ir_element_type, LiteralUtil::Get<float>(literal, *multi_index));
+        value = llvm::ConstantFP::get(ir_element_type,
+                                      literal.Get<float>(*multi_index));
         break;
       case F64:
-        value = llvm::ConstantFP::get(
-            ir_element_type, LiteralUtil::Get<double>(literal, *multi_index));
+        value = llvm::ConstantFP::get(ir_element_type,
+                                      literal.Get<double>(*multi_index));
         break;
       default:
         LOG(FATAL) << "unsupported type " << shape.element_type();
@@ -357,31 +375,9 @@ void EmitLogging(const char* tag, llvm::Value* value,
 
 void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
                            bool is_pointer_to) {
-  legacy_flags::LlvmUtilFlags* flags = legacy_flags::GetLlvmUtilFlags();
-  if (!flags->xla_emit_tbaa) {
-    return;
-  }
-
-  llvm::MDBuilder metadata_builder(instruction->getContext());
-  llvm::MDNode* root = metadata_builder.createTBAARoot("XLA TBAA");
-  string type_name;
-  if (is_pointer_to) {
-    type_name += "pointer-to ";
-  }
-  // Scalars do not have layout which makes it permissible to omit an explicit
-  // layout.  To make sure that equivalent scalar shapes have the same TBAA,
-  // remove the (meaningless) explicit layout if one is present.
-  if (ShapeUtil::Rank(shape) == 0) {
-    LayoutUtil::ClearLayout(&shape);
-  } else {
-    CHECK(shape.has_layout());
-  }
-  type_name += shape.ShortDebugString();
-  llvm::MDNode* tbaa_node =
-      metadata_builder.createTBAANode(llvm_ir::AsStringRef(type_name), root);
-  instruction->setMetadata(llvm::LLVMContext::MD_tbaa,
-                           metadata_builder.createTBAAStructTagNode(
-                               tbaa_node, tbaa_node, /*Offset=*/0));
+  // TODO(b/62903316): TBAA metadata causes LLVM to miscompile generated code,
+  // most likely because the generated metadata is incorrect.  Disable TBAA
+  // metadata while we resolve this.
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {

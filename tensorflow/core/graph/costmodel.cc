@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/core/graph/costmodel.h"
 
 #include <vector>
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/logging.h"
 

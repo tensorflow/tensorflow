@@ -28,6 +28,7 @@ See the @{$python/summary} guide.
 @@merge
 @@merge_all
 @@get_summary_description
+@@PluginAsset
 @@get_plugin_asset
 @@get_all_plugin_assets
 """
@@ -54,7 +55,6 @@ from tensorflow.python.ops import summary_op_util as _summary_op_util
 
 # exports tensor-related summaries
 # pylint: disable=unused-import
-from tensorflow.python.ops.summary_ops import _tensor_summary_v2
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
 

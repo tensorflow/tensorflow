@@ -365,5 +365,31 @@ TEST_F(ShapeTreeTest, OperatorEquals) {
   }
 }
 
+TEST_F(ShapeTreeTest, ConstructWithPointerToShape) {
+  // Construct a ShapeTree using a pointer to a shape, rather than a reference
+  // to a shape.  This constructor is an optimization to let us avoid
+  // constructing and destroying temporary shapes when we have many ShapeTrees.
+  ShapeTree<int> t(&nested_tuple_shape_, 42);
+  int num_nodes = 0;
+  t.ForEachElement([&num_nodes](const ShapeIndex& /*index*/, int data) {
+    EXPECT_EQ(42, data);
+    ++num_nodes;
+  });
+  EXPECT_EQ(10, num_nodes);
+}
+
+TEST_F(ShapeTreeTest, CopyWithPointerToShape) {
+  ShapeTree<int> source(&nested_tuple_shape_, 0);
+  ShapeTree<int> dest(source);
+  EXPECT_EQ(&dest.shape(), &nested_tuple_shape_);
+}
+
+TEST_F(ShapeTreeTest, CopyAssignWithPointerToShape) {
+  ShapeTree<int> source(&nested_tuple_shape_, 0);
+  ShapeTree<int> dest;
+  dest = source;
+  EXPECT_EQ(&dest.shape(), &nested_tuple_shape_);
+}
+
 }  // namespace
 }  // namespace xla

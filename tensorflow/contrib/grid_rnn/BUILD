@@ -20,6 +20,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
         "//tensorflow/python:variable_scope",
     ],
 )

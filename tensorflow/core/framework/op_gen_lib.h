@@ -18,13 +18,17 @@ limitations under the License.
 
 #include <string>
 #include <unordered_map>
-#include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/framework/op_gen_overrides.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/op_gen_overrides.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
+
+// Forward declare protos so their symbols can be removed from .so exports
+class OpDef;
+class OpGenOverride;
 
 inline string Spaces(int n) { return string(n, ' '); }
 
@@ -39,10 +43,18 @@ string WordWrap(StringPiece prefix, StringPiece str, int width);
 // returns false.
 bool ConsumeEquals(StringPiece* description);
 
+// Convert text-serialized protobufs to/from multiline format.
+string PBTxtToMultiline(StringPiece pbtxt,
+                        const std::vector<string>& multi_line_fields);
+string PBTxtFromMultiline(StringPiece multiline_pbtxt);
+
 // Takes a list of files with OpGenOverrides text protos, and allows you to
 // look up the specific override for any given op.
 class OpGenOverrideMap {
  public:
+  OpGenOverrideMap();
+  ~OpGenOverrideMap();
+
   // `filenames` is a comma-separated list of file names.  If an op
   // is mentioned in more than one file, the last one takes priority.
   Status LoadFileList(Env* env, const string& filenames);
@@ -61,7 +73,7 @@ class OpGenOverrideMap {
   const OpGenOverride* ApplyOverride(OpDef* op_def) const;
 
  private:
-  std::unordered_map<string, OpGenOverride> map_;
+  std::unordered_map<string, std::unique_ptr<OpGenOverride>> map_;
 };
 
 }  // namespace tensorflow

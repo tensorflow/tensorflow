@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/user_computation.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -50,16 +50,16 @@ TEST_F(UserComputationTest, SimpleComputation) {
 
   ConstantRequest constant_request;
   *constant_request.mutable_literal() =
-      LiteralUtil::CreateR1<float>({123.0f, 42.0f})->ToProto();
-  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle constant_handle,
-                         computation.AddConstantInstruction(constant_request));
+      Literal::CreateR1<float>({123.0f, 42.0f})->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle constant_handle,
+                          computation.AddConstantInstruction(constant_request));
 
   ParameterRequest param_request;
   *param_request.mutable_shape() = kScalarShape;
   param_request.set_parameter(0);
   param_request.set_name("param0");
-  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle param_handle,
-                         computation.AddParameterInstruction(param_request));
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle param_handle,
+                          computation.AddParameterInstruction(param_request));
   OpMetadata metadata;
   metadata.set_op_name("meta");
   TF_ASSERT_OK(computation.SetOpMetadata(param_handle, metadata));
@@ -81,7 +81,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
 
     // Program shape should have a single scalar parameter and scalar
     // result. The outfeed instruction should not affect the program shape.
-    TF_ASSIGN_OR_ASSERT_OK(
+    TF_ASSERT_OK_AND_ASSIGN(
         std::shared_ptr<const ProgramShape> program_shape,
         computation.ComputeProgramShape(latest_version.version));
     ASSERT_EQ(1, program_shape->parameters_size());
@@ -90,9 +90,10 @@ TEST_F(UserComputationTest, SimpleComputation) {
     EXPECT_TRUE(ShapeUtil::Compatible(kScalarShape, program_shape->result()));
 
     // Build the HLO computation.
-    TF_ASSIGN_OR_ASSERT_OK(
+    TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<HloComputation> hlo_computation,
-        computation.BuildHloComputation(latest_version.version, hlo_resolver));
+        computation.BuildHloComputation(latest_version.version, hlo_resolver,
+                                        DebugOptions()));
     // There should be one HloInstruction per UserComputation operation.
     EXPECT_EQ(3, hlo_computation->instruction_count());
     // The root of the instruction should be the parameter instruction (not the
@@ -107,7 +108,7 @@ TEST_F(UserComputationTest, SimpleComputation) {
         computation.GetVersionedHandleAtOperation(param_handle);
 
     // Program shape should have a single scalar parameter, and scalar result.
-    TF_ASSIGN_OR_ASSERT_OK(
+    TF_ASSERT_OK_AND_ASSIGN(
         std::shared_ptr<const ProgramShape> program_shape,
         computation.ComputeProgramShape(version_at_param.version));
     ASSERT_EQ(1, program_shape->parameters_size());
@@ -117,9 +118,10 @@ TEST_F(UserComputationTest, SimpleComputation) {
 
     // There should be two instructions, one for the constant and one for the
     // parameter. The outfeed instruction should not be included.
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<HloComputation> hlo_computation,
-                           computation.BuildHloComputation(
-                               version_at_param.version, hlo_resolver));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloComputation> hlo_computation,
+        computation.BuildHloComputation(version_at_param.version, hlo_resolver,
+                                        DebugOptions()));
     EXPECT_EQ(2, hlo_computation->instruction_count());
     EXPECT_THAT(hlo_computation->root_instruction(), op::Parameter());
   }
@@ -130,10 +132,11 @@ TEST_F(UserComputationTest, SimpleComputation) {
         computation.GetVersionedHandle();
 
     // Build the HLO computation.
-    TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<HloComputation> hlo_computation,
-                           computation.BuildHloComputation(
-                               latest_version.version, hlo_resolver,
-                               /*include_unreachable_instructions=*/false));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloComputation> hlo_computation,
+        computation.BuildHloComputation(
+            latest_version.version, hlo_resolver, DebugOptions(),
+            /*include_unreachable_instructions=*/false));
     // There is only one reachable instruction, the parameter.
     EXPECT_EQ(1, hlo_computation->instruction_count());
     // The root of the instruction should be the parameter instruction (not the
@@ -145,8 +148,8 @@ TEST_F(UserComputationTest, SimpleComputation) {
 }
 
 TEST_F(UserComputationTest, EliminateScalarBroadcast) {
-  if (!legacy_flags::GetUserComputationFlags()
-           ->xla_eliminate_hlo_implicit_broadcast) {
+  if (!legacy_flags::GetDebugOptionsFromFlags()
+           .xla_eliminate_hlo_implicit_broadcast()) {
     return;
   }
 
@@ -161,14 +164,14 @@ TEST_F(UserComputationTest, EliminateScalarBroadcast) {
 
   ConstantRequest a_request;
   *a_request.mutable_literal() =
-      LiteralUtil::CreateR1<float>({123.0f, 42.0f})->ToProto();
-  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle a_handle,
-                         computation.AddConstantInstruction(a_request));
+      Literal::CreateR1<float>({123.0f, 42.0f})->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle a_handle,
+                          computation.AddConstantInstruction(a_request));
 
   ConstantRequest b_request;
-  *b_request.mutable_literal() = LiteralUtil::CreateR0<float>(1.0f)->ToProto();
-  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle b_handle,
-                         computation.AddConstantInstruction(b_request));
+  *b_request.mutable_literal() = Literal::CreateR0<float>(1.0f)->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle b_handle,
+                          computation.AddConstantInstruction(b_request));
 
   BinaryOpRequest add;
   add.set_binop(BINOP_ADD);
@@ -182,9 +185,10 @@ TEST_F(UserComputationTest, EliminateScalarBroadcast) {
   VersionedComputationHandle latest_version = computation.GetVersionedHandle();
 
   // Build the HLO computation.
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloComputation> hlo_computation,
-      computation.BuildHloComputation(latest_version.version, hlo_resolver));
+      computation.BuildHloComputation(latest_version.version, hlo_resolver,
+                                      DebugOptions()));
   // The binary operation has implicit scalar broadcast, should be converted
   // to an explicit broadcast intruction and a binary instruction.
   EXPECT_EQ(4, hlo_computation->instruction_count());
@@ -196,8 +200,8 @@ TEST_F(UserComputationTest, EliminateScalarBroadcast) {
 }
 
 TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
-  if (!legacy_flags::GetUserComputationFlags()
-           ->xla_eliminate_hlo_implicit_broadcast) {
+  if (!legacy_flags::GetDebugOptionsFromFlags()
+           .xla_eliminate_hlo_implicit_broadcast()) {
     return;
   }
 
@@ -214,15 +218,15 @@ TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
   *a_request.mutable_shape() = ShapeUtil::MakeShape(F32, {2, 3});
   a_request.set_name("a");
   a_request.set_parameter(0);
-  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle a_handle,
-                         computation.AddParameterInstruction(a_request));
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle a_handle,
+                          computation.AddParameterInstruction(a_request));
 
   ParameterRequest b_request;
   *b_request.mutable_shape() = ShapeUtil::MakeShape(F32, {2, 1, 4});
   b_request.set_name("b");
   b_request.set_parameter(1);
-  TF_ASSIGN_OR_ASSERT_OK(ComputationDataHandle b_handle,
-                         computation.AddParameterInstruction(b_request));
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle b_handle,
+                          computation.AddParameterInstruction(b_request));
 
   BinaryOpRequest add;
   add.set_binop(BINOP_ADD);
@@ -238,9 +242,10 @@ TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
   VersionedComputationHandle latest_version = computation.GetVersionedHandle();
 
   // Build the HLO computation.
-  TF_ASSIGN_OR_ASSERT_OK(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloComputation> hlo_computation,
-      computation.BuildHloComputation(latest_version.version, hlo_resolver));
+      computation.BuildHloComputation(latest_version.version, hlo_resolver,
+                                      DebugOptions()));
 
   // The binary operation has in-dim broadcast and degenerate broadcast, should
   // first do the in-dim broadcast then convert the degnerate broadcast into a
@@ -266,7 +271,7 @@ TEST_F(UserComputationTest, EliminateDegenerateBroadcastAfterIndimBroadcast) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendUserComputationFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

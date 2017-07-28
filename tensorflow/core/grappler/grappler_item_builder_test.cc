@@ -51,7 +51,11 @@ void SampleSumSymbolicGradientGraphdef(
   auto g0 = SymbolicGradient(scope, std::initializer_list<Input>{x, y, z},
                              {DT_FLOAT, DT_INT32}, fn);
 
-  fetches->mutable_node_list()->add_value(g0[0].name());
+  // TODO(bsteiner): we should rewrite the feed/fetch nodes to reflect the
+  // inlining that's done in the item builder
+  // fetches->mutable_node_list()->add_value(g0[0].name());
+  fetches->mutable_node_list()->add_value("SymbolicGradient/dx");
+  fetches->mutable_node_list()->add_value("SymbolicGradient/dy_reshaped");
 
   TF_CHECK_OK(scope.ToGraphDef(def));
 
@@ -109,11 +113,12 @@ TEST_F(GrapplerItemBuilderTest, SymbolicGradientInlining) {
   std::unique_ptr<GrapplerItem> with_inline = CreateGrapplerItem(def, fetches);
 
   // For the inlined graph, there should be 0 symbolic gradient ops.
-  CHECK_EQ(0, CountSymbolicGradientOps(with_inline));
+  EXPECT_EQ(0, CountSymbolicGradientOps(with_inline));
 
   // For the inlined graph, make sure all the required expanded op’s are in the
   // graph.
-  CHECK_EQ(ops_of_inline.size(), CountOpsWithNames(with_inline, ops_of_inline));
+  EXPECT_EQ(ops_of_inline.size(),
+            CountOpsWithNames(with_inline, ops_of_inline));
 }
 
 }  // namespace

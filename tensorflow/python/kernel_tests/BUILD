@@ -47,7 +47,7 @@ tf_py_test(
 
 tf_py_test(
     name = "barrier_ops_test",
-    size = "small",
+    size = "medium",  # NOTE(ebrevdo): This test is NOT small.
     srcs = ["barrier_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -56,6 +56,7 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    shard_count = 20,
 )
 
 tf_py_test(
@@ -71,6 +72,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:string_ops",
     ],
+    tags = ["nomac"],  # b/35468214
 )
 
 tf_py_test(
@@ -728,6 +730,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "sparse_slice_op_test",
+    size = "small",
+    srcs = ["sparse_slice_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:sparse_ops",
+    ],
+)
+
+tf_py_test(
     name = "sparse_to_dense_op_py_test",
     size = "small",
     srcs = ["sparse_to_dense_op_py_test.py"],
@@ -835,7 +849,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "topk_op_test",
     size = "small",
     srcs = ["topk_op_test.py"],
@@ -900,7 +914,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "where_op_test",
     size = "small",
     srcs = ["where_op_test.py"],
@@ -1343,7 +1357,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "gather_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["gather_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1658,6 +1672,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "compare_and_bitpack_op_test",
+    size = "small",
+    srcs = ["compare_and_bitpack_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+cuda_py_test(
     name = "scalar_test",
     size = "small",
     srcs = ["scalar_test.py"],
@@ -1702,7 +1728,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "shape_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["shape_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1971,7 +1997,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "transpose_op_test",
-    size = "large",
+    size = "medium",
     srcs = ["transpose_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2050,6 +2076,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["noasan"],  # times out b/63680444
 )
 
 cuda_py_test(
@@ -2183,6 +2210,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:spectral_ops",
+        "//tensorflow/python:spectral_ops_test_util",
     ],
     shard_count = 3,
 )
@@ -2479,6 +2507,7 @@ cuda_py_test(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:platform",

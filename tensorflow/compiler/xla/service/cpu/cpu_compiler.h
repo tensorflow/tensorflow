@@ -110,16 +110,15 @@ class CpuCompiler : public Compiler {
   ~CpuCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> module, HloDumper dump_hlo,
+      std::unique_ptr<HloModule> module,
       perftools::gputools::StreamExecutor* stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlo,
+      std::vector<std::unique_ptr<HloModule>> modules,
       std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
-                     HloDumper dump_hlo,
                      const AotCompilationOptions& options) override;
 
   perftools::gputools::Platform::Id PlatformId() const override;
@@ -132,7 +131,7 @@ class CpuCompiler : public Compiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* hlo_module, HloDumper dump_hlo);
+  Status RunHloPasses(HloModule* module);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

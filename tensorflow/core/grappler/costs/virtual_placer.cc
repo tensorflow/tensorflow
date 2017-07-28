@@ -36,17 +36,19 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
 
   } else {
     default_device_ = devices_.begin()->first;
+    VLOG(1) << "Number of devices: " << devices_.size();
     for (const auto& device : devices_) {
       if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
         default_device_ = device.first;
+        break;
       }
-      break;
     }
   }
 }
 
 const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
   string device = get_canonical_device_name(node);
+  VLOG(3) << "Device name: " << device;
   auto it = devices_.find(device);
   DCHECK(it != devices_.end());
   return it->second;
@@ -75,6 +77,9 @@ string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
     if (!parsed) {
       return get_default_device_name();
     } else {
+      if (parsed_name.job.empty()) {
+        parsed_name.job = "localhost";
+      }
       device = strings::StrCat(
           "/job:", parsed_name.job, "/replica:", parsed_name.replica,
           "/task:", parsed_name.task, "/",

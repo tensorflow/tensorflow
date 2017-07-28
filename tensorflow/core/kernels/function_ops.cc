@@ -122,6 +122,12 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name("_Arg")
                                                ArgOp);
 #undef REGISTER
 
+REGISTER_KERNEL_BUILDER(Name("_Arg")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("output")
+                            .TypeConstraint<ResourceHandle>("T"),
+                        ArgOp);
+
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name("_Retval").Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
@@ -231,6 +237,8 @@ class SymbolicGradientOp : public AsyncOpKernel {
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.rendezvous = ctx->rendezvous();
+    opts.cancellation_manager = ctx->cancellation_manager();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());

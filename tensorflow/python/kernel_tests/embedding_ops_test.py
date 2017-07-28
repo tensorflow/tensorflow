@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
@@ -77,11 +78,11 @@ class ScatterAddSubTest(test.TestCase):
     # Compute the expected 'p' using numpy operations.
     for i, ind in enumerate(indices):
       if scatter_op == state_ops.scatter_add:
-        p_init.reshape(shape[0], -1)[ind, :] += (
-            vals_init.reshape(vals_shape[0], -1)[i, :])
+        p_init.reshape(shape[0], -1)[ind, :] += (vals_init.reshape(
+            vals_shape[0], -1)[i, :])
       else:
-        p_init.reshape(shape[0], -1)[ind, :] -= (
-            vals_init.reshape(vals_shape[0], -1)[i, :])
+        p_init.reshape(shape[0], -1)[ind, :] -= (vals_init.reshape(
+            vals_shape[0], -1)[i, :])
     self.assertTrue(all((p_init == result).ravel()))
 
   def testNoRepetitions(self):
@@ -111,8 +112,7 @@ class ScatterAddSubTest(test.TestCase):
   def testWrongShape(self):
     # Indices and values mismatch.
     var = variables.Variable(
-        array_ops.zeros(
-            shape=[1024, 64, 64], dtype=dtypes.float32))
+        array_ops.zeros(shape=[1024, 64, 64], dtype=dtypes.float32))
     indices = array_ops.placeholder(dtypes.int32, shape=[32])
     values = array_ops.placeholder(dtypes.float32, shape=[33, 64, 64])
     with self.assertRaises(ValueError):
@@ -208,8 +208,8 @@ def _EmbeddingResult(params,
         else:
           partition = extras + (i - threshold) // ids_per_partition
           offset = (i - threshold) % ids_per_partition
-        val = np.copy(params[_PName(partition) + ":0"][
-            offset, :]) * weight_value
+        val = np.copy(
+            params[_PName(partition) + ":0"][offset, :]) * weight_value
       else:
         assert False
       if value_aggregation is None:
@@ -274,8 +274,7 @@ class EmbeddingLookupTest(test.TestCase):
           [embeddings], ids, max_norm=2.0)
 
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(
-              embeddings * embeddings, axis=1))
+          math_ops.reduce_sum(embeddings * embeddings, axis=1))
       normalized = embeddings / array_ops.stack([norms, norms], axis=1)
       self.assertAllEqual(embedding.eval(), 2 * normalized.eval())
 
@@ -510,8 +509,7 @@ class EmbeddingLookupTest(test.TestCase):
   def testConstructionNonSharded(self):
     with ops.Graph().as_default():
       p = variables.Variable(
-          array_ops.zeros(
-              shape=[100, 100], dtype=dtypes.float32))
+          array_ops.zeros(shape=[100, 100], dtype=dtypes.float32))
       ids = constant_op.constant([0, 1, 1, 7], dtype=dtypes.int32)
       embedding_ops.embedding_lookup([p], ids)
 
@@ -521,8 +519,7 @@ class EmbeddingLookupTest(test.TestCase):
       for _ in range(2):
         p += [
             variables.Variable(
-                array_ops.zeros(
-                    shape=[100, 100], dtype=dtypes.float32))
+                array_ops.zeros(shape=[100, 100], dtype=dtypes.float32))
         ]
         ids = constant_op.constant([0, 1, 1, 17], dtype=dtypes.int32)
       embedding_ops.embedding_lookup(p, ids)
@@ -550,19 +547,22 @@ class EmbeddingLookupTest(test.TestCase):
   def testHigherRankMaxNorm(self):
     np.random.seed(8)
     with self.test_session():
-      for params_shape in (12,), (6, 3):
+      for params_shape in (12,), (6, 3), (6, 2, 3):
+        # Test embedding rank 0, 1, 2.
+        # Note: the first dimension must be a common multiple of procs below.
         params = 2 * np.ones(params_shape)
         params_norm = params / np.sqrt(
-            np.sum(params*params, tuple(range(params.ndim)[1:]), keepdims=True))
+            np.sum(
+                params * params, tuple(range(params.ndim)[1:]), keepdims=True))
         for ids_shape in (), (3), (4, 3), (2, 3, 4):
           ids = np.random.randint(
-              params.shape[0], size=np.prod(ids_shape, dtype=np.int64)).reshape(
-                  ids_shape)
+              params.shape[0], size=np.prod(ids_shape,
+                                            dtype=np.int64)).reshape(ids_shape)
           # Compare nonsharded to gather
           simple = embedding_ops.embedding_lookup(
               params, ids, max_norm=1.0).eval()
           self.assertAllEqual(simple, array_ops.gather(params_norm, ids).eval())
-          # Run a few random sharded versions
+          # Run a few different sharded versions.
           for procs in 1, 2, 3:
             stride = procs * math_ops.range(params.shape[0] // procs)
             split_params = [
@@ -571,6 +571,42 @@ class EmbeddingLookupTest(test.TestCase):
             sharded = embedding_ops.embedding_lookup(
                 split_params, ids, max_norm=1.0).eval()
             self.assertAllEqual(simple, sharded)
+
+  def testTransform(self):
+    # This tests all combinations of:
+    #   - ids rank 0, 1, >1
+    #   - params sharded/unsharded
+    # It always applies max_norm.
+    np.random.seed(8)
+    l2_norm = 2.
+    with self.test_session():
+      # Param values are in [l2_norm, l2_norm+1) so it will always clip.
+      params = np.random.rand(6, 3) + l2_norm
+      params_norm = l2_norm * params / np.sqrt(
+          np.sum(params * params, axis=1, keepdims=True))
+      # Compute the norm of each embedding. This will change the embedding
+      # rank to 0.
+      params_norm = np.linalg.norm(params_norm, axis=1)
+      transform = lambda x: linalg_ops.norm(x, axis=1)
+      for ids_shape in (), (3), (4, 3), (2, 3, 4):
+        # Test ids rank 0, 1, 2, 3.
+        ids = np.random.randint(
+            params.shape[0], size=np.prod(ids_shape,
+                                          dtype=np.int64)).reshape(ids_shape)
+        # Compare nonsharded to gather.
+        simple = embedding_ops._embedding_lookup_and_transform(
+            params, ids, max_norm=l2_norm, transform_fn=transform).eval()
+        self.assertAllClose(simple, array_ops.gather(params_norm, ids).eval())
+        # Run a few different sharded versions.
+        for procs in 1, 2, 3:
+          stride = procs * math_ops.range(params.shape[0] // procs)
+          split_params = [
+              array_ops.gather(params, stride + p) for p in xrange(procs)
+          ]
+          sharded = embedding_ops._embedding_lookup_and_transform(
+              split_params, ids, max_norm=l2_norm,
+              transform_fn=transform).eval()
+          self.assertAllEqual(simple, sharded)
 
 
 class EmbeddingLookupSparseTest(test.TestCase):
@@ -625,8 +661,8 @@ class EmbeddingLookupSparseTest(test.TestCase):
         np.ones(np.sum(vals_per_batch_entry)), vals_per_batch_entry)
 
     for num_shards, combiner, dtype, ignore_weights in itertools.product(
-        [1, 5], ["sum", "mean", "sqrtn"], [dtypes.float32, dtypes.float64],
-        [True, False]):
+        [1, 5], ["sum", "mean", "sqrtn"], [dtypes.float32,
+                                           dtypes.float64], [True, False]):
 
       with self.test_session():
         p, params, feed_dict = _EmbeddingParams(
@@ -647,8 +683,8 @@ class EmbeddingLookupSparseTest(test.TestCase):
             grouped_ids,
             num_shards,
             vocab_size,
-            weight_vals=grouped_ignored_weights if ignore_weights else
-            grouped_weights)
+            weight_vals=grouped_ignored_weights
+            if ignore_weights else grouped_weights)
         if combiner == "mean":
           np_embedding_sum /= np.reshape(np_weight_sum, (batch_size, 1, 1))
         if combiner == "sqrtn":
@@ -660,12 +696,12 @@ class EmbeddingLookupSparseTest(test.TestCase):
     vocab_size = 12
     batch_size = 4
     param_shape = [2, 3]
-    sp_ids, sp_weights, _, _, _ = (
-        self._RandomIdsAndWeights(batch_size, vocab_size))
+    sp_ids, sp_weights, _, _, _ = (self._RandomIdsAndWeights(
+        batch_size, vocab_size))
 
     for num_shards, combiner, dtype, ignore_weights in itertools.product(
-        [1, 3], ["sum", "mean", "sqrtn"], [dtypes.float32, dtypes.float64],
-        [True, False]):
+        [1, 3], ["sum", "mean", "sqrtn"], [dtypes.float32,
+                                           dtypes.float64], [True, False]):
       with self.test_session():
         x, params, _ = _EmbeddingParams(
             num_shards, vocab_size, shape=param_shape, dtype=dtype)
@@ -705,10 +741,12 @@ class DynamicStitchOpTest(test.TestCase):
   def testCint32Cpu(self):
     with self.test_session(use_gpu=False):
       indices = [
-          ops.convert_to_tensor([0, 1, 2]), ops.convert_to_tensor([2, 3])
+          ops.convert_to_tensor([0, 1, 2]),
+          ops.convert_to_tensor([2, 3])
       ]
       values = [
-          ops.convert_to_tensor([12, 23, 34]), ops.convert_to_tensor([1, 2])
+          ops.convert_to_tensor([12, 23, 34]),
+          ops.convert_to_tensor([1, 2])
       ]
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
@@ -716,10 +754,12 @@ class DynamicStitchOpTest(test.TestCase):
   def testCint32Gpu(self):
     with self.test_session(use_gpu=True):
       indices = [
-          ops.convert_to_tensor([0, 1, 2]), ops.convert_to_tensor([2, 3])
+          ops.convert_to_tensor([0, 1, 2]),
+          ops.convert_to_tensor([2, 3])
       ]
       values = [
-          ops.convert_to_tensor([12, 23, 34]), ops.convert_to_tensor([1, 2])
+          ops.convert_to_tensor([12, 23, 34]),
+          ops.convert_to_tensor([1, 2])
       ]
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
@@ -727,10 +767,12 @@ class DynamicStitchOpTest(test.TestCase):
   def testInt32Cpu(self):
     with self.test_session(use_gpu=False):
       indices = [
-          ops.convert_to_tensor([0, 1, 2]), ops.convert_to_tensor([2, 3])
+          ops.convert_to_tensor([0, 1, 2]),
+          ops.convert_to_tensor([2, 3])
       ]
       values = [
-          ops.convert_to_tensor([12, 23, 34]), ops.convert_to_tensor([1, 2])
+          ops.convert_to_tensor([12, 23, 34]),
+          ops.convert_to_tensor([1, 2])
       ]
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
@@ -738,10 +780,12 @@ class DynamicStitchOpTest(test.TestCase):
   def testInt32Gpu(self):
     with self.test_session(use_gpu=True):
       indices = [
-          ops.convert_to_tensor([0, 1, 2]), ops.convert_to_tensor([2, 3])
+          ops.convert_to_tensor([0, 1, 2]),
+          ops.convert_to_tensor([2, 3])
       ]
       values = [
-          ops.convert_to_tensor([12, 23, 34]), ops.convert_to_tensor([1, 2])
+          ops.convert_to_tensor([12, 23, 34]),
+          ops.convert_to_tensor([1, 2])
       ]
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
@@ -749,10 +793,12 @@ class DynamicStitchOpTest(test.TestCase):
   def testSumGradArgs(self):
     with self.test_session(use_gpu=False):
       indices = [
-          ops.convert_to_tensor([0, 1, 2, 3]), ops.convert_to_tensor([2, 3])
+          ops.convert_to_tensor([0, 1, 2, 3]),
+          ops.convert_to_tensor([2, 3])
       ]
       values = [
-          ops.convert_to_tensor([2, 3, 5, 7]), ops.convert_to_tensor([1, 1])
+          ops.convert_to_tensor([2, 3, 5, 7]),
+          ops.convert_to_tensor([1, 1])
       ]
       self.assertAllEqual(
           data_flow_ops.dynamic_stitch(indices, values).eval(), [2, 3, 1, 1])

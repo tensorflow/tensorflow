@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_C_C_API_INTERNAL_H_
+#define TENSORFLOW_C_C_API_INTERNAL_H_
+
 #include "tensorflow/c/c_api.h"
 
 #include <vector>
@@ -56,13 +59,8 @@ struct TF_Library {
 };
 
 struct TF_Graph {
-  TF_Graph()
-      : graph(tensorflow::OpRegistry::Global()),
-        refiner(graph.versions().producer(), graph.op_registry()),
-        num_sessions(0),
-        delete_requested(false),
-        parent(nullptr),
-        parent_inputs(nullptr) {}
+  TF_Graph();
+
   tensorflow::mutex mu;
   tensorflow::Graph graph GUARDED_BY(mu);
 
@@ -117,3 +115,18 @@ struct TF_ImportGraphDefOptions {
 struct TF_DeviceList {
   std::vector<tensorflow::DeviceAttributes> response;
 };
+
+namespace tensorflow {
+
+class TensorCApi {
+ public:
+  static TensorBuffer* Buffer(const Tensor& tensor) { return tensor.buf_; }
+  static Tensor MakeTensor(TF_DataType type, const TensorShape& shape,
+                           TensorBuffer* buf) {
+    return Tensor(static_cast<DataType>(type), shape, buf);
+  }
+};
+
+}  // end namespace tensorflow
+
+#endif  // TENSORFLOW_C_C_API_INTERNAL_H_

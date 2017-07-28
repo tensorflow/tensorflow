@@ -102,5 +102,4 @@ cc_library(
     hdrs = [
         "ctc_loss_util.h",
     ],
-    deps = ["//tensorflow/core:lib"],
 )

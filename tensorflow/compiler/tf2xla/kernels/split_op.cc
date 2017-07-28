@@ -39,7 +39,7 @@ class SplitOp : public XlaOpKernel {
 
     int32 split_dim;
     if (index_shape.dims() == 0) {
-      split_dim = xla::LiteralUtil::Get<int>(literal_index, {});
+      split_dim = literal_index.Get<int>({});
     } else {
       OP_REQUIRES(
           ctx, index_shape.dims() == 1,
@@ -49,7 +49,7 @@ class SplitOp : public XlaOpKernel {
           ctx, index_shape.dim_size(0) == 1,
           errors::InvalidArgument("split_index input to Split Op must be a "
                                   "scalar or a vector with 1 element"));
-      split_dim = xla::LiteralUtil::Get<int>(literal_index, {0});
+      split_dim = literal_index.Get<int>({0});
     }
     const int32 num_split = num_outputs();
     const TensorShape input_shape = ctx->InputShape(1);
@@ -115,7 +115,7 @@ class SplitVOp : public XlaOpKernel {
     OP_REQUIRES(ctx, index_shape.dims() == 0,
                 errors::InvalidArgument("split_dim input to Split Op must be a "
                                         "scalar"));
-    split_dim = xla::LiteralUtil::Get<int>(literal_index, {});
+    split_dim = literal_index.Get<int>({});
 
     xla::ComputationDataHandle input = ctx->Input(0);
     const TensorShape input_shape = ctx->InputShape(0);
@@ -152,7 +152,7 @@ class SplitVOp : public XlaOpKernel {
 
     for (int i = 0; i < num_split; ++i) {
       int slice_size;
-      slice_size = xla::LiteralUtil::Get<int>(split_size_literal, {i});
+      slice_size = split_size_literal.Get<int>({i});
       if (slice_size == -1) {
         OP_REQUIRES(
             ctx, neg_one_dim == -1,

@@ -831,11 +831,13 @@ a different filter to each input channel (expanding from 1 channel to
 `channel_multiplier` channels for each), then concatenates the results
 together. Thus, the output has `in_channels * channel_multiplier` channels.
 
+```
 for k in 0..in_channels-1
   for q in 0..channel_multiplier-1
     output[b, i, j, k * channel_multiplier + q] =
       sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
                         filter[di, dj, k, q]
+```
 
 Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
 horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
@@ -1777,6 +1779,33 @@ backprops: The gradients: `gradients * (outputs + 1)` if outputs < 0,
 `gradients` otherwise.
 )doc");
 
+REGISTER_OP("Selu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
+if < 0, `scale * features` otherwise.
+
+See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+)doc");
+
+REGISTER_OP("SeluGrad")
+    .Input("gradients: T")
+    .Input("outputs: T")
+    .Output("backprops: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+Computes gradients for the scaled exponential linear (Selu) operation.
+
+gradients: The backpropagated gradients to the corresponding Selu operation.
+outputs: The outputs of the corresponding Selu operation.
+backprops: The gradients: `gradients * (outputs + scale * alpha)`
+if outputs < 0, `scale * gradients` otherwise.
+)doc");
+
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")
@@ -1974,6 +2003,49 @@ predictions: A `batch_size` x `classes` tensor.
 targets: A `batch_size` vector of class ids.
 k: Number of top elements to look at for computing precision.
 precision: Computed Precision at `k` as a `bool Tensor`.
+
+)doc");
+
+// This is the same as `InTopK`, but takes `k` as in input rather than an attr.
+REGISTER_OP("InTopKV2")
+    .Input("predictions: float")
+    .Input("targets: T")
+    .Input("k: T")
+    .Output("precision: bool")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle predictions;
+      ShapeHandle targets;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &predictions));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &targets));
+      DimensionHandle batch_size;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
+      c->set_output(0, c->Vector(batch_size));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Says whether the targets are in the top `K` predictions.
+
+This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+prediction for the target class is among the top `k` predictions among
+all predictions for example `i`. Note that the behavior of `InTopK` differs
+from the `TopK` op in its handling of ties; if multiple classes have the
+same prediction value and straddle the top-`k` boundary, all of those
+classes are considered to be in the top `k`.
+
+More formally, let
+
+  \\(predictions_i\\) be the predictions for all classes for example `i`,
+  \\(targets_i\\) be the target class for example `i`,
+  \\(out_i\\) be the output for example `i`,
+
+$$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+
+predictions: A `batch_size` x `classes` tensor.
+targets: A `batch_size` vector of class ids.
+k: Number of top elements to look at for computing precision.
+precision: Computed precision at `k` as a `bool Tensor`.
 
 )doc");
 

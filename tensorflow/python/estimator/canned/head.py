@@ -32,17 +32,16 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.summary import summary
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
@@ -367,10 +366,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
-    with variable_scope.variable_scope(
-        None,
-        default_name='multi_class_head',
-        values=(tuple(six.itervalues(features)) + (labels, logits))):
+    with ops.name_scope('head'):
       logits = _check_logits(logits, self.logits_dimension)
 
       # Predict.
@@ -441,17 +437,18 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
       # Train.
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
-      logging_ops.scalar_summary(metric_keys.MetricKeys.LOSS, training_loss)
-      logging_ops.scalar_summary(
-          metric_keys.MetricKeys.LOSS_MEAN,
-          losses.compute_weighted_loss(
-              unweighted_loss, weights=weights,
-              reduction=losses.Reduction.MEAN))
-      return model_fn.EstimatorSpec(
-          mode=model_fn.ModeKeys.TRAIN,
-          predictions=predictions,
-          loss=training_loss,
-          train_op=train_op_fn(training_loss))
+    with ops.name_scope(''):
+      summary.scalar(metric_keys.MetricKeys.LOSS, training_loss)
+      summary.scalar(metric_keys.MetricKeys.LOSS_MEAN,
+                     losses.compute_weighted_loss(
+                         unweighted_loss,
+                         weights=weights,
+                         reduction=losses.Reduction.MEAN))
+    return model_fn.EstimatorSpec(
+        mode=model_fn.ModeKeys.TRAIN,
+        predictions=predictions,
+        loss=training_loss,
+        train_op=train_op_fn(training_loss))
 
 
 def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
@@ -579,32 +576,31 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
-    with variable_scope.variable_scope(
-        None, default_name='binary_logistic_head',
-        values=(tuple(six.itervalues(features)) + (labels, logits))):
-
-      # Predict.
-      pred_keys = prediction_keys.PredictionKeys
-      logits = _check_logits(logits, self.logits_dimension)
-      logistic = math_ops.sigmoid(logits, name=pred_keys.LOGISTIC)
-      two_class_logits = array_ops.concat(
-          (array_ops.zeros_like(logits), logits), 1, name='two_class_logits')
-      scores = nn.softmax(two_class_logits, name=pred_keys.PROBABILITIES)
-      class_ids = array_ops.reshape(
-          math_ops.argmax(two_class_logits, axis=1), (-1, 1), name='classes')
-      if self._label_vocabulary:
-        table = lookup_ops.index_to_string_table_from_tensor(
-            vocabulary_list=self._label_vocabulary, name='class_string_lookup')
-        classes = table.lookup(class_ids)
-      else:
-        classes = string_ops.as_string(class_ids, name='str_classes')
-      predictions = {
-          pred_keys.LOGITS: logits,
-          pred_keys.LOGISTIC: logistic,
-          pred_keys.PROBABILITIES: scores,
-          pred_keys.CLASS_IDS: class_ids,
-          pred_keys.CLASSES: classes,
-      }
+    # Predict.
+    with ops.name_scope('head'):
+      with ops.name_scope(None, 'predictions', (logits,)):
+        pred_keys = prediction_keys.PredictionKeys
+        logits = _check_logits(logits, self.logits_dimension)
+        logistic = math_ops.sigmoid(logits, name=pred_keys.LOGISTIC)
+        two_class_logits = array_ops.concat(
+            (array_ops.zeros_like(logits), logits), 1, name='two_class_logits')
+        scores = nn.softmax(two_class_logits, name=pred_keys.PROBABILITIES)
+        class_ids = array_ops.reshape(
+            math_ops.argmax(two_class_logits, axis=1), (-1, 1), name='classes')
+        if self._label_vocabulary:
+          table = lookup_ops.index_to_string_table_from_tensor(
+              vocabulary_list=self._label_vocabulary,
+              name='class_string_lookup')
+          classes = table.lookup(class_ids)
+        else:
+          classes = string_ops.as_string(class_ids, name='str_classes')
+        predictions = {
+            pred_keys.LOGITS: logits,
+            pred_keys.LOGISTIC: logistic,
+            pred_keys.PROBABILITIES: scores,
+            pred_keys.CLASS_IDS: class_ids,
+            pred_keys.CLASSES: classes,
+        }
       if mode == model_fn.ModeKeys.PREDICT:
         batch_size = array_ops.shape(logistic)[0]
         export_class_list = self._label_vocabulary
@@ -657,17 +653,18 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       # Train.
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
-      logging_ops.scalar_summary(metric_keys.MetricKeys.LOSS, training_loss)
-      logging_ops.scalar_summary(
-          metric_keys.MetricKeys.LOSS_MEAN,
-          losses.compute_weighted_loss(
-              unweighted_loss, weights=weights,
-              reduction=losses.Reduction.MEAN))
-      return model_fn.EstimatorSpec(
-          mode=model_fn.ModeKeys.TRAIN,
-          predictions=predictions,
-          loss=training_loss,
-          train_op=train_op_fn(training_loss))
+    with ops.name_scope(''):
+      summary.scalar(metric_keys.MetricKeys.LOSS, training_loss)
+      summary.scalar(metric_keys.MetricKeys.LOSS_MEAN,
+                     losses.compute_weighted_loss(
+                         unweighted_loss,
+                         weights=weights,
+                         reduction=losses.Reduction.MEAN))
+    return model_fn.EstimatorSpec(
+        mode=model_fn.ModeKeys.TRAIN,
+        predictions=predictions,
+        loss=training_loss,
+        train_op=train_op_fn(training_loss))
 
 
 def _regression_head_with_mean_squared_error_loss(weight_column=None,
@@ -707,12 +704,8 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
     """See `Head`."""
-    with variable_scope.variable_scope(
-        None,
-        default_name='regression_head',
-        values=(tuple(six.itervalues(features)) + (labels, logits))):
-
-      # Predict.
+    # Predict.
+    with ops.name_scope('head'):
       logits = _check_logits(logits, self._logits_dimension)
       predictions = {prediction_keys.PredictionKeys.PREDICTIONS: logits}
       if mode == model_fn.ModeKeys.PREDICT:
@@ -744,43 +737,46 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       # Train.
       if train_op_fn is None:
         raise ValueError('train_op_fn can not be None.')
-      logging_ops.scalar_summary(metric_keys.MetricKeys.LOSS, training_loss)
-      logging_ops.scalar_summary(
-          metric_keys.MetricKeys.LOSS_MEAN,
-          losses.compute_weighted_loss(
-              unweighted_loss, weights=weights,
-              reduction=losses.Reduction.MEAN))
-      return model_fn.EstimatorSpec(
-          mode=model_fn.ModeKeys.TRAIN,
-          predictions=predictions,
-          loss=training_loss,
-          train_op=train_op_fn(training_loss))
+    with ops.name_scope(''):
+      summary.scalar(metric_keys.MetricKeys.LOSS, training_loss)
+      summary.scalar(metric_keys.MetricKeys.LOSS_MEAN,
+                     losses.compute_weighted_loss(
+                         unweighted_loss,
+                         weights=weights,
+                         reduction=losses.Reduction.MEAN))
+    return model_fn.EstimatorSpec(
+        mode=model_fn.ModeKeys.TRAIN,
+        predictions=predictions,
+        loss=training_loss,
+        train_op=train_op_fn(training_loss))
 
 
 def _assert_range(labels, n_classes):
-  assert_less = check_ops.assert_less(
-      labels,
-      ops.convert_to_tensor(n_classes, dtype=labels.dtype),
-      message='Label IDs must < n_classes')
-  assert_greater = check_ops.assert_non_negative(
-      labels, message='Label IDs must >= 0')
-  with ops.control_dependencies((assert_less, assert_greater)):
-    return array_ops.identity(labels)
+  with ops.name_scope(None, 'assert_range', (labels,)):
+    assert_less = check_ops.assert_less(
+        labels,
+        ops.convert_to_tensor(n_classes, dtype=labels.dtype),
+        message='Label IDs must < n_classes')
+    assert_greater = check_ops.assert_non_negative(
+        labels, message='Label IDs must >= 0')
+    with ops.control_dependencies((assert_less, assert_greater)):
+      return array_ops.identity(labels)
 
 
 def _weights(features, weight_column):
   """Fetches weights from features."""
-  if weight_column is None:
-    return 1.
-  if isinstance(weight_column, six.string_types):
-    weight_column = feature_column_lib.numeric_column(key=weight_column)
-  if not isinstance(weight_column, feature_column_lib._NumericColumn):  # pylint: disable=protected-access
-    raise TypeError('Weight column must be either a string or _NumericColumn. '
-                    'Given type: {}.'.format(type(weight_column)))
-  weights = weight_column._get_dense_tensor(  # pylint: disable=protected-access
-      feature_column_lib._LazyBuilder(features))  # pylint: disable=protected-access
-  if not (weights.dtype.is_floating or weights.dtype.is_integer):
-    raise ValueError('Weight column should be castable to float. '
-                     'Given dtype: {}'.format(weights.dtype))
-  weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
-  return weights
+  with ops.name_scope(None, 'weights', values=features.values()):
+    if weight_column is None:
+      return 1.
+    if isinstance(weight_column, six.string_types):
+      weight_column = feature_column_lib.numeric_column(key=weight_column)
+    if not isinstance(weight_column, feature_column_lib._NumericColumn):  # pylint: disable=protected-access
+      raise TypeError('Weight column must be either a string or _NumericColumn.'
+                      ' Given type: {}.'.format(type(weight_column)))
+    weights = weight_column._get_dense_tensor(  # pylint: disable=protected-access
+        feature_column_lib._LazyBuilder(features))  # pylint: disable=protected-access
+    if not (weights.dtype.is_floating or weights.dtype.is_integer):
+      raise ValueError('Weight column should be castable to float. '
+                       'Given dtype: {}'.format(weights.dtype))
+    weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
+    return weights

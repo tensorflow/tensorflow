@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import copy
 
@@ -311,9 +312,10 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
           compute_shapes=False, compute_device=False,
           op_def=op_def)
 
-    # Maps from a node to the op it is colocated with, if colocation
+    # Maps from a node to the ops it is colocated with, if colocation
     # is specified in the attributes.
-    colocation_pairs = {}
+    colocation_pairs = collections.defaultdict(list)
+
     # 2. Add inputs to the operations.
     for node in graph_def.node:
       op = name_to_op[node.name]
@@ -339,7 +341,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
                   'loc:@' + original_op.name))
               if op_to_bind_to != node.name:
                 # Keep track of this mapping for a later phase.
-                colocation_pairs[op] = original_op
+                colocation_pairs[op].append(original_op)
                 # Don't apply this op's device function,
                 # the colocation constraint will ensure
                 # the proper device gets assigned at runtime.
@@ -474,21 +476,40 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     # The following loop populates the device field of ops that are
     # colocated with another op.  This is implied by the colocation
     # attribute, but we propagate the device field for completeness.
-    for op, coloc_op in colocation_pairs.items():
-      # If the colocation op has no device, even after a device
-      # application, there's nothing to do here.
-      if not coloc_op.device:
-        continue
-      coloc_device = pydev.DeviceSpec.from_string(coloc_op.device)
-      op._set_device(coloc_device)  # pylint: disable=protected-access
+    for op, coloc_op_list in colocation_pairs.items():
+      coloc_device = None
+      # Find any device in the list of colocated ops that have a
+      # device, if it exists.  We assume that if multiple ops
+      # have devices, they refer to the same device.  Otherwise, a
+      # runtime error will occur since the colocation property
+      # cannot be guaranteed.
+      #
+      # One possible improvement is to try to check for compatibility
+      # of all devices in this list at import time here, which would
+      # require implementing a compatibility function for device specs
+      # in python.
+      for coloc_op in coloc_op_list:
+        if coloc_op.device:
+          coloc_device = pydev.DeviceSpec.from_string(coloc_op.device)
+          break
+      if coloc_device:
+        op._set_device(coloc_device)  # pylint: disable=protected-access
 
-    # Treat unused input mappings as an error, because they are likely to be
-    # due to a typo.
-    unused_input_keys = frozenset(input_map.keys()).difference(used_input_keys)
-    if unused_input_keys:
+    # Treat input mappings that don't appear in the graph as an error,
+    # because they are likely to be due to a typo.
+    def _IsImportedNodeOutput(tensor_name):
+      operation_name, output_index = _ParseTensorName(tensor_name)
+      try:
+        return output_index < len(name_to_op[operation_name].outputs)
+      except KeyError:
+        return False
+    absent_input_keys = [
+        k for k in frozenset(input_map.keys()).difference(used_input_keys)
+        if not _IsImportedNodeOutput(k)]
+    if absent_input_keys:
       raise ValueError(
           'Attempted to map inputs that were not found in graph_def: [%s]'
-          % ', '.join(unused_input_keys))
+          % ', '.join(absent_input_keys))
 
     if return_elements is None:
       return None

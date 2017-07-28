@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for tensorflow.python.client.session.Session's ClusterSpec Propagation.
 
 These tests exercise the ClusterSpec Propagation capabilities of distributed
@@ -39,6 +38,7 @@ from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unuse
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 ops._USE_C_API = True
@@ -50,7 +50,6 @@ ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationSimple(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -66,7 +65,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     output = sess.run(const)
     self.assertEqual(17, output)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationWorker2Placement(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -94,7 +92,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
                          dev_stats.device and 'Const' == node_stats.node_name
                      ]))
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationWorker1Placement(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -111,7 +108,137 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     output = sess.run(const)
     self.assertEqual(17, output)
 
+  def testCanonicalDeviceNames(self):
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    with ops.Graph().as_default() as g, ops.device(
+        '/job:worker/task:1/device:CPU:0'):
+      const = constant_op.constant(17)
+    sess = session.Session(server1.target, config=config, graph=g)
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+    output = sess.run(const, options=run_options, run_metadata=run_metadata)
+    self.assertEqual(17, output)
+    self.assertEqual(1,
+                     len([
+                         node_stats
+                         for dev_stats in run_metadata.step_stats.dev_stats
+                         for node_stats in dev_stats.node_stats
+                         if '/job:worker/replica:0/task:1/device:CPU:0' ==
+                         dev_stats.device and 'Const' == node_stats.node_name
+                     ]))
+
+  def testFullDeviceNames(self):
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'renamed_worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    with ops.Graph().as_default() as g, ops.device(
+        '/job:renamed_worker/replica:0/task:1/device:CPU:0'):
+      const = constant_op.constant(17)
+    sess = session.Session(server1.target, config=config, graph=g)
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+    output = sess.run(const, options=run_options, run_metadata=run_metadata)
+    self.assertEqual(17, output)
+    self.assertEqual(1,
+                     len([
+                         node_stats
+                         for dev_stats in run_metadata.step_stats.dev_stats
+                         for node_stats in dev_stats.node_stats
+                         if '/job:renamed_worker/replica:0/task:1/device:CPU:0'
+                         == dev_stats.device and 'Const' == node_stats.node_name
+                     ]))
+
   @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testMultipleLocalDevices(self):
+    # Note: CPU->CPU transfers have a fast-path in
+    # BaseRemoteRendezvous::SameWorkerRecvDone that means the test doesn't
+    # actually capture the motivating bug unless run on a GPU machine.
+    #
+    # Example error message (before bugfix -- linebreaks added because  lint):
+    #
+    # W0718 17:14:41.521534  190121 device_mgr.cc:107] Unknown device:
+    #     /job:worker/replica:0/task:0/device:CPU:0 all devices:
+    #     /job:local/replica:0/task:0/gpu:0,
+    #     /job:local/replica:0/task:0/device:GPU:0,
+    #     /job:local/replica:0/task:0/cpu:1, CPU:0, GPU:0,
+    #     /job:local/replica:0/task:0/device:CPU:1,
+    #     /job:local/replica:0/task:0/device:CPU:0, CPU:1,
+    #     /job:local/replica:0/task:0/cpu:0
+    server_config = config_pb2.ConfigProto(device_count={'CPU': 2})
+    server1 = server_lib.Server.create_local_server(config=server_config)
+    server2 = server_lib.Server.create_local_server(config=server_config)
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    with ops.Graph().as_default() as g:
+      with ops.device('/job:worker/task:1/cpu:1'):
+        input1 = constant_op.constant(17, dtypes.float32)
+      with ops.device('/job:worker/task:0/cpu:1'):
+        input2 = constant_op.constant(3, dtypes.float32)
+      with ops.device('/job:worker/task:1/cpu:0'):
+        sum1 = input1 + input2
+
+      if test.is_gpu_available():
+        device_str = '/job:worker/task:0/gpu:0'
+      else:
+        device_str = '/job:worker/task:0/cpu:1'
+      with ops.device(device_str):
+        sum2 = input2 + input1
+
+      with ops.device('/job:worker/task:0/cpu:0'):
+        sum3 = sum1 + sum2
+    sess = session.Session(server1.target, config=config, graph=g)
+    output = sess.run(sum3)
+    self.assertEqual(40, output)
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testLegacyDeviceNames(self):
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    with ops.Graph().as_default() as g, ops.device('/job:worker/task:1/cpu:0'):
+      const = constant_op.constant(17)
+    sess = session.Session(server1.target, config=config, graph=g)
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+    output = sess.run(const, options=run_options, run_metadata=run_metadata)
+    self.assertEqual(17, output)
+    self.assertEqual(1,
+                     len([
+                         node_stats
+                         for dev_stats in run_metadata.step_stats.dev_stats
+                         for node_stats in dev_stats.node_stats
+                         if '/job:worker/replica:0/task:1/device:CPU:0' ==
+                         dev_stats.device and 'Const' == node_stats.node_name
+                     ]))
+
   def testClusterSpecPropagationThreeServers2Graphs(self):
     """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
 
@@ -173,7 +300,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones, sess2.run(var2))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationThreeServers(self):
     """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
 
@@ -228,7 +354,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones, sess2.run(var))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var))
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationThreeServersOneCluster(self):
     """Boots 3 servers, ensures appropriate communication across workers.
 

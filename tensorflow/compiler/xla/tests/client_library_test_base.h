@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -48,6 +49,10 @@ class ClientLibraryTestBase : public ::testing::Test {
   explicit ClientLibraryTestBase(
       perftools::gputools::Platform* platform = nullptr);
 
+  // Creates a new ClientLibraryTestBase with custom client options.
+  ClientLibraryTestBase(perftools::gputools::Platform* platform,
+                        const LocalClientOptions& client_options);
+
   // Returns the name of the test currently being run.
   string TestName() const;
 
@@ -66,12 +71,21 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.
 
-  // Convenience methods for building and running a computation from a builder.
+  // Convenience methods for building and running a computation with the member
+  // execution options. Modify execution_options_ in your test if you want to
+  // customize the options.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       ComputationBuilder* builder,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+  StatusOr<ExecutionHandle> ExecuteAsync(
+      const Computation& computation,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       ComputationBuilder* builder,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const Shape* shape_with_output_layout = nullptr);
+  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+      const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const Shape* shape_with_output_layout = nullptr);
 
@@ -271,6 +285,22 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   Client* client_;
   ExecutionOptions execution_options_;
+
+ private:
+  // Build and run the computation with all permutations of output layouts.
+  tensorflow::Status ComputeAndCompareLiteralWithAllOutputLayouts(
+      const xla::Computation& computation, const Literal& expected,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const std::function<void(const Literal& actual,
+                               const string& error_message)>& verify_output);
+  // Build and run the computation with all permutations of layouts of all input
+  // arguments.
+  tensorflow::Status ComputeAndCompareLiteralWithAllInputLayouts(
+      const xla::Computation& computation, const Literal& expected,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const std::function<void(const Literal& actual,
+                               const string& error_message)>& verify_output,
+      const Shape* output_with_layout = nullptr);
 };
 
 template <typename NativeT>
@@ -278,7 +308,7 @@ void ClientLibraryTestBase::ComputeAndCompareR0(
     ComputationBuilder* builder, NativeT expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR0<NativeT>(expected);
+      Literal::CreateR0<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -291,7 +321,7 @@ void ClientLibraryTestBase::ComputeAndCompareR0(
                     std::is_same<NativeT, double>::value,
                 "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR0<NativeT>(expected);
+      Literal::CreateR0<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments, error);
 }
@@ -301,7 +331,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
     ComputationBuilder* builder, tensorflow::gtl::ArraySlice<NativeT> expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR1<NativeT>(expected);
+      Literal::CreateR1<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -314,7 +344,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
                     std::is_same<NativeT, double>::value,
                 "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR1<NativeT>(expected);
+      Literal::CreateR1<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments, error);
 }
@@ -324,7 +354,7 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
     ComputationBuilder* builder, const Array2D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR2FromArray2D<NativeT>(expected);
+      Literal::CreateR2FromArray2D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -337,7 +367,7 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
                     std::is_same<NativeT, double>::value,
                 "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR2FromArray2D<NativeT>(expected);
+      Literal::CreateR2FromArray2D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments, error);
 }
@@ -347,7 +377,7 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
     ComputationBuilder* builder, const Array3D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR3FromArray3D<NativeT>(expected);
+      Literal::CreateR3FromArray3D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -360,7 +390,7 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
                     std::is_same<NativeT, double>::value,
                 "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR3FromArray3D<NativeT>(expected);
+      Literal::CreateR3FromArray3D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments, error);
 }
@@ -370,7 +400,7 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
     ComputationBuilder* builder, const Array4D<NativeT>& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
+      Literal::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -383,7 +413,7 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
                     std::is_same<NativeT, double>::value,
                 "Floating point type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
-      LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
+      Literal::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments, error);
 }
@@ -392,7 +422,7 @@ template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
     NativeT value, int64 parameter_number, const string& name,
     ComputationBuilder* builder, ComputationDataHandle* data_handle) {
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR0(value);
+  std::unique_ptr<Literal> literal = Literal::CreateR0(value);
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
@@ -404,7 +434,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
     tensorflow::gtl::ArraySlice<NativeT> values, int64 parameter_number,
     const string& name, ComputationBuilder* builder,
     ComputationDataHandle* data_handle) {
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR1(values);
+  std::unique_ptr<Literal> literal = Literal::CreateR1(values);
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
@@ -416,7 +446,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
     const Array2D<NativeT>& array_2d, int64 parameter_number,
     const string& name, ComputationBuilder* builder,
     ComputationDataHandle* data_handle) {
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR2FromArray2D(array_2d);
+  std::unique_ptr<Literal> literal = Literal::CreateR2FromArray2D(array_2d);
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
@@ -428,7 +458,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
     const Array3D<NativeT>& array_3d, int64 parameter_number,
     const string& name, ComputationBuilder* builder,
     ComputationDataHandle* data_handle) {
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR3FromArray3D(array_3d);
+  std::unique_ptr<Literal> literal = Literal::CreateR3FromArray3D(array_3d);
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
   *data_handle = builder->Parameter(parameter_number, literal->shape(), name);

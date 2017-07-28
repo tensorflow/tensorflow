@@ -17,6 +17,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":k8s_tensorflow_lib",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
     ],
 )

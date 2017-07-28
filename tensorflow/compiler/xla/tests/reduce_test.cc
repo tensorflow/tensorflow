@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -64,12 +63,12 @@ class ReduceTest : public ClientLibraryTestBase {
   ReduceTest() {
     // Implementation note: laid out z >> y >> x by default.
     // clang-format off
-    literal_2d_ = LiteralUtil::CreateR2<float>({
+    literal_2d_ = Literal::CreateR2<float>({
       // x0   x1   x2
       { 1.f, 2.f, 3.f},  // y0
       { 4.f, 5.f, 6.f},  // y1
     });
-    literal_3d_ = LiteralUtil::CreateR3Projected<float>({
+    literal_3d_ = Literal::CreateR3Projected<float>({
       // x0   x1   x2
       { 1.f, 2.f, 3.f},  // y0
       { 4.f, 5.f, 6.f},  // y1
@@ -98,7 +97,7 @@ class ReduceTest : public ClientLibraryTestBase {
       }
     }
     std::unique_ptr<Literal> input_literal =
-        LiteralUtil::CreateR1(AsSlice(input_data));
+        Literal::CreateR1(AsSlice(input_data));
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -130,7 +129,7 @@ class ReduceTest : public ClientLibraryTestBase {
     builder.Reduce(pred_values, init_value, reduce,
                    /*dimensions_to_reduce=*/{0});
 
-    std::unique_ptr<Literal> input_literal = LiteralUtil::CreateR1(input_data);
+    std::unique_ptr<Literal> input_literal = Literal::CreateR1(input_data);
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -157,9 +156,9 @@ class ReduceTest : public ClientLibraryTestBase {
     Array2D<float> input_data(rows, cols);
     input_data.FillRandom(3.14f, 0.04);
     std::unique_ptr<Literal> input_literal =
-        LiteralUtil::CreateR2FromArray2D(input_data);
-    input_literal = LiteralUtil::Relayout(
-        *input_literal, LayoutUtil::MakeLayout({minor, major}));
+        Literal::CreateR2FromArray2D(input_data);
+    input_literal =
+        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -185,9 +184,9 @@ class ReduceTest : public ClientLibraryTestBase {
     Array2D<float> input_data(rows, cols);
     input_data.FillRandom(3.14f, 0.04);
     std::unique_ptr<Literal> input_literal =
-        LiteralUtil::CreateR2FromArray2D(input_data);
-    input_literal = LiteralUtil::Relayout(
-        *input_literal, LayoutUtil::MakeLayout({minor, major}));
+        Literal::CreateR2FromArray2D(input_data);
+    input_literal =
+        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -201,6 +200,102 @@ class ReduceTest : public ClientLibraryTestBase {
     }
     ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
                                ErrorSpec(0.01, 1e-4));
+  }
+
+  template <typename NativeT>
+  void ComputeAndCompareGeneric(
+      typename std::enable_if<std::is_floating_point<NativeT>::value,
+                              ComputationBuilder>::type* builder,
+      tensorflow::gtl::ArraySlice<NativeT> expected,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    ComputeAndCompareR1<NativeT>(builder, expected, arguments,
+                                 ErrorSpec(0.01, 1e-4));
+  }
+
+  template <typename NativeT>
+  void ComputeAndCompareGeneric(
+      typename std::enable_if<std::is_integral<NativeT>::value,
+                              ComputationBuilder>::type* builder,
+      tensorflow::gtl::ArraySlice<NativeT> expected,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+    ComputeAndCompareR1<NativeT>(builder, expected, arguments);
+  }
+
+  template <typename NativeT>
+  void RunVectorizedReduceTestForType(
+      const std::function<Computation(ComputationBuilder*)>&
+          reduction_function_generator,
+      const std::function<NativeT(NativeT, NativeT)>&
+          reference_reduction_function,
+      const NativeT& initial_value) {
+    const int rows = 64, cols = 128;
+    const int minor = 1, major = 0;
+    ComputationBuilder builder(client_, TestName());
+    Computation reduction_function = reduction_function_generator(&builder);
+    const Shape input_shape = ShapeUtil::MakeShape(
+        xla::primitive_util::NativeToPrimitiveType<NativeT>(), {rows, cols});
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto zero = builder.ConstantR0<NativeT>(initial_value);
+    builder.Reduce(input, zero, reduction_function,
+                   /*dimensions_to_reduce=*/{0});
+
+    Array2D<NativeT> input_data(rows, cols);
+    input_data.FillUnique(initial_value);
+    std::unique_ptr<Literal> input_literal =
+        Literal::CreateR2FromArray2D(input_data);
+    input_literal =
+        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
+    std::unique_ptr<GlobalData> input_global_data =
+        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+    // NativeT can be bool, and std::vector<bool> does not convert to
+    // ArraySlice.
+    std::unique_ptr<NativeT[]> expected(new NativeT[cols]);
+    for (int64 colno = 0; colno < cols; ++colno) {
+      NativeT column_result = initial_value;
+      for (int64 rowno = 0; rowno < rows; ++rowno) {
+        column_result = reference_reduction_function(column_result,
+                                                     input_data(rowno, colno));
+      }
+      expected[colno] = column_result;
+    }
+
+    ComputeAndCompareGeneric<NativeT>(
+        &builder, tensorflow::gtl::ArraySlice<NativeT>(expected.get(), cols),
+        {input_global_data.get()});
+  }
+
+  void RunVectorizedReduceTest(
+      const std::function<Computation(PrimitiveType, ComputationBuilder*)>&
+          reduction_function_generator_for_type,
+      const std::function<float(float, float)>&
+          reference_reduction_function_for_floats,
+      const std::function<int32(int32, int32)>&
+          reference_reduction_function_for_ints,
+      const std::function<uint32(uint32, uint32)>&
+          reference_reduction_function_for_uints,
+      float floating_point_identity, int32 signed_int_identity,
+      uint32 unsigned_int_identity) {
+    // Float version
+    RunVectorizedReduceTestForType<float>(
+        [&](ComputationBuilder* builder) {
+          return reduction_function_generator_for_type(F32, builder);
+        },
+        reference_reduction_function_for_floats, floating_point_identity);
+
+    // Signed int version
+    RunVectorizedReduceTestForType<int32>(
+        [&](ComputationBuilder* builder) {
+          return reduction_function_generator_for_type(S32, builder);
+        },
+        reference_reduction_function_for_ints, signed_int_identity);
+
+    // Unsigned int version
+    RunVectorizedReduceTestForType<uint32>(
+        [&](ComputationBuilder* builder) {
+          return reduction_function_generator_for_type(U32, builder);
+        },
+        reference_reduction_function_for_uints, unsigned_int_identity);
   }
 
   std::unique_ptr<Literal> literal_2d_;
@@ -306,9 +401,8 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   Array2D<float> input_data(rows, cols);
   input_data.FillRandom(3.14f, 0.04);
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR2FromArray2D(input_data);
-  input_literal =
-      LiteralUtil::Relayout(*input_literal, LayoutUtil::MakeLayout({0, 1}));
+      Literal::CreateR2FromArray2D(input_data);
+  input_literal = input_literal->Relayout(LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> input_global_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -339,9 +433,8 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
   Array2D<float> input_data(rows, cols);
   input_data.FillRandom(3.14f, 0.04);
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR2FromArray2D(input_data);
-  input_literal =
-      LiteralUtil::Relayout(*input_literal, LayoutUtil::MakeLayout({0, 1}));
+      Literal::CreateR2FromArray2D(input_data);
+  input_literal = input_literal->Relayout(LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> input_global_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -372,7 +465,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
   Array3D<float> input_data(rows, 2, cols / 2);
   input_data.FillRandom(3.14f, 0.04);
   std::unique_ptr<Literal> input_literal =
-      LiteralUtil::CreateR3FromArray3D(input_data);
+      Literal::CreateR3FromArray3D(input_data);
   std::unique_ptr<GlobalData> input_global_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -435,7 +528,7 @@ XLA_TEST_F(ReduceTest, MaxReduce2DToR0) {
   auto max = CreateScalarMaxComputation(F32, &builder);
   Array2D<float> input(300, 250);
   input.FillRandom(214.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
+  auto input_literal = Literal::CreateR2FromArray2D(input);
   builder.Reduce(builder.ConstantLiteral(*input_literal),
                  builder.ConstantR0<float>(FLT_MIN), max, {0, 1});
   auto input_max = FLT_MIN;
@@ -450,7 +543,7 @@ XLA_TEST_F(ReduceTest, MinReduce2DToR0) {
   auto min = CreateScalarMinComputation(F32, &builder);
   Array2D<float> input(150, 130);
   input.FillRandom(214.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
+  auto input_literal = Literal::CreateR2FromArray2D(input);
   builder.Reduce(builder.ConstantLiteral(*input_literal),
                  builder.ConstantR0<float>(FLT_MAX), min, {0, 1});
 
@@ -458,6 +551,32 @@ XLA_TEST_F(ReduceTest, MinReduce2DToR0) {
   input.Each(
       [&](int64, int64, float* v) { input_min = std::min(input_min, *v); });
   ComputeAndCompareR0<float>(&builder, input_min, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(ReduceTest, UnsignedInt_MinReduce) {
+  ComputationBuilder builder(client_, TestName());
+  Array2D<uint32> input({{1}, {2}});
+  auto min = CreateScalarMinComputation(U32, &builder);
+  auto input_literal = Literal::CreateR2FromArray2D(input);
+  auto initial_value =
+      builder.ConstantR0<uint32>(std::numeric_limits<uint32>::max());
+
+  builder.Reduce(builder.ConstantLiteral(*input_literal), initial_value, min,
+                 {0, 1});
+  ComputeAndCompareR0<uint32>(&builder, 1, {});
+}
+
+XLA_TEST_F(ReduceTest, UnsignedInt_MaxReduce) {
+  ComputationBuilder builder(client_, TestName());
+  Array2D<uint32> input({{1}, {2}});
+  auto max = CreateScalarMaxComputation(U32, &builder);
+  auto input_literal = Literal::CreateR2FromArray2D(input);
+  auto initial_value =
+      builder.ConstantR0<uint32>(std::numeric_limits<uint32>::min());
+
+  builder.Reduce(builder.ConstantLiteral(*input_literal), initial_value, max,
+                 {0, 1});
+  ComputeAndCompareR0<uint32>(&builder, 2, {});
 }
 
 // Reduces a matrix among dimension 1.
@@ -571,6 +690,58 @@ XLA_TEST_F(ReduceTest, ReduceR3AmongDim2) {
   ComputeAndCompareR2<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
+XLA_TEST_F(ReduceTest, VectorizedReduce_Add) {
+  RunVectorizedReduceTest(CreateScalarAddComputation,
+                          [](float a, float b) { return a + b; },
+                          [](int32 a, int32 b) {
+                            return static_cast<int32>(static_cast<uint32>(a) +
+                                                      static_cast<uint32>(b));
+                          },
+                          [](uint32 a, uint32 b) { return a + b; }, 0.0, 0, 0);
+}
+
+XLA_TEST_F(ReduceTest, VectorizedReduce_Multiply) {
+  RunVectorizedReduceTest(CreateScalarMultiplyComputation,
+                          [](float a, float b) { return a * b; },
+                          [](int32 a, int32 b) {
+                            return static_cast<int32>(static_cast<uint32>(a) *
+                                                      static_cast<uint32>(b));
+                          },
+                          [](uint32 a, uint32 b) { return a * b; }, 1.0, 1, 1);
+}
+
+XLA_TEST_F(ReduceTest, VectorizedReduce_Max) {
+  RunVectorizedReduceTest(CreateScalarMaxComputation,
+                          [](float a, float b) { return std::max(a, b); },
+                          [](int32 a, int32 b) { return std::max(a, b); },
+                          [](uint32 a, uint32 b) { return std::max(a, b); },
+                          std::numeric_limits<float>::min(),
+                          std::numeric_limits<int32>::min(),
+                          std::numeric_limits<uint32>::min());
+}
+
+XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
+  RunVectorizedReduceTest(CreateScalarMinComputation,
+                          [](float a, float b) { return std::min(a, b); },
+                          [](int32 a, int32 b) { return std::min(a, b); },
+                          [](uint32 a, uint32 b) { return std::min(a, b); },
+                          std::numeric_limits<float>::max(),
+                          std::numeric_limits<int32>::max(),
+                          std::numeric_limits<uint32>::max());
+}
+
+XLA_TEST_F(ReduceTest, VectorizedReduce_LogicalAnd) {
+  RunVectorizedReduceTestForType<bool>(CreateScalarLogicalAndComputation,
+                                       [](bool a, bool b) { return a && b; },
+                                       true);
+}
+
+XLA_TEST_F(ReduceTest, VectorizedReduce_LogicalOr) {
+  RunVectorizedReduceTestForType<bool>(CreateScalarLogicalOrComputation,
+                                       [](bool a, bool b) { return a || b; },
+                                       false);
+}
+
 class ReduceR3ToR2Test : public ReduceTest,
                          public ::testing::WithParamInterface<BoundsLayout> {};
 
@@ -580,9 +751,9 @@ XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
   Array3D<float> input_array(bounds[0], bounds[1], bounds[2]);
   input_array.FillRandom(3.14f, 0.05);
 
-  auto input_literal = LiteralUtil::CreateR3FromArray3D(input_array);
-  input_literal = LiteralUtil::Relayout(
-      *input_literal, LayoutUtil::MakeLayout(GetParam().layout));
+  auto input_literal = Literal::CreateR3FromArray3D(input_array);
+  input_literal =
+      input_literal->Relayout(LayoutUtil::MakeLayout(GetParam().layout));
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -630,7 +801,6 @@ INSTANTIATE_TEST_CASE_P(
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

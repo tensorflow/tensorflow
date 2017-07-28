@@ -56,7 +56,7 @@ else
 fi
 
 pushd "${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
-yes "" | ./configure
+$PYTHON_BIN_PATH configure.py
 popd
 
 # Gather and print build information

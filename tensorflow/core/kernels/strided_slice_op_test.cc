@@ -115,13 +115,11 @@ static void BM_ValidateStridedSliceOp(int iters) {
     const int32 new_axis_mask = 0;
     const int32 shrink_axis_mask = 0;
 
-    ShapeReadWriteFromTensorShape wrapped_processing_shape(&processing_shape);
-    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
     TF_CHECK_OK(ValidateStridedSliceOp(
-        &begin, &end, strides, ShapeReadWriteFromTensorShape(&input_shape),
-        begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
-        &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
-        &is_simple_slice, &slice_dim0, &begin_out, &end_out, &strides_out));
+        &begin, &end, strides, input_shape, begin_mask, end_mask, ellipsis_mask,
+        new_axis_mask, shrink_axis_mask, &processing_shape, &final_shape,
+        &is_identity, &is_simple_slice, &slice_dim0, &begin_out, &end_out,
+        &strides_out));
   }
 }
 

@@ -548,6 +548,24 @@ class ImportGraphDefTest(test.TestCase):
             input_map={"B:0": constant_op.constant(5.0)})
       self.assertTrue("not found in graph_def: [B:0]" in str(e.exception))
 
+  def testInputMapUnusedAsInput(self):
+    with ops.Graph().as_default():
+      # Mapping an unused node output should succeed.
+      importer.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'Oi' }
+          """),
+          input_map={"A:0": constant_op.constant(5.0)})
+
+      # Mapping a non-existent output of an existing node should fail.
+      with self.assertRaises(ValueError) as e:
+        importer.import_graph_def(
+            self._MakeGraphDef("""
+            node { name: 'A' op: 'Oi' }
+            """),
+            input_map={"A:2": constant_op.constant(5.0)})
+      self.assertTrue("not found in graph_def: [A:2]" in str(e.exception))
+
   def testInputMapTypeMismatch(self):
     with ops.Graph().as_default():
       with self.assertRaises(ValueError) as e:
@@ -681,6 +699,42 @@ class ImportGraphDefTest(test.TestCase):
                 attr {
                   key: '_class' value { list { s: 'loc:@imported_graph/A' } }
           } }""", b.graph.as_graph_def())
+
+  def testMultipleColocationWithDeviceFn(self):
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None'}
+          node { name: 'B' op: 'None'}
+          node { name: 'C' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' s: 'loc:@B' } }
+          } }""")
+
+    # A device function that places "B" on a device, and "A" is empty.
+    #
+    # B and C should contain "/device:B".  A will not right now.  But
+    # because of the colocation property, at runtime it would be
+    # placed with B and C.
+    def CustomDeviceFn(op):
+      if "B" in op.name:
+        return "/device:B:0"
+      return ""
+
+    with ops.Graph().as_default():
+      with ops.device(CustomDeviceFn):
+        c, = importer.import_graph_def(
+            original_graph_def, return_elements=["C"], name="imported_graph")
+
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None' }
+          node { name: 'imported_graph/B' op: 'None' device: "/device:B:0" }
+          node { name: 'imported_graph/C' op: 'None' device: "/device:B:0"
+                 attr {
+                   key: '_class' value {
+                     list { s: 'loc:@imported_graph/A'
+                            s: 'loc:@imported_graph/B' }
+                   }
+                 }
+               }""", c.graph.as_graph_def())
 
   def testNamePrefixColocationAttrsMultipleImport(self):
     original_graph_def = self._MakeGraphDef("""
