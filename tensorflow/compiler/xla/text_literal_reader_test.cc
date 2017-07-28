@@ -46,12 +46,12 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
       TextLiteralReader::ReadPath(fname).ConsumeValueOrDie();
   EXPECT_TRUE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {1, 2, 3}), literal->shape()));
-  EXPECT_EQ(42.5, LiteralUtil::Get<float>(*literal, {0, 0, 0}));
-  EXPECT_EQ(43.5, LiteralUtil::Get<float>(*literal, {0, 0, 1}));
-  EXPECT_EQ(44.5, LiteralUtil::Get<float>(*literal, {0, 0, 2}));
-  EXPECT_EQ(45.5, LiteralUtil::Get<float>(*literal, {0, 1, 0}));
-  EXPECT_EQ(46.5, LiteralUtil::Get<float>(*literal, {0, 1, 1}));
-  EXPECT_EQ(47.5, LiteralUtil::Get<float>(*literal, {0, 1, 2}));
+  EXPECT_EQ(42.5, literal->Get<float>({0, 0, 0}));
+  EXPECT_EQ(43.5, literal->Get<float>({0, 0, 1}));
+  EXPECT_EQ(44.5, literal->Get<float>({0, 0, 2}));
+  EXPECT_EQ(45.5, literal->Get<float>({0, 1, 0}));
+  EXPECT_EQ(46.5, literal->Get<float>({0, 1, 1}));
+  EXPECT_EQ(47.5, literal->Get<float>({0, 1, 2}));
 }
 
 }  // namespace

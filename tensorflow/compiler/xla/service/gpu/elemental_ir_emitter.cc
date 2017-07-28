@@ -55,7 +55,7 @@ using tensorflow::strings::StrAppend;
 // Returns whether operand is a floating-point literal with the given value.
 bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
   return operand->opcode() == HloOpcode::kConstant &&
-         LiteralUtil::IsAllFloat(operand->literal(), value);
+         operand->literal().IsAllFloat(value);
 }
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
@@ -210,6 +210,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
                                    output_type);
     case HloOpcode::kLog:
       return EmitLibdeviceMathCall("__nv_log", {operand_value}, {input_type},
+                                   output_type);
+    case HloOpcode::kCos:
+      return EmitLibdeviceMathCall("__nv_cos", {operand_value}, {input_type},
+                                   output_type);
+    case HloOpcode::kSin:
+      return EmitLibdeviceMathCall("__nv_sin", {operand_value}, {input_type},
                                    output_type);
     case HloOpcode::kTanh:
       return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},

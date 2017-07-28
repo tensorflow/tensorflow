@@ -7,8 +7,6 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -48,6 +46,7 @@ cc_test(
     deps = [
         ":periodic_function",
         "//tensorflow/contrib/batching/test_util:fake_clock_env",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )

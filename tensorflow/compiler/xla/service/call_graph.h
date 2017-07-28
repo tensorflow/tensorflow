@@ -189,6 +189,20 @@ class CallGraph {
   Status VisitNodes(const VisitorFunction& visitor_func,
                     bool visit_unreachable_nodes = true) const;
 
+  // Returns true if 'a' dominates 'b' in the call graph. Computation 'a'
+  // dominates computation 'b' iff all callgraph paths in the caller-to-callee
+  // direction from a root computation to 'b' pass through computation
+  // 'a'. Trivially, a computation dominates itself.
+  bool Dominates(const HloComputation* a, const HloComputation* b) const;
+
+  // Returns whether 'instruction' is contained in 'computation' either directly
+  // ('instruction->parent' is 'computation') or indirectly ('computation'
+  // dominates 'instruction->parent' in the call graph).
+  bool InstructionIsNestedIn(const HloInstruction* instruction,
+                             const HloComputation* computation) const {
+    return Dominates(computation, instruction->parent());
+  }
+
   string ToString() const;
 
  private:
@@ -204,6 +218,13 @@ class CallGraph {
   Status VisitNodesInternal(
       const VisitorFunction& visitor_func, const CallGraphNode& node,
       tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const;
+
+  // Recursive helper for computing whether 'a' dominates 'b' in the call
+  // graph. 'b_ancestor' is the currently visited node (which starts at 'b'),
+  // and 'visited' is the set of computations which have been visited.
+  bool DominatesHelper(
+      const HloComputation* a, const HloComputation* b,
+      tensorflow::gtl::FlatSet<const HloComputation*>* visited) const;
 
   // The HLO module represented by this call graph.
   const HloModule* module_ = nullptr;

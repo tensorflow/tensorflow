@@ -24,6 +24,7 @@
 
 # Current script directory
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+source "${SCRIPT_DIR}/builds/builds_common.sh"
 
 # Helper functions
 die() {
@@ -418,9 +419,25 @@ do_pip_smoke_test() {
     "The pip smoke test failed."
 }
 
+do_code_link_check() {
+  tensorflow/tools/ci_build/code_link_check.sh
+}
+
+do_check_load_py_test() {
+  BUILD_CMD="bazel build //tensorflow/tools/pip_package:check_load_py_test"
+  ${BUILD_CMD}
+  cmd_status \
+    "check_load_py_test failed to build."
+
+  BUILD_CMD="bazel-bin/tensorflow/tools/pip_package/check_load_py_test"
+  ${BUILD_CMD}
+  cmd_status \
+    "check_load_py_test failed."
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links")
 
 INCREMENTAL_FLAG=""
 
@@ -463,7 +480,7 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
     ((PASS_COUNTER++))
   fi
 
-  IFS=" " read -r -a STEP_EXIT_CODES <<< "${RESULT}"
+  STEP_EXIT_CODES+=(${RESULT})
 
   echo ""
   ((COUNTER++))
@@ -478,20 +495,21 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
-    echo "  PASS"
+    printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
   else
-    echo "  FAIL"
+    printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
   fi
 
   ((COUNTER++))
 done
 
-echo ""
+echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
 
-echo ""
+echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then
-  echo "Sanity checks PASSED"
+  printf "Sanity checks ${COLOR_GREEN}PASSED${COLOR_NC}\n"
 else
-  die "Sanity checks FAILED"
+  printf "Sanity checks ${COLOR_RED}FAILED${COLOR_NC}\n"
+  exit 1
 fi

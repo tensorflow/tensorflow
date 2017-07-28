@@ -24,6 +24,25 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
+namespace {
+
+Status DequeueManyV2Shape(InferenceContext* c, ShapeHandle n_shape) {
+  auto* t = c->input_handle_shapes_and_types(0);
+  if (t != nullptr && t->size() == c->num_outputs()) {
+    for (int i = 0; i < c->num_outputs(); ++i) {
+      ShapeHandle combined_shape;
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(n_shape, (*t)[i].shape, &combined_shape));
+      c->set_output(i, combined_shape);
+    }
+    return Status::OK();
+  } else {
+    return shape_inference::UnknownShape(c);
+  }
+}
+
+}  // namespace
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("DynamicPartition")
@@ -711,7 +730,19 @@ REGISTER_OP("QueueDequeueManyV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle n_shape;
+      if (c->input_tensor(1) == nullptr) {
+        n_shape = c->Vector(InferenceContext::kUnknownDim);
+      } else {
+        const int32 n = c->input_tensor(1)->scalar<int32>()();
+        if (n < 0) {
+          return errors::InvalidArgument("Input 'n' must be >= 0, but is ", n);
+        }
+        n_shape = c->Vector(n);
+      }
+      return DequeueManyV2Shape(c, n_shape);
+    })
     .Doc(R"doc(
 Dequeues `n` tuples of one or more tensors from the given queue.
 
@@ -781,7 +812,9 @@ REGISTER_OP("QueueDequeueUpToV2")
     .Output("components: component_types")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
-    .SetShapeFn(shape_inference::UnknownShape)
+    .SetShapeFn([](InferenceContext* c) {
+      return DequeueManyV2Shape(c, c->Vector(InferenceContext::kUnknownDim));
+    })
     .Doc(R"doc(
 Dequeues `n` tuples of one or more tensors from the given queue.
 
@@ -846,6 +879,32 @@ operations that would block will fail immediately.
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
   blocked on the given queue will be canceled.
+)doc");
+
+REGISTER_OP("QueueIsClosed")
+    .Input("handle: Ref(string)")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
+)doc");
+
+REGISTER_OP("QueueIsClosedV2")
+    .Input("handle: resource")
+    .Output("is_closed: bool")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Returns true if queue is closed.
+
+This operation returns true if the queue is closed and false if the queue
+is open.
+
+handle: The handle to a queue.
 )doc");
 
 REGISTER_OP("QueueSize")
@@ -1081,8 +1140,9 @@ dtype: The data type of accumulated gradients. Needs to correspond to the type
 
 // --------------------------------------------------------------------------
 
-REGISTER_OP("Stack")
-    .Output("handle: Ref(string)")
+REGISTER_OP("StackV2")
+    .Input("max_size: int32")
+    .Output("handle: resource")
     .Attr("elem_type: type")
     .Attr("stack_name: string = ''")
     .SetIsStateful()
@@ -1090,14 +1150,16 @@ REGISTER_OP("Stack")
     .Doc(R"doc(
 A stack that produces elements in first-in last-out order.
 
+max_size: The maximum size of the stack if non-negative. If negative, the stack
+  size is unlimited.
 handle: The handle to the stack.
 elem_type: The type of the elements on the stack.
 stack_name: Overrides the name used for the temporary stack resource. Default
 value is the name of the 'Stack' op (which is guaranteed unique).
 )doc");
 
-REGISTER_OP("StackPush")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPushV2")
+    .Input("handle: resource")
     .Input("elem: T")
     .Output("output: T")
     .Attr("T: type")
@@ -1115,8 +1177,8 @@ output: The same tensor as the input 'elem'.
 swap_memory: Swap `elem` to CPU. Default to false.
 )doc");
 
-REGISTER_OP("StackPop")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackPopV2")
+    .Input("handle: resource")
     .Output("elem: elem_type")
     .Attr("elem_type: type")
     .SetShapeFn(shape_inference::UnknownShape)
@@ -1128,13 +1190,55 @@ elem: The tensor that is popped from the top of the stack.
 elem_type: The type of the elem that is popped.
 )doc");
 
-REGISTER_OP("StackClose")
-    .Input("handle: Ref(string)")
+REGISTER_OP("StackCloseV2")
+    .Input("handle: resource")
     .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
     .Doc(R"doc(
 Delete the stack from its resource container.
 
 handle: The handle to a stack.
+)doc");
+
+// Deprecated ref-typed variants of stack.
+
+REGISTER_OP("Stack")
+    .Output("handle: Ref(string)")
+    .Attr("elem_type: type")
+    .Attr("stack_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+Deprecated, use StackV2.
+)doc");
+
+REGISTER_OP("StackPush")
+    .Input("handle: Ref(string)")
+    .Input("elem: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("swap_memory: bool = false")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Deprecated, use StackPushV2.
+)doc");
+
+REGISTER_OP("StackPop")
+    .Input("handle: Ref(string)")
+    .Output("elem: elem_type")
+    .Attr("elem_type: type")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Deprecated, use StackPopV2.
+)doc");
+
+REGISTER_OP("StackClose")
+    .Input("handle: Ref(string)")
+    .SetShapeFn(TwoElementVectorInputsAndScalarOutputs)
+    .Doc(R"doc(
+Deprecated, use StackCloseV2.
 )doc");
 
 // --------------------------------------------------------------------------

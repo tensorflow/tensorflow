@@ -46,10 +46,13 @@
 @@random_normal_initializer
 @@truncated_normal_initializer
 @@random_uniform_initializer
-@@uniform_unit_scaling_initializer
+@@glorot_uniform_initializer
+@@glorot_normal_initializer
 @@zeros_initializer
 @@ones_initializer
 @@orthogonal_initializer
+@@variance_scaling_initializer
+@@uniform_unit_scaling_initializer
 @@fixed_size_partitioner
 @@variable_axis_size_partitioner
 @@min_max_variable_partitioner

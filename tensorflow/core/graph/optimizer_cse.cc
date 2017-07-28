@@ -42,6 +42,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -187,6 +188,12 @@ bool OptimizerCSE::Optimize(
   for (Node* n : order) {
     if (!n->IsOp()) continue;
 
+    // Don't prune placeholder nodes.
+    if (n->def().op() == "Placeholder" || n->def().op() == "PlaceholderV2" ||
+        n->def().op() == "PlaceholderWithDefault") {
+      continue;
+    }
+
     // See if we should consider this node at all
     if (consider_fn != nullptr && !consider_fn(n)) continue;
 
@@ -204,6 +211,7 @@ bool OptimizerCSE::Optimize(
       for (const Edge* e : n->out_edges()) {
         g_->AddEdge(*candidate, e->src_output(), e->dst(), e->dst_input());
       }
+
       g_->RemoveNode(n);
       changed = true;
     }

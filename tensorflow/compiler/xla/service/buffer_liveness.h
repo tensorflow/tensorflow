@@ -36,12 +36,12 @@ namespace xla {
 // interference.
 class BufferLiveness {
  public:
+  using Colorer = std::function<Status(const BufferLiveness& buffer_liveness)>;
+
   // Constructs a buffer liveness object for the given module assuming the given
   // HLO instruction ordering.
   static StatusOr<std::unique_ptr<BufferLiveness>> Run(
-      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      TuplePointsToAnalysis::Colorer colorer =
-          TuplePointsToAnalysis::DefaultColorer());
+      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering);
 
   // Returns true if the live range of the buffer containing the output of 'a'
   // may overlap with the live range of the buffer of 'b'. If instruction 'a'
@@ -67,15 +67,24 @@ class BufferLiveness {
   // Returns the underlying hlo ordering used for this liveness analysis.
   const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
 
+  const HloModule& module() const { return *module_; }
+
   string ToString() const;
+
+  static Colorer DefaultColorer() {
+    return [](const BufferLiveness& buffer_liveness) {
+      for (auto& buffer :
+           buffer_liveness.points_to_analysis().logical_buffers()) {
+        buffer->set_color(LogicalBuffer::Color(0));
+      }
+      return Status::OK();
+    };
+  }
 
  private:
   explicit BufferLiveness(const HloModule* module,
-                          std::unique_ptr<HloOrdering> hlo_ordering,
-                          TuplePointsToAnalysis::Colorer colorer)
-      : module_(module),
-        hlo_ordering_(std::move(hlo_ordering)),
-        colorer_(colorer) {}
+                          std::unique_ptr<HloOrdering> hlo_ordering)
+      : module_(module), hlo_ordering_(std::move(hlo_ordering)) {}
 
   // Perform buffer liveness analysis. This method must be called prior to
   // MayInterfere or MaybeLiveOut.
@@ -98,8 +107,6 @@ class BufferLiveness {
   tensorflow::gtl::FlatSet<const LogicalBuffer*> maybe_live_out_buffers_;
 
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
-
-  TuplePointsToAnalysis::Colorer colorer_;
 };
 
 }  // namespace xla

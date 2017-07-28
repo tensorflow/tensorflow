@@ -34,11 +34,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
-from tensorflow.python.framework import test_ops_2
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variable_scope
@@ -383,6 +383,15 @@ class OperationTest(test_util.TensorFlowTestCase):
     for x in l:
       self.assertIsInstance(x, dtypes.DType)
     self.assertEqual([dtypes.string, dtypes.double], l)
+
+  # TODO(skyewm): test adding cycles, other error cases
+  @test_util.enable_c_api
+  def testAddControlInput(self):
+    with ops.Graph().as_default():
+      x = constant_op.constant(1).op
+      y = constant_op.constant(2).op
+    y._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(y.control_inputs, [x])
 
 
 class CreateOpTest(test_util.TensorFlowTestCase):
@@ -1062,29 +1071,26 @@ class ComparisonTest(test_util.TensorFlowTestCase):
 
 class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
+  @test_util.enable_c_api
   def testBasic(self):
-    ops._USE_C_API = True
-    try:
-      g = ops.Graph()
-      with g.as_default():
-        # Creating unregistered ops with _apply_op() doesn't work with the C API
-        # TODO(skyewm): address this more consistently. Possible solutions are
-        # to use registered ops in all tests, create a way to register ops in
-        # Python tests, or conditionally disable the op registration check in
-        # the C API.
-        a = constant_op.constant(1.0)
-        b = constant_op.constant(1.0)
-        with g.control_dependencies([a]):
-          c = constant_op.constant(1.0)
-          d = array_ops.identity(b)
-          e = array_ops.identity(c)
+    g = ops.Graph()
+    with g.as_default():
+      # Creating unregistered ops with _apply_op() doesn't work with the C API
+      # TODO(skyewm): address this more consistently. Possible solutions are
+      # to use registered ops in all tests, create a way to register ops in
+      # Python tests, or conditionally disable the op registration check in
+      # the C API.
+      a = constant_op.constant(1.0)
+      b = constant_op.constant(1.0)
+      with g.control_dependencies([a]):
+        c = constant_op.constant(1.0)
+        d = array_ops.identity(b)
+        e = array_ops.identity(c)
 
-      self.assertEqual(c.op.control_inputs, [a.op])
-      self.assertEqual(d.op.control_inputs, [a.op])
-      # e should be dominated by c.
-      self.assertEqual(e.op.control_inputs, [])
-    finally:
-      ops._USE_C_API = False
+    self.assertEqual(c.op.control_inputs, [a.op])
+    self.assertEqual(d.op.control_inputs, [a.op])
+    # e should be dominated by c.
+    self.assertEqual(e.op.control_inputs, [])
 
   def testBasicWithConversion(self):
     g = ops.Graph()
@@ -1313,6 +1319,12 @@ class GraphTest(test_util.TensorFlowTestCase):
 
   def _AssertDefault(self, expected):
     self.assertIs(expected, ops.get_default_graph())
+
+  def testResetDefaultGraphNesting(self):
+    g0 = ops.Graph()
+    with self.assertRaises(AssertionError):
+      with g0.as_default():
+        ops.reset_default_graph()
 
   def testGraphContextManager(self):
     g0 = ops.Graph()
@@ -1550,6 +1562,21 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
     self.assertEqual(a.op.device, b.op.device)
 
+  def testColocationCanonicalization(self):
+    with ops.device("/gpu:0"):
+      _ = constant_op.constant(2.0)
+    with ops.device(lambda op: "/gpu:0"):
+      b = constant_op.constant(3.0)
+    with ops.get_default_graph().colocate_with(b):
+      with ops.device("/gpu:0"):
+        c = constant_op.constant(4.0)
+
+    # A's device will be /gpu:0
+    # B's device will be /device:GPU:0
+    # C's device will be /device:GPU:0 because it
+    # inherits B's device name, after canonicalizing the names.
+    self.assertEqual(b.op.device, c.op.device)
+
   def testLocationOverrides(self):
     with ops.device("/cpu:0"):
       with ops.device("/gpu:0"):
@@ -1770,6 +1797,98 @@ class TracebackTest(test_util.TensorFlowTestCase):
             op.traceback, op.traceback_with_start_lines):
           self.assertEquals(5, len(frame_with_start_line))
           self.assertEquals(frame, frame_with_start_line[:-1])
+
+
+class OutputTypesTest(test_util.TensorFlowTestCase):
+  """Tests Operation._output_types property.
+
+  This test should not exist as _output_types is a private property.
+  This property is used by util.copy_elements and its tests would normally
+  cover Operation._output_types. However, we can't yet run these tests in C
+  API mode because their use _set_device method. This test will be deleted
+  once we port _set_device and run the copy tests with C API on.
+  """
+  # TODO(iga): Remove this test
+
+  def setUp(self):
+    self.prev_use_c_api = ops._USE_C_API  # pylint: disable=protected-access
+    ops._USE_C_API = True  # pylint: disable=protected-access
+
+  def tearDown(self):
+    ops._USE_C_API = self.prev_use_c_api  # pylint: disable=protected-access
+
+  def testOneOutput(self):
+    g = ops.Graph()
+    with g.as_default():
+      # Using a constant because creating unregistered ops
+      # doesn't work with the C API.
+      op = constant_op.constant(12, dtype=dtypes.uint16).op
+      # pylint: disable=protected-access
+      self.assertEqual([types_pb2.DT_UINT16], op._output_types)
+      # pylint: enable=protected-access
+
+  def testTwoDifferentOutputs(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant([1, 1, 2, 4, 4, 4, 7, 8, 8],
+                               dtype=dtypes.double)
+      y, _ = gen_array_ops.unique(x)
+      self.assertEqual([types_pb2.DT_DOUBLE, types_pb2.DT_INT32],
+                       y.op._output_types)  # pylint: disable=protected-access
+
+  def testThreeOutputs(self):
+    g = ops.Graph()
+    with g.as_default():
+      # Using a split operationt because creating unregistered ops
+      # doesn't work with the C API.
+      a = constant_op.constant("abc", dtype=dtypes.string, shape=[5, 30])
+      split0, _, _ = array_ops.split(a, [4, 15, 11], 1)
+      # pylint: disable=protected-access
+      self.assertEqual([types_pb2.DT_STRING] * 3, split0.op._output_types)
+      # pylint: enable=protected-access
+
+
+class InputTypesTest(test_util.TensorFlowTestCase):
+  """Tests Operation._input_dtypes and Operation._input_types properties.
+
+  This test should not exist as _input_types is a private property.
+  This property is used by many tests that would normally cover its
+  behavior. However, we can't yet run these tests in C
+  API mode because they use _set_device method. This test will be deleted
+  once we port _set_device.
+  """
+  # TODO(iga): Remove this test
+
+  def setUp(self):
+    self.prev_use_c_api = ops._USE_C_API  # pylint: disable=protected-access
+    ops._USE_C_API = True  # pylint: disable=protected-access
+
+  def tearDown(self):
+    ops._USE_C_API = self.prev_use_c_api  # pylint: disable=protected-access
+
+  def testZeroInputs(self):
+    g = ops.Graph()
+    with g.as_default():
+      # Using a constant because creating unregistered ops
+      # doesn't work with the C API.
+      op = constant_op.constant(12, dtype=dtypes.uint16).op
+      # pylint: disable=protected-access
+      self.assertEqual([], op._input_types)
+      self.assertEqual([], op._input_dtypes)
+      # pylint: enable=protected-access
+
+  def testTwoInputs(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1.0, dtype=dtypes.double)
+      y = constant_op.constant(2.0, dtype=dtypes.double)
+      z = math_ops.multiply(x, y)
+      # pylint: disable=protected-access
+      self.assertTrue(isinstance(z.op._input_types[0], dtypes.DType))
+      self.assertTrue(isinstance(z.op._input_types[1], dtypes.DType))
+      self.assertEqual([dtypes.double, dtypes.double], z.op._input_types)
+      self.assertEqual([dtypes.double, dtypes.double], z.op._input_dtypes)
+      # pylint: enable=protected-access
 
 
 if __name__ == "__main__":

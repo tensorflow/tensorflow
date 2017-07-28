@@ -173,7 +173,7 @@ class HeapSimulatorTest : public HloTestBase {
 TEST_F(HeapSimulatorTest, ScalarConstant) {
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
 
   // Constants aren't assigned.  See b/32248867
   HeapSimulatorTracker tracker(TestName(), builder.Build(), {const0});
@@ -510,8 +510,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   // other than the id and color.
   const LogicalBuffer* DummyLogicalBuffer() {
     const LogicalBuffer::Id id = buffers_.size();
-    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id,
-                                                    LogicalBuffer::Color(0)));
+    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id));
     return buffers_.back().get();
   }
 

@@ -54,6 +54,11 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
 
   Status HandleParameter(HloInstruction* parameter) override;
 
+  // Emits the ir value for each element in the tuple.
+  Status HandleTuple(
+      HloInstruction* tuple,
+      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+
   Status FinishVisit(HloInstruction* root) override;
 
   // Returns the generator function for the root of the fused computation.

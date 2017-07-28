@@ -86,6 +86,53 @@ namespace xla {
   return result;
 }
 
+/*  static */ std::unique_ptr<Array3D<float>> ReferenceUtil::ConvArray3D(
+    const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
+    Padding padding) {
+  return ConvArray3DGeneralDimensionsDilated(
+      lhs, rhs, kernel_stride, padding, 1, 1,
+      ComputationBuilder::CreateDefaultConvDimensionNumbers(1));
+}
+
+/*static*/ std::unique_ptr<Array3D<float>>
+ReferenceUtil::ConvArray3DGeneralDimensionsDilated(
+    const Array3D<float>& lhs, const Array3D<float>& rhs, int64 kernel_stride,
+    Padding padding, int64 lhs_dilation, int64 rhs_dilation,
+    const ConvolutionDimensionNumbers& dnums) {
+  CHECK_EQ(dnums.spatial_dimensions_size(), 1);
+  // Reuse the code for Array4D-convolution by extending the 3D input into a 4D
+  // array by adding a fourth dummy dimension of size 1 without stride, padding
+  // and dilation.
+  Array4D<float> a4dlhs(lhs.n1(), lhs.n2(), lhs.n3(), 1);
+  a4dlhs.Each(
+      [&](tensorflow::gtl::ArraySlice<int64> indices, float* value_ptr) {
+        CHECK_EQ(indices[3], 0);
+        *value_ptr = lhs.operator()(indices[0], indices[1], indices[2]);
+      });
+  Array4D<float> a4drhs(rhs.n1(), rhs.n2(), rhs.n3(), 1);
+  a4drhs.Each(
+      [&](tensorflow::gtl::ArraySlice<int64> indices, float* value_ptr) {
+        CHECK_EQ(indices[3], 0);
+        *value_ptr = rhs.operator()(indices[0], indices[1], indices[2]);
+      });
+  // Add a second dummy spatial dimensions.
+  ConvolutionDimensionNumbers dnums2d = dnums;
+  dnums2d.add_spatial_dimensions(3);
+  dnums2d.add_kernel_spatial_dimensions(3);
+  std::unique_ptr<Array4D<float>> convr4 = ConvArray4DGeneralDimensionsDilated(
+      a4dlhs, a4drhs, {kernel_stride, 1}, padding, {lhs_dilation, 1},
+      {rhs_dilation, 1}, dnums2d);
+
+  auto convr3 = MakeUnique<Array3D<float>>(convr4->planes(), convr4->depth(),
+                                           convr4->height());
+  convr4->Each(
+      [&](tensorflow::gtl::ArraySlice<int64> indices, float* value_ptr) {
+        CHECK_EQ(indices[3], 0);
+        convr3->operator()(indices[0], indices[1], indices[2]) = *value_ptr;
+      });
+  return convr3;
+}
+
 /* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::ConvArray4D(
     const Array4D<float>& lhs, const Array4D<float>& rhs,
     std::pair<int64, int64> kernel_stride, Padding padding) {
@@ -133,6 +180,49 @@ ReferenceUtil::SeparableConvArray4D(const Array4D<float>& input,
     return window_util::StridedBound(unpadded_width, window_len, stride);
   }
   return tensorflow::MathUtil::CeilOfRatio(unpadded_width, stride);
+}
+
+/* static  */ std::unique_ptr<std::vector<float>>
+ReferenceUtil::ReduceWindow1DGeneric(
+    const tensorflow::gtl::ArraySlice<float>& operand, float init,
+    const std::function<float(float, float)>& reduce_func,
+    const tensorflow::gtl::ArraySlice<int64>& window,
+    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+  std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
+  auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
+
+  std::vector<int64> window_counts(window.size(), 0);
+  std::vector<int64> pad_low(window.size(), 0);
+  for (int64 i = 0; i < window.size(); ++i) {
+    window_counts[i] =
+        WindowCount(dim_lengths[i], window[i], stride[i], padding);
+    pad_low[i] = padding_both[i].first;
+  }
+  auto result = MakeUnique<std::vector<float>>(window_counts[0]);
+
+  // Do a full 1D reduce window.
+  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
+    int64 i0_base = i0 * stride[0] - pad_low[0];
+
+    float val = init;
+    for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
+      if (i0_base + i0_win >= 0 && i0_base + i0_win < dim_lengths[0]) {
+        val = reduce_func(val, operand[i0_base + i0_win]);
+      }
+    }
+    (*result)[i0] = val;
+  }
+  return result;
+}
+
+/* static  */ std::unique_ptr<std::vector<float>>
+ReferenceUtil::ReduceWindow1DAdd(
+    const tensorflow::gtl::ArraySlice<float>& operand, float init,
+    const tensorflow::gtl::ArraySlice<int64>& window,
+    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+  const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
+  return ReduceWindow1DGeneric(operand, init, add_reduce, window, stride,
+                               padding);
 }
 
 /* static  */ std::unique_ptr<Array2D<float>> ReferenceUtil::ReduceWindow2DAdd(
@@ -250,6 +340,20 @@ ReferenceUtil::ReduceWindow4DGeneric(
   const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
   return ReduceWindow4DGeneric(operand, init, add_reduce, window, stride,
                                padding);
+}
+
+/* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::BatchNorm4D(
+    const Array4D<float>& input, const Array4D<float>& mean,
+    const Array4D<float>& var, const Array4D<float>& scale,
+    const Array4D<float>& offset, float epsilon) {
+  auto normalized =
+      *MapArray4D(input, mean, [](float a, float b) { return a - b; });
+  normalized = *MapArray4D(normalized, var, [&](float a, float b) {
+    return a / std::sqrt(b + epsilon);
+  });
+  normalized =
+      *MapArray4D(normalized, scale, [](float a, float b) { return a * b; });
+  return MapArray4D(normalized, offset, [](float a, float b) { return a + b; });
 }
 
 /* static  */ std::unique_ptr<Array4D<float>>
@@ -439,21 +543,21 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   // Lambda to access the rhs operand at the given 4D index.  height_over_dky
   // should be equal to height / dky, and width_over_dkx should be equal to
   // width / dkx.  (This is an optimization to avoid doing divisions.)
-  const auto rhs_element = [&](
-      int64 kernel_output_feature, int64 kernel_input_feature, int64 height,
-      int64 width, int64 height_over_dky, int64 width_over_dkx) {
-    DCHECK_EQ(height % dky, 0);
-    DCHECK_EQ(width % dkx, 0);
-    DCHECK_EQ(height / dky, height_over_dky);
-    DCHECK_EQ(width / dkx, width_over_dkx);
+  const auto rhs_element =
+      [&](int64 kernel_output_feature, int64 kernel_input_feature, int64 height,
+          int64 width, int64 height_over_dky, int64 width_over_dkx) {
+        DCHECK_EQ(height % dky, 0);
+        DCHECK_EQ(width % dkx, 0);
+        DCHECK_EQ(height / dky, height_over_dky);
+        DCHECK_EQ(width / dkx, width_over_dkx);
 
-    std::array<int64, 4> index;
-    index[dnums.kernel_output_feature_dimension()] = kernel_output_feature;
-    index[dnums.kernel_input_feature_dimension()] = kernel_input_feature;
-    index[dnums.kernel_spatial_dimensions(0)] = height_over_dky;
-    index[dnums.kernel_spatial_dimensions(1)] = width_over_dkx;
-    return rhs(index[0], index[1], index[2], index[3]);
-  };
+        std::array<int64, 4> index;
+        index[dnums.kernel_output_feature_dimension()] = kernel_output_feature;
+        index[dnums.kernel_input_feature_dimension()] = kernel_input_feature;
+        index[dnums.kernel_spatial_dimensions(0)] = height_over_dky;
+        index[dnums.kernel_spatial_dimensions(1)] = width_over_dkx;
+        return rhs(index[0], index[1], index[2], index[3]);
+      };
 
   // Lambda to access the result data at the given 4D index.
   const auto result_element = [&](int64 batch, int64 kernel_output_feature,
@@ -491,13 +595,37 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
       }
     }
   }
+  if (samples == 0 || kx == 0 || ky == 0 || ox == 0 || oy == 0 || oz == 0 ||
+      iz == 0) {
+    LOG(INFO) << "Output will be trivially empty because one of these "
+                 "dimensions is 0: samples: "
+              << samples << " kx: " << kx << " ky: " << ky << " ox: " << ox
+              << " oy: " << oy << " oz: " << oz << " iz: " << iz;
+    return result;
+  }
+  bool trivial = true;
+  auto check_trivial = [&trivial](tensorflow::gtl::ArraySlice<int64> indices,
+                                  float value) {
+    if (value != 0.0) {
+      trivial = false;
+    }
+  };
+  lhs.Each(check_trivial);
+  if (trivial) {
+    LOG(FATAL) << "LHS is all 0.0.";
+  }
+  trivial = true;
+  rhs.Each(check_trivial);
+  if (trivial) {
+    LOG(FATAL) << "RHS is all 0.0.";
+  }
   return result;
 }
 
 /* static */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceToColArray2D(
     const Array2D<float>& matrix, float init,
-    std::function<float(float, float)> reduce_function) {
+    const std::function<float(float, float)>& reduce_function) {
   int64 rows = matrix.height();
   int64 cols = matrix.width();
   auto result = MakeUnique<std::vector<float>>();
@@ -514,7 +642,7 @@ ReferenceUtil::ReduceToColArray2D(
 /* static */ std::unique_ptr<std::vector<float>>
 ReferenceUtil::ReduceToRowArray2D(
     const Array2D<float>& matrix, float init,
-    std::function<float(float, float)> reduce_function) {
+    const std::function<float(float, float)>& reduce_function) {
   int64 rows = matrix.height();
   int64 cols = matrix.width();
   auto result = MakeUnique<std::vector<float>>();
@@ -531,7 +659,7 @@ ReferenceUtil::ReduceToRowArray2D(
 /*static*/ std::vector<float> ReferenceUtil::Reduce4DTo1D(
     const Array4D<float>& array, float init,
     tensorflow::gtl::ArraySlice<int64> dims,
-    std::function<float(float, float)> reduce_function) {
+    const std::function<float(float, float)>& reduce_function) {
   std::vector<float> result;
   CHECK_EQ(dims.size(), 3);
   const std::set<int64> dim_set(dims.begin(), dims.end());
@@ -566,10 +694,42 @@ ReferenceUtil::ReduceToRowArray2D(
   return result;
 }
 
+/* static */ std::unique_ptr<Array4D<float>> ReferenceUtil::Broadcast1DTo4D(
+    const std::vector<float>& array, const std::vector<int64>& bounds,
+    int64 broadcast_from_dim) {
+  auto result =
+      MakeUnique<Array4D<float>>(bounds[0], bounds[1], bounds[2], bounds[3]);
+  for (int64 i = 0; i < result->n1(); ++i) {
+    for (int64 j = 0; j < result->n2(); ++j) {
+      for (int64 k = 0; k < result->n3(); ++k) {
+        for (int64 l = 0; l < result->n4(); ++l) {
+          switch (broadcast_from_dim) {
+            case 0:
+              (*result)(i, j, k, l) = array[i];
+              break;
+            case 1:
+              (*result)(i, j, k, l) = array[j];
+              break;
+            case 2:
+              (*result)(i, j, k, l) = array[k];
+              break;
+            case 3:
+              (*result)(i, j, k, l) = array[l];
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+  }
+  return result;
+}
+
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::Reduce3DTo2D(
     const Array3D<float>& array, float init,
     tensorflow::gtl::ArraySlice<int64> dims,
-    std::function<float(float, float)> reduce_function) {
+    const std::function<float(float, float)>& reduce_function) {
   CHECK_EQ(dims.size(), 1);
   int64 rows = dims[0] == 0 ? array.n2() : array.n1();
   int64 cols = dims[0] == 2 ? array.n2() : array.n3();
@@ -661,6 +821,61 @@ ReferenceUtil::ReduceToRowArray2D(
       o1 += interior_padding1 + 1;
     }
     o0 += interior_padding0 + 1;
+  }
+  return result;
+}
+
+/* static */ Array3D<float> ReferenceUtil::PadArray3D(
+    const Array3D<float>& operand, const PaddingConfig& padding,
+    const float pad) {
+  CHECK_EQ(padding.dimensions_size(), 3);
+
+  const std::vector<int64> input_bounds = {operand.n1(), operand.n2(),
+                                           operand.n3()};
+  std::vector<int64> pad_low(3);
+  std::vector<int64> pad_high(3);
+  std::vector<int64> pad_interior(3);
+  std::vector<int64> output_bounds(3);
+  for (int64 i = 0; i < 3; ++i) {
+    pad_low[i] = padding.dimensions(i).edge_padding_low();
+    pad_high[i] = padding.dimensions(i).edge_padding_high();
+    CHECK_LE(0, pad_low[i]);
+    CHECK_LE(0, pad_high[i]);
+    CHECK_LE(0, padding.dimensions(i).interior_padding()) << "not implemented";
+    pad_interior[i] = padding.dimensions(i).interior_padding();
+
+    output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
+                       (input_bounds[i] - 1) * pad_interior[i];
+  }
+
+  Array3D<float> result(output_bounds[0], output_bounds[1], output_bounds[2]);
+  std::vector<int> indices = {0, 0, 0};
+  for (indices[0] = 0; indices[0] < output_bounds[0]; ++indices[0]) {
+    for (indices[1] = 0; indices[1] < output_bounds[1]; ++indices[1]) {
+      for (indices[2] = 0; indices[2] < output_bounds[2]; ++indices[2]) {
+        float* value = &result(indices[0], indices[1], indices[2]);
+        bool value_padded = false;
+        for (int i = 0; i < 3; ++i) {
+          bool in_low_padding = indices[i] < pad_low[i];
+          bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
+          if (in_low_padding || in_high_padding) {
+            *value = pad;
+            value_padded = true;
+          }
+          if (pad_interior[i] &&
+              (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
+            *value = pad;
+            value_padded = true;
+          }
+        }
+        if (value_padded) {
+          continue;
+        }
+        *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
+                         (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
+                         (indices[2] - pad_low[2]) / (pad_interior[2] + 1));
+      }
+    }
   }
   return result;
 }

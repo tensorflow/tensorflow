@@ -98,14 +98,16 @@ class DirectSession : public Session {
   ::tensorflow::Status ListDevices(
       std::vector<DeviceAttributes>* response) override;
   ::tensorflow::Status Close() override;
+  ::tensorflow::Status LocalDeviceManager(const DeviceMgr** output) override {
+    *output = device_mgr_.get();
+    return ::tensorflow::Status::OK();
+  }
 
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
     cost_model_manager_.ExportCostModels(cost_models);
   }
 
  private:
-  typedef DirectSession ME;
-
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
@@ -266,9 +268,11 @@ class DirectSession : public Session {
   mutex graph_def_lock_;
   GraphDef graph_def_ GUARDED_BY(graph_def_lock_);
 
-  // The thread-pools to use for running ops.
-  std::vector<thread::ThreadPool*> thread_pools_;
-  bool owns_thread_pools_ = false;
+  // The thread-pools to use for running ops, with a bool indicating if the pool
+  // is owned.
+  std::vector<std::pair<thread::ThreadPool*, bool>> thread_pools_;
+
+  Status init_error_;  // Set to an error if construction failed.
 
   // If true, blocks until device has finished all queued operations in a step.
   bool sync_on_finish_ = true;

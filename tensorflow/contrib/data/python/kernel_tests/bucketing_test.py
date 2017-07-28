@@ -31,7 +31,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
-class BucketingTest(test.TestCase):
+class GroupByWindowTest(test.TestCase):
 
   def testSimple(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
@@ -257,16 +257,24 @@ class BucketTest(test.TestCase):
 
   def testEvenOddBucketsFilterOutAllOdd(self):
     def _map_fn(v):
-      return (v, array_ops.fill([v], v),
-              array_ops.fill([3], string_ops.as_string(v)))
+      return {"x": v,
+              "y": array_ops.fill([v], v),
+              "z": array_ops.fill([3], string_ops.as_string(v))}
+
+    def _dynamic_pad_fn(bucket, window, _):
+      return dataset_ops.Dataset.zip(
+          (dataset_ops.Dataset.from_tensors(bucket), window.padded_batch(
+              32, {"x": tensor_shape.TensorShape([]),
+                   "y": tensor_shape.TensorShape([None]),
+                   "z": tensor_shape.TensorShape([3])})))
 
     input_dataset = (
         dataset_ops.Dataset.from_tensor_slices(math_ops.range(128)).map(_map_fn)
-        .filter(lambda x, y, z: math_ops.equal(x % 2, 0)))
+        .filter(lambda d: math_ops.equal(d["x"] % 2, 0)))
 
     bucketed_dataset = input_dataset.group_by_window(
-        lambda x, y, z: math_ops.cast(x % 2, dtypes.int64),
-        lambda k, bucket: self._dynamicPad(k, bucket, 32), 32)
+        lambda d: math_ops.cast(d["x"] % 2, dtypes.int64),
+        lambda k, bucket: _dynamic_pad_fn(k, bucket, 32), 32)
 
     iterator = dataset_ops.Iterator.from_dataset(bucketed_dataset)
     init_op = iterator.initializer
@@ -283,9 +291,9 @@ class BucketTest(test.TestCase):
       self.assertAllEqual(0, which_bucket0)
       self.assertAllEqual(0, which_bucket1)
       self.assertAllEqual(
-          np.arange(0, 64, 2, dtype=np.int64), bucketed_values_even0[0])
+          np.arange(0, 64, 2, dtype=np.int64), bucketed_values_even0["x"])
       self.assertAllEqual(
-          np.arange(64, 128, 2, dtype=np.int64), bucketed_values_even1[0])
+          np.arange(64, 128, 2, dtype=np.int64), bucketed_values_even1["x"])
 
 
 if __name__ == "__main__":

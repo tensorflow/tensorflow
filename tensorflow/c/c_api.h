@@ -117,6 +117,7 @@ typedef enum TF_DataType {
   TF_COMPLEX128 = 18,  // Double-precision complex
   TF_HALF = 19,
   TF_RESOURCE = 20,
+  TF_VARIANT = 21,
 } TF_DataType;
 
 // TF_DataTypeSize returns the sizeof() for the underlying type corresponding
@@ -1101,8 +1102,7 @@ TF_CAPI_EXPORT extern void TF_SessionRun(
 // needed.
 //
 // On failure, out_status contains a tensorflow::Status with an error
-// message.
-// NOTE: This is EXPERIMENTAL and subject to change.
+// message. *handle is set to nullptr.
 TF_CAPI_EXPORT extern void TF_SessionPRunSetup(
     TF_Session*,
     // Input names
@@ -1118,7 +1118,6 @@ TF_CAPI_EXPORT extern void TF_SessionPRunSetup(
 
 // Continue to run the graph with additional feeds and fetches. The
 // execution state is uniquely identified by the handle.
-// NOTE: This is EXPERIMENTAL and subject to change.
 TF_CAPI_EXPORT extern void TF_SessionPRun(
     TF_Session*, const char* handle,
     // Input tensors

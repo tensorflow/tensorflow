@@ -37,8 +37,8 @@ namespace {
 // patterns to match.
 //
 // Each ExprTree node is comprised of an HloOpcode, and a set of operands (each
-// of type ExprTree). Operands can be added by specifying the index and HloOpcode
-// of the operand.
+// of type ExprTree). Operands can be added by specifying the index and
+// HloOpcode of the operand.
 //
 // For example, the following computation:
 //
@@ -197,10 +197,9 @@ class MatcherBase {
       return InvalidArgument("Must use S32 or S64 integral types.");
     }
     if (type == S32) {
-      *const_value =
-          static_cast<int64>(LiteralUtil::GetFirstElement<int32>(literal));
+      *const_value = static_cast<int64>(literal.GetFirstElement<int32>());
     } else if (type == S64) {
-      *const_value = LiteralUtil::GetFirstElement<int64>(literal);
+      *const_value = literal.GetFirstElement<int64>();
     }
     return tensorflow::Status::OK();
   }

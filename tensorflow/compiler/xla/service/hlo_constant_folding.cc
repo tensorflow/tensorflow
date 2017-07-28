@@ -42,6 +42,9 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   bool changed = false;
 
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       // Skip dead code.
       if (instruction->user_count() == 0 &&
@@ -55,6 +58,13 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       }
       // Skip instructions with non-constant operands.
       if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+        continue;
+      }
+
+      // Broadcasts dramatically increase the size of constants with is often
+      // detrimental to performance and memory capacity so do not fold
+      // broadcasts.
+      if (instruction->opcode() == HloOpcode::kBroadcast) {
         continue;
       }
 

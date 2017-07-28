@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -391,7 +392,7 @@ void BaseGPUDevice::ComputeHelper(OpKernel* op_kernel,
 
   if (vlog_1) {
     VLOG(1) << "GpuDevice::Compute " << op_kernel->name() << " op "
-            << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
+            << op_kernel->type_string() << " on GPU" << gpu_id_ << " stream["
             << stream_id << "]";
   }
 
@@ -462,16 +463,18 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
     gpu_device_context =
         static_cast<GPUDeviceContext*>(context->op_device_context());
   }
+  gpu::Stream* stream = gpu_device_context->stream();
   const auto stream_id = gpu_device_context->stream_id();
 
   VLOG(1) << "GpuDevice::ComputeAsync " << op_kernel->name() << " op "
-          << op_kernel->def().op() << " on GPU" << gpu_id_ << " stream["
+          << op_kernel->type_string() << " on GPU" << gpu_id_ << " stream["
           << stream_id << "]";
 
   // When TraceMe profiling is off (which is the default), the
   // following TraceMe constructor is simply a conditional test of
   // false value. Measurements show that its overhead is negligible.
   port::Tracing::TraceMe activity(op_kernel->name(), op_kernel->type_string());
+  gpu::cuda::ScopedActivateExecutorContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, done);
 }
 
@@ -602,14 +605,28 @@ int64 MinSystemMemory(int64 available_memory) {
   // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
   //
   // In the future we could be more sophisticated by using a table of devices.
+  int64 min_system_memory;
   if (available_memory < (1LL << 31)) {
     // 225MiB
-    return 225 * 1024 * 1024;
+    min_system_memory = 225 * 1024 * 1024;
   } else {
     // max(300 MiB, 0.05 * available_memory)
-    return std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
+    min_system_memory =
+        std::max(314572800LL, static_cast<int64>(available_memory * 0.05));
   }
+#if defined(__GNUC__) && defined(__OPTIMIZE__)
+// Do nothing
+#elif !defined(__GNUC__) && defined(NDEBUG)
+// Do nothing
+#else
+  // Double the amount of available GPU memory in non-opt builds (debug
+  // builds in windows); because in non-opt builds more system memory
+  // is necessary.
+  min_system_memory *= 2;
+#endif
+  return min_system_memory;
 }
+
 }  // namespace
 
 static string GetShortDeviceDescription(int device_id,

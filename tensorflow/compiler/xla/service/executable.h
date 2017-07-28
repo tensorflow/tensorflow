@@ -19,11 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
@@ -48,10 +49,6 @@ class Executable {
       : hlo_module_(std::move(hlo_module)),
         shape_size_function_(std::move(shape_size_function)) {}
   virtual ~Executable() {}
-
-  // Dumps the executed HLO according to service-associated flags.
-  static void DumpExecutedHlo(const HloModule& module, const string& label,
-                              const HloExecutionProfile* profile);
 
   // Enqueues the compilation result on the provided stream, passing the given
   // arguments. This call is blocking and returns after the execution is done.
@@ -108,6 +105,14 @@ class Executable {
   ExecutionProfile execution_profile() const {
     tensorflow::mutex_lock lock(mutex_);
     return execution_profile_;
+  }
+
+  // Returns Status::ok() if the two executables are equal to each other.
+  //
+  // An error status is returned otherwise.
+  virtual const Status EqualOrFail(const Executable& executable) {
+    return Unimplemented(
+        "Equality test on this executable is not implemented.");
   }
 
   // Returns whether this executable was compiled with HLO profilings support
@@ -191,10 +196,11 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
   // If the profiling flag isn't enabled, we pass nullptr as the profile to
   // indicate profiling is not requested.
   HloExecutionProfile hlo_execution_profile;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
   HloExecutionProfile* profile_ptr =
-      flags->xla_hlo_profile && hlo_profiling_enabled() ? &hlo_execution_profile
-                                                        : nullptr;
+      module_config().debug_options().xla_hlo_profile() &&
+              hlo_profiling_enabled()
+          ? &hlo_execution_profile
+          : nullptr;
 
   auto return_value = ExecuteOnStream(run_options, arguments, profile_ptr);
 
@@ -240,7 +246,8 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
         }
       }
     }
-    DumpExecutedHlo(module(), "Service::Execute", profile_ptr);
+    hlo_graph_dumper::MaybeDumpHloModule(module(), "Service::Execute",
+                                         profile_ptr);
   }
 
   return return_value;

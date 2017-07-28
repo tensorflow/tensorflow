@@ -129,16 +129,18 @@ void XlaContext::AddSideEffects() {
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
-Status XlaContext::CreateVariable(int arg_num, string name, DataType type,
+Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
+                                  string name, DataType type,
                                   const xla::ComputationDataHandle& handle,
-                                  XlaVariable** variable) {
-  variables_.emplace_back(new XlaVariable);
-  *variable = variables_.back().get();
-  XlaVariable& var = **variable;
-  var.arg_num = arg_num;
-  var.name = std::move(name);
-  var.type = type;
-  var.initial_value = var.value = handle;
+                                  XlaResource** resource) {
+  resources_.emplace_back(new XlaResource);
+  *resource = resources_.back().get();
+  XlaResource& r = **resource;
+  r.kind = kind;
+  r.arg_num = arg_num;
+  r.name = std::move(name);
+  r.type = type;
+  r.initial_value = r.value = handle;
   return Status::OK();
 }
 
@@ -166,27 +168,6 @@ const xla::Computation* XlaContext::GetOrCreateAdd(const DataType type) {
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     b.Add(x, y);
-    return b.Build().ConsumeValueOrDie();
-  });
-}
-
-const xla::Computation* XlaContext::GetOrCreateSigmoid(const DataType type) {
-  return LookupOrCreate(type, &sigmoid_func_, [this, type] {
-    const string type_string = DataTypeString(type);
-    VLOG(1) << "Building Sigmoid() for " << type_string;
-    xla::ComputationBuilder b(builder()->client(),
-                              "sigmoid<" + type_string + ">");
-    xla::PrimitiveType xla_type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    // Clamp the inputs to the range [-18, 18] since anything outside
-    // this range is 0.0f or 1.0f in single-precision. We must clamp the range
-    // of x to avoid incorrect outputs due to fast-math optimizations for large
-    // negative x.
-    x = b.Clamp(XlaHelpers::IntegerLiteral(&b, type, -18), x,
-                XlaHelpers::IntegerLiteral(&b, type, 18));
-    auto one = XlaHelpers::One(&b, type);
-    b.Div(one, b.Add(b.Exp(b.Neg(x)), one));
     return b.Build().ConsumeValueOrDie();
   });
 }

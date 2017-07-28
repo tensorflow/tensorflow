@@ -89,7 +89,6 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
 
 static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
                              Tensor* output) {
-
   tensorflow::uint64 file_size = 0;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
 
@@ -124,15 +123,15 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
 
   // read file_name into a tensor named input
   Tensor input(tensorflow::DT_STRING, tensorflow::TensorShape());
-  TF_RETURN_IF_ERROR(ReadEntireFile(tensorflow::Env::Default(), file_name,
-                                    &input));
+  TF_RETURN_IF_ERROR(
+      ReadEntireFile(tensorflow::Env::Default(), file_name, &input));
 
   // use a placeholder to read input data
-  auto file_reader = Placeholder(root.WithOpName("input"),
-                                 tensorflow::DataType::DT_STRING);
+  auto file_reader =
+      Placeholder(root.WithOpName("input"), tensorflow::DataType::DT_STRING);
 
   std::vector<std::pair<string, tensorflow::Tensor>> inputs = {
-    {"input", input},
+      {"input", input},
   };
 
   // Now try to figure out what kind of file it is and decode it.
@@ -285,8 +284,8 @@ int main(int argc, char* argv[]) {
       "tensorflow/examples/label_image/data/imagenet_slim_labels.txt";
   int32 input_width = 299;
   int32 input_height = 299;
-  int32 input_mean = 0;
-  int32 input_std = 255;
+  float input_mean = 0;
+  float input_std = 255;
   string input_layer = "input";
   string output_layer = "InceptionV3/Predictions/Reshape_1";
   bool self_test = false;
