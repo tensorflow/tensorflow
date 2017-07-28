@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
