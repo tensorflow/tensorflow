@@ -155,6 +155,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       return PartitionOptions::kIllegalIncarnation;
     }
   };
+  popts.flib_def = &graph.flib_def();
   popts.control_flow_added = true;
   popts.scheduling_for_recvs = graph_options.enable_recv_scheduling();
   TF_RETURN_IF_ERROR(Partition(popts, &graph, &partitions));

@@ -654,12 +654,262 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* operand,
+                            HloInstruction* start_indices) override {
+    auto result_shape = dynamic_slice->shape();
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferDynamicSliceShape(
+                            operand->shape(), start_indices->shape(),
+                            dynamic_slice->dynamic_slice_sizes()));
+    TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+        << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
+        << "but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+    TF_RET_CHECK(
+        primitive_util::IsIntegralType(start_indices->shape().element_type()));
+
+    const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    const Literal& start_indices_literal =
+        parent_->GetEvaluatedLiteralFor(start_indices);
+
+    switch (start_indices->shape().element_type()) {
+      case S32: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_slice],
+            DynamicSlice<int32>(operand_literal, start_indices_literal,
+                                result_shape));
+      } break;
+      case S64: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_slice],
+            DynamicSlice<int64>(operand_literal, start_indices_literal,
+                                result_shape));
+      } break;
+      case U32: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_slice],
+            DynamicSlice<uint32>(operand_literal, start_indices_literal,
+                                 result_shape));
+      } break;
+      case U64: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_slice],
+            DynamicSlice<uint64>(operand_literal, start_indices_literal,
+                                 result_shape));
+      } break;
+      default:
+        LOG(FATAL) << "HandleDynamicSlice: unhandled primitive type for "
+                      "start_indices: "
+                   << PrimitiveType_Name(start_indices->shape().element_type());
+    }
+
+    return Status::OK();
+  };
+
+  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
+                                  HloInstruction* operand,
+                                  HloInstruction* update,
+                                  HloInstruction* start_indices) override {
+    auto result_shape = dynamic_update_slice->shape();
+    TF_ASSIGN_OR_RETURN(
+        auto inferred_return_shape,
+        ShapeInference::InferDynamicUpdateSliceShape(
+            operand->shape(), update->shape(), start_indices->shape()));
+    TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+        << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
+        << "but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+    TF_RET_CHECK(
+        primitive_util::IsIntegralType(start_indices->shape().element_type()));
+    TF_RET_CHECK(ShapeUtil::Compatible(result_shape, operand->shape()));
+
+    const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    const Literal& update_literal = parent_->GetEvaluatedLiteralFor(update);
+    const Literal& start_indices_literal =
+        parent_->GetEvaluatedLiteralFor(start_indices);
+
+    switch (start_indices->shape().element_type()) {
+      case S32: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_update_slice],
+            DynamicUpdateSlice<int32>(operand_literal, update_literal,
+                                      start_indices_literal));
+      } break;
+      case S64: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_update_slice],
+            DynamicUpdateSlice<int64>(operand_literal, update_literal,
+                                      start_indices_literal));
+      } break;
+      case U32: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_update_slice],
+            DynamicUpdateSlice<uint32>(operand_literal, update_literal,
+                                       start_indices_literal));
+      } break;
+      case U64: {
+        TF_ASSIGN_OR_RETURN(
+            parent_->evaluated_[dynamic_update_slice],
+            DynamicUpdateSlice<uint64>(operand_literal, update_literal,
+                                       start_indices_literal));
+      } break;
+      default:
+        LOG(FATAL) << "HandleDynamicUpdateSlice: unhandled primitive type for "
+                      "start_indices: "
+                   << PrimitiveType_Name(start_indices->shape().element_type());
+    }
+
+    return Status::OK();
+  };
+
+  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
+                      HloInstruction* init_value,
+                      tensorflow::gtl::ArraySlice<int64> dimensions,
+                      HloComputation* function) override {
+    TF_RET_CHECK(ShapeUtil::Rank(reduce->shape()) ==
+                 ShapeUtil::Rank(arg->shape()) - dimensions.size());
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferReduceShape(
+                            /*arg=*/arg->shape(),
+                            /*init_value=*/init_value->shape(),
+                            /*dimensions_to_reduce=*/dimensions,
+                            /*to_apply=*/function->ComputeProgramShape()));
+    TF_RET_CHECK(ShapeUtil::Compatible(reduce->shape(), inferred_return_shape))
+        << "return shape is set to: " << ShapeUtil::HumanString(reduce->shape())
+        << "but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+
+    const Literal& arg_literal = parent_->GetEvaluatedLiteralFor(arg);
+    VLOG(3) << "HandleReduce arg_literal: " << arg_literal.ToString();
+    const Literal& init_literal = parent_->GetEvaluatedLiteralFor(init_value);
+    VLOG(3) << "HandleReduce init_literal: " << init_literal.ToString();
+    TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
+    auto init_scalar = init_literal.Get<ReturnT>({});
+
+    auto result = Literal::CreateFromShape(reduce->shape());
+
+    const auto arg_dimensions = AsInt64Slice(arg_literal.shape().dimensions());
+    std::vector<int64> arg_dim_steps(arg_dimensions.size());
+    std::vector<int64> arg_dim_counts(arg_dimensions.size());
+    for (const int64 dim : dimensions) {
+      arg_dim_steps[dim] = 1;
+      arg_dim_counts[dim] = arg_dimensions[dim];
+    }
+
+    // Create mapping from result index to arg index.
+    const int64 result_rank = ShapeUtil::Rank(result->shape());
+    int64 result_dim = 0;
+    std::vector<int64> result_to_arg_index(result_rank);
+    for (int64 i = 0; i < arg_dimensions.size(); ++i) {
+      if (arg_dim_steps[i] == 0) {
+        result_to_arg_index[result_dim] = i;
+        ++result_dim;
+      }
+    }
+
+    // For each resulting dimension, calculate and assign computed value.
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          ReturnT result_val = init_scalar;
+
+          std::vector<int64> base(arg_dimensions.size());
+          for (int64 i = 0; i < multi_index.size(); ++i) {
+            base[result_to_arg_index[i]] = multi_index[i];
+          }
+
+          auto func = [&](const std::vector<int64>& input_index) {
+            auto curr_val = arg_literal.Get<ReturnT>(input_index);
+
+            // Evaluate computation with specified literal operands.
+            auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
+            auto result_val_literal = Literal::CreateR0<ReturnT>(result_val);
+            std::vector<const Literal*> args = {curr_val_literal.get(),
+                                                result_val_literal.get()};
+
+            // We need a new visitor for each evaluation, so that the same
+            // computation can be visited more than once (with different
+            // inputs).
+            HloEvaluator embedded_evaluator;
+            std::unique_ptr<Literal> computed_result =
+                embedded_evaluator.Evaluate(*function, args)
+                    .ConsumeValueOrDie();
+
+            // Assign computed result to result_val.
+            result_val = computed_result->Get<ReturnT>({});
+
+            return true;
+          };
+
+          ShapeUtil::ForEachIndex(arg_literal.shape(), base, arg_dim_counts,
+                                  arg_dim_steps, func);
+
+          return result_val;
+        }));
+
+    parent_->evaluated_[reduce] = std::move(result);
+    return Status::OK();
+  };
+
   Status Preprocess(HloInstruction* hlo) override {
     VLOG(2) << hlo->ToString();
     return Status::OK();
   };
 
  private:
+  template <typename IndexT>
+  StatusOr<std::unique_ptr<Literal>> DynamicSlice(
+      const Literal& operand_literal, const Literal& start_indices_literal,
+      const Shape& result_shape) {
+    const auto& start_indices_typed =
+        start_indices_literal.GetArraySlice<IndexT>();
+    std::vector<int64> start(start_indices_typed.begin(),
+                             start_indices_typed.end());
+
+    std::vector<int64> operand_indices(start.size(), 0);
+
+    auto result = Literal::CreateFromShape(result_shape);
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          std::transform(multi_index.begin(), multi_index.end(), start.begin(),
+                         operand_indices.begin(), std::plus<int64>());
+
+          return operand_literal.Get<ReturnT>(operand_indices);
+        }));
+
+    return std::move(result);
+  }
+
+  template <typename IndexT>
+  StatusOr<std::unique_ptr<Literal>> DynamicUpdateSlice(
+      const Literal& operand_literal, const Literal& update_literal,
+      const Literal& start_indices_literal) {
+    const auto& start_indices_typed =
+        start_indices_literal.GetArraySlice<IndexT>();
+    const std::vector<int64> start(start_indices_typed.begin(),
+                                   start_indices_typed.end());
+
+    auto result = MakeUnique<Literal>(operand_literal);
+    std::vector<int64> result_index(ShapeUtil::Rank(result->shape()), 0);
+
+    auto func = [&](const std::vector<int64>& update_index) {
+      std::transform(update_index.begin(), update_index.end(), start.begin(),
+                     result_index.begin(), std::plus<int64>());
+
+      result->Set<ReturnT>(result_index,
+                           update_literal.Get<ReturnT>(update_index));
+      return true;
+    };
+
+    std::vector<int64> base(update_literal.shape().dimensions_size(), 0);
+    std::vector<int64> step(update_literal.shape().dimensions_size(), 1);
+    ShapeUtil::ForEachIndex(update_literal.shape(), base,
+                            AsInt64Slice(update_literal.shape().dimensions()),
+                            step, func);
+
+    return std::move(result);
+  }
+
   StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOp(
       HloInstruction* instruction,
       const std::function<ReturnT(ReturnT)>& unary_op) {
@@ -771,14 +1021,28 @@ HloEvaluator::HloEvaluator() {
 }
 
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
-    HloComputation* computation,
-    tensorflow::gtl::ArraySlice<const Literal*> args) {
-  arg_literals_ = args;
+    const HloModule& module,
+    tensorflow::gtl::ArraySlice<const Literal*> arg_literals) {
+  XLA_VLOG_LINES(2, "HloEvaluator::Evaluate module:\n" + module.ToString());
+
+  arg_literals_ = arg_literals;
   evaluated_.clear();
 
-  TF_RETURN_IF_ERROR(computation->Accept(this));
+  TF_RETURN_IF_ERROR(module.entry_computation()->Accept(this));
+
   return MakeUnique<Literal>(
-      GetEvaluatedLiteralFor(computation->root_instruction()));
+      GetEvaluatedLiteralFor(module.entry_computation()->root_instruction()));
+}
+
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
+    const HloComputation& computation,
+    tensorflow::gtl::ArraySlice<const Literal*> arg_literals) {
+  arg_literals_ = arg_literals;
+  evaluated_.clear();
+
+  TF_RETURN_IF_ERROR(computation.Accept(this));
+  return MakeUnique<Literal>(
+      GetEvaluatedLiteralFor(computation.root_instruction()));
 }
 
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
@@ -930,7 +1194,8 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite,
       break;
     }
     default:
-      LOG(FATAL) << "unknown/unhandled primitive type.";
+      LOG(FATAL) << "HandleIsFinite: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(operand->shape().element_type());
   }
 
   return Status::OK();
@@ -1009,7 +1274,8 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare, HloOpcode opcode,
           Compare<double>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
     default:
-      LOG(FATAL) << "unknown primitive type.";
+      LOG(FATAL) << "HandleCompare: unknown primitive type: "
+                 << PrimitiveType_Name(lhs->shape().element_type());
   }
 
   return Status::OK();
