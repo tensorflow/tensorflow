@@ -347,6 +347,7 @@ tf_cuda_library(
         "framework/allocator.h",
         "framework/variant.h",
         "framework/variant_encode_decode.h",
+        "framework/variant_tensor_data.h",
         "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
@@ -1247,6 +1248,8 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
     ] + [
         "framework/resource_handle.h",
         "framework/resource_handle.cc",
+        "framework/variant_tensor_data.h",
+        "framework/variant_tensor_data.cc",
     ],
     exclude = [
         "**/*test*",

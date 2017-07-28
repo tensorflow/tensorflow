@@ -133,6 +133,10 @@ class Service : public ServiceInterface {
   // Asynchronously executes a computation with provided arguments. Invokes
   // the provided computation with the provided global data passed as
   // immutable arguments. Returns a handle to the execution.
+  //
+  // (Note: The corresponding function in xla::Client was removed as part of
+  // b/64116060, in an attempt to simplify our API.  We're keeping this around
+  // for now in case we want to expose this to clients in a different way.)
   tensorflow::Status ExecuteAsync(const ExecuteAsyncRequest* arg,
                                   ExecuteAsyncResponse* result) override;
 
