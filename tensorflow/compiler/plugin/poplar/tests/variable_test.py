@@ -131,19 +131,72 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         r = sess.run(z)
         self.assertAllClose(r, 10.0)
 
-  def testMultipleUpdate(self):
+  def testRandomNormalInitalizer(self):
     with tf.device("/device:XLA_IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
-          i = tf.truncated_normal_initializer(stddev=0.01)
-          z1 = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
-          z2 = tf.get_variable("z2", shape=[], dtype=tf.float32, initializer=i)
+          i = tf.random_normal_initializer(mean=2.0, stddev=0.01)
+          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
 
         sess.run(tf.global_variables_initializer())
-        o1, o2 = sess.run([z1, z2])
+        o = sess.run(z)
+        self.assertAllClose(o, 2.0, 0.2, 0.2)
 
-        self.assertAllClose(o1, 0.0, 0.02, 0.02)
-        self.assertAllClose(o2, 0.0, 0.02, 0.02)
+  def testDefaultRandomNormalInitalizer(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.Session() as sess:
+        with tf.variable_scope("vs", use_resource=True):
+          i = tf.random_normal_initializer()
+          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+
+        sess.run(tf.global_variables_initializer())
+        o = sess.run(z)
+        self.assertAllClose(o, 0.0, 1.0, 1.0)
+
+  def testTruncatedNormalInitalizer(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.Session() as sess:
+        with tf.variable_scope("vs", use_resource=True):
+          i = tf.truncated_normal_initializer(mean=1.0, stddev=0.01)
+          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+
+        sess.run(tf.global_variables_initializer())
+        o = sess.run(z)
+        self.assertAllClose(o, 1.0, 0.2, 0.2)
+
+  def testDefaultTruncatedNormalInitalizer(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.Session() as sess:
+        with tf.variable_scope("vs", use_resource=True):
+          i = tf.truncated_normal_initializer()
+          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+
+        sess.run(tf.global_variables_initializer())
+        o = sess.run(z)
+        self.assertAllClose(o, 1.0, 2.0, 2.0)
+
+  def testUniformRandomInitalizer(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.Session() as sess:
+        with tf.variable_scope("vs", use_resource=True):
+          i = tf.random_uniform_initializer(minval=-2.0, maxval=2.0)
+          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+
+        sess.run(tf.global_variables_initializer())
+        o = sess.run(z)
+        self.assertAllClose(o, 0.0, 2.0, 2.0)
+
+  def testDefaultUniformRandomInitalizer(self):
+    with tf.device("/device:XLA_IPU:0"):
+      with tf.Session() as sess:
+        with tf.variable_scope("vs", use_resource=True):
+          i = tf.random_uniform_initializer()
+          z = tf.get_variable("z1", shape=[], dtype=tf.float32, initializer=i)
+
+        sess.run(tf.global_variables_initializer())
+        o = sess.run(z)
+        self.assertAllClose(o, 0.5, 0.5, 0.5)
+
 
 if __name__ == "__main__":
     googletest.main()
