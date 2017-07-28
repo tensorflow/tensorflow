@@ -22,6 +22,9 @@ plugins = {
     "device":"XLA_IPU",
     "types":"DT_FLOAT,DT_INT32,DT_INT64",
     "tags":[],
+    "args":["--disabled_manifest=tensorflow/compiler/plugin/poplar/disabled_manifest.txt"],
+    "data":["//tensorflow/compiler/plugin/poplar:disabled_manifest.txt"],
+    "deps":[],
   },
 }
 

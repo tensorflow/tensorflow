@@ -314,6 +314,10 @@ test_suite(
     ],
 )
 
+exports_files([
+    "disabled_manifest.txt",
+])
+
 filegroup(
     name = "all_files",
     srcs = glob(
