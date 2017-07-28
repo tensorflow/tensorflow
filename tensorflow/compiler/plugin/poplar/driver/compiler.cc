@@ -62,6 +62,7 @@ limitations under the License.
 #include <popnn/codelets.hpp>
 #include <popreduce/codelets.hpp>
 #include <popstd/codelets.hpp>
+#include <poprand/codelets.hpp>
 
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
@@ -248,6 +249,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   popnn::addCodelets(*graph);
   popreduce::addCodelets(*graph);
   popstd::addCodelets(*graph);
+  poprand::addCodelets(*graph);
 
   CompilerResources resources;
 

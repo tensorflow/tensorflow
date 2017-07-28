@@ -9,190 +9,227 @@
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-#include <poplar/Graph.hpp>
-#include <poplar/Engine.hpp>
+#include <poprand/RandomGen.hpp>
 
 namespace xla {
 namespace poplarplugin {
 
-static port::StatusOr<poplar::program::Program>
-CreateRandomUniformOp(poplar::Graph &graph,
-                      CompilerResources& res,
-                      const HloInstruction *inst,
-                      const xla::Shape& output_shape,
-                      TensorMap& tensor_map) {
-
-  // Find the input tensor
-  poplar::Tensor l;
-  TF_ASSIGN_OR_RETURN(l, FindInstructionInput(tensor_map, inst, 0, 0));
-
-  poplar::Tensor u;
-  TF_ASSIGN_OR_RETURN(u, FindInstructionInput(tensor_map, inst, 1, 0));
-
-  std::string poplar_data_type;
-  TF_ASSIGN_OR_RETURN(poplar_data_type, PoplarDataType(inst->shape()));
-
-  std::string vertex_name = templateVertex("RandomUniform", poplar_data_type);
-
-  // Allocate the output tensor
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
-
-  auto cs = graph.addComputeSet(inst->ToString());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
-
-  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-  num_workers = std::min(num_workers, N);
-
-  for (unsigned i = 0; i < num_workers; ++i) {
-    const auto begin = i * N / num_workers;
-    const auto end = (i + 1) * N / num_workers;
-    auto v = graph.addVertex(cs, vertex_name,
-                             {{"lower", l},
-                              {"upper", u},
-                              {"out", out.slice(begin, end)}});
-    graph.setTileMapping(v, i / device_info.numWorkerContexts);
+static port::StatusOr<double>
+DoubleValueOfScalarLiteral(const xla::Literal& lit) {
+  if (lit.shape().dimensions_size() != 0) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Literal rank != 0");
   }
 
-  return poplar::program::Execute(cs);
+  std::unique_ptr<Literal> double_lit;
+  TF_ASSIGN_OR_RETURN(double_lit, lit.Convert(F64));
+
+  const double* val = static_cast<const double*>(double_lit->InternalData());
+  return *val;
 }
 
 static port::StatusOr<poplar::program::Program>
-CreateRandomNormalOp(poplar::Graph &graph,
+TruncatedNormalScale(poplar::Graph &graph,
                      CompilerResources& res,
                      const HloInstruction *inst,
                      const xla::Shape& output_shape,
                      TensorMap& tensor_map) {
+  const HloInstruction* root =
+          inst->fused_expression_root();
+  const HloInstruction* mean1 =
+          root->operand(1);
+  const HloInstruction* sd1 =
+          root->operand(0)->operand(1);
+  const HloInstruction* mean2 =
+          root->operand(0)->operand(0)->operand(0)->operand(0);
+  const HloInstruction* sd2 =
+          root->operand(0)->operand(0)->operand(0)->operand(1);
 
-  // Find the input tensor
-  poplar::Tensor mean;
-  TF_ASSIGN_OR_RETURN(mean, FindInstructionInput(tensor_map, inst, 0, 0));
+  double mean1_val;
+  TF_ASSIGN_OR_RETURN(mean1_val, DoubleValueOfScalarLiteral(mean1->literal()));
+  double mean2_val;
+  TF_ASSIGN_OR_RETURN(mean2_val, DoubleValueOfScalarLiteral(mean2->literal()));
+  double sd1_val;
+  TF_ASSIGN_OR_RETURN(sd1_val, DoubleValueOfScalarLiteral(sd1->literal()));
+  double sd2_val;
+  TF_ASSIGN_OR_RETURN(sd2_val, DoubleValueOfScalarLiteral(sd2->literal()));
 
-  poplar::Tensor sd;
-  TF_ASSIGN_OR_RETURN(sd, FindInstructionInput(tensor_map, inst, 1, 0));
-
-  std::string poplar_data_type;
-  TF_ASSIGN_OR_RETURN(poplar_data_type, PoplarDataType(inst->shape()));
-
-  std::string vertex_name = templateVertex("RandomNormal", poplar_data_type);
-
-  // Allocate the output tensor
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
 
-  auto cs = graph.addComputeSet(inst->ToString());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
+  poplar::program::Sequence seq;
+  poprand::truncatedNormal(graph, out, mean1_val + mean2_val, sd1_val * sd2_val,
+                           1.0, poprand::RandomGenMode::NOT_REPEATABLE, seq,
+                           inst->name());
 
-  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-  num_workers = std::min(num_workers, N);
-
-  for (unsigned i = 0; i < num_workers; ++i) {
-    const auto begin = i * N / num_workers;
-    const auto end = (i + 1) * N / num_workers;
-    auto v = graph.addVertex(cs, vertex_name,
-                             {{"mean", mean},
-                              {"sd", sd},
-                              {"out", out.slice(begin, end)}});
-    graph.setTileMapping(v, i / device_info.numWorkerContexts);
-  }
-
-  return poplar::program::Execute(cs);
+  return seq;
 }
 
 static port::StatusOr<poplar::program::Program>
-CreateRandomBernoulliOp(poplar::Graph &graph,
-                        CompilerResources& res,
-                        const HloInstruction *inst,
-                        const xla::Shape& output_shape,
-                        TensorMap& tensor_map) {
+TruncatedNormal(poplar::Graph &graph,
+                CompilerResources& res,
+                const HloInstruction *inst,
+                const xla::Shape& output_shape,
+                TensorMap& tensor_map) {
+  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* mean = root->operand(0)->operand(0);
+  const HloInstruction* sd = root->operand(0)->operand(1);
 
-  // Find the input tensor
-  poplar::Tensor mean;
-  TF_ASSIGN_OR_RETURN(mean, FindInstructionInput(tensor_map, inst, 0, 0));
+  double mean_val;
+  TF_ASSIGN_OR_RETURN(mean_val, DoubleValueOfScalarLiteral(mean->literal()));
+  double sd_val;
+  TF_ASSIGN_OR_RETURN(sd_val, DoubleValueOfScalarLiteral(sd->literal()));
 
-  std::string poplar_data_type;
-  TF_ASSIGN_OR_RETURN(poplar_data_type, PoplarDataType(inst->shape()));
-
-  std::string vertex_name = templateVertex("RandomBernoulli", poplar_data_type);
-
-  // Allocate the output tensor
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
 
-  auto cs = graph.addComputeSet(inst->ToString());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
+  poplar::program::Sequence seq;
+  poprand::truncatedNormal(graph, out, mean_val, sd_val, 1.0,
+                  poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
 
-  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-  num_workers = std::min(num_workers, N);
-
-  for (unsigned i = 0; i < num_workers; ++i) {
-    const auto begin = i * N / num_workers;
-    const auto end = (i + 1) * N / num_workers;
-    auto v = graph.addVertex(cs, vertex_name,
-                             {{"mean", mean},
-                              {"out", out.slice(begin, end)}});
-    graph.setTileMapping(v, i / device_info.numWorkerContexts);
-  }
-
-  return poplar::program::Execute(cs);
+  return seq;
 }
 
 static port::StatusOr<poplar::program::Program>
-CreateRandomTruncatedNormalOp(poplar::Graph &graph,
-                              CompilerResources& res,
-                              const HloInstruction *inst,
-                              const xla::Shape& output_shape,
-                              TensorMap& tensor_map) {
-  // Find the input tensor
-  poplar::Tensor mean;
-  TF_ASSIGN_OR_RETURN(mean, FindInstructionInput(tensor_map, inst, 0, 0));
+RandomNormalScale(poplar::Graph &graph,
+                  CompilerResources& res,
+                  const HloInstruction *inst,
+                  const xla::Shape& output_shape,
+                  TensorMap& tensor_map) {
+  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* mean1 = root->operand(1);
+  const HloInstruction* sd1 = root->operand(0)->operand(1);
+  const HloInstruction* mean2 = root->operand(0)->operand(0)->operand(0);
+  const HloInstruction* sd2 = root->operand(0)->operand(0)->operand(1);
 
-  poplar::Tensor sd;
-  TF_ASSIGN_OR_RETURN(sd, FindInstructionInput(tensor_map, inst, 1, 0));
+  double mean1_val;
+  TF_ASSIGN_OR_RETURN(mean1_val, DoubleValueOfScalarLiteral(mean1->literal()));
+  double mean2_val;
+  TF_ASSIGN_OR_RETURN(mean2_val, DoubleValueOfScalarLiteral(mean2->literal()));
+  double sd1_val;
+  TF_ASSIGN_OR_RETURN(sd1_val, DoubleValueOfScalarLiteral(sd1->literal()));
+  double sd2_val;
+  TF_ASSIGN_OR_RETURN(sd2_val, DoubleValueOfScalarLiteral(sd2->literal()));
 
-  std::string poplar_data_type;
-  TF_ASSIGN_OR_RETURN(poplar_data_type, PoplarDataType(inst->shape()));
-
-  std::string vertex_name = templateVertex("RandomTruncatedNormal",
-                                           poplar_data_type);
-
-  // Allocate the output tensor
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
 
-  auto cs = graph.addComputeSet(inst->name());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
+  poplar::program::Sequence seq;
+  poprand::normal(graph, out, mean1_val + mean2_val, sd1_val * sd2_val, 1.0,
+         poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
 
-  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
+  return seq;
+}
 
-  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-  num_workers = std::min(num_workers, N);
+static port::StatusOr<poplar::program::Program>
+RandomUniformScale(poplar::Graph &graph,
+                   CompilerResources& res,
+                   const HloInstruction *inst,
+                   const xla::Shape& output_shape,
+                   TensorMap& tensor_map) {
+  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* shift = root->operand(1);
+  const HloInstruction* scale = root->operand(0)->operand(1);
+  const HloInstruction* lower = root->operand(0)->operand(0)->operand(0);
+  const HloInstruction* upper = root->operand(0)->operand(0)->operand(1);
 
-  for (unsigned i = 0; i < num_workers; ++i) {
-    const auto begin = i * N / num_workers;
-    const auto end = (i + 1) * N / num_workers;
-    auto v = graph.addVertex(cs, vertex_name,
-                             {{"mean", mean},
-                              {"sd", sd},
-                              {"out", out.slice(begin, end)}});
-    graph.setTileMapping(v, i / device_info.numWorkerContexts);
-  }
+  double shift_val;
+  TF_ASSIGN_OR_RETURN(shift_val, DoubleValueOfScalarLiteral(shift->literal()));
+  double scale_val;
+  TF_ASSIGN_OR_RETURN(scale_val, DoubleValueOfScalarLiteral(scale->literal()));
+  double lower_val;
+  TF_ASSIGN_OR_RETURN(lower_val, DoubleValueOfScalarLiteral(lower->literal()));
+  double upper_val;
+  TF_ASSIGN_OR_RETURN(upper_val, DoubleValueOfScalarLiteral(upper->literal()));
 
-  return poplar::program::Execute(cs);
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  poplar::program::Sequence seq;
+  poprand::uniform(graph, out, lower_val * scale_val + shift_val,
+                   upper_val * scale_val + shift_val,
+                   poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+
+  return seq;
+}
+
+static port::StatusOr<poplar::program::Program>
+RandomNormal(poplar::Graph &graph,
+             CompilerResources& res,
+             const HloInstruction *inst,
+             const xla::Shape& output_shape,
+             TensorMap& tensor_map) {
+  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* mean = root->operand(0);
+  const HloInstruction* sd = root->operand(1);
+
+  double mean_val;
+  TF_ASSIGN_OR_RETURN(mean_val, DoubleValueOfScalarLiteral(mean->literal()));
+  double sd_val;
+  TF_ASSIGN_OR_RETURN(sd_val, DoubleValueOfScalarLiteral(sd->literal()));
+
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  poplar::program::Sequence seq;
+  poprand::normal(graph, out, mean_val, sd_val, 1.0,
+                  poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+
+  return seq;
+}
+
+static port::StatusOr<poplar::program::Program>
+RandomUniform(poplar::Graph &graph,
+              CompilerResources& res,
+              const HloInstruction *inst,
+              const xla::Shape& output_shape,
+              TensorMap& tensor_map) {
+  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* lower = root->operand(0);
+  const HloInstruction* upper = root->operand(1);
+
+  double lower_val;
+  TF_ASSIGN_OR_RETURN(lower_val, DoubleValueOfScalarLiteral(lower->literal()));
+  double upper_val;
+  TF_ASSIGN_OR_RETURN(upper_val, DoubleValueOfScalarLiteral(upper->literal()));
+
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  poplar::program::Sequence seq;
+  poprand::uniform(graph, out, lower_val, upper_val,
+                   poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+
+  return seq;
+}
+
+static port::StatusOr<poplar::program::Program>
+Bernoulli(poplar::Graph &graph,
+          CompilerResources& res,
+          const HloInstruction *inst,
+          const xla::Shape& output_shape,
+          TensorMap& tensor_map) {
+  const HloInstruction* root = inst->fused_expression_root();
+  const HloInstruction* prob = root->operand(0);
+
+  double prob_val;
+  TF_ASSIGN_OR_RETURN(prob_val, DoubleValueOfScalarLiteral(prob->literal()));
+
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst, output_shape, res));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  poplar::program::Sequence seq;
+  poprand::bernoulli(graph, out, prob_val,
+                     poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>
@@ -202,25 +239,31 @@ CreateRandomOp(poplar::Graph &graph,
                const xla::Shape& output_shape,
                TensorMap& tensor_map) {
 
-  if (inst->opcode() == HloOpcode::kRng) {
-    switch (inst->random_distribution()) {
-      case RandomDistribution::RNG_UNIFORM:
-        return CreateRandomUniformOp(graph, res, inst, output_shape,
-                                     tensor_map);
-      case RandomDistribution::RNG_NORMAL:
-        return CreateRandomNormalOp(graph, res, inst, output_shape,
-                                    tensor_map);
-      case RandomDistribution::RNG_BERNOULLI:
-        return CreateRandomBernoulliOp(graph, res, inst, output_shape,
-                                       tensor_map);
+  if (inst->opcode() == HloOpcode::kFusion) {
+    switch (inst->fusion_custom_tag()) {
+      case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
+        return TruncatedNormalScale(graph, res, inst, output_shape, tensor_map);
+      case FUSED_TRUNCATED_NORMAL:
+        return TruncatedNormal(graph, res, inst, output_shape, tensor_map);
+      case FUSED_RANDOM_NORMAL_WITH_SCALE:
+        return RandomNormalScale(graph, res, inst, output_shape, tensor_map);
+      case FUSED_RANDOM_UNIFORM_WITH_SCALE:
+        return RandomUniformScale(graph, res, inst, output_shape, tensor_map);
+      case FUSED_RANDOM_NORMAL:
+        return RandomNormal(graph, res, inst, output_shape, tensor_map);
+      case FUSED_RANDOM_UNIFORM:
+        return RandomUniform(graph, res, inst, output_shape, tensor_map);
+      case FUSED_BERNOULLI:
+        return Bernoulli(graph, res, inst, output_shape, tensor_map);
       default:
         return port::Status(port::error::FAILED_PRECONDITION,
-                            port::StrCat("Invalid random distribution on ",
+                            port::StrCat("Unrecognized random fusion ",
                                          inst->name()));
     }
   } else {
-    return CreateRandomTruncatedNormalOp(graph, res, inst, output_shape,
-                                         tensor_map);
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        port::StrCat("Unrecognized random operation ",
+                                     inst->name()));
   }
 
 }

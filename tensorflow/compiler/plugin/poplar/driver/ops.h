@@ -27,12 +27,18 @@ namespace poplarplugin {
 
 static const unsigned int FUSED_SLICE_UPDATE = 0;
 static const unsigned int FUSED_SLICE = 1;
-static const unsigned int FUSED_TRUNCATED_NORMAL = 2;
-static const unsigned int FUSED_RELU = 3;
-static const unsigned int FUSED_SIGMOID = 4;
-static const unsigned int FUSED_BIASADD_BROADCAST = 5;
-static const unsigned int FUSED_BIASADD = 6;
-static const unsigned int FUSED_ZERO_PAD = 7;
+static const unsigned int FUSED_RELU = 2;
+static const unsigned int FUSED_SIGMOID = 3;
+static const unsigned int FUSED_BIASADD_BROADCAST = 4;
+static const unsigned int FUSED_BIASADD = 5;
+static const unsigned int FUSED_ZERO_PAD = 6;
+static const unsigned int FUSED_TRUNCATED_NORMAL_WITH_SCALE = 7;
+static const unsigned int FUSED_TRUNCATED_NORMAL = 8;
+static const unsigned int FUSED_RANDOM_NORMAL_WITH_SCALE = 9;
+static const unsigned int FUSED_RANDOM_UNIFORM_WITH_SCALE = 10;
+static const unsigned int FUSED_RANDOM_NORMAL = 11;
+static const unsigned int FUSED_RANDOM_UNIFORM = 12;
+static const unsigned int FUSED_BERNOULLI = 13;
 
 
 struct CompilerResources;

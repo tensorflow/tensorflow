@@ -25,6 +25,18 @@ static bool IsTruncatedNormalWhile(HloInstruction* inst) {
   return inst->while_condition()->name().substr(0, 16) == "truncated_normal";
 }
 
+static bool IsRandomBernoulli(HloInstruction* inst) {
+  return inst->random_distribution() == RandomDistribution::RNG_BERNOULLI;
+}
+
+static bool IsRandomNormal(HloInstruction* inst) {
+  return inst->random_distribution() == RandomDistribution::RNG_NORMAL;
+}
+
+static bool IsRandomUniform(HloInstruction* inst) {
+  return inst->random_distribution() == RandomDistribution::RNG_UNIFORM;
+}
+
 static bool IsConstantZero(HloInstruction* inst) {
   return inst->literal().IsAll(0);
 }
@@ -60,10 +72,6 @@ static const std::vector<HloMatcherPattern> patterns = {
   {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Truncated normal
-  {{HloOpcode::kWhile, true, IsTruncatedNormalWhile, {1}},
-   {HloOpcode::kRng, true, nullptr, {}}},
-
   // Relu
   {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
@@ -87,6 +95,55 @@ static const std::vector<HloMatcherPattern> patterns = {
   // External padding with constant zero
   {{HloOpcode::kPad, true, IsExternalPadding, {-1, 1}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
+
+  // Random truncated normal with post scale and add
+  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kMultiply, true, nullptr, {4, 3}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kWhile, true, IsTruncatedNormalWhile, {5}},
+   {HloOpcode::kRng, true, nullptr, {6, 7}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Random truncated normal without post scale and add
+  {{HloOpcode::kWhile, true, IsTruncatedNormalWhile, {1}},
+   {HloOpcode::kRng, true, nullptr, {2, 3}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Random normal with post scale and add
+  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kMultiply, true, nullptr, {4, 3}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kRng, true, IsRandomNormal, {5, 6}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Random uniform with post scale and add
+  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kMultiply, true, nullptr, {4, 3}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kRng, true, IsRandomUniform, {5, 6}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Random 2-constant without post scale and add
+  {{HloOpcode::kRng, true, IsRandomNormal, {1, 2}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Random 2-constant without post scale and add
+  {{HloOpcode::kRng, true, IsRandomUniform, {1, 2}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
+        // Random bernoulli
+  {{HloOpcode::kRng, true, IsRandomBernoulli, {1}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}
