@@ -35,7 +35,7 @@ import android.hardware.Camera.CameraInfo;
 
 import org.tensorflow.demo.env.Logger;
 
-// Eplicit import needed for internal Google builds.
+// Explicit import needed for internal Google builds.
 import org.tensorflow.demo.R;
 
 public class LegacyCameraConnectionFragment extends Fragment {
