@@ -60,7 +60,7 @@ import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 
-// Eplicit import needed for internal Google builds.
+// Explicit import needed for internal Google builds.
 import org.tensorflow.demo.R;
 
 /**
