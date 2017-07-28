@@ -1157,9 +1157,9 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib.reset(NewFunctionLibraryRuntime(
-        device_mgr_.get(), options_.env, device, graph_def_version,
-        ek->flib_def.get(), optimizer_opts));
+    item->flib = NewFunctionLibraryRuntime(device_mgr_.get(), options_.env,
+                                           device, graph_def_version,
+                                           ek->flib_def.get(), optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;

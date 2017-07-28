@@ -31,6 +31,7 @@ py_library(
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
+        "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/session_bundle:exporter",

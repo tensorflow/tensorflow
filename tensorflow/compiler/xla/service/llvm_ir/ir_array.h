@@ -218,16 +218,21 @@ class IrArray {
                       llvm::IRBuilder<>* ir_builder) const;
 
   void AddAliasScopeMetadata(llvm::MDNode* alias_scope) {
+    CHECK_NE(alias_scope, nullptr);
     AddMetadata(llvm::LLVMContext::MD_alias_scope, alias_scope);
   }
 
   void AddNoaliasMetadata(llvm::MDNode* noalias) {
+    CHECK_NE(noalias, nullptr);
     AddMetadata(llvm::LLVMContext::MD_noalias, noalias);
   }
 
   void AddInvariantLoad(llvm::MDNode* invariant_load) {
+    CHECK_NE(invariant_load, nullptr);
     AddMetadata(llvm::LLVMContext::MD_invariant_load, invariant_load);
   }
+
+  const std::map<int, llvm::MDNode*>& metadata() const { return metadata_; }
 
   // Bumps the "which_dimension" value within the provided index by the provided
   // addend.

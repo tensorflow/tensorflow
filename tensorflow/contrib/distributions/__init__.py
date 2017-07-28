@@ -44,6 +44,7 @@ from tensorflow.contrib.distributions.python.ops.negative_binomial import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
 from tensorflow.contrib.distributions.python.ops.onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.poisson import *
+from tensorflow.contrib.distributions.python.ops.poisson_lognormal import *
 from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
@@ -117,6 +118,7 @@ _allowed_symbols = [
     'Normal',
     'NormalWithSoftplusScale',
     'Poisson',
+    'PoissonLogNormalQuadratureCompound',
     'StudentT',
     'StudentTWithAbsDfSoftplusScale',
     'Uniform',

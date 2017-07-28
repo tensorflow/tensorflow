@@ -47,6 +47,7 @@ py_library(
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/memory_stats:memory_stats_py",
+        "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/ndlstm",
