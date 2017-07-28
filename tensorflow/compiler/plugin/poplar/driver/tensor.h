@@ -67,6 +67,11 @@ PadTensor(const PaddingConfig& cfg,
           const poplar::Tensor& pad);
 
 port::StatusOr<poplar::Tensor>
+PadWithConstantZero(poplar::Graph& graph,
+                    const PaddingConfig& cfg,
+                    const poplar::Tensor &in);
+
+port::StatusOr<poplar::Tensor>
 ReverseTensor(const poplar::Tensor &in,
               const std::vector<int64>& dimensions);
 

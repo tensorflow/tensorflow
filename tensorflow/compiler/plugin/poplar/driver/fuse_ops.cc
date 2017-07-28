@@ -26,7 +26,7 @@ static bool IsTruncatedNormalWhile(HloInstruction* inst) {
 }
 
 static bool IsConstantZero(HloInstruction* inst) {
-  return inst->literal().IsAllFloat(0.0);
+  return inst->literal().IsAll(0);
 }
 
 static bool IsConstantHalf(HloInstruction* inst) {
@@ -35,6 +35,14 @@ static bool IsConstantHalf(HloInstruction* inst) {
 
 static bool IsPoplarConvolution(HloInstruction* inst) {
   return inst->to_apply()->name().substr(0, 15) == "pop_convolution";
+}
+
+static bool IsExternalPadding(HloInstruction* inst) {
+  const PaddingConfig& cfg(inst->padding_config());
+  for (auto& d : cfg.dimensions()) {
+    if (d.interior_padding() > 0) return false;
+  }
+  return true;
 }
 
 /*
@@ -75,6 +83,10 @@ static const std::vector<HloMatcherPattern> patterns = {
   // BiasAdd on convolution (implicit broadcast)
   {{HloOpcode::kAdd, true, nullptr, {1, -1}},
    {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}}},
+
+  // External padding with constant zero
+  {{HloOpcode::kPad, true, IsExternalPadding, {-1, 1}},
+   {HloOpcode::kConstant, true, IsConstantZero, {}}},
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}

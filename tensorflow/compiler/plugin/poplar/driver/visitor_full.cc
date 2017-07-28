@@ -258,6 +258,16 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
         sequence.add(prog);
         return Status::OK();
       }
+      case FUSED_ZERO_PAD:
+      {
+        const HloInstruction* root = inst->fused_expression_root();
+        const PaddingConfig& cfg(root->padding_config());
+        poplar::Tensor out;
+        TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
+        TF_ASSIGN_OR_RETURN(out, PadWithConstantZero(*graph_, cfg, out));
+        TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+        return Status::OK();
+      }
       default:
         return Unimplemented(inst);
     }

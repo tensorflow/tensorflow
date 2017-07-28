@@ -32,6 +32,7 @@ static const unsigned int FUSED_RELU = 3;
 static const unsigned int FUSED_SIGMOID = 4;
 static const unsigned int FUSED_BIASADD_BROADCAST = 5;
 static const unsigned int FUSED_BIASADD = 6;
+static const unsigned int FUSED_ZERO_PAD = 7;
 
 
 struct CompilerResources;
