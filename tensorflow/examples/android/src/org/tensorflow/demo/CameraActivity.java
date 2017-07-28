@@ -45,7 +45,7 @@ import java.nio.ByteBuffer;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 
-// Eplicit import needed for internal Google builds.
+// Explicit import needed for internal Google builds.
 import org.tensorflow.demo.R;
 
 public abstract class CameraActivity extends Activity implements OnImageAvailableListener, Camera.
