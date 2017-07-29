@@ -164,7 +164,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
                          == dev_stats.device and 'Const' == node_stats.node_name
                      ]))
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testMultipleLocalDevices(self):
     # Note: CPU->CPU transfers have a fast-path in
     # BaseRemoteRendezvous::SameWorkerRecvDone that means the test doesn't
@@ -211,7 +210,6 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     output = sess.run(sum3)
     self.assertEqual(40, output)
 
-  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testLegacyDeviceNames(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()

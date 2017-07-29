@@ -12,19 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Additional XLA devices to be included in the unit test suite."""
 
-# If you wish to edit this file without checking it into the repo, consider:
-#   git update-index --assume-unchanged tensorflow/compiler/tests/plugin.bzl
+"""Utility for applying the Graph Transform tool to a MetaGraphDef."""
 
-plugins = {
-  #"example": {
-  #  "device":"XLA_MY_DEVICE",
-  #  "types":"DT_FLOAT,DT_HALF,DT_INT32",
-  #   "tags":[],
-  #   "args":["--disabled_manifest=tensorflow/compiler/plugin/example/disabled_manifest.txt"],
-  #   "data":["//tensorflow/compiler/plugin/example:disabled_manifest.txt"],
-  #   "deps":[],
-  #},
-}
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
+from tensorflow.contrib.meta_graph_transform import meta_graph_transform
+from tensorflow.python.util.all_util import remove_undocumented
+
+
+_allowed_symbols = ['meta_graph_transform']
+
+remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
