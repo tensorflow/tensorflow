@@ -154,7 +154,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "mkl",
       urls = [
           "http://mirror.bazel.build/github.com/01org/mkl-dnn/releases/download/v0.9/mklml_lnx_2018.0.20170720.tgz",
-          "https://github.com/01org/mkl-dnn/releases/download/v0.9/mklml_lnx_2018.0.20170720.tgz"
+          "https://github.com/01org/mkl-dnn/releases/download/v0.9/mklml_lnx_2018.0.20170720.tgz",
       ],
       sha256 = "3cc2501fb209e1fd0960a5f61c919438f9619c68a644dcebf0fdf69b07460c57",
       strip_prefix = "mklml_lnx_2018.0.20170720",
