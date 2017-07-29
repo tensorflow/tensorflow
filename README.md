@@ -30,7 +30,7 @@ tracking requests and bugs. So please see
 and discussion, and please direct specific questions to [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
 
 ## Installation
-*See [Installing TensorFlow](https://www.tensorflow.org/install) for instructions on how to install our release binaries or how to build from source.*
+*See [Installing TensorFlow](https://www.tensorflow.org/get_started/os_setup.html) for instructions on how to install our release binaries or how to build from source.*
 
 People who are a little more adventurous can also try our nightly binaries:
 
