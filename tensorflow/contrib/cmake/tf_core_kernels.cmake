@@ -82,6 +82,8 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/kernels/periodic_resample_op.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/ops/array_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/resampler/kernels/resampler_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/resampler/ops/resampler_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/rnn/kernels/blas_gemm.cc"

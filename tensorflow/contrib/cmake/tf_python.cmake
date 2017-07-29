@@ -465,6 +465,7 @@ add_python_module("tensorflow/contrib/pi_examples/camera")
 add_python_module("tensorflow/contrib/pi_examples/label_image")
 add_python_module("tensorflow/contrib/pi_examples/label_image/data")
 add_python_module("tensorflow/contrib/periodic_resample")
+add_python_module("tensorflow/contrib/periodic_resample/python")
 add_python_module("tensorflow/contrib/predictor")
 add_python_module("tensorflow/contrib/quantization")
 add_python_module("tensorflow/contrib/quantization/python")
@@ -872,6 +873,21 @@ target_link_libraries(pywrap_tensorflow_internal PRIVATE
     tf_python_protos_cc
     ${PYTHON_LIBRARIES}
 )
+
+if(WIN32)
+    # include contrib/periodic_resample as .so
+    #
+    set(tf_periodic_resample_srcs
+        "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/kernels/periodic_resample_op.cc"
+        "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/kernels/periodic_resample_op.h"
+        "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/core/ops/array_ops.cc"
+    )
+
+    AddUserOps(TARGET _periodic_resample_op
+        SOURCES "${tf_periodic_resample_srcs}"
+        DEPENDS pywrap_tensorflow_internal tf_python_ops
+        DISTCOPY ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/periodic_resample/python/ops/)
+endif(WIN32)
 
 if(WIN32)
     # include contrib/rnn as .so
