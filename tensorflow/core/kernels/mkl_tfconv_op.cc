@@ -88,6 +88,7 @@ class MklToTfOp : public OpKernel {
     // Execute DNNConversion.
     void* input_buffer =
         static_cast<void*>(const_cast<T*>(input_tensor.flat<T>().data()));
+    delete[] in_sizes;
     void* output_buffer =
         static_cast<void*>(const_cast<T*>(output_tensor->flat<T>().data()));
     input_shape.GetConvertedFlatData(output_layout, input_buffer,
