@@ -208,22 +208,26 @@ class MaxPoolingGradOp : public OpKernel {
         errors::InvalidArgument("Default MaxPoolingGradOp only supports NHWC ",
                                 "on device type ",
                                 DeviceTypeString(context->device_type())));
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
-    OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
-    OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+
+    if (context->num_inputs() == 3) {
+      OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+      OP_REQUIRES(context, ksize_.size() == 4,
+                  errors::InvalidArgument("Sliding window ksize field must "
+                                          "specify 4 dimensions"));
+      OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+      OP_REQUIRES(context, stride_.size() == 4,
+                  errors::InvalidArgument("Sliding window strides field must "
+                                          "specify 4 dimensions"));
+      OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+                  errors::Unimplemented(
+                      "Pooling is not yet supported on the batch dimension."));
+      OP_REQUIRES(
+          context, ksize_[3] == 1 && stride_[3] == 1,
+          errors::Unimplemented(
+              "MaxPoolingGrad is not yet supported on the depth dimension."));
+    }
+
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
-                    "Pooling is not yet supported on the batch dimension."));
-    OP_REQUIRES(
-        context, ksize_[3] == 1 && stride_[3] == 1,
-        errors::Unimplemented(
-            "MaxPoolingGrad is not yet supported on the depth dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -250,8 +254,35 @@ class MaxPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
                                                    tensor_out.shape(),
                                                    &tensor_out_arg_max));
+    std::vector<int32> ksize = ksize_;
+    std::vector<int32> stride = stride_;
+    if (context->num_inputs() == 5) {
+      const Tensor& tensor_ksize = context->input(3);
+      auto value_ksize = tensor_ksize.flat<int32>();
+      ksize.resize(tensor_ksize.shape().num_elements());
+      std::copy_n(&value_ksize(0), ksize.size(), ksize.begin());
 
-    PoolParameters params{context,  ksize_,      stride_,
+      const Tensor& tensor_stride = context->input(4);
+      auto value_stride = tensor_stride.flat<int32>();
+      stride.resize(tensor_stride.shape().num_elements());
+      std::copy_n(&value_stride(0), stride.size(), stride.begin());
+    }
+
+    OP_REQUIRES(context, ksize.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, stride.size() == 4,
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, ksize[0] == 1 && stride[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+    OP_REQUIRES(
+        context, ksize[3] == 1 && stride[3] == 1,
+        errors::Unimplemented(
+            "MaxPoolingGrad is not yet supported on the depth dimension."));
+
+    PoolParameters params{context,  ksize,       stride,
                           padding_, FORMAT_NHWC, tensor_in.shape()};
     if (!context->status().ok()) {
       return;
@@ -386,22 +417,26 @@ class MaxPoolingGradGradOp : public OpKernel {
         errors::InvalidArgument(
             "Default MaxPoolingGradGradOp only supports NHWC ",
             "on device type ", DeviceTypeString(context->device_type())));
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
-    OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
-    OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
-                    "Pooling is not yet supported on the batch dimension."));
-    OP_REQUIRES(
-        context, ksize_[3] == 1 && stride_[3] == 1,
-        errors::Unimplemented(
-            "MaxPoolingGradGrad is not yet supported on the depth dimension."));
+
+    if (context->num_inputs() == 3) {
+      OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+      OP_REQUIRES(context, ksize_.size() == 4,
+                  errors::InvalidArgument("Sliding window ksize field must "
+                                          "specify 4 dimensions"));
+      OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+      OP_REQUIRES(context, stride_.size() == 4,
+                  errors::InvalidArgument("Sliding window strides field must "
+                                          "specify 4 dimensions"));
+      OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+                  errors::Unimplemented(
+                      "Pooling is not yet supported on the batch dimension."));
+      OP_REQUIRES(
+          context, ksize_[3] == 1 && stride_[3] == 1,
+          errors::Unimplemented(
+              "MaxPoolingGradGrad is not yet supported on the depth dimension."));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -419,7 +454,35 @@ class MaxPoolingGradGradOp : public OpKernel {
         context, out_grad_backprop.dims() == 4,
         errors::InvalidArgument("out_grad_backprop must be 4-dimensional"));
 
-    PoolParameters params{context,  ksize_,      stride_,
+    std::vector<int32> ksize = ksize_;
+    std::vector<int32> stride = stride_;
+    if (context->num_inputs() == 5) {
+      const Tensor& tensor_ksize = context->input(3);
+      auto value_ksize = tensor_ksize.flat<int32>();
+      ksize.resize(tensor_ksize.shape().num_elements());
+      std::copy_n(&value_ksize(0), ksize.size(), ksize.begin());
+
+      const Tensor& tensor_stride = context->input(4);
+      auto value_stride = tensor_stride.flat<int32>();
+      stride.resize(tensor_stride.shape().num_elements());
+      std::copy_n(&value_stride(0), stride.size(), stride.begin());
+    }
+
+    OP_REQUIRES(context, ksize.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, stride.size() == 4,
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, ksize[0] == 1 && stride[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+    OP_REQUIRES(
+        context, ksize[3] == 1 && stride[3] == 1,
+        errors::Unimplemented(
+            "MaxPoolingGrad is not yet supported on the depth dimension."));
+
+    PoolParameters params{context,  ksize,       stride,
                           padding_, FORMAT_NHWC, tensor_in.shape()};
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
@@ -969,13 +1032,22 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
       MaxPoolingGradOp<D##Device, T>);                                   \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("MaxPoolGradGrad").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      MaxPoolingGradGradOp<D##Device, T>);                               \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("MaxPoolGradV2").Device(DEVICE_##D).TypeConstraint<T>("T"),     \
+      MaxPoolingGradOp<D##Device, T>);                                   \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("MaxPoolGradGradV2").Device(DEVICE_##D).TypeConstraint<T>("T"), \
       MaxPoolingGradGradOp<D##Device, T>);
 
 // Below kernels implemented only for CPU device.
 #define REGISTER_CPU_ONLY_POOL_KERNELS(T)                        \
   REGISTER_KERNEL_BUILDER(                                       \
       Name("MaxPool").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      MaxPoolingOp<CPUDevice, T>);
+      MaxPoolingOp<CPUDevice, T>);                               \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("MaxPoolV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      MaxPoolingV2Op<CPUDevice, T>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_ONLY_POOL_KERNELS);
 #undef REGISTER_CPU_ONLY_POOL_KERNELS
 

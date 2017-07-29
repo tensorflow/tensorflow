@@ -179,6 +179,9 @@ Status AvgPoolShape(shape_inference::InferenceContext* c);
 // Shape function for MaxPool-like operations.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
 
+// Shape function for MaxPoolV2-like operations.
+Status MaxPoolV2Shape(shape_inference::InferenceContext* c, int num_inputs);
+
 // Shape function for 3D Pooling operations.
 Status Pool3DShape(shape_inference::InferenceContext* c);
 
