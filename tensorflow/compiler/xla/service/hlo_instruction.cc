@@ -561,7 +561,7 @@ HloInstruction* HloInstruction::CloneAndFuseInternal(
   CHECK_EQ(opcode_, HloOpcode::kFusion);
   CHECK(instruction_to_fuse->IsFusable());
   if (GetModule()) {
-    XLA_VLOG_LINES(1, GetModule()->ToString());
+    XLA_VLOG_LINES(3, GetModule()->ToString());
   }
   HloInstruction* clone = nullptr;
   if (called_computations_.empty()) {
