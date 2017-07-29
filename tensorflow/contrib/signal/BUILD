@@ -77,7 +77,6 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "window_ops_test",
-    size = "small",
     srcs = ["python/kernel_tests/window_ops_test.py"],
     additional_deps = [
         ":signal_py",
