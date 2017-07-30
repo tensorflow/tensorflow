@@ -10182,6 +10182,44 @@ op {
   description: "This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the\nprediction for the target class is among the top `k` predictions among\nall predictions for example `i`. Note that the behavior of `InTopK` differs\nfrom the `TopK` op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-`k` boundary, all of those\nclasses are considered to be in the top `k`.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example `i`,\n  \\\\(targets_i\\\\) be the target class for example `i`,\n  \\\\(out_i\\\\) be the output for example `i`,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
 }
 op {
+  name: "InTopKV2"
+  input_arg {
+    name: "predictions"
+    description: "A `batch_size` x `classes` tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "targets"
+    description: "A `batch_size` vector of class ids."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    description: "Number of top elements to look at for computing precision."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "precision"
+    description: "Computed precision at `k` as a `bool Tensor`."
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Says whether the targets are in the top `K` predictions."
+  description: "This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the\nprediction for the target class is among the top `k` predictions among\nall predictions for example `i`. Note that the behavior of `InTopK` differs\nfrom the `TopK` op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-`k` boundary, all of those\nclasses are considered to be in the top `k`.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example `i`,\n  \\\\(targets_i\\\\) be the target class for example `i`,\n  \\\\(out_i\\\\) be the output for example `i`,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
+}
+op {
   name: "InitializeTable"
   input_arg {
     name: "table_handle"
@@ -23404,8 +23442,8 @@ op {
       }
     }
   }
-  summary: "Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)` if < 0, `scale * features` otherwise."
-  description: "See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)"
+  summary: "Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`"
+  description: "if < 0, `scale * features` otherwise.\n\nSee [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)"
 }
 op {
   name: "SeluGrad"
@@ -23421,7 +23459,7 @@ op {
   }
   output_arg {
     name: "backprops"
-    description: "The gradients: `gradients * (outputs + scale * alpha)` if outputs < 0,\n`scale * gradients` otherwise."
+    description: "The gradients: `gradients * (outputs + scale * alpha)`\nif outputs < 0, `scale * gradients` otherwise."
     type_attr: "T"
   }
   attr {
