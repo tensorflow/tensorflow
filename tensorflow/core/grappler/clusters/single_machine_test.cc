@@ -501,6 +501,7 @@ Status GetDeviceMemoryStats(
     }
     allocator->GetStats(&stats);
     (*allocator_stats_by_device)[device->name()] = stats;
+    delete device;
   }
   return Status::OK();
 }

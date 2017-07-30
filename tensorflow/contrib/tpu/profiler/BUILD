@@ -21,8 +21,10 @@ cc_binary(
     visibility = ["//tensorflow/contrib/tpu/profiler:__subpackages__"],
     deps = [
         ":tpu_profiler_proto_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "@grpc//:grpc++_unsecure",
     ],

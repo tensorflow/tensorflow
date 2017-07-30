@@ -41,6 +41,11 @@ StatusOr<bool> ReducePrecisionInsertion::Run(HloModule* module) {
       // equivalent behavior can be obtained by adding ReducePrecision
       // instructions after the instructions that pull the F32 arrays out of
       // the tuples.
+      //
+      // TODO(b/64093391): Remove the IsScalar check once this won't cause
+      // failures on the GPU backend if the ReducePrecision instruction ends up
+      // inserted between a scalar constant and the init_value argument of a
+      // Reduce operation.
       if (instruction->shape().element_type() == PrimitiveType::F32 &&
           !ShapeUtil::IsScalar(instruction->shape()) &&
           should_reduce_output_precision_(instruction->opcode())) {

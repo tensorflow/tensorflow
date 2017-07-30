@@ -17,7 +17,7 @@ tensorflow/contrib/data/* @mrry
 tensorflow/contrib/distributions/* @jvdillon @langmore @rsepassi
 tensorflow/contrib/factorization/* @agarwal-ashish @xavigonzalvo
 tensorflow/contrib/ffmpeg/* @fredbertsch
-# NEED OWNERT: tensorflow/contrib/framework/*
+# NEED OWNER: tensorflow/contrib/framework/*
 tensorflow/contrib/graph_editor/* @purpledog
 # NEED OWNER: tensorflow/contrib/grid_rnn/*
 tensorflow/contrib/hvx/* @satok16
