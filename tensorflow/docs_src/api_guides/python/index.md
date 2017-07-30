@@ -43,6 +43,7 @@
 *   [Random variable transformations (contrib)](contrib.distributions.bijectors.md)
 *   [RNN and Cells (contrib)](contrib.rnn.md)
 *   [Seq2seq Library (contrib)](contrib.seq2seq.md)
+*   [Signal Processing (contrib)](contrib.signal.md)
 *   [Staging (contrib)](contrib.staging.md)
 *   [Statistical Distributions (contrib)](contrib.distributions.md)
 *   [Training (contrib)](contrib.training.md)
