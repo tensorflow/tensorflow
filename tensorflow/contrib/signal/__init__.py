@@ -14,6 +14,8 @@
 # ==============================================================================
 """Signal processing operations.
 
+See the @{$python/contrib.signal} guide.
+
 @@frame
 @@hamming_window
 @@hann_window

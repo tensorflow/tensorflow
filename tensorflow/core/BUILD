@@ -2972,7 +2972,6 @@ cc_test(
     srcs = ["example/example_parser_configuration_test.cc"],
     data = [":example_parser_configuration_testdata"],
     deps = [
-        ":core",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",

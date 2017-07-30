@@ -581,6 +581,11 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(
         wrapped_sess.observers["profiler_py_graphs"][0], ops.Graph)
 
+  def testCallingHookDelBeforeAnyRun(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"], ["run"]], self.sess)
+    del wrapped_sess
+
 
 if __name__ == "__main__":
   googletest.main()

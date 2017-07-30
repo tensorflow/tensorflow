@@ -784,8 +784,10 @@ void BM_WhileLoop(int num_iters) {
   LocalClient* client =
       ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
 
+  const int64 seq_len = 100;
   Shape loop_state_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {10})});
+      {ShapeUtil::MakeShape(S32, {}),
+       ShapeUtil::MakeShape(F32, {seq_len, 1024, 1024})});
 
   // Create while condition computation with 'loop_limit'.
   const int32 loop_limit = 100;
@@ -803,20 +805,27 @@ void BM_WhileLoop(int num_iters) {
   {
     ComputationBuilder builder(client, "body");
     auto prev = builder.Parameter(0, loop_state_shape, "prev");
+    // TupleElement 0
     auto iteration = builder.GetTupleElement(prev, 0);
-    auto weights = builder.GetTupleElement(prev, 1);
-    auto one = builder.ConstantR0<int32>(1);
-    auto next_iteration = builder.Add(iteration, one);
-    auto one_vec = builder.ConstantR1<float>(10, 1.f);
-    auto new_weights = builder.Add(weights, one_vec);
-    auto result = builder.Tuple({next_iteration, new_weights});
+    auto out0 = builder.Add(iteration, builder.ConstantR0<int32>(1));
+    // TupleElement 1
+    auto input = builder.GetTupleElement(prev, 1);
+    // Update.
+    auto one = builder.ConstantR0<float>(1.0);
+    auto update = builder.Broadcast(one, {1, 1024, 1024});
+    // Starts = iteration * 2;
+    auto starts = builder.ConstantR1<int32>({0, 0, 0});
+    // UpdateSlice.
+    auto out1 = builder.DynamicUpdateSlice(input, update, starts);
+    auto result = builder.Tuple({out0, out1});
     body = builder.Build().ConsumeValueOrDie();
   }
 
   // Create a While instruction.
   ComputationBuilder builder(client, "while");
-  auto init = builder.Tuple(
-      {builder.ConstantR0<int32>(0), builder.ConstantR1<float>(10, 0.f)});
+  auto zero = builder.ConstantR0<float>(0.0);
+  auto input = builder.Broadcast(zero, {seq_len, 1024, 1024});
+  auto init = builder.Tuple({builder.ConstantR0<int32>(0), input});
   builder.While(condition, body, init);
   auto computation = builder.Build().ConsumeValueOrDie();
 

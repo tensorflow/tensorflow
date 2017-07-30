@@ -363,9 +363,9 @@ typedef struct TF_Output {
 // Sets the shape of the Tensor referenced by `output` in `graph` to
 // the shape described by `dims` and `num_dims`.
 //
-// If the number of dimensions is unknown, `num_dims` must be
-// set to -1 and dims can be null. If a dimension is unknown,
-// the corresponding entry in the `dims` array must be -1.
+// If the number of dimensions is unknown, `num_dims` must be set to
+// -1 and `dims` can be null. If a dimension is unknown, the
+// corresponding entry in the `dims` array must be -1.
 //
 // This does not overwrite the existing shape associated with `output`,
 // but merges the input shape with the existing shape.  For example,
