@@ -1254,7 +1254,6 @@ cc_library(
         ":hlo",
         ":hlo_cost_analysis",
         ":human_readable_profile_builder",
-        "//tensorflow/compiler/xla:metric_table_report",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
