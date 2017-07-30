@@ -46,7 +46,7 @@ class RepeatTest(test.TestCase):
     input = 5
     repeats = 4
     axis = 0
-    self._testRepeat(input, repeats, axis, use_gpu=use_gpu)
+    self._testRepeat(input, repeats, axis)
     
     input = np.asarray(100 * np.random.randn(200), dtype=dtype)
     repeats = 2
