@@ -627,6 +627,16 @@ class HloInstruction {
     return fusion_kind_;
   }
 
+  unsigned int fusion_custom_tag() const {
+    CHECK_EQ(HloOpcode::kFusion, opcode_);
+    return fusion_custom_tag_;
+  }
+
+  void set_fusion_custom_tag(unsigned int tag) {
+    CHECK_EQ(HloOpcode::kFusion, opcode_);
+    fusion_custom_tag_ = tag;
+  }
+
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
   //
@@ -941,6 +951,10 @@ class HloInstruction {
 
   // The type of the fusion. Used by kFusion only.
   FusionKind fusion_kind_;
+
+  // Tag for use by kFusion to provide arbitrary extra tagging of fused
+  // operations
+  unsigned int fusion_custom_tag_ = 0;
 
   // For parameter instructions this field holds the parameter number.
   int64 parameter_number_ = 0;
