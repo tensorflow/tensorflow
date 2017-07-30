@@ -2,6 +2,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -240,7 +241,7 @@ CreateRandomOp(poplar::Graph &graph,
                TensorMap& tensor_map) {
 
   if (inst->opcode() == HloOpcode::kFusion) {
-    switch (inst->fusion_custom_tag()) {
+    switch (static_cast<int>(inst->fusion_kind())) {
       case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
         return TruncatedNormalScale(graph, res, inst, output_shape, tensor_map);
       case FUSED_TRUNCATED_NORMAL:

@@ -22,6 +22,24 @@ namespace xla {
 
 namespace poplarplugin {
 
+static const int FUSED_BASE =
+        static_cast<int>(HloInstruction::FusionKind::kCustom);
+
+static const int FUSED_SLICE_UPDATE = FUSED_BASE + 0;
+static const int FUSED_SLICE = FUSED_BASE + 1;
+static const int FUSED_RELU = FUSED_BASE + 2;
+static const int FUSED_SIGMOID = FUSED_BASE + 3;
+static const int FUSED_BIASADD_BROADCAST = FUSED_BASE + 4;
+static const int FUSED_BIASADD = FUSED_BASE + 5;
+static const int FUSED_ZERO_PAD = FUSED_BASE + 6;
+static const int FUSED_TRUNCATED_NORMAL_WITH_SCALE = FUSED_BASE + 7;
+static const int FUSED_TRUNCATED_NORMAL = FUSED_BASE + 8;
+static const int FUSED_RANDOM_NORMAL_WITH_SCALE = FUSED_BASE + 9;
+static const int FUSED_RANDOM_UNIFORM_WITH_SCALE = FUSED_BASE + 10;
+static const int FUSED_RANDOM_NORMAL = FUSED_BASE + 11;
+static const int FUSED_RANDOM_UNIFORM = FUSED_BASE + 12;
+static const int FUSED_BERNOULLI = FUSED_BASE + 13;
+
 class FuseOps : public HloMatcher {
 public:
   FuseOps();
@@ -30,7 +48,7 @@ public:
 
   tensorflow::StringPiece name() const override { return "poplar-fuse"; }
 
-  ReplacedInstructions ReplaceNodes(unsigned int pattern,
+  ReplacedInstructions ReplaceNodes(int pattern,
                                     const HloMatcherMatched& match) override;
 
 };

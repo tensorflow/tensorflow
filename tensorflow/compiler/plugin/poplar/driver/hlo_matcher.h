@@ -51,7 +51,7 @@ public:
   StatusOr<bool> Run(HloModule *module) override;
 
 private:
-  virtual ReplacedInstructions ReplaceNodes(unsigned int pattern,
+  virtual ReplacedInstructions ReplaceNodes(int pattern,
                                             const HloMatcherMatched&) = 0;
 
   void MatchPatternStart(HloComputation*, HloInstruction* inst);

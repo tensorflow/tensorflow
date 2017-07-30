@@ -34,7 +34,7 @@ static const std::vector<HloMatcherPattern> patterns = {
 
 Outliner::Outliner() : HloMatcher(patterns, true) {}
 
-ReplacedInstructions Outliner::ReplaceNodes(unsigned int pattern,
+ReplacedInstructions Outliner::ReplaceNodes(int pattern,
                                             const HloMatcherMatched& match) {
 
   HloModule* module = match.computation->parent();

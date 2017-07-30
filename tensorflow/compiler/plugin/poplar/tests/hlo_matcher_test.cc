@@ -33,7 +33,7 @@ public:
           , drop_last_instruction_(drop_last_instruction) {}
 
 private:
-  ReplacedInstructions ReplaceNodes(unsigned int pattern,
+  ReplacedInstructions ReplaceNodes(int pattern,
                                     const HloMatcherMatched& match) override {
     replace_count++;
     match_pattern.push_back(pattern);

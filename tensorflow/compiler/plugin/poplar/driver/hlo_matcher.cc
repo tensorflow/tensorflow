@@ -127,7 +127,7 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
   }
 
   unsigned int replacement_count = 0;
-  for (unsigned int pattern=0; pattern<matches_.size(); pattern++) {
+  for (int pattern=0; pattern<matches_.size(); pattern++) {
     for (HloMatcherMatched& match :  matches_[pattern]) {
       if (match.ok) {
         const ReplacedInstructions& replaced = ReplaceNodes(pattern, match);

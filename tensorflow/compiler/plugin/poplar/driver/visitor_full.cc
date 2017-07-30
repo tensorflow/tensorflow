@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
 
@@ -183,102 +184,98 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
 }
 
 Status FullVisitor::HandleFusion(HloInstruction* inst) {
-  if (inst->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-    switch (inst->fusion_custom_tag()) {
-      case FUSED_SLICE_UPDATE:
-      {
-        poplar::program::Program prog;
-        TF_ASSIGN_OR_RETURN(prog,
-                            CreateSliceUpdateOp(*graph_,
-                                                resources_,
-                                                inst,
-                                                GetOutputShape(inst),
-                                                tensor_map));
-        sequence.add(prog);
-        return Status::OK();
-      }
-      case FUSED_SLICE:
-      {
-        poplar::program::Program prog;
-        TF_ASSIGN_OR_RETURN(prog,
-                            CreateSliceOp(*graph_,
+  switch (static_cast<int>(inst->fusion_kind())) {
+    case FUSED_SLICE_UPDATE:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateSliceUpdateOp(*graph_,
+                                              resources_,
+                                              inst,
+                                              GetOutputShape(inst),
+                                              tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    case FUSED_SLICE:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateSliceOp(*graph_,
+                                        resources_,
+                                        inst,
+                                        GetOutputShape(inst),
+                                        tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    case FUSED_RELU:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateReluOp(*graph_,
+                                       resources_,
+                                       inst,
+                                       GetOutputShape(inst),
+                                       tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    case FUSED_SIGMOID:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateSigmoidOp(*graph_,
                                           resources_,
                                           inst,
                                           GetOutputShape(inst),
                                           tensor_map));
-        sequence.add(prog);
-        return Status::OK();
-      }
-      case FUSED_RELU:
-      {
-        poplar::program::Program prog;
-        TF_ASSIGN_OR_RETURN(prog,
-                            CreateReluOp(*graph_,
+      sequence.add(prog);
+      return Status::OK();
+    }
+    case FUSED_BIASADD_BROADCAST:
+    case FUSED_BIASADD:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateBiasAddOp(*graph_,
+                                          resources_,
+                                          inst,
+                                          GetOutputShape(inst),
+                                          tensor_map));
+      sequence.add(prog);
+      return Status::OK();
+    }
+    case FUSED_ZERO_PAD:
+    {
+      const HloInstruction* root = inst->fused_expression_root();
+      const PaddingConfig& cfg(root->padding_config());
+      poplar::Tensor out;
+      TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
+      TF_ASSIGN_OR_RETURN(out, PadWithConstantZero(*graph_, cfg, out));
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+      return Status::OK();
+    }
+    case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
+    case FUSED_TRUNCATED_NORMAL:
+    case FUSED_RANDOM_NORMAL_WITH_SCALE:
+    case FUSED_RANDOM_UNIFORM_WITH_SCALE:
+    case FUSED_RANDOM_NORMAL:
+    case FUSED_RANDOM_UNIFORM:
+    case FUSED_BERNOULLI:
+    {
+      poplar::program::Program prog;
+      TF_ASSIGN_OR_RETURN(prog,
+                          CreateRandomOp(*graph_,
                                          resources_,
                                          inst,
                                          GetOutputShape(inst),
                                          tensor_map));
-        sequence.add(prog);
-        return Status::OK();
-      }
-      case FUSED_SIGMOID:
-      {
-        poplar::program::Program prog;
-        TF_ASSIGN_OR_RETURN(prog,
-                            CreateSigmoidOp(*graph_,
-                                            resources_,
-                                            inst,
-                                            GetOutputShape(inst),
-                                            tensor_map));
-        sequence.add(prog);
-        return Status::OK();
-      }
-      case FUSED_BIASADD_BROADCAST:
-      case FUSED_BIASADD:
-      {
-        poplar::program::Program prog;
-        TF_ASSIGN_OR_RETURN(prog,
-                            CreateBiasAddOp(*graph_,
-                                            resources_,
-                                            inst,
-                                            GetOutputShape(inst),
-                                            tensor_map));
-        sequence.add(prog);
-        return Status::OK();
-      }
-      case FUSED_ZERO_PAD:
-      {
-        const HloInstruction* root = inst->fused_expression_root();
-        const PaddingConfig& cfg(root->padding_config());
-        poplar::Tensor out;
-        TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
-        TF_ASSIGN_OR_RETURN(out, PadWithConstantZero(*graph_, cfg, out));
-        TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-        return Status::OK();
-      }
-      case FUSED_TRUNCATED_NORMAL_WITH_SCALE:
-      case FUSED_TRUNCATED_NORMAL:
-      case FUSED_RANDOM_NORMAL_WITH_SCALE:
-      case FUSED_RANDOM_UNIFORM_WITH_SCALE:
-      case FUSED_RANDOM_NORMAL:
-      case FUSED_RANDOM_UNIFORM:
-      case FUSED_BERNOULLI:
-      {
-        poplar::program::Program prog;
-        TF_ASSIGN_OR_RETURN(prog,
-                            CreateRandomOp(*graph_,
-                                           resources_,
-                                           inst,
-                                           GetOutputShape(inst),
-                                           tensor_map));
-        sequence.add(prog);
-        return Status::OK();
-      }
-      default:
-        return Unimplemented(inst);
+      sequence.add(prog);
+      return Status::OK();
     }
-  } else {
-    return Unimplemented(inst);
+    default:
+      return Unimplemented(inst);
   }
 };
 

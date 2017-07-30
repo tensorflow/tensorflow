@@ -32,7 +32,7 @@ public:
 
   tensorflow::StringPiece name() const override { return "outline"; }
 
-  ReplacedInstructions ReplaceNodes(unsigned int pattern,
+  ReplacedInstructions ReplaceNodes(int pattern,
                                     const HloMatcherMatched& match) override;
 
 };

@@ -148,14 +148,13 @@ static const std::vector<HloMatcherPattern> patterns = {
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}
 
-ReplacedInstructions FuseOps::ReplaceNodes(unsigned int pattern,
+ReplacedInstructions FuseOps::ReplaceNodes(int pattern,
                                            const HloMatcherMatched& match) {
-  auto* comp = match.computation;
-  HloInstruction* fused = comp->CreateFusionInstruction(
-          match.instructions,
-          HloInstruction::FusionKind::kCustom);
+  HloInstruction::FusionKind type =
+          static_cast<HloInstruction::FusionKind>(FUSED_BASE + pattern);
 
-  fused->set_fusion_custom_tag(pattern);
+  auto* comp = match.computation;
+  comp->CreateFusionInstruction(match.instructions, type);
 
   ReplacedInstructions replaced;
 
