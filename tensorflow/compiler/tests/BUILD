@@ -157,6 +157,11 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["depthwise_conv_op_test.py"],
     shard_count = 5,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
