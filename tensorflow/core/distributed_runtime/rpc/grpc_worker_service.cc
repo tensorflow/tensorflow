@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
-#include "tensorflow/core/distributed_runtime/rpc/rdma.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -328,14 +327,12 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
   // of execution of the callback lambda body below, an RPC
   // cancellation should abort the rendezvous.
   opts->SetCancelCallback([this, step_id]() { AbortStep(step_id); });
-  const bool dma_ok = request->dma_ok();
-  RdmaServer* rdma_server = env()->rdma_server;
   env_->rendezvous_mgr->RecvLocalAsync(
       step_id, parsed,
-      [opts, response, done, src_dev, rdma_server, dma_ok](
-          const Status& status, const Rendezvous::Args& send_args,
-          const Rendezvous::Args& recv_args, const Tensor& val,
-          const bool is_dead) {
+      [opts, response, done, src_dev](const Status& status,
+                                      const Rendezvous::Args& send_args,
+                                      const Rendezvous::Args& recv_args,
+                                      const Tensor& val, const bool is_dead) {
         opts->ClearCancelCallback();
         if (status.ok()) {
           // DMA can only be used for Tensors that do not fall into
@@ -345,25 +342,6 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
           // i.e. it's in CPU RAM *independent of its assigned
           // device type*.
           const bool on_host = send_args.alloc_attrs.on_host();
-          if (val.TotalBytes() > 0 && (!is_dead) &&
-              DMAHelper::CanUseDMA(&val) && dma_ok) {
-            // DMA cases
-            RecvTensorResponse proto;
-            auto transport_options = proto.mutable_transport_options();
-            Status s = rdma_server->RegisterTensorDMA(
-                val, src_dev, send_args.device_context, on_host,
-                transport_options);
-            if (s.ok()) {
-              proto.set_is_dead(is_dead);
-              proto.set_send_start_micros(Env::Default()->NowMicros());
-              TensorProto* tensor_proto = proto.mutable_tensor();
-              tensor_proto->set_dtype(val.dtype());
-              val.shape().AsProto(tensor_proto->mutable_tensor_shape());
-              grpc::EncodeRecvTensorResponseToByteBuffer(proto, response);
-              done(Status::OK());
-              return;
-            }
-          }
           {
             // Non-DMA cases.
             if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {

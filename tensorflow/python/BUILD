@@ -29,6 +29,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
 
 py_library(
     name = "python",
@@ -2808,7 +2809,8 @@ tf_py_wrap_cc(
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
-         tf_additional_mpi_deps()),
+         tf_additional_mpi_deps() +
+         tf_additional_gdr_deps()),
 )
 
 py_library(

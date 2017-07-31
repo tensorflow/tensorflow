@@ -105,7 +105,8 @@ GrpcServer::~GrpcServer() {
 
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
-    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+    const WorkerCreationFunction& worker_func) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
@@ -135,8 +136,6 @@ Status GrpcServer::Init(
 
   // Look up the port that has been requested for this task in `server_def_`.
   int requested_port = -1;
-  string host = "localhost";
-  string port = "0";
   for (const auto& job : server_def_.cluster().job()) {
     if (job.name() == server_def_.job_name()) {
       auto iter = job.tasks().find(server_def_.task_index());
@@ -147,8 +146,6 @@ Status GrpcServer::Init(
       }
       const std::vector<string> hostname_port =
           str_util::Split(iter->second, ':');
-      host = hostname_port[0];
-      port = hostname_port[1];
       if (hostname_port.size() != 2 ||
           !strings::safe_strto32(hostname_port[1], &requested_port)) {
         return errors::InvalidArgument(
@@ -163,9 +160,6 @@ Status GrpcServer::Init(
     return errors::Internal("Job \"", server_def_.job_name(),
                             "\" was not defined in cluster");
   }
-
-  rdma_client_.reset(NewRdmaClient());
-  rdma_server_.reset(NewRdmaServer(host, port));
 
   // N.B. The order of initialization here is intricate, because we
   // wish to allow `requested_port == 0` (for choosing any port,
@@ -190,7 +184,8 @@ Status GrpcServer::Init(
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(
       master_impl_.get(), config.operation_timeout_in_ms(), &builder);
-  worker_impl_ = NewGrpcWorker(&worker_env_);
+  worker_impl_ =
+      worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
   // extra service:
@@ -245,7 +240,13 @@ Status GrpcServer::Init(
   return Status::OK();
 }
 
-Status GrpcServer::Init() { return Init(nullptr, nullptr); }
+Status GrpcServer::Init(
+    ServiceInitFunction service_func,
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
+  return Init(service_func, rendezvous_mgr_func, nullptr);
+}
+
+Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr); }
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                     GrpcChannelSpec* channel_spec) {
@@ -302,8 +303,6 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
     return errors::InvalidArgument("Requested port ", requested_port,
                                    " differs from expected port ", bound_port_);
   }
-  worker_env_.rdma_client = rdma_client_.get();
-  worker_env_.rdma_server = rdma_server_.get();
 
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
       channel_cache.release(), worker_impl_.get(), name_prefix);
@@ -320,12 +319,6 @@ Status GrpcServer::Start() {
       worker_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_worker_service",
                             [this] { worker_service_->HandleRPCsLoop(); }));
-
-      Status rdma_status = rdma_server_->Init();
-      if (rdma_status.ok()) {
-        rdma_thread_.reset(env_->StartThread(ThreadOptions(), "TF_rdma_service",
-                                             [this] { rdma_server_->Run(); }));
-      }
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
       return Status::OK();
@@ -368,7 +361,6 @@ Status GrpcServer::Join() {
     case STOPPED:
       master_thread_.reset();
       worker_thread_.reset();
-      rdma_thread_.reset();
       return Status::OK();
     default:
       CHECK(false);

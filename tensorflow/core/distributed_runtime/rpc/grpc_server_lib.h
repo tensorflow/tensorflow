@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
-#include "tensorflow/core/distributed_runtime/rpc/rdma.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -46,6 +45,10 @@ typedef std::function<RendezvousMgrInterface*(const WorkerEnv*)>
 typedef std::function<void(const WorkerEnv*, ::grpc::ServerBuilder*)>
     ServiceInitFunction;
 
+// function that creates a grpc based worker implementation.
+typedef std::function<std::unique_ptr<GrpcWorker>(WorkerEnv*)>
+    WorkerCreationFunction;
+
 class GrpcServer : public ServerInterface {
  protected:
   GrpcServer(const ServerDef& server_def, Env* env);
@@ -65,6 +68,10 @@ class GrpcServer : public ServerInterface {
   const string target() const override;
 
  protected:
+  Status Init(ServiceInitFunction service_func,
+              const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+              const WorkerCreationFunction& worker_func);
+
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func);
 
@@ -128,10 +135,6 @@ class GrpcServer : public ServerInterface {
   std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
   std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);
-
-  std::unique_ptr<RdmaClient> rdma_client_;
-  std::unique_ptr<RdmaServer> rdma_server_;
-  std::unique_ptr<Thread> rdma_thread_ GUARDED_BY(mu_);
 
   std::unique_ptr<::grpc::Server> server_ GUARDED_BY(mu_);
 };
