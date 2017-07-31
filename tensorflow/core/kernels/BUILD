@@ -5167,7 +5167,6 @@ cc_library(
         "remote_fused_graph_execute_utils.h",
     ],
     deps = [
-        "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
