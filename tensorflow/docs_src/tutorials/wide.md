@@ -127,7 +127,7 @@ Here's a list of columns available in the Census Income dataset:
 :                :             : individual.                       :
 | income         | Categorical | ">50K" or "<=50K", meaning        |
 :                :             : whether the person makes more     :
-:                :             : than \$50,000 annually.           :
+:                :             : than $50,000 annually.           :
 
 ## Converting Data into Tensors
 
