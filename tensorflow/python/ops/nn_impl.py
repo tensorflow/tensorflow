@@ -752,8 +752,8 @@ def batch_normalization(x,
   Returns:
     the normalized, scaled, offset tensor.
   """
-  with tf.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
-    normalized = (x - mean) * tf.rsqrt(variance + variance_epsilon)
+  with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
+    normalized = (x - mean) * math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       normalized *= scale
     if offset is not None:
