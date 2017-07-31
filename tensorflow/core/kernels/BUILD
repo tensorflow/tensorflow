@@ -103,7 +103,6 @@ tf_kernel_library(
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
         "strided_slice_op_gpu.cu.cc",
-        "slice_op_gpu.cu.cc",
     ],
     deps = [
         ":bounds_check",
