@@ -1030,7 +1030,9 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
     NodeDef* ndef = gdef->add_node();
     ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
-    *(ndef->mutable_attr()) = n->def().attr();
+    for (const auto& attr : n->attrs()) {
+      (*ndef->mutable_attr())[attr.first] = attr.second;
+    }
     inputs.clear();
     inputs.resize(n->num_inputs());
     for (const Edge* e : n->in_edges()) {
