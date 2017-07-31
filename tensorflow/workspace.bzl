@@ -498,7 +498,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "3686142889a0607e2f19351c967f7f01220c8364f54ba25c2eab1c705500d8e5",
       strip_prefix = "grpc-dc1cfe9e21d0b3ea19911300d15a65ef6201bb92",
-      patch_file = str(Label("//third_party/grpc:grpc.patch")),
   )
 
   # protobuf expects //external:grpc_cpp_plugin to point to grpc's
