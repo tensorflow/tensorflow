@@ -142,7 +142,7 @@ def extract_features(features, feature_columns):
   """Extracts columns from a dictionary of features.
 
   Args:
-    features: `Tensor` or `dict` of `Tensor` objects.
+    features: `dict` of `Tensor` objects.
     feature_columns: A list of feature_columns.
 
   Returns:
@@ -160,9 +160,6 @@ def extract_features(features, feature_columns):
   """
   if not features:
     raise ValueError("Features dictionary must be specified.")
-
-  if isinstance(features, ops.Tensor):
-    features = {features.name, features}
 
   # Make a shallow copy of features to ensure downstream usage
   # is unaffected by modifications in the model function.
@@ -277,7 +274,7 @@ class GradientBoostedDecisionTreeModel(object):
         examples based on the depth of the layer that's being built.
       learner_config: A learner config.
           print split, sorted_feature_names[split.feature_column]
-      features: `Tensor` or `dict` of `Tensor` objects.
+      features: `dict` of `Tensor` objects.
       feature_columns: A list of feature columns.
 
     Raises:
