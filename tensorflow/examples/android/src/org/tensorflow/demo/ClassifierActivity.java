@@ -36,6 +36,9 @@ import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 
+// Explicit import needed for internal Google builds.
+import org.tensorflow.demo.R;
+
 public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
 

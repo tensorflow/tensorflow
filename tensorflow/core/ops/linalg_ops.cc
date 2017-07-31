@@ -204,7 +204,7 @@ REGISTER_OP("MatrixDeterminant")
       return Status::OK();
     })
     .Doc(R"doc(
-Computes the determinant of one ore more square matrices.
+Computes the determinant of one or more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor containing the determinants

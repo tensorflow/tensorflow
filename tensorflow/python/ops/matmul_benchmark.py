@@ -106,7 +106,7 @@ class MatmulBenchmark(test.Benchmark):
             device=device,
             dtype=str(dtype).replace(' ', ''),
             inputinfo=str(n) + 'x' + str(m) + 'x' + str(k) + ',ta:' +
-            str(transpose_a) + '.tb:' + str(transpose_b)).replace(' ', ''),
+            str(transpose_a) + ',tb:' + str(transpose_b)).replace(' ', ''),
         iters=num_iters,
         wall_time=duration)
     return duration
@@ -134,9 +134,7 @@ class MatmulBenchmark(test.Benchmark):
         self.run_test_gpu(n, m, k, transpose_a, transpose_b, dtype, num_iters)
 
   def benchmark_matmul(self):
-    num_iters = 200
-    for _ in range(10):
-      self.test_round(num_iters)
+    self.test_round(num_iters=200)
 
 
 if __name__ == '__main__':

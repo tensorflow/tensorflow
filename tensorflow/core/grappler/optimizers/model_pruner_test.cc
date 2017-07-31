@@ -199,6 +199,46 @@ TEST_F(ModelPrunerTest, PruningSkipsCtrlDependencies) {
   EXPECT_EQ("^c", new_e.input(1));
 }
 
+TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  // Make graph of Identity(Identity(Identity(Identity(Variable)))).
+  Output a = ops::Variable(s.WithOpName("a"), {}, DT_INT64);
+  Output b = ops::Identity(s.WithOpName("b"), a);
+  Output c = ops::Identity(s.WithOpName("c"), b);
+  Output d = ops::Identity(s.WithOpName("d"), c);
+  Output e = ops::Identity(s.WithOpName("e"), d);
+
+  // Run pruner.
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  // Get the updated nodes.
+  ASSERT_EQ(5, output.node_size());
+  const NodeDef& new_a = output.node(0);
+  const NodeDef& new_b = output.node(1);
+  const NodeDef& new_c = output.node(2);
+  const NodeDef& new_d = output.node(3);
+  const NodeDef& new_e = output.node(4);
+  EXPECT_EQ("a", new_a.name());
+  EXPECT_EQ("b", new_b.name());
+  EXPECT_EQ("c", new_c.name());
+  EXPECT_EQ("d", new_d.name());
+  EXPECT_EQ("e", new_e.name());
+
+  // Verify the connections. Identity "b" can't be removed from the chain
+  // because it is converting a reference input to a non-reference, so c,d,e all
+  // refer to it as an input.
+  EXPECT_EQ("a", new_b.input(0));
+  EXPECT_EQ("b", new_c.input(0));
+  EXPECT_EQ("b", new_d.input(0));
+  EXPECT_EQ("b", new_e.input(0));
+}
+
 TEST_F(ModelPrunerTest, PruningPerservesCtrlDependencies) {
   // Build a simple graph with a few trivially prunable ops.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();

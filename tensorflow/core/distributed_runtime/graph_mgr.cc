@@ -155,6 +155,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       return PartitionOptions::kIllegalIncarnation;
     }
   };
+  popts.flib_def = &graph.flib_def();
   popts.control_flow_added = true;
   popts.scheduling_for_recvs = graph_options.enable_recv_scheduling();
   TF_RETURN_IF_ERROR(Partition(popts, &graph, &partitions));
@@ -213,9 +214,10 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
     // Function library runtime.
     unit->lib = NewFunctionLibraryRuntime(
-        device_mgr_, worker_env_->env, unit->device,
-        subgraph->versions().producer(), item->lib_def,
-        graph_options.optimizer_options());
+                    device_mgr_, worker_env_->env, unit->device,
+                    subgraph->versions().producer(), item->lib_def,
+                    graph_options.optimizer_options())
+                    .release();
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;

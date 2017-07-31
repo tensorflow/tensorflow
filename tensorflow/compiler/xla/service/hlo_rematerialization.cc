@@ -83,7 +83,7 @@ bool IsRematerializable(const HloInstruction* instruction) {
 // before arbitrary elements.
 class InstructionList {
  public:
-  explicit InstructionList(const std::vector<const HloInstruction*> order) {
+  explicit InstructionList(const std::vector<const HloInstruction*>& order) {
     int64 position = 0;
     for (const HloInstruction* inst : order) {
       instructions_.push_back(const_cast<HloInstruction*>(inst));

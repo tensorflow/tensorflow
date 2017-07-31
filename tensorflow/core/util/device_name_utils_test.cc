@@ -443,6 +443,16 @@ TEST(DeviceNameUtilsTest, MergeDevNamesAllowSoftPlacement) {
   MergeDevNamesHelperAllowSoftPlacement("/gpu:1", "/gpu:2", "/gpu:*");
 }
 
+TEST(DeviceNameUtilsTest, GetNamesForDeviceMappings) {
+  DeviceNameUtils::ParsedName p = Name("/job:foo/replica:10/task:0/gpu:1");
+  EXPECT_EQ(str_util::Join(DeviceNameUtils::GetNamesForDeviceMappings(p), ","),
+            "/job:foo/replica:10/task:0/device:GPU:1,"
+            "/job:foo/replica:10/task:0/gpu:1");
+  p.has_task = false;
+  EXPECT_EQ(str_util::Join(DeviceNameUtils::GetNamesForDeviceMappings(p), ","),
+            "");
+}
+
 static void BM_ParseFullName(int iters) {
   DeviceNameUtils::ParsedName p;
   while (iters--) {

@@ -54,6 +54,8 @@ const char *getMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
       return "DtoD";
     case CUPTI_ACTIVITY_MEMCPY_KIND_HTOH:
       return "HtoH";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_PTOP:
+      return "PtoP";
     default:
       break;
   }
@@ -544,6 +546,15 @@ void GPUTracerImpl::ActivityCallback(const CUpti_Activity &record) {
           memcpy->dstKind, memcpy->bytes});
       break;
     }
+    case CUPTI_ACTIVITY_KIND_MEMCPY2: {
+      if (memcpy_records_.size() >= kMaxRecords) return;
+      auto *memcpy = reinterpret_cast<const CUpti_ActivityMemcpy2 *>(&record);
+      memcpy_records_.push_back(MemcpyRecord{
+          memcpy->start, memcpy->end, memcpy->deviceId, memcpy->streamId,
+          memcpy->correlationId, memcpy->copyKind, memcpy->srcKind,
+          memcpy->dstKind, memcpy->bytes});
+      break;
+    }
     case CUPTI_ACTIVITY_KIND_KERNEL:
     case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL: {
       if (kernel_records_.size() >= kMaxRecords) return;
@@ -554,6 +565,7 @@ void GPUTracerImpl::ActivityCallback(const CUpti_Activity &record) {
       break;
     }
     default:
+      VLOG(1) << "ActivityCallback unhandled kind";
       break;
   }
 }

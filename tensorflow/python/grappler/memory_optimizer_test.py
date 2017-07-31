@@ -21,7 +21,6 @@ from __future__ import print_function
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -39,26 +38,27 @@ class MemoryOptimizerSwapTest(test.TestCase):
 
   def testNoSwapping(self):
     """Make sure the graph is preserved when there is nothing to swap."""
-    a = constant_op.constant(10, name='a')
-    b = constant_op.constant(20, name='b')
+    a = variables.Variable(10, name='a')
+    b = variables.Variable(20, name='b')
     c = math_ops.add_n([a, b], name='c')
     d = math_ops.add_n([b, c], name='d')
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
     train_op.append(d)
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
+    graph_size = len(mg.graph_def.node)
+    nodes = [node.name for node in mg.graph_def.node]
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
         memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
-    self.assertEqual(len(graph.node), 4)
-    self.assertItemsEqual([node.name
-                           for node in graph.node], ['a', 'b', 'c', 'd'])
+    self.assertEqual(len(graph.node), graph_size)
+    self.assertItemsEqual([node.name for node in graph.node], nodes)
 
   def testSimpleSwap(self):
     """Check that the swap annotations are followed."""
-    a = constant_op.constant(10, name='a')
-    b = constant_op.constant(20, name='b')
+    a = variables.Variable(10, name='a')
+    b = variables.Variable(20, name='b')
     c = math_ops.add_n([a, b], name='c')
     d = math_ops.add_n([b, c], name='d')
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -67,26 +67,22 @@ class MemoryOptimizerSwapTest(test.TestCase):
     d.op.node_def.attr['_swap_to_host'].i = 0
 
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
+    graph_size = len(mg.graph_def.node)
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
         memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
-    self.assertEqual(len(graph.node), 6)
-    self.assertItemsEqual([node.name for node in graph.node], [
-        'a',
-        'b',
-        'c',
-        'd',
-        'swap_in_d_0',
-        'swap_out_d_0',
-    ])
+    self.assertEqual(len(graph.node), graph_size + 2)
+    self.assertTrue(
+        set([node.name for node in graph.node]) > set(
+            ['a', 'b', 'c', 'd', 'swap_in_d_0', 'swap_out_d_0']))
     for node in graph.node:
       if node.name == 'swap_in_d_0':
         self.assertEqual('swap_out_d_0', node.input[0])
-        self.assertEqual('^b', node.input[1])
+        self.assertEqual('^b/read', node.input[1])
       elif node.name == 'swap_out_d_0':
-        self.assertEqual('b', node.input[0])
+        self.assertEqual('b/read', node.input[0])
       elif node.name == 'd':
         self.assertEqual('swap_in_d_0', node.input[0])
         self.assertEqual('c', node.input[1])

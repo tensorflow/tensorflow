@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -522,6 +521,42 @@ XLA_TEST_F(FusionTest, DISABLED_ON_CPU(ReduceWindow)) {
       *ExecuteAndTransfer(std::move(hlo_module), {}));
 }
 
+// When a constant (or other op) which has multiple users is imported
+// into a fusion, it should remain shared, rather than being duplicated
+// within the fusion.
+XLA_TEST_F(FusionTest, SharedConstant) {
+  auto hlo_module = CreateNewModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  auto const0 = builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR1<int32>({0})));
+  auto const1 = builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
+  auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, const0));
+  auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add1));
+  auto add3 = builder.AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add2));
+  auto add4 = builder.AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add3));
+  hlo_module->AddEntryComputation(builder.Build())
+      ->CreateFusionInstruction(
+        {add4, add3, add2, add1, const1},
+        HloInstruction::FusionKind::kLoop);
+
+  HloComputation* entry_comp = hlo_module->entry_computation();
+
+  // entry computation contains the constant(0) and the fusion
+  EXPECT_EQ(entry_comp->instructions().size(), 2);
+
+  // fused instruction contains the constant(2), the parameter, and 4 adds
+  EXPECT_EQ(entry_comp->root_instruction()->fused_instructions().size(), 6);
+
+  LiteralTestUtil::ExpectEqual(*Literal::CreateR1<int32>({8}),
+          *ExecuteAndTransfer(std::move(hlo_module), {}));
+}
+
 XLA_TEST_F(FusionTest, Add2D) { TestElementwise2D<float, 2>(HloOpcode::kAdd); }
 
 XLA_TEST_F(FusionTest, Subtract2D) {
@@ -631,21 +666,3 @@ BENCHMARK(BM_ParallelFusion);
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  tensorflow::testing::RunBenchmarks();
-  return RUN_ALL_TESTS();
-}

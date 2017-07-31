@@ -141,6 +141,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/debug/lib/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
+    "${tensorflow_source_dir}/tensorflow/python/meta_graph_transform/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/profiler/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/profiler/internal/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"

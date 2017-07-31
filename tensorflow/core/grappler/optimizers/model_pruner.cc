@@ -74,20 +74,25 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-    // Don't remove nodes that drive control dependencies.
-    // Don't remove nodes that are driven by control dependencies either since
-    // we can't ensure (yet) that we won't increase the number of control
-    // dependency edges by deleting them (for example, removing a node driven by
-    // 10 control edges and driving 10 control edges would result in the
-    // creation of 100 edges).
-    // Don't modify nodes that are connected to functions since that can result
-    // in inlining failures later on.
-    // Don't prune nodes that are driven by another device since these could be
-    // used to reduce cross device communication.
+    // - Don't remove nodes that drive control dependencies.
+    // - Don't remove nodes that are driven by control dependencies either since
+    //   we can't ensure (yet) that we won't increase the number of control
+    //   dependency edges by deleting them (for example, removing a node driven
+    //   by 10 control edges and driving 10 control edges would result in the
+    //   creation of 100 edges).
+    // - Don't modify nodes that are connected to functions since that can
+    //   result in inlining failures later on.
+    // - Don't prune nodes that are driven by another device since these could
+    //   be used to reduce cross device communication.
+    // - Don't remove nodes that receive reference values, as those can be
+    //   converting references to non-references. It is important to preserve
+    //   these non-references since the partitioner will avoid sending
+    //   non-references accross partitions more than once.
     if (!rewriter.DrivesControlDependency(node) &&
         !rewriter.IsDrivenByControlDependency(node) &&
         !rewriter.IsConnectedToFunction(node) &&
-        !rewriter.IsDrivenByAnotherDevice(node)) {
+        !rewriter.IsDrivenByAnotherDevice(node) &&
+        !rewriter.ReceivesRefValue(node)) {
       nodes_to_delete.insert(&node);
     }
   }

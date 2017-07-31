@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -74,6 +73,7 @@ class CallOpTest : public ClientLibraryTestBase {
   Shape r1s2f32_ = ShapeUtil::MakeShape(F32, {2});
 };
 
+// TODO(b/64094172) Failing on GPU as of 2017-07-26.
 XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32IdentityScalar)) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR0F32IdentityComputation();
@@ -83,6 +83,7 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32IdentityScalar)) {
   ComputeAndCompareR0<float>(&builder, 42.0, {}, ErrorSpec(0.01f));
 }
 
+// TODO(b/64094172) Failing on GPU as of 2017-07-26.
 XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S0F32AddArray)) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR1S0F32AdditionComputation();
@@ -93,6 +94,7 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S0F32AddArray)) {
   ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.01f));
 }
 
+// TODO(b/64094172) Failing on GPU as of 2017-07-26.
 XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S2F32AddArray)) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR1S2F32AdditionComputation();
@@ -103,6 +105,39 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR1S2F32AddArray)) {
   ComputeAndCompareR1<float>(&builder, {3.0f, 5.0f}, {}, ErrorSpec(0.01f));
 }
 
+// TODO(b/64094172) Failing on GPU as of 2017-07-26.
+XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallTreeTwoDeepBranchFactorThree)) {
+  ComputationBuilder builder(client_, "inner");
+  {
+    auto x = builder.Parameter(0, r0f32_, "x");
+    builder.Add(x, builder.ConstantR0<float>(1.0));
+  }
+  TF_ASSERT_OK_AND_ASSIGN(Computation inner, builder.Build());
+
+  ComputationBuilder builder2(client_, "outer");
+  {
+    auto x = builder2.Parameter(0, r0f32_, "x");
+    x = builder2.Call(inner, {x});
+    x = builder2.Call(inner, {x});
+    x = builder2.Call(inner, {x});
+  }
+  TF_ASSERT_OK_AND_ASSIGN(Computation outer, builder2.Build());
+
+  ComputationBuilder builder3(client_, "outermost");
+  {
+    auto x = builder3.Parameter(0, r0f32_, "x");
+    x = builder3.Call(outer, {x});
+    x = builder3.Call(outer, {x});
+    x = builder3.Call(outer, {x});
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> start,
+      client_->TransferToServer(*Literal::CreateR0<float>(1.0f)));
+  ComputeAndCompareR0<float>(&builder3, 10.0f, {start.get()}, ErrorSpec(0.0f));
+}
+
+// TODO(b/64094172) Failing on GPU as of 2017-07-26.
 XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32Tuple)) {
   ComputationBuilder builder(client_, TestName());
   Computation callee = CreateR0F32TupleComputation();
@@ -115,20 +150,3 @@ XLA_TEST_F(CallOpTest, DISABLED_ON_GPU(CallR0F32Tuple)) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}
