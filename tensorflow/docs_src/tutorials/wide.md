@@ -24,7 +24,7 @@ To try the code for this tutorial:
         # Ubuntu/Linux 64-bit
         $ sudo apt-get install python-pip python-dev
 
-        # Mac OS X
+        # macOS
         $ sudo easy_install pip
         $ sudo easy_install --upgrade six
 
