@@ -98,12 +98,13 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
       add_entry = True
 
     if add_trace:
-      for tb in op.traceback:
+      for tb in op.traceback_with_start_lines:
         trace = entry.code_def.traces.add()
         trace.file = tb[0] if tb[0] else 'none'
         trace.lineno = tb[1] if tb[1] else -1
         trace.function = tb[2] if tb[2] else 'none'
         trace.line = tb[3] if tb[3] else 'none'
+        trace.func_start_line = tb[4] if tb[4] else -1
       add_entry = True
 
     if add_entry:
