@@ -248,7 +248,7 @@ class QueueBase(object):
     if isinstance(vals, dict):
       if not self._names:
         raise ValueError("Queue must have names to enqueue a dictionary")
-      if sorted(self._names) != sorted(vals.keys()):
+      if sorted(self._names, key=str) != sorted(vals.keys(), key=str):
         raise ValueError("Keys in dictionary to enqueue do not match "
                          "names of Queue.  Dictionary: (%s), Queue: (%s)" %
                          (sorted(vals.keys()), sorted(self._names)))
@@ -512,8 +512,9 @@ class QueueBase(object):
     the given queue. Subsequent `enqueue` and `enqueue_many`
     operations will fail. Subsequent `dequeue` and `dequeue_many`
     operations will continue to succeed if sufficient elements remain
-    in the queue. Subsequent `dequeue` and `dequeue_many` operations
-    that would block will fail immediately.
+    in the queue. Subsequently dequeue and dequeue_many operations
+    that would otherwise block waiting for more elements (if close
+    hadn't been called) will now fail immediately.
 
     If `cancel_pending_enqueues` is `True`, all pending requests will also
     be canceled.
@@ -536,6 +537,25 @@ class QueueBase(object):
       return gen_data_flow_ops._queue_close(
           self._queue_ref, cancel_pending_enqueues=cancel_pending_enqueues,
           name=name)
+
+  def is_closed(self, name=None):
+    """ Returns true if queue is closed.
+
+    This operation returns true if the queue is closed and false if the queue
+    is open.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      True if the queue is closed and false if the queue is open.
+    """
+    if name is None:
+      name = "%s_Is_Closed" % self._name
+    if self._queue_ref.dtype == _dtypes.resource:
+      return gen_data_flow_ops.queue_is_closed_v2(self._queue_ref,name=name)
+    else:
+      return gen_data_flow_ops.queue_is_closed_(self._queue_ref,name=name)
 
   def size(self, name=None):
     """Compute the number of elements in this queue.
@@ -1532,10 +1552,7 @@ class BaseStagingArea(object):
       # The returned values in `tensors` are in the same order as
       # the names in `self._names`.
       return {self._names[i]: t for t, i in zip(tensors, indices)}
-    elif len(tensors) == 1:
-      return tensors[0]
-    else:
-      return tensors
+    return tensors
 
   def _scope_vals(self, vals):
     """Return a list of values to pass to `name_scope()`.

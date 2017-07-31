@@ -22,12 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/allocation_tracker.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/channel_tracker.h"
 #include "tensorflow/compiler/xla/service/compilation_cache.h"
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -58,8 +57,7 @@ class ServiceOptions {
   perftools::gputools::Platform* platform() const;
 
   // Set the number of replicas to use when compiling replicated
-  // programs. The default is -1 meaning that the value is read from
-  // the xla_replicas flag.
+  // programs.
   ServiceOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
@@ -69,7 +67,7 @@ class ServiceOptions {
 
  private:
   perftools::gputools::Platform* platform_ = nullptr;
-  int number_of_replicas_ = -1;
+  int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
 };
 
@@ -126,7 +124,7 @@ class Service : public ServiceInterface {
   // least N * R devices must be available. The devices are assigned based on
   // the device ordinals such that the first R available devices are assigned to
   // the first set of replicas, and the next R devices to the second set of
-  // replicas, etc. Each returned device handles represent the device with the
+  // replicas, etc. Each returned device handle represents the device with the
   // replica id 0.
   tensorflow::Status GetDeviceHandles(
       const GetDeviceHandlesRequest* arg,
@@ -135,6 +133,10 @@ class Service : public ServiceInterface {
   // Asynchronously executes a computation with provided arguments. Invokes
   // the provided computation with the provided global data passed as
   // immutable arguments. Returns a handle to the execution.
+  //
+  // (Note: The corresponding function in xla::Client was removed as part of
+  // b/64116060, in an attempt to simplify our API.  We're keeping this around
+  // for now in case we want to expose this to clients in a different way.)
   tensorflow::Status ExecuteAsync(const ExecuteAsyncRequest* arg,
                                   ExecuteAsyncResponse* result) override;
 
@@ -264,7 +266,7 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-      const ExecutionOptions& execution_options, Backend* backend);
+      const ExecutionOptions& execution_options);
 
   // Builds an Executable for the given parameters. If
   // executable_for_compute_constant is true, then the executable is intended to
@@ -322,22 +324,12 @@ class Service : public ServiceInterface {
       tensorflow::gtl::ArraySlice<DeviceHandle> device_handles,
       tensorflow::gtl::ArraySlice<string> result_tags);
 
-  // Returns an HLO dumper for use in the compiler (it refers to flags
-  // associated with the service).
-  static Compiler::HloDumper MakeHloDumper();
-
   // Convenience function for adding a function to a user computation.
   template <typename RequestT, typename ResponseT>
   tensorflow::Status AddInstruction(
       const RequestT* arg, ResponseT* result,
       const std::function<StatusOr<ComputationDataHandle>(UserComputation*)>&
           adder);
-
-  // If the service is running in the client process
-  // (runs_in_client_process_ is true) then return
-  // tensorflow::Status::OK. Otherwise return an appropriate error
-  // status with the given method name. Used for "InProcess" methods.
-  tensorflow::Status CheckRunsInClientProcess(const string& method_name) const;
 
   // Convenience function which checks whether the given shape_with_layout
   // (presumably passed by the client to set the result layout) is valid for the
@@ -379,9 +371,6 @@ class Service : public ServiceInterface {
 
   // Backend to use when executing ComputeConstant.
   std::unique_ptr<Backend> compute_constant_backend_;
-
-  // Whether the service runs in the same process as the client.
-  bool runs_in_client_process_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Service);
 };

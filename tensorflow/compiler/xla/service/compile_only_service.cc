@@ -62,9 +62,7 @@ CompileOnlyService::CompileOnlyService(
     std::unique_ptr<Backend> compute_constant_backend)
     : Service(options, /*backend=*/nullptr,
               std::move(compute_constant_backend)),
-      compiler_(compiler) {
-  runs_in_client_process_ = true;
-}
+      compiler_(compiler) {}
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
@@ -77,9 +75,11 @@ CompileOnlyService::CompileAheadOfTime(
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
 
+    // TODO(b/63773457): Track DebugOptions in AotCompilationOptions.
+    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+
     // Dump computation proto state if flag is set.
-    legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-    const string& directory_path = flags->xla_dump_computations_to;
+    const string& directory_path = debug_options.xla_dump_computations_to();
     if (!directory_path.empty()) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<SessionModule> session_module,
@@ -97,11 +97,10 @@ CompileOnlyService::CompileAheadOfTime(
         user_computation->ComputeProgramShape(versioned_handle.version));
 
     HloModuleConfig hlo_module_config(*program_shape);
-    hlo_module_config.set_debug_options(
-        legacy_flags::GetDebugOptionsFromFlags());
+    hlo_module_config.set_debug_options(debug_options);
     auto* computation_layout =
         hlo_module_config.mutable_entry_computation_layout();
-    if (flags->xla_hlo_profile) {
+    if (debug_options.xla_hlo_profile()) {
       hlo_module_config.enable_hlo_profiling(true);
     }
     for (int i = 0; i < instance.argument_layouts.size(); ++i) {
@@ -124,8 +123,7 @@ CompileOnlyService::CompileAheadOfTime(
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules),
-                                       MakeHloDumper(), options);
+  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
 }
 
 }  // namespace xla

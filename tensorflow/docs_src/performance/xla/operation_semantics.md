@@ -624,7 +624,7 @@ See also
 [`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
 for a detailed description of the algorithm.
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented on GPU backend yet. </b>
 
 Normalizes an array across batch and spatial dimensions.
 
@@ -681,7 +681,7 @@ spatial dimensions using the formulars above.
 See also
 [`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented yet. </b>
 
 Normalizes an array across batch and spatial dimensions.
 
@@ -718,11 +718,11 @@ The output is a n dimensional, normalized array with the same shape as input
 See also
 [`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
 
-<b> Warning: Not implemented yet </b>
+<b> Warning: Not implemented yet. </b>
 
 Calculates gradients of batch norm.
 
-<b> `BatchNormGrad(x, scale, mean, variance, epsilon, grad_y, feature_index)` </b>
+<b> `BatchNormGrad(operand, scale, mean, variance, grad_output, epsilon, feature_index)` </b>
 
 | Arguments       | Type                    | Semantics                        |
 | --------------  | ----------------------- | -------------------------------- |

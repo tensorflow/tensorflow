@@ -30,6 +30,16 @@ std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
   return ComputeTransitiveFanin(graph, fetch);
 }
 
+std::vector<const NodeDef*> GrapplerItem::EnqueueOpsFanin() const {
+  std::vector<string> enqueue_ops;
+  for (const auto& queue_runner : queue_runners) {
+    for (const string& enqueue_op : queue_runner.enqueue_op_name()) {
+      enqueue_ops.push_back(enqueue_op);
+    }
+  }
+  return ComputeTransitiveFanin(graph, enqueue_ops);
+}
+
 std::vector<const NodeDef*> GrapplerItem::InitOpsFanin() const {
   return ComputeTransitiveFanin(graph, init_ops);
 }

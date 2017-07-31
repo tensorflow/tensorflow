@@ -47,7 +47,12 @@ Status XlaExaDeviceFactory::CreateDevices(const SessionOptions& options,
   return Status::OK();
 }
 
-REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_EXEC, XlaExaDeviceFactory, 110);
+// Set priority to be below the default priority (50), so that Executor is not
+// selected as a high priority device over other default devices.
+// See constructor comments for Registrar in
+// tensorflow/core/common_runtime/device_factory.h for a list of priority for
+// devices.
+REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_EXEC, XlaExaDeviceFactory, 40);
 
 // Kernel registrations
 

@@ -68,8 +68,7 @@ for abalone:
 | Feature        | Description                                               |
 | -------------- | --------------------------------------------------------- |
 | Length         | Length of abalone (in longest direction; in mm)           |
-| Diameter       | Diameter of abalone (measurement perpendicular to length; |
-:                : in mm)                                                    :
+| Diameter       | Diameter of abalone (measurement perpendicular to length; in mm)|
 | Height         | Height of abalone (with its meat inside shell; in mm)     |
 | Whole Weight   | Weight of entire abalone (in grams)                       |
 | Shucked Weight | Weight of abalone meat only (in grams)                    |
@@ -78,8 +77,8 @@ for abalone:
 
 The label to predict is number of rings, as a proxy for abalone age.
 
-![Abalone shell](https://www.tensorflow.org/abalone_shell.jpg) **[“Abalone
-shell”](https://www.flickr.com/photos/thenickster/16641048623/) (by [Nicki Dugan
+![Abalone shell](https://www.tensorflow.org/images/abalone_shell.jpg)
+**[“Abalone shell”](https://www.flickr.com/photos/thenickster/16641048623/) (by [Nicki Dugan
 Pogue](https://www.flickr.com/photos/thenickster/), CC BY-SA 2.0)**
 
 ## Setup
@@ -559,7 +558,7 @@ For a full list of optimizers, and other details, see the
 
 Here's the final, complete `model_fn` for the abalone age predictor. The
 following code configures the neural network; defines loss and the training op;
-and returns a `ModelFnOps` object containing `mode`, `predictions_dict`, `loss`,
+and returns a `EstimatorSpec` object containing `mode`, `predictions_dict`, `loss`,
 and `train_op`:
 
 ```python
@@ -579,7 +578,12 @@ def model_fn(features, labels, mode, params):
 
   # Reshape output layer to 1-dim Tensor to return predictions
   predictions = tf.reshape(output_layer, [-1])
-  predictions_dict = {"ages": predictions}
+
+  # Provide an estimator spec for `ModeKeys.PREDICT`.
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    return tf.estimator.EstimatorSpec(
+        mode=mode,
+        predictions={"ages": predictions})
 
   # Calculate loss using mean squared error
   loss = tf.losses.mean_squared_error(labels, predictions)
@@ -595,9 +599,9 @@ def model_fn(features, labels, mode, params):
   train_op = optimizer.minimize(
       loss=loss, global_step=tf.train.get_global_step())
 
+  # Provide an estimator spec for `ModeKeys.EVAL` and `ModeKeys.TRAIN` modes.
   return tf.estimator.EstimatorSpec(
       mode=mode,
-      predictions=predictions_dict,
       loss=loss,
       train_op=train_op,
       eval_metric_ops=eval_metric_ops)

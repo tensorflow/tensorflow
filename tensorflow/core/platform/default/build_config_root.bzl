@@ -3,10 +3,10 @@
 # be separate to avoid cyclic references.
 
 def tf_cuda_tests_tags():
-  return ["local"]
+  return ["requires-gpu"]
 
 def tf_sycl_tests_tags():
-  return ["local"]
+  return ["requires-gpu"]
 
 def tf_additional_plugin_deps():
   return select({

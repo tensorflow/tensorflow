@@ -43,7 +43,7 @@ MatchBackwardFilter(HloInstruction* conv) {
                       ConvolutionDimensionNumbers());
   // Step 1: match the instruction pattern without considering the paddings and
   // dimension numbers just yet. We may need some generic pattern matcher
-  // similar to external/llvm/include/llvm/IR/PatternMatch.h
+  // similar to third_party/llvm/llvm/include/llvm/IR/PatternMatch.h
   //
   // Backward filter convolution is implemented in XLA as the forward
   // convolution of padded activations and dilated gradients. Padding on

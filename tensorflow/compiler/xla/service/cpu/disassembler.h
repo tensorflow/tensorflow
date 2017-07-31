@@ -19,14 +19,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "external/llvm/include/llvm/MC/MCContext.h"
-#include "external/llvm/include/llvm/MC/MCDisassembler/MCDisassembler.h"
-#include "external/llvm/include/llvm/MC/MCInstPrinter.h"
-#include "external/llvm/include/llvm/MC/MCInstrAnalysis.h"
-#include "external/llvm/include/llvm/MC/MCObjectFileInfo.h"
-#include "external/llvm/include/llvm/MC/MCSubtargetInfo.h"
-#include "external/llvm/include/llvm/Object/ObjectFile.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
+#include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrAnalysis.h"
+#include "llvm/MC/MCObjectFileInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 

@@ -165,7 +165,7 @@ class _LinearEmbeddingLookupArguments(
                             "combiner"])):
   """Represents the information needed from a column for embedding lookup.
 
-  Used to to compute DNN inputs and weighted sum.
+  Used to compute DNN inputs and weighted sum.
   """
   pass
 
@@ -184,7 +184,7 @@ class _DeepEmbeddingLookupArguments(
                             "trainable"])):
   """Represents the information needed from a column for embedding lookup.
 
-  Used to to compute DNN inputs and weighted sum.
+  Used to compute DNN inputs and weighted sum.
   """
   pass
 
@@ -1352,8 +1352,8 @@ def shared_embedding_columns(sparse_id_columns,
                      "element.")
   for sparse_id_column in sparse_id_columns:
     if not isinstance(sparse_id_column, _SparseColumn):
-      raise TypeError("Elements of sparse_id_columns must be _SparseColumn, but"
-                      "{} is not.".format(sparse_id_column))
+      raise TypeError("Elements of sparse_id_columns must be _SparseColumn, "
+                      "but {} is not.".format(sparse_id_column))
 
   if len(sparse_id_columns) == 1:
     return [

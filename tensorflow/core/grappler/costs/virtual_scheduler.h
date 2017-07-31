@@ -206,9 +206,9 @@ class VirtualScheduler {
 
   // Prints out summary of execution (timing, memory usage, etc.)
   Costs Summary() const;
-  // Like the above, but writes detailed stats to stepstats.
-  // If stepstats is nullptr, then just calls and return Summary().
-  Costs Summary(StepStats* stepstats);
+  // Like the above, but writes detailed stats to RunMetadata.
+  // If metadata is nullptr, then just calls and return Summary().
+  Costs Summary(RunMetadata* metadata);
 
  protected:
   // GetDeviceStates and GetNodeStates are currently for testing purpuse only.
@@ -254,9 +254,6 @@ class VirtualScheduler {
 
   // Pool of NodeDefs for SendRecv and Identity ops created.
   std::vector<std::unique_ptr<NodeDef>> additional_nodes_;
-  // Cache of nodes transferred to another device.
-  std::unordered_map<const NodeDef*, std::unordered_map<string, const NodeDef*>>
-      cached_recv_nodes_;
 
   // Stats:
   std::map<string, int> op_counts_;  // Op counts with key with input shape.

@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/stream_assignment_flags.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 
 namespace xla {
 namespace gpu {
@@ -46,10 +46,9 @@ namespace {
 
 // Returns whether the two HLOs can run concurrently, i.e., neither is a
 // transitive consumer of the other.
-bool CanRunConcurrently(
-    const HloInstruction& a, const HloInstruction& b,
-    const HloComputation::ReachabilityMap& transitive_operands) {
-  return !transitive_operands.IsConnected(&a, &b);
+bool CanRunConcurrently(const HloInstruction& a, const HloInstruction& b,
+                        const HloReachabilityMap& reachability) {
+  return !reachability.IsConnected(&a, &b);
 }
 
 // Returns which existing stream to assign to `hlo`, or -1 if a stream is not
@@ -58,7 +57,7 @@ bool CanRunConcurrently(
 // are topologically before `hlo`.
 int ComputeStreamToAssign(
     const HloInstruction& hlo, const StreamAssignment& stream_assignment,
-    const HloComputation::ReachabilityMap& transitive_operands,
+    const HloReachabilityMap& reachability,
     const std::vector<const HloInstruction*>& seen_gemms) {
   if (hlo.opcode() == HloOpcode::kParameter ||
       hlo.opcode() == HloOpcode::kConstant) {
@@ -66,9 +65,10 @@ int ComputeStreamToAssign(
     return -1;
   }
 
-  legacy_flags::StreamAssignmentFlags* flags =
-      legacy_flags::GetStreamAssignmentFlags();
-  if (flags->xla_gpu_disable_multi_streaming) {
+  if (hlo.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_disable_multi_streaming()) {
     return 0;
   }
 
@@ -96,7 +96,7 @@ int ComputeStreamToAssign(
   for (const auto* seen_gemm : seen_gemms) {
     int stream_no = stream_assignment.StreamNumberForHlo(*seen_gemm);
     if (!forbidden_stream_numbers.count(stream_no) &&
-        CanRunConcurrently(*seen_gemm, hlo, transitive_operands)) {
+        CanRunConcurrently(*seen_gemm, hlo, reachability)) {
       forbidden_stream_numbers.insert(stream_no);
     }
   }
@@ -115,12 +115,12 @@ int ComputeStreamToAssign(
 std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
   auto stream_assignment = MakeUnique<StreamAssignment>();
   const HloComputation& computation = *module.entry_computation();
-  std::unique_ptr<HloComputation::ReachabilityMap> transitive_operands =
-      computation.ComputeTransitiveOperands();
+  std::unique_ptr<HloReachabilityMap> reachability =
+      computation.ComputeReachability();
   std::vector<const HloInstruction*> seen_gemms;
   for (const auto* hlo : computation.MakeInstructionPostOrder()) {
     int stream_no = ComputeStreamToAssign(*hlo, *stream_assignment,
-                                          *transitive_operands, seen_gemms);
+                                          *reachability, seen_gemms);
     if (stream_no != -1) {
       stream_assignment->AssignStreamToHlo(hlo, stream_no);
     }

@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -53,8 +53,12 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
     TF_CHECK_OK(
         tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
     Computation computation = client->LoadSnapshot(module).ConsumeValueOrDie();
+    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+    debug_options.set_xla_generate_hlo_graph(".*");
+    debug_options.set_xla_hlo_graph_layout(true);
     ComputationStats stats =
-        client->GetComputationStats(computation).ConsumeValueOrDie();
+        client->GetComputationStats(computation, debug_options)
+            .ConsumeValueOrDie();
     fprintf(stdout, ">>> %s :: %s\n", arg, stats.DebugString().c_str());
   }
 }
@@ -63,11 +67,15 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
 }  // namespace xla
 
 int main(int argc, char** argv) {
+  std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    LOG(ERROR) << "\n" << usage;
+    return 2;
+  }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
-
-  xla::legacy_flags::ServiceFlags* flags = xla::legacy_flags::GetServiceFlags();
-  flags->xla_generate_hlo_graph = ".*";
-  flags->xla_hlo_graph_layout = true;
 
   tensorflow::gtl::ArraySlice<char*> args(argv, argc);
   args.pop_front();  // Pop off the binary name, argv[0]

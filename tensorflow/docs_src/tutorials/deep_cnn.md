@@ -178,7 +178,7 @@ the network architecture to return normalized predictions using
 @{tf.nn.softmax}.
 
 The `inputs()` and `inference()` functions provide all the components
-necessary to perform evaluation on a model. We now shift our focus towards
+necessary to perform an evaluation of a model. We now shift our focus towards
 building operations for training a model.
 
 > **EXERCISE:** The model architecture in `inference()` differs slightly from
@@ -417,7 +417,7 @@ scope indicating that they should be run on the first GPU.
 All variables are pinned to the CPU and accessed via
 @{tf.get_variable}
 in order to share them in a multi-GPU version.
-See how-to on @{$variable_scope$Sharing Variables}.
+See how-to on @{$variables$Sharing Variables}.
 
 ### Launching and Training the Model on Multiple GPU cards
 

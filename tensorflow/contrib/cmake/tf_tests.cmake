@@ -141,11 +141,15 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/debug/lib/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
+    "${tensorflow_source_dir}/tensorflow/python/meta_graph_transform/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/profiler/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/profiler/internal/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/training/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/integration_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/seq2seq/python/kernel_tests/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/stateless/python/kernel_tests/*_test.py"
     # NOTE: tensor_forest tests in tensor_forest/hybrid/... still don't pass.
     "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/*_test.py"
@@ -159,13 +163,26 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/profile_analyzer_cli_test.py"
     # Windows does not have the curses library and uses readline.
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
+    # TFDBG grpc:// mode is not yet available on Windows.
+    "${tensorflow_source_dir}/tensorflow/python/debug/lib/dist_session_debug_grpc_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
     # generally not working
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/__init__.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/benchmark_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/resource_variable_ops_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/profiler/pprof_profiler_test.py"
+    # flaky test
+    "${tensorflow_source_dir}/tensorflow/python/profiler/internal/run_metadata_test.py"
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
     # requires scipy
     "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
+    # flaky tests
+    "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cwise_ops_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/internal/run_metadata_test.py"
+    # Loading resources in contrib doesn't seem to work on Windows
+    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/client/random_forest_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/tensor_forest/python/tensor_forest_test.py"
   )
   if (WIN32)
     set(tf_test_src_py_exclude
@@ -372,6 +389,11 @@ if (tensorflow_BUILD_CC_TESTS)
     ${tf_cc_saved_model_test_srcs}
   )
 
+  file(GLOB tf_core_profiler_test_srcs
+    "${tensorflow_source_dir}/tensorflow/core/profiler/internal/*_test.cc"
+    "${tensorflow_source_dir}/tensorflow/core/profiler/internal/advisor/*_test.cc"
+  )
+
   set(tf_test_lib tf_test_lib)
   add_library(${tf_test_lib} STATIC ${tf_src_testlib})
 
@@ -413,6 +435,17 @@ if (tensorflow_BUILD_CC_TESTS)
   AddTests(
     SOURCES ${tf_cc_saved_model_test_srcs}
     DATA ${tf_cc_saved_model_test_data}
+    OBJECTS ${tf_obj_test}
+    LIBS ${tf_test_libs}
+  )
+
+  file(GLOB_RECURSE tf_core_profiler_test_data
+    "${tensorflow_source_dir}/tensorflow/core/profiler/testdata/*"
+  )
+
+  AddTests(
+    SOURCES ${tf_core_profiler_test_srcs}
+    DATA ${tf_core_profiler_test_data}
     OBJECTS ${tf_obj_test}
     LIBS ${tf_test_libs}
   )

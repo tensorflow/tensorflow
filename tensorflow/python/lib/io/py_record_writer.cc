@@ -55,6 +55,14 @@ bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
   return s.ok();
 }
 
+void PyRecordWriter::Flush(TF_Status* out_status) {
+  Status s = writer_->Flush();
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
+    return;
+  }
+}
+
 void PyRecordWriter::Close(TF_Status* out_status) {
   Status s = writer_->Close();
   if (!s.ok()) {

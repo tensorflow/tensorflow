@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -36,9 +37,17 @@ namespace xla {
 class HloEvaluator : public DfsHloVisitorWithDefault {
  public:
   HloEvaluator();
-  // Evaluates a HLO computation and an array of pointers to literals.
-  // Return the evaluated result as literal if successful.
-  // Precondition: argument literals are corresponds to the input computation's
+  // Evaluates an HLO module and an array of pointers to literals.
+  // Returns the evaluated result as a literal if successful.
+  // Precondition: argument literals correspond to each input computation's
+  // parameters in their post-ordering. See comment below for example.
+  StatusOr<std::unique_ptr<Literal>> Evaluate(
+      const HloModule& module,
+      tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
+
+  // Evaluates an HLO computation and an array of pointers to literals.
+  // Returns the evaluated result as a literal if successful.
+  // Precondition: argument literals correspond to the input computation's
   // parameters in their post-ordering. For e.g., consider the following graph:
   //
   //                *
@@ -51,7 +60,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // The input literals array will have its first literal map to Parameter0 and
   // the second map to Parameter1.
   StatusOr<std::unique_ptr<Literal>> Evaluate(
-      HloComputation* computation,
+      const HloComputation& computation,
       tensorflow::gtl::ArraySlice<const Literal*> arg_literals);
 
   // Evaluates a single HLO instruction and an array of pointers to literals.
@@ -92,7 +101,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     return hlo->Visit(typed_visitors_.at(hlo->shape().element_type()).get());
   }
 
-  // Operations that are type-agnostic.
+  // Operations that are type-agnostic or always return a specific type, such as
+  // HandleIsFinite where boolean is always returned.
   //
   Status HandleParameter(HloInstruction* parameter) override;
 

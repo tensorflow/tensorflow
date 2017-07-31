@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -48,13 +47,6 @@ namespace se = ::perftools::gputools;
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
-    perftools::gputools::Platform* platform) {
-  ServiceOptions default_options;
-  default_options.set_platform(platform);
-  return NewService(default_options);
-}
-
-/* static */ StatusOr<std::unique_ptr<LocalService>> LocalService::NewService(
     const ServiceOptions& options) {
   perftools::gputools::Platform* platform = options.platform();
   if (platform == nullptr) {
@@ -78,9 +70,7 @@ LocalService::LocalService(const ServiceOptions& options,
                            std::unique_ptr<Backend> execute_backend,
                            std::unique_ptr<Backend> compute_constant_backend)
     : Service(options, std::move(execute_backend),
-              std::move(compute_constant_backend)) {
-  runs_in_client_process_ = true;
-}
+              std::move(compute_constant_backend)) {}
 
 namespace {
 // Returns the space required to allocate a shape. If
@@ -160,8 +150,7 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     module_config->set_intra_op_parallelism_threads(
         execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
   }
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (flags->xla_hlo_profile) {
+  if (module_config->debug_options().xla_hlo_profile()) {
     module_config->enable_hlo_profiling(true);
   }
   auto* computation_layout = module_config->mutable_entry_computation_layout();

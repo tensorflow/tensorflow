@@ -168,7 +168,8 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
       than overriding them.
     cluster: `ClusterDef` proto or `ClusterSpec`.
     ps_ops: List of strings representing `Operation` types that need to be
-      placed on `ps` devices.  If `None`, defaults to `["Variable"]`.
+      placed on `ps` devices.  If `None`, defaults to
+      `["Variable", "VariableV2", "VarHandleOp"]`.
     ps_strategy: A callable invoked for every ps `Operation` (i.e. matched by
       `ps_ops`), that takes the `Operation` and returns the ps task index to
       use.  If `None`, defaults to a round-robin strategy across all `ps`

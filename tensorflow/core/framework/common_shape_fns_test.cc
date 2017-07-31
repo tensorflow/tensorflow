@@ -26,19 +26,11 @@ namespace shape_inference {
 
 namespace {
 
-TensorShapeProto S(std::initializer_list<int64> dims) {
-  PartialTensorShape shape(dims);
-  TensorShapeProto ret;
-  shape.AsProto(&ret);
-  return ret;
+PartialTensorShape S(std::initializer_list<int64> dims) {
+  return PartialTensorShape(dims);
 }
 
-TensorShapeProto Unknown() {
-  PartialTensorShape shape;
-  TensorShapeProto ret;
-  shape.AsProto(&ret);
-  return ret;
-}
+PartialTensorShape Unknown() { return PartialTensorShape(); }
 
 OpDef MakeOpDef(int num_inputs, int num_outputs) {
   OpRegistrationData op_reg_data;
@@ -486,6 +478,27 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   // 4x4 input, 2x1 filter, 1x2 stride
   set_op({{1, 1, 1, 2}}, "VALID", "NCHW");
   INFER_OK(op, "[1,1,4,4];[2,1,1,1]", "[d0_0,d1_3,3,2]");
+
+  // Tests for NCHW_VECT_C
+  // 1x1 filter
+  set_op({{1, 1, 1, 1, 1}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,2,2,4];[1,1,4,4]", "[d0_0,1,2,2,4]");
+
+  // 2x2 filter
+  set_op({{1, 1, 1, 1, 1}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,2,2,4];[2,2,4,4]", "[d0_0,1,1,1,4]");
+
+  // 3x3 input, 1x1 filter, 2x2 stride
+  set_op({{1, 1, 2, 2, 1}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,3,3,4];[1,1,4,8]", "[d0_0,2,2,2,4]");
+
+  // 3x3 input, 1x1 filter, 2x1 stride
+  set_op({{1, 1, 2, 1, 1}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,3,3,4];[1,1,4,4]", "[d0_0,1,2,3,4]");
+
+  // 4x4 input, 2x1 filter, 1x2 stride
+  set_op({{1, 1, 1, 2, 1}}, "VALID", "NCHW_VECT_C");
+  INFER_OK(op, "[1,1,4,4,4];[2,1,4,4]", "[d0_0,1,3,2,4]");
 
   // Some tests for "SAME" padding
 

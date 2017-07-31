@@ -400,11 +400,14 @@ def make_parse_example_spec(feature_columns):
   ```
 
   For the above example, make_parse_example_spec would return the dict:
+
+  ```python
   {
-    "feature_a": parsing_ops.VarLenFeature(tf.string),
-    "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
-    "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
+      "feature_a": parsing_ops.VarLenFeature(tf.string),
+      "feature_b": parsing_ops.FixedLenFeature([1], dtype=tf.float32),
+      "feature_c": parsing_ops.FixedLenFeature([1], dtype=tf.float32)
   }
+  ```
 
   Args:
     feature_columns: An iterable containing all feature columns. All items
@@ -594,15 +597,21 @@ def bucketized_column(source_column, boundaries):
   `[1., 2.)`, and `[2., +inf)`.
 
   For example, if the inputs are
-    `boundaries` = [0, 10, 100]
-    input tensor = [[-5, 10000]
-                    [150,   10]
-                    [5,    100]]
+
+  ```python
+  boundaries = [0, 10, 100]
+  input tensor = [[-5, 10000]
+                  [150,   10]
+                  [5,    100]]
+  ```
 
   then the output will be
-    output = [[0, 3]
-              [3, 2]
-              [1, 3]]
+
+  ```python
+  output = [[0, 3]
+            [3, 2]
+            [1, 3]]
+  ```
 
   Example:
 
@@ -621,6 +630,7 @@ def bucketized_column(source_column, boundaries):
 
   `bucketized_column` can also be crossed with another categorical column using
   `crossed_column`:
+
   ```python
   price = numeric_column('price')
   # bucketized_column converts numerical feature to a categorical one.
@@ -745,6 +755,7 @@ def categorical_column_with_vocabulary_file(
   abbreviation. All inputs with values in that file are assigned an ID 0-49,
   corresponding to its line number. All other values are hashed and assigned an
   ID 50-54.
+
   ```python
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=50,
@@ -759,6 +770,7 @@ def categorical_column_with_vocabulary_file(
   other 50 each have a 2-character U.S. state abbreviation. Both a literal 'XX'
   in input, and other values missing from the file, will be assigned ID 0. All
   others are assigned the corresponding line number 1-50.
+
   ```python
   states = categorical_column_with_vocabulary_file(
       key='states', vocabulary_file='/us/states.txt', vocabulary_size=51,
@@ -769,6 +781,7 @@ def categorical_column_with_vocabulary_file(
   ```
 
   And to make an embedding with either:
+
   ```python
   columns = [embedding_column(states, 3),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -799,7 +812,8 @@ def categorical_column_with_vocabulary_file(
   Raises:
     ValueError: `vocabulary_file` is missing.
     ValueError: `vocabulary_size` is missing or < 1.
-    ValueError: `num_oov_buckets` is not a non-negative integer.
+    ValueError: `num_oov_buckets` is a negative integer.
+    ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: `dtype` is neither string nor integer.
   """
   if not vocabulary_file:
@@ -826,27 +840,40 @@ def categorical_column_with_vocabulary_file(
 
 
 def categorical_column_with_vocabulary_list(
-    key, vocabulary_list, dtype=None, default_value=-1):
+    key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
   """A `_CategoricalColumn` with in-memory vocabulary.
-
-  Logic for feature f is:
-  id = vocabulary_list.index_of(f) if f in vocabulary_list else default_value
 
   Use this when your inputs are in string or integer format, and you have an
   in-memory vocabulary mapping each value to an integer ID. By default,
-  out-of-vocabulary values are ignored. Use `default_value` to specify how to
-  include out-of-vocabulary values.
+  out-of-vocabulary values are ignored. Use either (but not both) of
+  `num_oov_buckets` and `default_value` to specify how to include
+  out-of-vocabulary values.
 
   For input dictionary `features`, `features[key]` is either `Tensor` or
   `SparseTensor`. If `Tensor`, missing values can be represented by `-1` for int
   and `''` for string. Note that these values are independent of the
   `default_value` argument.
 
-  In the following examples, each input in `vocabulary_list` is assigned an ID
-  0-4 corresponding to its index (e.g., input 'B' produces output 2). All other
+  Example with `num_oov_buckets`:
+  In the following example, each input in `vocabulary_list` is assigned an ID
+  0-3 corresponding to its index (e.g., input 'B' produces output 2). All other
+  inputs are hashed and assigned an ID 4-5.
+
+  ```python
+  colors = categorical_column_with_vocabulary_list(
+      key='colors', vocabulary_list=('R', 'G', 'B', 'Y'),
+      num_oov_buckets=2)
+  columns = [colors, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction, _, _ = linear_model(features, columns)
+  ```
+
+  Example with `default_value`:
+  In the following example, each input in `vocabulary_list` is assigned an ID
+  0-4 corresponding to its index (e.g., input 'B' produces output 3). All other
   inputs are assigned `default_value` 0.
 
-  Linear model:
+
   ```python
   colors = categorical_column_with_vocabulary_list(
       key='colors', vocabulary_list=('X', 'R', 'G', 'B', 'Y'), default_value=0)
@@ -855,7 +882,8 @@ def categorical_column_with_vocabulary_list(
   linear_prediction, _, _ = linear_model(features, columns)
   ```
 
-  Embedding for a DNN model:
+  And to make an embedding with either:
+
   ```python
   columns = [embedding_column(colors, 3),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -871,13 +899,22 @@ def categorical_column_with_vocabulary_list(
       Must be castable to `dtype`.
     dtype: The type of features. Only string and integer types are supported.
       If `None`, it will be inferred from `vocabulary_list`.
-    default_value: The value to use for values not in `vocabulary_list`.
+    default_value: The integer ID value to return for out-of-vocabulary feature
+      values, defaults to `-1`. This can not be specified with a positive
+      `num_oov_buckets`.
+    num_oov_buckets: Non-negative integer, the number of out-of-vocabulary
+      buckets. All out-of-vocabulary inputs will be assigned IDs in the range
+      `[len(vocabulary_list), len(vocabulary_list)+num_oov_buckets)` based on a
+      hash of the input value. A positive `num_oov_buckets` can not be specified
+      with `default_value`.
 
   Returns:
     A `_CategoricalColumn` with in-memory vocabulary.
 
   Raises:
     ValueError: if `vocabulary_list` is empty, or contains duplicate keys.
+    ValueError: `num_oov_buckets` is a negative integer.
+    ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: if `dtype` is not integer or string.
   """
   if (vocabulary_list is None) or (len(vocabulary_list) < 1):
@@ -889,6 +926,14 @@ def categorical_column_with_vocabulary_list(
         'Duplicate keys in vocabulary_list {}, column_name: {}'.format(
             vocabulary_list, key))
   vocabulary_dtype = dtypes.as_dtype(np.array(vocabulary_list).dtype)
+  if num_oov_buckets:
+    if default_value != -1:
+      raise ValueError(
+          'Can\'t specify both num_oov_buckets and default_value in {}.'.format(
+              key))
+    if num_oov_buckets < 0:
+      raise ValueError('Invalid num_oov_buckets {} in {}.'.format(
+          num_oov_buckets, key))
   _assert_string_or_int(
       vocabulary_dtype, prefix='column_name: {} vocabulary'.format(key))
   if dtype is None:
@@ -901,7 +946,7 @@ def categorical_column_with_vocabulary_list(
 
   return _VocabularyListCategoricalColumn(
       key=key, vocabulary_list=tuple(vocabulary_list), dtype=dtype,
-      default_value=default_value)
+      default_value=default_value, num_oov_buckets=num_oov_buckets)
 
 
 def categorical_column_with_identity(key, num_buckets, default_value=None):
@@ -926,6 +971,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   literal 0 in inputs will result in the same default ID.
 
   Linear model:
+
   ```python
   video_id = categorical_column_with_identity(
       key='video_id', num_buckets=1000000, default_value=0)
@@ -935,6 +981,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   ```
 
   Embedding for a DNN model:
+
   ```python
   columns = [embedding_column(video_id, 9),...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
@@ -976,8 +1023,8 @@ def indicator_column(categorical_column):
   `embedding_column` if the inputs are sparse.
 
   ```python
-  name = indicator_column(categorical_column_with_vocabulary_list('name',
-      ['bob', 'george', 'wanda'])
+  name = indicator_column(categorical_column_with_vocabulary_list(
+      'name', ['bob', 'george', 'wanda'])
   columns = [name, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = input_layer(features, columns)
@@ -1009,6 +1056,8 @@ def weighted_categorical_column(
   Example:
 
   Input `tf.Example` objects:
+
+  ```proto
   [
     features {
       feature {
@@ -1031,6 +1080,7 @@ def weighted_categorical_column(
       }
     }
   ]
+  ```
 
   ```python
   categorical_column = categorical_column_with_hash_bucket(
@@ -1076,22 +1126,41 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
     Hash(cartesian product of features) % `hash_bucket_size`
 
   For example, if the input features are:
-  * SparseTensor referred by first key: shape = [2, 2]
-      [0, 0]: "a"
-      [1, 0]: "b"
-      [1, 1]: "c"
 
-  * SparseTensor referred by second key: shape = [2, 1]
-      [0, 0]: "d"
-      [1, 0]: "e"
+  * SparseTensor referred by first key:
+
+    ```python
+    shape = [2, 2]
+    {
+        [0, 0]: "a"
+        [1, 0]: "b"
+        [1, 1]: "c"
+    }
+    ```
+
+  * SparseTensor referred by second key:
+
+    ```python
+    shape = [2, 1]
+    {
+        [0, 0]: "d"
+        [1, 0]: "e"
+    }
+    ```
 
   then crossed feature will look like:
-      shape = [2, 2]
+
+  ```python
+   shape = [2, 2]
+  {
       [0, 0]: Hash64("d", Hash64("a")) % hash_bucket_size
       [1, 0]: Hash64("e", Hash64("b")) % hash_bucket_size
       [1, 1]: Hash64("e", Hash64("c")) % hash_bucket_size
+  }
+  ```
 
   Here is an example to create a linear model with crosses of string features:
+
   ```python
   keywords_x_doc_terms = crossed_column(['keywords', 'doc_terms'], 50K)
   columns = [keywords_x_doc_terms, ...]
@@ -1100,6 +1169,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   ```
 
   You could also use vocabulary lookup before crossing:
+
   ```python
   keywords = categorical_column_with_vocabulary_file(
       'keywords', '/path/to/vocabulary/file', vocabulary_size=1K)
@@ -1111,6 +1181,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
 
   If an input feature is of numeric type, you can use
   `categorical_column_with_identity`, or `bucketized_column`, as in the example:
+
   ```python
   # vertical_id is an integer categorical feature.
   vertical_id = categorical_column_with_identity('vertical_id', 10K)
@@ -1125,6 +1196,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
 
   To use crossed column in DNN model, you need to add it in an embedding column
   as in this example:
+
   ```python
   vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
   vertical_id_x_price_embedded = embedding_column(vertical_id_x_price, 10)
@@ -1990,7 +2062,7 @@ class _VocabularyFileCategoricalColumn(
 class _VocabularyListCategoricalColumn(
     _CategoricalColumn,
     collections.namedtuple('_VocabularyListCategoricalColumn', (
-        'key', 'vocabulary_list', 'dtype', 'default_value'
+        'key', 'vocabulary_list', 'dtype', 'default_value', 'num_oov_buckets'
     ))):
   """See `categorical_column_with_vocabulary_list`."""
 
@@ -2024,13 +2096,14 @@ class _VocabularyListCategoricalColumn(
     return lookup_ops.index_table_from_tensor(
         vocabulary_list=tuple(self.vocabulary_list),
         default_value=self.default_value,
+        num_oov_buckets=self.num_oov_buckets,
         dtype=key_dtype,
         name='{}_lookup'.format(self.key)).lookup(input_tensor)
 
   @property
   def _num_buckets(self):
     """Returns number of buckets in this sparse feature."""
-    return len(self.vocabulary_list)
+    return len(self.vocabulary_list) + self.num_oov_buckets
 
   def _get_sparse_tensors(
       self, inputs, weight_collections=None, trainable=None):

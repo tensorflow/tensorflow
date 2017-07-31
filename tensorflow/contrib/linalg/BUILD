@@ -60,6 +60,7 @@ cuda_py_tests(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["noasan"],  # times out b/63678675
 )
 
 cuda_py_tests(
@@ -165,12 +166,16 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:common_shapes",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

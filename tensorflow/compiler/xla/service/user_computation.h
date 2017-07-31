@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -87,6 +88,10 @@ class UserComputation {
   // Enqueues a batch norm training instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddBatchNormTrainingInstruction(
       const BatchNormTrainingRequest& batch_norm_training_request);
+
+  // Enqueues a batch norm grad instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddBatchNormGradInstruction(
+      const BatchNormGradRequest& batch_norm_grad_request);
 
   // Enqueues a binary instruction onto this user computation.
   // Returns an error status if the operand indices are out of bounds.
@@ -264,7 +269,7 @@ class UserComputation {
       std::function<HloComputation*(const VersionedComputationHandle& handle)>;
   StatusOr<std::unique_ptr<HloComputation>> BuildHloComputation(
       VersionedComputationHandle::Version version,
-      HloComputationResolver hlo_resolver,
+      HloComputationResolver hlo_resolver, const DebugOptions& debug_options,
       bool include_unreachable_instructions = true) const;
 
   // Return a vector containing the embedded computations used by this

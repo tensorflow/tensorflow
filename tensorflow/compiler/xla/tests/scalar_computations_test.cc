@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -354,7 +353,7 @@ TEST_F(ScalarComputationsTest, DivU32s) {
     ComputationDataHandle divisor =
         builder.Parameter(1, ShapeUtil::MakeShape(U32, {}), "divisor");
     builder.Div(dividend, divisor);
-    TF_ASSIGN_OR_ASSERT_OK(div_computation, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(div_computation, builder.Build());
   }
 
   for (uint32 divisor : vals) {
@@ -362,10 +361,10 @@ TEST_F(ScalarComputationsTest, DivU32s) {
       for (uint32 dividend : vals) {
         auto dividend_literal = Literal::CreateR0<uint32>(dividend);
         auto divisor_literal = Literal::CreateR0<uint32>(divisor);
-        TF_ASSIGN_OR_ASSERT_OK(auto dividend_data,
-                               client_->TransferToServer(*dividend_literal));
-        TF_ASSIGN_OR_ASSERT_OK(auto divisor_data,
-                               client_->TransferToServer(*divisor_literal));
+        TF_ASSERT_OK_AND_ASSIGN(auto dividend_data,
+                                client_->TransferToServer(*dividend_literal));
+        TF_ASSERT_OK_AND_ASSIGN(auto divisor_data,
+                                client_->TransferToServer(*divisor_literal));
         auto actual_literal =
             client_
                 ->ExecuteAndTransfer(div_computation,
@@ -395,7 +394,7 @@ TEST_F(ScalarComputationsTest, RemU32s) {
     ComputationDataHandle divisor =
         builder.Parameter(1, ShapeUtil::MakeShape(U32, {}), "divisor");
     builder.Rem(dividend, divisor);
-    TF_ASSIGN_OR_ASSERT_OK(rem_computation, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(rem_computation, builder.Build());
   }
 
   for (uint32 divisor : vals) {
@@ -403,10 +402,10 @@ TEST_F(ScalarComputationsTest, RemU32s) {
       for (uint32 dividend : vals) {
         auto dividend_literal = Literal::CreateR0<uint32>(dividend);
         auto divisor_literal = Literal::CreateR0<uint32>(divisor);
-        TF_ASSIGN_OR_ASSERT_OK(auto dividend_data,
-                               client_->TransferToServer(*dividend_literal));
-        TF_ASSIGN_OR_ASSERT_OK(auto divisor_data,
-                               client_->TransferToServer(*divisor_literal));
+        TF_ASSERT_OK_AND_ASSIGN(auto dividend_data,
+                                client_->TransferToServer(*dividend_literal));
+        TF_ASSERT_OK_AND_ASSIGN(auto divisor_data,
+                                client_->TransferToServer(*divisor_literal));
         auto actual_literal =
             client_
                 ->ExecuteAndTransfer(rem_computation,
@@ -426,7 +425,7 @@ TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   builder.Rem(x, builder.ConstantR0<int32>(80000));
 
   std::unique_ptr<Literal> literal = Literal::CreateR0<int32>(87919);
-  TF_ASSIGN_OR_ASSERT_OK(auto input_data, client_->TransferToServer(*literal));
+  TF_ASSERT_OK_AND_ASSIGN(auto input_data, client_->TransferToServer(*literal));
   ComputeAndCompareR0<int32>(&builder, 7919, {input_data.get()});
 }
 
@@ -775,20 +774,3 @@ TEST_F(ScalarComputationsTest, SqrtF320) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

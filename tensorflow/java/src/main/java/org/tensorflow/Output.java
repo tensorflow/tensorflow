@@ -15,16 +15,18 @@ limitations under the License.
 
 package org.tensorflow;
 
+import java.util.Objects;
+
 /**
  * A symbolic handle to a tensor produced by an {@link Operation}.
  *
  * <p>An Output is a symbolic handle to a tensor. The value of the Tensor is computed by executing
  * the {@link Operation} in a {@link Session}.
  *
- * <p>By implementing the {@link Input} interface, instances of this class could also be passed
- * directly in input to an operation.
+ * <p>By implementing the {@link Operand} interface, instances of this class also act as operands to
+ * {@link org.tensorflow.op.Op Op} instances.
  */
-public final class Output implements Input {
+public final class Output implements Operand {
 
   /** Handle to the idx-th output of the Operation {@code op}. */
   public Output(Operation op, int idx) {
@@ -55,6 +57,30 @@ public final class Output implements Input {
   @Override
   public Output asOutput() {
     return this;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(operation, index);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o == this) {
+      return true;
+    }
+    if (o instanceof Output) {
+      Output that = (Output) o;
+      return index == that.index && operation.equals(that.operation);
+    }
+    return false;
+  }
+
+  @Override
+  public String toString() {
+    return String.format(
+        "<%s '%s:%d' shape=%s dtype=%s>",
+        operation.type(), operation.name(), index, shape().toString(), dataType());
   }
 
   private final Operation operation;

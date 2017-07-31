@@ -29,6 +29,7 @@ class GatherOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape params_shape = ctx->InputShape(0);
+    const auto params_dims = params_shape.dims();
     const TensorShape indices_shape = ctx->InputShape(1);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVectorOrHigher(params_shape),
@@ -38,20 +39,51 @@ class GatherOp : public XlaOpKernel {
     OP_REQUIRES(ctx, index_type == DT_INT32 || index_type == DT_INT64,
                 errors::InvalidArgument("index must be int32 or int64"));
 
+    // GatherV2 added an axis argument. We support both Gather and GatherV2 in
+    // this kernel by defaulting axis to 0 if there are 2 inputs.
+    int64 axis = 0;
+    if (ctx->num_inputs() == 3) {
+      const TensorShape axis_shape = ctx->InputShape(2);
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(axis_shape),
+                  errors::InvalidArgument("axis must be scalar"));
+      DataType axis_type = input_type(2);
+      OP_REQUIRES(ctx, axis_type == DT_INT32 || axis_type == DT_INT64,
+                  errors::InvalidArgument("axis must be int32 or int64"));
+
+      xla::Literal literal;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInput(2, &literal));
+      int64 axis_input = axis_type == DT_INT32 ? literal.Get<int32>({})
+                                               : literal.Get<int64>({});
+      axis = axis_input < 0 ? axis_input + params_dims : axis_input;
+      OP_REQUIRES(ctx, 0 <= axis && axis < params_dims,
+                  errors::InvalidArgument("Expected axis in the range [",
+                                          -params_dims, ", ", params_dims,
+                                          "), but got ", axis_input));
+    }
+
     // Check that we have enough index space.
     const int64 limit = index_type == DT_INT32
                             ? std::numeric_limits<int32>::max()
                             : std::numeric_limits<int64>::max();
-    OP_REQUIRES(
-        ctx, params_shape.dim_size(0) <= limit,
-        errors::InvalidArgument("params.shape[0] too large for ",
-                                DataTypeString(index_type), " indexing: ",
-                                params_shape.dim_size(0), " > ", limit));
+    OP_REQUIRES(ctx, params_shape.dim_size(axis) <= limit,
+                errors::InvalidArgument(
+                    "params.shape[", axis, "] too large for ",
+                    DataTypeString(index_type),
+                    " indexing: ", params_shape.dim_size(axis), " > ", limit));
 
-    // The result shape is indices.shape + params.shape[1:].
-    TensorShape result_shape = indices_shape;
-    for (int i = 1; i < params_shape.dims(); i++) {
+    // The result shape is params.shape[0:axis] + indices.shape +
+    // params.shape[axis + 1:].
+    TensorShape result_shape;
+    int64 outer_size = 1;
+    int64 inner_size = 1;
+    for (int i = 0; i < axis; i++) {
       result_shape.AddDim(params_shape.dim_size(i));
+      outer_size *= params_shape.dim_size(i);
+    }
+    result_shape.AppendShape(indices_shape);
+    for (int i = axis + 1; i < params_dims; i++) {
+      result_shape.AddDim(params_shape.dim_size(i));
+      inner_size *= params_shape.dim_size(i);
     }
 
     XlaContext& tc = XlaContext::Get(ctx);
@@ -67,10 +99,12 @@ class GatherOp : public XlaOpKernel {
     args.push_back(tc.GetOrCreateRuntimeContextParameter());
     args.push_back(b.ConstantLiteral(
         *xla::Literal::CreateR0<int64>(indices_shape.num_elements())));
+    args.push_back(
+        b.ConstantLiteral(*xla::Literal::CreateR0<int64>(outer_size)));
     args.push_back(b.ConstantLiteral(
-        *xla::Literal::CreateR0<int64>(params_shape.dim_size(0))));
-    args.push_back(b.ConstantLiteral(*xla::Literal::CreateR0<int64>(
-        params_shape.num_elements() / params_shape.dim_size(0))));
+        *xla::Literal::CreateR0<int64>(params_shape.dim_size(axis))));
+    args.push_back(
+        b.ConstantLiteral(*xla::Literal::CreateR0<int64>(inner_size)));
     args.push_back(ctx->Input(0));
     args.push_back(ctx->Input(1));
 
@@ -94,6 +128,10 @@ class GatherOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Gather")
+                    .TypeConstraint("Tparams", DT_FLOAT)
+                    .Device(DEVICE_CPU_XLA_JIT),
+                GatherOp);
+REGISTER_XLA_OP(Name("GatherV2")
                     .TypeConstraint("Tparams", DT_FLOAT)
                     .Device(DEVICE_CPU_XLA_JIT),
                 GatherOp);

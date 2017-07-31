@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -387,7 +386,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c1));
-    TF_ASSIGN_OR_ASSERT_OK(condition, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   Computation condition2;
@@ -397,7 +396,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c2));
-    TF_ASSIGN_OR_ASSERT_OK(condition2, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -413,7 +412,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto new_weights = builder.Add(weights, input);
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_weights});
-    TF_ASSIGN_OR_ASSERT_OK(body, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   Computation body2;
@@ -426,7 +425,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
     auto new_weights = builder.Add(weights, input);
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_weights});
-    TF_ASSIGN_OR_ASSERT_OK(body2, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(body2, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -466,7 +465,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c1));
-    TF_ASSIGN_OR_ASSERT_OK(condition, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   Computation condition2;
@@ -476,7 +475,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c2));
-    TF_ASSIGN_OR_ASSERT_OK(condition2, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -492,7 +491,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
     auto new_weights = builder.Add(weights, input);
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_weights});
-    TF_ASSIGN_OR_ASSERT_OK(body, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -533,7 +532,7 @@ TEST_F(WhileTest, DISABLED_ON_GPU(WhileLoopsWithSharedBodyAndInit)) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c1));
-    TF_ASSIGN_OR_ASSERT_OK(condition, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   Computation condition2;
@@ -543,7 +542,7 @@ TEST_F(WhileTest, DISABLED_ON_GPU(WhileLoopsWithSharedBodyAndInit)) {
     auto prev = builder.Parameter(0, result_shape, "prev");
     auto iteration = builder.GetTupleElement(prev, 0);
     builder.Lt(iteration, builder.ConstantR0<int32>(c2));
-    TF_ASSIGN_OR_ASSERT_OK(condition2, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(condition2, builder.Build());
   }
 
   // Create a computation for the body.
@@ -559,7 +558,7 @@ TEST_F(WhileTest, DISABLED_ON_GPU(WhileLoopsWithSharedBodyAndInit)) {
     auto new_weights = builder.Add(weights, input);
     auto result = builder.Tuple(
         {builder.Add(iteration, builder.ConstantR0<int32>(1)), new_weights});
-    TF_ASSIGN_OR_ASSERT_OK(body, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   // Create a While node with computations for the condition and the body.
@@ -697,11 +696,11 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   };
 
   for (int i = 1; i < 4; ++i) {
-    TF_ASSIGN_OR_ASSERT_OK(auto computation, while_loop(i));
+    TF_ASSERT_OK_AND_ASSIGN(auto computation, while_loop(i));
 
     ExecutionOptions execution_options = execution_options_;
     execution_options.set_seed(65);
-    TF_ASSIGN_OR_ASSERT_OK(
+    TF_ASSERT_OK_AND_ASSIGN(
         auto result,
         client_->ExecuteAndTransfer(computation, {}, &execution_options));
   }
@@ -785,8 +784,10 @@ void BM_WhileLoop(int num_iters) {
   LocalClient* client =
       ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
 
+  const int64 seq_len = 100;
   Shape loop_state_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {10})});
+      {ShapeUtil::MakeShape(S32, {}),
+       ShapeUtil::MakeShape(F32, {seq_len, 1024, 1024})});
 
   // Create while condition computation with 'loop_limit'.
   const int32 loop_limit = 100;
@@ -804,20 +805,27 @@ void BM_WhileLoop(int num_iters) {
   {
     ComputationBuilder builder(client, "body");
     auto prev = builder.Parameter(0, loop_state_shape, "prev");
+    // TupleElement 0
     auto iteration = builder.GetTupleElement(prev, 0);
-    auto weights = builder.GetTupleElement(prev, 1);
-    auto one = builder.ConstantR0<int32>(1);
-    auto next_iteration = builder.Add(iteration, one);
-    auto one_vec = builder.ConstantR1<float>(10, 1.f);
-    auto new_weights = builder.Add(weights, one_vec);
-    auto result = builder.Tuple({next_iteration, new_weights});
+    auto out0 = builder.Add(iteration, builder.ConstantR0<int32>(1));
+    // TupleElement 1
+    auto input = builder.GetTupleElement(prev, 1);
+    // Update.
+    auto one = builder.ConstantR0<float>(1.0);
+    auto update = builder.Broadcast(one, {1, 1024, 1024});
+    // Starts = iteration * 2;
+    auto starts = builder.ConstantR1<int32>({0, 0, 0});
+    // UpdateSlice.
+    auto out1 = builder.DynamicUpdateSlice(input, update, starts);
+    auto result = builder.Tuple({out0, out1});
     body = builder.Build().ConsumeValueOrDie();
   }
 
   // Create a While instruction.
   ComputationBuilder builder(client, "while");
-  auto init = builder.Tuple(
-      {builder.ConstantR0<int32>(0), builder.ConstantR1<float>(10, 0.f)});
+  auto zero = builder.ConstantR0<float>(0.0);
+  auto input = builder.Broadcast(zero, {seq_len, 1024, 1024});
+  auto init = builder.Tuple({builder.ConstantR0<int32>(0), input});
   builder.While(condition, body, init);
   auto computation = builder.Build().ConsumeValueOrDie();
 
@@ -849,21 +857,3 @@ BENCHMARK(BM_WhileLoop);
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  tensorflow::testing::RunBenchmarks();
-  return RUN_ALL_TESTS();
-}

@@ -35,7 +35,7 @@ def sparse_boolean_mask(sparse_tensor, mask, name="sparse_boolean_mask"):
 
   Args:
     sparse_tensor: a `SparseTensor`.
-    mask: a 1D boolean dense`Tensor` whose length is equal to the 0th dimension
+    mask: a 1D boolean dense `Tensor` whose length is equal to the 0th dimension
       of `sparse_tensor`.
     name: optional name for this operation.
   Returns:

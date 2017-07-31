@@ -1,3 +1,10 @@
+tensorflow/contrib/boosted_trees/ops/ensemble_optimizer_ops.cc
+tensorflow/contrib/boosted_trees/ops/model_ops.cc
+tensorflow/contrib/boosted_trees/ops/prediction_ops.cc
+tensorflow/contrib/boosted_trees/ops/quantile_ops.cc
+tensorflow/contrib/boosted_trees/ops/split_handler_ops.cc
+tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc
+tensorflow/contrib/boosted_trees/ops/training_ops.cc
 tensorflow/core/kernels/xent_op.cc
 tensorflow/core/kernels/where_op.cc
 tensorflow/core/kernels/variable_ops.cc
@@ -7,6 +14,7 @@ tensorflow/core/kernels/transpose_functor_cpu.cc
 tensorflow/core/kernels/training_op_helpers.cc
 tensorflow/core/kernels/training_ops.cc
 tensorflow/core/kernels/topk_op.cc
+tensorflow/core/kernels/tile_functor_cpu.cc
 tensorflow/core/kernels/tile_ops.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_1.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_2.cc
@@ -135,8 +143,10 @@ tensorflow/core/kernels/cwise_op_minimum.cc
 tensorflow/core/kernels/cwise_op_maximum.cc
 tensorflow/core/kernels/cwise_op_logical_not.cc
 tensorflow/core/kernels/cwise_op_logical_and.cc
+tensorflow/core/kernels/cwise_op_logical_or.cc
 tensorflow/core/kernels/cwise_op_log.cc
 tensorflow/core/kernels/cwise_op_less.cc
+tensorflow/core/kernels/cwise_op_less_equal.cc
 tensorflow/core/kernels/cwise_op_isfinite.cc
 tensorflow/core/kernels/cwise_op_invert.cc
 tensorflow/core/kernels/cwise_op_greater_equal.cc
@@ -189,6 +199,7 @@ tensorflow/core/kernels/aggregate_ops.cc
 tensorflow/core/kernels/depthwise_conv_op.cc
 tensorflow/core/kernels/dequantize_op.cc
 tensorflow/core/kernels/meta_support.cc
+tensorflow/core/kernels/population_count_op.cc
 tensorflow/core/kernels/quantization_utils.cc
 tensorflow/core/kernels/quantize_down_and_shrink_range.cc
 tensorflow/core/kernels/quantize_op.cc
@@ -208,6 +219,7 @@ tensorflow/core/kernels/requantization_range_op.cc
 tensorflow/core/kernels/requantize.cc
 tensorflow/core/kernels/remote_fused_graph_execute_op.cc
 tensorflow/core/kernels/remote_fused_graph_execute_utils.cc
+tensorflow/core/kernels/batch_matmul_op_real.cc
 tensorflow/core/ops/training_ops.cc
 tensorflow/core/ops/string_ops.cc
 tensorflow/core/ops/state_ops.cc

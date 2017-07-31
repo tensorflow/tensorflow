@@ -85,7 +85,7 @@ class XlaCompiler {
       // Argument is a compile-time constant. No associated runtime parameter.
       kConstant,
 
-      // Argument is a variable resource. Has an associated runtime parameter
+      // Argument is a Variable resource. Has an associated runtime parameter
       // iff `initialized` is true.
       kVariable,
 
@@ -93,19 +93,23 @@ class XlaCompiler {
       // iff `initialized` is true.
       kTensorArray,
 
+      // Argument is a Stack resource. Has an associated runtime parameter
+      // iff `initialized` is true.
+      kStack,
+
       // Argument is a run-time parameter.
       kParameter,
     };
 
     Kind kind = kInvalid;
 
-    // The type of the argument. If the argument is a resource variable, this
+    // The type of the argument. If the argument is a resource, this
     // is the type of the variable's value, not DT_RESOURCE.
     DataType type;
 
-    // The shape of the argument. If the argument is a resource variable, this
-    // is the shape of the variable's value.
-    TensorShape shape;
+    // The shape of the argument. If the argument is a resource, this is the
+    // shape of the resource's value.
+    xla::Shape shape;
 
     // The value of the argument, if it is a compile-time constant. Must be a
     // host-memory tensor.
@@ -142,7 +146,7 @@ class XlaCompiler {
 
     // Type and shape of the tensor to be written back.
     DataType type;
-    TensorShape shape;
+    xla::Shape shape;
 
     // Was the value of the variable modified by the computation?
     // (Always true, unless `return_updated_values_for_all_resources` is true.)
@@ -209,12 +213,6 @@ class XlaCompiler {
     // stored in device memory.
     bool local_executable_has_hybrid_result = false;
 
-    // If 'resolve_compile_time_constants' is true, then outputs of a
-    // computation that are known to be compile-time constants will be returned
-    // as Tensors at compile-time, rather than as run-time outputs of the
-    // computation.
-    bool resolve_compile_time_constants = true;
-
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
     // device is created, and can be used to create metadata objects
@@ -238,6 +236,12 @@ class XlaCompiler {
     // modified by the computation. Used when compiling loop bodies to ensure
     // the input and output signatures match.
     bool return_updated_values_for_all_resources = false;
+
+    // If 'resolve_compile_time_constants' is true, then outputs of a
+    // computation that are known to be compile-time constants will be returned
+    // as Tensors at compile-time, rather than as run-time outputs of the
+    // computation.
+    bool resolve_compile_time_constants = true;
   };
 
   // Compiles a Tensorflow function `fn_name_attrs` into an XLA computation.
@@ -297,7 +301,12 @@ class XlaCompiler {
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   DeviceMgr device_mgr_;
 
-  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+  // To avoid copying the client's function library, use a local function
+  // library and runtime for functions created as part of the functionalize
+  // control flow transformation.
+  std::unique_ptr<FunctionLibraryDefinition> local_flib_def_;
+  std::unique_ptr<FunctionLibraryRuntime> local_flib_runtime_;
+
   std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
 
   struct SignatureHash {

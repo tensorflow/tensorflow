@@ -976,6 +976,11 @@ ComputationDataHandle ComputationBuilder::Cos(
   return UnaryOp(UNOP_COS, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Sin(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_SIN, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);
@@ -1453,13 +1458,33 @@ ComputationDataHandle ComputationBuilder::BatchNormInference(
 
 ComputationDataHandle ComputationBuilder::BatchNormGrad(
     const ComputationDataHandle& operand, const ComputationDataHandle& scale,
-    const ComputationDataHandle& batch_mean,
-    const ComputationDataHandle& batch_var,
+    const ComputationDataHandle& mean, const ComputationDataHandle& var,
     const ComputationDataHandle& grad_output, float epsilon,
     int64 feature_index) {
-  // TODO(b/62843645): Implement BatchNormGrad.
-  NoteError(Unimplemented("BatchNormGrad is not implemented yet."));
-  return ComputationDataHandle();
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+  BatchNormGradRequest request;
+  *request.mutable_operand() = operand;
+  *request.mutable_scale() = scale;
+  *request.mutable_mean() = mean;
+  *request.mutable_variance() = var;
+  *request.mutable_grad_output() = grad_output;
+  request.set_epsilon(epsilon);
+  request.set_feature_index(feature_index);
+
+  OpRequest op_request;
+  *op_request.mutable_batch_norm_grad_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
+
+  OpResponse response;
+
+  VLOG(2) << "making BatchNormGrad request";
+
+  Status s = client_->stub()->Op(&op_request, &response);
+
+  return ParseOpResponse(s, &response);
 }
 
 ComputationDataHandle ComputationBuilder::CrossReplicaSum(

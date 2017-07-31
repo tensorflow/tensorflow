@@ -510,8 +510,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   // other than the id and color.
   const LogicalBuffer* DummyLogicalBuffer() {
     const LogicalBuffer::Id id = buffers_.size();
-    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id,
-                                                    LogicalBuffer::Color(0)));
+    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id));
     return buffers_.back().get();
   }
 

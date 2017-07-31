@@ -309,6 +309,7 @@ const Layout* LayoutConstraints::BufferLayout(
   }
   return nullptr;
 }
+
 const BufferLayoutConstraint* LayoutConstraints::GetBufferLayoutConstraint(
     const LogicalBuffer& buffer) const {
   auto it = buffer_constraints_.find(&buffer);
@@ -323,6 +324,7 @@ const ShapeLayout* LayoutConstraints::OperandLayout(
   }
   return nullptr;
 }
+
 const OperandLayoutConstraint* LayoutConstraints::GetOperandLayoutConstraint(
     const HloInstruction* instruction, int64 operand_no) const {
   auto it = operand_constraints_.find(std::make_pair(instruction, operand_no));
@@ -382,11 +384,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // instruction.
       // TODO(b/31425034): Change infeeds to be more like parameters, with
       // shapes in the ComputationLayout.
-      // TODO(b/62477016): When the infeed does not set padding anymore, the
-      // call to ShapeWithoutPadding can be removed.
-      Shape infeed_shape = ShapeUtil::ShapeWithoutPadding(instruction->shape());
-      TF_RETURN_IF_ERROR(
-          constraints->SetInstructionLayout(infeed_shape, instruction.get()));
+      DCHECK(!LayoutUtil::IsPadded(instruction->shape()));
+      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(instruction->shape(),
+                                                           instruction.get()));
     } else if (instruction->opcode() == HloOpcode::kOutfeed) {
       // Constrain the input to the Outfeed instruction to be the expected
       // layout of the Outfeed.
@@ -611,6 +611,9 @@ Status CheckLayouts(
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
   for (auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     for (auto& instruction : computation->instructions()) {
       // Verify every instruction has a layout and the layout is valid for the
       // shape.
@@ -1346,8 +1349,7 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   if (VLOG_IS_ON(10)) {
     hlo_graph_dumper::DumpGraph(*module->entry_computation(),
                                 "before layout assignment",
-                                /*show_addresses=*/false,
-                                /*show_layouts=*/true);
+                                module->config().debug_options());
   }
 
   // Assign layouts to computations in an order such that a callee computation
@@ -1357,6 +1359,8 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
     if (computation == module->entry_computation()) {
       TF_RETURN_IF_ERROR(RunOnComputation(*entry_computation_layout_,
                                           module->entry_computation()));
+    } else if (computation->IsFusionComputation()) {
+      continue;
     } else {
       ComputationLayout computation_layout(computation->ComputeProgramShape());
       // Setting all embedded computations to the default layout is potentially
@@ -1373,8 +1377,7 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   if (VLOG_IS_ON(10)) {
     hlo_graph_dumper::DumpGraph(*module->entry_computation(),
                                 "after layout assignment",
-                                /*show_addresses=*/false,
-                                /*show_layouts=*/true);
+                                module->config().debug_options());
   }
 
   // All layouts are reset then reassigned by this pass.

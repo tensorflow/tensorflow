@@ -58,7 +58,7 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
   }
 
   int64 elements = ShapeUtil::ElementsIn(shape);
-  result.get()->Resize(elements, std::numeric_limits<float>::quiet_NaN());
+  result->Resize(elements, std::numeric_limits<float>::quiet_NaN());
   std::vector<float>* field = result->mutable_f32s();
   char* data = tensorflow::bit_cast<char*>(field->data());
   uint64 bytes = elements * sizeof(float);

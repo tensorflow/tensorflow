@@ -19,10 +19,10 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/DiagnosticInfo.h"
-#include "external/llvm/include/llvm/IR/DiagnosticPrinter.h"
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/DiagnosticInfo.h"
+#include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -81,7 +82,7 @@ const char* kTargetTriple = "nvptx64-nvidia-cuda";
 
 // The data layout of the emitted module. Copied from computeDataLayout in
 // NVPTXTargetMachine.cpp.
-const char* kDataLayout = "e-i64:64-v16:16-v32:32-n16:32:64";
+const char* kDataLayout = "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 // Any address of a variable residing in global memory or returned by one of the
 // memory allocation routines from the driver or runtime API is always aligned
@@ -119,14 +120,16 @@ string GetLibdeviceDir(const HloModuleConfig& config) {
 
 // Runs optimization passes on the given HLO module.
 tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
-                                     const Compiler::HloDumper& dump_hlo,
                                      const se::DeviceDescription& device_desc) {
   {
-    HloPassPipeline pipeline("optimization", dump_hlo);
+    HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
+    ReducePrecisionInsertion::AddPasses(
+        &pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::BEFORE_OP_FUSION);
     {
-      auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
-          "simplification", dump_hlo);
+      auto& pass =
+          pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
@@ -146,24 +149,37 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   {
-    HloPassFix<HloPassPipeline> fusion("fusion", dump_hlo);
+    HloPassFix<HloPassPipeline> fusion("fusion");
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
-    return fusion.Run(hlo_module).status();
+    TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+
+    HloPassPipeline reduce_pipeline("reduce-precision");
+    ReducePrecisionInsertion::AddPasses(
+        &reduce_pipeline, hlo_module->config().debug_options(),
+        HloReducePrecisionOptions::AFTER_OP_FUSION);
+    StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
+    TF_RETURN_IF_ERROR(reduce_result.status());
+
+    if (reduce_result.ValueOrDie()) {
+      // Do another fusion pass, with the expectation that we may be able to
+      // fuse the new ReducePrecision operations.
+      TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
+    }
   }
+  return tensorflow::Status::OK();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(
-    const Compiler::HloDumper& dump_hlo, HloModule* hlo_module) {
+tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
-  HloPassPipeline pipeline("GPU-ir-emit-prepare", dump_hlo);
+  HloPassPipeline pipeline("GPU-ir-emit-prepare");
   pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
@@ -230,13 +246,12 @@ GpuCompiler::GpuCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
-    std::unique_ptr<HloModule> module, HloDumper dump_hlo,
-    se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), dump_hlo,
-                                       stream_exec->GetDeviceDescription()));
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(dump_hlo, module.get()));
+  TF_RETURN_IF_ERROR(
+      OptimizeHloModule(module.get(), stream_exec->GetDeviceDescription()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -267,7 +282,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(), kMemoryAlignment));
+                          BufferSizeBytesFunction(), [](LogicalBuffer::Color) {
+                            return kMemoryAlignment;
+                          }));
 
   const string dump_debug_json_to =
       module->config().debug_options().xla_dump_debug_json_to();
@@ -344,16 +361,15 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlos,
+    std::vector<std::unique_ptr<HloModule>> modules,
     std::vector<se::StreamExecutor*> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-GpuCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> module,
-    HloDumper dump_hlo, const AotCompilationOptions& options) {
+GpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
+                                const AotCompilationOptions& options) {
   return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
 }
 

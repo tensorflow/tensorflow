@@ -35,9 +35,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
@@ -118,8 +118,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                      IrEmitterContext* ir_emitter_context, bool is_nested);
 
   // A convenient helper for calling HloToIrBindings::GetIrArray.
-  llvm_ir::IrArray GetIrArray(const HloInstruction& inst) {
-    return bindings_.GetIrArray(inst);
+  llvm_ir::IrArray GetIrArray(const HloInstruction& inst,
+                              const ShapeIndex& shape_index = {}) {
+    return bindings_.GetIrArray(inst, shape_index);
   }
   // A convenient helper for calling HloToIrBindings::GetBasePointer.
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {

@@ -20,7 +20,7 @@ REGISTER6(UnaryOp, CPU, "Invert", functor::invert, int8, int16, int32, int64,
           uint8, uint16);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER(UnaryOp, SYCL, "Invert", functor::invert, int8, int16, int32, int64,
+REGISTER6(UnaryOp, SYCL, "Invert", functor::invert, int8, int16, int32, int64,
          uint8, uint16);
 #endif  // TENSORFLOW_USE_SYCL
 

@@ -544,7 +544,9 @@ def convolution(input, filter,  # pylint: disable=redefined-builtin
                          x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
                          q]
   ```
-  where `padded_input` is obtained by zero padding the input using an effective
+  where b is the index into the batch, k is the output channel number, q is the
+  input channel number, and z is the N-D spatial offset within the filter. Here,
+  `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
   @{tf.nn.convolution$comment here}.
@@ -2083,3 +2085,36 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
                               rates=rates,
                               padding=padding,
                               name=name))
+
+def in_top_k(predictions, targets, k, name=None):
+  r"""Says whether the targets are in the top `K` predictions.
+
+  This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+  prediction for the target class is among the top `k` predictions among
+  all predictions for example `i`. Note that the behavior of `InTopK` differs
+  from the `TopK` op in its handling of ties; if multiple classes have the
+  same prediction value and straddle the top-`k` boundary, all of those
+  classes are considered to be in the top `k`.
+
+  More formally, let
+
+    \\(predictions_i\\) be the predictions for all classes for example `i`,
+    \\(targets_i\\) be the target class for example `i`,
+    \\(out_i\\) be the output for example `i`,
+
+  $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+
+  Args:
+    predictions: A `Tensor` of type `float32`.
+      A `batch_size` x `classes` tensor.
+    targets: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      A `batch_size` vector of class ids.
+    k: An `int`. Number of top elements to look at for computing precision.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `bool`. Computed Precision at `k` as a `bool Tensor`.
+  """
+  with ops.name_scope(name, 'in_top_k'):
+    # TODO (yongtang): Need to switch to v2 after 3 weeks.
+    return gen_nn_ops._in_top_kv2(predictions, targets, k, name=name)

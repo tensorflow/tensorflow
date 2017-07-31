@@ -64,8 +64,9 @@ load(
     "//tensorflow:tensorflow.bzl",
     "full_path",
     "if_android",
+    "if_not_android_mips_and_mips64",
     "if_ios",
-    "if_x86",
+    "if_linux_x86_64",
     "if_not_mobile",
     "if_not_windows",
     "tf_copts",
@@ -94,6 +95,8 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
+    "tf_additional_framework_hdrs",
+    "tf_additional_framework_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
@@ -112,6 +115,10 @@ load(
     "tf_lib_proto_parsing_deps",
     "tf_additional_verbs_lib_defines",
     "tf_additional_mpi_lib_defines",
+    "tf_additional_gpu_tracer_srcs",
+    "tf_additional_gpu_tracer_deps",
+    "tf_additional_gpu_tracer_cuda_deps",
+    "tf_pyclif_proto_library",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -121,7 +128,6 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -339,6 +345,8 @@ tf_cuda_library(
     hdrs = [
         "example/feature_util.h",
         "framework/allocator.h",
+        "framework/variant.h",
+        "framework/variant_encode_decode.h",
         "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
@@ -380,6 +388,7 @@ tf_cuda_library(
         "framework/type_traits.h",
         "framework/types.h",
         "public/version.h",
+        "util/activation_mode.h",
         "util/bcast.h",
         "util/cuda_kernel_helper.h",
         "util/device_name_utils.h",
@@ -402,6 +411,7 @@ tf_cuda_library(
         "util/tensor_slice_reader_cache.h",
         "util/tensor_slice_writer.h",
         "util/use_cudnn.h",
+        "util/matmul_autotune.h",
         "util/util.h",
         "util/work_sharder.h",
     ] + select({
@@ -501,7 +511,6 @@ cc_library(
 # Generates library per group of ops.
 tf_gen_op_libs(
     op_lib_names = [
-        "array_ops",
         "bitwise_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
@@ -537,22 +546,21 @@ tf_gen_op_libs(
 
 tf_gen_op_libs(
     op_lib_names = [
+        "array_ops",
+    ],
+    deps = [":protos_all_cc"],
+)
+
+tf_gen_op_libs(
+    op_lib_names = [
         "audio_ops",
     ],
     deps = [":lib"],
 )
 
-cc_library(
-    name = "debug_ops_op_lib",
-    srcs = ["ops/debug_ops.cc"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":framework",
-        "//tensorflow/core/kernels:debug_ops",
-    ],
-    alwayslink = 1,
+tf_gen_op_libs(
+    op_lib_names = ["debug_ops"],
+    deps = ["//tensorflow/core/kernels:debug_ops"],
 )
 
 # And one for all user ops
@@ -820,7 +828,6 @@ cc_library(
         ":test",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"])
     ],
 )
 
@@ -863,8 +870,6 @@ filegroup(
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/tensor_bundle:android_srcs",
-        "common_runtime/gpu/gpu_tracer.cc",
-        "common_runtime/gpu/gpu_tracer.h",
     ] + glob(
         [
             "client/**/*.cc",
@@ -928,9 +933,7 @@ filegroup(
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts() + [
-        "-Os",
-    ],
+    copts = tf_copts() + if_not_android_mips_and_mips64(["-Os"]),
     linkopts = ["-lz"],
     tags = [
         "manual",
@@ -1163,6 +1166,30 @@ cc_library(
 )
 
 # -----------------------------------------------------------------------------
+# Clif-related proto libraries.
+
+tf_pyclif_proto_library(
+    name = "example/example_pyclif",
+    proto_lib = ":protos_all",
+    proto_srcfile = "example/example.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "example/feature_pyclif",
+    proto_lib = ":protos_all",
+    proto_srcfile = "example/feature.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "framework/tensor_pyclif",
+    proto_lib = ":protos_all",
+    proto_srcfile = "framework/tensor.proto",
+    visibility = ["//visibility:public"],
+)
+
+# -----------------------------------------------------------------------------
 # Internal targets
 
 tf_proto_library_cc(
@@ -1217,6 +1244,9 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
         "platform/*.cc",
         "platform/profile_utils/**/*.h",
         "platform/profile_utils/**/*.cc",
+    ] + [
+        "framework/resource_handle.h",
+        "framework/resource_handle.cc",
     ],
     exclude = [
         "**/*test*",
@@ -1230,6 +1260,8 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
         "platform/**/cuda_libdevice_path.cc",
         "platform/**/stream_executor.h",
         "platform/load_library.cc",
+        "platform/variant_coding.cc",
+        "platform/**/variant_cord_coding.cc",
     ],
 )
 
@@ -1246,9 +1278,13 @@ cc_library(
                 "platform/*.cc",
                 "platform/profile_utils/**/*.h",
                 "platform/profile_utils/**/*.cc",
+                "framework/resource_handle.h",
+                "framework/resource_handle.cc",
             ],
             exclude = [
                 "**/*test*",
+                "framework/variant.cc",
+                "platform/variant_coding.cc",
                 "lib/hash/crc32c_accelerate.cc",
                 "lib/gif/**/*",
                 "lib/jpeg/**/*",
@@ -1258,6 +1294,9 @@ cc_library(
                 "platform/**/cuda.h",
                 "platform/**/cuda_libdevice_path.cc",
                 "platform/**/stream_executor.h",
+                "platform/**/gpu_tracer.cc",
+                "platform/variant_coding.cc",
+                "platform/**/variant_cord_coding.cc",
             ],
         ),
     }) + tf_additional_lib_srcs(
@@ -1267,6 +1306,9 @@ cc_library(
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
+            "platform/**/gpu_tracer.cc",
+            "platform/variant_coding.cc",
+            "platform/**/variant_cord_coding.cc",
         ] +
         # Protobuf deps already included through the ":lib_proto_parsing"
         # dependency.
@@ -1341,7 +1383,7 @@ cc_library(
     name = "lib_hash_crc32c_accelerate_internal",
     srcs = ["lib/hash/crc32c_accelerate.cc"],
     # -msse4.2 enables the use of crc32c compiler builtins.
-    copts = tf_copts() + if_x86(["-msse4.2"]),
+    copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
 )
 
 cc_library(
@@ -1386,6 +1428,86 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "android_jpeg_internal",
+    srcs = [
+        "lib/jpeg/jpeg_handle.cc",
+        "lib/jpeg/jpeg_mem.cc",
+        "platform/jpeg.h",
+    ],
+    hdrs = [
+        "lib/core/stringpiece.h",
+        "lib/jpeg/jpeg_handle.h",
+        "lib/jpeg/jpeg_mem.h",
+        "platform/default/dynamic_annotations.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/dynamic_annotations.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/mem.h",
+        "platform/platform.h",
+        "platform/types.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:jpeg",
+    ],
+)
+
+cc_library(
+    name = "android_gif_internal",
+    srcs = [
+        "lib/gif/gif_io.cc",
+        "platform/gif.h",
+    ],
+    hdrs = [
+        "lib/core/stringpiece.h",
+        "lib/gif/gif_io.h",
+        "lib/gtl/cleanup.h",
+        "platform/default/dynamic_annotations.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/dynamic_annotations.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/mem.h",
+        "platform/platform.h",
+        "platform/types.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:gif",
+    ],
+)
+
+cc_library(
+    name = "android_png_internal",
+    srcs = [
+        "lib/png/png_io.cc",
+        "platform/png.h",
+    ],
+    hdrs = [
+        "lib/core/casts.h",
+        "lib/core/stringpiece.h",
+        "lib/png/png_io.h",
+        "platform/cpu_info.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/platform.h",
+        "platform/types.h",
+    ],
+    copts = tf_copts(),
+    linkopts = ["-ldl"],
+    deps = [
+        "@png_archive//:png",
+    ],
+)
+
 proto_text_hdrs_and_srcs = tf_generate_proto_text_sources(
     name = "proto_text_srcs_all",
     srcs = CORE_PROTO_SRCS,
@@ -1423,6 +1545,8 @@ tf_cuda_library(
             "util/**/*.h",
             "util/**/*.cc",
         ] + [
+            "platform/variant_coding.cc",
+            "platform/variant_coding.h",
             "graph/edgeset.h",
             "graph/edgeset.cc",
             "graph/graph.h",
@@ -1437,6 +1561,7 @@ tf_cuda_library(
             "framework/fake_input.*",
             "framework/op_gen_lib.*",
             "framework/reader_base.*",
+            "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
             "util/version_info.cc",
@@ -1450,20 +1575,22 @@ tf_cuda_library(
             "util/memmapped_file_system_writer.h",
             "util/memmapped_file_system_writer.cc",
         ],
-    }),
+    }) + tf_additional_framework_srcs(),
     hdrs = [
+        "framework/variant.h",
         "framework/op_segment.h",
         "framework/rendezvous.h",  # only needed for tests
         "framework/tensor_reference.h",
         "framework/tracking_allocator.h",  # only needed for tests
         "framework/unique_tensor_references.h",
+        "platform/variant_coding.h",
         "util/command_line_flags.h",
         "util/env_var.h",
         "util/equal_graph_def.h",
         "util/presized_cuckoo_map.h",
         "util/tensor_slice_set.h",
         "util/tensor_slice_util.h",
-    ],
+    ] + tf_additional_framework_hdrs(),
     copts = tf_copts(),
     linkopts = select({
         "//tensorflow:freebsd": [],
@@ -1477,6 +1604,7 @@ tf_cuda_library(
         ":proto_text",
         ":protos_all_cc",
         ":version_lib",
+        "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ] + if_mkl(["//third_party/mkl:intel_binary_blob"]),
@@ -1707,7 +1835,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/compiler:__subpackages__",
-        "//tensorflow/tools/tfprof:__subpackages__",
+        "//tensorflow/core/profiler:__subpackages__",
     ],
     deps = [":lib_internal"],
 )
@@ -1758,19 +1886,17 @@ cc_library(
 
 tf_cuda_library(
     name = "gpu_tracer",
-    srcs = [
-        "common_runtime/gpu/gpu_tracer.cc",
-    ],
+    srcs = tf_additional_gpu_tracer_srcs(),
     hdrs = [
-        "common_runtime/gpu/gpu_tracer.h",
+        "platform/gpu_tracer.h",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps(),
+    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_gpu_tracer_cuda_deps(),
     deps = [
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
-    ],
+    ] + tf_additional_gpu_tracer_deps(),
 )
 
 tf_cuda_library(
@@ -1850,7 +1976,7 @@ cc_library(
         "common_runtime/sycl/sycl_device_context.h",
     ]),
     copts = tf_copts(),
-    linkstatic = 1,
+    linkstatic = 0,
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -1862,7 +1988,7 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_sycl//sycl:sycl",
     ],
-    alwayslink = 1,
+    alwayslink = 0,
 )
 
 # -----------------------------------------------------------------------------
@@ -2101,6 +2227,17 @@ cc_test(
 )
 
 tf_cc_test(
+    name = "framework_op_gen_lib_test",
+    size = "small",
+    srcs = ["framework/op_gen_lib_test.cc"],
+    deps = [
+        ":op_gen_lib",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "quantize_training_test",
     srcs = ["graph/quantize_training_test.cc"],
     deps = [
@@ -2128,8 +2265,8 @@ tf_cc_tests(
     srcs = [
         "common_runtime/device_set_test.cc",
         "common_runtime/optimization_registry_test.cc",
-        "common_runtime/resource_variable_read_optimizer_test.cc",
         "common_runtime/pending_counts_test.cc",
+        "common_runtime/resource_variable_read_optimizer_test.cc",
         "common_runtime/session_test.cc",
         "common_runtime/simple_placer_test.cc",
         "example/feature_util_test.cc",
@@ -2150,7 +2287,7 @@ tf_cc_tests(
         "framework/op_kernel_test.cc",
         "framework/op_registration_test.cc",
         "framework/partial_tensor_shape_test.cc",
-        # "framework/rendezvous_test.cc",  # flaky b/30476344
+        "framework/rendezvous_test.cc",
         "framework/resource_mgr_test.cc",
         "framework/resource_op_kernel_test.cc",
         "framework/shape_inference_test.cc",
@@ -2162,6 +2299,7 @@ tf_cc_tests(
         "framework/tracking_allocator_test.cc",
         "framework/types_test.cc",
         "framework/unique_tensor_references_test.cc",
+        "framework/variant_test.cc",
         "graph/algorithm_test.cc",
         "graph/edgeset_test.cc",
         "graph/graph_def_builder_test.cc",
@@ -2183,8 +2321,8 @@ tf_cc_tests(
         "util/presized_cuckoo_map_test.cc",
         "util/reporter_test.cc",
         "util/saved_tensor_slice_util_test.cc",
-        "util/sparse/sparse_tensor_test.cc",
         "util/semver_test.cc",
+        "util/sparse/sparse_tensor_test.cc",
         "util/stat_summarizer_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
@@ -2834,7 +2972,6 @@ cc_test(
     srcs = ["example/example_parser_configuration_test.cc"],
     data = [":example_parser_configuration_testdata"],
     deps = [
-        ":core",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
@@ -2856,7 +2993,7 @@ cc_test(
 tf_cc_test_gpu(
     name = "gpu_tracer_test",
     size = "small",
-    srcs = ["common_runtime/gpu/gpu_tracer_test.cc"],
+    srcs = ["platform/gpu_tracer_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],

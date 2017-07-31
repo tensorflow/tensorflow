@@ -23,8 +23,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
 #include "tensorflow/core/grappler/optimizers/static_schedule.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -46,13 +48,12 @@ const char* kRecomputationTargetNamePrefix = "gradients/";
 // TODO(allenl): Replace this list with a cost model.
 std::unordered_set<string> GetCheapToRecomputeOps() {
   std::unordered_set<string> cheap_ops = {
-      "Add",      "AddN",           "BiasAdd",
-      "Cast",     "Fill",           "FloorDiv",
-      "FloorMod", "FusedBatchNorm", "Mul",
-      "Neg",      "RealDiv",        "Reciprocal",
-      "Relu",     "Reshape",        "Rsqrt",
-      "Sqrt",     "Square",         "SquaredDifference",
-      "Sub",      "Tile",           "Transpose"};
+      "Add",  "AddN",     "BiasAdd",           "Cast",
+      "Fill", "FloorDiv", "FloorMod",          "FusedBatchNorm",
+      "Mul",  "Neg",      "RealDiv",           "Reciprocal",
+      "Relu", "Relu6",    "Reshape",           "Rsqrt",
+      "Sqrt", "Square",   "SquaredDifference", "Sub",
+      "Tile", "Transpose"};
   return cheap_ops;
 }
 
@@ -304,7 +305,11 @@ AddRecomputeControlDependencyNodes(
   for (const NodeDef* target_node : target_nodes) {
     for (const string& target_input_name_raw : target_node->input()) {
       const NodeDef* target_input = node_map.GetNode(target_input_name_raw);
-      if (recomputed_source_nodes.count(target_input) != 0 ||
+      // If this node has already had one of its inputs recomputed during this
+      // rewriting pass, we ignore that recomputed node here (it will not be in
+      // the NodeMap).
+      if (target_input == nullptr ||
+          recomputed_source_nodes.count(target_input) != 0 ||
           components.find(target_node)->second ==
               components.find(target_input)->second) {
         continue;
@@ -411,7 +416,7 @@ void RecomputeSubgraph(
 }
 
 void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
-                                GraphDef* graph) {
+                                GraphDef* graph, const GrapplerItem& item) {
   // The topological numberings and NodeMap will be stale as soon as we start
   // modifying the graph in RecomputeSubgraph. However, RecomputeSubgraph only
   // looks up nodes which were in the original graph, and preserves the graph
@@ -422,6 +427,12 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
   TopologicalSort(graph);
   NodeMap node_map(graph);
   std::vector<RecomputedSubGraph> recomputed_subgraphs;
+  // Do not recompute nodes which are fed, since the recomputed node would not
+  // take on the fed value (i.e. gradients would be incorrect).
+  std::unordered_set<string> feeds;
+  for (const auto& feed : item.feed) {
+    feeds.insert(NodeName(feed.first));
+  }
   if (optimization_level == RewriterConfig::HEURISTICS) {
     // TODO(allenl): Handle ResNet-like architectures better. Right now all of
     // the cheap forward ops get grouped into a single subgraph which must
@@ -430,15 +441,17 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
     std::unordered_set<string> cheap_to_recompute_ops =
         GetCheapToRecomputeOps();
     recomputed_subgraphs = GetOpGroupsToRecompute(
-        graph, node_map, [&cheap_to_recompute_ops](const NodeDef& node) {
-          return !IsTargetOp(node) &&
+        graph, node_map,
+        [&cheap_to_recompute_ops, &feeds](const NodeDef& node) {
+          return !IsTargetOp(node) && feeds.count(node.name()) == 0 &&
                  (cheap_to_recompute_ops.count(node.op()) > 0 ||
                   node.attr().count(kRecomputeHint) > 0);
         });
-  } else {  // optimization_level == RewriterConfig::MANUAL
+  } else if (optimization_level == RewriterConfig::MANUAL) {
     recomputed_subgraphs =
-        GetOpGroupsToRecompute(graph, node_map, [](const NodeDef& node) {
-          return !IsTargetOp(node) && node.attr().count(kRecomputeHint) > 0;
+        GetOpGroupsToRecompute(graph, node_map, [&feeds](const NodeDef& node) {
+          return !IsTargetOp(node) && feeds.count(node.name()) == 0 &&
+                 node.attr().count(kRecomputeHint) > 0;
         });
   }
   if (!recomputed_subgraphs.empty()) {
@@ -477,6 +490,9 @@ std::pair<NodeDef*, NodeDef*> BuildSwapPair(NodeDef* node, int input_to_swap,
   (*swap_in_node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
   (*node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
 
+  const DataType input_type = node->attr().at("T").type();
+  (*swap_in_node->mutable_attr())["T"].set_type(input_type);
+  (*swap_out_node->mutable_attr())["T"].set_type(input_type);
   return std::make_pair(swap_out_node, swap_in_node);
 }
 
@@ -552,8 +568,8 @@ static const NodeDef* FindSwapTrigger(
     // Don't jump over frames, since adding a control dependency from one frame
     // to the next isn't supported. Don't go through branches, since we don't
     // know whether they'll be executed or not.
-    if (input_node->op() == "NextIteration" || input_node->op() == "Switch" ||
-        input_node->op() == "Merge") {
+    if (IsNextIteration(*input_node) || IsSwitch(*input_node) ||
+        IsMerge(*input_node)) {
       continue;
     }
     auto it2 = execution_times.find(input_node);
@@ -582,7 +598,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
 
-  RecomputationRewritingPass(optimization_level_, optimized_graph);
+  RecomputationRewritingPass(optimization_level_, optimized_graph, item);
 
   // Figure out what needs to be swapped;
   std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;

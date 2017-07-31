@@ -29,7 +29,7 @@ namespace internal {
 //
 // The representation is an open-addressed hash table.  Conceptually,
 // the representation is a flat array of entries.  However we
-// structure it as an array of of buckets where each bucket holds
+// structure it as an array of buckets where each bucket holds
 // kWidth entries along with metadata for the kWidth entries.  The
 // metadata marker is
 //

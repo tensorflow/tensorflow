@@ -140,7 +140,7 @@ When training models with large output vocabularies, i.e., when
 tensors. Instead, it is better to return smaller output tensors, which will
 later be projected onto a large output tensor using `output_projection`.
 This allows to use our seq2seq models with a sampled softmax loss, as described
-in [Jean et. al., 2014](http://arxiv.org/abs/1412.2007)
+in [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
 ([pdf](http://arxiv.org/pdf/1412.2007.pdf)).
 
 In addition to `basic_rnn_seq2seq` and `embedding_rnn_seq2seq` there are a few

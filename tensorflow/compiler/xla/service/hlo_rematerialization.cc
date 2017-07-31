@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -82,7 +83,7 @@ bool IsRematerializable(const HloInstruction* instruction) {
 // before arbitrary elements.
 class InstructionList {
  public:
-  explicit InstructionList(const std::vector<const HloInstruction*> order) {
+  explicit InstructionList(const std::vector<const HloInstruction*>& order) {
     int64 position = 0;
     for (const HloInstruction* inst : order) {
       instructions_.push_back(const_cast<HloInstruction*>(inst));
@@ -1201,6 +1202,9 @@ StatusOr<bool> HloRematerialization::Run(
   // After DCE, the module sequence may include instructions which no longer
   // exist.
   for (const auto& computation : module->computations()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     if (sequence->at(computation.get()).size() !=
         computation->instruction_count()) {
       // A size mismatch between the computation instruction count and the size

@@ -352,8 +352,8 @@ class LSTMBlockCell(rnn_cell_impl.RNNCell):
         `_lstm_block_cell()` for details.
       use_peephole: Whether to use peephole connections or not.
 
-      When restoring from CudnnLSTM-trained checkpoints, must set the following:
-      forget_bias, clip_cell, use_peephole  = 0, False, False
+      When restoring from CudnnLSTM-trained checkpoints, must use
+      CudnnCompatibleLSTMBlockCell instead.
     """
     self._num_units = num_units
     self._forget_bias = forget_bias

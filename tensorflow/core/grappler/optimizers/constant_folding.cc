@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -57,7 +59,7 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
 class DeviceSimple : public DeviceBase {
  public:
   DeviceSimple() : DeviceBase(Env::Default()) {
-    eigen_worker_threads_.num_threads = 1;
+    eigen_worker_threads_.num_threads = port::NumSchedulableCPUs();
     eigen_worker_threads_.workers = new thread::ThreadPool(
         Env::Default(), "constant_folding", eigen_worker_threads_.num_threads);
     eigen_threadpool_wrapper_.reset(
@@ -99,9 +101,13 @@ string AsControlDependency(const NodeDef& node) {
 }  // namespace
 
 ConstantFolding::ConstantFolding() {
+  resource_mgr_.reset(new ResourceMgr());
+
   ops_to_preserve_ = std::regex(
-      "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|Enter|Exit|"
-      "NextIteration");
+      "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|"
+      "Enter|RefEnter|Exit|RefExit|NextIteration|RefNextIteration|"
+      ".*Quantized.*",
+      std::regex_constants::optimize);
 }
 
 string ConstantFolding::AddControlDependency(const string& input_name) {
@@ -135,6 +141,8 @@ string ConstantFolding::AddControlDependency(const string& input_name) {
     NodeDef* added_node = graph_.add_node();
     added_node->set_name(ctrl_dep_name);
     added_node->set_op("Identity");
+    added_node->set_device(node->device());
+
     (*added_node->mutable_attr())["T"].set_type(output_type);
     *added_node->add_input() = input_name;
     node_map_->AddNode(added_node->name(), added_node);
@@ -143,9 +151,8 @@ string ConstantFolding::AddControlDependency(const string& input_name) {
   }
 }
 
-Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
-  GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically());
+Status ConstantFolding::MaterializeShapes(const GrapplerItem& item,
+                                          const GraphProperties& properties) {
   // We may add some nodes to the graph to encode control dependencies: there is
   // no need to process these, so only iterate over the nodes of the input
   // graph.
@@ -236,13 +243,18 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
 }
 
 bool ConstantFolding::IsFoldable(const NodeDef& node) const {
+  // Folding not applicable to ops with no inputs.
+  if (node.input().empty()) {
+    return false;
+  }
+
   // Skips nodes that must be preserved, and op_types that don't benefit from
   // folding
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-  std::cmatch match;
-  if (std::regex_match(node.op().c_str(), match, ops_to_preserve_)) {
+  if (std::regex_match(node.op().c_str(), ops_to_preserve_,
+                       std::regex_constants::match_any)) {
     return false;
   }
 
@@ -257,22 +269,6 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   }
 
   if (op_def->output_arg_size() == 0) {
-    return false;
-  }
-
-  DeviceTypeVector device_types;
-  status = SupportedDeviceTypesForNode({DeviceType(DEVICE_CPU)}, node,
-                                       &device_types);
-  if (!status.ok()) {
-    return false;
-  }
-  // Only fold ops with a CPU implementation available.
-  if (device_types[0] != DeviceType(DEVICE_CPU)) {
-    return false;
-  }
-
-  // Folding not applicable to ops with no inputs.
-  if (node.input().empty()) {
     return false;
   }
 
@@ -296,6 +292,9 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
       continue;
     }
     const NodeDef* input_node = node_map_->GetNode(input);
+    if (!input_node) {
+      return false;
+    }
     bool is_const = IsConstant(*input_node);
     if (!is_const && !is_merge) {
       return false;
@@ -349,6 +348,7 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op_kernel.get();
+  params.resource_manager = resource_mgr_.get();
 
   gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
   const int num_outputs = op_kernel->num_outputs();
@@ -364,31 +364,42 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
   for (int i = 0; i < num_outputs; i++) {
     output->push_back(op_context.release_output(i));
   }
-  return Status::OK();
+  return op_context.status();
 }
 
 Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                                             std::vector<NodeDef>* outputs) {
   TensorVector inputs;
+  auto inputs_cleanup = gtl::MakeCleanup([&inputs] {
+    for (const auto& input : inputs) {
+      delete input.tensor;
+    }
+  });
+
   for (const auto& input : node.input()) {
-    if (IsControlInput(input)) {
+    int position = 0;
+    ParseNodeName(input, &position);
+    if (position < 0) {
+      // Control dependency
       break;
     }
-    TensorVector output;
-    TF_RETURN_IF_ERROR(
-        EvaluateNode(*node_map_->GetNode(input), TensorVector(), &output));
-    inputs.push_back(output[0]);
+    const NodeDef* input_node = node_map_->GetNode(input);
+    if (!IsConstant(*input_node)) {
+      return Status(error::INVALID_ARGUMENT,
+                    strings::StrCat("Can't fold ", node.name(), ", its ", input,
+                                    " isn't constant"));
+    }
+    Tensor* value = new Tensor(input_node->attr().at("dtype").type());
+    CHECK(value->FromProto(input_node->attr().at("value").tensor()));
+    inputs.emplace_back(value);
   }
 
   TensorVector output_tensors;
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
-  for (const auto& input : inputs) {
-    delete input.tensor;
-  }
   if (output_tensors.empty()) {
     Status(error::INVALID_ARGUMENT, "Expected at least one output.");
   }
-  for (int i = 0; i < output_tensors.size(); i++) {
+  for (size_t i = 0; i < output_tensors.size(); i++) {
     string node_name = AddPrefixToNodeName(node.name(), kConstantFoldingConst);
     if (output_tensors.size() > 1) {
       node_name = strings::StrCat(node_name, "-", i);
@@ -441,10 +452,23 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
         // Try the next input
         continue;
       }
+
+      string const_out_name =
+          AddPrefixToNodeName(node.name(), kConstantFoldingConst);
+      string const_index_name = AddPrefixToNodeName(
+          strings::StrCat(node.name(), "_index"), kConstantFoldingConst);
+      if (node_map_->GetNode(const_out_name) ||
+          node_map_->GetNode(const_index_name)) {
+        // Intended name already exists.
+        return errors::AlreadyExists(
+            strings::StrCat(const_out_name, " or ", const_index_name,
+                            "already present in the graph"));
+      }
+
       NodeDef* const_out = output->add_node();
       *const_out = *input_node;
-      const_out->set_name(
-          AddPrefixToNodeName(node.name(), kConstantFoldingConst));
+      const_out->set_name(const_out_name);
+      const_out->set_device(node.device());
       *const_out->add_input() = AsControlDependency(node);
       node_map_->AddNode(const_out->name(), const_out);
 
@@ -455,8 +479,8 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       (*const_index->mutable_attr())["dtype"].set_type(DT_INT32);
       index.AsProtoTensorContent(
           (*const_index->mutable_attr())["value"].mutable_tensor());
-      const_index->set_name(AddPrefixToNodeName(
-          strings::StrCat(node.name(), "_index"), kConstantFoldingConst));
+      const_index->set_name(const_index_name);
+      const_index->set_device(node.device());
       *const_index->add_input() = AsControlDependency(node);
       node_map_->AddNode(const_index->name(), const_index);
 
@@ -493,8 +517,15 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       // below to preserve the overall behavior of the graph wrt dead edges.
       continue;
     }
+
+    if (node_map_->GetNode(const_node.name())) {
+      // Intended name already exists.
+      return errors::AlreadyExists(
+          strings::StrCat(const_node.name(), "already present in the graph"));
+    }
     NodeDef* added_node = output->add_node();
     *added_node = const_node;
+    added_node->set_device(node.device());
     node_map_->AddNode(added_node->name(), added_node);
 
     for (const auto& input : node.input()) {
@@ -546,21 +577,30 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
 }
 
 Status ConstantFolding::FoldGraph(GraphDef* output) {
-  std::set<string> processed_nodes;
-  while (1) {
-    int previous_processed = processed_nodes.size();
-    for (const auto& node : graph_.node()) {
-      if (IsFoldable(node) &&
-          processed_nodes.find(node.name()) == processed_nodes.end()) {
-        TF_RETURN_IF_ERROR(FoldNode(node, output));
-        processed_nodes.insert(node.name());
-      }
+  std::unordered_set<string> processed_nodes;
+  std::deque<const NodeDef*> queue;
+  for (const auto& node : graph_.node()) {
+    if (IsFoldable(node)) {
+      queue.push_back(&node);
     }
-    int current_processed = processed_nodes.size();
-    LOG(INFO) << "Previous number of processed nodes: " << previous_processed
-              << "; Current number of processed nodes: " << current_processed;
-    if (current_processed == previous_processed) {
-      break;
+  }
+  while (!queue.empty()) {
+    const NodeDef* node = queue.front();
+    queue.pop_front();
+    if (processed_nodes.count(node->name())) {
+      continue;
+    }
+    Status s = FoldNode(*node, output);
+    processed_nodes.insert(node->name());
+    if (!s.ok()) {
+      VLOG(1) << "Failed to fold node " << node->name() << ": " << s;
+    } else {
+      auto outputs = node_map_->GetOutputs(node->name());
+      for (auto& output : outputs) {
+        if (IsFoldable(*output)) {
+          queue.push_back(output);
+        }
+      }
     }
   }
 
@@ -597,7 +637,65 @@ bool ConstantFolding::IsSimplifiableReduction(const NodeDef& node) const {
   return false;
 }
 
-Status ConstantFolding::SimplifyGraph(GraphDef* output) {
+bool ConstantFolding::IsSimplifiableReshape(
+    const NodeDef& node, const GraphProperties& properties) const {
+  if (!IsReshape(node)) {
+    return false;
+  }
+  CHECK_LE(2, node.input_size());
+  const NodeDef* new_shape = node_map_->GetNode(node.input(1));
+  if (!IsConstant(*new_shape)) {
+    return false;
+  }
+  TensorVector outputs;
+  auto outputs_cleanup = gtl::MakeCleanup([&outputs] {
+    for (const auto& output : outputs) {
+      delete output.tensor;
+    }
+  });
+
+  Status s = EvaluateNode(*new_shape, TensorVector(), &outputs);
+  if (!s.ok()) {
+    return false;
+  }
+  CHECK_EQ(1, outputs.size());
+
+  const std::vector<OpInfo::TensorProperties>& props =
+      properties.GetInputProperties(node.name());
+  if (props.empty()) {
+    return false;
+  }
+  const OpInfo::TensorProperties& prop = props[0];
+  if (prop.dtype() == DT_INVALID) {
+    return false;
+  }
+  const PartialTensorShape shape(prop.shape());
+  if (!shape.IsFullyDefined()) {
+    return false;
+  }
+
+  PartialTensorShape new_dims;
+  if (outputs[0]->dtype() == DT_INT32) {
+    std::vector<int32> shp;
+    for (int i = 0; i < outputs[0]->NumElements(); ++i) {
+      int32 dim = outputs[0]->flat<int32>()(i);
+      shp.push_back(dim);
+    }
+    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+  } else {
+    std::vector<int64> shp;
+    for (int i = 0; i < outputs[0]->NumElements(); ++i) {
+      int64 dim = outputs[0]->flat<int64>()(i);
+      shp.push_back(dim);
+    }
+    TF_CHECK_OK(TensorShapeUtils::MakeShape(shp, &new_dims));
+  }
+
+  return shape.IsCompatibleWith(new_dims);
+}
+
+Status ConstantFolding::SimplifyGraph(GraphDef* output,
+                                      const GraphProperties& properties) {
   for (auto& node : *output->mutable_node()) {
     if (IsSimplifiableReduction(node)) {
       // Replace the reduction node with an identity node, that can be further
@@ -618,9 +716,23 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output) {
       }
       node.mutable_input()->RemoveLast();
       for (const auto& input : reductions_indices->input()) {
-        if (IsControlInput(input)) {
-          *node.add_input() = input;
-        }
+        DCHECK(IsControlInput(input));
+        *node.add_input() = input;
+      }
+    }
+    if (IsSimplifiableReshape(node, properties)) {
+      const NodeDef* new_shape = node_map_->GetNode(node.input(1));
+      DataType output_type = node.attr().at("T").type();
+      node.set_op("Identity");
+      node.clear_attr();
+      (*node.mutable_attr())["T"].set_type(output_type);
+      if (node.input_size() > 2) {
+        node.mutable_input()->SwapElements(1, node.input_size() - 1);
+      }
+      node.mutable_input()->RemoveLast();
+      for (const auto& input : new_shape->input()) {
+        DCHECK(IsControlInput(input));
+        *node.add_input() = input;
       }
     }
   }
@@ -630,7 +742,6 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output) {
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
   graph_ = item.graph;
-  LOG(INFO) << "Initial graph size: " << item.graph.node_size();
   node_map_.reset(new NodeMap(&graph_));
   for (const auto& node : item.fetch) {
     nodes_to_preserve_.insert(NodeName(node));
@@ -640,10 +751,17 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   device_.reset(new DeviceSimple());
   *output = GraphDef();
-  TF_RETURN_IF_ERROR(MaterializeShapes(item));
+
+  GraphProperties properties(item);
+  Status s = properties.InferStatically();
+  if (!s.ok()) {
+    VLOG(1) << "Failed to infer graph shapes: " << s;
+  } else {
+    TF_RETURN_IF_ERROR(MaterializeShapes(item, properties));
+  }
+
   TF_RETURN_IF_ERROR(FoldGraph(output));
-  TF_RETURN_IF_ERROR(SimplifyGraph(output));
-  LOG(INFO) << "Optimized graph size: " << output->node_size();
+  TF_RETURN_IF_ERROR(SimplifyGraph(output, properties));
 
   *output->mutable_library() = item.graph.library();
   *output->mutable_versions() = item.graph.versions();

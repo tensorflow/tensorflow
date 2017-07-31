@@ -23,9 +23,12 @@ import shutil
 import sys
 import tempfile
 
+import six
+
 # Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
+from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import profile_analyzer_cli
 from tensorflow.python.debug.cli import stepper_cli
@@ -181,6 +184,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         usage=argparse.SUPPRESS)
     self._argparsers["run_info"] = ap
 
+    self._argparsers["print_feed"] = command_parser.get_print_tensor_argparser(
+        "Print the value of a feed in feed_dict.")
+
   def add_tensor_filter(self, filter_name, tensor_filter):
     """Add a tensor filter.
 
@@ -218,8 +224,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       An instance of `OnRunStartResponse`.
     """
     self._is_run_start = True
-    self._update_run_calls_state(request.run_call_count, request.fetches,
-                                 request.feed_dict)
+    self._update_run_calls_state(
+        request.run_call_count, request.fetches, request.feed_dict,
+        is_callable_runner=request.is_callable_runner)
 
     if self._active_tensor_filter:
       # If we are running till a filter passes, we just need to keep running
@@ -439,6 +446,44 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     return output
 
+  def _print_feed_handler(self, args, screen_info=None):
+    np_printoptions = cli_shared.numpy_printoptions_from_screen_info(
+        screen_info)
+
+    if not self._feed_dict:
+      return cli_shared.error(
+          "The feed_dict of the current run is None or empty.")
+
+    parsed = self._argparsers["print_feed"].parse_args(args)
+    tensor_name, tensor_slicing = (
+        command_parser.parse_tensor_name_with_slicing(parsed.tensor_name))
+
+    feed_key = None
+    feed_value = None
+    for key in self._feed_dict:
+      if isinstance(key, six.string_types):
+        if key == tensor_name:
+          feed_key = key
+      elif key.name == tensor_name:
+        feed_key = key.name
+      if feed_key is not None:
+        feed_value = self._feed_dict[key]
+        break
+
+    if feed_key is None:
+      return cli_shared.error(
+          "The feed_dict of the current run does not contain the key %s" %
+          tensor_name)
+    else:
+      return cli_shared.format_tensor(
+          feed_value,
+          feed_key + " (feed)",
+          np_printoptions,
+          print_all=parsed.print_all,
+          tensor_slicing=tensor_slicing,
+          highlight_options=cli_shared.parse_ranges_highlight(parsed.ranges),
+          include_numeric_summary=parsed.numeric_summary)
+
   def _run_handler(self, args, screen_info=None):
     """Command handler for "run" command during on-run-start."""
 
@@ -503,11 +548,21 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._run_info_handler,
         self._argparsers["run_info"].format_help(),
         prefix_aliases=["ri"])
+    curses_cli.register_command_handler(
+        "print_feed",
+        self._print_feed_handler,
+        self._argparsers["print_feed"].format_help(),
+        prefix_aliases=["pf"])
 
     if self._tensor_filters:
       # Register tab completion for the filter names.
       curses_cli.register_tab_comp_context(["run", "r"],
                                            list(self._tensor_filters.keys()))
+    if self._feed_dict:
+      # Register tab completion for feed_dict keys.
+      feed_keys = [(key if isinstance(key, six.string_types) else key.name)
+                   for key in self._feed_dict.keys()]
+      curses_cli.register_tab_comp_context(["print_feed", "pf"], feed_keys)
 
   def _on_run_start_step_handler(self, args, screen_info=None):
     """Command handler for "invoke_stepper" command during on-run-start."""
@@ -532,7 +587,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     return ["file://" + self._dump_root]
 
-  def _update_run_calls_state(self, run_call_count, fetches, feed_dict):
+  def _update_run_calls_state(self,
+                              run_call_count,
+                              fetches,
+                              feed_dict,
+                              is_callable_runner=False):
     """Update the internal state with regard to run() call history.
 
     Args:
@@ -542,18 +601,25 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         call.
       feed_dict: None of a dict. This is the feed_dict argument to the run()
         call.
+      is_callable_runner: (bool) whether a runner returned by
+        Session.make_callable is being run.
     """
 
     self._run_call_count = run_call_count
-    self._run_description = cli_shared.get_run_short_description(run_call_count,
-                                                                 fetches,
-                                                                 feed_dict)
+    self._feed_dict = feed_dict
+    self._run_description = cli_shared.get_run_short_description(
+        run_call_count,
+        fetches,
+        feed_dict,
+        is_callable_runner=is_callable_runner)
     self._run_through_times -= 1
 
-    self._run_info = cli_shared.get_run_start_intro(run_call_count,
-                                                    fetches,
-                                                    feed_dict,
-                                                    self._tensor_filters)
+    self._run_info = cli_shared.get_run_start_intro(
+        run_call_count,
+        fetches,
+        feed_dict,
+        self._tensor_filters,
+        is_callable_runner=is_callable_runner)
 
   def invoke_node_stepper(self,
                           node_stepper,

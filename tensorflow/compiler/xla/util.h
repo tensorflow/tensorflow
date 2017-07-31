@@ -195,14 +195,22 @@ bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
 // 2. permutation.size() == input.size().
 template <template <typename...> class C, typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
-                       C<T> input_) {
-  tensorflow::gtl::ArraySlice<T> input(input_);
-  CHECK(IsPermutation(permutation, input.size()));
-  std::vector<T> output(input.size());
+                       C<T> input) {
+  tensorflow::gtl::ArraySlice<T> data(input);
+  CHECK(IsPermutation(permutation, data.size()));
+  std::vector<T> output(data.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
-    output[permutation[i]] = input[i];
+    output[permutation[i]] = data[i];
   }
   return output;
+}
+
+// Override of the above that works around compile failures with gcc 7.1.1.
+// For details see https://github.com/tensorflow/tensorflow/issues/10843
+template <typename T>
+std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
+                       const std::vector<T>& input) {
+  return Permute<std::vector, T>(permutation, input);
 }
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
@@ -336,18 +344,19 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 
 }  // namespace xla
 
-#define XLA_LOG_LINES(SEV, STRING) LogLines(SEV, STRING, __FILE__, __LINE__)
+#define XLA_LOG_LINES(SEV, STRING) \
+  ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
 
-#define XLA_VLOG_LINES(LEVEL, STRING)                               \
-  do {                                                              \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(tensorflow::INFO, STRING); \
+#define XLA_VLOG_LINES(LEVEL, STRING)                                 \
+  do {                                                                \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tensorflow::INFO, STRING); \
   } while (false);
 
 // Utility macro that performs the equivalent of what one would expect
 // LOG_LINES(FATAL, X) to do but can be used at the end of a function that
 // returns a value without getting a compiler warning that no value is returned.
-#define XLA_FATAL_LOG(X)               \
-  XLA_LOG_LINES(tensorflow::ERROR, X); \
+#define XLA_FATAL_LOG(X)                 \
+  XLA_LOG_LINES(::tensorflow::ERROR, X); \
   LOG(FATAL) << "Aborting in " << __FUNCTION__ << " due to previous errors.";
 
 #endif  // TENSORFLOW_COMPILER_XLA_UTIL_H_

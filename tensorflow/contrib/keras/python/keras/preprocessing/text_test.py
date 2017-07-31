@@ -30,8 +30,8 @@ class TestText(test.TestCase):
     text = 'The cat sat on the mat.'
     encoded = keras.preprocessing.text.one_hot(text, 5)
     self.assertEqual(len(encoded), 6)
-    assert np.max(encoded) <= 4
-    assert np.min(encoded) >= 0
+    self.assertLessEqual(np.max(encoded), 4)
+    self.assertGreaterEqual(np.min(encoded), 0)
 
   def test_tokenizer(self):
     texts = [
@@ -45,7 +45,7 @@ class TestText(test.TestCase):
     sequences = []
     for seq in tokenizer.texts_to_sequences_generator(texts):
       sequences.append(seq)
-    assert np.max(np.max(sequences)) < 10
+    self.assertLess(np.max(np.max(sequences)), 10)
     self.assertEqual(np.min(np.min(sequences)), 1)
 
     tokenizer.fit_on_sequences(sequences)
@@ -53,6 +53,21 @@ class TestText(test.TestCase):
     for mode in ['binary', 'count', 'tfidf', 'freq']:
       matrix = tokenizer.texts_to_matrix(texts, mode)
       self.assertEqual(matrix.shape, (3, 10))
+
+  def test_hashing_trick_hash(self):
+    text = 'The cat sat on the mat.'
+    encoded = keras.preprocessing.text.hashing_trick(text, 5)
+    self.assertEqual(len(encoded), 6)
+    self.assertLessEqual(np.max(encoded), 4)
+    self.assertGreaterEqual(np.min(encoded), 1)
+
+  def test_hashing_trick_md5(self):
+    text = 'The cat sat on the mat.'
+    encoded = keras.preprocessing.text.hashing_trick(
+        text, 5, hash_function='md5')
+    self.assertEqual(len(encoded), 6)
+    self.assertLessEqual(np.max(encoded), 4)
+    self.assertGreaterEqual(np.min(encoded), 1)
 
 
 if __name__ == '__main__':

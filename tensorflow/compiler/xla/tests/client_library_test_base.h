@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -47,6 +48,10 @@ class ClientLibraryTestBase : public ::testing::Test {
  protected:
   explicit ClientLibraryTestBase(
       perftools::gputools::Platform* platform = nullptr);
+
+  // Creates a new ClientLibraryTestBase with custom client options.
+  ClientLibraryTestBase(perftools::gputools::Platform* platform,
+                        const LocalClientOptions& client_options);
 
   // Returns the name of the test currently being run.
   string TestName() const;
@@ -277,6 +282,22 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   Client* client_;
   ExecutionOptions execution_options_;
+
+ private:
+  // Build and run the computation with all permutations of output layouts.
+  tensorflow::Status ComputeAndCompareLiteralWithAllOutputLayouts(
+      const xla::Computation& computation, const Literal& expected,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const std::function<void(const Literal& actual,
+                               const string& error_message)>& verify_output);
+  // Build and run the computation with all permutations of layouts of all input
+  // arguments.
+  tensorflow::Status ComputeAndCompareLiteralWithAllInputLayouts(
+      const xla::Computation& computation, const Literal& expected,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const std::function<void(const Literal& actual,
+                               const string& error_message)>& verify_output,
+      const Shape* output_with_layout = nullptr);
 };
 
 template <typename NativeT>

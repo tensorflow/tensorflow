@@ -29,10 +29,8 @@ REGISTER_OP("InfeedDequeue")
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
-      TensorShapeProto shape_proto;
-      shape.AsProto(&shape_proto);
       ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);
       return Status::OK();
     })
@@ -87,10 +85,8 @@ REGISTER_OP("InfeedDequeueTuple")
       std::vector<PartialTensorShape> shapes;
       TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
       for (int i = 0; i < shapes.size(); ++i) {
-        TensorShapeProto shape_proto;
-        shapes[i].AsProto(&shape_proto);
         ShapeHandle out;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i], &out));
         c->set_output(i, out);
       }
       return Status::OK();

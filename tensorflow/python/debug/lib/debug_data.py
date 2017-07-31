@@ -34,6 +34,7 @@ from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
+from tensorflow.python.util import compat
 
 
 # TODO(cais): Tie these string constants in with C++?
@@ -117,8 +118,13 @@ def load_tensor_from_event(event):
   """
 
   tensor_proto = event.summary.value[0].tensor
-  if tensor_proto.tensor_content or tensor_proto.string_val:
-    # Initialized tensor.
+  shape = tensor_util.TensorShapeProtoToList(tensor_proto.tensor_shape)
+  num_elements = 1
+  for shape_dim in shape:
+    num_elements *= shape_dim
+
+  if tensor_proto.tensor_content or tensor_proto.string_val or not num_elements:
+    # Initialized tensor or empty tensor.
     if tensor_proto.dtype == types_pb2.DT_RESOURCE:
       tensor_value = InconvertibleTensorProto(tensor_proto)
     else:
@@ -357,7 +363,7 @@ def extract_core_metadata_from_event_proto(event):
 
 def device_name_to_device_path(device_name):
   """Convert device name to device path."""
-  device_name_items = device_name.split("/")
+  device_name_items = compat.as_text(device_name).split("/")
   device_name_items = [item.replace(":", "_") for item in device_name_items]
   return METADATA_FILE_PREFIX + DEVICE_TAG + ",".join(device_name_items)
 

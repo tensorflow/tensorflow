@@ -89,12 +89,14 @@ TEST_F(HloSubcomputationUnificationTest, UnifyIdentities) {
   EXPECT_NE(x->to_apply(), y->to_apply());
   if (VLOG_IS_ON(1)) {
     hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "before unification", false, false, nullptr);
+                                "before unification",
+                                module->config().debug_options());
   }
   EXPECT_TRUE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
   if (VLOG_IS_ON(1)) {
     hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "after unification", false, false, nullptr);
+                                "after unification",
+                                module->config().debug_options());
   }
   EXPECT_EQ(2, module->computations().size());
   EXPECT_EQ(x->to_apply(), y->to_apply());
@@ -126,12 +128,14 @@ TEST_F(HloSubcomputationUnificationTest, UnifyAdditions) {
   EXPECT_NE(x->to_apply(), y->to_apply());
   if (VLOG_IS_ON(1)) {
     hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "before unification", false, false, nullptr);
+                                "before unification",
+                                module->config().debug_options());
   }
   EXPECT_TRUE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
   if (VLOG_IS_ON(1)) {
     hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "after unification", false, false, nullptr);
+                                "after unification",
+                                module->config().debug_options());
   }
   EXPECT_EQ(2, module->computations().size());
   EXPECT_EQ(x->to_apply(), y->to_apply());
@@ -164,12 +168,14 @@ TEST_F(HloSubcomputationUnificationTest, DifferentParameterShapes) {
   EXPECT_NE(x->to_apply(), y->to_apply());
   if (VLOG_IS_ON(1)) {
     hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "before unification", false, false, nullptr);
+                                "before unification",
+                                module->config().debug_options());
   }
   EXPECT_FALSE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
   if (VLOG_IS_ON(1)) {
     hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "after unification", false, false, nullptr);
+                                "after unification",
+                                module->config().debug_options());
   }
   EXPECT_EQ(3, module->computations().size());
   EXPECT_NE(x->to_apply(), y->to_apply());

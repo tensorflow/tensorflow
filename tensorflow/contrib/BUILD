@@ -3,8 +3,6 @@
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 py_library(
@@ -15,6 +13,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
+        "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/compiler:compiler_py",
@@ -27,6 +26,7 @@ py_library(
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/fused_conv:fused_conv_py",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
         "//tensorflow/contrib/hooks",
@@ -47,13 +47,16 @@ py_library(
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/memory_stats:memory_stats_py",
+        "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
+        "//tensorflow/contrib/resampler:resampler_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/contrib/seq2seq:seq2seq_py",
@@ -71,6 +74,7 @@ py_library(
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/text:text_py",
         "//tensorflow/contrib/tfprof",
+        "//tensorflow/contrib/timeseries",
         "//tensorflow/contrib/tpu:tpu_estimator",
         "//tensorflow/contrib/tpu:tpu_helper_library",
         "//tensorflow/contrib/tpu:tpu_py",
@@ -84,6 +88,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/batching:batch_ops_kernels",
+        "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/framework:generate_vocab_remapping_kernel",
         "//tensorflow/contrib/framework:load_and_remap_matrix_kernel",
@@ -91,6 +96,8 @@ cc_library(
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
         "//tensorflow/contrib/nccl:nccl_kernels",
         "//tensorflow/contrib/seq2seq:beam_search_ops_kernels",
+        "//tensorflow/contrib/tensor_forest:model_ops_kernels",
+        "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
     ],
@@ -101,12 +108,15 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/batching:batch_ops_op_lib",
+        "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
         "//tensorflow/contrib/nccl:nccl_ops_op_lib",
         "//tensorflow/contrib/seq2seq:beam_search_ops_op_lib",
+        "//tensorflow/contrib/tensor_forest:model_ops_op_lib",
+        "//tensorflow/contrib/tensor_forest:stats_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
         "//tensorflow/contrib/tpu:all_ops",

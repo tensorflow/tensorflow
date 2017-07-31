@@ -189,7 +189,7 @@ Status SvdShapeFn(InferenceContext* c) {
 REGISTER_OP("MatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
@@ -204,7 +204,7 @@ REGISTER_OP("MatrixDeterminant")
       return Status::OK();
     })
     .Doc(R"doc(
-Computes the determinant of one ore more square matrices.
+Computes the determinant of one or more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor containing the determinants
@@ -560,7 +560,7 @@ REGISTER_OP("BatchSelfAdjointEig")
 REGISTER_OP("BatchMatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {float, double, complex64, complex128}")
     .Deprecated(13, "Use MatrixDeterminant instead.");
 
 REGISTER_OP("BatchMatrixInverse")

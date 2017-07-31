@@ -34,6 +34,8 @@ tf.summary.histogram("normal/moving_mean", mean_moving_normal)
 sess = tf.Session()
 writer = tf.summary.FileWriter("/tmp/histogram_example")
 
+summaries = tf.summary.merge_all()
+
 # Setup a loop and write the summaries to disk
 N = 400
 for step in range(N):

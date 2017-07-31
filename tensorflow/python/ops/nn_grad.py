@@ -327,10 +327,21 @@ def _ReluGrad(op, grad):
 
 @ops.RegisterGradient("EluGrad")
 def _EluGradGrad(op, grad):
+  elu_x = op.inputs[1]
+  return (gen_nn_ops._elu_grad(grad, op.outputs[0]),
+          array_ops.where(elu_x < 0,
+                          grad * op.inputs[0],
+                          array_ops.zeros(shape=array_ops.shape(elu_x),
+                                          dtype=elu_x.dtype)))
+
+
+@ops.RegisterGradient("SeluGrad")
+def _SeluGradGrad(op, grad):
   x = op.inputs[1]
+  scale_alpha = 1.7580993408473768599402175208123
   return (gen_nn_ops._elu_grad(grad, op.outputs[0]),
           array_ops.where(
-              x < 0., gen_nn_ops._elu_grad(grad, op.outputs[0] + 1),
+              x < 0., gen_nn_ops._elu_grad(grad, op.outputs[0] + scale_alpha),
               array_ops.zeros(shape=array_ops.shape(x), dtype=x.dtype)))
 
 
@@ -342,6 +353,11 @@ def _Relu6Grad(op, grad):
 @ops.RegisterGradient("Elu")
 def _EluGrad(op, grad):
   return gen_nn_ops._elu_grad(grad, op.outputs[0])
+
+
+@ops.RegisterGradient("Selu")
+def _SeluGrad(op, grad):
+  return gen_nn_ops._selu_grad(grad, op.outputs[0])
 
 
 @ops.RegisterGradient("Softplus")

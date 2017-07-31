@@ -1434,6 +1434,23 @@ TEST_F(OpTest, EluGrad) {
   });
 }
 
+TEST_F(OpTest, Selu) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Selu").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, SeluGrad) {
+  Repeatedly([this]() {
+    auto dims = RandomDims();
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SeluGrad")
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .RandomInput(DT_FLOAT, dims)
+                                             .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Equal) {
   Repeatedly([this]() {
     DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});

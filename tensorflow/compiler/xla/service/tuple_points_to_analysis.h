@@ -48,7 +48,10 @@ namespace xla {
 // the corresponding buffer.
 class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
  public:
-  explicit PointsToSet(const Shape& shape)
+  // Construct our ShapeTree with a pointer rather than a reference to a Shape
+  // because this is very hot code, and copying (and then destroying) all these
+  // Shapes is slow.
+  explicit PointsToSet(const Shape* shape)
       : ShapeTree<std::vector<const LogicalBuffer*>>(shape),
         tuple_sources_(shape) {}
 
@@ -142,15 +145,7 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 // the potential sources of each buffer in each instruction's output.
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
-  using Colorer = std::function<LogicalBuffer::Color(
-      const HloInstruction* instruction, const ShapeIndex& index)>;
-
-  // Runs points-to analysis on 'module' with the provided buffer color
-  // assigner.
-  static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
-      const HloModule* module, Colorer colorer);
-
-  // Runs points-to analysis on 'module' with the default color assigner.
+  // Runs points-to analysis on 'module'.
   static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
       const HloModule* module);
 
@@ -215,16 +210,8 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   string ToString() const;
 
-  static Colorer DefaultColorer() {
-    return [](const HloInstruction* instruction, const ShapeIndex& index) {
-      return LogicalBuffer::Color(0);
-    };
-  }
-
  private:
-  explicit TuplePointsToAnalysis(const HloModule* module,
-                                 Colorer colorer = DefaultColorer())
-      : module_(module), colorer_(colorer) {}
+  explicit TuplePointsToAnalysis(const HloModule* module) : module_(module) {}
 
   // Perform the analysis. Should be called immediately after constructing the
   // object and before calling GetPointsToSet.
@@ -282,9 +269,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // The ID of the next logical buffer created.
   LogicalBuffer::Id next_buffer_id_ = 0;
-
-  // Used to color the created logical buffers.
-  Colorer colorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TuplePointsToAnalysis);
 };
