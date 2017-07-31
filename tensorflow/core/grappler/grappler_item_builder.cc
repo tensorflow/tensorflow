@@ -127,7 +127,8 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
 
   // Optimize the graph.
   GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flib.get(), env, devices[0], &graphptr);
+  optimizer.Optimize(flib.get(), env, devices[0], &graphptr,
+                     /*shape_map=*/nullptr);
   graphptr->ToGraphDef(output_graph_def);
 
   return Status::OK();
