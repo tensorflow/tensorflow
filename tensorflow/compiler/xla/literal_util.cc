@@ -43,10 +43,10 @@ Literal::StrideConfig::StrideConfig(
       base(dimensions.size(), 0),
       step(dimensions.size(), 1) {
   if (!dimensions.empty()) {
-    // Selects the shape with the highest minor dimension as the one upon
-    // where to run the tight stride loop.
-    if (source_shape.layout().minor_to_major()[0] >=
-        dest_shape.layout().minor_to_major()[0]) {
+    // Selects the shape with the largest minor dimension as the one upon
+    // which to run the tight stride loop.
+    if (dimensions[source_shape.layout().minor_to_major()[0]] >=
+        dimensions[dest_shape.layout().minor_to_major()[0]]) {
       minor_dimension = source_shape.layout().minor_to_major()[0];
       dest_stride = IndexUtil::GetDimensionStride(dest_shape, minor_dimension);
     } else {
