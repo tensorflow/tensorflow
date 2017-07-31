@@ -118,8 +118,8 @@ Status GrpcServer::Init(
 
   // Configure shared devices between master and worker.
   string name_prefix =
-      strings::StrCat("/job:", server_def_.job_name(), "/replica:0", "/task:",
-                      server_def_.task_index());
+      strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
+                      "/task:", server_def_.task_index());
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
                                                &master_env_.local_devices));
   worker_env_.local_devices = master_env_.local_devices;
@@ -217,21 +217,22 @@ Status GrpcServer::Init(
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
-  master_env_.master_session_factory = [config](
-      SessionOptions options, const MasterEnv* env,
-      std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
-      std::unique_ptr<WorkerCacheInterface> worker_cache,
-      std::unique_ptr<DeviceSet> device_set) {
-    options.config.MergeFrom(config);
-    return new MasterSession(options, env, std::move(remote_devs),
-                             std::move(worker_cache), std::move(device_set),
-                             CreateNoOpStatsPublisher);
-  };
-  master_env_.worker_cache_factory = [this](
-      const WorkerCacheFactoryOptions& options,
-      WorkerCacheInterface** worker_cache) {
-    return WorkerCacheFactory(options, worker_cache);
-  };
+  master_env_.master_session_factory =
+      [config](
+          SessionOptions options, const MasterEnv* env,
+          std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+          std::unique_ptr<WorkerCacheInterface> worker_cache,
+          std::unique_ptr<DeviceSet> device_set) {
+        options.config.MergeFrom(config);
+        return new MasterSession(options, env, std::move(remote_devs),
+                                 std::move(worker_cache), std::move(device_set),
+                                 CreateNoOpStatsPublisher);
+      };
+  master_env_.worker_cache_factory =
+      [this](const WorkerCacheFactoryOptions& options,
+             WorkerCacheInterface** worker_cache) {
+        return WorkerCacheFactory(options, worker_cache);
+      };
 
   // Provide direct access to the master from in-process clients.
   LocalMaster::Register(target(), master_impl_.get(),

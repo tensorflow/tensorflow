@@ -162,7 +162,7 @@ def setup_python(environ_cp):
         default_python_bin_path)
     # Check if the path is valid
     if (os.path.isfile(python_bin_path) and os.access(
-            python_bin_path, os.X_OK)) or (os.path.isdir(python_bin_path)):
+        python_bin_path, os.X_OK)) or (os.path.isdir(python_bin_path)):
       break
     elif not os.path.exists(python_bin_path):
       print('Invalid python path: %s cannot be found.' % python_bin_path)
@@ -399,8 +399,7 @@ def check_bazel_version(min_version):
       print('Make sure you are running at least bazel %s' % min_version)
       return
 
-  min_version_str = ''.join(['%03d' % int(seg)
-                             for seg in min_version_segments])
+  min_version_str = ''.join(['%03d' % int(seg) for seg in min_version_segments])
   curr_version_str = ''.join(
       ['%03d' % int(seg) for seg in curr_version_segments])
   if int(curr_version_str) < int(min_version_str):
@@ -424,7 +423,7 @@ def set_cc_opt_flags(environ_cp):
     default_cc_opt_flags = '-march=native'
   question = ('Please specify optimization flags to use during compilation when'
               ' bazel option "--config=opt" is specified [Default is %s]: '
-              ) % default_cc_opt_flags
+             ) % default_cc_opt_flags
   cc_opt_flags = get_from_env_or_user_or_default(environ_cp, 'CC_OPT_FLAGS',
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
@@ -504,8 +503,7 @@ def set_gcc_host_compiler_path(environ_cp):
 
   if os.path.islink(cuda_bin_symlink):
     # os.readlink is only available in linux
-    default_gcc_host_compiler_path = run_shell(
-        'readlink %s' % cuda_bin_symlink)
+    default_gcc_host_compiler_path = run_shell('readlink %s' % cuda_bin_symlink)
 
   ask_gcc_path = (
       'Please specify which gcc should be used by nvcc as the '
@@ -546,7 +544,7 @@ def set_tf_cuda_version(environ_cp):
     elif is_linux():
       # If the default doesn't exist, try an alternative default.
       if (not os.path.exists(default_cuda_path)
-              ) and os.path.exists(_DEFAULT_CUDA_PATH_LINUX):
+         ) and os.path.exists(_DEFAULT_CUDA_PATH_LINUX):
         default_cuda_path = _DEFAULT_CUDA_PATH_LINUX
     ask_cuda_path = ('Please specify the location where CUDA %s toolkit is'
                      ' installed. Refer to README.md for more details. '
@@ -613,12 +611,11 @@ def set_tf_cunn_version(environ_cp):
       cuda_dnn_lib_path = 'lib/libcudnn.%s.dylib' % tf_cudnn_version
       cuda_dnn_lib_alt_path = 'libcudnn.%s.dylib' % tf_cudnn_version
 
-    cuda_dnn_lib_path_full = os.path.join(
-        cudnn_install_path, cuda_dnn_lib_path)
+    cuda_dnn_lib_path_full = os.path.join(cudnn_install_path, cuda_dnn_lib_path)
     cuda_dnn_lib_alt_path_full = os.path.join(cudnn_install_path,
                                               cuda_dnn_lib_alt_path)
     if os.path.exists(cuda_dnn_lib_path_full) or os.path.exists(
-            cuda_dnn_lib_alt_path_full):
+        cuda_dnn_lib_alt_path_full):
       break
 
     # Try another alternative for Linux
@@ -788,8 +785,8 @@ def set_computecpp_toolkit_path(environ_cp):
   """Set COMPUTECPP_TOOLKIT_PATH."""
   ask_computecpp_toolkit_path = ('Please specify the location where ComputeCpp '
                                  'for SYCL %s is installed. [Default is %s]: '
-                                 ) % (_TF_OPENCL_VERSION,
-                                      _DEFAULT_COMPUTECPP_TOOLKIT_PATH)
+                                ) % (_TF_OPENCL_VERSION,
+                                     _DEFAULT_COMPUTECPP_TOOLKIT_PATH)
 
   while True:
     computecpp_toolkit_path = get_from_env_or_user_or_default(
@@ -821,13 +818,13 @@ def set_mpi_home(environ_cp):
          'mpiexec))  || true')
   default_mpi_home = run_shell(cmd)
   ask_mpi_home = ('Please specify the MPI toolkit folder. [Default is %s]: '
-                  ) % default_mpi_home
+                 ) % default_mpi_home
   while True:
     mpi_home = get_from_env_or_user_or_default(environ_cp, 'MPI_HOME',
                                                ask_mpi_home, default_mpi_home)
 
     if os.path.exists(os.path.join(mpi_home, 'include')) and os.path.exists(
-            os.path.join(mpi_home, 'lib')):
+        os.path.join(mpi_home, 'lib')):
       break
 
     print('Invalid path to the MPI Toolkit. %s or %s cannot be found' %
