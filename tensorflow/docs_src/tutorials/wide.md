@@ -30,7 +30,7 @@ To try the code for this tutorial:
 
     b. Use `pip` to install pandas:
 
-        $ sudo pip install pandas
+        $ pip install -U pandas
 
     If you have trouble installing pandas, consult the
     [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
