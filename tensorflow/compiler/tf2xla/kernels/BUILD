@@ -35,6 +35,7 @@ tf_kernel_library(
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
+        "mirror_pad_op.cc",
         "no_op.cc",
         "one_hot_op.cc",
         "pack_op.cc",

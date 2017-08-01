@@ -503,6 +503,28 @@ string Literal::GetAsString(
   }
 }
 
+StatusOr<int64> Literal::GetIntegralAsS64(
+    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  switch (shape().element_type()) {
+    case PRED:
+      return Get<bool>(multi_index);
+    case U8:
+      return Get<uint8>(multi_index);
+    case S32:
+      return Get<int32>(multi_index);
+    case S64:
+      return Get<int64>(multi_index);
+    case U32:
+      return Get<uint32>(multi_index);
+    case U64:
+      return Get<uint64>(multi_index);
+    default:
+      return FailedPrecondition(
+          "Array element type is not integral: %s",
+          PrimitiveType_Name(shape().element_type()).c_str());
+  }
+}
+
 int64 Literal::LinearIndex(
     tensorflow::gtl::ArraySlice<int64> multi_index) const {
   return IndexUtil::MultidimensionalIndexToLinearIndex(shape(), multi_index);
