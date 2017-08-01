@@ -68,7 +68,7 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
   // Create a SummaryMetadata that stores data for 2 plugins.
   SummaryMetadata summary_metadata;
   SummaryMetadata::PluginData* plugin_data =
-      summary_metadata.add_plugin_data();
+      summary_metadata.mutable_plugin_data();
   plugin_data->set_plugin_name("foo");
   plugin_data->set_content("content_for_plugin_foo");
   AddInputFromArray<string>(TensorShape({}),
