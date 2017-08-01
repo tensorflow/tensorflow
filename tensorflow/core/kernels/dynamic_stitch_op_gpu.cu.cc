@@ -45,6 +45,7 @@ __global__ void DynamicStitchKernel(
     }
   }
 }
+
 } // namespace
 
 template <typename T>
