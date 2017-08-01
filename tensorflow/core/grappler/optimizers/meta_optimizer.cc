@@ -103,8 +103,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       TF_RETURN_IF_ERROR(optimizer->Optimize(cluster, item, optimized_graph));
       already_optimized = true;
     } else {
-      GrapplerItem optimized_item = item;
-      optimized_item.graph = *optimized_graph;
+      GrapplerItem optimized_item(item, std::move(*optimized_graph));
       TF_RETURN_IF_ERROR(
           optimizer->Optimize(cluster, optimized_item, optimized_graph));
     }
