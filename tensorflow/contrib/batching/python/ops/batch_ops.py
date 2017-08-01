@@ -67,7 +67,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
 
   So, for example, in the following code
 
-  ```
+  ```python
   @batch_function(1, 2, 3)
   def layer(a):
     return tf.matmul(a, a)

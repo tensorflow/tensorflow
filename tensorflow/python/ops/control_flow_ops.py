@@ -1045,10 +1045,10 @@ class ControlFlowState(object):
     Otherwise, they will enter the backprop loop with None. As an example,
     people often write:
 
-           ```
-           v1, _ = tf.while_loop(p, b, [x1, x2])
-           result = gradients(v1, x1)
-           ```
+    ```python
+    v1, _ = tf.while_loop(p, b, [x1, x2])
+    result = gradients(v1, x1)
+    ```
 
     The exit node for x2 is not included by the betweenness analysis. But we
     need to backprop x2 if x2 is involved in computing v1.
@@ -1778,13 +1778,13 @@ def cond(pred, true_fn=None, false_fn=None, strict=False, name=None,
   Example:
 
   ```python
-    x = tf.constant(2)
-    y = tf.constant(5)
-    def f1(): return tf.multiply(x, 17)
-    def f2(): return tf.add(y, 23)
-    r = tf.cond(tf.less(x, y), f1, f2)
-    # r is set to f1().
-    # Operations in f2 (e.g., tf.add) are not executed.
+  x = tf.constant(2)
+  y = tf.constant(5)
+  def f1(): return tf.multiply(x, 17)
+  def f2(): return tf.add(y, 23)
+  r = tf.cond(tf.less(x, y), f1, f2)
+  # r is set to f1().
+  # Operations in f2 (e.g., tf.add) are not executed.
   ```
 
   """

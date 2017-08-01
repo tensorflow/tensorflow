@@ -696,11 +696,9 @@ def _unique_layer_name(name):
 
   Example:
 
-  ```
-    >>> _unique_layer_name('dense')
-    dense_1
-    >>> _unique_layer_name('dense')
-    dense_2
+  ```python
+  _unique_layer_name('dense')  # dense_1
+  _unique_layer_name('dense')  # dense_2
   ```
   """
   graph = ops.get_default_graph()

@@ -1233,7 +1233,7 @@ class Operation(object):
   def _create_c_op(self, graph, node_def, inputs, control_inputs):
     """Creates a TF_Operation.
 
-    Arguments:
+    Args:
       graph: a `Graph`.
       node_def: `node_def_pb2.NodeDef` for the operation to create.
       inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
@@ -1277,7 +1277,7 @@ class Operation(object):
   def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
     """Regroups a flat list of input tensors into scalar and sequence inputs.
 
-    Arguments:
+    Args:
       op_def: The `op_def_pb2.OpDef` (for knowing the input types)
       inputs: a list of input `Tensor`s to the op.
       attrs: mapping from attr name to `attr_value_pb2.AttrValue` (these define
