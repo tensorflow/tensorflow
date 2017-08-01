@@ -503,9 +503,20 @@ py_library(
         ":array_ops",
         ":dtypes",
         ":framework_ops",
+        ":graph_to_function_def",
         ":op_def_registry",
         ":util",
         ":variable_scope",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "graph_to_function_def",
+    srcs = ["framework/graph_to_function_def.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":op_def_registry",
         "//tensorflow/core:protos_all_py",
     ],
 )
