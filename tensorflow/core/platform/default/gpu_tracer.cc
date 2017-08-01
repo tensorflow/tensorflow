@@ -205,7 +205,7 @@ Status CUPTIManager::DisableTrace() {
   CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY));
   CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY2));
   CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMSET));
-  CUPTI_CALL(ActivityFlushAll(0));
+  CUPTI_CALL(ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
   {
     // Don't acquire this lock until Flush returns, since Flush
     // will potentially cause callbacks into BufferCompleted.
