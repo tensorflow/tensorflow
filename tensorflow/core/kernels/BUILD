@@ -1548,6 +1548,10 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "dynamic_stitch_op",
+    gpu_srcs = [
+        "cuda_device_array.h",
+        "cuda_device_array_gpu.h",
+    ],
     prefix = "dynamic_stitch_op",
     deps = DYNAMIC_DEPS,
 )
