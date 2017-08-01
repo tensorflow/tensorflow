@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.nn.python.ops import modrelu
+from tensorflow.contrib.nn.python.ops import mod_relu
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -41,7 +41,7 @@ class ModreluTest(test.TestCase):
       )
       input_complex = math_ops.complex(input_real, input_imag)
       biases = constant_op.constant([0.0, 1.0, 0.0, -1.0])
-      computed = sess.run(modrelu.modrelu(input_complex, biases))
+      computed = sess.run(mod_relu.modrelu(input_complex, biases))
 
       # Compute the expected target value.
       target_real = constant_op.constant(
