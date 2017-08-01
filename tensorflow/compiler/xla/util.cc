@@ -109,6 +109,15 @@ Status FailedPrecondition(const char* format, ...) {
   return WithLogBacktrace(tensorflow::errors::FailedPrecondition(message));
 }
 
+Status Cancelled(const char* format, ...) {
+  string message;
+  va_list args;
+  va_start(args, format);
+  tensorflow::strings::Appendv(&message, format, args);
+  va_end(args);
+  return WithLogBacktrace(tensorflow::errors::Cancelled(message));
+}
+
 Status ResourceExhausted(const char* format, ...) {
   string message;
   va_list args;

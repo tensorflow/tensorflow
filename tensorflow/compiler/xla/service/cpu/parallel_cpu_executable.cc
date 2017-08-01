@@ -62,7 +62,7 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
-    : Executable(std::move(hlo_module), ParallelCpuExecutable::ShapeSizeBytes),
+    : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       functions_names_(std::move(function_names)),
@@ -620,6 +620,11 @@ ParallelCpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& ParallelCpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
+}
+
+std::unique_ptr<HloCostAnalysis> ParallelCpuExecutable::CreateCostAnalysis()
+    const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace cpu

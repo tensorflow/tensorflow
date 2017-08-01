@@ -1017,6 +1017,11 @@ void MasterSession::UpdateLastAccessTime() {
 
 Status MasterSession::Create(GraphDef* graph_def,
                              const WorkerCacheFactoryOptions& options) {
+  if (session_opts_.config.use_per_session_threads() ||
+      session_opts_.config.session_inter_op_thread_pool_size() > 0) {
+    return errors::InvalidArgument(
+        "Distributed session does not support session thread pool options.");
+  }
   if (session_opts_.config.graph_options().place_pruned_graph()) {
     // TODO(b/29900832): Fix this or remove the option.
     LOG(WARNING) << "Distributed session does not support the "

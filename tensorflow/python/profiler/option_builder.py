@@ -353,6 +353,20 @@ class ProfileOptionBuilder(object):
     self._options['output'] = 'timeline:outfile=%s' % timeline_file
     return self
 
+  def with_pprof_output(self, pprof_file):
+    """Generate a pprof profile gzip file.
+
+    To use the pprof file:
+      pprof -png --nodecount=20 --sample_index=1 <pprof_file>
+
+    Args:
+      pprof_file: filename for output, usually suffixed with .pb.gz.
+    Returns:
+      self.
+    """
+    self._options['output'] = 'pprof:outfile=%s' % pprof_file
+    return self
+
   def order_by(self, attribute):
     # pylint: disable=line-too-long
     """Order the displayed profiler nodes based on a attribute.

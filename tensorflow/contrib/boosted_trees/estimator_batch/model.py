@@ -68,6 +68,9 @@ def model_builder(features, labels, mode, params, config):
 
   center_bias = params["center_bias"]
 
+  if isinstance(features, ops.Tensor):
+    features = {features.name: features}
+
   # Make a shallow copy of features to ensure downstream usage
   # is unaffected by modifications in the model function.
   training_features = copy.copy(features)

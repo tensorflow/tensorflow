@@ -300,7 +300,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "gif_archive",
       urls = [
           "http://mirror.bazel.build/ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
-          "http://ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
           "http://pilotfiber.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
       ],
       sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",

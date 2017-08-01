@@ -286,51 +286,71 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
 
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
-    tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-    const ExecutionOptions& execution_options) {
-  auto module_config = MakeUnique<HloModuleConfig>(program_shape);
-  auto* computation_layout = module_config->mutable_entry_computation_layout();
+    tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
+    const ExecutionOptions* execution_options, bool has_hybrid_result) {
+  auto config = MakeUnique<HloModuleConfig>(program_shape);
+  auto* computation_layout = config->mutable_entry_computation_layout();
 
-  if (program_shape.parameters_size() != arguments.size()) {
+  if (program_shape.parameters_size() != argument_shapes.size()) {
     return InvalidArgument("computation takes %d parameters, but %zu given",
-                           program_shape.parameters_size(), arguments.size());
+                           program_shape.parameters_size(),
+                           argument_shapes.size());
   }
-
-  for (size_t i = 0; i < arguments.size(); ++i) {
+  for (int i = 0; i < argument_shapes.size(); ++i) {
     // Verify that shape of arguments matches the shape of the arguments in the
     // ProgramShape.
-    if (!ShapeUtil::Compatible(arguments[i]->shape(),
+    if (!ShapeUtil::Compatible(*argument_shapes[i],
                                program_shape.parameters(i))) {
       return InvalidArgument(
-          "computation expects parameter %lu to have shape %s, given shape %s",
+          "computation expects parameter %d to have shape %s, given shape %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)).c_str(),
-          ShapeUtil::HumanString(arguments[i]->shape()).c_str());
+          ShapeUtil::HumanString(*argument_shapes[i]).c_str());
     }
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-            arguments[i]->shape()));
+            *argument_shapes[i]));
   }
-  if (!execution_options.has_shape_with_output_layout()) {
-    computation_layout->mutable_result_layout()->Clear();
-  } else {
+  if (execution_options != nullptr &&
+      execution_options->has_shape_with_output_layout()) {
     const auto& shape_with_output_layout =
-        execution_options.shape_with_output_layout();
+        execution_options->shape_with_output_layout();
     TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(shape_with_output_layout,
                                                      program_shape.result()));
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_result_layout()->CopyLayoutFromShape(
             shape_with_output_layout));
+  } else {
+    computation_layout->mutable_result_layout()->Clear();
   }
 
-  if (execution_options.debug_options().xla_hlo_profile()) {
-    module_config->enable_hlo_profiling(true);
+  config->set_replica_count(options_.number_of_replicas());
+  config->set_has_hybrid_result(has_hybrid_result);
+  if (execution_options != nullptr) {
+    config->set_seed(execution_options->seed());
+    config->set_debug_options(execution_options->debug_options());
+    config->enable_hlo_profiling(
+        execution_options->debug_options().xla_hlo_profile());
+  } else {
+    config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
   }
 
-  module_config->set_replica_count(options_.number_of_replicas());
-  module_config->set_seed(execution_options.seed());
-  module_config->set_debug_options(execution_options.debug_options());
+  if (execute_backend_ != nullptr &&
+      execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
+    config->set_intra_op_parallelism_threads(
+        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+  }
+  return std::move(config);
+}
 
-  return std::move(module_config);
+StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
+    const ProgramShape& program_shape,
+    tensorflow::gtl::ArraySlice<const Allocation*> arguments,
+    const ExecutionOptions& execution_options) {
+  std::vector<const Shape*> argument_shapes;
+  for (const auto* arg : arguments) {
+    argument_shapes.push_back(&arg->shape());
+  }
+  return CreateModuleConfig(program_shape, argument_shapes, &execution_options);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
