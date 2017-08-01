@@ -96,29 +96,17 @@ CompileOnlyService::CompileAheadOfTime(
         std::shared_ptr<const ProgramShape> program_shape,
         user_computation->ComputeProgramShape(versioned_handle.version));
 
-    HloModuleConfig hlo_module_config(*program_shape);
-    hlo_module_config.set_debug_options(debug_options);
-    auto* computation_layout =
-        hlo_module_config.mutable_entry_computation_layout();
-    if (debug_options.xla_hlo_profile()) {
-      hlo_module_config.enable_hlo_profiling(true);
-    }
-    for (int i = 0; i < instance.argument_layouts.size(); ++i) {
-      const Shape& argument_layout = *instance.argument_layouts[i];
-      if (ShapeUtil::IsTuple(argument_layout)) {
-        return Unimplemented("tuple arguments not supported yet");
-      }
-      TF_RETURN_IF_ERROR(
-          computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-              argument_layout));
-    }
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            *instance.result_layout));
+    ExecutionOptions execution_options;
+    *execution_options.mutable_debug_options() = debug_options;
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModuleConfig> module_config,
+        CreateModuleConfig(*program_shape, instance.argument_layouts,
+                           &execution_options,
+                           /*has_hybrid_result=*/false));
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle, hlo_module_config,
+                            versioned_handle, *module_config,
                             /*include_unreachable_instructions=*/true));
     hlo_modules.push_back(std::move(hlo_module));
   }

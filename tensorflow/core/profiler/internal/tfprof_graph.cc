@@ -72,6 +72,11 @@ void TFGraph::Build() {
 const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   root_->ResetTotalStats();
   root_->show_children.clear();
+
+  if (opts.output_type == kOutput[3]) {
+    fprintf(stderr, "Only 'code' view supports pprof output now.\n");
+    return root_;
+  }
   if (timeline && timeline->step() < 0) {
     // TODO(xpan): Maybe pick a default step for users.
     fprintf(stderr,

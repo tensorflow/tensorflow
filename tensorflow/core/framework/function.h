@@ -348,8 +348,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
  private:
   // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
   struct FunctionDefAndOpRegistration {
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
-        : fdef(fdef_in), op_registration_data(fdef.signature()) {}
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
     FunctionDef fdef;
     OpRegistrationData op_registration_data;

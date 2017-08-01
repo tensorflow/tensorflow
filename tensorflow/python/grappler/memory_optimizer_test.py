@@ -89,9 +89,13 @@ class MemoryOptimizerSwapTest(test.TestCase):
 
 
 class MemoryOptimizerRecomputeTest(test.TestCase):
+  """Tests the Python interface to recomputation rewrites.
 
-  def _RunGraphWithConfig(self, config, batch_size=14, image_dim=12):
-    """Run a simple layered graph with conv, an intermediate op, and a ReLU."""
+  See core/grappler/optimizers/memory_optimizer_test.cc for functional tests.
+  """
+
+  def _GetMetaGraph(self, batch_size=14, image_dim=12, optimizer_scope_name=''):
+    """A simple layered graph with conv, an intermediate op, and a ReLU."""
     graph = ops.Graph()
     with graph.as_default():
       random_seed.set_random_seed(1)
@@ -106,31 +110,89 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
           current_activation = 2. * after_conv
           current_activation = nn.relu(current_activation)
       loss = math_ops.reduce_mean(current_activation)
-      optimizer = train.AdamOptimizer(0.001)
-      train_op = optimizer.minimize(loss)
+      with ops.name_scope(optimizer_scope_name):
+        optimizer = train.AdamOptimizer(0.001)
+        train_op = optimizer.minimize(loss)
       init_op = variables.global_variables_initializer()
-      with session.Session(config=config, graph=graph) as sess:
-        sess.run(init_op)
-        sess.run(train_op)
-        sess.run(train_op)
-        return sess.run(loss)
+      metagraph = train.export_meta_graph()
+    return (metagraph, init_op.name, train_op.name, loss.name)
 
-  def _GetMemoryOptimizerConfig(self):
+  def testRewritingDefaultGradientNames(self):
+    """Tests that rewriting occurs with default gradient names."""
+    (original_metagraph, _, _, _) = self._GetMetaGraph()
+    rewritten_graph_def = tf_optimizer.OptimizeGraph(
+        rewriter_config_pb2.RewriterConfig(
+            memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS),
+        original_metagraph)
+    self.assertGreater(
+        len(rewritten_graph_def.node),
+        len(original_metagraph.graph_def.node))
+    self.assertEqual(
+        0,
+        len([node for node in original_metagraph.graph_def.node
+             if 'Recomputed/' in node.name]))
+    self.assertEqual(
+        20,  # Two per layer
+        len([node for node in rewritten_graph_def.node
+             if 'Recomputed/' in node.name]))
+
+  def testRewritingNameScopedGradientNames(self):
+    """Tests that rewriting occurs with non-standard gradient names."""
+    (original_metagraph, _, _, _) = self._GetMetaGraph(
+        optimizer_scope_name='optimizer')
+    rewritten_graph_def = tf_optimizer.OptimizeGraph(
+        rewriter_config_pb2.RewriterConfig(
+            memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS,
+            memory_optimizer_target_node_name_prefix='optimizer/gradients/'),
+        original_metagraph)
+    self.assertGreater(
+        len(rewritten_graph_def.node),
+        len(original_metagraph.graph_def.node))
+    self.assertEqual(
+        0,
+        len([node for node in original_metagraph.graph_def.node
+             if 'Recomputed/' in node.name]))
+    self.assertEqual(
+        20,  # Two per layer
+        len([node for node in rewritten_graph_def.node
+             if 'Recomputed/' in node.name]))
+
+  def _GetMemoryOptimizerSessionConfig(self):
     rewrite_options = rewriter_config_pb2.RewriterConfig(
         memory_optimization=rewriter_config_pb2.RewriterConfig.HEURISTICS)
     graph_options = config_pb2.GraphOptions(rewrite_options=rewrite_options)
     return config_pb2.ConfigProto(graph_options=graph_options)
 
-  def testRecomputationRewritingNoErrors(self):
-    """Tests that there are no errors when we request a memory optimizer pass.
+  def _RunMetaGraphWithConfig(
+      self, config, metagraph, init_op_name, train_op_name, loss_op_name):
+    graph = ops.Graph()
+    with graph.as_default():
+      train.import_meta_graph(metagraph)
+      init_op = graph.get_operation_by_name(init_op_name)
+      train_op = graph.get_operation_by_name(train_op_name)
+      loss_op = graph.get_tensor_by_name(loss_op_name)
+      with session.Session(config=config, graph=graph) as sess:
+        sess.run(init_op)
+        sess.run(train_op)
+        sess.run(train_op)
+        return sess.run(loss_op)
 
-    Does not test that the memory optimizer actually runs. See
-    core/grappler/optimizers/memory_optimizer_test.cc for a functional test of
-    the graph rewriting.
-    """
-    original_loss = self._RunGraphWithConfig(config_pb2.ConfigProto())
-    memory_optimized_loss = self._RunGraphWithConfig(
-        config=self._GetMemoryOptimizerConfig())
+  def testRecomputationRewritingNoErrors(self):
+    """Tests that graph output is not significantly different with rewriting."""
+    (original_metagraph, init_op_name, train_op_name, loss_op_name
+    ) = self._GetMetaGraph()
+    original_loss = self._RunMetaGraphWithConfig(
+        config=config_pb2.ConfigProto(),
+        metagraph=original_metagraph,
+        init_op_name=init_op_name,
+        train_op_name=train_op_name,
+        loss_op_name=loss_op_name)
+    memory_optimized_loss = self._RunMetaGraphWithConfig(
+        config=self._GetMemoryOptimizerSessionConfig(),
+        metagraph=original_metagraph,
+        init_op_name=init_op_name,
+        train_op_name=train_op_name,
+        loss_op_name=loss_op_name)
     self.assertAllClose(original_loss, memory_optimized_loss, rtol=1e-4)
 
 

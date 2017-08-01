@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -866,6 +867,11 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   }
   return Status::OK();
 }
+
+FunctionLibraryDefinition::FunctionDefAndOpRegistration::
+    FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
+    : fdef(fdef_in),
+      op_registration_data(fdef.signature(), shape_inference::UnknownShape) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
