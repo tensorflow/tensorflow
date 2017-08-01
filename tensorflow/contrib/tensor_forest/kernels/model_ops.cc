@@ -147,9 +147,12 @@ class TreeSizeOp : public OpKernel {
 void TraverseTree(const DecisionTreeResource* tree_resource,
                   const std::unique_ptr<TensorDataSet>& data, int32 start,
                   int32 end,
-                  const std::function<void(int32, int32)>& set_leaf_id) {
+                  const std::function<void(int32, int32)>& set_leaf_id,
+                  std::vector<TreePath>* tree_paths) {
   for (int i = start; i < end; ++i) {
-    const int32 id = tree_resource->TraverseTree(data, i, nullptr);
+    const int32 id = tree_resource->TraverseTree(
+        data, i, nullptr,
+        (tree_paths == nullptr) ? nullptr : &(*tree_paths)[i]);
     set_leaf_id(i, id);
   }
 }
@@ -199,21 +202,40 @@ class TreePredictionsV4Op : public OpKernel {
                                                      &output_predictions));
     TTypes<float, 2>::Tensor out = output_predictions->tensor<float, 2>();
 
+    std::vector<TreePath> tree_paths(
+        param_proto_.inference_tree_paths() ? num_data : 0);
+
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
     const int64 costPerTraverse = 500;
-    auto traverse = [this, &out, decision_tree_resource, num_data](int64 start,
-                                                                   int64 end) {
+    auto traverse = [this, &out, decision_tree_resource, num_data, &tree_paths](
+                        int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_data);
       TraverseTree(decision_tree_resource, data_set_, static_cast<int32>(start),
                    static_cast<int32>(end),
                    std::bind(&TreePredictionsV4Op::set_output_value, this,
                              std::placeholders::_1, std::placeholders::_2,
-                             decision_tree_resource, &out));
+                             decision_tree_resource, &out),
+                   param_proto_.inference_tree_paths() ? &tree_paths : nullptr);
     };
     Shard(num_threads, worker_threads->workers, num_data, costPerTraverse,
           traverse);
+
+    Tensor* output_tree_paths = nullptr;
+    TensorShape output_paths_shape;
+    output_paths_shape.AddDim(param_proto_.inference_tree_paths() ? num_data
+                                                                  : 0);
+    OP_REQUIRES_OK(context, context->allocate_output(1, output_paths_shape,
+                                                     &output_tree_paths));
+    auto out_paths = output_tree_paths->unaligned_flat<string>();
+
+    // TODO(gilberth): If this slows down inference too much, consider having
+    // a filter that only serializes paths for the predicted label that we're
+    // interested in.
+    for (int i = 0; i < tree_paths.size(); ++i) {
+      out_paths(i) = tree_paths[i].SerializeAsString();
+    }
   }
 
   void set_output_value(int32 i, int32 id,
@@ -293,7 +315,7 @@ class TraverseTreeV4Op : public OpKernel {
       CHECK(start <= end);
       CHECK(end <= num_data);
       TraverseTree(decision_tree_resource, data_set_, static_cast<int32>(start),
-                   static_cast<int32>(end), set_leaf_ids);
+                   static_cast<int32>(end), set_leaf_ids, nullptr);
     };
     Shard(num_threads, worker_threads->workers, num_data, costPerTraverse,
           traverse);

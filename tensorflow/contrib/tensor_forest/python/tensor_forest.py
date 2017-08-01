@@ -105,6 +105,7 @@ def build_params_proto(params):
   proto.checkpoint_stats = params.checkpoint_stats
   proto.use_running_stats_method = params.use_running_stats_method
   proto.initialize_average_splits = params.initialize_average_splits
+  proto.inference_tree_paths = params.inference_tree_paths
 
   parse_number_or_string_to_proto(proto.pruning_type.prune_every_samples,
                                   params.prune_every_samples)
@@ -139,29 +140,31 @@ def build_params_proto(params):
 class ForestHParams(object):
   """A base class for holding hyperparameters and calculating good defaults."""
 
-  def __init__(self,
-               num_trees=100,
-               max_nodes=10000,
-               bagging_fraction=1.0,
-               num_splits_to_consider=0,
-               feature_bagging_fraction=1.0,
-               max_fertile_nodes=0,  # deprecated, unused.
-               split_after_samples=250,
-               valid_leaf_threshold=1,
-               dominate_method='bootstrap',
-               dominate_fraction=0.99,
-               model_name='all_dense',
-               split_finish_name='basic',
-               split_pruning_name='none',
-               prune_every_samples=0,
-               early_finish_check_every_samples=0,
-               collate_examples=False,
-               checkpoint_stats=False,
-               use_running_stats_method=False,
-               initialize_average_splits=False,
-               param_file=None,
-               split_name='less_or_equal',
-               **kwargs):
+  def __init__(
+      self,
+      num_trees=100,
+      max_nodes=10000,
+      bagging_fraction=1.0,
+      num_splits_to_consider=0,
+      feature_bagging_fraction=1.0,
+      max_fertile_nodes=0,  # deprecated, unused.
+      split_after_samples=250,
+      valid_leaf_threshold=1,
+      dominate_method='bootstrap',
+      dominate_fraction=0.99,
+      model_name='all_dense',
+      split_finish_name='basic',
+      split_pruning_name='none',
+      prune_every_samples=0,
+      early_finish_check_every_samples=0,
+      collate_examples=False,
+      checkpoint_stats=False,
+      use_running_stats_method=False,
+      initialize_average_splits=False,
+      inference_tree_paths=False,
+      param_file=None,
+      split_name='less_or_equal',
+      **kwargs):
     self.num_trees = num_trees
     self.max_nodes = max_nodes
     self.bagging_fraction = bagging_fraction
@@ -179,6 +182,7 @@ class ForestHParams(object):
     self.checkpoint_stats = checkpoint_stats
     self.use_running_stats_method = use_running_stats_method
     self.initialize_average_splits = initialize_average_splits
+    self.inference_tree_paths = inference_tree_paths
     self.param_file = param_file
     self.split_name = split_name
     self.early_finish_check_every_samples = early_finish_check_every_samples
@@ -470,7 +474,8 @@ class RandomForestGraphs(object):
       **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
-      The last op in the random forest inference graph.
+      A tuple of (probabilities, tree_paths, variance), where variance
+      is the variance over all the trees for regression problems only.
 
     Raises:
       NotImplementedError: If trying to use feature bagging with sparse
@@ -480,6 +485,7 @@ class RandomForestGraphs(object):
         data_ops.ParseDataTensorOrDict(input_data))
 
     probabilities = []
+    paths = []
     for i in range(self.params.num_trees):
       with ops.device(self.variables.device_dummies[i].device):
         tree_data = processed_dense_features
@@ -488,16 +494,28 @@ class RandomForestGraphs(object):
             raise NotImplementedError(
                 'Feature bagging not supported with sparse features.')
           tree_data = self._bag_features(i, tree_data)
-        probabilities.append(self.trees[i].inference_graph(
+        probs, path = self.trees[i].inference_graph(
             tree_data,
             data_spec,
             sparse_features=processed_sparse_features,
-            **inference_args))
+            **inference_args)
+        probabilities.append(probs)
+        paths.append(path)
     with ops.device(self.variables.device_dummies[0].device):
-      all_predict = array_ops.stack(probabilities)
-      return math_ops.div(
-          math_ops.reduce_sum(all_predict, 0), self.params.num_trees,
+      # shape of all_predict should be [batch_size, num_trees, num_outputs]
+      all_predict = array_ops.stack(probabilities, axis=1)
+      average_values = math_ops.div(
+          math_ops.reduce_sum(all_predict, 1),
+          self.params.num_trees,
           name='probabilities')
+      tree_paths = array_ops.stack(paths, axis=1)
+      regression_variance = None
+      if self.params.regression:
+        expected_squares = math_ops.div(
+            math_ops.reduce_sum(all_predict * all_predict, 1),
+            self.params.num_trees)
+        regression_variance = expected_squares - average_values * average_values
+      return average_values, tree_paths, regression_variance
 
   def average_size(self):
     """Constructs a TF graph for evaluating the average size of a forest.
@@ -635,7 +653,7 @@ class RandomTreeGraphs(object):
       sparse_features: A tf.SparseTensor for sparse input data.
 
     Returns:
-      The last op in the random tree inference graph.
+      A tuple of (probabilities, tree_paths).
     """
     sparse_indices = []
     sparse_values = []

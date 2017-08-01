@@ -238,6 +238,14 @@ llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled);
 void SetTargetOptions(bool fast_math_enabled,
                       llvm::TargetOptions* target_options);
 
+// Computes a conservative union of the metadata in "a" and "b".  For
+// aliasing-related metadata, this means the result can be applied to
+// instructions whose aliasing relationship can be described either by "a" *or*
+// by "b".
+std::map<int, llvm::MDNode*> MergeMetadata(
+    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
+    const std::map<int, llvm::MDNode*>& b);
+
 }  // namespace llvm_ir
 }  // namespace xla
 

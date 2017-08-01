@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -53,6 +54,8 @@ class ShapeRefinerTest : public ::testing::Test {
       const std::vector<shape_inference::ShapeAndType>& updated) {
     return ShapeRefiner::IsUpdatedShapesOrTypes(c, existing, updated);
   }
+
+  static constexpr int64 kMaxTensorSize = ShapeRefiner::kMaxTensorSize;
 };
 
 namespace {
@@ -228,6 +231,51 @@ TEST_F(ShapeRefinerTest, PropagateConstants) {
   }
 }
 
+TEST_F(ShapeRefinerTest, ExtractConstantSubgraphMultiOutput) {
+  // Test when a node yields two outputs, one of which has a constant
+  // value that is small enough to be cached, and one which does not.
+  //
+  // ShapeVectorForAllElements nodes are used in here to call
+  // input_tensor from the shape function.
+  {
+    Scope root = Scope::NewRootScope();
+    auto small = ops::Const(root, {static_cast<int32>(1), TensorShape({1, 1})});
+    auto large = ops::Const(
+        root, {static_cast<int32>(2), TensorShape({4, kMaxTensorSize / 2})});
+    Node* multi;
+    TF_ASSERT_OK(NodeBuilder("MI", "MultiIdentity")
+                     .Input(std::vector<NodeBuilder::NodeOut>{small.node(),
+                                                              large.node()})
+                     .Attr("N", 2)
+                     .Finalize(root.graph(), &multi));
+
+    Node* shape_v;
+    TF_ASSERT_OK(NodeBuilder("Test", "ShapeVectorForAllElements")
+                     .Input(multi, 0)
+                     .Finalize(root.graph(), &shape_v));
+
+    auto add = ops::Add(root, Output(multi, 0), Output(multi, 1));
+    Node* shape_v2;
+    TF_ASSERT_OK(NodeBuilder("Test", "ShapeVectorForAllElements")
+                     .Input(add.node())
+                     .Finalize(root.graph(), &shape_v2));
+    ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+    TF_ASSERT_OK(m.AddNode(small.node()));
+    TF_ASSERT_OK(m.AddNode(large.node()));
+    TF_ASSERT_OK(m.AddNode(multi));
+    TF_ASSERT_OK(m.AddNode(shape_v));
+    TF_ASSERT_OK(m.AddNode(add.node()));
+    TF_ASSERT_OK(m.AddNode(shape_v2));
+
+    // The output shape is a vector of length equal to the result of the add.
+    // The add adds 1 and 2 together, and its output has kMaxTensorSize*2
+    // elements.
+    shape_inference::InferenceContext* ctx = m.GetContext(shape_v2);
+    EXPECT_EQ(strings::StrCat("[", kMaxTensorSize * 2 * 3, "]"),
+              ctx->DebugString(ctx->output(0)));
+  }
+}
+
 namespace {
 
 // An op with a shape function whose outputs depend in a complex
@@ -315,6 +363,49 @@ REGISTER_OP("ShapeDataInt64")
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     });
+
+// An op with a shape function that looks at its input tensor
+// data and makes a rank 1 shape out of the sum of all input values.
+REGISTER_OP("ShapeVectorForAllElements")
+    .Input("a: int32")
+    .Output("o: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      const Tensor* shape_data = c->input_tensor(0);
+      if (shape_data == nullptr) {
+        return shape_inference::UnknownShape(c);
+      }
+      int64 total = 0;
+      for (int i = 0; i < shape_data->NumElements(); ++i) {
+        total += shape_data->flat<int32>()(i);
+      }
+
+      c->set_output(0, c->Vector(total));
+      return Status::OK();
+    });
+
+REGISTER_OP("MultiIdentity")
+    .Input("a: N * int32")
+    .Output("o: N * int32")
+    .Attr("N: int >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        c->set_output(i, c->input(i));
+      }
+      return Status::OK();
+    });
+
+class MultiIdentity : public OpKernel {
+ public:
+  explicit MultiIdentity(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    for (int i = 0; i < c->num_inputs(); ++i) {
+      c->set_output(i, c->input(i));
+    }
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("MultiIdentity").Device(DEVICE_CPU),
+                        MultiIdentity);
 
 }  // namespace
 

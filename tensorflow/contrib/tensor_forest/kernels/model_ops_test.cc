@@ -55,13 +55,13 @@ TEST(ModelOpsTest, TreePredictionsV4_ShapeFn) {
                    .Finalize(&op.node_def));
 
   // num_points = 2, sparse shape not known
-  INFER_OK(op, "?;[2,3];?;?;?", "[d1_0,?]");
+  INFER_OK(op, "?;[2,3];?;?;?", "[d1_0,?];[?]");
 
   // num_points = 2, sparse and dense shape rank known and > 1
-  INFER_OK(op, "?;[2,3];?;?;[10,11]", "[d1_0,?]");
+  INFER_OK(op, "?;[2,3];?;?;[10,11]", "[d1_0,?];[?]");
 
   // num_points = 2, sparse shape rank known and > 1
-  INFER_OK(op, "?;?;?;?;[10,11]", "[?,?]");
+  INFER_OK(op, "?;?;?;?;[10,11]", "[?,?];[?]");
 }
 
 TEST(ModelOpsTest, TraverseTreeV4_ShapeFn) {

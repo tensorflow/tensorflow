@@ -264,6 +264,7 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
   const string output_tensor_name =
       strings::StrCat(input_edge->src()->name(), ":", input_edge->src_output());
   std::vector<Tensor> outputs;
+
   // NOTE; we should pass in a function library runtime if we want
   // to support constant-expression evaluation on functions.
   Status s = graph_runner_.Run(&subgraph, nullptr /* function_library */,
@@ -377,9 +378,15 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     return Status::OK();
   }
 
-  std::map<Node*, Node*> old_to_new;
+  struct NodeAndRecursed {
+    Node* new_node = nullptr;
+    bool recursed = false;
+  };
+
+  std::map<Node*, NodeAndRecursed> old_to_new_and_recursed;
   Node* target_node_copy = out_graph->CopyNode(target_node);
-  old_to_new[target_node] = target_node_copy;
+  old_to_new_and_recursed[target_node].new_node = target_node_copy;
+  old_to_new_and_recursed[target_node].recursed = true;
 
   // Add the target node's inputs to seed the recursion.
   std::deque<const Edge*> edges_to_visit;
@@ -438,30 +445,27 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     // Add a copy of its node and a new edge to the new subgraph.
 
     // Get or create the version of 'current_node' in the new graph.
-    bool first_visit_to_node = false;
     Node* current_node_copy;
-    {
-      auto it = old_to_new.find(current_node);
-      if (it == old_to_new.end()) {
-        // First time processing this node.
-        first_visit_to_node = true;
-        current_node_copy = out_graph->CopyNode(current_node);
-        // Track the mapping from the original node to the new one.
-        old_to_new[current_node] = current_node_copy;
-      } else {
-        current_node_copy = it->second;
-      }
+    // This gets or creates the NodeAndRecursed entry for current_node.
+    NodeAndRecursed* node_and_recursed = &old_to_new_and_recursed[current_node];
+    if (node_and_recursed->new_node == nullptr) {
+      // First time processing this node.
+      current_node_copy = out_graph->CopyNode(current_node);
+      // Track the mapping from the original node to the new one.
+      node_and_recursed->new_node = current_node_copy;
+    } else {
+      current_node_copy = node_and_recursed->new_node;
     }
 
     // Add the edge to the destination node.
     {
-      auto it = old_to_new.find(current_edge->dst());
-      if (it == old_to_new.end()) {
+      auto it = old_to_new_and_recursed.find(current_edge->dst());
+      if (it == old_to_new_and_recursed.end()) {
         return errors::Internal(
             "Could not find mapping from old to new copy of destination node: ",
             current_edge->dst()->name());
       }
-      Node* dst_copy = it->second;
+      Node* dst_copy = it->second.new_node;
 
       out_graph->AddEdge(current_node_copy, current_edge->src_output(),
                          dst_copy, current_edge->dst_input());
@@ -492,9 +496,9 @@ Status ShapeRefiner::ExtractConstantSubgraph(
       continue;
     }
 
-    // If this is the first time visiting this node, recurse on this
-    // node's inputs.
-    if (first_visit_to_node) {
+    // If this node's inputs have not been processed already, do so now.
+    if (!node_and_recursed->recursed) {
+      node_and_recursed->recursed = true;
       for (const Edge* e : current_node->in_edges()) {
         if (e->IsControlEdge()) continue;
         edges_to_visit.push_back(e);

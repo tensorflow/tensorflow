@@ -1228,7 +1228,6 @@ Status AlgebraicSimplifierVisitor::HandleReduce(
     return ReplaceWithNewInstruction(
         reduce,
         HloInstruction::CreateBroadcast(reduce->shape(), init_value, {}));
-    return Status::OK();
   }
   // A Transpose feeding a reduce can simply permute the reduction dimensions
   // field.
