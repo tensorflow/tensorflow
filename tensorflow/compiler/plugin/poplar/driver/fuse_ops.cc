@@ -57,6 +57,25 @@ static bool IsExternalPadding(HloInstruction* inst) {
   return true;
 }
 
+static bool IsAveragePool(HloInstruction* inst) {
+  return inst->metadata().op_type() == "AvgPool";
+}
+
+static bool IsReductionWindowNYXC(HloInstruction* inst) {
+  const Window& window(inst->window());
+  if (window.dimensions(0).size() != 1 ||
+      window.dimensions(0).stride() != 1 ||
+      window.dimensions(0).padding_low() != 0 ||
+      window.dimensions(0).padding_high() != 0 ||
+      window.dimensions(3).size() != 1 ||
+      window.dimensions(3).stride() != 1 ||
+      window.dimensions(3).padding_low() != 0 ||
+      window.dimensions(3).padding_high() != 0) {
+    return false;
+  }
+  return true;
+}
+
 /*
  * Note about constructing these patterns.  Due to the behaviour of the fuser
  * there must be no backward references.  All nodes should appear after any
@@ -140,10 +159,25 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-        // Random bernoulli
+  // Random bernoulli
   {{HloOpcode::kRng, true, IsRandomBernoulli, {1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
+  // Average pool (valid)
+  {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
+   {HloOpcode::kReduceWindow, true, IsReductionWindowNYXC, {-1, 2}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Average pool (same)
+  {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
+   {HloOpcode::kReduceWindow, true, IsReductionWindowNYXC, {-1, 2}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kReshape, true, nullptr, {4}},
+   {HloOpcode::kReduceWindow, true, nullptr, {5, 7}},
+   {HloOpcode::kBroadcast, true, nullptr, {6}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}

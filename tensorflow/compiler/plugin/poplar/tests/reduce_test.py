@@ -27,5 +27,63 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                 self.assertAllClose(result,
                                     np.zeros([2,1024]))
 
+    def testAvgPoolSamePaddingWithStridesF32(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float32, [1,10,10,1], name="a")
+                output = tf.nn.avg_pool(pa, ksize=[1,5,5,1], strides=[1,2,2,1],
+                                        padding='SAME', name="avg")
+
+                fd = {
+                    pa: np.ones([1,10,10,1])
+                }
+                result = sess.run(output, fd)
+                self.assertAllClose(result,
+                                    np.ones([1,5,5,1]))
+
+    def testAvgPoolSamePaddingWithStridesF16(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float16, [1,10,10,1], name="a")
+                output = tf.nn.avg_pool(pa, ksize=[1,5,5,1], strides=[1,2,2,1],
+                                        padding='SAME')
+
+                fd = {
+                    pa: np.ones([1,10,10,1])
+                }
+                result = sess.run(output, fd)
+                self.assertAllClose(result,
+                                    np.ones([1,5,5,1]))
+
+    def testAvgPoolValidPaddingWithStridesF32(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float32, [1,10,10,1], name="a")
+                output = tf.nn.avg_pool(pa, ksize=[1,5,5,1], strides=[1,2,2,1],
+                                        padding='VALID')
+
+                fd = {
+                    pa: np.ones([1,10,10,1])
+                }
+                result = sess.run(output, fd)
+                self.assertAllClose(result,
+                                    np.ones([1,3,3,1]))
+
+    def testAvgPoolValidPaddingWithStridesF16(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float16, [1,10,10,1], name="a")
+                output = tf.nn.avg_pool(pa, ksize=[1,5,5,1], strides=[1,2,2,1],
+                                        padding='VALID')
+
+                fd = {
+                    pa: np.ones([1,10,10,1])
+                }
+                result = sess.run(output, fd)
+                self.assertAllClose(result,
+                                    np.ones([1,3,3,1]))
+
 if __name__ == "__main__":
+    import time
+    time.sleep(20)
     googletest.main()

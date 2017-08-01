@@ -39,6 +39,8 @@ static const int FUSED_RANDOM_UNIFORM_WITH_SCALE = FUSED_BASE + 10;
 static const int FUSED_RANDOM_NORMAL = FUSED_BASE + 11;
 static const int FUSED_RANDOM_UNIFORM = FUSED_BASE + 12;
 static const int FUSED_BERNOULLI = FUSED_BASE + 13;
+static const int FUSED_AVG_POOL_SAME = FUSED_BASE + 14;
+static const int FUSED_AVG_POOL_VALID = FUSED_BASE + 15;
 
 class FuseOps : public HloMatcher {
 public:

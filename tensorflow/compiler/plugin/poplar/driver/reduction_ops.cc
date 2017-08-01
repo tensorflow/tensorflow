@@ -93,6 +93,7 @@ IsPoplibsPool(const HloInstruction* inst,
 
   switch (root->opcode()) {
     case HloOpcode::kMaximum:
+    case HloOpcode::kAdd:
       break;
     default:
       return false;
@@ -340,14 +341,28 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
                              const HloInstruction *inst,
                              const xla::Shape& output_shape,
                              TensorMap& tensor_map) {
+  const HloInstruction* pooling_inst;
+
+  PoolingType reduction_type;
+
+  // Find the type of the reduction
+  if (inst->opcode() == HloOpcode::kFusion) {
+    reduction_type = PoolingType::AVG;
+    pooling_inst = inst->fused_expression_root()->operand(0);
+  } else if (inst->to_apply()->root_instruction()->opcode() ==
+          HloOpcode::kMaximum) {
+    reduction_type = PoolingType::MAX;
+    pooling_inst = inst;
+  } else {
+    reduction_type = PoolingType::SUM;
+    pooling_inst = inst;
+  }
+
   // Find the input tensors
   poplar::Tensor to_reduce;
   TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0, 0));
 
-  poplar::Tensor init_val;
-  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1, 0));
-
-  const Window& window(inst->window());
+  const Window& window(pooling_inst->window());
   std::vector<std::size_t> kernel_shape = {
     (std::size_t)window.dimensions(1).size(),
     (std::size_t)window.dimensions(2).size()
@@ -366,7 +381,7 @@ CreatePoplibsWindowReduction(poplar::Graph &graph,
   };
 
   poplar::program::Sequence prog;
-  poplar::Tensor out = popnn::pooling::pool(graph, PoolingType::MAX,
+  poplar::Tensor out = popnn::pooling::pool(graph, reduction_type,
                                             kernel_shape, stride,
                                             padding_lower, padding_upper,
                                             to_reduce, prog, inst->name());
