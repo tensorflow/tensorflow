@@ -112,7 +112,6 @@ class GdrMemoryManager : public RemoteMemoryManager {
  private:
   const string host_;
   const string port_;
-  uint16_t bound_port_;
   RdmaEndpointPtr listening_;
   std::atomic<bool> stopped_;
 
@@ -191,8 +190,7 @@ Status GdrMemoryManager::Init() {
     rdma_destroy_ep(id);
     return errors::Unavailable("Cannot listen on rdma://", host_, ":", port_);
   }
-  bound_port_ = rdma_get_src_port(id);
-  LOG(INFO) << "RDMA server is listening on " << host_ << ":" << bound_port_;
+  LOG(INFO) << "RDMA server is listening on " << host_ << ":" << port_;
 
   int flags = fcntl(id->channel->fd, F_GETFL, 0);
   if (fcntl(id->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
@@ -353,7 +351,7 @@ Status GdrMemoryManager::TransportOptionsFromTensor(
 
   RemoteMemoryRegion remote_mr;
   remote_mr.set_host(host_);
-  remote_mr.set_port(bound_port_);
+  remote_mr.set_port(port_);
   remote_mr.set_addr(reinterpret_cast<uint64_t>(addr));
   remote_mr.set_rkey(mr->rkey);
   remote_mr.set_tensor_key(tensor_key);
@@ -395,12 +393,12 @@ Status GdrMemoryManager::TensorFromTransportOptions(
   bool success;
   {
     mutex_lock l(mu_);
-    string port = std::to_string(remote_mr.port());
     std::tie(iter, success) = clients_.insert(
-        std::make_pair(std::make_pair(remote_mr.host(), port),
+        std::make_pair(std::make_pair(remote_mr.host(), remote_mr.port()),
                        RdmaEndpointPtr(nullptr, EndpointDeleter)));
     if (success || iter->second.get() == nullptr) {
-      TF_RETURN_IF_ERROR(CreateEndpoint(remote_mr.host(), port, iter->second));
+      TF_RETURN_IF_ERROR(
+          CreateEndpoint(remote_mr.host(), remote_mr.port(), iter->second));
     }
   }
   rdma_cm_id* id = iter->second.get();

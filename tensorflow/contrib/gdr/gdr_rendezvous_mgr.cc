@@ -36,6 +36,7 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
   ~GdrRecvTensorCall() override {}
 
   void Start(std::function<void()> recv_done) override {
+    req_.set_dma_ok(true);
     resp_.InitAlloc(dst_device_, recv_args_.alloc_attrs);
     StatusCallback cb = [this, recv_done](const Status& s) {
       bool dma_ok = resp_.metadata().has_transport_options();

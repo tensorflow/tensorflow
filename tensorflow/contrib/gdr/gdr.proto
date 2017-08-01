@@ -7,7 +7,7 @@ import "google/protobuf/any.proto";
 
 message RemoteMemoryRegion {
   string host = 1;
-  uint32 port = 2;
+  string port = 2;
   uint64 addr = 3;
   uint32 rkey = 4;
   uint32 tensor_key = 5;
