@@ -44,10 +44,8 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<HloModule> hlo_module,
-                      HloCostAnalysis::ShapeSizeFunction shape_size_function)
-      : hlo_module_(std::move(hlo_module)),
-        shape_size_function_(std::move(shape_size_function)) {}
+  explicit Executable(std::unique_ptr<HloModule> hlo_module)
+      : hlo_module_(std::move(hlo_module)) {}
   virtual ~Executable() {}
 
   // Enqueues the compilation result on the provided stream, passing the given
@@ -152,10 +150,9 @@ class Executable {
   static Status DumpToDirectory(const string& directory_path, string filename,
                                 const SessionModule& session_module);
 
-  // Return a reference to a function that computes the size of a given Shape.
-  const HloCostAnalysis::ShapeSizeFunction& shape_size_function() const {
-    return shape_size_function_;
-  }
+  // Returns a cost analysis object appropriate for the platform on which this
+  // executable can run.
+  virtual std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const = 0;
 
  protected:
   mutable tensorflow::mutex mutex_;
@@ -167,11 +164,6 @@ class Executable {
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
   std::unique_ptr<HloModule> hlo_module_;
-
-  // Function to compute the size of a given Shape, in bytes.  This is
-  // provided to the Executable when it is constructed, and used to produce
-  // data for profiling the execution.
-  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 
   // SessionModule this was compiled from. Null if not dumping executions.
   std::unique_ptr<SessionModule> session_module_;
@@ -240,7 +232,7 @@ StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
       if (profiled_computations.count(computation) > 0) {
         string profile_string = profile_ptr->ToString(
             *computation, stream->parent()->GetDeviceDescription(),
-            shape_size_function_);
+            CreateCostAnalysis().get());
         if (!profile_string.empty()) {
           XLA_LOG_LINES(tensorflow::INFO, profile_string);
         }

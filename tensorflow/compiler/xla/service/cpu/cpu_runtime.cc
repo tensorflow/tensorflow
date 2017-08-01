@@ -130,5 +130,6 @@ void __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
   xla::cpu::runtime::XfeedManager* xfeed = xla::cpu::runtime::GetXfeedManager();
   xla::StatusOr<xla::Shape> shape =
       xla::llvm_ir::DecodeSelfDescribingShapeConstant(shape_ptr, shape_length);
-  xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr, shape);
+  xfeed->outfeed()->ReleaseCurrentBuffer(buffer_length, buffer_ptr,
+                                         std::move(shape));
 }

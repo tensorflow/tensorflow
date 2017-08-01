@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -219,9 +220,16 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
 
   TF_ManagedBuffer* buf = new TF_ManagedBuffer;
   buf->len_ = len;
-  if (reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
-    // Copy the data into a buffer that satisfies Eigen's alignment
-    // requirements.
+  if (dtype != TF_STRING && dtype != TF_RESOURCE &&
+      tensorflow::DataTypeCanUseMemcpy(static_cast<DataType>(dtype)) &&
+      reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
+    // TF_STRING and TF_RESOURCE tensors have a different representation in
+    // TF_Tensor than they do in tensorflow::Tensor. So a copy here is a waste
+    // (any alignement requirements will be taken care of by TF_TensorToTensor
+    // and TF_TensorFromTensor).
+    //
+    // Other types have the same represntation, so copy only if it is safe to do
+    // so.
     buf->data_ = allocate_tensor("TF_NewTensor", len);
     std::memcpy(buf->data_, data, len);
     buf->deallocator_ = deallocate_buffer;
@@ -419,7 +427,30 @@ void TF_Reset(const TF_SessionOptions* opt, const char** containers,
 namespace tensorflow {
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
+  if (src->dtype == TF_RESOURCE) {
+    if (src->buffer->device() != nullptr) {
+      return InvalidArgument(
+          "TF_RESOURCE tensor must be placed in host memory");
+    }
+    if (src->shape.dims() != 0) {
+      return InvalidArgument(
+          "Malformed TF_RESOURCE tensor: expected a scalar, got a tensor with "
+          "shape ",
+          src->shape.DebugString());
+    }
+    *dst = Tensor(DT_RESOURCE, src->shape);
+    if (!dst->scalar<ResourceHandle>()().ParseFromString(
+            string(static_cast<const char*>(TF_TensorData(src)),
+                   TF_TensorByteSize(src)))) {
+      return InvalidArgument(
+          "Malformed TF_RESOUCE tensor: unable to parse resource handle");
+    }
+    return Status::OK();
+  }
   if (src->dtype != TF_STRING) {
+    if (src->buffer->device() != nullptr) {
+      return InvalidArgument("TF_STRING tensor must be placed in host memory");
+    }
     *dst =
         TensorCApi::MakeTensor(src->dtype, src->shape, src->buffer->buffer());
     return Status::OK();
@@ -458,6 +489,21 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
 
 // Non-static for testing.
 TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src) {
+  if (src.dtype() == DT_RESOURCE) {
+    DCHECK_EQ(0, src.shape().dims()) << src.shape().DebugString();
+    if (src.shape().dims() != 0) {
+      LOG(ERROR) << "Unexpected non-scalar DT_RESOURCE tensor seen (shape: "
+                 << src.shape().DebugString()
+                 << "). Please file a bug at "
+                    "https://github.com/tensorflow/tensorflow/issues/new, "
+                    "ideally with a "
+                    "short code snippet that reproduces this error.";
+    }
+    const string str = src.scalar<ResourceHandle>()().SerializeAsString();
+    TF_Tensor* t = TF_AllocateTensor(TF_RESOURCE, {}, 0, str.size());
+    std::memcpy(TF_TensorData(t), str.c_str(), str.size());
+    return t;
+  }
   if (src.dtype() != DT_STRING) {
     TensorBuffer* buf = TensorCApi::Buffer(src);
     buf->Ref();

@@ -26,7 +26,7 @@ namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::executorplugin;
 
 ExecutorExecutable::ExecutorExecutable(std::unique_ptr<HloModule> hlo_module)
-    : Executable(std::move(hlo_module), ShapeSizeBytes) {}
+    : Executable(std::move(hlo_module)) {}
 
 ExecutorExecutable::~ExecutorExecutable() {}
 
@@ -138,6 +138,11 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteAsyncOnStream(
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+}
+
+std::unique_ptr<HloCostAnalysis> ExecutorExecutable::CreateCostAnalysis()
+    const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace executorplugin

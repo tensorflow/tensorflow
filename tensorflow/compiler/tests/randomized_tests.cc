@@ -368,11 +368,11 @@ OpTest::OpTest() {
 void OpTest::Repeatedly(const std::function<TestResult(void)>& fn) {
   int const max_repetitions = tf_xla_test_repetitions;
   int valid_test_runs = 0;
-  // We run up to 10 * max_repetitions times; the idea is that if we roll the
+  // We run up to 20 * max_repetitions times; the idea is that if we roll the
   // dice enough times we will find some valid parameters. We want to put an
   // upper limit on the number iterations just in case the probability of
   // finding feasible parameters is very low.
-  for (int i = 0; !HasFailure() && i < max_repetitions * 10 &&
+  for (int i = 0; !HasFailure() && i < max_repetitions * 20 &&
                   valid_test_runs < max_repetitions;
        ++i) {
     TestResult result = fn();
@@ -1323,6 +1323,77 @@ TEST_F(OpTest, Conv3DBackpropInput) {
             .Attr("T", DT_FLOAT)
             .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID"));
+  });
+}
+
+TEST_F(OpTest, DepthwiseConv2DNative) {
+  Repeatedly([this]() {
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
+    std::uniform_int_distribution<int> random_int(1, 5);
+    int features_in = random_int(generator());
+    int depth_multiplier = random_int(generator());
+    std::vector<int64> input_dims = {RandomDim(), d.input_dims[0],
+                                     d.input_dims[1], features_in};
+
+    std::vector<int64> kernel_dims = {d.kernel_dims[0], d.kernel_dims[1],
+                                      features_in, depth_multiplier};
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("DepthwiseConv2dNative")
+            .RandomInput(DT_FLOAT, input_dims)
+            .RandomInput(DT_FLOAT, kernel_dims)
+            .Attr("T", DT_FLOAT)
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
+            .Attr("padding", d.padding == SAME ? "SAME" : "VALID"));
+  });
+}
+
+TEST_F(OpTest, DepthwiseConv2DBackpropFilter) {
+  Repeatedly([this]() {
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
+    std::uniform_int_distribution<int> random_int(1, 5);
+    int features_in = random_int(generator());
+    int depth_multiplier = random_int(generator());
+    int32 batch = RandomDim();
+    std::vector<int64> activations =
+        ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims);
+    std::vector<int64> backprop = ImageDims(
+        FORMAT_NHWC, batch, features_in * depth_multiplier, d.output_dims);
+    Tensor kernel_shape = test::AsTensor<int32>(AsInt32s(
+        {d.kernel_dims[0], d.kernel_dims[1], features_in, depth_multiplier}));
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("DepthwiseConv2dNativeBackpropFilter")
+            .RandomInput(DT_FLOAT, activations)
+            .Input(kernel_shape)
+            .RandomInput(DT_FLOAT, backprop)
+            .Attr("T", DT_FLOAT)
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
+            .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
+            .Attr("data_format", "NHWC"));
+  });
+}
+
+TEST_F(OpTest, DepthwiseConv2DBackpropInput) {
+  Repeatedly([this]() {
+    WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
+    std::uniform_int_distribution<int> random_int(1, 5);
+    int features_in = random_int(generator());
+    int depth_multiplier = random_int(generator());
+    int32 batch = RandomDim();
+    Tensor in_shape = test::AsTensor<int32>(
+        AsInt32s(ImageDims(FORMAT_NHWC, batch, features_in, d.input_dims)));
+    std::vector<int64> backprop = ImageDims(
+        FORMAT_NHWC, batch, features_in * depth_multiplier, d.output_dims);
+    std::vector<int64> kernel = {d.kernel_dims[0], d.kernel_dims[1],
+                                 features_in, depth_multiplier};
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("DepthwiseConv2dNativeBackpropInput")
+            .Input(in_shape)
+            .RandomInput(DT_FLOAT, kernel)
+            .RandomInput(DT_FLOAT, backprop)
+            .Attr("T", DT_FLOAT)
+            .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
+            .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
+            .Attr("data_format", "NHWC"));
   });
 }
 

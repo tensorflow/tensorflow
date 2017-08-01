@@ -75,6 +75,10 @@ tf_class {
     argspec: "args=[\'self\', \'start_name_regexes\', \'show_name_regexes\', \'hide_name_regexes\', \'trim_name_regexes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "with_pprof_output"
+    argspec: "args=[\'self\', \'pprof_file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "with_stdout_output"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

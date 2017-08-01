@@ -26,10 +26,8 @@ import numpy as np
 
 from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
@@ -445,81 +443,6 @@ class Conv2DBackpropFilterTest(XLATestCase):
         stride=2,
         padding="SAME",
         expected=expected_output)
-
-
-class DepthwiseConv2DTest(XLATestCase):
-
-  CPU_DEVICE = "/job:localhost/replica:0/task:0/cpu:0"
-
-  def ConfigsToTest(self):
-    input_sizes = [[4, 35, 35, 2], [4, 147, 147, 2], [3, 299, 299, 3],
-                   [5, 183, 183, 1]]
-    filter_sizes = [[5, 5, 2, 1], [3, 3, 2, 8], [2, 2, 3, 8], [5, 5, 1, 2]]
-    strides = [1, 3, 2, 2]
-    # pylint: disable=invalid-name
-    VALID = "VALID"
-    SAME = "SAME"
-    # pylint: enable=invalid-name
-    paddings = [SAME, VALID, SAME, SAME, SAME]
-    for i, f, s, p in zip(input_sizes, filter_sizes, strides, paddings):
-      yield i, f, s, p
-
-  def _VerifyValues(self, input_size, filter_size, stride, padding):
-    imag = np.random.rand(*input_size).astype(np.float32)
-    filt = np.random.rand(*filter_size).astype(np.float32)
-    strides = [1, stride, stride, 1]
-
-    with self.test_session():
-      with self.test_scope():
-        imag_ph = array_ops.placeholder(dtypes.float32, shape=input_size)
-        filt_ph = array_ops.placeholder(dtypes.float32, shape=filter_size)
-        feed_dict = {imag_ph: imag, filt_ph: filt}
-        xla_out = nn_impl.depthwise_conv2d(imag_ph, filt_ph, strides,
-                                           padding).eval(feed_dict=feed_dict)
-
-    with self.test_session():
-      with ops.device(self.CPU_DEVICE):
-        imag_ph = array_ops.placeholder(dtypes.float32, shape=input_size)
-        filt_ph = array_ops.placeholder(dtypes.float32, shape=filter_size)
-        feed_dict = {imag_ph: imag, filt_ph: filt}
-        cpu_out = nn_impl.depthwise_conv2d(imag_ph, filt_ph, strides,
-                                           padding).eval(feed_dict=feed_dict)
-
-    self.assertAllClose(xla_out, cpu_out)
-
-  # This is disabled because we need a mechanism to set command-line flags,
-  # i.e. an implementation of SetCommandLineOption() below.
-  #
-  # def _VerifyDummy(self, input_size, filter_size, stride, padding):
-  #   imag = np.random.rand(*input_size).astype(np.float32)
-  #   filt = np.random.rand(*filter_size).astype(np.float32)
-  #   strides = [1, stride, stride, 1]
-  #
-  #     with self.test_session():
-  #     with self.test_scope():
-  #       imag_ph = tf.placeholder(tf.float32, shape=input_size)
-  #       filt_ph = tf.placeholder(tf.float32, shape=filter_size)
-  #       feed_dict = {imag_ph: imag, filt_ph: filt}
-  #       SetCommandLineOption(
-  #           "tf_tla_depthwise_conv2d_custom_func",
-  #           "DummyDepthwiseConv2dKernel")
-  #       xla_out = tf.nn.depthwise_conv2d(
-  #           imag_ph, filt_ph, strides, padding).eval(feed_dict=feed_dict)
-  #       SetCommandLineOption(
-  #           "tf_tla_depthwise_conv2d_custom_func", "")
-  #
-  #   expected = np.array(range(np.ravel(xla_out).shape[0]), dtype=np.float32)
-  #   self.assertAllClose(np.ravel(xla_out), expected)
-
-  def testBasic(self):
-    for i, f, s, p in self.ConfigsToTest():
-      self._VerifyValues(i, f, s, p)
-
-  # Test disabled until _VerifyDummy(), above can be implemented.
-  # def testCustomFunc(self):
-  #   if self.has_custom_call:
-  #    for i, f, s, p in self.ConfigsToTest():
-  #      self._VerifyDummy(i, f, s, p)
 
 
 if __name__ == "__main__":

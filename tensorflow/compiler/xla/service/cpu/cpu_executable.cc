@@ -54,7 +54,7 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx)
-    : Executable(std::move(hlo_module), CpuExecutable::ShapeSizeBytes),
+    : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)) {
@@ -378,6 +378,10 @@ CpuExecutable::ExecuteAsyncOnStream(
 const PointsToSet& CpuExecutable::GetRootPointsToSet() const {
   return assignment_->points_to_analysis().GetPointsToSet(
       module().entry_computation()->root_instruction());
+}
+
+std::unique_ptr<HloCostAnalysis> CpuExecutable::CreateCostAnalysis() const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 }  // namespace cpu

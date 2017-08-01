@@ -376,7 +376,7 @@ Status GraphTransferer::TransformGraphToAddAggregatedInputNode(
     std::vector<DataType> data_types;
     std::vector<TensorShape> shapes;
     Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
-        original_input_node->def(), &data_types, &shapes);
+        original_input_node->attrs(), &data_types, &shapes);
     if (status.ok()) {
       created_node->AddAttr(
           RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES, data_types);
@@ -579,7 +579,7 @@ bool GraphTransferer::HasPaddingAndStrides(const Node& node) {
 }
 
 bool GraphTransferer::NeedsToAddRank(const Node& node) {
-  const string& op_type = node.def().op();
+  const StringPiece op_type(node.type_string());
   if (op_type == "Transpose" || op_type == "ExpandDims") {
     return true;
   }
@@ -587,7 +587,7 @@ bool GraphTransferer::NeedsToAddRank(const Node& node) {
 }
 
 bool GraphTransferer::IsPadNode(const Node& node) {
-  const string& op_type = node.def().op();
+  const StringPiece op_type(node.type_string());
   if (op_type == "Pad") {
     return true;
   }
@@ -678,7 +678,7 @@ void GraphTransferer::RegisterNodeWithRank(
   CHECK_NOTNULL(input0_node);
   std::vector<TensorShape> shapes;
   Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
-      input0_node->def(), nullptr, &shapes);
+      input0_node->attrs(), nullptr, &shapes);
   CHECK_EQ(1, shapes.size()) << "Output size should be 1.";
   const int const_val_id =
       RegisterConstScalar(DT_INT32, shapes.at(0).dims(), id, node.num_inputs());
@@ -728,7 +728,7 @@ void GraphTransferer::RegisterPadNode(
   CHECK(input_node->IsConstant());
 
   const TensorProto* tensor_proto = nullptr;
-  TF_CHECK_OK(GetNodeAttr(input_node->def(), "value", &tensor_proto));
+  TF_CHECK_OK(GetNodeAttr(input_node->attrs(), "value", &tensor_proto));
   CHECK_NOTNULL(tensor_proto);
   Tensor const_tensor;
   TF_CHECK_OK(MakeTensorFromProto(*tensor_proto, &const_tensor));
@@ -739,7 +739,7 @@ void GraphTransferer::RegisterPadNode(
   } else if (const_tensor.shape().dim_size(0) < PAD_WIDTH) {
     const int width = const_tensor.shape().dim_size(0);
     const TensorProto* proto = nullptr;
-    TF_CHECK_OK(GetNodeAttr(input_node->def(), "value", &proto));
+    TF_CHECK_OK(GetNodeAttr(input_node->attrs(), "value", &proto));
     Tensor const_tensor;
     TF_CHECK_OK(MakeTensorFromProto(*proto, &const_tensor));
     CHECK_EQ(DT_INT32, const_tensor.dtype());

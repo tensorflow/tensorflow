@@ -363,6 +363,197 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   }
 }
 
+TEST_F(ConstantFoldingTest, SimpleShapeKnown) {
+  Graph g(OpRegistry::Global());
+  {
+    Scope s = Scope::NewRootScope();
+    Output recv0 = ops::_Recv(s.WithOpName("recv0"), DT_FLOAT, "recv0",
+                              "sender", 0, "receiver");
+    auto shape = ops::Shape(s.WithOpName("shape"), recv0);
+    Output recv1 = ops::_Recv(s.WithOpName("recv1"), DT_FLOAT, "recv1",
+                              "sender", 0, "receiver");
+    auto shape_n = ops::ShapeN(s.WithOpName("shape_n"), {recv0, recv1});
+    auto rank = ops::Rank(s.WithOpName("rank"), recv0);
+    auto size = ops::Size(s.WithOpName("size"), recv1);
+    auto recv2 = ops::_Recv(s.WithOpName("recv2"), DT_FLOAT, "recv2", "sender",
+                            0, "receiver");
+    auto c = ops::Const<int>(s.WithControlDependencies(recv2), 3);
+    auto add0 = ops::Add(s.WithControlDependencies(c), rank, size);
+    auto add1 = ops::Add(s, shape, shape_n[0]);
+    auto add2 = ops::Add(s, shape_n[1], shape_n[1]);
+    auto send0 = ops::_Send(s.WithOpName("send0"), add0, "send0", "sender", 0,
+                            "receiver");
+    auto send1 = ops::_Send(s.WithOpName("send1"), add1, "send1", "sender", 0,
+                            "receiver");
+    auto send2 = ops::_Send(s.WithOpName("send2"), add2, "send2", "sender", 0,
+                            "receiver");
+    TF_ASSERT_OK(s.ToGraph(&g));
+  }
+  std::unordered_map<string, Node*> orig_index = NodeNameIndex(g);
+  Node* recv0 = orig_index.at("recv0");
+  Node* recv1 = orig_index.at("recv1");
+  PartialTensorShape ps0;
+  int r0_dims[] = {1, 2};
+  TF_EXPECT_OK(PartialTensorShape::MakePartialShape(r0_dims, 2, &ps0));
+  PartialTensorShape ps1;
+  int r1_dims[] = {2, 3, 4};
+  TF_EXPECT_OK(PartialTensorShape::MakePartialShape<int>(r1_dims, 3, &ps1));
+  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
+  map[recv0].push_back(ps0);
+  map[recv1].push_back(ps1);
+  ConstantFoldingOptions opts;
+  opts.shape_map = &map;
+  bool was_mutated;
+  TF_EXPECT_OK(
+      ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
+
+  std::unordered_map<string, Node*> index = NodeNameIndex(g);
+  Node* recv2 = index.at("recv2");
+  Node* send0 = index.at("send0");
+  Node* send1 = index.at("send1");
+  Node* send2 = index.at("send2");
+
+  ASSERT_EQ(1, send0->num_inputs());
+  Node* cf0 = *(send0->in_nodes().begin());
+  ExpectNodeEqual<int>(cf0, {26}, {});
+
+  ASSERT_EQ(1, send1->num_inputs());
+  Node* cf1 = *(send1->in_nodes().begin());
+  ExpectNodeEqual<int>(cf1, {2, 4}, {2});
+
+  ASSERT_EQ(1, send2->num_inputs());
+  Node* cf2 = *(send2->in_nodes().begin());
+  ExpectNodeEqual<int>(cf2, {4, 6, 8}, {3});
+
+  ASSERT_EQ(3, cf0->in_edges().size());
+  for (const Edge* e : cf0->in_edges()) {
+    EXPECT_TRUE(e->IsControlEdge());
+    EXPECT_TRUE(e->src() == recv0 || e->src() == recv1 || e->src() == recv2)
+        << e->src()->name();
+  }
+
+  ASSERT_EQ(2, cf1->in_edges().size());
+  for (const Edge* e : cf1->in_edges()) {
+    EXPECT_TRUE(e->IsControlEdge());
+    EXPECT_TRUE(e->src() == recv0 || e->src() == recv1) << e->src()->name();
+  }
+
+  ASSERT_EQ(2, cf2->in_edges().size());
+  for (const Edge* e : cf2->in_edges()) {
+    EXPECT_TRUE(e->IsControlEdge());
+    EXPECT_TRUE(e->src() == recv0 || e->src() == recv1) << e->src()->name();
+  }
+}
+
+TEST_F(ConstantFoldingTest, PartialShape) {
+  Graph g(OpRegistry::Global());
+  {
+    Scope s = Scope::NewRootScope();
+    Output recv0 = ops::_Recv(s.WithOpName("recv0"), DT_FLOAT, "recv0",
+                              "sender", 0, "receiver");
+    Output recv1 = ops::_Recv(s.WithOpName("recv1"), DT_FLOAT, "recv1",
+                              "sender", 0, "receiver");
+    auto shape = ops::Shape(s.WithOpName("shape"), recv0);
+    auto rank0 = ops::Rank(s.WithOpName("rank0"), recv0);
+    auto rank1 = ops::Rank(s.WithOpName("rank1"), recv1);
+    auto size = ops::Size(s.WithOpName("size"), recv0);
+    auto send0 = ops::_Send(s.WithOpName("send0"), rank0, "send0", "sender", 0,
+                            "receiver");
+    auto send1 = ops::_Send(s.WithOpName("send1"), shape, "send1", "sender", 0,
+                            "receiver");
+    auto send2 = ops::_Send(s.WithOpName("send2"), size, "send2", "sender", 0,
+                            "receiver");
+    auto send3 = ops::_Send(s.WithOpName("send3"), rank1, "send3", "sender", 0,
+                            "receiver");
+    TF_ASSERT_OK(s.ToGraph(&g));
+  }
+  std::unordered_map<string, Node*> orig_index = NodeNameIndex(g);
+  Node* recv0 = orig_index.at("recv0");
+  Node* recv1 = orig_index.at("recv1");
+  PartialTensorShape ps0;
+  int r0_dims[] = {-1, -1};
+  TF_EXPECT_OK(PartialTensorShape::MakePartialShape(r0_dims, 2, &ps0));
+  PartialTensorShape ps1;
+  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
+  map[recv0].push_back(ps0);
+  map[recv1].push_back(ps1);
+  ConstantFoldingOptions opts;
+  opts.shape_map = &map;
+  bool was_mutated;
+  TF_EXPECT_OK(
+      ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
+
+  std::unordered_map<string, Node*> index = NodeNameIndex(g);
+  Node* shape = index.at("shape");
+  Node* size = index.at("size");
+  Node* rank1 = index.at("rank1");
+  Node* send0 = index.at("send0");
+  Node* send1 = index.at("send1");
+  Node* send2 = index.at("send2");
+  Node* send3 = index.at("send3");
+
+  ASSERT_EQ(1, send0->num_inputs());
+  Node* cf0 = *(send0->in_nodes().begin());
+  ExpectNodeEqual<int>(cf0, {2}, {});
+
+  ASSERT_EQ(1, send1->num_inputs());
+  Node* ncf1 = *(send1->in_nodes().begin());
+  EXPECT_EQ(ncf1, shape);
+
+  ASSERT_EQ(1, send2->num_inputs());
+  Node* ncf2 = *(send2->in_nodes().begin());
+  EXPECT_EQ(ncf2, size);
+
+  ASSERT_EQ(1, send3->num_inputs());
+  Node* ncf3 = *(send3->in_nodes().begin());
+  EXPECT_EQ(ncf3, rank1);
+}
+
+TEST_F(ConstantFoldingTest, ConstShapeKnown) {
+  Graph g(OpRegistry::Global());
+  {
+    Scope s = Scope::NewRootScope();
+    auto recv0 = ops::_Recv(s.WithOpName("recv0"), DT_FLOAT, "recv0", "sender",
+                            0, "receiver");
+    auto c0 =
+        ops::Const<int>(s.WithOpName("c0").WithControlDependencies(recv0), 1);
+    auto rank = ops::Rank(s.WithOpName("rank"), c0);
+    auto add0 = ops::Add(s, rank, rank);
+    auto send0 = ops::_Send(s.WithOpName("send0"), add0, "send0", "sender", 0,
+                            "receiver");
+    TF_ASSERT_OK(s.ToGraph(&g));
+  }
+  std::unordered_map<string, Node*> orig_index = NodeNameIndex(g);
+  Node* c0 = orig_index.at("c0");
+  PartialTensorShape ps0;
+  int c0_dims[] = {};
+  TF_EXPECT_OK(PartialTensorShape::MakePartialShape(c0_dims, 0, &ps0));
+  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
+  map[c0].push_back(ps0);
+  ConstantFoldingOptions opts;
+  opts.shape_map = &map;
+  bool was_mutated;
+  TF_EXPECT_OK(
+      ConstantFold(opts, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
+
+  std::unordered_map<string, Node*> index = NodeNameIndex(g);
+  Node* recv0 = index.at("recv0");
+  Node* send0 = index.at("send0");
+
+  ASSERT_EQ(1, send0->num_inputs());
+  Node* cf0 = *(send0->in_nodes().begin());
+  ExpectNodeEqual<int>(cf0, {0}, {});
+
+  ASSERT_EQ(1, cf0->in_edges().size());
+  for (const Edge* e : cf0->in_edges()) {
+    EXPECT_TRUE(e->IsControlEdge());
+    EXPECT_TRUE(e->src() == recv0) << e->src()->name();
+  }
+}
+
 namespace {
 
 const char kTestMemRegionName[] = "test://test";
