@@ -46,15 +46,15 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
   std::lock_guard<std::mutex> lock(cfg_lock);
 
   if (!init) {
-    const char *endpoint = getenv("TFS3_ENDPOINT");
+    const char* endpoint = getenv("TFS3_ENDPOINT");
     if (endpoint) {
       cfg.endpointOverride = Aws::String(endpoint);
     }
-    const char *region = getenv("TFS3_REGION");
+    const char* region = getenv("TFS3_REGION");
     if (region) {
       cfg.region = Aws::String(region);
     }
-    const char *use_https = getenv("TFS3_USE_HTTPS");
+    const char* use_https = getenv("TFS3_USE_HTTPS");
     if (use_https) {
       if (use_https[0] == '0') {
         cfg.scheme = Aws::Http::Scheme::HTTP;
@@ -62,7 +62,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
         cfg.scheme = Aws::Http::Scheme::HTTPS;
       }
     }
-    const char *verify_ssl = getenv("TFS3_VERIFY_SSL");
+    const char* verify_ssl = getenv("TFS3_VERIFY_SSL");
     if (verify_ssl) {
       if (verify_ssl[0] == '0') {
         cfg.verifySSL = false;
@@ -355,8 +355,7 @@ class S3FileSystem : public FileSystem {
           result->push_back(entry.c_str());
         }
       }
-      listObjectsRequest.SetMarker(
-          listObjectsResult.GetNextMarker());
+      listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
     } while (listObjectsResult.GetIsTruncated());
 
     return Status::OK();
@@ -574,8 +573,7 @@ class S3FileSystem : public FileSystem {
           return errors::Internal(ss.str());
         }
       }
-      listObjectsRequest.SetMarker(
-          listObjectsResult.GetNextMarker());
+      listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
     } while (listObjectsResult.GetIsTruncated());
 
     return Status::OK();
