@@ -272,7 +272,8 @@ class MklConv2DOp : public OpKernel {
     mkl_filter_output_mkl_shape.SetMklTensor(true);
     mkl_filter_output_mkl_shape.SetMklLayout(mkl_context.prim_fwd, dnnResourceFilter);
 
-    mkl_filter_output_mkl_shape.SetTfLayout(filter.dims(), mkl_context.filter_sizes,
+    size_t filter_sizes [4] = {filter.dim_size(0), filter.dim_size(1), filter.dim_size(2), filter.dim_size(3)};
+    mkl_filter_output_mkl_shape.SetTfLayout(filter.dims(), filter_sizes,
     mkl_context.filter_strides);
 
     mkl_filter_output_mkl_shape.SetTfDimOrder(mkl_context.filter_dims, data_format_);
