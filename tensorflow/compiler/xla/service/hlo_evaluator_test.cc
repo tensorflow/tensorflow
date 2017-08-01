@@ -1057,5 +1057,58 @@ TEST_F(HloEvaluatorTest, DynamicSliceUpdate) {
   LiteralTestUtil::ExpectEqual(*expected, *result);
 }
 
+TEST_F(HloEvaluatorTest, Reverse) {
+  HloComputation::Builder b(TestName());
+
+  // Input shape is float[4x3x2x1].
+  // clang-format off
+  Array4D<float> input({
+    {{{1.0f}, {2.0f}},
+     {{3.0f}, {4.0f}},
+     {{5.0f}, {6.0f}}},
+    {{{7.0f}, {8.0f}},
+     {{9.0f}, {10.0f}},
+     {{11.0f}, {12.0f}}},
+    {{{13.0f}, {14.0f}},
+     {{15.0f}, {16.0f}},
+     {{17.0f}, {18.0f}}},
+    {{{19.0f}, {20.0f}},
+     {{21.0f}, {22.0f}},
+     {{23.0f}, {24.0f}}},
+  });
+  // clang-format on
+  auto operand_literal = Literal::CreateR4FromArray4D<float>(input);
+  HloInstruction* operand = b.AddInstruction(
+      HloInstruction::CreateConstant(std::move(operand_literal)));
+
+  const Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 2, 1});
+  b.AddInstruction(HloInstruction::CreateReverse(shape, operand, {0, 1}));
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(*b.Build(), {}).ConsumeValueOrDie();
+
+  // clang-format off
+  auto expected = Literal::CreateR4FromArray4D<float>({
+    {{{23.0f}, {24.0f}},
+     {{21.0f}, {22.0f}},
+     {{19.0f}, {20.0f}}},
+
+    {{{17.0f}, {18.0f}},
+     {{15.0f}, {16.0f}},
+     {{13.0f}, {14.0f}}},
+
+    {{{11.0f}, {12.0f}},
+     {{9.0f}, {10.0f}},
+     {{7.0f}, {8.0f}}},
+
+    {{{5.0f}, {6.0f}},
+     {{3.0f}, {4.0f}},
+     {{1.0f}, {2.0f}}},
+  });
+  // clang-format on
+
+  LiteralTestUtil::ExpectEqual(*expected, *result);
+}
+
 }  // namespace
 }  // namespace xla
