@@ -1,0 +1,534 @@
+#include "tensorflow/contrib/gdr/gdr_memory_manager.h"
+
+#include <atomic>
+#include <fstream>
+#include <list>
+#include <map>
+
+#include <fcntl.h>
+#include <rdma/rdma_cma.h>
+#include <rdma/rdma_verbs.h>
+
+#include "tensorflow/contrib/gdr/gdr.pb.h"
+#include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/device.h"
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#endif  // GOOGLE_CUDA
+#include "tensorflow/core/framework/allocator_registry.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+
+namespace tensorflow {
+
+namespace {
+
+bool IsGDRAvailable() {
+  std::ifstream ifs("/proc/modules");
+  string line;
+  while (std::getline(ifs, line)) {
+    auto sep = line.find(' ');
+    CHECK_NE(sep, std::string::npos);
+    if (line.substr(0, sep) == "nv_peer_mem") {
+      return true;
+    }
+  }
+  return false;
+}
+
+int TryToReadNumaNode(ibv_device* device) {
+  static const int kUnknownNumaNode = -1;
+
+  auto filename = string(device->ibdev_path) + "/device/numa_node";
+
+  std::ifstream ifs(filename.c_str());
+  string content;
+  CHECK(std::getline(ifs, content));
+
+  int32 value;
+  if (strings::safe_strto32(content, &value)) {
+    if (value < 0) {
+      LOG(INFO) << "Successful NUMA node read from SysFS had negative value ("
+                << value << "), but there must be at least one NUMA node"
+                            ", so returning NUMA node zero";
+      return 0;
+    }
+    LOG(INFO) << "NUMA node for device: " << device->name << " is " << value;
+    return value;
+  }
+  return kUnknownNumaNode;
+}
+
+void EndpointDeleter(rdma_cm_id* id) {
+  if (id) {
+    rdma_destroy_ep(id);
+  }
+}
+
+void MRDeleter(ibv_mr* mr) {
+  if (mr) {
+    rdma_dereg_mr(mr);
+  }
+}
+
+using RdmaEndpointPtr = std::unique_ptr<rdma_cm_id, decltype(&EndpointDeleter)>;
+
+using MemoryRegionPtr = std::unique_ptr<ibv_mr, decltype(&MRDeleter)>;
+
+class GdrMemoryManager : public RemoteMemoryManager {
+ public:
+  GdrMemoryManager(const string& host, const string& port);
+
+  virtual Status Init() override;
+
+  virtual void Run() override;
+
+  virtual void Stop() override;
+
+  virtual Status TransportOptionsFromTensor(
+      ::google::protobuf::Any* mutable_transport_options, const Tensor& tensor,
+      Device* device, DeviceContext* device_context, bool on_host) override;
+
+  virtual Status TensorFromTransportOptions(
+      Tensor* tensor, const ::google::protobuf::Any& transport_options,
+      Device* device, DeviceContext* device_context, bool on_host) override;
+
+ protected:
+  Status CreateEndpoint(const string& host, const string& port,
+                        RdmaEndpointPtr& endpoint);
+
+  static bool Comparator(const void* ptr, const MemoryRegionPtr& other) {
+    return ptr < reinterpret_cast<char*>(other->addr) + other->length;
+  }
+
+  ibv_mr* FindMemoryRegion(void* addr, size_t length);
+
+  void InsertMemoryRegion(void* addr, size_t length);
+
+  void EvictMemoryRegion(void* addr, size_t length);
+
+ private:
+  const string host_;
+  const string port_;
+  uint16_t bound_port_;
+  RdmaEndpointPtr listening_;
+  std::atomic<bool> stopped_;
+
+  // Server side endpoints
+  // Accessed sequentially in Run() so not protected by lock
+  std::list<RdmaEndpointPtr> server_clients_;
+
+  // Client side endpoints
+  std::map<std::pair<string, string>, RdmaEndpointPtr> clients_ GUARDED_BY(mu_);
+
+  // Managed memory regions
+  std::vector<MemoryRegionPtr> mrs_ GUARDED_BY(mu_);
+
+  // Server side on-the-fly tensor buffers
+  using TensorKey = uint32_t;
+  std::map<TensorKey, const TensorBuffer*> tensor_buffers_ GUARDED_BY(mu_);
+  std::atomic<TensorKey> next_key_;
+  mutex mu_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GdrMemoryManager);
+};
+
+class BasicCPUAllocator : public SubAllocator {
+ public:
+  ~BasicCPUAllocator() override {}
+
+  void* Alloc(size_t alignment, size_t num_bytes) override {
+    return port::AlignedMalloc(num_bytes, alignment);
+  }
+  void Free(void* ptr, size_t) override { port::AlignedFree(ptr); }
+};
+
+class BFCRdmaAllocator : public BFCAllocator {
+ public:
+  BFCRdmaAllocator()
+      : BFCAllocator(new BasicCPUAllocator(), 1LL << 36, true, "cpu_rdma_bfc") {
+  }
+};
+
+REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 300, BFCRdmaAllocator);
+
+GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
+    : host_(host),
+      port_(port),
+      listening_(nullptr, EndpointDeleter),
+      stopped_(false),
+      next_key_(0) {}
+
+Status GdrMemoryManager::Init() {
+  rdma_addrinfo* addrinfo;
+  rdma_addrinfo hints = {};
+  hints.ai_port_space = RDMA_PS_TCP;
+  hints.ai_flags = RAI_PASSIVE;
+  if (rdma_getaddrinfo(const_cast<char*>(host_.c_str()),
+                       const_cast<char*>(port_.c_str()), &hints, &addrinfo)) {
+    return errors::Unavailable("Cannot resolve rdma://", host_, ":", port_);
+  }
+
+  ibv_qp_init_attr init_attr = {};
+  init_attr.qp_type = IBV_QPT_RC;
+  init_attr.cap.max_recv_wr = 1024;
+  init_attr.cap.max_send_wr = 1;
+  init_attr.cap.max_recv_sge = 1;
+  init_attr.cap.max_send_sge = 1;
+
+  // Create listening endpoint
+  rdma_cm_id* id;
+  if (rdma_create_ep(&id, addrinfo, nullptr, &init_attr)) {
+    return errors::Unavailable("Cannot bind to rdma://", host_, ":", port_);
+  }
+  listening_.reset(id);
+  rdma_freeaddrinfo(addrinfo);
+
+  // Listen without backlog
+  if (rdma_listen(id, 0)) {
+    rdma_destroy_ep(id);
+    return errors::Unavailable("Cannot listen on rdma://", host_, ":", port_);
+  }
+  bound_port_ = rdma_get_src_port(id);
+  LOG(INFO) << "RDMA server is listening on " << host_ << ":" << bound_port_;
+
+  int flags = fcntl(id->channel->fd, F_GETFL, 0);
+  if (fcntl(id->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
+    return errors::Unavailable("Cannot set server to non-blocking mode");
+  }
+
+  std::set<Allocator*> instrumented_;
+
+  Allocator* allocators[] = {
+#if GOOGLE_CUDA
+    ProcessState::singleton()->GetCUDAHostAllocator(0),
+    ProcessState::singleton()->GetCPUAllocator(0),
+#endif  // GOOGLE_CUDA
+    cpu_allocator(),
+  };
+
+  using namespace std::placeholders;
+  VisitableAllocator::Visitor alloc_visitor =
+      std::bind(&GdrMemoryManager::InsertMemoryRegion, this, _1, _2);
+  VisitableAllocator::Visitor free_visitor =
+      std::bind(&GdrMemoryManager::EvictMemoryRegion, this, _1, _2);
+
+  // Host memory allocators
+  for (Allocator* allocator : allocators) {
+    CHECK(allocator);
+    auto* visitable_allocator = dynamic_cast<VisitableAllocator*>(allocator);
+    if (visitable_allocator &&
+        instrumented_.find(allocator) == std::end(instrumented_)) {
+      visitable_allocator->AddAllocVisitor(alloc_visitor);
+      visitable_allocator->AddFreeVisitor(free_visitor);
+      instrumented_.insert(allocator);
+      LOG(INFO) << "Instrumenting CPU allocator " << allocator->Name();
+    }
+  }
+
+#if GOOGLE_CUDA
+  if (IsGDRAvailable()) {
+    // Note we don't free allocated GPU memory so there is no free visitor
+    int32_t bus_id = TryToReadNumaNode(id->verbs->device) + 1;
+    VisitableAllocator::Visitor alloc_visitor =
+        std::bind(&GdrMemoryManager::InsertMemoryRegion, this, _1, _2);
+    ProcessState::singleton()->AddGPUAllocVisitor(bus_id, alloc_visitor);
+    LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
+  }
+#endif  // GOOGLE_CUDA
+
+  return Status::OK();
+}
+
+void GdrMemoryManager::Run() {
+  stopped_ = false;
+  while (!stopped_) {
+    // Accept incoming connections
+    rdma_cm_id* id = nullptr;
+    if (!rdma_get_request(listening_.get(), &id)) {
+      if (!rdma_accept(id, nullptr)) {
+        LOG(INFO) << "Accepted new RDMA connection";
+        if (rdma_post_recvv(id, nullptr, nullptr, 0)) {
+          perror("rdma_post_recvv");
+          LOG(ERROR) << "rdma_post_recvv failed";
+          EndpointDeleter(id);
+        } else {
+          server_clients_.push_back({id, EndpointDeleter});
+        }
+      }
+    }
+
+    // Polling work completions
+    const bool error = true;
+    server_clients_.remove_if([this](const RdmaEndpointPtr& client) {
+      ibv_wc wc[32];
+      int ret = ibv_poll_cq(client->recv_cq, 32, wc);
+      if (ret < 0) {
+        LOG(ERROR) << "ibv_poll_cq failed";
+        return error;
+      }
+      for (int i = 0; i < ret; i++) {
+        if (wc[i].opcode != IBV_WC_RECV_RDMA_WITH_IMM) {
+          LOG(ERROR) << "Received unknown operation " << wc[i].opcode;
+          return error;
+        }
+        if (wc[i].status != 0) {
+          LOG(ERROR) << ibv_wc_status_str(wc[i].status);
+          return error;
+        }
+        TensorKey tensor_key = ntohl(wc[i].imm_data);
+        {
+          mutex_lock l(mu_);
+          auto iter = tensor_buffers_.find(tensor_key);
+          if (iter == std::end(tensor_buffers_)) {
+            LOG(ERROR) << "Cannot find tensor buffer for tensor key "
+                       << tensor_key;
+            return error;
+          } else {
+            const TensorBuffer* buffer = iter->second;
+            buffer->Unref();
+            tensor_buffers_.erase(iter);
+          }
+        }
+        if (rdma_post_recvv(client.get(), nullptr, nullptr, 0)) {
+          perror("rdma_post_recvv");
+          LOG(ERROR) << "rdma_post_recvv failed";
+          return error;
+        }
+      }
+      return !error;
+    });
+  }
+}
+
+void GdrMemoryManager::Stop() { stopped_ = true; }
+
+Status GdrMemoryManager::TransportOptionsFromTensor(
+    ::google::protobuf::Any* mutable_transport_options, const Tensor& tensor,
+    Device* device, DeviceContext* device_context, bool on_host) {
+  auto buffer = DMAHelper::buffer(&tensor);
+  void* addr = buffer->data();
+  size_t length = buffer->size();
+  if (length == 0) {
+    return errors::Unavailable("Cannot register tensor buffer of size 0");
+  }
+
+  ibv_mr* mr = FindMemoryRegion(addr, length);
+
+  Tensor host_copy;
+  if (mr == nullptr && device->tensorflow_gpu_device_info() && (!on_host)) {
+#if GOOGLE_CUDA
+    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    host_copy = Tensor(alloc, tensor.dtype(), tensor.shape());
+    Status s;
+    Notification n;
+    GPUUtil::CopyGPUTensorToCPU(device, device_context, &tensor, &host_copy,
+                                [&s, &n](const Status& status) {
+                                  s.Update(status);
+                                  n.Notify();
+                                });
+    n.WaitForNotification();
+    if (!s.ok()) {
+      return s;
+    }
+    buffer = DMAHelper::buffer(&host_copy);
+    addr = buffer->data();
+    length = buffer->size();
+    mr = FindMemoryRegion(addr, length);
+#endif
+  }
+
+  if (mr == nullptr) {
+    return errors::Unavailable("Cannot find pinned memory region");
+  }
+
+  buffer->Ref();
+  TensorKey tensor_key = next_key_++;
+  {
+    mutex_lock l(mu_);
+    tensor_buffers_.insert({tensor_key, buffer});
+  }
+
+  RemoteMemoryRegion remote_mr;
+  remote_mr.set_host(host_);
+  remote_mr.set_port(bound_port_);
+  remote_mr.set_addr(reinterpret_cast<uint64_t>(addr));
+  remote_mr.set_rkey(mr->rkey);
+  remote_mr.set_tensor_key(tensor_key);
+  mutable_transport_options->PackFrom(remote_mr);
+
+  return Status::OK();
+}
+
+Status GdrMemoryManager::TensorFromTransportOptions(
+    Tensor* tensor, const ::google::protobuf::Any& transport_options,
+    Device* dst_device, DeviceContext* dst_device_context, bool on_host) {
+  RemoteMemoryRegion remote_mr;
+  if (!transport_options.UnpackTo(&remote_mr)) {
+    return errors::NotFound("No RDMA transport options found");
+  }
+
+  auto buffer = DMAHelper::buffer(tensor);
+  void* addr = buffer->data();
+  size_t length = buffer->size();
+  ibv_mr* mr = FindMemoryRegion(addr, length);
+
+  Tensor host_copy;
+#if GOOGLE_CUDA
+  if (mr == nullptr && (!on_host)) {
+    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
+    buffer = DMAHelper::buffer(&host_copy);
+    addr = buffer->data();
+    length = buffer->size();
+    mr = FindMemoryRegion(addr, length);
+  }
+#endif  // GOOGLE_CUDA
+
+  if (mr == nullptr) {
+    return errors::Unavailable("Cannot find pinned memory region");
+  }
+
+  decltype(clients_)::iterator iter;
+  bool success;
+  {
+    mutex_lock l(mu_);
+    string port = std::to_string(remote_mr.port());
+    std::tie(iter, success) = clients_.insert(
+        std::make_pair(std::make_pair(remote_mr.host(), port),
+                       RdmaEndpointPtr(nullptr, EndpointDeleter)));
+    if (success || iter->second.get() == nullptr) {
+      TF_RETURN_IF_ERROR(CreateEndpoint(remote_mr.host(), port, iter->second));
+    }
+  }
+  rdma_cm_id* id = iter->second.get();
+
+  uint64_t start = Env::Default()->NowMicros();
+
+  if (rdma_post_read(id, nullptr, buffer->data(), buffer->size(), mr, 0,
+                     remote_mr.addr(), remote_mr.rkey())) {
+    perror("rdma_post_read");
+    return errors::Unavailable("rdma_post_read failed");
+  }
+
+  ibv_send_wr wr = {};
+  wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+  wr.imm_data = htonl(remote_mr.tensor_key());
+  wr.send_flags = IBV_SEND_FENCE | IBV_SEND_SIGNALED;
+  ibv_send_wr* bad_wr;
+  if (ibv_post_send(id->qp, &wr, &bad_wr)) {
+    return errors::Unavailable("ibv_post_send failed");
+  }
+
+  ibv_wc wc = {};
+  int ret = rdma_get_send_comp(id, &wc);
+  if (ret < 0 || wc.status) {
+    return errors::Unavailable(ibv_wc_status_str(wc.status));
+  }
+
+#if GOOGLE_CUDA
+  if (host_copy.NumElements() > 0) {
+    Status s;
+    Notification n;
+    GPUUtil::CopyCPUTensorToGPU(&host_copy, dst_device_context, dst_device,
+                                tensor, [&s, &n](const Status& status) {
+                                  s.Update(status);
+                                  n.Notify();
+                                });
+    n.WaitForNotification();
+    if (!s.ok()) {
+      return s;
+    }
+  }
+#endif  // GOOGLE_CUDA
+
+  uint64_t end = Env::Default()->NowMicros();
+
+  VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
+          << " of size " << buffer->size() << " with tensor key "
+          << remote_mr.tensor_key() << " took " << (end - start) << " micros";
+
+  return Status::OK();
+}
+
+Status GdrMemoryManager::CreateEndpoint(const string& host, const string& port,
+                                        RdmaEndpointPtr& endpoint) {
+  rdma_addrinfo* addrinfo;
+  rdma_addrinfo hints = {};
+  hints.ai_port_space = RDMA_PS_TCP;
+  if (rdma_getaddrinfo(const_cast<char*>(host.c_str()),
+                       const_cast<char*>(port.c_str()), &hints, &addrinfo)) {
+    return errors::InvalidArgument("Cannot connect to rdma://", host, ":",
+                                   port);
+  }
+
+  ibv_qp_init_attr init_attr = {};
+  init_attr.qp_type = IBV_QPT_RC;
+  init_attr.cap.max_recv_wr = 1;
+  init_attr.cap.max_send_wr = 32;
+  init_attr.cap.max_recv_sge = 1;
+  init_attr.cap.max_send_sge = 1;
+
+  rdma_cm_id* id;
+  if (rdma_create_ep(&id, addrinfo, nullptr, &init_attr)) {
+    rdma_freeaddrinfo(addrinfo);
+    return errors::Unavailable("Cannot create endpoint to rdma://", host, ":",
+                               port);
+  }
+  rdma_freeaddrinfo(addrinfo);
+
+  if (rdma_connect(id, nullptr)) {
+    rdma_destroy_ep(id);
+    return errors::Unavailable("Cannot connect to endpoint rdma://", host, ":",
+                               port);
+  }
+
+  LOG(INFO) << "RDMA endpoint connected to rdma://" << host << ":" << port;
+  endpoint = RdmaEndpointPtr(id, EndpointDeleter);
+  return Status::OK();
+}
+
+ibv_mr* GdrMemoryManager::FindMemoryRegion(void* addr, size_t length) {
+  if (length == 0) return nullptr;
+  mutex_lock l(mu_);
+  auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
+  if (iter == std::end(mrs_) || iter->get()->addr > addr) {
+    return nullptr;
+  } else {
+    return iter->get();
+  }
+}
+
+void GdrMemoryManager::InsertMemoryRegion(void* addr, size_t length) {
+  if (length == 0) return;
+  ibv_mr* mr = rdma_reg_read(listening_.get(), addr, length);
+  if (mr != nullptr) {
+    mutex_lock l(mu_);
+    auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
+    mrs_.insert(iter, {mr, &MRDeleter});
+  } else {
+    LOG(WARNING) << "Cannot register memory region";
+  }
+}
+
+void GdrMemoryManager::EvictMemoryRegion(void* addr, size_t length) {
+  if (length == 0) return;
+  mutex_lock l(mu_);
+  auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
+  if (iter != std::end(mrs_) && iter->get()->addr == addr) {
+    mrs_.erase(iter);
+  } else {
+    LOG(WARNING) << "Failed to de-register memory region";
+  }
+}
+
+}  // namespace
+
+RemoteMemoryManager* CreateRemoteMemoryManager(const string& host,
+                                               const string& port) {
+  return new GdrMemoryManager(host, port);
+}
+
+}  // namespace tensorflow
