@@ -171,25 +171,25 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
 
   // This callback checks that all batch items in all calls were processed
   // successfully and passes status to the info_checker_callback accordingly.
-  auto wrapped_info_checker_callback =
-      [info_checker_callback](std::vector<HostLapackInfo> host_lapack_infos) {
-        Status status;
-        for (const auto& host_lapack_info : host_lapack_infos) {
-          for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
-            const int info_value = (host_lapack_info.data())[i];
-            if (info_value != 0) {
-              status = errors::InvalidArgument(
-                  "Got info = ", info_value, " for batch index ", i,
-                  ", expected info = 0. Debug_info =",
-                  host_lapack_info.debug_info());
-            }
-          }
-          if (!status.ok()) {
-            break;
-          }
+  auto wrapped_info_checker_callback = [info_checker_callback](
+      std::vector<HostLapackInfo> host_lapack_infos) {
+    Status status;
+    for (const auto& host_lapack_info : host_lapack_infos) {
+      for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
+        const int info_value = (host_lapack_info.data())[i];
+        if (info_value != 0) {
+          status = errors::InvalidArgument("Got info = ", info_value,
+                                           " for batch index ", i,
+                                           ", expected info = 0. Debug_info =",
+                                           host_lapack_info.debug_info());
         }
-        info_checker_callback(status, host_lapack_infos);
-      };
+      }
+      if (!status.ok()) {
+        break;
+      }
+    }
+    info_checker_callback(status, host_lapack_infos);
+  };
   auto cb =
       std::bind(wrapped_info_checker_callback, std::move(host_lapack_infos));
   auto stream = context_->op_device_context()->stream();
@@ -202,6 +202,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
 // numeric types.
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
+#define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, S) m(double, D)
 
 // Macros to construct cusolverDn method names.
 #define DN_SOLVER_FN(method, lapack_prefix) cusolverDn##lapack_prefix##method
@@ -251,6 +252,38 @@ static inline Status PotrfImpl(BufSizeFnT bufsize, SolverFnT solver,
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
+
+template <typename Scalar, typename BufSizeFnT, typename SolverFnT>
+static inline Status GetrfImpl(BufSizeFnT bufsize, SolverFnT solver,
+                               OpKernelContext* context,
+                               cusolverDnHandle_t cusolver_dn_handle, int m,
+                               int n, Scalar* A, int lda, int* dev_ipiv,
+                               int* dev_lapack_info) {
+  /* Get amount of workspace memory required. */
+  int lwork;
+  TF_RETURN_IF_CUSOLVER_ERROR(
+      bufsize(cusolver_dn_handle, m, n, A, lda, &lwork));
+  /* Allocate device memory for workspace. */
+  ScratchSpace<Scalar> dev_workspace(context, lwork, /* on_host */ false);
+  /* Launch the solver kernel. */
+  TF_RETURN_IF_CUSOLVER_ERROR(solver(
+      cusolver_dn_handle, m, n, CUDAComplex(A), lda,
+      CUDAComplex(dev_workspace.mutable_data()), dev_ipiv, dev_lapack_info));
+  return Status::OK();
+}
+
+#define GETRF_INSTANCE(Scalar, lapack_prefix)                            \
+  template <>                                                            \
+  Status CudaSolver::Getrf<Scalar>(int m, int n, Scalar* dev_A, int lda, \
+                                   int* dev_ipiv, int* dev_lapack_info)  \
+      const {                                                            \
+    return GetrfImpl(DN_BUFSIZE_FN(getrf, lapack_prefix),                \
+                     DN_SOLVER_FN(getrf, lapack_prefix), context_,       \
+                     cusolver_dn_handle_, m, n, dev_A, lda, dev_ipiv,    \
+                     dev_lapack_info);                                   \
+  }
+
+TF_CALL_LAPACK_TYPES_NO_COMPLEX(GETRF_INSTANCE);
 
 template <typename Scalar, typename SolverFnT>
 static inline Status GeamImpl(SolverFnT solver, cublasHandle_t cublas_handle,

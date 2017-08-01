@@ -27,20 +27,24 @@ from tensorflow.python.platform import test
 
 class DeterminantOpTest(test.TestCase):
 
-  def _compareDeterminantBase(self, matrix_x, tf_ans):
+  def _compareDeterminantBase(self, matrix_x, tf_ans, less_precision=False):
     out = tf_ans.eval()
     shape = matrix_x.shape
     if shape[-1] == 0 and shape[-2] == 0:
       np_ans = np.ones(shape[:-2]).astype(matrix_x.dtype)
     else:
       np_ans = np.array(np.linalg.det(matrix_x)).astype(matrix_x.dtype)
-    self.assertAllClose(np_ans, out)
+    if less_precision:
+      self.assertAllClose(np_ans, out, atol=1e-4) # GPU version is not that accurate
+    else:
+      self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
-  def _compareDeterminant(self, matrix_x):
-    with self.test_session():
+  def _compareDeterminant(self, matrix_x, allow_gpu=True):
+    with self.test_session(use_gpu=allow_gpu):
       self._compareDeterminantBase(matrix_x,
-                                   linalg_ops.matrix_determinant(matrix_x))
+                                   linalg_ops.matrix_determinant(matrix_x),
+                                   less_precision=allow_gpu)
 
   def testBasic(self):
     # 2x2 matrices
@@ -105,7 +109,7 @@ class DeterminantOpTest(test.TestCase):
     max_double = np.finfo("d").max
     huge_matrix = np.array([[max_double, 0.0], [0.0, max_double]])
     with self.assertRaisesOpError("not finite"):
-      self._compareDeterminant(huge_matrix)
+      self._compareDeterminant(huge_matrix, allow_gpu=False)
 
   def testNonSquareMatrix(self):
     # When the determinant of a non-square matrix is attempted we should return
