@@ -43,10 +43,10 @@ Literal::StrideConfig::StrideConfig(
       base(dimensions.size(), 0),
       step(dimensions.size(), 1) {
   if (!dimensions.empty()) {
-    // Selects the shape with the highest minor dimension as the one upon
-    // where to run the tight stride loop.
-    if (source_shape.layout().minor_to_major()[0] >=
-        dest_shape.layout().minor_to_major()[0]) {
+    // Selects the shape with the largest minor dimension as the one upon
+    // which to run the tight stride loop.
+    if (dimensions[source_shape.layout().minor_to_major()[0]] >=
+        dimensions[dest_shape.layout().minor_to_major()[0]]) {
       minor_dimension = source_shape.layout().minor_to_major()[0];
       dest_stride = IndexUtil::GetDimensionStride(dest_shape, minor_dimension);
     } else {
@@ -503,6 +503,28 @@ string Literal::GetAsString(
   }
 }
 
+StatusOr<int64> Literal::GetIntegralAsS64(
+    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  switch (shape().element_type()) {
+    case PRED:
+      return Get<bool>(multi_index);
+    case U8:
+      return Get<uint8>(multi_index);
+    case S32:
+      return Get<int32>(multi_index);
+    case S64:
+      return Get<int64>(multi_index);
+    case U32:
+      return Get<uint32>(multi_index);
+    case U64:
+      return Get<uint64>(multi_index);
+    default:
+      return FailedPrecondition(
+          "Array element type is not integral: %s",
+          PrimitiveType_Name(shape().element_type()).c_str());
+  }
+}
+
 int64 Literal::LinearIndex(
     tensorflow::gtl::ArraySlice<int64> multi_index) const {
   return IndexUtil::MultidimensionalIndexToLinearIndex(shape(), multi_index);
@@ -653,7 +675,6 @@ void* Literal::MutableInternalData() {
   // created by the accessor functions.
   switch (shape().element_type()) {
     case PRED:
-      return reinterpret_cast<void*>(preds_.data());
     case U8:
       return reinterpret_cast<void*>(u8s_.data());
     case S32:
@@ -721,8 +742,6 @@ tensorflow::Status Literal::ValidateLiteral() const {
   int64 actual = -1;
   switch (shape().element_type()) {
     case PRED:
-      actual = preds_size();
-      break;
     case U8:
       actual = u8s_size();
       break;
@@ -928,26 +947,22 @@ bool Literal::Equal(const Literal& literal2) const {
 template <>
 tensorflow::gtl::MutableArraySlice<bool> Literal::GetMutableArraySlice() {
   auto values = mutable_preds();
-  return tensorflow::gtl::MutableArraySlice<bool>(values->data(),
-                                                  values->size());
+  return tensorflow::gtl::MutableArraySlice<bool>(
+      reinterpret_cast<bool*>(values->data()), values->size());
 }
 
 template <>
 tensorflow::gtl::MutableArraySlice<int8> Literal::GetMutableArraySlice() {
-  // C++11 standard, basic_string 21.4.1.5, values should be stored
-  // contiguously. From C++17 a mutable data() member will be provided.
   auto values = mutable_u8s();
   return tensorflow::gtl::MutableArraySlice<int8>(
-      reinterpret_cast<int8*>(&(*values)[0]), values->size());
+      reinterpret_cast<int8*>(values->data()), values->size());
 }
 
 template <>
 tensorflow::gtl::MutableArraySlice<uint8> Literal::GetMutableArraySlice() {
-  // C++11 standard, basic_string 21.4.1.5, values should be stored
-  // contiguously. From C++17 a mutable data() member will be provided.
   auto values = mutable_u8s();
-  return tensorflow::gtl::MutableArraySlice<uint8>(
-      reinterpret_cast<uint8*>(&(*values)[0]), values->size());
+  return tensorflow::gtl::MutableArraySlice<uint8>(values->data(),
+                                                   values->size());
 }
 
 template <>
@@ -1009,19 +1024,18 @@ tensorflow::gtl::MutableArraySlice<double> Literal::GetMutableArraySlice() {
 
 template <>
 tensorflow::gtl::MutableArraySlice<half> Literal::GetMutableArraySlice<half>() {
-  // C++11 standard, basic_string 21.4.1.5, values should be stored
-  // contiguously. From C++17 a mutable data() member will be provided.
   // TODO - there is an endianess problem here. fix it, or wait for uint16
   //        support in protobuf
   auto values = mutable_f16s();
-  return tensorflow::gtl::MutableArraySlice<half>(
-      reinterpret_cast<half*>(&(*values)[0]), values->size());
+  return tensorflow::gtl::MutableArraySlice<half>(values->data(),
+                                                  values->size());
 }
 
 template <>
 tensorflow::gtl::ArraySlice<bool> Literal::GetArraySlice<bool>() const {
   CHECK_EQ(shape().element_type(), PRED);
-  return tensorflow::gtl::ArraySlice<bool>(preds().data(), preds().size());
+  return tensorflow::gtl::ArraySlice<bool>(
+      reinterpret_cast<const bool*>(preds().data()), preds().size());
 }
 
 template <>
@@ -1071,9 +1085,8 @@ tensorflow::gtl::ArraySlice<double> Literal::GetArraySlice<double>() const {
 template <>
 tensorflow::gtl::ArraySlice<half> Literal::GetArraySlice<half>() const {
   CHECK_EQ(shape().element_type(), F16);
-  return tensorflow::gtl::ArraySlice<half>(
-      reinterpret_cast<const half*>(f16s().data()),
-      f16s().size() / sizeof(half));
+  return tensorflow::gtl::ArraySlice<half>(f16s().data(),
+                                           f16s().size() / sizeof(half));
 }
 
 template <typename NativeT>
@@ -1236,21 +1249,13 @@ static void CopyToRepeatedField(RepeatedFieldT* dest,
   *dest = RepeatedFieldT(src.begin(), src.end());
 }
 
-template <typename RepeatedFieldT>
-static void CopyToRepeatedBoolField(RepeatedFieldT* dest,
-                                    const BoolVector& src) {
-  *dest = RepeatedFieldT(src.begin(), src.end());
-}
-
 LiteralProto Literal::ToProto() const {
   LiteralProto proto;
   proto.Clear();
   *proto.mutable_shape() = shape();
   switch (shape().element_type()) {
     case PRED:
-      if (preds().begin()) {
-        CopyToRepeatedBoolField(proto.mutable_preds(), preds());
-      }
+      CopyToRepeatedField(proto.mutable_preds(), preds());
       break;
     case U8:
       *proto.mutable_u8s() = u8s_string();
@@ -1304,8 +1309,7 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
   *mutable_shape() = literal_proto.shape();
   switch (shape().element_type()) {
     case PRED:
-      *mutable_preds() = BoolVector(literal_proto.preds().begin(),
-                                    literal_proto.preds().end());
+      CopyFromRepeatedField(mutable_preds(), literal_proto.preds());
       break;
     case U8:
       set_u8s(literal_proto.u8s());

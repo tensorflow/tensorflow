@@ -90,3 +90,10 @@ message SplitCandidate {
   // Fields used when training with a graph runner.
   string unique_id = 6;
 }
+
+// Proto used for tracking tree paths during inference time.
+message TreePath {
+  // Nodes are listed in order that they were traversed. i.e. nodes_visited[0]
+  // is the tree's root node.
+  repeated decision_trees.TreeNode nodes_visited = 1;
+}

@@ -200,15 +200,20 @@ BufferAllocation* BufferAssignment::GetMutableAllocation(
   return const_cast<BufferAllocation*>(&GetAllocation(index));
 }
 
-bool BufferAssignment::HasTopLevelAllocation(
-    const HloInstruction* instruction) const {
+bool BufferAssignment::HasAllocationAt(const HloInstruction* instruction,
+                                       const ShapeIndex& index) const {
   for (const LogicalBuffer* buffer :
-       GetPointsToSet(instruction).element(/*index=*/{})) {
+       GetPointsToSet(instruction).element(index)) {
     if (allocation_index_for_buffer_.count(buffer) > 0) {
       return true;
     }
   }
   return false;
+}
+
+bool BufferAssignment::HasTopLevelAllocation(
+    const HloInstruction* instruction) const {
+  return HasAllocationAt(instruction, /*index=*/{});
 }
 
 StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
@@ -585,7 +590,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     LogicalBuffer::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
-    bool allow_input_output_aliasing, TuplePointsToAnalysis::Colorer colorer) {
+    bool allow_input_output_aliasing, BufferLiveness::Colorer colorer) {
   BufferAssigner assigner(allow_input_output_aliasing, std::move(colorer));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
@@ -1219,6 +1224,9 @@ void BufferAssigner::BuildColocatedBufferSets(
   const TuplePointsToAnalysis& points_to_analysis =
       buffer_liveness.points_to_analysis();
   for (const HloComputation* computation : module->MakeComputationPostOrder()) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       const HloOpcode opcode = instruction->opcode();
@@ -1351,7 +1359,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   std::vector<ColocatedBufferSet> colocated_buffer_sets;
   BuildColocatedBufferSets(module, assignment->liveness(),
                            assignment->buffer_size_, &colocated_buffer_sets);
-  TF_RETURN_IF_ERROR(colorer_(&assignment->mutable_points_to_analysis()));
+  TF_RETURN_IF_ERROR(colorer_(assignment->liveness()));
   VLOG(3) << "After coloring:";
   XLA_VLOG_LINES(3, assignment->points_to_analysis().ToString());
 
@@ -1386,6 +1394,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // their own BufferAllocation.
   for (auto* computation : thread_local_computations) {
     TF_RET_CHECK(computation != module->entry_computation());
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
         computation, module->config().debug_options(),
         /*is_thread_local=*/true, colocated_buffers, colocated_allocations,

@@ -525,8 +525,8 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   # valid Cholesky factor.
   chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
-  # OperatorPDCholesky ignores the upper triangle.
-  operator = OperatorPDCholesky(chol)
+  # LinearOperatorTriL ignores the upper triangle.
+  operator = LinearOperatorTriL(chol)
   ```
 
   Example of heteroskedastic 2-D linear regression.

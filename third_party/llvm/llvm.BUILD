@@ -386,6 +386,7 @@ llvm_target_list = [
         "tbl_outs": [
             ("-gen-register-bank", "lib/Target/ARM/ARMGenRegisterBank.inc"),
             ("-gen-register-info", "lib/Target/ARM/ARMGenRegisterInfo.inc"),
+            ("-gen-searchable-tables", "lib/Target/ARM/ARMGenSystemRegister.inc"),
             ("-gen-instr-info", "lib/Target/ARM/ARMGenInstrInfo.inc"),
             ("-gen-emitter", "lib/Target/ARM/ARMGenMCCodeEmitter.inc"),
             ("-gen-pseudo-lowering", "lib/Target/ARM/ARMGenMCPseudoLowering.inc"),
@@ -879,6 +880,7 @@ cc_library(
     deps = [
         ":arm_desc",
         ":arm_info",
+        ":arm_utils",
         ":config",
         ":mc",
         ":mc_parser",
@@ -897,12 +899,14 @@ cc_library(
         "include/llvm/Target/ARM/InstPrinter/*.h",
         "include/llvm/Target/ARM/InstPrinter/*.def",
         "include/llvm/Target/ARM/InstPrinter/*.inc",
+        "lib/Target/ARM/*.h",
         "lib/Target/ARM/InstPrinter/*.h",
     ]),
     copts = ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_info",
         ":arm_target_gen",
+        ":arm_utils",
         ":config",
         ":mc",
         ":support",
@@ -928,6 +932,7 @@ cc_library(
         ":arm_asm_printer",
         ":arm_desc",
         ":arm_info",
+        ":arm_utils",
         ":asm_printer",
         ":code_gen",
         ":config",
@@ -1013,6 +1018,29 @@ cc_library(
         ":config",
         ":support",
         ":target",
+    ],
+)
+
+cc_library(
+    name = "arm_utils",
+    srcs = glob([
+        "lib/Target/ARM/Utils/*.c",
+        "lib/Target/ARM/Utils/*.cpp",
+        "lib/Target/ARM/Utils/*.inc",
+        "lib/Target/ARM/MCTargetDesc/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/ARM/Utils/*.h",
+        "include/llvm/Target/ARM/Utils/*.def",
+        "include/llvm/Target/ARM/Utils/*.inc",
+        "lib/Target/ARM/Utils/*.h",
+    ]),
+    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    deps = [
+        ":arm_target_gen",
+        ":config",
+        ":mc",
+        ":support",
     ],
 )
 
@@ -1129,6 +1157,7 @@ cc_library(
         ":config",
         ":core",
         ":mc",
+        ":object",
         ":support",
     ],
 )
@@ -1178,11 +1207,12 @@ cc_library(
         "lib/IR/*.h",
     ]),
     hdrs = glob([
+        "include/llvm/Analysis/*.def",
         "include/llvm/IR/*.h",
         "include/llvm/IR/*.def",
         "include/llvm/IR/*.inc",
         "include/llvm/*.h",
-    ]) + ["include/llvm/Support/VCSRevision.h"],
+    ]),
     deps = [
         ":attributes_compat_gen",
         ":attributes_gen",
@@ -1950,6 +1980,7 @@ cc_library(
     ]) + [
         "include/llvm/BinaryFormat/MachO.def",
         "include/llvm/Support/DataTypes.h",
+        "include/llvm/Support/VCSRevision.h",
         "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
     ],
     deps = [
@@ -1993,6 +2024,8 @@ cc_library(
         "lib/Target/*.h",
     ]),
     hdrs = glob([
+        "include/llvm/CodeGen/*.h",
+        "include/llvm/CodeGen/*.def",
         "include/llvm/Target/*.h",
         "include/llvm/Target/*.def",
         "include/llvm/Target/*.inc",

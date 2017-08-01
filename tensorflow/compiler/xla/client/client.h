@@ -75,24 +75,6 @@ class Client {
   // TransferToInfeed).
   StatusOr<std::vector<DeviceHandle>> GetDeviceHandles(int64 device_count);
 
-  // Executes the given computation as above Execute(), but launches the
-  // computation asynchronously and returns before the execution is complete.
-  // Returns an ExecutionHandle that represents the launched execution, which is
-  // used to call WaitForExecution() to wait for the execution's completion.
-  StatusOr<ExecutionHandle> ExecuteAsync(
-      const Computation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const ExecutionOptions* execution_options = nullptr);
-
-  // Waits until the given asynchronously launched execution of the computation
-  // is complete and returns the execution result. Once this is called, the
-  // given execution handle is no longer valid. If execution_profile is not
-  // nullptr then the pointed-to ExecutionProfile will be filled with profile
-  // data from the execution.
-  StatusOr<std::unique_ptr<GlobalData>> WaitForExecution(
-      const Computation& computation, const ExecutionHandle& execution,
-      ExecutionProfile* execution_profile = nullptr);
-
   // Transfer the global data provided to this client process, which is
   // returned in the provided literal. Use sparingly to avoid transfer
   // overheads.

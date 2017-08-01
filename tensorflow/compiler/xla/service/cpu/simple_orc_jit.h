@@ -20,11 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/Triple.h"
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -82,6 +82,8 @@ class SimpleOrcJIT {
   // Get the runtime address of the compiled symbol whose name is given. Returns
   // nullptr if the symbol cannot be found.
   llvm::JITSymbol FindSymbol(const std::string& name);
+
+  llvm::TargetMachine* target_machine() const { return target_machine_.get(); }
 
  private:
   std::vector<ModuleHandleT> module_handles_;

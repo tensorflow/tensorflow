@@ -627,6 +627,11 @@ class HloInstruction {
     return fusion_kind_;
   }
 
+  void set_fusion_kind(FusionKind kind) {
+    CHECK_EQ(HloOpcode::kFusion, opcode_);
+    fusion_kind_ = kind;
+  }
+
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
   //
@@ -934,10 +939,6 @@ class HloInstruction {
   // The padding configuration that describes the edge padding and interior
   // padding of this pad instruction. Only set for pad instructions.
   std::unique_ptr<PaddingConfig> padding_config_;
-
-  // The computation that stores of instructions fused into this fusion
-  // instruction. Only set for fusion instructions.
-  std::unique_ptr<HloComputation> fused_instructions_computation_;
 
   // If this instruction is fused into a fusion instruction, this field points
   // to the fusion instruction.

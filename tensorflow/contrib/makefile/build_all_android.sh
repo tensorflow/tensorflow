@@ -82,7 +82,7 @@ fi
 if [[ "${USE_HEXAGON}" == "true" ]]; then
     HEXAGON_PARENT_DIR=$(cd "${HEXAGON_DOWNLOAD_PATH}" >/dev/null && pwd)
     HEXAGON_LIBS="${HEXAGON_PARENT_DIR}/libs"
-    HEXAGON_INCLUDE=$(cd "tensorflow/core/platform/hexagon" >/dev/null && pwd)
+    HEXAGON_INCLUDE=$(cd "tensorflow/core/kernels/hexagon" >/dev/null && pwd)
 fi
 
 if [[ "${ENABLE_EXPERIMENTAL_HEXNN_OPS}" == "true" ]]; then

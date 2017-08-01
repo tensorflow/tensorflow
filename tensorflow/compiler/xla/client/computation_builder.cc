@@ -284,6 +284,25 @@ ComputationDataHandle ComputationBuilder::Slice(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::SliceInDim(
+    const ComputationDataHandle& operand, int64 start_index, int64 limit_index,
+    int64 stride, int64 dimno) {
+  StatusOr<std::unique_ptr<Shape>> shape_status = GetShape(operand);
+  if (!shape_status.ok()) {
+    NoteError(shape_status.status());
+    return ComputationDataHandle{};
+  }
+  const Shape& shape = *shape_status.ValueOrDie();
+  std::vector<int64> starts(ShapeUtil::Rank(shape), 0);
+  std::vector<int64> limits(shape.dimensions().begin(),
+                            shape.dimensions().end());
+  std::vector<int64> strides(ShapeUtil::Rank(shape), 1);
+  starts[dimno] = start_index;
+  limits[dimno] = limit_index;
+  strides[dimno] = stride;
+  return Slice(operand, starts, limits, strides);
+}
+
 ComputationDataHandle ComputationBuilder::DynamicSlice(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& start_indices,
@@ -974,6 +993,11 @@ ComputationDataHandle ComputationBuilder::Sign(
 ComputationDataHandle ComputationBuilder::Cos(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_COS, operand);
+}
+
+ComputationDataHandle ComputationBuilder::Sin(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_SIN, operand);
 }
 
 ComputationDataHandle ComputationBuilder::Tanh(

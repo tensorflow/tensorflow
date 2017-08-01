@@ -493,6 +493,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "variant"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "zeros_initializer"
     mtype: "<type \'type\'>"
   }
@@ -635,6 +639,10 @@ tf_module {
   member_method {
     name: "assert_rank_at_least"
     argspec: "args=[\'x\', \'rank\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "assert_rank_in"
+    argspec: "args=[\'x\', \'ranks\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "assert_same_float_dtype"

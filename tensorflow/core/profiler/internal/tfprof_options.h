@@ -62,7 +62,8 @@ static const char* const kCmds[] = {
     "scope", "graph", "code", "op", "advise", "set", "help",
 };
 
-static const char* const kOutput[] = {"timeline", "stdout", "file", "none"};
+static const char* const kOutput[] = {"timeline", "stdout", "file", "pprof",
+                                      "none"};
 
 static const char* const kTimelineOpts[] = {
     "outfile",
@@ -75,6 +76,14 @@ static const char* const kFileOpts[] = {
 };
 
 static const char* const kFileRequiredOpts[] = {
+    "outfile",
+};
+
+static const char* const kPprofOpts[] = {
+    "outfile",
+};
+
+static const char* const kPprofRequiredOpts[] = {
     "outfile",
 };
 

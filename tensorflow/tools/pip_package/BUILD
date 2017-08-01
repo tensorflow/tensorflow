@@ -119,14 +119,17 @@ filegroup(
         "@libxsmm_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
-        "@nanopb_git//:LICENSE.txt",
+        "@grpc//third_party/nanopb:LICENSE.txt",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
         "@org_python_pypi_backports_weakref//:LICENSE",
-    ] + if_not_windows([
+    ] + if_mkl([
+        "//third_party/mkl:LICENSE",
+        "@mkl//:LICENSE",
+    ]) + if_not_windows([
         "@nccl_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
@@ -173,6 +176,7 @@ sh_binary(
             "//tensorflow/python/saved_model:saved_model",
             "//tensorflow/python:spectral_ops_test_util",
             "//tensorflow/python/tools:tools_pip",
+            "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )

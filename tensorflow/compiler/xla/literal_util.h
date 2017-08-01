@@ -49,96 +49,6 @@ limitations under the License.
 
 namespace xla {
 
-// This class is a simple vector of boolean values. It's used to workaround some
-// implementations of std::vector<bool> that use a bitset which does not have
-// the semantics expected by Literal::preds().
-class BoolVector {
- public:
-  typedef bool* iterator;
-  typedef const bool* const_iterator;
-
-  BoolVector() : bits_(nullptr), size_(0), capacity_(0) {}
-
-  BoolVector(const_iterator other_begin, const_iterator other_end)
-      : bits_(nullptr), size_(0), capacity_(0) {
-    if (other_begin && other_end) {
-      resize(other_end - other_begin);
-      memcpy(begin(), other_begin, size());
-    }
-  }
-
-  BoolVector(const BoolVector& other) { CopyFrom(other); }
-  BoolVector(BoolVector&&) = default;
-
-  BoolVector& operator=(const BoolVector& other) {
-    CopyFrom(other);
-    return *this;
-  }
-  BoolVector& operator=(BoolVector&&) = default;
-
-  void push_back(const bool& value) {
-    resize(size_ + 1);
-    bits_[size_ - 1] = value;
-  }
-
-  bool* data() const { return bits_.get(); }
-
-  size_t size() const { return size_; }
-
-  size_t capacity() const { return capacity_; }
-
-  void resize(size_t new_size, bool val = false) {
-    if (new_size == 0) {
-      bits_.reset(nullptr);
-      size_ = 0;
-      capacity_ = 0;
-    } else {
-      size_t old_size = size();
-      if (new_size > old_size) {
-        grow(new_size);
-      }
-      if (old_size < new_size) {
-        memset(&bits_[old_size], val, new_size - old_size);
-      }
-      size_ = new_size;
-    }
-  }
-
-  void clear() {
-    bits_.reset(nullptr);
-    size_ = 0;
-    capacity_ = 0;
-  }
-
-  iterator begin() { return &bits_[0]; }
-  iterator end() { return &bits_[size()]; }
-  const_iterator begin() const { return &bits_[0]; }
-  const_iterator end() const { return &bits_[size()]; }
-
- private:
-  void grow(size_t n) {
-    if (capacity_ < n) {
-      capacity_ = 2 * n;
-      bool* new_bits = new bool[capacity_]();
-      if (size_ > 0) {
-        memcpy(new_bits, bits_.get(), size_);
-      }
-      bits_.reset(new_bits);
-    }
-  }
-
-  void CopyFrom(const BoolVector& other) {
-    bits_ = MakeUnique<bool[]>(other.capacity());
-    memcpy(begin(), other.begin(), other.size());
-    size_ = other.size();
-    capacity_ = other.capacity();
-  }
-
-  std::unique_ptr<bool[]> bits_;
-  size_t size_;
-  size_t capacity_;
-};
-
 // Utility class for dealing with XLA literal values.  Most methods are
 // templated by native (host) type which corresponds to a unique XLA
 // PrimitiveType. See ComputationBuilder for details.  Not all primitive types
@@ -169,7 +79,6 @@ class Literal {
 
   void Clear() {
     shape_.Clear();
-    preds_.clear();
     u8s_.clear();
     s32s_.clear();
     s64s_.clear();
@@ -181,9 +90,17 @@ class Literal {
     tuple_literals_.clear();
   }
 
-  int preds_size() const { return preds().size(); }
-  const BoolVector& preds() const { return preds_; }
-  BoolVector* mutable_preds() { return &preds_; }
+  int preds_size() const { return u8s().size(); }
+  const std::vector<uint8>& preds() const {
+    static_assert(sizeof(uint8) == sizeof(bool),
+                  "The uint8 and bool types should be the same size");
+    return u8s_;
+  }
+  std::vector<uint8>* mutable_preds() {
+    static_assert(sizeof(uint8) == sizeof(bool),
+                  "The uint8 and bool types should be the same size");
+    return &u8s_;
+  }
 
   int s32s_size() const { return s32s().size(); }
   int32 s32s(int i) const { return s32s_[i]; }
@@ -473,6 +390,11 @@ class Literal {
   // into text.
   string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index) const;
 
+  // As Get(), but determines the correct type and converts the value into
+  // int64.
+  StatusOr<int64> GetIntegralAsS64(
+      tensorflow::gtl::ArraySlice<int64> multi_index) const;
+
   // Returns an identity matrix (rank 2) with the given row and column count.
   template <typename NativeT>
   static std::unique_ptr<Literal> MakeIdentityR2(int64 size);
@@ -553,10 +475,11 @@ class Literal {
 
   // Populates literal values by calling the generator function for every cell
   // in this literal object.
-  template <typename NativeT>
-  Status Populate(
-      const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-          generator);
+  //
+  // generator must be a callable of the type
+  // NativeT(tensorflow::gtl::ArraySlice<int64> indexes) or compatible.
+  template <typename NativeT, typename FnType>
+  Status Populate(const FnType& generator);
 
   // Creates a Literal of the given dimensions with all elements set to the
   // given value.
@@ -648,7 +571,6 @@ class Literal {
   };
 
   Shape shape_;
-  BoolVector preds_;
   std::vector<uint8> u8s_;
   std::vector<int32> s32s_;
   std::vector<int64> s64s_;
@@ -1191,12 +1113,10 @@ void Literal::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateR4FromArray4DWithLayout(values, LayoutUtil::GetDefaultLayoutForR4());
 }
 
-template <typename NativeT>
-Status Literal::Populate(
-    const std::function<NativeT(tensorflow::gtl::ArraySlice<int64> indexes)>&
-        generator) {
+template <typename NativeT, typename FnType>
+Status Literal::Populate(const FnType& generator) {
   const Shape& this_shape = shape();
-  int64 rank = ShapeUtil::Rank(this_shape);
+  const int64 rank = ShapeUtil::Rank(this_shape);
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
   tensorflow::gtl::MutableArraySlice<NativeT> data =
@@ -1209,7 +1129,7 @@ Status Literal::Populate(
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
     auto init_function = [&](const std::vector<int64>& indexes) {
-      int64 index = LinearIndex(indexes);
+      const int64 index = LinearIndex(indexes);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       for (int64 i = 0; i < minor_dimension_size; ++i) {
         minor_scan_indexes[stride_config.minor_dimension] = i;

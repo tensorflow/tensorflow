@@ -120,6 +120,21 @@ stamp_token: Stamp token for Read/Write operations.
 next_stamp_token: Stamp token to be used for the next iteration.
 )doc");
 
+REGISTER_OP("QuantileAccumulatorFlushSummary")
+    .Input("quantile_accumulator_handle: resource")
+    .Input("stamp_token: int64")
+    .Input("next_stamp_token: int64")
+    .Output("output: string")
+    .Doc(R"doc(
+Resets quantile summary stream and returns the summary.
+
+quantile_accumulator_handle: The handle to the accumulator.
+stamp_token: Stamp token for Read/Write operations.
+             Any operation with a mismatching token will be dropped.
+next_stamp_token: Stamp token to be used for the next iteration.
+output: A scalar string that is the a summary of the accumulator.
+)doc");
+
 REGISTER_OP("QuantileAccumulatorSerialize")
     .Input("quantile_accumulator_handle: resource")
     .Output("stamp_token: int64")

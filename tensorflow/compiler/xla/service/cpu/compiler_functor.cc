@@ -22,19 +22,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/StringRef.h"
-#include "external/llvm/include/llvm/Analysis/TargetLibraryInfo.h"
-#include "external/llvm/include/llvm/Analysis/TargetTransformInfo.h"
-#include "external/llvm/include/llvm/ExecutionEngine/ObjectMemoryBuffer.h"
-#include "external/llvm/include/llvm/IR/LegacyPassManager.h"
-#include "external/llvm/include/llvm/IR/Verifier.h"
-#include "external/llvm/include/llvm/MC/MCContext.h"
-#include "external/llvm/include/llvm/Object/ObjectFile.h"
-#include "external/llvm/include/llvm/Support/raw_ostream.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
-#include "external/llvm/include/llvm/Transforms/IPO.h"
-#include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
-#include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/ExecutionEngine/ObjectMemoryBuffer.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
@@ -131,25 +131,25 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
   std::vector<llvm::VecDesc> vector_functions;
 
   const llvm::VecDesc four_wide_vector_functions[] = {
-      {"expf", runtime::kExpV4F32, 4},
-      {"llvm.exp.f32", runtime::kExpV4F32, 4},
+      {"expf", runtime::kExpV4F32SymbolName, 4},
+      {"llvm.exp.f32", runtime::kExpV4F32SymbolName, 4},
 
-      {"logf", runtime::kLogV4F32, 4},
-      {"llvm.log.f32", runtime::kLogV4F32, 4},
+      {"logf", runtime::kLogV4F32SymbolName, 4},
+      {"llvm.log.f32", runtime::kLogV4F32SymbolName, 4},
 
-      {"tanhf", runtime::kTanhV4F32, 4},
-      {"llvm.tanh.f32", runtime::kTanhV4F32, 4},
+      {"tanhf", runtime::kTanhV4F32SymbolName, 4},
+      {"llvm.tanh.f32", runtime::kTanhV4F32SymbolName, 4},
   };
 
   const llvm::VecDesc eight_wide_vector_functions[] = {
-      {"expf", runtime::kExpV8F32, 8},
-      {"llvm.exp.f32", runtime::kExpV8F32, 8},
+      {"expf", runtime::kExpV8F32SymbolName, 8},
+      {"llvm.exp.f32", runtime::kExpV8F32SymbolName, 8},
 
-      {"logf", runtime::kLogV8F32, 8},
-      {"llvm.log.f32", runtime::kLogV8F32, 8},
+      {"logf", runtime::kLogV8F32SymbolName, 8},
+      {"llvm.log.f32", runtime::kLogV8F32SymbolName, 8},
 
-      {"tanhf", runtime::kTanhV8F32, 8},
-      {"llvm.tanh.f32", runtime::kTanhV8F32, 8},
+      {"tanhf", runtime::kTanhV8F32SymbolName, 8},
+      {"llvm.tanh.f32", runtime::kTanhV8F32SymbolName, 8},
   };
 
   if (arch == llvm::Triple::x86 || llvm::Triple::x86_64) {

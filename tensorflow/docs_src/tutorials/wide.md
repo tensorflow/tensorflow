@@ -106,8 +106,8 @@ Here's a list of columns available in the Census Income dataset:
 :                :             : military, private, etc.).         :
 | fnlwgt         | Continuous  | The number of people the census   |
 :                :             : takers believe that observation   :
-:                :             : represents (sample weight). This  :
-:                :             : variable will not be used.        :
+:                :             : represents (sample weight). Final :
+:                :             : weight will not be used.          :
 | education      | Categorical | The highest level of education    |
 :                :             : achieved for that individual.     :
 | education_num  | Continuous  | The highest level of education in |

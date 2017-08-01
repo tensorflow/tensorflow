@@ -167,7 +167,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      Python version, and GPU support. Find the appropriate value for
      <code><em>tfBinaryURL</em></code> for your system
      [here](#the_url_of_the_tensorflow_python_package).  For example, if you
-     are installing TensorFlow for Linux, Python 2.7, and CPU-only support,
+     are installing TensorFlow for Linux, Python 3.4, and CPU-only support,
      issue the following command to install TensorFlow in the active
      virtualenv environment:
 
@@ -272,7 +272,7 @@ take the following steps:
      Python version, and GPU support. Find the appropriate value for
      <code><em>tfBinaryURL</em></code>
      [here](#the_url_of_the_tensorflow_python_package).  For example, to
-     install TensorFlow for Linux, Python 2.7, and CPU-only support, issue
+     install TensorFlow for Linux, Python 3.4, and CPU-only support, issue
      the following command:
 
      <pre>
@@ -460,7 +460,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
      where <code><em>tfBinaryURL</em></code> is the
      [URL of the TensorFlow Python package](#the_url_of_the_tensorflow_python_package).
      For example, the following command installs the CPU-only version of
-     TensorFlow for Python 2.7:
+     TensorFlow for Python 3.4:
 
      <pre>
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \

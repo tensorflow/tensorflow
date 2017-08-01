@@ -1672,6 +1672,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "compare_and_bitpack_op_test",
+    size = "small",
+    srcs = ["compare_and_bitpack_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+cuda_py_test(
     name = "scalar_test",
     size = "small",
     srcs = ["scalar_test.py"],
@@ -1716,7 +1728,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "shape_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["shape_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -1985,7 +1997,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "transpose_op_test",
-    size = "large",
+    size = "medium",
     srcs = ["transpose_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",

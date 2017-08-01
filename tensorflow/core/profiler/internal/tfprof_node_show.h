@@ -111,11 +111,31 @@ class ShowMultiNode {
 
 class CodeNode : public ShowMultiNode {
  public:
-  explicit CodeNode(TFMultiGraphNode* node) : ShowMultiNode(node) {}
+  explicit CodeNode(TFMultiGraphNode* node, const CodeDef::Trace* trace)
+      : ShowMultiNode(node), trace(trace) {}
   ~CodeNode() override {}
 
+  CodeNode* AddChildren(const string& name, const CodeDef::Trace* trace) {
+    auto it = children_.find(name);
+    if (it != children_.end()) {
+      return it->second.get();
+    }
+
+    graph_children_.push_back(
+        std::unique_ptr<TFMultiGraphNode>(new TFMultiGraphNode(name)));
+    auto child = &children_[name];
+    child->reset(new CodeNode(graph_children_.back().get(), trace));
+    children.push_back(child->get());
+    return child->get();
+  }
+
+  const CodeDef::Trace* trace;
   std::vector<CodeNode*> children;
   std::vector<CodeNode*> show_children;
+
+ private:
+  std::vector<std::unique_ptr<TFMultiGraphNode>> graph_children_;
+  std::map<string, std::unique_ptr<CodeNode>> children_;
 };
 
 class OpNode : public ShowMultiNode {

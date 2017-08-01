@@ -26,12 +26,12 @@ namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::executorplugin;
 
 ExecutorExecutable::ExecutorExecutable(std::unique_ptr<HloModule> hlo_module)
-    : Executable(std::move(hlo_module), ShapeSizeBytes) {}
+    : Executable(std::move(hlo_module)) {}
 
 ExecutorExecutable::~ExecutorExecutable() {}
 
-static se::DeviceMemoryBase AllocateSingleOutput(sep::ExecutorExecutor* executor,
-                                                 const Literal& literal) {
+static se::DeviceMemoryBase AllocateSingleOutput(
+    sep::ExecutorExecutor* executor, const Literal& literal) {
   int64 size(xla::ShapeUtil::ByteSizeOf(literal.shape()));
   void* buf = executor->Allocate(size);
   const void* src = literal.InternalData();
@@ -39,21 +39,22 @@ static se::DeviceMemoryBase AllocateSingleOutput(sep::ExecutorExecutor* executor
   return se::DeviceMemoryBase(buf, size);
 }
 
-static se::DeviceMemoryBase AllocateOutputBuffer(sep::ExecutorExecutor* executor,
-                                                 const Literal& literal) {
+static se::DeviceMemoryBase AllocateOutputBuffer(
+    sep::ExecutorExecutor* executor, const Literal& literal) {
   const Shape& shape = literal.shape();
   if (shape.element_type() != xla::TUPLE) {
     return AllocateSingleOutput(executor, literal);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     void** buf = reinterpret_cast<void**>(executor->Allocate(size));
+    void** buf_rc = buf;
     for (int64 n = 0; n < xla::ShapeUtil::TupleElementCount(shape); n++) {
       se::DeviceMemoryBase out =
           AllocateSingleOutput(executor, literal.tuple_literals(n));
       *buf++ = out.opaque();
     }
 
-    return se::DeviceMemoryBase(buf, size);
+    return se::DeviceMemoryBase(buf_rc, size);
   }
 }
 
@@ -96,7 +97,7 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
   // Execute the graph using the evaluator
   HloEvaluator evaluator;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> output,
-                      evaluator.Evaluate(computation, arg_literals_ptrs));
+                      evaluator.Evaluate(*computation, arg_literals_ptrs));
 
   // Copy the result into the return buffer
   perftools::gputools::StreamExecutor* executor(stream->parent());
@@ -139,6 +140,10 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteAsyncOnStream(
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
+std::unique_ptr<HloCostAnalysis> ExecutorExecutable::CreateCostAnalysis()
+    const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
+}
 
 }  // namespace executorplugin
 }  // namespace xla

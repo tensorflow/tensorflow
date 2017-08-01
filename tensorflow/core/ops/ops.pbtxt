@@ -499,7 +499,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -601,7 +601,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1691,7 +1691,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -1757,7 +1757,7 @@ op {
   }
   input_arg {
     name: "dimension"
-    description: "int32 or int64, 0 <= dimension < rank(input).  Describes\nwhich dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
+    description: "int32 or int64, must be in the range `[-rank(input), rank(input))`.\nDescribes which dimension of the input Tensor to reduce across. For vectors,\nuse dimension = 0."
     type_attr: "Tidx"
   }
   output_arg {
@@ -4407,6 +4407,43 @@ op {
   description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
 }
 op {
+  name: "CompareAndBitpack"
+  input_arg {
+    name: "input"
+    description: "Values to compare against `threshold` and bitpack."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "threshold"
+    description: "Threshold to compare against."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "The bitpacked comparisons."
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    description: "The type of the input and threshold."
+    allowed_values {
+      list {
+        type: DT_BOOL
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Compare values of `input` to `threshold` and pack resulting bits into a `uint8`."
+  description: "Each comparison returns a boolean `true` (if `input_value > threshold`)\nor and `false` otherwise.\n\nThis operation is useful for Locality-Sensitive-Hashing (LSH) and other\nalgorithms that use hashing approximations of cosine and `L2` distances;\ncodes can be generated from an input via:\n\n```python\ncodebook_size = 50\ncodebook_bits = codebook_size * 32\ncodebook = tf.get_variable(\'codebook\', [x.shape[-1].value, codebook_bits],\n                           dtype=x.dtype,\n                           initializer=tf.orthogonal_initializer())\ncodes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)\ncodes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32\n# now codes has shape x.shape[:-1] + [codebook_size]\n```\n\n**NOTE**: Currently, the innermost dimension of the tensor must be divisible\nby 8.\n\nGiven an `input` shaped `[s0, s1, ..., s_n]`, the output is\na `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`."
+}
+op {
   name: "Complex"
   input_arg {
     name: "real"
@@ -5656,10 +5693,12 @@ op {
   name: "Cumprod"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5672,6 +5711,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumprod."
   }
   attr {
     name: "reverse"
@@ -5679,6 +5719,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -5722,10 +5763,12 @@ op {
   name: "Cumsum"
   input_arg {
     name: "x"
+    description: "A `Tensor`. Must be one of the following types: `float32`, `float64`,\n`int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,\n`complex128`, `qint8`, `quint8`, `qint32`, `half`."
     type_attr: "T"
   }
   input_arg {
     name: "axis"
+    description: "A `Tensor` of type `int32` (default: 0). Must be in the range\n`[-rank(x), rank(x))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -5738,6 +5781,7 @@ op {
     default_value {
       b: false
     }
+    description: "If `True`, perform exclusive cumsum."
   }
   attr {
     name: "reverse"
@@ -5745,6 +5789,7 @@ op {
     default_value {
       b: false
     }
+    description: "A `bool` (default: False)."
   }
   attr {
     name: "T"
@@ -5783,6 +5828,24 @@ op {
   }
   summary: "Compute the cumulative sum of the tensor `x` along `axis`."
   description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
+}
+op {
+  name: "DebugGradientIdentity"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Identity op for gradient debugging."
+  description: "This op is hidden from public in Python. It is used by TensorFlow Debugger to\nregister gradient tensors for gradient debugging."
+  allows_uninitialized_input: true
 }
 op {
   name: "DebugIdentity"
@@ -7597,7 +7660,7 @@ op {
   }
   input_arg {
     name: "dim"
-    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`."
+    description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`. Must be in the range\n`[-rank(input) - 1, rank(input)]`."
     type_attr: "Tdim"
   }
   output_arg {
@@ -10119,6 +10182,44 @@ op {
   description: "This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the\nprediction for the target class is among the top `k` predictions among\nall predictions for example `i`. Note that the behavior of `InTopK` differs\nfrom the `TopK` op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-`k` boundary, all of those\nclasses are considered to be in the top `k`.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example `i`,\n  \\\\(targets_i\\\\) be the target class for example `i`,\n  \\\\(out_i\\\\) be the output for example `i`,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
 }
 op {
+  name: "InTopKV2"
+  input_arg {
+    name: "predictions"
+    description: "A `batch_size` x `classes` tensor."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "targets"
+    description: "A `batch_size` vector of class ids."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "k"
+    description: "Number of top elements to look at for computing precision."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "precision"
+    description: "Computed precision at `k` as a `bool Tensor`."
+    type: DT_BOOL
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Says whether the targets are in the top `K` predictions."
+  description: "This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the\nprediction for the target class is among the top `k` predictions among\nall predictions for example `i`. Note that the behavior of `InTopK` differs\nfrom the `TopK` op in its handling of ties; if multiple classes have the\nsame prediction value and straddle the top-`k` boundary, all of those\nclasses are considered to be in the top `k`.\n\nMore formally, let\n\n  \\\\(predictions_i\\\\) be the predictions for all classes for example `i`,\n  \\\\(targets_i\\\\) be the target class for example `i`,\n  \\\\(out_i\\\\) be the output for example `i`,\n\n$$out_i = predictions_{i, targets_i} \\in TopKIncludingTies(predictions_i)$$"
+}
+op {
   name: "InitializeTable"
   input_arg {
     name: "table_handle"
@@ -10582,6 +10683,26 @@ op {
     name: "resource_handle"
     description: "A handle to an iterator resource."
     type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    description: "If specified, defines the type of each tuple component in an\nelement produced by the resulting iterator."
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    description: "If specified, defines the shape of each tuple component in an\nelement produced by the resulting iterator."
+    has_minimum: true
   }
   summary: "Converts the given string representing a handle to an iterator to a resource."
   is_stateful: true
@@ -12287,7 +12408,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -13064,7 +13185,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -13255,7 +13376,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -15399,6 +15520,33 @@ op {
   description: "The polygamma function is defined as:\n\n\n\\\\(\\psi^{(n)}(x) = \\frac{d^n}{dx^n} \\psi(x)\\\\)\n\nwhere \\\\(\\psi(x)\\\\) is the digamma function."
 }
 op {
+  name: "PopulationCount"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Computes element-wise population count (a.k.a. popcount, bitsum, bitcount)."
+  description: "For each entry in `x`, calculates the number of `1` (on) bits in the binary\nrepresentation of that entry.\n\n**NOTE**: It is more efficient to first `tf.bitcast` your tensors into\n`int32` or `int64` and perform the bitcount on the result, than to feed in\n8- or 16-bit inputs and then aggregate the resulting counts."
+}
+op {
   name: "Pow"
   input_arg {
     name: "x"
@@ -15624,7 +15772,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -21670,7 +21818,7 @@ op {
   }
   input_arg {
     name: "axis"
-    description: "1-D. The indices of the dimensions to reverse."
+    description: "1-D. The indices of the dimensions to reverse. Must be in the range\n`[-rank(tensor), rank(tensor))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -23272,6 +23420,60 @@ op {
   }
   summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
   description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```python\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
+}
+op {
+  name: "Selu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`"
+  description: "if < 0, `scale * features` otherwise.\n\nSee [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)"
+}
+op {
+  name: "SeluGrad"
+  input_arg {
+    name: "gradients"
+    description: "The backpropagated gradients to the corresponding Selu operation."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "outputs"
+    description: "The outputs of the corresponding Selu operation."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprops"
+    description: "The gradients: `gradients * (outputs + scale * alpha)`\nif outputs < 0, `scale * gradients` otherwise."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Computes gradients for the scaled exponential linear (Selu) operation."
 }
 op {
   name: "SerializeManySparse"
@@ -27222,7 +27424,7 @@ op {
       list {
       }
     }
-    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1."
+    description: "If specified, only squeezes the dimensions listed. The dimension\nindex starts at 0. It is an error to squeeze a dimension that is not 1. Must\nbe in the range `[-rank(input), rank(input))`."
     has_minimum: true
   }
   summary: "Removes dimensions of size 1 from the shape of a tensor."
@@ -28212,7 +28414,7 @@ op {
   }
   input_arg {
     name: "reduction_indices"
-    description: "The dimensions to reduce."
+    description: "The dimensions to reduce. Must be in the range\n`[-rank(input), rank(input))`."
     type_attr: "Tidx"
   }
   output_arg {
@@ -30447,7 +30649,7 @@ op {
     }
   }
   summary: "Computes the Max along segments of a tensor."
-  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nThis operator is similar to the [unsorted segment sum operator](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).\nInstead of computing the sum over segments, it computes the maximum\nsuch that:\n\n\\\\(output_i = \\max_j data_j\\\\) where max is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,\n `output[i] = numeric_limits<T>::min()`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/UnsortedSegmentSum.png\" alt>\n</div>"
+  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nThis operator is similar to the [unsorted segment sum operator](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).\nInstead of computing the sum over segments, it computes the maximum\nsuch that:\n\n\\\\(output_i = \\max_j data_j\\\\) where max is over `j` such\nthat `segment_ids[j] == i`.\n\nIf the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,\n `output[i] = numeric_limits<T>::min()`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"https://www.tensorflow.org/images/UnsortedSegmentMax.png\" alt>\n</div>"
 }
 op {
   name: "UnsortedSegmentSum"

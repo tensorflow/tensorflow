@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -33,6 +32,45 @@ namespace xla {
 namespace {
 
 class SliceTest : public ClientLibraryTestBase {};
+
+TEST_F(SliceTest, Slice3x3x3_To_3x3x1_F32) {
+  Array3D<float> values(3, 3, 3);
+  values.FillIota(0);
+
+  ComputationBuilder builder(client_, TestName());
+  auto original = builder.ConstantR3FromArray3D<float>(values);
+  builder.Slice(original, {0, 0, 0}, {3, 3, 1}, {1, 1, 1});
+
+  Array3D<float> expected{
+      {{0.0}, {3.0}, {6.0}}, {{9.0}, {12.0}, {15.0}}, {{18.0}, {21.0}, {24.0}}};
+  ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.000001));
+}
+
+TEST_F(SliceTest, Slice3x3x3_To_3x1x3_F32) {
+  Array3D<float> values(3, 3, 3);
+  values.FillIota(0);
+
+  ComputationBuilder builder(client_, TestName());
+  auto original = builder.ConstantR3FromArray3D<float>(values);
+  builder.Slice(original, {0, 0, 0}, {3, 1, 3}, {1, 1, 1});
+
+  Array3D<float> expected{
+      {{0.0, 1.0, 2.0}}, {{9.0, 10.0, 11.0}}, {{18.0, 19.0, 20.0}}};
+  ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.000001));
+}
+
+TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
+  Array3D<float> values(3, 3, 3);
+  values.FillIota(0);
+
+  ComputationBuilder builder(client_, TestName());
+  auto original = builder.ConstantR3FromArray3D<float>(values);
+  builder.Slice(original, {0, 0, 0}, {1, 3, 3}, {1, 1, 1});
+
+  Array3D<float> expected{
+      {{{0.0, 1.0, 2.0}, {3.0, 4.0, 5.0}, {6.0, 7.0, 8.0}}}};
+  ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.000001));
+}
 
 XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
   ComputationBuilder builder(client_, TestName());
@@ -255,20 +293,3 @@ INSTANTIATE_TEST_CASE_P(
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

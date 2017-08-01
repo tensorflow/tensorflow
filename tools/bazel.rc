@@ -11,6 +11,9 @@ build:mkl --define=using_mkl=true
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 
+build:sycl_nodouble --crosstool_top=@local_config_sycl//crosstool:toolchain
+build:sycl_nodouble --define=using_sycl=true --cxxopt -DTENSORFLOW_SYCL_NO_DOUBLE
+
 build:sycl_asan --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl_asan --define=using_sycl=true --copt -fno-omit-frame-pointer --copt -fsanitize-coverage=3 --copt -DGPR_NO_DIRECT_SYSCALLS --linkopt -fPIC --linkopt -fsanitize=address
 

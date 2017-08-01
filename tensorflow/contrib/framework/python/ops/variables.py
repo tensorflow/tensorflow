@@ -416,7 +416,7 @@ def get_unique_variable(var_op_name):
   for candidate in candidates:
     if candidate.op.name == var_op_name:
       return candidate
-  raise ValueError('Variable %s does not uniquely identify a variable',
+  raise ValueError('Variable %s does not uniquely identify a variable' %
                    var_op_name)
 
 
@@ -444,7 +444,7 @@ def assign_from_values(var_names_to_values):
     var_value = var_names_to_values[var_name]
     var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, var_name)
     if not var:
-      raise ValueError('Variable %s wasnt found', var_name)
+      raise ValueError('Variable %s wasn\'t found' % var_name)
     elif len(var) > 1:
       # tf.get_collection is just a filter on the prefix: find the exact match:
       found = False
@@ -455,7 +455,7 @@ def assign_from_values(var_names_to_values):
           break
 
       if not found:
-        raise ValueError('Variable %s doesnt uniquely identify a variable',
+        raise ValueError('Variable %s doesn\'t uniquely identify a variable' %
                          var_name)
     else:
       var = var[0]

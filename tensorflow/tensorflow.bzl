@@ -72,9 +72,24 @@ def if_android_arm64(a):
   })
 
 
+def if_android_mips(a):
+  return select({
+      clean_dep("//tensorflow:android_mips"): a,
+      "//conditions:default": [],
+  })
+
+
 def if_not_android(a):
   return select({
       clean_dep("//tensorflow:android"): [],
+      "//conditions:default": a,
+  })
+
+
+def if_not_android_mips_and_mips64(a):
+  return select({
+      clean_dep("//tensorflow:android_mips"): [],
+      clean_dep("//tensorflow:android_mips64"): [],
       "//conditions:default": a,
   })
 
@@ -117,11 +132,9 @@ def if_not_windows(a):
   })
 
 
-def if_x86(a):
+def if_linux_x86_64(a):
   return select({
       clean_dep("//tensorflow:linux_x86_64"): a,
-      clean_dep("//tensorflow:windows"): a,
-      clean_dep("//tensorflow:windows_msvc"): a,
       "//conditions:default": [],
   })
 
@@ -152,7 +165,7 @@ def tf_copts():
       "-Wno-sign-compare",
       "-fno-exceptions",
   ]) + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1", "-fopenmp",]) + if_android_arm(
-      ["-mfpu=neon"]) + if_x86(["-msse3"]) + select({
+      ["-mfpu=neon"]) + if_linux_x86_64(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
               "-std=c++11",
               "-DTF_LEAN_BINARY",
@@ -855,7 +868,7 @@ def cc_header_only_library(name, deps=[], **kwargs):
 
 def tf_custom_op_library_additional_deps():
   return [
-      "@protobuf//:protobuf_headers",
+      "@protobuf_archive//:protobuf_headers",
       clean_dep("//third_party/eigen3"),
       clean_dep("//tensorflow/core:framework_headers_lib"),
   ]

@@ -17,7 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gzip
+import io
 import os
+
+from tensorflow.core.profiler import profile_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -200,7 +204,6 @@ class PrintModelAnalysisTest(test.TestCase):
 
   def testTimeline(self):
     ops.reset_default_graph()
-    opts = builder.trainable_variables_parameter()
     outfile = os.path.join(test.get_temp_dir(), 'timeline')
     opts = (builder(builder.trainable_variables_parameter())
             .with_max_depth(100000)
@@ -311,6 +314,61 @@ class PrintModelAnalysisTest(test.TestCase):
         self.assertEqual(len(checker.reports), 0)
       checker = advice_pb.checkers['ExpensiveOperationChecker']
       self.assertGreater(len(checker.reports), 0)
+
+  def pprof_test_helper(self, attribute, should_fail=False):
+    ops.reset_default_graph()
+    outfile = os.path.join(test.get_temp_dir(), attribute + '_pprof.pb.gz')
+    opts = (builder(builder.time_and_memory())
+            .select([attribute])
+            .with_max_depth(100000)
+            .with_node_names(trim_name_regexes=['ops.py.*'])
+            .with_pprof_output(outfile).build())
+
+    with session.Session() as sess:
+      x = lib.BuildFullModel()
+
+      sess.run(variables.global_variables_initializer())
+      run_meta = config_pb2.RunMetadata()
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
+
+      _ = model_analyzer.profile(
+          sess.graph, run_meta, cmd='code', options=opts)
+
+      if should_fail:
+        self.assertFalse(gfile.Exists(outfile))
+        return
+
+      profile_pb = profile_pb2.Profile()
+      with gfile.Open(outfile, 'rb') as f:
+        with gzip.GzipFile(fileobj=io.BytesIO(f.read())) as gzipf:
+          profile_pb.ParseFromString(gzipf.read())
+
+      self.assertGreater(len(profile_pb.sample), 10)
+      self.assertGreater(len(profile_pb.location), 10)
+      self.assertGreater(len(profile_pb.function), 10)
+      self.assertGreater(len(profile_pb.string_table), 30)
+
+      has_rnn = False
+      has_loop = False
+      for s in profile_pb.string_table:
+        if s.find('rnn') > 0:
+          has_rnn = True
+        if s.find('while') > 0:
+          has_loop = True
+        self.assertFalse(s.startswith('ops.py'))
+      self.assertTrue(has_rnn)
+      self.assertTrue(has_loop)
+
+  def testPprof(self):
+    for attr in ['micros', 'bytes', 'accelerator_micros', 'cpu_micros',
+                 'params', 'float_ops']:
+      self.pprof_test_helper(attr)
+    for attr in ['op_types', 'device', 'input_shapes']:
+      self.pprof_test_helper(attr, True)
 
 
 if __name__ == '__main__':
