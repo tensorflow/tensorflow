@@ -73,6 +73,7 @@ cuda_py_tests(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:spectral_ops_test_util",
     ],
+    tags = ["nomac"],
 )
 
 cuda_py_tests(

@@ -354,7 +354,7 @@ do_virtualenv_pip_test() {
   # Create virtualenv directory for install test
   VENV_DIR="${PIP_TEST_ROOT}/venv"
   create_activate_virtualenv_and_install_tensorflow \
-    "${CLEAN_VENV_DIR}" "${WHL_PATH}"
+    "${VENV_DIR}" "${WHL_PATH}"
 
   # Install extra pip packages required by the test-on-install
   for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do

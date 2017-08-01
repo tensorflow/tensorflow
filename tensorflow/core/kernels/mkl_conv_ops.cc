@@ -165,8 +165,11 @@ class MklConv2DOp : public OpKernel {
 
     // If there is nothing to compute, return.
     if (out_shape.num_elements() == 0) {
-      // TODO(jbobba): Verify correctness here
-      //               Need semantics for Null MKL tensor
+      // Nothing to do, allocate output tensor and return
+      MklShape mkl_output_mkl_shape;
+      mkl_output_mkl_shape.SetMklTensor(false);
+      AllocateOutputSetMklShape(context, 0, &output, input.shape(),
+                                mkl_output_mkl_shape);
       return;
     }
 
