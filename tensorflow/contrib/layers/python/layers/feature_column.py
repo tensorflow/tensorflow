@@ -1184,7 +1184,7 @@ def _embeddings_from_arguments(column,
           raise ValueError(
               "The embedding variable with name {} already "
               "exists, but its shape does not match required "
-              "embedding shape  here. Please make sure to use "
+              "embedding shape here. Please make sure to use "
               "different shared_embedding_name for different "
               "shared embeddings.".format(args.shared_embedding_name))
     else:

@@ -1814,7 +1814,7 @@ def _reconstruct_sparse_tensor_seq(sequence,
 
     Counter-part of `_flatten_tensor` which is called on the input of
     `_restore_sparse` while this method is called on the output of it.
-    Together they  work around the limitation of `_restore_sparse` to only
+    Together they work around the limitation of `_restore_sparse` to only
     accept 1D handles.
 
     The `indices` in `sp_tensor` is a 2D `Tensor` of `shape [N, ndims]`, where
