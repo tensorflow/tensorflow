@@ -26,6 +26,16 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef) {
+  id = other.id;
+  feed = other.feed;
+  fetch = other.fetch;
+  init_ops = other.init_ops;
+  expected_init_time = other.expected_init_time;
+  queue_runners = other.queue_runners;
+  graph.Swap(&graphDef);
+}
+
 std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
   return ComputeTransitiveFanin(graph, fetch);
 }

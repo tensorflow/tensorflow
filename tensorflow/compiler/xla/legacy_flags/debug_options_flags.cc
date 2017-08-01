@@ -117,12 +117,6 @@ void AllocateFlags() {
            "With xla_generate_hlo_graph, show addresses of HLO ops in "
            "graph dump."),
        tensorflow::Flag(
-           "xla_hlo_graph_layout",
-           bool_setter_for(&DebugOptions::set_xla_hlo_graph_layout),
-           flag_values->xla_hlo_graph_layout(),
-           "With xla_generate_hlo_graph, show layout of HLO ops in "
-           "graph dump."),
-       tensorflow::Flag(
            "xla_hlo_graph_path", flag_values->mutable_xla_hlo_graph_path(),
            "With xla_generate_hlo_graph, dump the graphs into this path."),
        tensorflow::Flag(

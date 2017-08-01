@@ -161,7 +161,7 @@ Status XlaCompiler::CompileFunction(
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
   optimizer.Optimize(flib_runtime_.get(), flib_runtime_->env(),
-                     /*device=*/nullptr, &graph);
+                     /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(

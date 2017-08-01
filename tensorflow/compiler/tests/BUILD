@@ -46,13 +46,6 @@ py_library(
     ],
 )
 
-cc_library(
-    name = "depthwise_conv2d_test_kernel",
-    testonly = 1,
-    srcs = ["depthwise_conv2d_test_kernel.cc"],
-    deps = ["//tensorflow/core:framework_lite"],
-)
-
 tf_xla_py_test(
     name = "adagrad_test",
     size = "small",
@@ -148,6 +141,27 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["conv3d_test.py"],
     shard_count = 5,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "depthwise_conv_op_test",
+    size = "medium",
+    srcs = ["depthwise_conv_op_test.py"],
+    shard_count = 5,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

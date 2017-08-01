@@ -45,25 +45,7 @@ void ShowNode::ReInit(int64 step) {
     (*mutable_proto()->mutable_input_shapes())[inp.first].MergeFrom(
         VecToShapeProto(inp.second));
   }
-
-  proto_.clear_parameters();
-  if (!node->shape().empty()) {
-    int64 params = 1;
-    bool complete_shape = true;
-    for (int64 d : node->shape()) {
-      // Sometimes parameters could be <0 when a dim is unknown.
-      if (d < 0) {
-        complete_shape = false;
-        break;
-      }
-      params *= d;
-    }
-    if (complete_shape) {
-      mutable_proto()->set_parameters(proto_.parameters() + params);
-    } else {
-      fprintf(stderr, "Incomplete shape.");
-    }
-  }
+  proto_.set_parameters(node->parameters());
 }
 
 GraphNodeProto* ShowNode::mutable_proto() { return &proto_; }
@@ -114,6 +96,8 @@ void ShowNode::AddSelfToTotalStats() {
 }
 
 void ShowNode::ResetTotalStats() {
+  formatted_str.clear();
+
   mutable_proto()->set_total_definition_count(0);
   mutable_proto()->set_total_run_count(0);
   mutable_proto()->set_total_exec_micros(0);
@@ -153,26 +137,7 @@ bool ShowMultiNode::ReInit(int64 step,
   mutable_proto()->set_requested_bytes(node->requested_bytes());
   mutable_proto()->set_float_ops(node->float_ops());
 
-  mutable_proto()->clear_parameters();
-  if (!node->shapes().empty()) {
-    for (const std::vector<int64>& shape : node->shapes()) {
-      int64 params = 1;
-      bool complete_shape = true;
-      for (int64 d : shape) {
-        // Sometimes parameters could be <0 when a dim is unknown.
-        if (d < 0) {
-          complete_shape = false;
-          break;
-        }
-        params *= d;
-      }
-      if (complete_shape) {
-        mutable_proto()->set_parameters(proto().parameters() + params);
-      } else {
-        fprintf(stderr, "Incomplete shape.");
-      }
-    }
-  }
+  mutable_proto()->set_parameters(node->parameters());
   return has_matched_type;
 }
 
@@ -216,6 +181,7 @@ void ShowMultiNode::AddSelfToTotalStats() {
 }
 
 void ShowMultiNode::ResetTotalStats() {
+  formatted_str.clear();
   mutable_proto()->set_total_exec_micros(0);
   mutable_proto()->set_total_accelerator_exec_micros(0);
   mutable_proto()->set_total_cpu_exec_micros(0);
