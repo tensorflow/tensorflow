@@ -2,6 +2,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -60,9 +61,8 @@ TruncatedNormalScale(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  poprand::truncatedNormal(graph, out, mean1_val + mean2_val, sd1_val * sd2_val,
-                           1.0, poprand::RandomGenMode::NOT_REPEATABLE, seq,
-                           inst->name());
+  res.random.truncatedNormal(graph, out, mean1_val + mean2_val,
+                             sd1_val * sd2_val, 1.0, seq, inst->name());
 
   return seq;
 }
@@ -87,8 +87,8 @@ TruncatedNormal(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  poprand::truncatedNormal(graph, out, mean_val, sd_val, 1.0,
-                  poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+  res.random.truncatedNormal(graph, out, mean_val, sd_val, 1.0, seq,
+                             inst->name());
 
   return seq;
 }
@@ -119,8 +119,8 @@ RandomNormalScale(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  poprand::normal(graph, out, mean1_val + mean2_val, sd1_val * sd2_val, 1.0,
-         poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+  res.random.normal(graph, out, mean1_val + mean2_val, sd1_val * sd2_val, seq,
+                    inst->name());
 
   return seq;
 }
@@ -151,9 +151,8 @@ RandomUniformScale(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  poprand::uniform(graph, out, lower_val * scale_val + shift_val,
-                   upper_val * scale_val + shift_val,
-                   poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+  res.random.uniform(graph, out, lower_val * scale_val + shift_val,
+                     upper_val * scale_val + shift_val, seq, inst->name());
 
   return seq;
 }
@@ -178,8 +177,7 @@ RandomNormal(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  poprand::normal(graph, out, mean_val, sd_val, 1.0,
-                  poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+  res.random.normal(graph, out, mean_val, sd_val, seq, inst->name());
 
   return seq;
 }
@@ -204,8 +202,7 @@ RandomUniform(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  poprand::uniform(graph, out, lower_val, upper_val,
-                   poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+  res.random.uniform(graph, out, lower_val, upper_val, seq, inst->name());
 
   return seq;
 }
@@ -227,8 +224,7 @@ Bernoulli(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   poplar::program::Sequence seq;
-  poprand::bernoulli(graph, out, prob_val,
-                     poprand::RandomGenMode::NOT_REPEATABLE, seq, inst->name());
+  res.random.bernoulli(graph, out, prob_val, seq, inst->name());
 
   return seq;
 }
