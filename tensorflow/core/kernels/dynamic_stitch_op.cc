@@ -86,11 +86,6 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
                           T* output);
 
 
-// because the collision requirements, we have to deal with
-// collion first before send data to gpu kernel.
-// TODO(ekelsen): Instead of doing a serial scan on the CPU to pick the last of duplicated indices,
-// it could instead be done of the GPU implicitly using atomics to make sure
-// the last index is the final write.
 template <typename T>
 void DynamicStitchGPU(OpKernelContext* c,
                         const int32 first_dim_size, const int32 data_elements_size,
@@ -107,16 +102,13 @@ void DynamicStitchGPU(OpKernelContext* c,
     indices_flat.Set(i, -1);
   }
 
-  //data_flat index
   int32 idx = 0;
-  //sum of indices_inputs[i].NumElements() for compute indicies_flat value.
   int32 base_size = 0;
   for (int i = 0; i < indices_inputs.size(); ++i) {
     auto indices_vec = indices_inputs[i].flat<int32>();
     auto data_ptr_base = data_inputs[i].template flat<T>().data();
     for(int j = 0; j < indices_vec.size(); ++j) {
-      // indices_flat's indices represent the indices of output.
-      // indices_flat's values represent the indices of input_data where the data located.
+      // indices_flat's values represent the indices located at data_flat.
       indices_flat.Set(indices_vec(j), base_size + j);
       data_flat.Set(idx, const_cast<T*>(reinterpret_cast<const T*>(data_ptr_base) +
                                         j * slice_size));
@@ -131,7 +123,6 @@ void DynamicStitchGPU(OpKernelContext* c,
   DynamicStitchGPUImpl<T>(c->eigen_gpu_device(), slice_size, first_dim_size,
                           indices_flat.data(), data_flat.data(), output);
 }
-
 #endif // GOOGLE_CUDA
 
 
@@ -264,7 +255,6 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_complex64(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_complex128(REGISTER_DYNAMIC_STITCH_GPU);
 TF_CALL_int64(REGISTER_DYNAMIC_STITCH_GPU);
-TF_CALL_int32(REGISTER_DYNAMIC_STITCH_GPU);
 #undef REGISTER_DYNAMIC_STITCH_GPU
 
 #endif  // GOOGLE_CUDA

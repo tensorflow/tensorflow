@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,7 +45,6 @@ __global__ void DynamicStitchKernel(
     }
   }
 }
-
 } // namespace
 
 template <typename T>
@@ -56,6 +55,9 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
                           T* output) {
   const int32 output_size = first_dim_size * slice_size;
   auto config = GetCudaLaunchConfig(output_size, gpu_device);
+  // set output to zeros
+  SetZero<<<config.block_count, config.thread_per_block, 0, gpu_device.stream()>>>(
+          output_size, output);
 
   DynamicStitchKernel<T>
   <<<config.block_count, config.thread_per_block, 0,
@@ -75,7 +77,6 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-TF_CALL_int32(REGISTER_GPU)
 
 #undef REGISTER_GPU
 
