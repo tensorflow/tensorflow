@@ -83,12 +83,6 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
   // Inline all functions.
   GraphDef inlined_graph_def(graph_def);
 
-  for (int i = 0; i < inlined_graph_def.library().function().size(); i++) {
-    FunctionDef* fdef =
-        inlined_graph_def.mutable_library()->mutable_function(i);
-    SetAttrValue(false, &((*fdef->mutable_attr())[kNoInlineAttr]));
-  }
-
   // Instantiate all variables for function library runtime creation.
   std::vector<Device*> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
