@@ -62,7 +62,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/common_runtime/gpu/gpu_tracer.h"
+#include "tensorflow/core/platform/gpu_tracer.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -390,6 +390,7 @@ Status DirectSession::ExtendLocked(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(
       MaybeInitializeExecutionState(graph, &already_initialized));
   if (already_initialized) {
+    TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph.library()));
     std::unique_ptr<SimpleGraphExecutionState> state;
     TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
     execution_state_.swap(state);
@@ -557,7 +558,7 @@ Status DirectSession::Run(const RunOptions& run_options,
 #if GOOGLE_CUDA
   std::unique_ptr<GPUTracer> tracer;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    tracer.reset(CreateGPUTracer());
+    tracer = CreateGPUTracer();
     // tracer will be NULL on non-GPU platforms.
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     if (tracer) tracer->Start().IgnoreError();
@@ -876,7 +877,8 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
         resource_tensor.dtype()));
   }
 
-  ResourceHandle resource_handle = resource_tensor.scalar<ResourceHandle>()();
+  const ResourceHandle& resource_handle =
+      resource_tensor.scalar<ResourceHandle>()();
 
   if (resource_handle.container() ==
       SessionState::kTensorHandleResourceTypeName) {
@@ -885,7 +887,11 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
     return errors::InvalidArgument(strings::StrCat(
         "Invalid resource type hash code: ", resource_handle.hash_code(),
         "(name: ", resource_handle.name(),
-        " type: ", resource_handle.maybe_type_name(), ")"));
+        " type: ", resource_handle.maybe_type_name(),
+        "). Perhaps a resource tensor was being provided as a feed? That is "
+        "not currently allowed. Please file an issue at "
+        "https://github.com/tensorflow/tensorflow/issues/new, ideally with a "
+        "short code snippet that leads to this error message."));
   }
 }
 
@@ -1156,9 +1162,9 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib.reset(NewFunctionLibraryRuntime(
-        device_mgr_.get(), options_.env, device, graph_def_version,
-        ek->flib_def.get(), optimizer_opts));
+    item->flib = NewFunctionLibraryRuntime(device_mgr_.get(), options_.env,
+                                           device, graph_def_version,
+                                           ek->flib_def.get(), optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
@@ -1188,7 +1194,8 @@ Status DirectSession::GetOrCreateExecutors(
     };
     params.node_outputs_cb = node_outputs_callback_;
 
-    optimizer.Optimize(lib, options_.env, device, &iter->second);
+    optimizer.Optimize(lib, options_.env, device, &iter->second,
+                       /*shape_map=*/nullptr);
 
     // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
     if (!options.debug_options.debug_tensor_watch_opts().empty()) {
@@ -1341,6 +1348,7 @@ Status DirectSession::CreateGraphs(
     // Just return '1'.
     return 1;
   };
+  popts.flib_def = &client_graph->graph.flib_def();
   popts.control_flow_added = false;
 
   std::unordered_map<string, GraphDef> partitions;

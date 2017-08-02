@@ -67,7 +67,7 @@ static inline void DecreasingArgSort(const std::vector<float>& values,
 
 // Return true if intersection-over-union overlap between boxes i and j
 // is greater than iou_threshold.
-static inline float IOUGreaterThanThreshold(
+static inline bool IOUGreaterThanThreshold(
     typename TTypes<float, 2>::ConstTensor boxes, int i, int j,
     float iou_threshold) {
   const float ymin_i = std::min<float>(boxes(i, 0), boxes(i, 2));

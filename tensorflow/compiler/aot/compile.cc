@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/aot/tfcompile_util.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -78,66 +79,51 @@ Status DumpGraph(const MainFlags& flags, const string& name,
   return WriteTextProto(Env::Default(), file, graph_def);
 }
 
-string TensorIdToString(const TensorId& id) {
-  return strings::StrCat(id.node_name(), ":", id.output_index());
-}
-
 typedef std::unordered_map<string, Node*> NodeMap;
 
 // Each feed id identifies the positional output of some node, which may consist
-// of multiple edges.  For each feed node, replaces all matching edges so that
-// they point from a new _Arg node instead.
+// of multiple edges. AddPlaceholdersForFeeds has already replaced each fed
+// tensor with a placeholder.  For each feed tensor, replaces all edges so they
+// point from a new _Arg node instead.
 Status AddArgNodes(Graph* graph, const NodeMap& node_map,
-                   const protobuf::RepeatedPtrField<Feed>& feeds) {
+                   const protobuf::RepeatedPtrField<Feed>& feeds,
+                   const std::unordered_map<string, string>& feed_remapping) {
   for (int arg_index = 0; arg_index < feeds.size(); ++arg_index) {
     const Feed& feed = feeds[arg_index];
-    const TensorId& id = feed.id();
-    auto it = node_map.find(id.node_name());
-    if (it == node_map.end()) {
-      return errors::NotFound("Can't find feed id: ", TensorIdToString(id));
-    }
-    const Node* feed_node = it->second;
-    if (id.output_index() >= feed_node->num_outputs()) {
-      return errors::InvalidArgument("Invalid feed id: ", TensorIdToString(id),
-                                     ", output index should be < ",
-                                     feed_node->num_outputs());
-    }
-    // TODO(toddw): Invoke shape inference on the graph and add a "_shape" attr
-    // if we can determine it.  That way the graph will be initialized with
-    // whatever shapes we can infer, while the user can still explicitly specify
-    // or override them.
+    // All feeds have been replaced by placeholders.
+    const int output_index = 0;
+
+    const auto remap_it = feed_remapping.find(TensorIdToString(feed.id()));
+    auto node_it = node_map.find(remap_it->second);
+    const Node* feed_node = node_it->second;
+
+    // TODO(toddw): Invoke shape inference in AddPlaceholdersForFeeds and add a
+    // "_shape" attr if we can determine it.  That way the graph will be
+    // initialized with whatever shapes we can infer, while the user can still
+    // explicitly specify or override them.
     Node* arg_node = nullptr;
     TF_RETURN_IF_ERROR(
         NodeBuilder(strings::StrCat("_arg_", arg_index), kArgOp)
-            .Attr("T", BaseType(feed_node->output_type(id.output_index())))
+            .Attr("T", BaseType(feed_node->output_type(output_index)))
             .Attr("index", arg_index)
-            .Attr(kFeedIdAttr, TensorIdToString(id))
+            .Attr(kFeedIdAttr, TensorIdToString(feed.id()))
             .Attr(kShapeAttr, TensorShape(feed.shape()))
             .Attr(kDebugNameAttr, feed.name())
             .Finalize(graph, &arg_node));
+
     // Collects out-edges from the feed node that have a matching edge index;
-    // these will be replaced with edges from the arg node instead.  Also
-    // replaces all control edges from Placeholder feed nodes; similar code
-    // exists in subgraph::RewriteGraphForExecution.
-    // TODO(toddw): Why only replace control edges from Placeholder?
+    // these will be replaced with edges from the arg node instead.
     //
     // We must collect the edges first and process them in a second pass, since
     // removing the edge from the graph invalidates feed_node->out_edges.
     std::vector<const Edge*> feed_edges;
     for (const Edge* edge : feed_node->out_edges()) {
-      if (edge->src_output() == id.output_index() ||
-          (edge->src_output() == Graph::kControlSlot &&
-           feed_node->type_string() == "Placeholder")) {
+      if (edge->src_output() == output_index) {
         feed_edges.push_back(edge);
       }
     }
     for (const Edge* edge : feed_edges) {
-      if (edge->src_output() == id.output_index()) {
-        graph->AddEdge(arg_node, 0, edge->dst(), edge->dst_input());
-      } else {
-        CHECK_EQ(edge->src_output(), Graph::kControlSlot);
-        graph->AddControlEdge(arg_node, edge->dst());
-      }
+      graph->AddEdge(arg_node, 0, edge->dst(), edge->dst_input());
       graph->RemoveEdge(edge);
     }
   }
@@ -179,13 +165,16 @@ Status AddRetvalNodes(Graph* graph, const NodeMap& node_map,
 // fetch ids respectively), and rewrites the edges so that inputs flow from _Arg
 // nodes, and outputs flow to _Retval nodes.  This allows the symbolic graph
 // execution to know the input and output args for the generated function.
-Status RewriteAndPruneGraph(Graph* graph, const Config& config,
-                            const MainFlags& flags) {
+Status RewriteAndPruneGraph(
+    Graph* graph, const Config& config,
+    const std::unordered_map<string, string>& feed_remapping,
+    const MainFlags& flags) {
   NodeMap node_map;
   for (Node* n : graph->nodes()) {
     node_map[n->name()] = n;
   }
-  TF_RETURN_IF_ERROR(AddArgNodes(graph, node_map, config.feed()));
+  TF_RETURN_IF_ERROR(
+      AddArgNodes(graph, node_map, config.feed(), feed_remapping));
   std::unordered_set<const Node*> retval_nodes;
   TF_RETURN_IF_ERROR(
       AddRetvalNodes(graph, node_map, config.fetch(), &retval_nodes));
@@ -266,7 +255,9 @@ Status CreateXlaArgs(const Graph& graph,
     XlaCompiler::Argument arg;
     arg.kind = XlaCompiler::Argument::kParameter;
     TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &arg.type));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kShapeAttr, &arg.shape));
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kShapeAttr, &shape));
+    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, &arg.shape));
     TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);
   }
@@ -383,17 +374,28 @@ Status InitGraph(const GraphDef& graph_def, const Config& config,
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), graph_def.library());
   std::unique_ptr<Graph> g(new Graph(flib_def));
 
-  GraphDef copy_def;
+  // Replace references to fed tensors with references to newly added
+  // placeholders.
+  GraphDef first_copy_def = graph_def;
+
+  // Maps from name:port of a feed to the name:port of the placeholder to use.
+  std::unordered_map<string, string> feed_remapping;
+  TF_RETURN_IF_ERROR(AddPlaceholdersForFeeds(config, g->op_registry(),
+                                             &feed_remapping, &first_copy_def));
 
   // Prune the GraphDef first so that unknown ops that we aren't compiling get
   // filtered out.
-  TF_RETURN_IF_ERROR(PruneGraphDefInto(config, graph_def, &copy_def));
-
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&copy_def, *g->op_registry(),
-                                               0 /*node_offset*/));
+  GraphDef second_copy_def;
   TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(GraphConstructorOptions(), copy_def, g.get()));
-  TF_RETURN_IF_ERROR(RewriteAndPruneGraph(g.get(), config, flags));
+      PruneGraphDefInto(config, first_copy_def, &second_copy_def));
+
+  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
+      &second_copy_def, *g->op_registry(), 0 /*node_offset*/));
+
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
+                                            second_copy_def, g.get()));
+  TF_RETURN_IF_ERROR(
+      RewriteAndPruneGraph(g.get(), config, feed_remapping, flags));
   *graph = std::move(g);
   return Status::OK();
 }

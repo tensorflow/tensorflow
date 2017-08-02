@@ -91,6 +91,21 @@ public final class Operation {
     }
   }
 
+  /**
+   * Returns symbolic handles to a list of tensors produced by this operation.
+   *
+   * @param idx index of the first tensor of the list
+   * @param length number of tensors in the list
+   * @return array of {@code Output}
+   */
+  public Output[] outputList(int idx, int length) {
+    Output[] outputs = new Output[length];
+    for (int i = 0; i < length; ++i) {
+      outputs[i] = output(idx + i);
+    }
+    return outputs;
+  }
+
   /** Returns a symbolic handle to one of the tensors produced by this operation. */
   public Output output(int idx) {
     return new Output(this, idx);

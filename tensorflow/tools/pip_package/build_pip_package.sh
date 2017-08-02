@@ -17,6 +17,10 @@
 
 set -e
 
+function real_path() {
+  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
@@ -41,7 +45,7 @@ function main() {
     exit 1
   fi
 
-  DEST=$1
+  DEST=$(real_path $1)
   TMPDIR=$(mktemp -d -t tmp.XXXXXXXXXX)
 
   GPU_FLAG=""
@@ -79,23 +83,6 @@ function main() {
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${TMPDIR}/external"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
-  elif [ ! -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow ]; then
-    # Really old (0.2.1-) runfiles, without workspace name.
-    cp -R \
-      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/tensorflow \
-      "${TMPDIR}"
-    mkdir "${TMPDIR}/external"
-    cp_external \
-      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/external \
-      "${TMPDIR}/external"
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
-    # Copy MKL libs over so they can be loaded at runtime
-    if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
-      mkdir "${TMPDIR}/_solib_k8"
-  		cp -R \
-  			bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-        "${TMPDIR}/_solib_k8"
-    fi
   else
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
@@ -107,11 +94,13 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
-        mkdir "${TMPDIR}/_solib_k8"
-        cp -R \
-          bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-          "${TMPDIR}/_solib_k8"
+      so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
+      if [ -d ${so_lib_dir} ]; then
+        mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
+        if [ $? -eq 0 ]; then
+          mkdir "${TMPDIR}/_solib_k8"
+          cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
+        fi
       fi
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
@@ -124,11 +113,13 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl ]; then
-        mkdir "${TMPDIR}/_solib_k8"
-    		cp -R \
-    			bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8/_U_S_Sthird_Uparty_Smkl_Cintel_Ubinary_Ublob___Uthird_Uparty_Smkl \
-          "${TMPDIR}/_solib_k8"
+      so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
+      if [ -d ${so_lib_dir} ]; then
+        mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
+        if [ $? -eq 0 ]; then
+          mkdir "${TMPDIR}/_solib_k8"
+          cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
+        fi
       fi
     fi
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
@@ -139,7 +130,7 @@ function main() {
   mkdir -p ${TMPDIR}/google
   mkdir -p ${TMPDIR}/third_party
   pushd ${RUNFILES%org_tensorflow}
-  for header in $(find protobuf -name \*.h); do
+  for header in $(find protobuf_archive -name \*.h); do
     mkdir -p "${TMPDIR}/google/$(dirname ${header})"
     cp "$header" "${TMPDIR}/google/$(dirname ${header})/"
   done

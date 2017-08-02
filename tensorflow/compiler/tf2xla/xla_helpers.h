@@ -77,6 +77,11 @@ class XlaHelpers {
                        const xla::ComputationDataHandle& on_value,
                        const xla::ComputationDataHandle& off_value,
                        xla::ComputationDataHandle* one_hot);
+
+  // Pads 'x' with 'count' zeros. 'x' must have 1 element.
+  static xla::ComputationDataHandle PadWithZeros(
+      xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
+      int count);
 };
 
 }  // end namespace tensorflow

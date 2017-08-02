@@ -74,7 +74,7 @@ class DummyMultiDimensionalLSTM(rnn_lib.RNNCell):
       without including 'Time' or 'Batch' dimensions.
     """
     if not isinstance(dims, tuple):
-      raise TypeError("The dimensions passed to DummyMultiDimensionalLSTM"
+      raise TypeError("The dimensions passed to DummyMultiDimensionalLSTM "
                       "should be a tuple of ints.")
     self._dims = dims
     self._output_size = tensor_shape.TensorShape(self._dims)

@@ -74,7 +74,7 @@ class TFGraph : public TFShow {
                                   std::set<string>* visits);
 
   void Format(const std::vector<GraphNode*> roots, string* display_str,
-              TFGraphNodeProto* proto);
+              GraphNodeProto* proto);
 
   MemoryTracker memory_tracker_;
   GraphNode* root_;

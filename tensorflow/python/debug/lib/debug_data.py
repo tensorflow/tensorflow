@@ -34,6 +34,7 @@ from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
+from tensorflow.python.util import compat
 
 
 # TODO(cais): Tie these string constants in with C++?
@@ -362,7 +363,7 @@ def extract_core_metadata_from_event_proto(event):
 
 def device_name_to_device_path(device_name):
   """Convert device name to device path."""
-  device_name_items = device_name.split("/")
+  device_name_items = compat.as_text(device_name).split("/")
   device_name_items = [item.replace(":", "_") for item in device_name_items]
   return METADATA_FILE_PREFIX + DEVICE_TAG + ",".join(device_name_items)
 
@@ -1396,7 +1397,7 @@ class DebugDumpDir(object):
     Args:
       node_name: Name of the node in question.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       Attributes of the node.
@@ -1418,7 +1419,7 @@ class DebugDumpDir(object):
       is_control: (`bool`) Whether control inputs, rather than non-control
         inputs, are to be returned.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`list` of `str`) inputs to the node, as a list of node names.
@@ -1454,7 +1455,7 @@ class DebugDumpDir(object):
         the source (e.g., A in this case). So the reverse direction of the ref
         edge reflects the direction of information flow.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`list` of `str`) all transitive inputs to the node, as a list of node
@@ -1523,7 +1524,7 @@ class DebugDumpDir(object):
         the source (e.g., A in this case). So the reverse direction of the ref
         edge reflects the direction of information flow.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       A path from the src_node_name to dst_node_name, as a `list` of `str`, if
@@ -1580,7 +1581,7 @@ class DebugDumpDir(object):
       is_control: (`bool`) whether control outputs, rather than non-control
         outputs, are to be returned.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`list` of `str`) all inputs to the node, as a list of node names.
@@ -1674,7 +1675,7 @@ class DebugDumpDir(object):
     Args:
       node_name: (`str`) name of the node.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`str`) op type of the node.
@@ -1697,7 +1698,7 @@ class DebugDumpDir(object):
     Args:
       node_name: (`str`) name of the node.
       device_name: (`str`) name of the device. If there is only one device or if
-        node_name exists on only one device, this argumnet is optional.
+        node_name exists on only one device, this argument is optional.
 
     Returns:
       (`list` of `str`) all debug tensor watch keys. Returns an empty list if
@@ -1731,7 +1732,7 @@ class DebugDumpDir(object):
     Args:
       debug_watch_key: (`str`) debug watch key.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:
@@ -1812,7 +1813,7 @@ class DebugDumpDir(object):
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:
@@ -1845,7 +1846,7 @@ class DebugDumpDir(object):
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:
@@ -1883,7 +1884,7 @@ class DebugDumpDir(object):
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:
@@ -1917,7 +1918,7 @@ class DebugDumpDir(object):
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
       device_name: (`str`) name of the device. If there is only one device or if
-        the specified debug_watch_key exists on only one device, this argumnet
+        the specified debug_watch_key exists on only one device, this argument
         is optional.
 
     Returns:

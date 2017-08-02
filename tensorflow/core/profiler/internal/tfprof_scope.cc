@@ -78,8 +78,13 @@ void TFScope::Build() {
 }
 
 const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
-  std::vector<ScopeNode*> roots = Account(root_->children, opts);
   root_->ResetTotalStats();
+  if (opts.output_type == kOutput[3]) {
+    fprintf(stderr, "Only 'code' view supports pprof output now.\n");
+    return root_;
+  }
+
+  std::vector<ScopeNode*> roots = Account(root_->children, opts);
   root_->show_children.clear();
   for (ScopeNode* n : roots) {
     root_->AggregateTotalStats(n);
@@ -103,10 +108,10 @@ const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
 }
 
 void TFScope::Format(const std::vector<ScopeNode*> roots, string* display_str,
-                     TFGraphNodeProto* proto) {
+                     GraphNodeProto* proto) {
   for (ScopeNode* node : roots) {
     display_str->append(node->formatted_str);
-    TFGraphNodeProto* child = proto->add_children();
+    GraphNodeProto* child = proto->add_children();
     child->MergeFrom(node->proto());
     Format(node->show_children, display_str, child);
   }

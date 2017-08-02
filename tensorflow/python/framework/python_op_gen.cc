@@ -682,25 +682,26 @@ void GenPythonOp::AddDocStringOutputs() {
 }
 
 void GenPythonOp::AddBody(const string& prefix) {
-  string return_prefix =
-      strings::StrCat(prefix, "result = _op_def_lib.apply_op(");
-  string return_args = strings::StrCat("\"", op_def_.name(), "\", ");
-  for (size_t i = 0; i < param_names_.size(); ++i) {
-    strings::StrAppend(&return_args, param_names_[i], "=", param_names_[i],
-                       ", ");
+  const string apply_prefix =
+      strings::StrCat(prefix, "_result = _op_def_lib.apply_op(");
+  AddBodyNoReturn(apply_prefix);
+  if (num_outs_ > 1) {
+    strings::StrAppend(&result_, prefix, "_result = _", op_def_.name(),
+                       "Output._make(_result)\n");
   }
-  strings::StrAppend(&return_args, "name=name)");
+  strings::StrAppend(&result_, prefix, "return _result\n");
+}
+
+void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
+  string args = strings::StrCat("\"", op_def_.name(), "\", ");
+  for (size_t i = 0; i < param_names_.size(); ++i) {
+    strings::StrAppend(&args, param_names_[i], "=", param_names_[i], ", ");
+  }
+  strings::StrAppend(&args, "name=name)");
 
   strings::StrAppend(&result_,
                      // Wrap the arguments, and indent to the (.
-                     WordWrap(return_prefix, return_args, kRightMargin), "\n");
-
-  if (num_outs_ <= 1) {
-    strings::StrAppend(&result_, prefix, "return result\n");
-  } else {
-    strings::StrAppend(&result_, prefix, "return _", op_def_.name(),
-                       "Output._make(result)\n");
-  }
+                     WordWrap(apply_prefix, args, kRightMargin), "\n");
 }
 
 }  // namespace python_op_gen_internal
@@ -720,8 +721,6 @@ This file is MACHINE GENERATED! Do not edit.
 """
 
 import collections as _collections
-
-from google.protobuf import text_format as _text_format
 
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
 
@@ -771,21 +770,24 @@ from tensorflow.python.framework import op_def_library as _op_def_library
     RemoveNonDeprecationDescriptionsFromOpDef(added);
   }
 
-  strings::Appendf(&result, R"(def _InitOpDefLibrary():
+  result.append(R"(def _InitOpDefLibrary(op_list_proto_bytes):
   op_list = _op_def_pb2.OpList()
-  _text_format.Merge(_InitOpDefLibrary.op_list_ascii, op_list)
+  op_list.ParseFromString(op_list_proto_bytes)
   _op_def_registry.register_op_list(op_list)
   op_def_lib = _op_def_library.OpDefLibrary()
   op_def_lib.add_op_list(op_list)
   return op_def_lib
 
 
-_InitOpDefLibrary.op_list_ascii = """%s"""
+)");
 
-
-_op_def_lib = _InitOpDefLibrary()
-)",
-                   ProtoDebugString(cleaned_ops).c_str());
+  result.append("# ");
+  auto ops_text = ProtoDebugString(cleaned_ops);
+  str_util::StripTrailingWhitespace(&ops_text);
+  result.append(str_util::StringReplace(ops_text, "\n", "\n# ", true));
+  result.append("\n");
+  strings::Appendf(&result, "_op_def_lib = _InitOpDefLibrary(b\"%s\")\n",
+                   str_util::CEscape(cleaned_ops.SerializeAsString()).c_str());
   return result;
 }
 

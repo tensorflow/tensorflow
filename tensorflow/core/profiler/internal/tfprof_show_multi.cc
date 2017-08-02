@@ -27,26 +27,28 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const TFMultiGraphNodeProto& TFMultiShow::Show(const Options& opts) {
-  if (opts.output_type == kOutput[3]) {
-    return ShowInternal(opts, nullptr)->proto();
-  } else if (opts.output_type == kOutput[0]) {
+const MultiGraphNodeProto& TFMultiShow::Show(const Options& opts) {
+  if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
-  } else if (opts.output_type == kOutput[2]) {
-    const ShowMultiNode* root = ShowInternal(opts, nullptr);
-    Status s =
-        WriteStringToFile(Env::Default(), opts.output_options.at(kFileOpts[0]),
-                          root->formatted_str);
-    if (!s.ok()) {
-      fprintf(stderr, "%s\n", s.ToString().c_str());
-    }
-    return root->proto();
   } else {
-    const ShowMultiNode* root = ShowInternal(opts, nullptr);
-    printf("%s", root->formatted_str.c_str());
-    fflush(stdout);
-    return root->proto();
+    const ShowMultiNode* ret = ShowInternal(opts, nullptr);
+    if (opts.output_type == kOutput[1]) {
+      printf("%s", ret->formatted_str.c_str());
+      fflush(stdout);
+    } else if (opts.output_type == kOutput[2]) {
+      Status s = WriteStringToFile(Env::Default(),
+                                   opts.output_options.at(kFileOpts[0]),
+                                   ret->formatted_str);
+      if (!s.ok()) {
+        fprintf(stderr, "%s\n", s.ToString().c_str());
+      }
+    } else if (opts.output_type == kOutput[3] ||
+               opts.output_type == kOutput[4]) {
+    } else {
+      fprintf(stderr, "Unknown output type: %s\n", opts.output_type.c_str());
+    }
+    return ret->proto();
   }
 }
 
@@ -144,12 +146,11 @@ string TFMultiShow::FormatLegend(const Options& opts) const {
                          str_util::Join(legends, " | ").c_str());
 }
 
-string TFMultiShow::FormatInputShapes(
-    const TFMultiGraphNodeProto& proto) const {
+string TFMultiShow::FormatInputShapes(const MultiGraphNodeProto& proto) const {
   // input_shape string -> (static defined count, run count, run_micros)
   std::map<string, std::tuple<int64, int64, int64>> input_shapes_attr;
   for (int i = 0; i < proto.graph_nodes_size(); ++i) {
-    const TFGraphNodeProto& gnode = proto.graph_nodes(i);
+    const GraphNodeProto& gnode = proto.graph_nodes(i);
     // Convert and sort by input_idx.
     std::map<int, std::vector<int64>> input_shapes;
     for (const auto& inp : gnode.input_shapes()) {

@@ -34,6 +34,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1051,7 +1052,7 @@ def _device_string(dev_spec):
     return dev_spec
 
 
-def _NodeDef(op_type, name, device=None, attrs=None):
+def _NodeDef(op_type, name, device=None, attrs=None):  # pylint: disable=redefined-outer-name
   """Create a NodeDef proto.
 
   Args:
@@ -1183,7 +1184,7 @@ class Operation(object):
                             self.node_def.name,
                             [i.dtype for i in self._inputs],
                             input_types))
-    self._input_types = input_types
+    self._input_types_val = input_types
 
     # Build the list of control inputs.
     self._control_inputs = []
@@ -1203,7 +1204,7 @@ class Operation(object):
     self._op_def = op_def
     self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
     # Add this op to the current control flow context:
-    self._control_flow_context = g._get_control_flow_context()
+    self._control_flow_context = g._get_control_flow_context()  # pylint: disable=protected-access
     if self._control_flow_context is not None:
       self._control_flow_context.AddOp(self)
     # NOTE(keveman): Control flow context's AddOp could be creating new ops and
@@ -1214,10 +1215,7 @@ class Operation(object):
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
 
-    if _USE_C_API:
-      assert self._graph._c_graph, (  # pylint: disable=protected-access
-          "_USE_C_API set to False when creating Graph, you may need to "
-          "manually set 'ops._USE_C_API = True' before creating the Graph")
+    if self._graph._c_graph:  # pylint: disable=protected-access
       if self._op_def:
         # TODO(skyewm): op_def_library.apply_op() flattens the incoming
         # inputs. Refactor so we don't have to do this here.
@@ -1351,7 +1349,7 @@ class Operation(object):
   @property
   def name(self):
     """The full name of this operation."""
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       # TODO(iga): Remove this assert after converting to C API by default.
       # Just being a bit paranoid here.
       assert self._node_def.name == c_api.TF_OperationName(self._c_op)
@@ -1373,9 +1371,9 @@ class Operation(object):
       assigned, or an empty string if it has not been assigned to a
       device.
     """
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       # TODO(iga): Remove this assert after converting to C API by default.
-      # Just being a bit paranoid here.
+      # Just being a bit paranoid here
       assert self._node_def.device == c_api.TF_OperationDevice(self._c_op)
       return c_api.TF_OperationDevice(self._c_op)
     else:
@@ -1392,7 +1390,7 @@ class Operation(object):
       The length of this list indicates the number of output endpoints
       of the operation.
     """
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
       output_types = [c_api.TF_OperationOutputType(self._tf_output(i)) for
                       i in xrange(num_outputs)]
@@ -1416,13 +1414,23 @@ class Operation(object):
     tf_output.index = output_idx
     return tf_output
 
-  def _set_device(self, device):
+  def _tf_input(self, input_idx):
+    """Create and return a new TF_Input for input_idx'th input of this op."""
+    tf_input = c_api.TF_Input()
+    tf_input.oper = self._c_op
+    tf_input.index = input_idx
+    return tf_input
+
+  def _set_device(self, device):  # pylint: disable=redefined-outer-name
     """Set the device of this operation.
 
     Args:
       device: string or device..  The device to set.
     """
-    assert not _USE_C_API, "Operation._set_device doesn't work with C API"
+    if _USE_C_API:
+      c_api.SetRequestedDevice(
+          self._graph._c_graph, self._c_op, _device_string(device))  # pylint: disable=protected-access
+    # TODO(nolivia): remove this line when switch to C api
     self._node_def.device = _device_string(device)
 
   def _add_input(self, tensor, dtype=None):
@@ -1438,6 +1446,8 @@ class Operation(object):
         or if input tensor type is not convertible to dtype.
       ValueError: if the Tensor is from a different graph.
     """
+    assert not self._graph._c_graph, (  # pylint: disable=protected-access
+        "Operation._add_input doesn't work with C API")
     if not isinstance(tensor, Tensor):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
@@ -1450,7 +1460,7 @@ class Operation(object):
             "Cannot convert a tensor of type %s to an input of type %s"
             % (tensor.dtype.name, dtype.name))
     self._inputs.append(tensor)
-    self._input_types.append(dtype)
+    self._input_types_val.append(dtype)
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
 
@@ -1470,6 +1480,8 @@ class Operation(object):
         or if input tensor type is not convertible to dtype.
       ValueError: if the Tensor is from a different graph.
     """
+    assert not self._graph._c_graph, (  # pylint: disable=protected-access
+        "Operation._update_input doesn't work with C API")
     if not isinstance(tensor, Tensor):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
@@ -1484,7 +1496,7 @@ class Operation(object):
 
     self._inputs[index].consumers().remove(self)
     self._inputs[index] = tensor
-    self._input_types[index] = dtype
+    self._input_types_val[index] = dtype
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
 
@@ -1498,6 +1510,8 @@ class Operation(object):
       TypeError: if ops is not a list of Operations.
       ValueError: if any op in ops is from a different graph.
     """
+    assert not self._graph._c_graph, (  # pylint: disable=protected-access
+        "Operation._add_control_inputs doesn't work with C API")
     if ops:
       for op in ops:
         if not isinstance(op, Operation):
@@ -1516,12 +1530,17 @@ class Operation(object):
       TypeError: if op is not an Operation.
       ValueError: if op is from a different graph.
     """
-    self._add_control_inputs([op])
+    if _USE_C_API:
+      c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
+    else:
+      self._add_control_inputs([op])
 
   # Methods below are used when building the NodeDef and Graph proto.
   def _recompute_node_def(self):
     del self._node_def.input[:]
+    # pylint: disable=protected-access
     self._node_def.input.extend([t._as_node_def_input() for t in self._inputs])
+    # pylint: enable=protected-access
     if self._control_inputs:
       self._node_def.input.extend(["^%s" % op.name for op in
                                    self._control_inputs])
@@ -1570,6 +1589,20 @@ class Operation(object):
     return self._input_types
 
   @property
+  def _input_types(self):
+    if self._graph._c_graph:  # pylint: disable=protected-access
+      num_inputs = c_api.TF_OperationNumInputs(self._c_op)
+      input_types = [dtypes.as_dtype(
+          c_api.TF_OperationInputType(self._tf_input(i)))
+                     for i in xrange(num_inputs)]
+      # TODO(iga): Remove this assert after converting to C API by default.
+      # Just being a bit paranoid here.
+      assert self._input_types_val == input_types
+      return input_types
+    else:
+      return self._input_types_val
+
+  @property
   def control_inputs(self):
     """The `Operation` objects on which this op has a control dependency.
 
@@ -1583,7 +1616,7 @@ class Operation(object):
       A list of `Operation` objects.
 
     """
-    if _USE_C_API:
+    if self._graph._c_graph:  # pylint: disable=protected-access
       control_c_ops = c_api.TF_OperationGetControlInputs_wrapper(self._c_op)
       # pylint: disable=protected-access
       return [self.graph._get_operation_by_name_unsafe(
@@ -1595,7 +1628,19 @@ class Operation(object):
   @property
   def type(self):
     """The type of the op (e.g. `"MatMul"`)."""
-    return self._node_def.op
+    if self._graph._c_graph:  # pylint: disable=protected-access
+      op_type = c_api.TF_OperationOpType(self._c_op)
+      # TODO(iga): Remove these asserts after converting to C API by default.
+      # Just being a bit paranoid here.
+      # pylint: disable=unidiomatic-typecheck
+      assert type(op_type) == type(self._node_def.op), (
+          "Expected same types %s vs %s" % (type(op_type),
+                                            type(self._node_def.op)))
+      # pylint: enable=unidiomatic-typecheck
+      assert op_type == self._node_def.op
+      return op_type
+    else:
+      return self._node_def.op
 
   @property
   def graph(self):
@@ -2034,18 +2079,6 @@ def _name_from_scope_name(name):
   return name[:-1] if name[-1] == "/" else name
 
 
-class _ScopedTF_Graph(object):
-
-  def __init__(self):
-    self.graph = c_api.TF_NewGraph()
-
-  def __del__(self):
-    # Note: when we're destructing the global context (i.e when the process is
-    # terminating) we can have already deleted other modules.
-    if c_api.TF_DeleteGraph is not None:
-      c_api.TF_DeleteGraph(self.graph)
-
-
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
@@ -2162,7 +2195,7 @@ class Graph(object):
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
     if _USE_C_API:
-      self._scoped_c_graph = _ScopedTF_Graph()
+      self._scoped_c_graph = c_api_util.ScopedTFGraph()
     else:
       self._scoped_c_graph = None
 
@@ -2283,6 +2316,9 @@ class Graph(object):
 
     Note that this is unrelated to the
     @{tf.Graph.graph_def_versions}.
+
+    Returns:
+       An integer version that increases as ops are added to the graph.
     """
     if self._finalized:
       return self._version
@@ -2491,7 +2527,7 @@ class Graph(object):
     return self._building_function
 
   # Helper functions to create operations.
-  def create_op(self, op_type, inputs, dtypes,
+  def create_op(self, op_type, inputs, dtypes,  # pylint: disable=redefined-outer-name
                 input_types=None, name=None, attrs=None, op_def=None,
                 compute_shapes=True, compute_device=True):
     """Creates an `Operation` in this graph.
@@ -2597,14 +2633,16 @@ class Graph(object):
           # Make this device match the device of the colocated op, to
           # provide consistency between the device and the colocation
           # property.
-          if ret.device and ret.device != colocation_op.device:
+          if (ret.device and
+              pydev.canonical_name(ret.device) !=
+              pydev.canonical_name(colocation_op.device)):
             logging.warning("Tried to colocate %s with an op %s that had "
                             "a different device: %s vs %s. "
                             "Ignoring colocation property.",
                             name, colocation_op.name,
                             ret.device, colocation_op.device)
           else:
-            ret._set_device(colocation_op.device)
+            ret._set_device(colocation_op.device)  # pylint: disable=protected-access
 
       all_colocation_groups = sorted(set(all_colocation_groups))
       ret.node_def.attr["_class"].CopyFrom(attr_value_pb2.AttrValue(
@@ -3328,7 +3366,7 @@ class Graph(object):
       device_name_or_function: The device name or function to use in
         the context.
 
-    Returns:
+    Yields:
       A context manager that specifies the default device to use for newly
       created ops.
 
@@ -3355,7 +3393,7 @@ class Graph(object):
     for device_function in reversed(self._device_function_stack):
       if device_function is None:
         break
-      op._set_device(device_function(op))
+      op._set_device(device_function(op))  # pylint: disable=protected-access
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
@@ -3904,7 +3942,7 @@ class _DefaultStack(threading.local):
     self.stack = []
 
   def is_cleared(self):
-    return self.stack == []
+    return not self.stack
 
   @property
   def enforce_nesting(self):
@@ -4527,6 +4565,7 @@ def prepend_name_scope(name, import_scope):
 
 
 # pylint: disable=g-doc-return-or-yield
+# pylint: disable=not-context-manager
 @tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""

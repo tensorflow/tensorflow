@@ -50,7 +50,7 @@ class CycleStateSpaceModel(state_space_model.StateSpaceModel):
 
   def get_noise_transform(self):
     # transition_power_noise_accumulator makes assumptions about this
-    # transformation. If the noise transform is modified or overriden,
+    # transformation. If the noise transform is modified or overridden,
     # transition_power_noise_accumulator must be modified as well (or discarded,
     # as it is simply an optimization).
     return array_ops.pad(

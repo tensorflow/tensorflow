@@ -228,6 +228,13 @@ class KerasIntegrationTest(test.TestCase):
                           verbose=2)
       self.assertGreater(history.history['val_acc'][-1], 0.85)
 
+  def test_embedding_with_clipnorm(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Embedding(input_dim=1, output_dim=1))
+      model.compile(optimizer=keras.optimizers.SGD(clipnorm=0.1), loss='mse')
+      model.fit(np.array([[0]]), np.array([[[0.5]]]), epochs=1)
+
 
 if __name__ == '__main__':
   test.main()

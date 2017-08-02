@@ -25,26 +25,28 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const TFGraphNodeProto& TFShow::Show(const Options& opts) {
-  if (opts.output_type == kOutput[3]) {
-    return ShowInternal(opts, nullptr)->proto();
-  } else if (opts.output_type == kOutput[0]) {
+const GraphNodeProto& TFShow::Show(const Options& opts) {
+  if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
-  } else if (opts.output_type == kOutput[2]) {
-    const ShowNode* root = ShowInternal(opts, nullptr);
-    Status s =
-        WriteStringToFile(Env::Default(), opts.output_options.at(kFileOpts[0]),
-                          root->formatted_str);
-    if (!s.ok()) {
-      fprintf(stderr, "%s\n", s.ToString().c_str());
-    }
-    return root->proto();
   } else {
-    const ShowNode* root = ShowInternal(opts, nullptr);
-    printf("%s", root->formatted_str.c_str());
-    fflush(stdout);
-    return root->proto();
+    const ShowNode* ret = ShowInternal(opts, nullptr);
+    if (opts.output_type == kOutput[1]) {
+      printf("%s", ret->formatted_str.c_str());
+      fflush(stdout);
+    } else if (opts.output_type == kOutput[2]) {
+      Status s = WriteStringToFile(Env::Default(),
+                                   opts.output_options.at(kFileOpts[0]),
+                                   ret->formatted_str);
+      if (!s.ok()) {
+        fprintf(stderr, "%s\n", s.ToString().c_str());
+      }
+    } else if (opts.output_type == kOutput[3] ||
+               opts.output_type == kOutput[4]) {
+    } else {
+      fprintf(stderr, "Unknown output type: %s\n", opts.output_type.c_str());
+    }
+    return ret->proto();
   }
 }
 

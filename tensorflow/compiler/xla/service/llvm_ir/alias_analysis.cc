@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <unordered_set>
 
-#include "external/llvm/include/llvm/IR/MDBuilder.h"
+#include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -56,7 +56,9 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       alias_scope_md =
           GetAliasScopeMetadataForBuffer(buffer_slice, GetAliasDomain());
     }
-    array->AddAliasScopeMetadata(alias_scope_md);
+    if (alias_scope_md != nullptr) {
+      array->AddAliasScopeMetadata(alias_scope_md);
+    }
   }
 
   if (module_.config().debug_options().xla_llvm_enable_noalias_metadata()) {
@@ -65,7 +67,9 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
                                                assignment_, hlo);
     }
-    array->AddNoaliasMetadata(noalias_md);
+    if (noalias_md != nullptr) {
+      array->AddNoaliasMetadata(noalias_md);
+    }
   }
 
   if (module_.config()

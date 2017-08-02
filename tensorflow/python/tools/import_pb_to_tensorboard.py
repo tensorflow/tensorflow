@@ -64,11 +64,13 @@ if __name__ == "__main__":
       "--model_dir",
       type=str,
       default="",
+      required=True,
       help="The location of the protobuf (\'pb\') model to visualize.")
   parser.add_argument(
       "--log_dir",
       type=str,
       default="",
+      required=True,
       help="The location for the Tensorboard log to begin visualization from.")
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

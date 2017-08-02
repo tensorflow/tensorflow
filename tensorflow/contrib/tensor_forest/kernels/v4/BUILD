@@ -1,7 +1,8 @@
 # TensorFlow code for training random forests.
-package(default_visibility = [
-    "//visibility:public",
-])
+
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])  # Apache 2.0
 
@@ -9,9 +10,7 @@ exports_files(["LICENSE"])
 
 filegroup(
     name = "all_files",
-    srcs = glob(
-        ["**/*"],
-    ),
+    srcs = glob(["**/*"]),
 )
 
 cc_library(
@@ -75,7 +74,6 @@ cc_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
-        "//tensorflow/core:framework_headers_lib",
     ],
 )
 
@@ -121,7 +119,6 @@ cc_test(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -138,7 +135,6 @@ cc_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework_headers_lib",
     ],
 )
 
@@ -198,9 +194,7 @@ cc_library(
         ":leaf_model_operators",
         ":params",
         ":split_collection_operators",
-        ":stat_utils",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
-        "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",

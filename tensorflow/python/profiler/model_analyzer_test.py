@@ -17,7 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gzip
+import io
 import os
+
+from tensorflow.core.profiler import profile_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
@@ -25,19 +29,20 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-
-# XXX: this depends on pywrap_tensorflow and must come later
 from tensorflow.python.profiler import model_analyzer
+from tensorflow.python.profiler import option_builder
 from tensorflow.python.profiler.internal import model_analyzer_testlib as lib
+
+builder = option_builder.ProfileOptionBuilder
 
 
 class PrintModelAnalysisTest(test.TestCase):
 
   def testDumpToFile(self):
     ops.reset_default_graph()
-    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts['output'] = 'file:outfile=' + outfile
+    opts = builder(builder.trainable_variables_parameter()
+                  ).with_file_output(outfile).build()
 
     with session.Session() as sess:
       _ = lib.BuildSmallModel()
@@ -53,14 +58,12 @@ class PrintModelAnalysisTest(test.TestCase):
 
   def testSelectEverything(self):
     ops.reset_default_graph()
-    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts['output'] = 'file:outfile=' + outfile
-    opts['account_type_regexes'] = ['.*']
-    opts['select'] = [
-        'params', 'float_ops', 'occurrence', 'device', 'op_types',
-        'input_shapes'
-    ]
+    opts = (builder(builder.trainable_variables_parameter())
+            .with_file_output(outfile)
+            .with_accounted_types(['.*'])
+            .select(['params', 'float_ops', 'occurrence', 'device', 'op_types',
+                     'input_shapes']).build())
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
         disable_model_pruning=True)
@@ -88,18 +91,16 @@ class PrintModelAnalysisTest(test.TestCase):
 
   def testSimpleCodeView(self):
     ops.reset_default_graph()
-    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts['output'] = 'file:outfile=' + outfile
-    opts['account_type_regexes'] = ['.*']
-    opts['show_name_regexes'] = ['.*model_analyzer_testlib.*']
-    opts['account_displayed_op_only'] = False
     # TODO(xpan): Test 'micros'. Since the execution time changes each run,
     # it's a bit difficult to test it now.
-    opts['select'] = [
-        'bytes', 'params', 'float_ops', 'num_hidden_ops', 'device',
-        'input_shapes'
-    ]
+    opts = (builder(builder.trainable_variables_parameter())
+            .with_file_output(outfile)
+            .with_accounted_types(['.*'])
+            .with_node_names(show_name_regexes=['.*model_analyzer_testlib.*'])
+            .account_displayed_op_only(False)
+            .select(['bytes', 'params', 'float_ops', 'num_hidden_ops', 'device',
+                     'input_shapes']).build())
 
     with session.Session() as sess:
       x = lib.BuildSmallModel()
@@ -123,13 +124,14 @@ class PrintModelAnalysisTest(test.TestCase):
 
   def testComplexCodeView(self):
     ops.reset_default_graph()
-    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts['output'] = 'file:outfile=' + outfile
-    opts['account_type_regexes'] = ['.*']
-    opts['show_name_regexes'] = ['.*model_analyzer_testlib.py.*']
-    opts['account_displayed_op_only'] = False
-    opts['select'] = ['params', 'float_ops']
+    opts = (builder(builder.trainable_variables_parameter())
+            .with_file_output(outfile)
+            .with_accounted_types(['.*'])
+            .with_node_names(show_name_regexes=
+                             ['.*model_analyzer_testlib.py.*'])
+            .account_displayed_op_only(False)
+            .select(['params', 'float_ops']).build())
 
     with session.Session() as sess:
       x = lib.BuildFullModel()
@@ -175,13 +177,11 @@ class PrintModelAnalysisTest(test.TestCase):
 
   def testCodeViewLeafGraphNode(self):
     ops.reset_default_graph()
-    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
-    opts['account_type_regexes'] = ['.*']
-    opts['account_displayed_op_only'] = False
-    opts['select'] = [
-        'bytes', 'params', 'float_ops', 'device'
-    ]
-    opts['output'] = 'none'
+    opts = (builder(builder.trainable_variables_parameter())
+            .with_empty_output()
+            .with_accounted_types(['.*'])
+            .account_displayed_op_only(False)
+            .select(['bytes', 'params', 'float_ops', 'device']).build())
 
     with session.Session() as sess:
       x = lib.BuildSmallModel()
@@ -204,12 +204,12 @@ class PrintModelAnalysisTest(test.TestCase):
 
   def testTimeline(self):
     ops.reset_default_graph()
-    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
     outfile = os.path.join(test.get_temp_dir(), 'timeline')
-    opts['output'] = 'timeline:outfile=' + outfile
-    opts['account_type_regexes'] = ['.*']
-    opts['max_depth'] = 100000
-    opts['step'] = 0
+    opts = (builder(builder.trainable_variables_parameter())
+            .with_max_depth(100000)
+            .with_step(0)
+            .with_timeline_output(outfile)
+            .with_accounted_types(['.*']).build())
 
     with session.Session() as sess:
       x = lib.BuildFullModel()
@@ -236,13 +236,14 @@ class PrintModelAnalysisTest(test.TestCase):
 
   def testOpView(self):
     ops.reset_default_graph()
-    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
     outfile = os.path.join(test.get_temp_dir(), 'dump')
-    opts['output'] = 'file:outfile=' + outfile
-    opts['account_type_regexes'] = ['.*']
-    opts['min_occurrence'] = 10
-    opts['select'] = ['params', 'micros', 'occurrence', 'input_shapes']
-    opts['order_by'] = 'occurrence'
+
+    opts = (builder(builder.trainable_variables_parameter())
+            .with_file_output(outfile)
+            .with_accounted_types(['.*'])
+            .with_min_occurrence(10)
+            .order_by('occurrence')
+            .select(['params', 'micros', 'occurrence', 'input_shapes']).build())
 
     with session.Session() as sess:
       x = lib.BuildFullModel()
@@ -313,6 +314,61 @@ class PrintModelAnalysisTest(test.TestCase):
         self.assertEqual(len(checker.reports), 0)
       checker = advice_pb.checkers['ExpensiveOperationChecker']
       self.assertGreater(len(checker.reports), 0)
+
+  def pprof_test_helper(self, attribute, should_fail=False):
+    ops.reset_default_graph()
+    outfile = os.path.join(test.get_temp_dir(), attribute + '_pprof.pb.gz')
+    opts = (builder(builder.time_and_memory())
+            .select([attribute])
+            .with_max_depth(100000)
+            .with_node_names(trim_name_regexes=['ops.py.*'])
+            .with_pprof_output(outfile).build())
+
+    with session.Session() as sess:
+      x = lib.BuildFullModel()
+
+      sess.run(variables.global_variables_initializer())
+      run_meta = config_pb2.RunMetadata()
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
+
+      _ = model_analyzer.profile(
+          sess.graph, run_meta, cmd='code', options=opts)
+
+      if should_fail:
+        self.assertFalse(gfile.Exists(outfile))
+        return
+
+      profile_pb = profile_pb2.Profile()
+      with gfile.Open(outfile, 'rb') as f:
+        with gzip.GzipFile(fileobj=io.BytesIO(f.read())) as gzipf:
+          profile_pb.ParseFromString(gzipf.read())
+
+      self.assertGreater(len(profile_pb.sample), 10)
+      self.assertGreater(len(profile_pb.location), 10)
+      self.assertGreater(len(profile_pb.function), 10)
+      self.assertGreater(len(profile_pb.string_table), 30)
+
+      has_rnn = False
+      has_loop = False
+      for s in profile_pb.string_table:
+        if s.find('rnn') > 0:
+          has_rnn = True
+        if s.find('while') > 0:
+          has_loop = True
+        self.assertFalse(s.startswith('ops.py'))
+      self.assertTrue(has_rnn)
+      self.assertTrue(has_loop)
+
+  def testPprof(self):
+    for attr in ['micros', 'bytes', 'accelerator_micros', 'cpu_micros',
+                 'params', 'float_ops']:
+      self.pprof_test_helper(attr)
+    for attr in ['op_types', 'device', 'input_shapes']:
+      self.pprof_test_helper(attr, True)
 
 
 if __name__ == '__main__':

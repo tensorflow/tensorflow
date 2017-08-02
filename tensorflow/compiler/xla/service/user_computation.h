@@ -89,6 +89,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddBatchNormTrainingInstruction(
       const BatchNormTrainingRequest& batch_norm_training_request);
 
+  // Enqueues a batch norm grad instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddBatchNormGradInstruction(
+      const BatchNormGradRequest& batch_norm_grad_request);
+
   // Enqueues a binary instruction onto this user computation.
   // Returns an error status if the operand indices are out of bounds.
   StatusOr<ComputationDataHandle> AddBinaryInstruction(

@@ -84,6 +84,13 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
     required_options.insert(kFileRequiredOpts,
                             kFileRequiredOpts + sizeof(kFileRequiredOpts) /
                                                     sizeof(*kFileRequiredOpts));
+  } else if (*output_type == kOutput[3]) {
+    valid_options.insert(kPprofOpts,
+                         kPprofOpts + sizeof(kPprofOpts) / sizeof(*kPprofOpts));
+    required_options.insert(
+        kPprofRequiredOpts,
+        kPprofRequiredOpts +
+            sizeof(kPprofRequiredOpts) / sizeof(*kPprofRequiredOpts));
   }
 
   for (const string& kv_str : kv_split) {

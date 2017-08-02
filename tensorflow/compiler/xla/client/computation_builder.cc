@@ -284,6 +284,25 @@ ComputationDataHandle ComputationBuilder::Slice(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::SliceInDim(
+    const ComputationDataHandle& operand, int64 start_index, int64 limit_index,
+    int64 stride, int64 dimno) {
+  StatusOr<std::unique_ptr<Shape>> shape_status = GetShape(operand);
+  if (!shape_status.ok()) {
+    NoteError(shape_status.status());
+    return ComputationDataHandle{};
+  }
+  const Shape& shape = *shape_status.ValueOrDie();
+  std::vector<int64> starts(ShapeUtil::Rank(shape), 0);
+  std::vector<int64> limits(shape.dimensions().begin(),
+                            shape.dimensions().end());
+  std::vector<int64> strides(ShapeUtil::Rank(shape), 1);
+  starts[dimno] = start_index;
+  limits[dimno] = limit_index;
+  strides[dimno] = stride;
+  return Slice(operand, starts, limits, strides);
+}
+
 ComputationDataHandle ComputationBuilder::DynamicSlice(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& start_indices,
@@ -976,6 +995,11 @@ ComputationDataHandle ComputationBuilder::Cos(
   return UnaryOp(UNOP_COS, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Sin(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_SIN, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);
@@ -1453,13 +1477,33 @@ ComputationDataHandle ComputationBuilder::BatchNormInference(
 
 ComputationDataHandle ComputationBuilder::BatchNormGrad(
     const ComputationDataHandle& operand, const ComputationDataHandle& scale,
-    const ComputationDataHandle& batch_mean,
-    const ComputationDataHandle& batch_var,
+    const ComputationDataHandle& mean, const ComputationDataHandle& var,
     const ComputationDataHandle& grad_output, float epsilon,
     int64 feature_index) {
-  // TODO(b/62843645): Implement BatchNormGrad.
-  NoteError(Unimplemented("BatchNormGrad is not implemented yet."));
-  return ComputationDataHandle();
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+  BatchNormGradRequest request;
+  *request.mutable_operand() = operand;
+  *request.mutable_scale() = scale;
+  *request.mutable_mean() = mean;
+  *request.mutable_variance() = var;
+  *request.mutable_grad_output() = grad_output;
+  request.set_epsilon(epsilon);
+  request.set_feature_index(feature_index);
+
+  OpRequest op_request;
+  *op_request.mutable_batch_norm_grad_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
+
+  OpResponse response;
+
+  VLOG(2) << "making BatchNormGrad request";
+
+  Status s = client_->stub()->Op(&op_request, &response);
+
+  return ParseOpResponse(s, &response);
 }
 
 ComputationDataHandle ComputationBuilder::CrossReplicaSum(

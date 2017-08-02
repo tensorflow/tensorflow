@@ -64,7 +64,7 @@ class TaskType(object):
 class ClusterConfig(object):
   """This class specifies the configurations for a distributed run.
 
-  If you're using `tf.learn` `Estimators`, you should probably use the subclass
+  If you're using an `Estimator`, you should probably use the subclass
   RunConfig instead.
   """
 
@@ -211,12 +211,7 @@ class ClusterConfig(object):
 class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
 
-  This class is the implementation of ${tf.estimator.RunConfig} interface.
-
-  If you're a Google-internal user using command line flags with
-  `learn_runner.py` (for instance, to do distributed training or to use
-  parameter servers), you probably want to use `learn_runner.EstimatorConfig`
-  instead.
+  This class is the implementation of @{tf.estimator.RunConfig} interface.
   """
   _USE_DEFAULT = 0
 

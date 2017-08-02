@@ -88,9 +88,6 @@ class CudaPlatform : public Platform {
   // This platform's name.
   string name_;
 
-  // mutex that guards internal state.
-  mutable mutex mu_;
-
   // Cache of created executors.
   ExecutorCache executor_cache_;
 
