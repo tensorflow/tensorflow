@@ -30,7 +30,7 @@ PoplarExecutable::PoplarExecutable(
         const sep::OutputMap& output_map,
         const sep::ConversionList& input_convertors,
         const sep::ConversionList& output_convertors)
-    : Executable(std::move(hlo_module), ShapeSizeBytes),
+    : Executable(std::move(hlo_module)),
       poplar_engine_(std::move(engine)),
       output_map_(std::move(output_map)),
       input_convertors_(std::move(input_convertors)),
@@ -92,6 +92,11 @@ PoplarExecutable::ExecuteAsyncOnStream(
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   return tensorflow::errors::Unimplemented(
           "ExecuteAsyncOnStream is not yet supported on Poplar.");
+}
+
+std::unique_ptr<HloCostAnalysis> PoplarExecutable::CreateCostAnalysis()
+    const {
+  return MakeUnique<HloCostAnalysis>(ShapeSizeBytes);
 }
 
 /*static*/ int64 PoplarExecutable::ShapeSizeBytes(const Shape& shape) {

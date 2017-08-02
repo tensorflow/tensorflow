@@ -69,6 +69,8 @@ class PoplarExecutable : public Executable {
 
   static int64 ShapeSizeBytes(const Shape& shape);
 
+  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
+
  private:
   friend class GraphCompileIoMapTest;
 
