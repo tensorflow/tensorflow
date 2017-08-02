@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <iosfwd>
+#include <memory>
 #include <string>
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -36,8 +37,7 @@ class TF_MUST_USE_RESULT Status;
 class Status {
  public:
   /// Create a success status.
-  Status() : state_(NULL) {}
-  ~Status() { delete state_; }
+  Status() {}
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
@@ -91,7 +91,7 @@ class Status {
   };
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
-  State* state_;
+  std::unique_ptr<State> state_;
 
   void SlowCopyFrom(const State* src);
 };
@@ -103,7 +103,7 @@ inline void Status::operator=(const Status& s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
   if (state_ != s.state_) {
-    SlowCopyFrom(s.state_);
+    SlowCopyFrom(s.state_.get());
   }
 }
 
