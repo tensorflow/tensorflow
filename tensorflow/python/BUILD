@@ -419,6 +419,7 @@ py_library(
         ":cpp_shape_inference_proto_py",
         ":errors",
         ":framework_for_generated_wrappers",
+        ":function",
         ":graph_util",
         ":lib",
         ":platform",

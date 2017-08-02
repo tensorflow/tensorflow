@@ -83,7 +83,7 @@ tf_custom_op_py_library(
 
 cuda_py_test(
     name = "cudnn_rnn_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_test.py"],
     additional_deps = [
         ":cudnn_rnn_py",
@@ -102,6 +102,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    shard_count = 6,
     tags = [
         "manual",
         "requires_cudnn5",

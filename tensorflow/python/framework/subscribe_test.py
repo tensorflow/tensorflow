@@ -23,11 +23,13 @@ import collections
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import subscribe
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -54,8 +56,13 @@ class SubscribeTest(test_util.TensorFlowTestCase):
       shared.append(t)
       return t
 
+    c0 = c
+    self.assertTrue(c0.op in d.op._control_inputs)
     c = subscribe.subscribe(c,
                             lambda t: script_ops.py_func(sub, [t], [t.dtype]))
+    # Verify that control dependencies are correctly moved to the subscription.
+    self.assertFalse(c0.op in d.op._control_inputs)
+    self.assertTrue(c.op in d.op._control_inputs)
 
     with self.test_session() as sess:
       c_out = sess.run([c])
@@ -267,6 +274,40 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     with self.test_session() as sess:
       sess.run([reader])
     self.assertEquals(0, len(shared))
+
+  def testMultipleOutputs(self):
+    """Handle subscriptions to multiple outputs from the same op."""
+    sparse_tensor_1 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+    sparse_tensor_2 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[2, 3], dense_shape=[3, 4])
+
+    # This op has three outputs.
+    sparse_add = sparse_ops.sparse_add(sparse_tensor_1, sparse_tensor_2)
+
+    self.assertEquals(3, len(sparse_add.op.outputs))
+
+    c1 = constant_op.constant(1)
+
+    with ops.control_dependencies(sparse_add.op.outputs):
+      # This op depends on all the three outputs.
+      neg = -c1
+
+    shared = []
+    def sub(t):
+      shared.append(t)
+      return t
+
+    # Subscribe the three outputs at once.
+    subscribe.subscribe(sparse_add.op.outputs,
+                        lambda t: script_ops.py_func(sub, [t], [t.dtype]))
+
+    with self.test_session() as sess:
+      sess.run([neg])
+
+    # All three ops have been processed.
+    self.assertEquals(3, len(shared))
+
 
 if __name__ == '__main__':
   googletest.main()

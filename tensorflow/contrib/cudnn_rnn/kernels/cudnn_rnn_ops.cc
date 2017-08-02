@@ -620,7 +620,18 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     CHECK(TensorShapeUtils::IsScalar(num_layers_t->shape()))
         << "num_layers is not a scalar";
     int num_layers = num_layers_t->scalar<int>()();
-    int num_params_per_layer = num_params_ / num_layers;
+    int num_dirs = 1;
+    if (rnn_direction_mode() == RnnDirectionMode::kRnnBidirectional) {
+      num_dirs = 2;
+    }
+    const int num_params_per_layer = num_params_ / num_layers / num_dirs;
+    // Number of params applied on inputs. The rest are applied on recurrent
+    // hiddden states.
+    const int num_params_input_state = num_params_per_layer / 2;
+    CHECK(num_params_ % (num_layers * num_dirs) == 0)
+        << "Number of params is not a multiple of num_layers * num_dirs.";
+    CHECK(num_params_per_layer % 2 == 0)
+        << "Number of params per layer is not a even number.";
 
     CHECK(num_params_ == rnn_desc->ParamsWeightRegions().size())
         << "Number of params mismatch. Expected " << num_params_ << ", got "
@@ -628,8 +639,33 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     for (int i = 0; i < rnn_desc->ParamsWeightRegions().size(); i++) {
       int64 size_in_bytes = rnn_desc->ParamsWeightRegions()[i].size;
       int64 size = size_in_bytes / sizeof(T);
-      int width = (i < num_params_per_layer / 2) ? input_size : num_units;
-      int height = num_units;
+      const int layer_idx = i / num_params_per_layer;
+      const int index_within_layer = i % num_params_per_layer;
+      int width = 0, height = num_units;
+      // In CuDNN layout, each layer has num_params_per_layer params, with the
+      // first half a.k.a num_params_input_state params applied on the inputs,
+      // and the second half on the recurrent hidden states.
+      bool apply_on_input_state = index_within_layer < num_params_input_state;
+      if (rnn_direction_mode() == RnnDirectionMode::kRnnUnidirectional) {
+        if (layer_idx == 0 && apply_on_input_state) {
+          width = input_size;
+        } else {
+          width = num_units;
+        }
+      } else {
+        if (apply_on_input_state) {
+          if (layer_idx <= 1) {
+            // First fwd or bak layer.
+            width = input_size;
+          } else {
+            // Following layers, cell inputs are concatenated outputs of
+            // its prior layer.
+            width = 2 * num_units;
+          }
+        } else {
+          width = num_units;
+        }
+      }
       CHECK(size == width * height) << "Params size mismatch. Expected "
                                     << width * height << ", got " << size;
       // If data is aligned, use slice view to avoid expensive memcpy.

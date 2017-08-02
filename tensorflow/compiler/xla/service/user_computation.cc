@@ -791,7 +791,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddSliceInstruction(
       ShapeInference::InferSliceShape(
           operand->output_shape(), AsInt64Slice(slice_request.start_indices()),
           AsInt64Slice(slice_request.limit_indices()),
-          AsInt64Slice(slice_request.stride())));
+          AsInt64Slice(slice_request.strides())));
 
   ComputationDataHandle handle = CreateComputationDataHandle();
 
@@ -2470,7 +2470,7 @@ void ComputationLowerer::Visit(
           request.output_shape(), operand,
           AsInt64Slice(slice_request.start_indices()),
           AsInt64Slice(slice_request.limit_indices()),
-          AsInt64Slice(slice_request.stride())));
+          AsInt64Slice(slice_request.strides())));
       break;
     }
 

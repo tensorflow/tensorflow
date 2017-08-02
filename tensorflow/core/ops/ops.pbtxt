@@ -12170,7 +12170,7 @@ op {
       }
     }
   }
-  summary: "Computes the determinant of one ore more square matrices."
+  summary: "Computes the determinant of one or more square matrices."
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {

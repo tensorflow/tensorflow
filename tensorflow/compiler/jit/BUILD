@@ -42,7 +42,7 @@ cc_library(
 
 cc_library(
     name = "xla_cpu_jit",
-    visibility = [":friends"],
+    visibility = ["//visibility:public"],
     deps = [
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
@@ -54,7 +54,7 @@ cc_library(
 
 cc_library(
     name = "xla_gpu_jit",
-    visibility = [":friends"],
+    visibility = ["//visibility:public"],
     deps = if_cuda([
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
