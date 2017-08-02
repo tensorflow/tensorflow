@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -1018,6 +1017,11 @@ void MasterSession::UpdateLastAccessTime() {
 
 Status MasterSession::Create(GraphDef* graph_def,
                              const WorkerCacheFactoryOptions& options) {
+  if (session_opts_.config.use_per_session_threads() ||
+      session_opts_.config.session_inter_op_thread_pool_size() > 0) {
+    return errors::InvalidArgument(
+        "Distributed session does not support session thread pool options.");
+  }
   if (session_opts_.config.graph_options().place_pruned_graph()) {
     // TODO(b/29900832): Fix this or remove the option.
     LOG(WARNING) << "Distributed session does not support the "

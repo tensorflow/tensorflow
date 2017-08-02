@@ -43,10 +43,10 @@ Literal::StrideConfig::StrideConfig(
       base(dimensions.size(), 0),
       step(dimensions.size(), 1) {
   if (!dimensions.empty()) {
-    // Selects the shape with the highest minor dimension as the one upon
-    // where to run the tight stride loop.
-    if (source_shape.layout().minor_to_major()[0] >=
-        dest_shape.layout().minor_to_major()[0]) {
+    // Selects the shape with the largest minor dimension as the one upon
+    // which to run the tight stride loop.
+    if (dimensions[source_shape.layout().minor_to_major()[0]] >=
+        dimensions[dest_shape.layout().minor_to_major()[0]]) {
       minor_dimension = source_shape.layout().minor_to_major()[0];
       dest_stride = IndexUtil::GetDimensionStride(dest_shape, minor_dimension);
     } else {
@@ -500,6 +500,28 @@ string Literal::GetAsString(
     default:
       return tensorflow::strings::StrCat(
           "[", PrimitiveType_Name(shape().element_type()), "]");
+  }
+}
+
+StatusOr<int64> Literal::GetIntegralAsS64(
+    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  switch (shape().element_type()) {
+    case PRED:
+      return Get<bool>(multi_index);
+    case U8:
+      return Get<uint8>(multi_index);
+    case S32:
+      return Get<int32>(multi_index);
+    case S64:
+      return Get<int64>(multi_index);
+    case U32:
+      return Get<uint32>(multi_index);
+    case U64:
+      return Get<uint64>(multi_index);
+    default:
+      return FailedPrecondition(
+          "Array element type is not integral: %s",
+          PrimitiveType_Name(shape().element_type()).c_str());
   }
 }
 

@@ -340,6 +340,27 @@ class TFGraphNode {
     return exec->second.allocator_bytes_in_use();
   }
 
+  int64 parameters() const {
+    if (!shape().empty()) {
+      int64 params = 1;
+      bool complete_shape = true;
+      for (int64 d : shape()) {
+        // Sometimes parameters could be <0 when a dim is unknown.
+        if (d < 0) {
+          complete_shape = false;
+          break;
+        }
+        params *= d;
+      }
+      if (complete_shape) {
+        return params;
+      } else {
+        fprintf(stderr, "Incomplete shape.\n");
+      }
+    }
+    return 0;
+  }
+
   int64 float_ops(int64 step) const {
     // If not run, return static analysis.
     if (execs_.empty()) {
@@ -400,12 +421,14 @@ class TFMultiGraphNode {
  public:
   TFMultiGraphNode(const string& name)
       : name_(name),
+        step_(-1),
         run_count_(0),
         exec_micros_(0),
         accelerator_exec_micros_(0),
         cpu_exec_micros_(0),
         requested_bytes_(0),
-        float_ops_(0) {}
+        float_ops_(0),
+        parameters_(0) {}
 
   bool SnapshotNodes(int64 step, const std::vector<string>& type_regexes) {
     run_count_ = 0;
@@ -415,11 +438,13 @@ class TFMultiGraphNode {
 
     requested_bytes_ = 0;
     float_ops_ = 0;
+    parameters_ = 0;
     op_types_.clear();
     shapes_.clear();
     devices_.clear();
     snapshot_nodes_.clear();
 
+    step_ = step;
     std::vector<const TFGraphNode*> nodes = pick_nodes(type_regexes);
 
     if (nodes.empty()) {
@@ -436,6 +461,7 @@ class TFMultiGraphNode {
 
       requested_bytes_ += node->requested_bytes(step);
       float_ops_ += node->float_ops(step);
+      parameters_ += node->parameters();
       if (node->shape().size() > 0) {
         shapes_.push_back(node->shape());
       }
@@ -444,6 +470,8 @@ class TFMultiGraphNode {
     }
     return true;
   }
+
+  int64 step() const { return step_; }
 
   void AddGraphNode(const TFGraphNode* node) {
     if (nodes_.find(node->name()) != nodes_.end()) {
@@ -456,16 +484,6 @@ class TFMultiGraphNode {
     return snapshot_nodes_;
   }
 
-  void AddChildren(const string& name) {
-    if (children_.find(name) != children_.end()) {
-      return;
-    }
-    children_[name].reset(new TFMultiGraphNode(name));
-  }
-  const std::map<string, std::unique_ptr<TFMultiGraphNode>>& children() const {
-    return children_;
-  }
-
   const string& name() const { return name_; }
 
   int64 run_count() const { return run_count_; }
@@ -476,6 +494,8 @@ class TFMultiGraphNode {
   int64 requested_bytes() const { return requested_bytes_; }
 
   int64 float_ops() const { return float_ops_; }
+
+  int64 parameters() const { return parameters_; }
 
   const std::set<string>& devices() const { return devices_; }
 
@@ -511,6 +531,7 @@ class TFMultiGraphNode {
   }
 
   const string name_;
+  int64 step_;
   // Snapshot based on type_regexes
   std::set<string> op_types_;
   int64 run_count_;
@@ -520,13 +541,13 @@ class TFMultiGraphNode {
 
   int64 requested_bytes_;
   int64 float_ops_;
+  int64 parameters_;
   std::set<string> devices_;
   std::vector<std::vector<int64>> shapes_;
   std::map<string, const TFGraphNode*> snapshot_nodes_;
 
   // Overall data held by the TFMultiGraphNode.
   std::map<string, const TFGraphNode*> nodes_;
-  std::map<string, std::unique_ptr<TFMultiGraphNode>> children_;
 };
 
 bool IsPlacedOnAccelerator(const string& device);
