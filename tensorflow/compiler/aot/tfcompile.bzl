@@ -18,6 +18,37 @@ tf_library(
 
 load("//tensorflow:tensorflow.bzl", "if_android", "tf_copts")
 
+
+def tf_saved_model_library(name, saved_model_dir, tag=None,
+                           signature_def_key=None, **passthrough):
+  to_config_name = "{}_gen_tfcompile_config".format(name)
+  outdir = "{}_outfiles".format(to_config_name)
+  graph_def_loc = "{}/graph_def.pb2".format(outdir)
+  tfcompile_config_loc = "{}/tfcompile_config.pb2".format(outdir)
+  cmd = [
+      "$(location //tensorflow/compiler/aot:config_from_savedmodel)",
+      "--saved_model_dir {}".format(saved_model_dir),
+      "--out_dir {}".format(outdir)
+  ]
+  if signature_def_key:
+    cmd.append("--signature_def_key {}".format(signature_def_key))
+
+  if tag:
+    cmd.append("--tag {}".format(tag))
+
+  native.genrule(
+      name=to_config_name,
+      srcs=[saved_model_dir],
+      outs=[graph_def_loc, tfcompile_config_loc],
+      cmd=' '.join(cmd),
+      tools=["//tensorflow/compiler/aot:config_from_savedmodel"],
+      tags=passthrough.get("tags", None),
+      local=1,
+  )
+
+  tf_library(name, graph_def_loc, tfcompile_config_loc, **passthrough)
+
+
 def tf_library(name, graph, config,
                freeze_checkpoint=None, freeze_saver=None,
                cpp_class=None, gen_test=True, gen_benchmark=True,
