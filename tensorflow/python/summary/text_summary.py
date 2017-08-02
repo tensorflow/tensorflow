@@ -70,8 +70,8 @@ def text_summary(name, tensor, collections=None):
   summary_metadata = summary_pb2.SummaryMetadata()
   text_plugin_data = _TextPluginData()
   data_dict = text_plugin_data._asdict()  # pylint: disable=protected-access
-  summary_metadata.plugin_data.plugin_name=PLUGIN_NAME
-  summary_metadata.plugin_data.content=json.dumps(data_dict))
+  summary_metadata.plugin_data.plugin_name = PLUGIN_NAME
+  summary_metadata.plugin_data.content = json.dumps(data_dict)
   t_summary = tensor_summary(
       name=name,
       tensor=tensor,
