@@ -347,6 +347,7 @@ tf_cuda_library(
         "framework/allocator.h",
         "framework/variant.h",
         "framework/variant_encode_decode.h",
+        "framework/variant_tensor_data.h",
         "framework/allocator_registry.h",
         "framework/attr_value_util.h",
         "framework/bfloat16.h",
@@ -1247,6 +1248,8 @@ LIB_INTERNAL_WINDOWS_DEPS = glob(
     ] + [
         "framework/resource_handle.h",
         "framework/resource_handle.cc",
+        "framework/variant_tensor_data.h",
+        "framework/variant_tensor_data.cc",
     ],
     exclude = [
         "**/*test*",
@@ -1430,11 +1433,11 @@ cc_library(
 
 cc_library(
     name = "android_jpeg_internal",
-    srcs = [
+    srcs = if_android([
         "lib/jpeg/jpeg_handle.cc",
         "lib/jpeg/jpeg_mem.cc",
         "platform/jpeg.h",
-    ],
+    ]),
     hdrs = [
         "lib/core/stringpiece.h",
         "lib/jpeg/jpeg_handle.h",
@@ -1458,10 +1461,10 @@ cc_library(
 
 cc_library(
     name = "android_gif_internal",
-    srcs = [
+    srcs = if_android([
         "lib/gif/gif_io.cc",
         "platform/gif.h",
-    ],
+    ]),
     hdrs = [
         "lib/core/stringpiece.h",
         "lib/gif/gif_io.h",
@@ -1485,10 +1488,10 @@ cc_library(
 
 cc_library(
     name = "android_png_internal",
-    srcs = [
+    srcs = if_android([
         "lib/png/png_io.cc",
         "platform/png.h",
-    ],
+    ]),
     hdrs = [
         "lib/core/casts.h",
         "lib/core/stringpiece.h",
@@ -2972,6 +2975,7 @@ cc_test(
     srcs = ["example/example_parser_configuration_test.cc"],
     data = [":example_parser_configuration_testdata"],
     deps = [
+        ":core",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",

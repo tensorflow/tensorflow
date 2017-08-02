@@ -13,35 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_LLVM_IR_RUNTINE_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_LLVM_IR_RUNTINE_H_
 
-#define EIGEN_USE_THREADS
-
-#include "third_party/eigen3/Eigen/Core"
-
-#ifdef __SSE4_1__
-
-xla::cpu::runtime::V4F32 __xla_cpu_runtime_ExpV4F32(
-    xla::cpu::runtime::V4F32 x) {
-  Eigen::internal::Packet4f p = x;
-  return Eigen::internal::pexp(p);
-}
-
-xla::cpu::runtime::V4F32 __xla_cpu_runtime_LogV4F32(
-    xla::cpu::runtime::V4F32 x) {
-  Eigen::internal::Packet4f p = x;
-  return Eigen::internal::plog(p);
-}
-
-#endif  // __SSE4_1__
+#include "llvm/IR/Module.h"
 
 namespace xla {
 namespace cpu {
 namespace runtime {
 
-const char *const kExpV4F32SymbolName = "__xla_cpu_runtime_ExpV4F32";
-const char *const kLogV4F32SymbolName = "__xla_cpu_runtime_LogV4F32";
+extern const char* const kTanhV4F32SymbolName;
+extern const char* const kTanhV8F32SymbolName;
+
+// The following CPU runtime functions have LLVM-IR only implementations:
+//
+//  - __xla_cpu_runtime_TanhV4F32
+//  - __xla_cpu_runtime_TanhV8F32
+//
+// |LinkIRRuntimeFunctions| rewrites calls to these functions into generic LLVM
+// IR.
+
+void RewriteIRRuntimeFunctions(llvm::Module* module);
 
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_LLVM_IR_RUNTINE_H_
