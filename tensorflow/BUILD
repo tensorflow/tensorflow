@@ -372,6 +372,7 @@ filegroup(
         "//tensorflow/core/util/tensor_bundle:all_files",
         "//tensorflow/examples/android:all_files",
         "//tensorflow/examples/benchmark:all_files",
+        "//tensorflow/examples/get_started/regression:all_files",
         "//tensorflow/examples/how_tos/reading_data:all_files",
         "//tensorflow/examples/image_retraining:all_files",
         "//tensorflow/examples/label_image:all_files",
