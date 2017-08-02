@@ -48,8 +48,6 @@ xla::cpu::runtime::V8F32 __xla_cpu_runtime_ExpV8F32(xla::cpu::runtime::V8F32 x)
 xla::cpu::runtime::V8F32 __xla_cpu_runtime_LogV8F32(xla::cpu::runtime::V8F32 x)
     TF_ATTRIBUTE_WEAK;
 
-xla::cpu::runtime::V8F32 __xla_cpu_runtime_TanhV8F32(xla::cpu::runtime::V8F32 x)
-    TF_ATTRIBUTE_WEAK;
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_AVX_H_

@@ -50,14 +50,15 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   HloInstruction* one = inner.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   TF_ASSERT_OK(zero->AddControlDependencyTo(one));
-  std::unique_ptr<HloComputation> inner_computation(inner.Build());
+  auto module = CreateNewModule();
+  HloComputation* inner_computation =
+      module->AddEmbeddedComputation(inner.Build());
 
   HloComputation::Builder outer(TestName() + ".outer");
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
   outer.AddInstruction(
-      HloInstruction::CreateCall(r0f32, {}, inner_computation.get()));
+      HloInstruction::CreateCall(r0f32, {}, inner_computation));
 
-  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;

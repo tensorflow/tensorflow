@@ -375,6 +375,9 @@ const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
       return root_.get();
     }
   }
+  if (opts.account_displayed_op_only) {
+    fprintf(stderr, "Note: code view ignores account_displayed_op_only\n");
+  }
 
   std::vector<CodeNode*> roots = Account(root_->children, opts);
   root_->show_children.clear();
@@ -477,17 +480,10 @@ std::vector<CodeNode*> TFCode::PrintScope(const std::vector<CodeNode*> roots,
         PrintScope(node->show_children, opts, depth + 1, ident);
     if (show) {
       node->show_children.clear();
-      if (opts.account_displayed_op_only) {
-        node->ResetTotalStats();
-        node->AddSelfToTotalStats();
-      }
 
       show_cnodes = SortNodes(show_cnodes, opts);
       for (CodeNode* sc : show_cnodes) {
         node->show_children.push_back(sc);
-        if (opts.account_displayed_op_only) {
-          node->AggregateTotalStats(sc);
-        }
       }
 
       node->formatted_str = FormatNode(node, opts, last_ident);

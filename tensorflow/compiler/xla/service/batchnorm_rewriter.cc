@@ -56,6 +56,8 @@ class BatchNormRewriterVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
 
+  Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
+
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation, bool rewrite_training_op,
                   bool rewrite_grad_op);
@@ -258,6 +260,114 @@ Status BatchNormRewriterVisitor::HandleBatchNormTraining(
   TF_CHECK_OK(ReplaceWithNewInstruction(
       batch_norm,
       HloInstruction::CreateTuple({shifted_normalized, mean, var})));
+  return Status::OK();
+}
+
+Status BatchNormRewriterVisitor::HandleBatchNormGrad(
+    HloInstruction* batch_norm) {
+  if (!rewrite_grad_op_) {
+    return Status::OK();
+  }
+
+  HloInstruction* activation = batch_norm->mutable_operand(0);
+  const Shape activation_shape = activation->shape();
+  HloInstruction* scale = batch_norm->mutable_operand(1);
+  const Shape feature_shape = scale->shape();
+  HloInstruction* mean = batch_norm->mutable_operand(2);
+  HloInstruction* variance = batch_norm->mutable_operand(3);
+  HloInstruction* grad_output = batch_norm->mutable_operand(4);
+
+  int64 feature_index = batch_norm->feature_index();
+
+  auto zero = computation_->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(0.0f)));
+
+  auto half = computation_->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(0.5f)));
+
+  auto epsilon = computation_->AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0(batch_norm->epsilon())));
+
+  std::vector<int64> dimensions_without_feature;
+
+  for (int64 i = 0; i < ShapeUtil::Rank(activation_shape); ++i) {
+    if (i != feature_index) {
+      dimensions_without_feature.push_back(i);
+    }
+  }
+
+  auto scale_broadcasted =
+      computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          activation_shape, scale, {feature_index}));
+  auto variance_broadcasted =
+      computation_->AddInstruction(HloInstruction::CreateBroadcast(
+          activation_shape, variance, {feature_index}));
+
+  // E[X].
+  auto mean_broadcasted = computation_->AddInstruction(
+      HloInstruction::CreateBroadcast(activation_shape, mean, {feature_index}));
+
+  // Var[X] + epsilon.
+  auto var_add_epsilon =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          activation_shape, HloOpcode::kAdd, variance_broadcasted, epsilon));
+
+  // Sqrt[Var[X] + epsilon].
+  auto sqrt_var_add_epsilon =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          activation_shape, HloOpcode::kPower, var_add_epsilon, half));
+
+  // Grad[Y] * Sqrt[Var[X] + epsilon].
+  auto grad_output_times_sqrt_var_add_epsilon = computation_->AddInstruction(
+      HloInstruction::CreateBinary(activation_shape, HloOpcode::kMultiply,
+                                   grad_output, sqrt_var_add_epsilon));
+
+  // Grad[X] = Grad[Y] * scale * Sqrt[Var[X] + epsilon].
+  auto grad_activation =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          activation_shape, HloOpcode::kMultiply, scale_broadcasted,
+          grad_output_times_sqrt_var_add_epsilon));
+
+  // X - E[X].
+  auto activation_minus_mean = computation_->AddInstruction(
+      HloInstruction::CreateBinary(activation_shape, HloOpcode::kSubtract,
+                                   activation, mean_broadcasted));
+
+  // Grad[Y] * (X - E[X]) * Sqrt[Var[X] + epsilon].
+  auto grad_scale_not_reduced =
+      computation_->AddInstruction(HloInstruction::CreateBinary(
+          activation_shape, HloOpcode::kMultiply, activation_minus_mean,
+          grad_output_times_sqrt_var_add_epsilon));
+
+  HloComputation* add_reduce_computation =
+      GetScalarBinaryComputation(F32, HloOpcode::kAdd);
+
+  // Grad[scale] = Sum(Grad[Y] * (X - E[X]) * Sqrt[Var[X] + epsilon]).
+  auto grad_scale = computation_->AddInstruction(HloInstruction::CreateReduce(
+      feature_shape, grad_scale_not_reduced, zero, dimensions_without_feature,
+      add_reduce_computation));
+
+  // Grad[beta] = Sum(Grad[Y]).
+  auto grad_beta = computation_->AddInstruction(HloInstruction::CreateReduce(
+      feature_shape, grad_output, zero, dimensions_without_feature,
+      add_reduce_computation));
+
+  auto tuple = computation_->AddInstruction(
+      HloInstruction::CreateTuple({grad_scale, grad_beta}));
+
+  auto fused = computation_->CreateFusionInstruction(
+      {tuple, grad_scale, grad_beta}, HloInstruction::FusionKind::kInput);
+
+  grad_scale = computation_->AddInstruction(
+      HloInstruction::CreateGetTupleElement(feature_shape, fused, 0));
+
+  grad_beta = computation_->AddInstruction(
+      HloInstruction::CreateGetTupleElement(feature_shape, fused, 1));
+
+  TF_CHECK_OK(ReplaceWithNewInstruction(
+      batch_norm,
+      HloInstruction::CreateTuple({grad_activation, grad_scale, grad_beta})));
+
   return Status::OK();
 }
 
