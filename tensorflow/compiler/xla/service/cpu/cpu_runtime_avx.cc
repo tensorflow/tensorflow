@@ -29,11 +29,6 @@ xla::cpu::runtime::V8F32 __xla_cpu_runtime_LogV8F32(
     xla::cpu::runtime::V8F32 x) {
   return Eigen::internal::plog(x);
 }
-
-xla::cpu::runtime::V8F32 __xla_cpu_runtime_TanhV8F32(
-    xla::cpu::runtime::V8F32 x) {
-  return Eigen::internal::ptanh(x);
-}
 #endif  // __AVX__
 
 namespace xla {
@@ -42,7 +37,6 @@ namespace runtime {
 
 const char *const kExpV8F32SymbolName = "__xla_cpu_runtime_ExpV8F32";
 const char *const kLogV8F32SymbolName = "__xla_cpu_runtime_LogV8F32";
-const char *const kTanhV8F32SymbolName = "__xla_cpu_runtime_TanhV8F32";
 
 }  // namespace runtime
 }  // namespace cpu

@@ -22,22 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
-
-// The serialization format for Variant objects. Objects with references to
-// other Tensors can simply store those tensors in the `tensors` field, and
-// serialize other metadata content in to the `metadata` field. Objects can
-// optionally set the `type_name` for type-checking before deserializing an
-// object.
-struct VariantTensorData {
-  string type_name;
-  string metadata;
-  std::vector<Tensor> tensors;
-  void ToProto(VariantTensorDataProto* proto) const;
-  bool FromProto(const VariantTensorDataProto& proto);
-};
 
 // Type used for tag-dispatch of the Encode/Decode Variant implementations. This
 // template can determine whether the first type parameter `T` is one of the
@@ -59,7 +47,7 @@ struct TypeResolver {};
 template <typename T>
 void EncodeVariantImpl(const T& value, TypeResolver<T, true /* is_pod */>,
                        VariantTensorData* data) {
-  data->metadata.assign(reinterpret_cast<const char*>(&value), sizeof(value));
+  data->metadata_.assign(reinterpret_cast<const char*>(&value), sizeof(value));
 }
 
 // Specialization for tensorflow::Tensor
@@ -67,8 +55,8 @@ template <typename T>
 void EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, true /* Tensor */>,
                        VariantTensorData* data) {
-  data->tensors.clear();
-  data->tensors.push_back(value);
+  data->tensors_.clear();
+  data->tensors_.push_back(value);
 }
 
 // Specialization for protobuf
@@ -77,7 +65,7 @@ void EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     true /* protobuf */>,
                        VariantTensorData* data) {
-  value.SerializeToString(&data->metadata);
+  value.SerializeToString(&data->metadata_);
 }
 
 // Specialization for other types
@@ -93,7 +81,7 @@ void EncodeVariantImpl(const T& value,
 template <typename T>
 bool DecodeVariantImpl(const VariantTensorData& data,
                        TypeResolver<T, true /* is_pod */>, T* value) {
-  std::copy_n(data.metadata.data(), sizeof(*value),
+  std::copy_n(data.metadata().data(), sizeof(*value),
               reinterpret_cast<char*>(value));
   return true;
 }
@@ -103,7 +91,7 @@ template <typename T>
 bool DecodeVariantImpl(const VariantTensorData& data,
                        TypeResolver<T, false /* is_pod */, true /* Tensor */>,
                        T* value) {
-  *value = data.tensors[0];
+  *value = data.tensors(0);
   return true;
 }
 
@@ -113,7 +101,7 @@ bool DecodeVariantImpl(const VariantTensorData& data,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     true /* protobuf */>,
                        T* value) {
-  return value->ParseFromString(data.metadata);
+  return value->ParseFromString(data.metadata());
 }
 
 // Specialization for other types
@@ -188,17 +176,13 @@ template <typename T>
 void EncodeVariant(const T& value, string* buf) {
   VariantTensorData data;
   EncodeVariantImpl(value, TypeResolver<T>(), &data);
-  VariantTensorDataProto proto;
-  data.ToProto(&proto);
-  proto.SerializeToString(buf);
+  data.SerializeToString(buf);
 }
 
 template <typename T>
 bool DecodeVariant(const string& buf, T* value) {
-  VariantTensorDataProto proto;
-  if (!proto.ParseFromString(buf)) return false;
   VariantTensorData data;
-  if (!data.FromProto(proto)) return false;
+  if (!data.ParseFromString(buf)) return false;
   if (!DecodeVariantImpl(data, TypeResolver<T>(), value)) return false;
   return true;
 }
