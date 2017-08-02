@@ -299,6 +299,14 @@ T RoundUpToNearest(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
 }
 
+// Rounds the value down to a multiple of the divisor by first calling
+// FloorOfRatio then multiplying by the divisor. For example:
+// RoundUpToMultiple(13, 8) => 8
+template <typename T>
+T RoundDownToNearest(T value, T divisor) {
+  return FloorOfRatio(value, divisor) * divisor;
+}
+
 // Given a number of flops executed in an amount of time, produces a string that
 // represents the throughput;
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
