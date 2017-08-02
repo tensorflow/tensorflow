@@ -1,3 +1,5 @@
+#ifdef TENSORFLOW_USE_GDR
+
 #include "tensorflow/contrib/gdr/gdr_memory_manager.h"
 
 #include <atomic>
@@ -530,3 +532,5 @@ RemoteMemoryManager* CreateRemoteMemoryManager(const string& host,
 }
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_USE_GDR
