@@ -2192,7 +2192,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "determinant_op",
     prefix = "determinant_op",
-    deps = LINALG_DEPS,
+    deps = if_cuda([
+        ":cuda_solvers",
+        ":fill_functor",
+    ]) + LINALG_DEPS,
 )
 
 tf_kernel_library(
