@@ -16,6 +16,7 @@ tf_kernel_library(
         "aggregate_ops.cc",
         "arg_op.cc",
         "batch_matmul_op.cc",
+        "batch_norm_op.cc",
         "batchtospace_op.cc",
         "bcast_ops.cc",
         "bias_ops.cc",
