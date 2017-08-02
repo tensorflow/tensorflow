@@ -2,6 +2,7 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 all_backends = ["cpu", "cpu_parallel", "gpu"] + plugins.keys()
 
@@ -137,9 +138,9 @@ def xla_test(name,
       for lib_dep in xla_test_library_deps:
         backend_deps += ["%s_%s" % (lib_dep, backend)]
 
-    native.cc_test(
+    tf_cc_test(
         name=test_name,
-        srcs=srcs + ["//tensorflow:libtfframework.so"],
+        srcs=srcs,
         tags=tags + backend_tags.get(backend, []) + this_backend_tags,
         copts=copts + ["-DXLA_TEST_BACKEND_%s=1" % backend.upper()] +
         this_backend_copts,
