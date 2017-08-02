@@ -54,8 +54,12 @@ Status GdrServer::Start() {
   return GrpcServer::Start();
 }
 
-Status GdrServer::Join() {
+Status GdrServer::Stop() {
   remote_memory_manager_->Stop();
+  return GrpcServer::Stop();
+}
+
+Status GdrServer::Join() {
   {
     mutex_lock l(mu_);
     gdr_thread_.reset();

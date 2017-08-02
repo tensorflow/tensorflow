@@ -121,17 +121,22 @@ class GdrMemoryManager : public RemoteMemoryManager {
   // Accessed sequentially in Run() so not protected by lock
   std::list<RdmaEndpointPtr> server_clients_;
 
-  // Client side endpoints
-  std::map<std::pair<string, string>, RdmaEndpointPtr> clients_ GUARDED_BY(mu_);
-
-  // Managed memory regions
-  std::vector<MemoryRegionPtr> mrs_ GUARDED_BY(mu_);
+  using TensorKey = uint32_t;
+  std::atomic<TensorKey> next_key_;
 
   // Server side on-the-fly tensor buffers
-  using TensorKey = uint32_t;
-  std::map<TensorKey, const TensorBuffer*> tensor_buffers_ GUARDED_BY(mu_);
-  std::atomic<TensorKey> next_key_;
-  mutex mu_;
+  mutex server_mu_;
+  std::map<TensorKey, const TensorBuffer*> tensor_buffers_
+      GUARDED_BY(server_mu_);
+
+  // Client side endpoints
+  mutex client_mu_;
+  std::map<std::pair<string, string>, RdmaEndpointPtr> clients_
+      GUARDED_BY(cient_mu_);
+
+  // Managed memory regions
+  mutex alloc_mu_;
+  std::vector<MemoryRegionPtr> mrs_ GUARDED_BY(alloc_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GdrMemoryManager);
 };
@@ -159,7 +164,7 @@ GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
     : host_(host),
       port_(port),
       listening_(nullptr, EndpointDeleter),
-      stopped_(false),
+      stopped_(true),
       next_key_(0) {}
 
 Status GdrMemoryManager::Init() {
@@ -174,7 +179,7 @@ Status GdrMemoryManager::Init() {
 
   ibv_qp_init_attr init_attr = {};
   init_attr.qp_type = IBV_QPT_RC;
-  init_attr.cap.max_recv_wr = 1024;
+  init_attr.cap.max_recv_wr = 32;
   init_attr.cap.max_send_wr = 1;
   init_attr.cap.max_recv_sge = 1;
   init_attr.cap.max_send_sge = 1;
@@ -188,14 +193,13 @@ Status GdrMemoryManager::Init() {
   rdma_freeaddrinfo(addrinfo);
 
   // Listen without backlog
-  if (rdma_listen(id, 0)) {
-    rdma_destroy_ep(id);
+  if (rdma_listen(listening_.get(), 0)) {
     return errors::Unavailable("Cannot listen on rdma://", host_, ":", port_);
   }
   LOG(INFO) << "RDMA server is listening on " << host_ << ":" << port_;
 
-  int flags = fcntl(id->channel->fd, F_GETFL, 0);
-  if (fcntl(id->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
+  int flags = fcntl(listening_->channel->fd, F_GETFL, 0);
+  if (fcntl(listening_->channel->fd, F_SETFL, flags | O_NONBLOCK)) {
     return errors::Unavailable("Cannot set server to non-blocking mode");
   }
 
@@ -231,7 +235,7 @@ Status GdrMemoryManager::Init() {
 #if GOOGLE_CUDA
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
-    int32_t bus_id = TryToReadNumaNode(id->verbs->device) + 1;
+    int32_t bus_id = TryToReadNumaNode(listening_->verbs->device) + 1;
     VisitableAllocator::Visitor alloc_visitor =
         std::bind(&GdrMemoryManager::InsertMemoryRegion, this, _1, _2);
     ProcessState::singleton()->AddGPUAllocVisitor(bus_id, alloc_visitor);
@@ -257,6 +261,9 @@ void GdrMemoryManager::Run() {
         } else {
           server_clients_.push_back({id, EndpointDeleter});
         }
+      } else {
+        LOG(WARNING) << "Failed to accept new RDMA connection";
+        EndpointDeleter(id);
       }
     }
 
@@ -280,7 +287,7 @@ void GdrMemoryManager::Run() {
         }
         TensorKey tensor_key = ntohl(wc[i].imm_data);
         {
-          mutex_lock l(mu_);
+          mutex_lock l(server_mu_);
           auto iter = tensor_buffers_.find(tensor_key);
           if (iter == std::end(tensor_buffers_)) {
             LOG(ERROR) << "Cannot find tensor buffer for tensor key "
@@ -347,7 +354,7 @@ Status GdrMemoryManager::TransportOptionsFromTensor(
   buffer->Ref();
   TensorKey tensor_key = next_key_++;
   {
-    mutex_lock l(mu_);
+    mutex_lock l(server_mu_);
     tensor_buffers_.insert({tensor_key, buffer});
   }
 
@@ -394,7 +401,7 @@ Status GdrMemoryManager::TensorFromTransportOptions(
   decltype(clients_)::iterator iter;
   bool success;
   {
-    mutex_lock l(mu_);
+    mutex_lock l(client_mu_);
     std::tie(iter, success) = clients_.insert(
         std::make_pair(std::make_pair(remote_mr.host(), remote_mr.port()),
                        RdmaEndpointPtr(nullptr, EndpointDeleter)));
@@ -492,7 +499,7 @@ Status GdrMemoryManager::CreateEndpoint(const string& host, const string& port,
 
 ibv_mr* GdrMemoryManager::FindMemoryRegion(void* addr, size_t length) {
   if (length == 0) return nullptr;
-  mutex_lock l(mu_);
+  mutex_lock l(alloc_mu_);
   auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
   if (iter == std::end(mrs_) || iter->get()->addr > addr) {
     return nullptr;
@@ -505,7 +512,7 @@ void GdrMemoryManager::InsertMemoryRegion(void* addr, size_t length) {
   if (length == 0) return;
   ibv_mr* mr = rdma_reg_read(listening_.get(), addr, length);
   if (mr != nullptr) {
-    mutex_lock l(mu_);
+    mutex_lock l(alloc_mu_);
     auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
     mrs_.insert(iter, {mr, &MRDeleter});
   } else {
@@ -515,7 +522,7 @@ void GdrMemoryManager::InsertMemoryRegion(void* addr, size_t length) {
 
 void GdrMemoryManager::EvictMemoryRegion(void* addr, size_t length) {
   if (length == 0) return;
-  mutex_lock l(mu_);
+  mutex_lock l(alloc_mu_);
   auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
   if (iter != std::end(mrs_) && iter->get()->addr == addr) {
     mrs_.erase(iter);

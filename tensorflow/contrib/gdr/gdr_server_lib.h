@@ -18,6 +18,8 @@ class GdrServer : public GrpcServer {
 
   virtual Status Start() override;
 
+  virtual Status Stop() override;
+
   virtual Status Join() override;
 
  protected:
