@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
-
 namespace {
 
 // Checks that arguments `args` match types `types`.
@@ -90,14 +89,14 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
                                                       FunctionDefLibrary{}));
-  local_flib_runtime_.reset(NewFunctionLibraryRuntime(
+  local_flib_runtime_ = NewFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), device_, options.graph_def_version,
       local_flib_def_.get(), OptimizerOptions(),
-      nullptr /* custom_kernel_creator */));
-  flib_runtime_.reset(NewFunctionLibraryRuntime(
+      nullptr /* custom_kernel_creator */);
+  flib_runtime_ = NewFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), device_, options.graph_def_version,
       options.flib_def, OptimizerOptions(),
-      nullptr /* custom_kernel_creator */));
+      nullptr /* custom_kernel_creator */);
 }
 
 XlaCompiler::~XlaCompiler() = default;
@@ -162,7 +161,7 @@ Status XlaCompiler::CompileFunction(
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
   optimizer.Optimize(flib_runtime_.get(), flib_runtime_->env(),
-                     /*device=*/nullptr, &graph);
+                     /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(

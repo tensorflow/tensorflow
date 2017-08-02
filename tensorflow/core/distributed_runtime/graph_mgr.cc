@@ -214,9 +214,10 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
 
     // Function library runtime.
     unit->lib = NewFunctionLibraryRuntime(
-        device_mgr_, worker_env_->env, unit->device,
-        subgraph->versions().producer(), item->lib_def,
-        graph_options.optimizer_options());
+                    device_mgr_, worker_env_->env, unit->device,
+                    subgraph->versions().producer(), item->lib_def,
+                    graph_options.optimizer_options())
+                    .release();
 
     // Construct the root executor for the subgraph.
     params.device = unit->device;
@@ -243,7 +244,8 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       }
     };
 
-    optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph);
+    optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
+                       /*shape_map=*/nullptr);
 
     // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph.
     if (!debug_options.debug_tensor_watch_opts().empty()) {

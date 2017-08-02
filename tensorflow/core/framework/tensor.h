@@ -38,10 +38,12 @@ namespace tensorflow {
 // Forward declarations.  In particular, we forward declare protos so that their
 // symbols can be removed from .so exports.
 class AllocationDescription;
+class Allocator;
 class TensorBuffer;
 class TensorCApi;
 class TensorDescription;
 class TensorProto;
+class VariantTensorData;
 
 /// @ingroup core
 /// Represents an n-dimensional array of values.

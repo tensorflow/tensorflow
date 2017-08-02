@@ -194,14 +194,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
-  Status HandleCopy(HloInstruction* copy) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[copy],
-                        ElementWiseUnaryOp(copy, [](ReturnT elem_operand) {
-                          return elem_operand;
-                        }));
-    return Status::OK();
-  };
-
   Status HandleConvert(HloInstruction* convert) override {
     const HloInstruction* operand = convert->operand(0);
     TF_RET_CHECK(ShapeUtil::SameDimensions(operand->shape(), convert->shape()));
@@ -402,14 +394,48 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   };
 
+  Status HandleReverse(HloInstruction* reverse,
+                       HloInstruction* operand) override {
+    const auto result_shape = reverse->shape();
+    const auto reverse_dimensions = reverse->dimensions();
+
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferReverseShape(operand->shape(),
+                                                          reverse_dimensions));
+
+    TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+        << "return shape set to: " << ShapeUtil::HumanString(result_shape)
+        << " but is inferred to be: "
+        << ShapeUtil::HumanString(inferred_return_shape);
+
+    auto operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    auto result = Literal::CreateFromShape(result_shape);
+
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> out_index) {
+          std::vector<int64> from_index(out_index.begin(), out_index.end());
+          for (const int64 dim : reverse_dimensions) {
+            from_index[dim] = result_shape.dimensions(dim) - 1 - out_index[dim];
+          }
+          return operand_literal.Get<ReturnT>(from_index);
+        }));
+
+    parent_->evaluated_[reverse] = std::move(result);
+    return Status::OK();
+  };
+
   Status HandleConvolution(HloInstruction* conv, HloInstruction* lhs,
                            HloInstruction* rhs, const Window& window) override {
-    CHECK(ShapeUtil::IsArray(lhs->shape()));
-    CHECK(ShapeUtil::IsArray(rhs->shape()));
-    CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
-    CHECK(ShapeUtil::SameElementType(lhs->shape(), conv->shape()));
-    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs->shape()));
-    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs->shape()));
+    const Shape& result_shape = conv->shape();
+    const Shape& lhs_shape = lhs->shape();
+    const Shape& rhs_shape = rhs->shape();
+
+    TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
+    TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
+    CHECK(ShapeUtil::IsArray(lhs_shape));
+    CHECK(ShapeUtil::IsArray(rhs_shape));
+    CHECK(ShapeUtil::SameElementType(lhs_shape, rhs_shape));
+    CHECK(ShapeUtil::SameElementType(lhs_shape, result_shape));
 
     const auto& dnums = conv->convolution_dimension_numbers();
     const int64 num_spatial_dims = dnums.spatial_dimensions_size();
@@ -417,22 +443,22 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     CHECK_GE(num_spatial_dims, 1);
     CHECK_EQ(window.dimensions_size(), num_spatial_dims);
 
-    CHECK_EQ(num_spatial_dims + 2, ShapeUtil::Rank(lhs->shape()));
-    CHECK_EQ(num_spatial_dims + 2, ShapeUtil::Rank(rhs->shape()));
+    const auto lhs_rank = ShapeUtil::Rank(lhs_shape);
+    const auto rhs_rank = ShapeUtil::Rank(rhs_shape);
+
+    CHECK_EQ(num_spatial_dims + 2, lhs_rank);
+    CHECK_EQ(num_spatial_dims + 2, rhs_rank);
 
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
-                        ShapeInference::InferConvolveShape(
-                            lhs->shape(), rhs->shape(), window, dnums));
-    CHECK(ShapeUtil::Compatible(conv->shape(), inferred_return_shape))
-        << "return shape set to: " << ShapeUtil::HumanString(conv->shape())
+                        ShapeInference::InferConvolveShape(lhs_shape, rhs_shape,
+                                                           window, dnums));
+    CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
+        << "return shape set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
-
-    const auto lhs_rank = ShapeUtil::Rank(lhs->shape());
-    const auto rhs_rank = ShapeUtil::Rank(rhs->shape());
 
     // Dimension number applicable for both input (lhs), and output.
     const int64 batch_dim = dnums.batch_dimension();
@@ -441,78 +467,78 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     const int64 kernel_input_z_dim = dnums.kernel_input_feature_dimension();
     const int64 kernel_output_z_dim = dnums.kernel_output_feature_dimension();
 
-    const int64 z_size = ShapeUtil::GetDimension(lhs->shape(), z_dim);
+    const int64 z_size = ShapeUtil::GetDimension(lhs_shape, z_dim);
 
     std::vector<int64> window_dimension_sizes;
     for (auto i : dnums.kernel_spatial_dimensions()) {
-      window_dimension_sizes.push_back(
-          ShapeUtil::GetDimension(rhs->shape(), i));
+      window_dimension_sizes.push_back(ShapeUtil::GetDimension(rhs_shape, i));
     }
 
-    const Shape& window_shape = ShapeUtil::MakeShape(
-        rhs->shape().element_type(), window_dimension_sizes);
+    const Shape& window_shape =
+        ShapeUtil::MakeShape(rhs_shape.element_type(), window_dimension_sizes);
 
-    auto result = Literal::CreateFromShape(conv->shape());
-    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
-        [&](tensorflow::gtl::ArraySlice<int64> out_index) {
-          ReturnT result_val = static_cast<ReturnT>(0);
+    DimensionVector lhs_index(lhs_rank);
+    DimensionVector rhs_index(rhs_rank);
+    DimensionVector rhs_spatial_index(dnums.kernel_spatial_dimensions_size());
 
-          std::vector<int64> lhs_index(lhs_rank, 0);
-          std::vector<int64> rhs_index(rhs_rank, 0);
+    auto func = [&](tensorflow::gtl::ArraySlice<int64> out_index) {
+      ReturnT result_val = static_cast<ReturnT>(0);
 
-          lhs_index[batch_dim] = out_index[batch_dim];
-          rhs_index[kernel_output_z_dim] = out_index[z_dim];
+      std::fill(lhs_index.begin(), lhs_index.end(), 0);
+      std::fill(rhs_index.begin(), rhs_index.end(), 0);
+      std::fill(rhs_spatial_index.begin(), rhs_spatial_index.end(), 0);
 
-          std::vector<int64> rhs_spatial_index(
-              dnums.kernel_spatial_dimensions_size(), 0);
+      lhs_index[batch_dim] = out_index[batch_dim];
+      rhs_index[kernel_output_z_dim] = out_index[z_dim];
 
-          // Convolve input feature with kernel.
-          do {
-            for (int64 iz = 0; iz < z_size; ++iz) {
-              lhs_index[z_dim] = iz;
-              rhs_index[kernel_input_z_dim] = iz;
+      // Convolve input feature with kernel.
+      do {
+        for (int64 iz = 0; iz < z_size; ++iz) {
+          lhs_index[z_dim] = iz;
+          rhs_index[kernel_input_z_dim] = iz;
 
-              // Find corresponding spatial dimension index for input (lhs).
-              for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
-                // Spatial dimension number for input (lhs) and output.
-                const int64 spatial_dim = dnums.spatial_dimensions(ki);
+          // Find corresponding spatial dimension index for input (lhs).
+          for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
+            // Spatial dimension number for input (lhs) and output.
+            const int64 spatial_dim = dnums.spatial_dimensions(ki);
 
-                // Calculate lhs (input) index without taking base dilation into
-                // account.
-                const int64 undilated_index =
-                    out_index[spatial_dim] * window.dimensions(ki).stride() -
-                    window.dimensions(ki).padding_low() +
-                    rhs_spatial_index[ki] *
-                        window.dimensions(ki).window_dilation();
-                // Skip if the lhs (input) index is to be dilated.
-                if (undilated_index % window.dimensions(ki).base_dilation() !=
-                    0) {
-                  goto cnt;
-                }
-
-                // Calculate the actual lhs (input) index after dilation.
-                lhs_index[spatial_dim] =
-                    undilated_index / window.dimensions(ki).base_dilation();
-
-                // Skip if input index is not in bound.
-                if (!(lhs_index[spatial_dim] >= 0 &&
-                      lhs_index[spatial_dim] <
-                          lhs->shape().dimensions(spatial_dim))) {
-                  goto cnt;
-                }
-
-                rhs_index[dnums.kernel_spatial_dimensions(ki)] =
-                    rhs_spatial_index[ki];
-              }
-
-              result_val += lhs_literal.Get<ReturnT>(lhs_index) *
-                            rhs_literal.Get<ReturnT>(rhs_index);
+            // Calculate lhs (input) index without taking base dilation into
+            // account.
+            const auto& window_dim = window.dimensions(ki);
+            const int64 undilated_index =
+                out_index[spatial_dim] * window_dim.stride() -
+                window_dim.padding_low() +
+                rhs_spatial_index[ki] * window_dim.window_dilation();
+            // Skip if the lhs (input) index is to be dilated.
+            if (undilated_index % window_dim.base_dilation() != 0) {
+              goto cnt;
             }
-          cnt:;
-          } while (IndexUtil::BumpIndices(window_shape, &rhs_spatial_index));
 
-          return result_val;
-        }));
+            // Calculate the actual lhs (input) index after dilation.
+            lhs_index[spatial_dim] =
+                undilated_index / window_dim.base_dilation();
+
+            // Skip if input index is not in bound.
+            if (!(lhs_index[spatial_dim] >= 0 &&
+                  lhs_index[spatial_dim] < lhs_shape.dimensions(spatial_dim))) {
+              goto cnt;
+            }
+
+            rhs_index[dnums.kernel_spatial_dimensions(ki)] =
+                rhs_spatial_index[ki];
+          }
+
+          result_val += lhs_literal.Get<ReturnT>(lhs_index) *
+                        rhs_literal.Get<ReturnT>(rhs_index);
+        }
+      cnt:;
+      } while (IndexUtil::BumpIndices(window_shape, &rhs_spatial_index));
+
+      return result_val;
+    };
+
+    auto result = Literal::CreateFromShape(result_shape);
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(func));
 
     parent_->evaluated_[conv] = std::move(result);
     return Status::OK();
@@ -1294,6 +1320,14 @@ Status HloEvaluator::HandleSlice(HloInstruction* slice,
                                    AsInt64Slice(shape.dimensions())));
 
   evaluated_[slice] = std::move(literal);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleCopy(HloInstruction* copy) {
+  TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
+
+  auto result = MakeUnique<Literal>(GetEvaluatedLiteralFor(copy->operand(0)));
+  evaluated_[copy] = std::move(result);
   return Status::OK();
 }
 

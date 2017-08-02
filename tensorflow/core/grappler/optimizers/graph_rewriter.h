@@ -71,7 +71,6 @@ class GraphRewriter {
 
     // These are filled in when the NodeInfo is built, but not that they
     // may be empty - if the op could not be loaded from the registry.
-    DataTypeVector inputs;
     DataTypeVector outputs;
   };
 

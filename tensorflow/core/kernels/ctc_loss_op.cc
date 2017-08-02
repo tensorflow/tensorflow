@@ -88,6 +88,9 @@ class CTCLossOp : public OpKernel {
                     labels_indices->shape().DebugString(), " vs. ",
                     labels_values->shape().DebugString()));
 
+    OP_REQUIRES(ctx, batch_size != 0,
+                errors::InvalidArgument("batch_size must not be 0"));
+
     TensorShape labels_shape({batch_size, max_time});
     std::vector<int64> order{0, 1};
     sparse::SparseTensor labels_sp(*labels_indices, *labels_values,

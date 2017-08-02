@@ -1130,7 +1130,10 @@ CudnnRnnParamsDescriptor::CudnnRnnParamsDescriptor(
     auto status =
         wrap::cudnnCreateFilterDescriptor(parent, &region_desc_handle);
     CUDNN_RETURN_IF_FAIL(status, "Cudnn fails to create filter descriptor");
-    for (int layer = 0; layer < rnn_desc.num_layers(); layer++) {
+    const int layer_count = rnn_desc.direction_mode() == CUDNN_UNIDIRECTIONAL
+                                ? rnn_desc.num_layers()
+                                : 2 * rnn_desc.num_layers();
+    for (int layer = 0; layer < layer_count; layer++) {
       for (int region = 0; region < region_count_per_layer; region++) {
         for (int type = 0; type < 2; type++) {
           void* offset = nullptr;
@@ -2129,7 +2132,6 @@ bool CudnnSupport::DoConvolveImpl(
       return false;
     }
     if (status == CUDNN_STATUS_SUCCESS) {
-      output_profile_result->set_is_valid(true);
       output_profile_result->set_algorithm(algo);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
@@ -2727,7 +2729,6 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
     if (status == CUDNN_STATUS_SUCCESS) {
-      output_profile_result->set_is_valid(true);
       output_profile_result->set_algorithm(algo);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
@@ -2962,7 +2963,6 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
     if (status == CUDNN_STATUS_SUCCESS) {
-      output_profile_result->set_is_valid(true);
       output_profile_result->set_algorithm(algo);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());

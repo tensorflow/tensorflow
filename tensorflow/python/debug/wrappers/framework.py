@@ -360,7 +360,9 @@ class BaseDebugWrapperSession(session.SessionInterface):
                                         if thread_name_filter else None)
 
     # Keeps track of number of run calls that have been performed on this
-    # debug-wrapper session.
+    # debug-wrapper session. The count can be used for purposes such as
+    # displaying the state of the Session in a UI and determining a run
+    # number-dependent debug URL.
     self._run_call_count = 0
 
     # Invoke on-session-init callback.
@@ -423,7 +425,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
         is not `None` and either or both of `fetches` and `feed_dict` is `None`.
     """
     if not callable_runner:
-      self._run_call_count += 1
+      self.increment_run_call_count()
     else:
       if fetches or feed_dict:
         raise ValueError(
@@ -570,6 +572,13 @@ class BaseDebugWrapperSession(session.SessionInterface):
                       callable_runner_args=runner_args)
 
     return wrapped_runner
+
+  @property
+  def run_call_count(self):
+    return self._run_call_count
+
+  def increment_run_call_count(self):
+    self._run_call_count += 1
 
   def _decorate_run_options_for_debug(
       self,

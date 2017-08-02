@@ -45,10 +45,10 @@ class HumanReadableProfileBuilder {
   void AddOp(tensorflow::StringPiece op_name,
              tensorflow::StringPiece short_name,
              tensorflow::StringPiece category, int64 cycles, int64 flop_count,
-             int64 bytes_accessed) {
+             int64 bytes_accessed, float optimal_seconds) {
     op_infos_.push_back({op_name.ToString(), short_name.ToString(),
                          category.ToString(), cycles, flop_count,
-                         bytes_accessed});
+                         bytes_accessed, optimal_seconds});
   }
 
   // Gets the human-readable profile.
@@ -62,6 +62,7 @@ class HumanReadableProfileBuilder {
     int64 cycles;
     int64 flop_count;
     int64 bytes_accessed;
+    float optimal_seconds;
   };
 
   double CyclesToSeconds(int64 cycles) const {

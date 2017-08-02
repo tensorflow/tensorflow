@@ -299,7 +299,7 @@ create_activate_virtualenv_and_install_tensorflow() {
 
   # Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
   echo "Upgrade pip in virtualenv"
-  pip install --upgrade pip==8.1.2
+  pip install --upgrade pip==9.0.1
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
   # last build if it had the same version number as previous build.
@@ -354,7 +354,7 @@ do_virtualenv_pip_test() {
   # Create virtualenv directory for install test
   VENV_DIR="${PIP_TEST_ROOT}/venv"
   create_activate_virtualenv_and_install_tensorflow \
-    "${CLEAN_VENV_DIR}" "${WHL_PATH}"
+    "${VENV_DIR}" "${WHL_PATH}"
 
   # Install extra pip packages required by the test-on-install
   for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
@@ -489,10 +489,10 @@ while [[ ${COUNTER} -lt "${#PIP_TASKS[@]}" ]]; do
   INDEX=COUNTER
   ((INDEX++))
 
-  echo ""
-  echo "=== PIP test step ${INDEX} of ${#PIP_TASKS[@]}: "\
-"${PIP_TASKS[COUNTER]} (${PIP_TASKS_DESC[COUNTER]}) ==="
-  echo ""
+  echo
+  printf "${COLOR_BOLD}=== PIP test step ${INDEX} of ${#PIP_TASKS[@]}: "\
+"${PIP_TASKS[COUNTER]} (${PIP_TASKS_DESC[COUNTER]}) ===${COLOR_NC}"
+  echo
 
   ${PIP_TASKS[COUNTER]}
   RESULT=$?

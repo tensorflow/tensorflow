@@ -877,7 +877,8 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
         resource_tensor.dtype()));
   }
 
-  ResourceHandle resource_handle = resource_tensor.scalar<ResourceHandle>()();
+  const ResourceHandle& resource_handle =
+      resource_tensor.scalar<ResourceHandle>()();
 
   if (resource_handle.container() ==
       SessionState::kTensorHandleResourceTypeName) {
@@ -886,7 +887,11 @@ Status DirectSession::ResourceHandleToInputTensor(const Tensor& resource_tensor,
     return errors::InvalidArgument(strings::StrCat(
         "Invalid resource type hash code: ", resource_handle.hash_code(),
         "(name: ", resource_handle.name(),
-        " type: ", resource_handle.maybe_type_name(), ")"));
+        " type: ", resource_handle.maybe_type_name(),
+        "). Perhaps a resource tensor was being provided as a feed? That is "
+        "not currently allowed. Please file an issue at "
+        "https://github.com/tensorflow/tensorflow/issues/new, ideally with a "
+        "short code snippet that leads to this error message."));
   }
 }
 
@@ -1157,9 +1162,9 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    item->flib.reset(NewFunctionLibraryRuntime(
-        device_mgr_.get(), options_.env, device, graph_def_version,
-        ek->flib_def.get(), optimizer_opts));
+    item->flib = NewFunctionLibraryRuntime(device_mgr_.get(), options_.env,
+                                           device, graph_def_version,
+                                           ek->flib_def.get(), optimizer_opts);
 
     LocalExecutorParams params;
     params.device = device;
@@ -1189,7 +1194,8 @@ Status DirectSession::GetOrCreateExecutors(
     };
     params.node_outputs_cb = node_outputs_callback_;
 
-    optimizer.Optimize(lib, options_.env, device, &iter->second);
+    optimizer.Optimize(lib, options_.env, device, &iter->second,
+                       /*shape_map=*/nullptr);
 
     // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
     if (!options.debug_options.debug_tensor_watch_opts().empty()) {

@@ -14,6 +14,7 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
+        "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
     ],

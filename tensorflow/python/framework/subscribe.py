@@ -132,10 +132,16 @@ def _subscribe_new(tensor, side_effects, control_cache):
     consumer_op._update_input(index, out)  # pylint: disable=protected-access
 
   for consumer_op in update_control_input:
-    consumer_op._control_inputs.remove(tensor.op)  # pylint: disable=protected-access
-    consumer_op._control_inputs.append(out.op)  # pylint: disable=protected-access
-    consumer_op._recompute_node_def()  # pylint: disable=protected-access
-
+    # If an op has more than one output and two or more of its output tensors
+    # are subscribed at the same time, we remove the control dependency from
+    # the original op only once and we add the dependencies to all the
+    # new identities.
+    # pylint: disable=protected-access
+    if tensor.op in consumer_op._control_inputs:
+      consumer_op._control_inputs.remove(tensor.op)
+    consumer_op._control_inputs.append(out.op)
+    consumer_op._recompute_node_def()
+    # pylint: enable=protected-access
   return out
 
 

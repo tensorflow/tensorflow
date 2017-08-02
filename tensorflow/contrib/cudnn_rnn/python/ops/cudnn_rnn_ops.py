@@ -132,7 +132,7 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         for param, param_name in zip(params, param_names)
     ]
     super(RNNParamsSaveable, self).__init__(
-        param_variables[0], specs, name)
+        array_ops.identity(param_variables[0]), specs, name)
 
   def restore(self, restored_tensors, restored_shapes):
     if (self._cudnn_rnn.direction == CUDNN_RNN_UNIDIRECTION and
@@ -548,7 +548,12 @@ class _CudnnRNN(object):
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
       seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
           for behavior.
+    Raises:
+      ValueError: if direction is invalid.
     """
+    if direction not in (CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION):
+      raise ValueError("Invalid direction: %s, expect %s or %s",
+                       direction, CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION)
     self._num_layers = num_layers
     self._num_units = num_units
     self._input_size = input_size
@@ -644,6 +649,9 @@ class _CudnnRNN(object):
     Returns:
       A function for the specific-to-canonical conversion.
     """
+    num_params = self._num_layers * self._NUM_PARAMS_PER_LAYER
+    if self._direction != CUDNN_RNN_UNIDIRECTION:
+      num_params *= 2
     weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
         num_layers=self._num_layers,
         num_units=self._num_units,
@@ -652,7 +660,7 @@ class _CudnnRNN(object):
         dropout=self._dropout,
         seed=self._seed,
         seed2=self._seed2,
-        num_params=self._num_layers * self._NUM_PARAMS_PER_LAYER,
+        num_params=num_params,
         rnn_mode=self._rnn_mode,
         input_mode=self._input_mode,
         direction=self._direction)

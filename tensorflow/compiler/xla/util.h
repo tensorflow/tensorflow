@@ -171,6 +171,7 @@ Status InvalidArgument(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unimplemented(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status InternalError(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status FailedPrecondition(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
+Status Cancelled(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);

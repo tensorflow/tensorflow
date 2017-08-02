@@ -461,7 +461,7 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(lib, lib->env(), lib->device(), g);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g, /*shape_map=*/nullptr);
 }
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
@@ -470,7 +470,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   std::unique_ptr<Graph> g(new Graph(lib_def_));
   CopyGraph(*fbody->graph, g.get());
 
-  optimizer_.Optimize(this, env(), device(), &g);
+  optimizer_.Optimize(this, env(), device(), &g, /*shape_map=*/nullptr);
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));
 
@@ -606,27 +606,27 @@ CustomCreatorSingleton* GetCustomCreatorSingleton() {
   return ccs;
 }
 
-}  // end namespace
+}  // namespace
 
 void RegisterDefaultCustomKernelCreator(CustomKernelCreator cb) {
   GetCustomCreatorSingleton()->Set(std::move(cb));
 }
 
-FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options,
     CustomKernelCreator custom_kernel_creator) {
-  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
-                                        lib_def, optimizer_options,
-                                        std::move(custom_kernel_creator));
+  return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
+      device_mgr, env, device, graph_def_version, lib_def, optimizer_options,
+      std::move(custom_kernel_creator)));
 }
 
-FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
+std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
+    const DeviceMgr* device_mgr, Env* env, Device* device,
+    int graph_def_version, const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return NewFunctionLibraryRuntime(dmgr, env, device, graph_def_version,
+  return NewFunctionLibraryRuntime(device_mgr, env, device, graph_def_version,
                                    lib_def, optimizer_options,
                                    GetCustomCreatorSingleton()->Get());
 }
@@ -1030,7 +1030,9 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
     NodeDef* ndef = gdef->add_node();
     ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
-    *(ndef->mutable_attr()) = n->def().attr();
+    for (const auto& attr : n->attrs()) {
+      (*ndef->mutable_attr())[attr.first] = attr.second;
+    }
     inputs.clear();
     inputs.resize(n->num_inputs());
     for (const Edge* e : n->in_edges()) {

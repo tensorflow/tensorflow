@@ -3011,37 +3011,43 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
   deterministic, so that variables created in conditional branches are created
   in fixed order across runs.
 
-  Example 1:
-    Pseudocode:
-    ```
-      if (x < y) return 17;
-      else return 23;
-    ```
+  **Example 1:**
 
-    Expressions:
-    ```
-      f1 = lambda: tf.constant(17)
-      f2 = lambda: tf.constant(23)
-      r = case([(tf.less(x, y), f1)], default=f2)
-    ```
+  Pseudocode:
 
-  Example 2:
-    Pseudocode:
-    ```
-      if (x < y && x > z) raise OpError("Only one predicate may evaluate true");
-      if (x < y) return 17;
-      else if (x > z) return 23;
-      else return -1;
-    ```
+  ```
+  if (x < y) return 17;
+  else return 23;
+  ```
 
-    Expressions:
-    ```
-      def f1(): return tf.constant(17)
-      def f2(): return tf.constant(23)
-      def f3(): return tf.constant(-1)
-      r = case({tf.less(x, y): f1, tf.greater(x, z): f2},
-               default=f3, exclusive=True)
-    ```
+  Expressions:
+
+  ```python
+  f1 = lambda: tf.constant(17)
+  f2 = lambda: tf.constant(23)
+  r = case([(tf.less(x, y), f1)], default=f2)
+  ```
+
+  **Example 2:**
+
+  Pseudocode:
+
+  ```
+  if (x < y && x > z) raise OpError("Only one predicate may evaluate true");
+  if (x < y) return 17;
+  else if (x > z) return 23;
+  else return -1;
+  ```
+
+  Expressions:
+
+  ```python
+  def f1(): return tf.constant(17)
+  def f2(): return tf.constant(23)
+  def f3(): return tf.constant(-1)
+  r = case({tf.less(x, y): f1, tf.greater(x, z): f2},
+           default=f3, exclusive=True)
+  ```
 
   Args:
     pred_fn_pairs: Dict or list of pairs of a boolean scalar tensor and a
