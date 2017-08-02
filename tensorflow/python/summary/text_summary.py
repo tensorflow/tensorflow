@@ -56,7 +56,7 @@ def text_summary(name, tensor, collections=None):
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
 
   Returns:
-    A  TensorSummary op that is configured so that TensorBoard will recognize
+    A TensorSummary op that is configured so that TensorBoard will recognize
     that it contains textual data. The TensorSummary is a scalar `Tensor` of
     type `string` which contains `Summary` protobufs.
 

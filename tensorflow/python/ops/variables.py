@@ -218,7 +218,7 @@ class Variable(object):
         which is the initial value for the Variable. The initial value must have
         a shape specified unless `validate_shape` is set to False. Can also be a
         callable with no argument that returns the initial value when called.
-        (Note that initializer functions  from init_ops.py must first be bound
+        (Note that initializer functions from init_ops.py must first be bound
          to a shape before being used here.)
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as

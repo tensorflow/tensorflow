@@ -156,7 +156,7 @@ class StackBidirectionalRNNTest(test.TestCase):
     # - Reset states, and iterate for 5 steps. Last state is state_5.
     # - Reset the sets to state_3 and iterate for 2 more steps,
     #   last state will be state_5'.
-    # - Check that the  state_5 and state_5' (forward and backward) are the
+    # - Check that the state_5 and state_5' (forward and backward) are the
     #   same for the first layer (it does not apply for the second layer since
     #   it has forward-backward dependencies).
     with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
@@ -340,7 +340,7 @@ class StackBidirectionalRNNTest(test.TestCase):
     # - Reset states, and iterate for 5 steps. Last state is state_5.
     # - Reset the sets to state_3 and iterate for 2 more steps,
     #   last state will be state_5'.
-    # - Check that the  state_5 and state_5' (forward and backward) are the
+    # - Check that the state_5 and state_5' (forward and backward) are the
     #   same for the first layer (it does not apply for the second layer since
     #   it has forward-backward dependencies).
     with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
