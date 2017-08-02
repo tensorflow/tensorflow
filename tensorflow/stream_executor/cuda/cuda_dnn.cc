@@ -1130,7 +1130,10 @@ CudnnRnnParamsDescriptor::CudnnRnnParamsDescriptor(
     auto status =
         wrap::cudnnCreateFilterDescriptor(parent, &region_desc_handle);
     CUDNN_RETURN_IF_FAIL(status, "Cudnn fails to create filter descriptor");
-    for (int layer = 0; layer < rnn_desc.num_layers(); layer++) {
+    const int layer_count = rnn_desc.direction_mode() == CUDNN_UNIDIRECTIONAL
+                                ? rnn_desc.num_layers()
+                                : 2 * rnn_desc.num_layers();
+    for (int layer = 0; layer < layer_count; layer++) {
       for (int region = 0; region < region_count_per_layer; region++) {
         for (int type = 0; type < 2; type++) {
           void* offset = nullptr;
