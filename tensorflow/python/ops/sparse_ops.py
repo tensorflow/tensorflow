@@ -268,7 +268,7 @@ def sparse_add(a, b, thresh=0):
   Then,
 
       * `thresh == 0` (the default): all 5 index/value pairs will be returned.
-      * `thresh == 0.11`: only .1 and 0  will vanish, and the remaining three
+      * `thresh == 0.11`: only .1 and 0 will vanish, and the remaining three
           index/value pairs will be returned.
       * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
@@ -1263,7 +1263,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
 
   Returns:
     A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
-      `new_shape` if that is set. Otherwise it is  the tight bounding box of
+      `new_shape` if that is set. Otherwise it is the tight bounding box of
        `input_sp`
 
   Raises:
@@ -1720,7 +1720,7 @@ def sparse_tensor_dense_matmul(sp_a,
 def sparse_softmax(sp_input, name=None):
   """Applies softmax to a batched N-D `SparseTensor`.
 
-  The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
+  The inputs represent an N-D SparseTensor with logical shape `[..., B, C]`
   (where `N >= 2`), and with indices sorted in the canonical lexicographic
   order.
 

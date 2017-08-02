@@ -190,7 +190,7 @@ class Declare(object):
   later during a graph construction.
 
   For example,
-    # Declares  a function Foo, which takes a tf.int32 named "n" and a
+    # Declares a function Foo, which takes a tf.int32 named "n" and a
     # tf.float32 named "x" as inputs and returns a tf.float32 named "z"
     # as its output.
     foo = Declare("Foo", [("n", tf.int32), ("x", tf.float32)],
