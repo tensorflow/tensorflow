@@ -88,6 +88,7 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
 
 // because the collision requirements, we have to deal with
 // collion first before send data to gpu kernel.
+// TODO(ekelsen): This code can be done for more speed.
 template <typename T>
 void DynamicStitchGPU(OpKernelContext* c,
                         const int32 first_dim_size, const int32 data_elements_size,
