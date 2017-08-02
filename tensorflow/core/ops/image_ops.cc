@@ -123,6 +123,11 @@ Resize `images` to `size` using area interpolation.
 
 Input images can be of different types but output images are always float.
 
+Each output pixel is computed by first transforming the pixel's footprint into
+the input tensor and then averaging the pixels that intersect the footprint. An
+input pixel's contribution to the average is weighted by the fraction of its
+area that intersects the footprint.  This is the same as OpenCV's INTER_AREA.
+
 images: 4-D with shape `[batch, height, width, channels]`.
 size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
   new size for the images.
