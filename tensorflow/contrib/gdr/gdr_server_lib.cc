@@ -31,8 +31,6 @@ GdrServer::GdrServer(const ServerDef& server_def, Env* env)
 GdrServer::~GdrServer() {}
 
 Status GdrServer::Init() {
-  TF_RETURN_IF_ERROR(remote_memory_manager_->Init());
-
   RendezvousMgrCreationFunction rendezvous_mgr_func =
       [this](const WorkerEnv* env) {
         return new GdrRendezvousMgr(env, remote_memory_manager_.get());
@@ -41,7 +39,10 @@ Status GdrServer::Init() {
     return std::unique_ptr<GdrWorker>(
         new GdrWorker(env, remote_memory_manager_.get()));
   };
-  return GrpcServer::Init(nullptr, rendezvous_mgr_func, worker_func);
+  TF_RETURN_IF_ERROR(
+      GrpcServer::Init(nullptr, rendezvous_mgr_func, worker_func));
+
+  return remote_memory_manager_->Init();
 }
 
 Status GdrServer::Start() {
@@ -55,8 +56,9 @@ Status GdrServer::Start() {
 }
 
 Status GdrServer::Stop() {
+  TF_RETURN_IF_ERROR(GrpcServer::Stop());
   remote_memory_manager_->Stop();
-  return GrpcServer::Stop();
+  return Status::OK();
 }
 
 Status GdrServer::Join() {

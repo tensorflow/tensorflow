@@ -223,8 +223,10 @@ Status GdrMemoryManager::Init() {
   for (Allocator* allocator : allocators) {
     CHECK(allocator);
     auto* visitable_allocator = dynamic_cast<VisitableAllocator*>(allocator);
-    if (visitable_allocator &&
-        instrumented_.find(allocator) == std::end(instrumented_)) {
+    if (!visitable_allocator) {
+      LOG(WARNING) << "Cannot instrument non-visitable CPU allocator "
+                   << allocator->Name();
+    } else if (instrumented_.find(allocator) == std::end(instrumented_)) {
       visitable_allocator->AddAllocVisitor(alloc_visitor);
       visitable_allocator->AddFreeVisitor(free_visitor);
       instrumented_.insert(allocator);
