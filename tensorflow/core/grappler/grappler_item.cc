@@ -67,6 +67,17 @@ std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes) {
+  bool ill_formed = false;
+  std::vector<const NodeDef*> result =
+      ComputeTransitiveFanin(graph, terminal_nodes, &ill_formed);
+  CHECK(!ill_formed);
+  return result;
+}
+
+std::vector<const NodeDef*> ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    bool* ill_formed) {
+  *ill_formed = false;
   std::unordered_map<string, const NodeDef*> name_to_node;
   for (const auto& node : graph.node()) {
     name_to_node[node.name()] = &node;
@@ -75,7 +86,10 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
   std::vector<const NodeDef*> queue;
   for (const string& root : terminal_nodes) {
     const NodeDef* node = name_to_node[NodeName(root)];
-    CHECK(node) << "Unknown root " << root;
+    if (!node) {
+      *ill_formed = true;
+      return {};
+    }
     queue.push_back(node);
   }
 
@@ -92,7 +106,10 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
     result.push_back(node);
     for (const string& input : node->input()) {
       const NodeDef* in = name_to_node[NodeName(input)];
-      CHECK(in);
+      if (!in) {
+        *ill_formed = true;
+        return {};
+      }
       queue.push_back(in);
     }
   }
