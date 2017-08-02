@@ -39,18 +39,18 @@ def _SumGrad(op, grad):
   """Gradient for Sum."""
   # Fast path for when reducing to a scalar and ndims is known: adds only
   # Reshape and Tile ops (and possibly a Shape).
-  if (op.inputs[0].get_shape().ndims is not None and
-      op.inputs[1].op.type == "Const"):
-    rank = op.inputs[0].get_shape().ndims
-    axes = tensor_util.MakeNdarray(op.inputs[1].op.get_attr("value"))
-    if np.array_equal(axes, np.arange(rank)):  # Reduce all dims.
-      grad = array_ops.reshape(grad, [1] * rank)
-      # If shape is not fully defined (but rank is), we use Shape.
-      if op.inputs[0].get_shape().is_fully_defined():
-        input_shape = op.inputs[0].get_shape().as_list()
-      else:
-        input_shape = array_ops.shape(op.inputs[0])
-      return [array_ops.tile(grad, input_shape), None]
+  if op.inputs[0].get_shape().ndims is not None:
+    axes = tensor_util.constant_value(op.inputs[1])
+    if axes is not None:
+      rank = op.inputs[0].get_shape().ndims
+      if np.array_equal(axes, np.arange(rank)):  # Reduce all dims.
+        grad = array_ops.reshape(grad, [1] * rank)
+        # If shape is not fully defined (but rank is), we use Shape.
+        if op.inputs[0].get_shape().is_fully_defined():
+          input_shape = op.inputs[0].get_shape().as_list()
+        else:
+          input_shape = array_ops.shape(op.inputs[0])
+        return [array_ops.tile(grad, input_shape), None]
 
   input_shape = array_ops.shape(op.inputs[0])
   output_shape_kept_dims = math_ops.reduced_shape(input_shape, op.inputs[1])
