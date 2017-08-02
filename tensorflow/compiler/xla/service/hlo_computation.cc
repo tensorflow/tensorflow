@@ -100,6 +100,7 @@ HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
   if (parent() != nullptr) {
     instruction->UniquifyName(&parent()->instruction_name_uniquer());
+    instruction->SetUniqueId(parent()->NewUniqueInstructionId());
   }
   Reparent(instruction.get());
   HloInstruction* pinst = instruction.get();
