@@ -273,7 +273,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   popstd::addCodelets(*graph);
   poprand::addCodelets(*graph);
 
-  CompilerResources resources;
+  CompilerResources resources(hlo_module->config().seed());
 
   HloComputation* entry = hlo_module->entry_computation();
 

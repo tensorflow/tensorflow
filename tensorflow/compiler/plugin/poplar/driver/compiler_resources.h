@@ -38,6 +38,9 @@ struct CompilerResources {
   popconv::PlanningCache convolution_cache;
 
   poprand::Random random;
+
+  CompilerResources(uint64 seed) :
+          random(poprand::RandomGenMode::NOT_REPEATABLE, seed) {}
 };
 
 }  // namespace poplarplugin
