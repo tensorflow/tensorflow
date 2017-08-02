@@ -27,6 +27,8 @@ void UpdateInput(TF_Graph* graph, TF_Operation* op, int index, TF_Output output)
 
 void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input);
 
+void ClearControlInputs(TF_Graph* graph, TF_Operation* op);
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 
 }  // namespace tensorflow

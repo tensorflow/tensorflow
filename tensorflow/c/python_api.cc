@@ -34,6 +34,15 @@ void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input) {
   graph->graph.AddControlEdge(&input->node, &op->node);
 }
 
+void ClearControlInputs(TF_Graph* graph, TF_Operation* op) {
+  mutex_lock l(graph->mu);
+  for (const auto* edge : &op->node.in_edges()) {
+    if (edge->IsControlEdge()) {
+      graph->graph.RemoveEdge(edge);
+    }
+  }
+}
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
   mutex_lock l(graph->mu);
   op->node.set_requested_device(device);
