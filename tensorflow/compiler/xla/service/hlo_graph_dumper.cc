@@ -540,6 +540,10 @@ tooltip = " ";
     subcomp_label = Printf("Fused expression for <b>%s</b><br/>%s",
                            HtmlLikeStringSanitize(parent_instr->name()),
                            HtmlLikeStringSanitize(parent_instr->ToCategory()));
+    string extra_info = GetInstructionNodeExtraInfo(parent_instr);
+    if (!extra_info.empty()) {
+      StrAppend(&subcomp_label, "<br/>", extra_info);
+    }
 
     // Subcomputation's fill/stroke color is light/dark red/gray, depending on
     // whether or not the subcomputation's fusion node is highlighted.
@@ -821,24 +825,30 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     lines.push_back(opcode_specific_info);
   }
 
-  // Some instructions have giant tuples as their shapes, so truncate the HLO's
-  // shape to kMaxShapeLen characters.
-  constexpr int kMaxShapeLen = 64;
-  string instr_shape = ShapeUtil::HumanString(instr->shape());
+  // Show the shape and layout of the instruction, unless it's an inlined fusion
+  // node -- there the shape and layout is present in the output node.
+  if (instr->opcode() != HloOpcode::kFusion ||
+      !filter_.ShowFusionSubcomputation(instr)) {
+    string instr_shape = ShapeUtil::HumanString(instr->shape());
 
-  // Show layout of non-tuple shapes with more than one dimension.
-  if (LayoutUtil::HasLayout(instr->shape()) &&
-      instr->shape().dimensions_size() > 1 &&
-      !ShapeUtil::IsTuple(instr->shape())) {
-    StrAppend(&instr_shape, "{",
-              Join(instr->shape().layout().minor_to_major(), ","), "}");
+    // Show layout of non-tuple shapes with more than one dimension.
+    if (LayoutUtil::HasLayout(instr->shape()) &&
+        instr->shape().dimensions_size() > 1 &&
+        !ShapeUtil::IsTuple(instr->shape())) {
+      StrAppend(&instr_shape, "{",
+                Join(instr->shape().layout().minor_to_major(), ","), "}");
+    }
+
+    // Some instructions have giant tuples as their shapes, so truncate the
+    // HLO's shape to kMaxShapeLen characters.
+    constexpr int kMaxShapeLen = 64;
+    if (instr_shape.length() > kMaxShapeLen) {
+      instr_shape = StrCat(
+          tensorflow::StringPiece(instr_shape).substr(0, kMaxShapeLen - 3),
+          "...");
+    }
+    lines.push_back(instr_shape);
   }
-  if (instr_shape.length() > kMaxShapeLen) {
-    instr_shape =
-        StrCat(tensorflow::StringPiece(instr_shape).substr(0, kMaxShapeLen - 3),
-               "...");
-  }
-  lines.push_back(instr_shape);
 
   if (show_addresses_) {
     lines.push_back(Printf("[%p]", instr));
