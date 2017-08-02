@@ -2348,8 +2348,8 @@ static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
           *node_def = node->def();
         }
       }
+      *graph_def.mutable_library() = graph.flib_def().ToProto();
       session->graph->mu.unlock();
-      // TODO(josh11b): Also send the function library if needed.
       status->status = session->session->Extend(graph_def);
       if (!status->status.ok()) {
         // Contract is we always delete input_values[i].
