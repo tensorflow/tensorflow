@@ -2132,7 +2132,6 @@ bool CudnnSupport::DoConvolveImpl(
       return false;
     }
     if (status == CUDNN_STATUS_SUCCESS) {
-      output_profile_result->set_is_valid(true);
       output_profile_result->set_algorithm(algo);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
@@ -2730,7 +2729,6 @@ bool CudnnSupport::DoConvolveBackwardDataImpl(
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
     if (status == CUDNN_STATUS_SUCCESS) {
-      output_profile_result->set_is_valid(true);
       output_profile_result->set_algorithm(algo);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
@@ -2965,7 +2963,6 @@ bool CudnnSupport::DoConvolveBackwardFilterImpl(
   if (is_profiling) {
     timer->Stop(AsCUDAStream(stream));
     if (status == CUDNN_STATUS_SUCCESS) {
-      output_profile_result->set_is_valid(true);
       output_profile_result->set_algorithm(algo);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
