@@ -48,9 +48,8 @@ message SummaryMetadata {
     string content = 2;
   }
 
-  // A list of plugin data. A single summary value instance may be used by more
-  // than 1 plugin.
-  repeated PluginData plugin_data = 1;
+  // Data that associates a summary with a certain plugin.
+  PluginData plugin_data = 1;
 
   // Display name for viewing in TensorBoard.
   string display_name = 2;
