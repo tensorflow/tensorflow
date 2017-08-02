@@ -102,7 +102,6 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 XlaCompiler::~XlaCompiler() = default;
 
 int64 XlaCompiler::NextStepId() {
-  mutex_lock l(mu_);
   return next_step_id_++;
 }
 
@@ -552,7 +551,6 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
 Status XlaCompiler::GetChannelHandle(const string& key,
                                      xla::ChannelHandle* channel) {
-  mutex_lock lock(mu_);
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
     TF_ASSIGN_OR_RETURN(result.first->second, client()->CreateChannelHandle());
