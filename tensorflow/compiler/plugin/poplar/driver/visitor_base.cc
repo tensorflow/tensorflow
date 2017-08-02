@@ -203,7 +203,6 @@ Status BaseVisitor::HandleConstant(
         const Literal& literal) {
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(t, AddConstantTensor(*graph_,
-                                           inst,
                                            GetOutputShape(inst),
                                            inst->literal(),
                                            resources_));

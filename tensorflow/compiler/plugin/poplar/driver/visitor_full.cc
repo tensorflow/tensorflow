@@ -287,6 +287,16 @@ Status FullVisitor::HandleFusion(HloInstruction* inst) {
       sequence.add(prog);
       return Status::OK();
     }
+    case FUSED_WIDE_CONSTANT:
+    {
+      const HloInstruction* root = inst->fused_expression_root();
+      poplar::Tensor out;
+      TF_ASSIGN_OR_RETURN(out, AddConstantTensor(*graph_, inst->shape(),
+                                                 root->operand(0)->literal(),
+                                                 resources_));
+      TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+      return Status::OK();
+    }
     default:
       return Unimplemented(inst);
   }

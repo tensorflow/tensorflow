@@ -76,6 +76,10 @@ static bool IsReductionWindowNYXC(HloInstruction* inst) {
   return true;
 }
 
+static bool IsScalarConstant(HloInstruction* inst) {
+  return ShapeUtil::IsScalar(inst->shape());
+}
+
 /*
  * Note about constructing these patterns.  Due to the behaviour of the fuser
  * there must be no backward references.  All nodes should appear after any
@@ -83,39 +87,39 @@ static bool IsReductionWindowNYXC(HloInstruction* inst) {
  */
 
 static const std::vector<HloMatcherPattern> patterns = {
-  // dynamic update slice with constant coordinate
+  // dynamic update slice with constant coordinate - 0
   {{HloOpcode::kDynamicUpdateSlice, true, nullptr, {-1, -1, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // dynamic slice with constant coordinate
+  // dynamic slice with constant coordinate - 1
   {{HloOpcode::kDynamicSlice, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Relu
+  // Relu - 2
   {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
-  // Sigmoid
+  // Sigmoid - 3
   {{HloOpcode::kAdd, true, nullptr, {4, 1}},
    {HloOpcode::kMultiply, true, nullptr, {4, 2}},
    {HloOpcode::kTanh, true, nullptr, {3}},
    {HloOpcode::kMultiply, true, nullptr, {4, -1}},
    {HloOpcode::kConstant, true, IsConstantHalf, {}}},
 
-  // BiasAdd on convolution (explicit broadcast)
+  // BiasAdd on convolution (explicit broadcast) - 4
   {{HloOpcode::kAdd, true, nullptr, {1, 2}},
    {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}},
    {HloOpcode::kBroadcast, true, nullptr, {-1}}},
 
-  // BiasAdd on convolution (implicit broadcast)
+  // BiasAdd on convolution (implicit broadcast) - 6
   {{HloOpcode::kAdd, true, nullptr, {1, -1}},
    {HloOpcode::kCall, false, IsPoplarConvolution, {-1, -1}}},
 
-  // External padding with constant zero
+  // External padding with constant zero - 6
   {{HloOpcode::kPad, true, IsExternalPadding, {-1, 1}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
-  // Random truncated normal with post scale and add
+  // Random truncated normal with post scale and add - 7
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kMultiply, true, nullptr, {4, 3}},
@@ -125,13 +129,13 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random truncated normal without post scale and add
+  // Random truncated normal without post scale and add - 8
   {{HloOpcode::kWhile, true, IsTruncatedNormalWhile, {1}},
    {HloOpcode::kRng, true, nullptr, {2, 3}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random normal with post scale and add
+  // Random normal with post scale and add - 9
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kMultiply, true, nullptr, {4, 3}},
@@ -140,7 +144,7 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random uniform with post scale and add
+  // Random uniform with post scale and add - 10
   {{HloOpcode::kAdd, true, nullptr, {2, 1}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kMultiply, true, nullptr, {4, 3}},
@@ -149,27 +153,27 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random 2-constant without post scale and add
+  // Random 2-constant without post scale and add - 11
   {{HloOpcode::kRng, true, IsRandomNormal, {1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random 2-constant without post scale and add
+  // Random 2-constant without post scale and add - 12
   {{HloOpcode::kRng, true, IsRandomUniform, {1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Random bernoulli
+  // Random bernoulli - 13
   {{HloOpcode::kRng, true, IsRandomBernoulli, {1}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Average pool (valid)
+  // Average pool (valid) - 14
   {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
    {HloOpcode::kReduceWindow, true, IsReductionWindowNYXC, {-1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
 
-  // Average pool (same)
+  // Average pool (same) - 15
   {{HloOpcode::kDivide, true, IsAveragePool, {1, 3}},
    {HloOpcode::kReduceWindow, true, IsReductionWindowNYXC, {-1, 2}},
    {HloOpcode::kConstant, true, nullptr, {}},
@@ -178,6 +182,10 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kBroadcast, true, nullptr, {6}},
    {HloOpcode::kConstant, true, nullptr, {}},
    {HloOpcode::kConstant, true, nullptr, {}}},
+
+  // Broadcast scalar constant - 16
+  {{HloOpcode::kBroadcast, true, nullptr, {1}},
+   {HloOpcode::kConstant, true, IsScalarConstant, {}}},
 };
 
 FuseOps::FuseOps() : HloMatcher(patterns, false) {}

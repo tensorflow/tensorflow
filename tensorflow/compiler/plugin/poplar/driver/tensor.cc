@@ -183,10 +183,10 @@ AddTensor(poplar::Graph& graph,
 
 template<typename TYPE>
 static void
-AddConstantTensor(poplar::Graph&graph,
-                  const xla::Literal &literal,
-                  const xla::Shape &shape,
-                  const std::string &type,
+AddConstantTensor(poplar::Graph& graph,
+                  const xla::Literal& literal,
+                  const xla::Shape& shape,
+                  const std::string& type,
                   poplar::Tensor& tensor) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
@@ -227,7 +227,6 @@ Add64BitConstantTensor(poplar::Graph&graph,
 
 port::StatusOr<poplar::Tensor>
 AddConstantTensor(poplar::Graph& graph,
-                  const HloInstruction* inst,
                   const xla::Shape& shape,
                   const xla::Literal& literal,
                   CompilerResources& resources) {
