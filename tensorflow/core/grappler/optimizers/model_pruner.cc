@@ -51,7 +51,6 @@ bool IsTrivialOp(const NodeDef& node) {
 
 Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* pruned_graph) {
-  GraphRewriter rewriter(item);
 
   std::unordered_set<string> nodes_to_preserve;
   for (const auto& node : item.fetch) {
@@ -63,12 +62,51 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const auto& node : item.init_ops) {
     nodes_to_preserve.insert(NodeName(node));
   }
+  for (const auto& queue_runner : item.queue_runners) {
+    for (const string& enqueue_op : queue_runner.enqueue_op_name()) {
+      nodes_to_preserve.insert(NodeName(enqueue_op));
+    }
+    if (!queue_runner.close_op_name().empty()) {
+      nodes_to_preserve.insert(NodeName(queue_runner.close_op_name()));
+    }
+    if (!queue_runner.cancel_op_name().empty()) {
+      nodes_to_preserve.insert(NodeName(queue_runner.cancel_op_name()));
+    }
+  }
 
+  // Prune all the nodes that won't be executed, ie all the nodes that aren't in
+  // the fanin of a fetch node. If fetch nodes aren't specified, we'll assume
+  // the whole graph might be executed.
+  GrapplerItem runnable_item;
+  if (!nodes_to_preserve.empty()) {
+    std::vector<string> terminal_nodes(nodes_to_preserve.begin(),
+                                       nodes_to_preserve.end());
+    bool ill_formed = false;
+    std::vector<const NodeDef*> keep =
+        ComputeTransitiveFanin(item.graph, terminal_nodes, &ill_formed);
+    if (ill_formed) {
+      // Some graph edges are invalid, or some of the feeds/fetch don't exist:
+      // let's be conservative and preserve the graph as is.
+      return errors::InvalidArgument("Invalid input graph.");
+    }
+    // Try to keep the nodes ordored somewhat topologically since this helps
+    // further optimizations perform better.
+    for (int i = keep.size() - 1; i >= 0; --i) {
+      *runnable_item.graph.add_node() = *keep[i];
+    }
+  } else {
+    runnable_item = item;
+  }
+
+  GraphRewriter rewriter(runnable_item);
+
+  // Check if we can further prune the graph, by removing the trivial ops.
   std::unordered_set<const NodeDef*> nodes_to_delete;
-  for (auto& node : item.graph.node()) {
+  for (auto& node : runnable_item.graph.node()) {
     if (!IsTrivialOp(node)) {
       continue;
     }
+
     // Don't remove nodes that must be preserved.
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
@@ -97,12 +135,15 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
 
+  *pruned_graph->mutable_library() = item.graph.library();
+  *pruned_graph->mutable_versions() = item.graph.versions();
+
   if (nodes_to_delete.empty()) {
-    *pruned_graph = item.graph;
+    pruned_graph->mutable_node()->Swap(runnable_item.graph.mutable_node());
     return Status::OK();
   }
 
-  for (auto& node : item.graph.node()) {
+  for (auto& node : runnable_item.graph.node()) {
     NodeDef* new_node = pruned_graph->add_node();
     *new_node = node;
     new_node->clear_input();
@@ -112,9 +153,6 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Pruned " << nodes_to_delete.size()
           << " nodes from the graph. The graph now contains "
           << pruned_graph->node_size() << " nodes.";
-
-  *pruned_graph->mutable_library() = item.graph.library();
-  *pruned_graph->mutable_versions() = item.graph.versions();
 
   return Status::OK();
 }
