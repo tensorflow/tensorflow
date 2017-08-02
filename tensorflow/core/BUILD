@@ -2121,6 +2121,8 @@ tf_cc_tests(
         "platform/port_test.cc",
         "platform/profile_utils/cpu_utils_test.cc",
         "platform/subprocess_test.cc",
+        "platform/vmodule_benchmark_test.cc",
+        "platform/vmodule_test.cc",
     ],
     deps = [
         ":lib",
