@@ -8,7 +8,14 @@ exports_files(["COPYING"])
 load("@%ws%//third_party:common.bzl", "template_rule")
 
 cc_library(
-    name = "jemalloc",
+    name = "jemalloc_headers",
+    hdrs = ["include/jemalloc/jemalloc.h"],
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "libjemalloc.so",
     srcs = [
         "src/arena.c",
         "src/atomic.c",
@@ -37,8 +44,7 @@ cc_library(
         "src/tsd.c",
         "src/util.c",
         "src/witness.c",
-    ],
-    hdrs = [
+    ] + [
         "include/jemalloc/internal/arena.h",
         "include/jemalloc/internal/assert.h",
         "include/jemalloc/internal/atomic.h",
@@ -100,6 +106,7 @@ cc_library(
         "//conditions:default": [
         ],
     }),
+    linkshared = 1,
     visibility = ["//visibility:public"],
 )
 

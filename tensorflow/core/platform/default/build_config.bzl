@@ -348,8 +348,8 @@ def tf_additional_lib_defines():
 
 def tf_additional_lib_deps():
   return select({
-      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc"],
-      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc"],
+      "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_headers"],
+      "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_headers"],
       "//conditions:default": [],
   })
 

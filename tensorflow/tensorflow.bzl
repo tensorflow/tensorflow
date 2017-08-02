@@ -14,6 +14,7 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
     "tf_sycl_tests_tags",
+    "tf_additional_binary_srcs",
     "tf_additional_xla_deps_py",)
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "cuda_default_copts")
 
@@ -240,7 +241,7 @@ def tf_cc_shared_object(name,
                         **kwargs):
   native.cc_binary(
     name=name,
-    srcs=srcs + framework_so,
+    srcs=srcs + framework_so + tf_additional_binary_srcs(),
     deps=deps + ["//tensorflow/core:safe_framework_dep"],
     linkshared = 1,
     linkopts=linkopts + _rpath_linkopts(name) + select({
@@ -253,6 +254,11 @@ def tf_cc_shared_object(name,
     **kwargs)
 
 
+def _binary_additional_srcs():
+  return ([clean_dep("//tensorflow:libtfframework.so")]
+          + tf_additional_binary_srcs())
+
+
 def tf_cc_binary(name,
                  srcs=[],
                  deps=[],
@@ -260,7 +266,7 @@ def tf_cc_binary(name,
                  **kwargs):
   native.cc_binary(
       name=name,
-      srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
+      srcs=srcs + _binary_additional_srcs(),
       deps=deps + ["//tensorflow/core:safe_framework_dep"],
       linkopts=linkopts + _rpath_linkopts(name),
       **kwargs)
@@ -472,7 +478,7 @@ def tf_cc_test(name,
                **kwargs):
   native.cc_test(
       name="%s%s" % (name, suffix),
-      srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
+      srcs=srcs + _binary_additional_srcs(),
       copts=tf_copts() + extra_copts,
       linkopts=["-lpthread", "-lm"] + linkopts + _rpath_linkopts(name),
       deps=deps + ["//tensorflow/core:safe_framework_dep"],
@@ -558,7 +564,7 @@ def tf_cuda_only_cc_test(name,
                     linkopts=[]):
   native.cc_test(
     name="%s%s" % (name, "_gpu"),
-    srcs=srcs + [clean_dep("//tensorflow:libtfframework.so")],
+    srcs=srcs + _binary_additional_srcs(),
     size=size,
     args=args,
     copts= _cuda_copts() + tf_copts(),
