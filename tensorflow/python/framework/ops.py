@@ -285,6 +285,11 @@ class Tensor(_TensorLike):
     return "%s:%d" % (self._op.name, self._value_index)
 
   @property
+  def _id(self):
+    """An alias for the string name of this tensor."""
+    return self.name
+
+  @property
   def device(self):
     """The name of the device on which this tensor will be produced, or None."""
     return self._op.device
