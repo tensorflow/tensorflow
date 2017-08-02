@@ -208,6 +208,14 @@ def tf_gen_op_libs(op_lib_names, deps=None):
         linkstatic=1,)
 
 
+def _make_search_paths(prefix, levels_to_root):
+  return ",".join(
+      ["-rpath,%s/%s" % (prefix, "/".join([".."] * search_level))
+       for search_level in range(levels_to_root + 1)]
+      + ["-rpath,%s/%s" % (prefix, "/".join(
+          [".."] * (levels_to_root + 1) + ["external", "jemalloc"]))])
+
+
 def _rpath_linkopts(name):
   # Search parent directories up to the TensorFlow root directory for shared
   # object dependencies, even if this op shared object is deeply nested
@@ -216,19 +224,13 @@ def _rpath_linkopts(name):
   # shared object dependencies (e.g. shared between contrib/ ops) are picked up
   # as long as they are in either the same or a parent directory in the
   # tensorflow/ tree.
-  maximum_search_level = PACKAGE_NAME.count("/") + name.count("/")
-  search_up_levels_linux = ":".join(
-    ["$$ORIGIN/" + "/".join([".."] * search_level)
-     for search_level in range(maximum_search_level + 1)])
-  search_up_levels_darwin = ",".join(
-    ["-rpath,@loader_path/" + "/".join([".."] * search_level)
-     for search_level in range(maximum_search_level + 1)])
+  levels_to_root = PACKAGE_NAME.count("/") + name.count("/")
   return select({
       "//tensorflow:darwin": [
-          "-Wl,%s" % (search_up_levels_darwin),
+          "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
       ],
       "//conditions:default": [
-          "-Wl,-rpath,%s" % (search_up_levels_linux,),
+          "-Wl,%s" % (_make_search_paths("$$ORIGIN", levels_to_root),),
       ],
       })
 

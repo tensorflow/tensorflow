@@ -47,21 +47,23 @@ ln -s "${PWD}" "${GOPATH}/src/github.com/tensorflow/tensorflow"
 # linker at build and run time.
 export LIBRARY_PATH="${PWD}/tensorflow"
 OS=$(uname -s)
+SEARCHPATHS="${PWD}/tensorflow:${PWD}/external/jemalloc"
 if [[ "${OS}" = "Linux" ]]
 then
   if [[ -z "${LD_LIBRARY_PATH}" ]]
   then
-    export LD_LIBRARY_PATH="${PWD}/tensorflow"
+    export LD_LIBRARY_PATH="${SEARCHPATHS}"
   else
-    export LD_LIBRARY_PATH="${PWD}/tensorflow:${LD_LIBRARY_PATH}"
+    export LD_LIBRARY_PATH="${SEARCHPATHS}:${LD_LIBRARY_PATH}"
   fi
 elif [[ "${OS}" = "Darwin" ]]
 then
+  SEARCHPATHS="${PWD}/tensorflow:${PWD}/external/jemalloc"
   if [[ -z "${DYLD_LIBRARY_PATH}" ]]
   then
-    export DYLD_LIBRARY_PATH="${PWD}/tensorflow"
+    export DYLD_LIBRARY_PATH="${SEARCHPATHS}"
   else
-    export DYLD_LIBRARY_PATH="${PWD}/tensorflow:${DYLD_LIBRARY_PATH}"
+    export DYLD_LIBRARY_PATH="${SEARCHPATHS}:${DYLD_LIBRARY_PATH}"
   fi
 fi
 
