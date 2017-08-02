@@ -352,10 +352,10 @@ OpTest::OpTest() {
   } else {
     seed = static_cast<unsigned int>(s);
   }
-  LOG(INFO) << "Random seed for test case: " << seed
-            << ". To reproduce the "
-               "results of this test, pass flag --tf_xla_random_seed="
-            << seed;
+  LOG(ERROR) << "Random seed for test case: " << seed
+             << ". To reproduce the "
+                "results of this test, pass flag --tf_xla_random_seed="
+             << seed;
   generator_.reset(new std::mt19937(seed));
 
   // Create a session with an empty graph.
@@ -702,11 +702,8 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
   input_tensors.reserve(inputs.size());
   for (const OpTestBuilder::InputDescription& input : inputs) {
     if (input.type == DT_INVALID) {
-      VLOG(1) << "Input: " << input.tensor.DebugString();
       input_tensors.push_back(input.tensor);
     } else {
-      VLOG(1) << "Input: " << input.type << " "
-              << TensorShape(input.dims).DebugString();
       std::vector<int64> dims;
       if (input.has_dims) {
         dims = input.dims;
@@ -714,11 +711,14 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
         dims = RandomDims();
       }
       if (!TensorSizeIsOk(dims)) {
+        VLOG(1) << "Input: " << input.type << " "
+                << TensorShape(input.dims).DebugString();
         VLOG(1) << "Ignoring oversize dims.";
         return kInvalid;
       }
       input_tensors.push_back(RandomTensor(input.type, dims));
     }
+    VLOG(1) << "Input: " << input_tensors.back().DebugString();
   }
 
   string cpu_device =
@@ -950,7 +950,7 @@ TEST_F(OpTest, AvgPoolGrad) {
             .Attr("ksize", ImageDims(FORMAT_NHWC, 1, 1, d.kernel_dims))
             .Attr("strides", ImageDims(FORMAT_NHWC, 1, 1, d.stride_dims))
             .Attr("padding", d.padding == SAME ? "SAME" : "VALID")
-            .Attr("data_format", "NDHWC"));
+            .Attr("data_format", "NHWC"));
   });
 }
 
@@ -1007,7 +1007,7 @@ TEST_F(OpTest, BatchToSpace) {
     const int num_block_dims = 2;
     std::vector<int64> block_dims =
         RandomDims(num_block_dims, num_block_dims, 0, 5);
-    int64 block_size = RandomDim(0, 4);
+    int64 block_size = RandomDim(2, 5);
 
     std::vector<int64> input_dims(1 + num_block_dims + 1);
     input_dims[0] = RandomDim();
@@ -2343,7 +2343,7 @@ TEST_F(OpTest, SpaceToBatch) {
   Repeatedly([this]() {
     std::vector<int64> block_dims = RandomDims(4, 4, 0, 5);
     const int num_block_dims = 2;
-    int64 block_size = RandomDim(0, 4);
+    int64 block_size = RandomDim(2, 5);
 
     std::vector<int64> input_dims(1 + num_block_dims + 1);
     input_dims[0] = RandomDim();
