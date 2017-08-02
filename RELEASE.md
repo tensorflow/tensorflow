@@ -9,6 +9,7 @@
   * `DNNLinearCombinedClassifier`
   * `DNNLinearCombinedRegressor`.
 * All our prebuilt binaries have been built with cuDNN 6.
+* `import tensorflow` now goes much faster.
 * Adds a file cache to the GCS filesystem with configurable max staleness for file contents. This permits caching of file contents across close/open boundaries.
 * Added an axis parameter to `tf.gather`.
 * Added a `constant_values` keyword argument to `tf.pad`.
