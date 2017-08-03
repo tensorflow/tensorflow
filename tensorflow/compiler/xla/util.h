@@ -312,6 +312,11 @@ T RoundDownToNearest(T value, T divisor) {
 // e.g. HumanReadableNumFlops(1e9, 1e9) => 1.00GFLOP/s.
 string HumanReadableNumFlops(double flops, double nanoseconds);
 
+// Given a number of transcendental ops executed in an amount of time, produces
+// a string that represents the throughput;
+// e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
+string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
+
 // Split the text into multiple lines and log each line with the given
 // severity, filename, and line number.
 void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
