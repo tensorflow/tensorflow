@@ -80,6 +80,7 @@ py_library(
         ":training",
         ":ops",
         ":saver_test_utils",
+        ":subscribe",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":util",
         ":weights_broadcast_ops",
@@ -404,6 +405,18 @@ py_library(
 )
 
 py_library(
+    name = "subscribe",
+    srcs = ["framework/subscribe.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework_ops",
+        ":platform",
+        ":variables",
+    ],
+)
+
+py_library(
     name = "framework",
     srcs = [
         "framework/framework_lib.py",
@@ -411,7 +424,6 @@ py_library(
         "framework/importer.py",
         "framework/load_library.py",
         "framework/meta_graph.py",
-        "framework/subscribe.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -729,6 +741,7 @@ py_test(
         ":math_ops",
         ":platform_test",
         ":script_ops",
+        ":subscribe",
     ],
 )
 
