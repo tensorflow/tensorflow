@@ -119,10 +119,17 @@ StatusOr<bool> HloMatcher::Run(HloModule *module) {
     MatchPatternStart(comp, comp->root_instruction());
 
   } else {
-    // loop over computations to get list of replacements
+    // Copy list of computations as we will be introducing new ones
+    std::vector<HloComputation*> comps;
     for (auto& comp : module->computations()) {
-      visited_.clear();
-      MatchPatternStart(comp.get(), comp->root_instruction());
+      comps.push_back(comp.get());
+    }
+
+    for (auto* comp : comps) {
+      if (!comp->IsFusionComputation()) {
+        visited_.clear();
+        MatchPatternStart(comp, comp->root_instruction());
+      }
     }
   }
 
