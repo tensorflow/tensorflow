@@ -3918,7 +3918,6 @@ cuda_py_test(
     srcs = [
         "grappler/layout_optimizer_test.py",
     ],
-    tags = ["manual"],
     additional_deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -3928,6 +3927,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["manual"],
 )
 
 py_library(
