@@ -86,7 +86,7 @@ Event PrepareChunkEventProto(const DebugNodeKey& debug_node_key,
   if (status.ok()) {
     // Store summary metadata. Set the plugin to use this data as "debugger".
     SummaryMetadata::PluginData* plugin_data =
-        value->mutable_metadata()->add_plugin_data();
+        value->mutable_metadata()->mutable_plugin_data();
     plugin_data->set_plugin_name(DebugIO::kDebuggerPluginName);
     plugin_data->set_content(json_output);
   } else {
