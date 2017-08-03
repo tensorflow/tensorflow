@@ -6465,30 +6465,6 @@ func HSVToRGB(scope *Scope, images tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
-// Returns a list of tensors with the same shapes and contents as the input tensors.
-func IdentityN(scope *Scope, inputs []tf.Output) (outputs []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IdentityN",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if outputs, idx, err = makeOutputList(op, idx, "outputs"); err != nil {
-		scope.UpdateErr("IdentityN", err)
-		return
-	}
-	return outputs
-}
-
 // Decode the first frame of a GIF-encoded image to a uint8 tensor.
 //
 // GIF with frame or transparency compression are not supported
